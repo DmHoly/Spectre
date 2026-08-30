@@ -36,7 +36,8 @@ class ObjectiveInput(BaseModel):
     direction: str = "observe"
     target: float | None = None
     tolerance: float | None = None
-    rationale: str | None = None
+    rationale: str | None = None  # pourquoi cet objectif compte
+    verification_method: str | None = None  # comment on prévoit de le vérifier
 
 
 class LaunchExperienceRequest(BaseModel):
@@ -46,6 +47,7 @@ class LaunchExperienceRequest(BaseModel):
     intent: str
     hypothesis: str | None = None
     objectives: list[ObjectiveInput] = []
+    new_branch: str | None = None  # only meaningful when evolving: fork instead of continuing
 
 
 class CampaignPreviewRequest(BaseModel):
@@ -74,6 +76,22 @@ def _unique_branch(repo: "follow.Repository", title: str) -> str:
         branch = f"{base}-{suffix}"
         suffix += 1
     return branch
+
+
+def split_objectives(inputs: list[ObjectiveInput]) -> tuple[list["follow.Objective"], dict[str, str]]:
+    """``follow.Objective`` has no "how will we check this" field (only ``rationale``, the *why*)
+    - ``verification_method`` is Spectre-specific, so it's kept out of the ``Objective`` itself and
+    returned separately, to be stashed under ``Experiment.metadata["objective_verification"]``
+    (keyed by objective name) the same way ``structureforge_process`` already rides along there.
+    """
+    objectives: list[follow.Objective] = []
+    verification: dict[str, str] = {}
+    for o in inputs:
+        data = o.model_dump(exclude_none=True, exclude={"verification_method"})
+        objectives.append(follow.Objective(**data))
+        if o.verification_method:
+            verification[o.name] = o.verification_method
+    return objectives, verification
 
 
 @router.get("/{slug}/materials")
@@ -139,7 +157,7 @@ def launch_experience(
 
     repo = projects.get_repository(project.slug)
     branch = _unique_branch(repo, body.title)
-    objectives = [follow.Objective(**o.model_dump(exclude_none=True)) for o in body.objectives]
+    objectives, verification = split_objectives(body.objectives)
 
     builder = follow_adapter.build_experiment(
         repo,
@@ -153,6 +171,8 @@ def launch_experience(
         objectives=objectives,
     )
     builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
+    if verification:
+        builder.metadata["objective_verification"] = verification
     try:
         experiment = builder.commit()
     except follow.FollowError as exc:
@@ -195,7 +215,7 @@ def launch_campaign(
 
     repo = projects.get_repository(project.slug)
     branch = _unique_branch(repo, body.title)
-    objectives = [follow.Objective(**o.model_dump(exclude_none=True)) for o in body.objectives]
+    objectives, verification = split_objectives(body.objectives)
     lot = structures.ProcessLot(entries=result.entries)
 
     builder = repo.new(
@@ -210,6 +230,8 @@ def launch_campaign(
     )
     builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
     builder.metadata["campaign_plan"] = body.plan.model_dump(mode="json")
+    if verification:
+        builder.metadata["objective_verification"] = verification
     try:
         experiment = builder.commit()
     except follow.FollowError as exc:

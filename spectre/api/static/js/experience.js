@@ -65,12 +65,15 @@ function renderObjectives(detail) {
         ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>'
         : '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>';
       const statusText = result ? OBJECTIVE_STATUS_LABELS[result.status] || result.status : "En cours de vérification";
+      const verification = (detail.objective_verification || {})[o.name];
       return `
         <div style="display:flex;gap:10px;align-items:flex-start;">
           <div style="width:18px;height:18px;border-radius:999px;background:${iconBg};color:${iconColor};display:flex;align-items:center;justify-content:center;flex:none;margin-top:1px;">${icon}</div>
           <div>
             <div style="font-size:13px;font-weight:600;">${escapeHtml(o.name)}</div>
             <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(statusText)}</div>
+            ${o.rationale ? `<div style="font-size:11.5px;color:var(--text-soft);margin-top:3px;">${escapeHtml(o.rationale)}</div>` : ""}
+            ${verification ? `<div style="font-size:11px;color:var(--text-faint);margin-top:2px;font-style:italic;">Vérification&nbsp;: ${escapeHtml(verification)}</div>` : ""}
           </div>
         </div>`;
     })
@@ -117,15 +120,43 @@ async function renderBatchMatrix(detail) {
   card.style.display = "";
   try {
     const variation = await api.get(`/api/projects/${slug}/experiences/${experienceId}/matrice`);
+    const labels = variation.labels || variation.svgs.map((_, i) => `#${i + 1}`);
+
+    // Cartographie : une vignette par échantillon, la structure réelle telle que StructureForge
+    // l'a simulée - pas juste la référence, chaque variante.
+    document.getElementById("atlas-content").innerHTML = `
+      <div class="atlas-grid">
+        ${variation.svgs
+          .map((svg, i) => `<div class="atlas-tile">${svg}<div class="atlas-label">${escapeHtml(labels[i])}</div></div>`)
+          .join("")}
+      </div>`;
+
     const el = document.getElementById("matrix-content");
     if (variation.varying.length === 0) {
       el.innerHTML = `<div class="help">Les ${variation.entity_count} échantillons sont identiques sur tous les paramètres suivis.</div>`;
       return;
     }
-    const summary = variation.factor_label
-      ? `<div style="font-size:14px;font-weight:600;margin-bottom:4px;">${escapeHtml(variation.factor_label)}</div>
-         <div style="font-size:13px;color:var(--text-soft);margin-bottom:14px;">${variation.entity_count} échantillons &middot; valeurs : ${variation.factor_values.map((v) => escapeHtml(String(v))).join(", ")}</div>`
-      : `<div style="font-size:12.5px;color:var(--text-soft);margin-bottom:10px;">${variation.entity_count} échantillons &middot; ${variation.varying.length} paramètre(s) réellement variable(s)</div>`;
+
+    // Feuille de split : une ligne par échantillon, la valeur du paramètre qui varie - lisible
+    // directement, pas les chemins de structure bruts (gardés en détail technique en dessous).
+    const factorHeader = variation.factor_label || "Paramètre";
+    const splitSheet = `
+      <table style="border-collapse:collapse;font-size:13px;width:100%;">
+        <thead><tr style="text-align:left;color:var(--text-faint);font-size:11px;text-transform:uppercase;">
+          <th style="padding:4px 10px 4px 0;">Échantillon</th>
+          <th style="padding:4px 10px;">${escapeHtml(factorHeader)}</th>
+        </tr></thead>
+        <tbody>
+          ${labels
+            .map(
+              (label, i) => `<tr style="border-top:1px solid var(--border-soft);">
+                <td class="mono" style="padding:6px 10px 6px 0;">${escapeHtml(label)}</td>
+                <td class="mono" style="padding:6px 10px;">${escapeHtml(variation.factor_values ? String(variation.factor_values[i]) : "—")}</td>
+              </tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>`;
 
     const rawTable = `
       <table style="border-collapse:collapse;font-size:12px;width:100%;">
@@ -146,8 +177,8 @@ async function renderBatchMatrix(detail) {
       </table>`;
 
     el.innerHTML = `
-      ${summary}
-      <details>
+      <div style="overflow-x:auto;">${splitSheet}</div>
+      <details style="margin-top:12px;">
         <summary style="cursor:pointer;font-size:12px;color:var(--text-faint);">Détails techniques</summary>
         <div style="overflow-x:auto;margin-top:8px;">${rawTable}</div>
       </details>`;
@@ -161,11 +192,23 @@ function renderConclusion(detail) {
   const isConcluded = detail.status === "concluded" || detail.status === "abandoned";
   if (isConcluded) {
     const c = detail.conclusion;
+    const answers = c.objective_results
+      .map((r) => {
+        const objective = detail.objectives.find((o) => o.name === r.objective);
+        return `
+          <div style="padding:8px 0;border-top:1px solid var(--border-soft);">
+            <div style="font-size:13px;font-weight:600;">${escapeHtml(r.objective)}</div>
+            ${objective && objective.rationale ? `<div style="font-size:11.5px;color:var(--text-faint);margin-top:1px;">${escapeHtml(objective.rationale)}</div>` : ""}
+            <div style="font-size:12.5px;color:var(--text-soft);margin-top:4px;">${escapeHtml(OBJECTIVE_STATUS_LABELS[r.status] || r.status)}${r.reasoning ? " — " + escapeHtml(r.reasoning) : ""}</div>
+          </div>`;
+      })
+      .join("");
     container.innerHTML = `
       <div class="section-title" style="margin-bottom:14px;">Conclusion</div>
       ${c.summary ? `<p style="font-size:13.5px;line-height:1.6;margin-bottom:10px;">${escapeHtml(c.summary)}</p>` : ""}
       ${c.decision ? `<div style="font-size:12.5px;color:var(--text-soft);">Décision&nbsp;: <strong>${escapeHtml(c.decision)}</strong></div>` : ""}
       ${c.next_steps ? `<div style="font-size:12.5px;color:var(--text-soft);margin-top:4px;">Suite&nbsp;: ${escapeHtml(c.next_steps)}</div>` : ""}
+      ${answers ? `<div style="margin-top:14px;">${answers}</div>` : ""}
     `;
     return;
   }
@@ -200,17 +243,21 @@ function renderConclusion(detail) {
       <button class="btn btn-primary btn-block" type="submit">Enregistrer la conclusion</button>
     </form>
   `;
+  const verification = currentDetail.objective_verification || {};
   document.getElementById("objective-results").innerHTML = currentDetail.objectives
     .map(
       (o, i) => `
-      <div style="margin-bottom:6px;">
-        <label>${escapeHtml(o.name)}</label>
-        <select class="field" data-objective="${escapeHtml(o.name)}" id="obj-result-${i}">
+      <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border-soft);">
+        <label style="margin-bottom:2px;">${escapeHtml(o.name)}</label>
+        ${o.rationale ? `<div style="font-size:11.5px;color:var(--text-faint);margin-bottom:2px;">Pourquoi&nbsp;: ${escapeHtml(o.rationale)}</div>` : ""}
+        ${verification[o.name] ? `<div style="font-size:11.5px;color:var(--text-faint);margin-bottom:6px;">Vérification prévue&nbsp;: ${escapeHtml(verification[o.name])}</div>` : ""}
+        <select class="field" data-objective="${escapeHtml(o.name)}" id="obj-result-${i}" style="margin-bottom:6px;">
           <option value="met">Atteint</option>
           <option value="not_met">Non atteint</option>
           <option value="partially_met">Partiellement atteint</option>
           <option value="inconclusive">Non concluant</option>
         </select>
+        <textarea class="field" id="obj-reasoning-${i}" rows="2" placeholder="Réponse : qu'a-t-on constaté ?"></textarea>
       </div>`
     )
     .join("");
@@ -221,6 +268,7 @@ function renderConclusion(detail) {
     const objectiveResults = currentDetail.objectives.map((o, i) => ({
       objective: o.name,
       status: document.getElementById(`obj-result-${i}`).value,
+      reasoning: document.getElementById(`obj-reasoning-${i}`).value.trim() || null,
     }));
     try {
       await api.post(`/api/projects/${slug}/experiences/${experienceId}/conclure`, {
@@ -345,6 +393,21 @@ function renderEvidence(detail) {
   });
 }
 
+function renderForksNote(detail) {
+  const box = document.getElementById("forks-note");
+  if (detail.children.length < 2) {
+    box.style.display = "none";
+    return;
+  }
+  box.style.display = "block";
+  box.innerHTML = `
+    <div style="font-size:12px;color:var(--text-faint);margin-bottom:6px;">Cette version a donné plusieurs pistes :</div>
+    ${detail.children
+      .map((c) => `<div style="font-size:13px;margin-bottom:4px;"><a href="/projets/${slug}/experiences/${c.id}">${escapeHtml(c.title)}</a></div>`)
+      .join("")}
+    <a href="/projets/${slug}/graphe" style="font-size:12px;">Voir la vue d'ensemble &rarr;</a>`;
+}
+
 function renderReferences(detail) {
   const el = document.getElementById("references-list");
   if (detail.references.length === 0) {
@@ -372,6 +435,7 @@ async function init() {
 
     renderHeader(currentDetail);
     renderObjectives(currentDetail);
+    renderForksNote(currentDetail);
     renderReferences(currentDetail);
     renderConclusion(currentDetail);
     renderBatchMatrix(currentDetail);

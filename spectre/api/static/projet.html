@@ -39,7 +39,7 @@
         <a id="graph-link" href="#" class="btn btn-line">Vue d'ensemble</a>
         <button id="new-structure-btn" class="btn btn-primary" style="display:none;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-          Nouvelle structure
+          Nouvelle expérience
         </button>
       </div>
     </div>
@@ -96,6 +96,35 @@
       </div>
     </div>
   </div>
+
+  <dialog id="new-experience-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
+    <div class="card-pad" style="width:400px;">
+      <h2 style="font-size:16px;margin-bottom:4px;">Nouvelle expérience</h2>
+      <p class="help" style="margin-bottom:16px;">Comment voulez-vous démarrer ?</p>
+
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div>
+          <button class="btn btn-line btn-block" id="option-scratch" type="button">Partir de zéro</button>
+        </div>
+
+        <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
+          <label>Repartir d'une structure existante</label>
+          <div class="help" style="margin-bottom:8px;">Reprend la structure telle quelle comme point de départ, sans lien de filiation.</div>
+          <select class="field" id="template-select" style="margin-bottom:8px;"></select>
+          <button class="btn btn-line btn-block" id="option-template" type="button">Utiliser cette structure</button>
+        </div>
+
+        <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
+          <label>Continuer une expérience existante</label>
+          <div class="help" style="margin-bottom:8px;">Garde le lien avec la version de départ - vous pourrez aussi explorer une nouvelle piste.</div>
+          <select class="field" id="continue-select" style="margin-bottom:8px;"></select>
+          <button class="btn btn-line btn-block" id="option-continue" type="button">Continuer cette expérience</button>
+        </div>
+      </div>
+
+      <button class="btn btn-line btn-block" id="cancel-new-experience" type="button" style="margin-top:18px;">Annuler</button>
+    </div>
+  </dialog>
 
   <script src="/static/js/api.js"></script>
   <script src="/static/js/common.js"></script>
@@ -198,6 +227,40 @@
       }
     }
 
+    const newExperienceDialog = document.getElementById("new-experience-dialog");
+
+    async function openNewExperienceDialog() {
+      clearErrorFlash();
+      try {
+        const data = await api.get(`/api/projects/${encodeURIComponent(slug)}/experiences?status=all&limit=200`);
+        const options = data.items.map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`).join("");
+        const empty = `<option value="">Aucune expérience pour l'instant</option>`;
+        document.getElementById("template-select").innerHTML = data.items.length ? options : empty;
+        document.getElementById("continue-select").innerHTML = data.items.length ? options : empty;
+        newExperienceDialog.showModal();
+      } catch (err) {
+        showError(err);
+      }
+    }
+
+    document.getElementById("option-scratch").addEventListener("click", () => {
+      window.location.href = `/projets/${encodeURIComponent(slug)}/structures/nouvelle`;
+    });
+
+    document.getElementById("option-template").addEventListener("click", () => {
+      const source = document.getElementById("template-select").value;
+      if (!source) return;
+      window.location.href = `/projets/${encodeURIComponent(slug)}/structures/nouvelle?depuis=${encodeURIComponent(source)}`;
+    });
+
+    document.getElementById("option-continue").addEventListener("click", () => {
+      const source = document.getElementById("continue-select").value;
+      if (!source) return;
+      window.location.href = `/projets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
+    });
+
+    document.getElementById("cancel-new-experience").addEventListener("click", () => newExperienceDialog.close());
+
     function invitationRow(invitation) {
       return `
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border-soft);">
@@ -286,9 +349,7 @@
 
         if (currentRole === "editor" || currentRole === "owner") {
           document.getElementById("new-structure-btn").style.display = "";
-          document.getElementById("new-structure-btn").addEventListener("click", () => {
-            window.location.href = `/projets/${encodeURIComponent(slug)}/structures/nouvelle`;
-          });
+          document.getElementById("new-structure-btn").addEventListener("click", openNewExperienceDialog);
         }
         if (currentRole === "owner") {
           document.getElementById("add-member-form").style.display = "grid";

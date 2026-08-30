@@ -31,6 +31,7 @@ function stepIconHtml(kind) {
 const pathParts = window.location.pathname.split("/").filter(Boolean);
 const slug = pathParts[1];
 const evolveExperienceId = pathParts[2] === "experiences" ? pathParts[3] : null;
+const templateExperienceId = evolveExperienceId ? null : new URLSearchParams(window.location.search).get("depuis");
 
 const state = {
   materials: [],
@@ -41,6 +42,7 @@ const state = {
   materialColors: {},
   currentFrame: 0,
   campaignPlan: null,
+  editingIndex: null,
 };
 
 const errorBox = document.getElementById("error");
@@ -188,27 +190,112 @@ function renderSteps() {
   list.innerHTML = state.steps
     .map(
       (step, i) => `
-      <div class="step-row">
+      <div class="step-row js-step-row" data-index="${i}" style="cursor:pointer;${state.editingIndex === i ? "border-color:var(--accent);background:var(--accent-tint);" : ""}">
         ${stepIconHtml(step.kind)}
         <div style="flex:1;min-width:0;">
           <div style="font-size:13px;font-weight:600;">${i + 1}. ${escapeHtml(STEP_KINDS[step.kind].label)} &mdash; ${escapeHtml(step.name)}</div>
           <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(stepSummary(step))}</div>
         </div>
-        <button class="step-remove" data-index="${i}" title="Retirer" type="button">
+        <div style="display:flex;flex-direction:column;">
+          <button class="step-remove js-step-up" data-index="${i}" title="Monter" type="button" ${i === 0 ? "disabled style='opacity:.3;'" : ""}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 15l7-7 7 7"/></svg>
+          </button>
+          <button class="step-remove js-step-down" data-index="${i}" title="Descendre" type="button" ${i === state.steps.length - 1 ? "disabled style='opacity:.3;'" : ""}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 9l7 7 7-7"/></svg>
+          </button>
+        </div>
+        <button class="step-remove js-step-remove" data-index="${i}" title="Retirer" type="button">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M5 19L19 5"/></svg>
         </button>
       </div>`
     )
     .join("");
-  list.querySelectorAll(".step-remove").forEach((btn) => {
+  list.querySelectorAll(".js-step-row").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button")) return;
+      startEditingStep(parseInt(row.dataset.index, 10));
+    });
+  });
+  list.querySelectorAll(".js-step-remove").forEach((btn) => {
     btn.addEventListener("click", () => {
-      state.steps.splice(parseInt(btn.dataset.index, 10), 1);
+      const index = parseInt(btn.dataset.index, 10);
+      state.steps.splice(index, 1);
+      if (state.editingIndex === index) cancelEditingStep();
       renderSteps();
     });
+  });
+  list.querySelectorAll(".js-step-up").forEach((btn) => {
+    btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), -1));
+  });
+  list.querySelectorAll(".js-step-down").forEach((btn) => {
+    btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), 1));
   });
   renderCampaignStepOptions();
   state.campaignPlan = null;
   document.getElementById("campaign-result").innerHTML = "";
+}
+
+function fillKindFields(step) {
+  document.getElementById("kind-select").value = step.kind;
+  renderKindFields(step.kind);
+  document.getElementById("f-name").value = step.name;
+  if (step.kind === "deposition") {
+    document.getElementById("f-material").value = step.material;
+    document.getElementById("f-recipe").value = step.recipe;
+    document.getElementById("f-thickness").value = step.thickness.value;
+    document.getElementById("f-thickness-unit").value = step.thickness.unit;
+  } else if (step.kind === "etch") {
+    document.getElementById("f-recipe").value = step.recipe;
+    document.getElementById("f-depth").value = step.depth.value;
+    document.getElementById("f-depth-unit").value = step.depth.unit;
+  } else if (step.kind === "planarization") {
+    const mode = step.target_level ? "level" : "material";
+    document.getElementById("f-plana-mode").value = mode;
+    document.getElementById("f-plana-mode").dispatchEvent(new Event("change"));
+    if (mode === "level") {
+      document.getElementById("f-target-level").value = step.target_level.value;
+      document.getElementById("f-target-level-unit").value = step.target_level.unit;
+    } else {
+      document.getElementById("f-stop-material").value = step.stop_material;
+    }
+  } else if (step.kind === "lithography") {
+    document.getElementById("f-resist-material").value = step.resist_material;
+    document.getElementById("f-thickness").value = step.thickness.value;
+    document.getElementById("f-thickness-unit").value = step.thickness.unit;
+    document.getElementById("f-openings").value = step.openings.map((pair) => pair.join("-")).join(", ");
+  } else if (step.kind === "chemical") {
+    document.getElementById("f-description").value = step.description || "";
+  } else if (step.kind === "resist_strip") {
+    document.getElementById("f-material").value = step.material;
+  }
+}
+
+function startEditingStep(index) {
+  state.editingIndex = index;
+  fillKindFields(state.steps[index]);
+  document.getElementById("step-form-title").textContent = `Modifier l'étape ${index + 1}`;
+  document.getElementById("add-step-btn-label").textContent = "Enregistrer les modifications";
+  document.getElementById("cancel-edit-btn").style.display = "";
+  renderSteps();
+}
+
+function cancelEditingStep() {
+  state.editingIndex = null;
+  document.getElementById("step-form-title").textContent = "Ajouter une étape";
+  document.getElementById("add-step-btn-label").textContent = "Ajouter cette étape";
+  document.getElementById("cancel-edit-btn").style.display = "none";
+  renderKindFields(document.getElementById("kind-select").value);
+  renderSteps();
+}
+
+function moveStep(index, delta) {
+  const target = index + delta;
+  if (target < 0 || target >= state.steps.length) return;
+  const [step] = state.steps.splice(index, 1);
+  state.steps.splice(target, 0, step);
+  if (state.editingIndex === index) state.editingIndex = target;
+  else if (state.editingIndex === target) state.editingIndex = index;
+  renderSteps();
 }
 
 function renderObjectives() {
@@ -216,10 +303,13 @@ function renderObjectives() {
   list.innerHTML = state.objectives
     .map(
       (o, i) => `
-      <div class="objective-row">
-        <div style="font-size:13px;font-weight:600;">${escapeHtml(o.name)}</div>
-        <div style="font-size:12px;color:var(--text-soft);">${escapeHtml(o.metric)}</div>
-        <div style="font-size:12px;color:var(--text-soft);">${escapeHtml(o.direction)}${o.target != null ? " · " + o.target : ""}</div>
+      <div class="step-row" style="align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;">${escapeHtml(o.name)}</div>
+          <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(o.metric)} &middot; ${escapeHtml(o.direction)}${o.target != null ? " · cible " + o.target : ""}</div>
+          ${o.rationale ? `<div style="font-size:12px;color:var(--text-soft);margin-top:4px;">${escapeHtml(o.rationale)}</div>` : ""}
+          ${o.verification_method ? `<div style="font-size:11.5px;color:var(--text-faint);margin-top:2px;">Vérification : ${escapeHtml(o.verification_method)}</div>` : ""}
+        </div>
         <button class="step-remove" data-index="${i}" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M5 19L19 5"/></svg>
         </button>
@@ -300,7 +390,7 @@ document.getElementById("campaign-preview-btn").addEventListener("click", async 
         ${variation.entity_count} variantes &middot; ${variation.varying.length} paramètre(s) réellement différent(s)
       </div>
       <div style="display:flex;gap:8px;margin-top:8px;overflow-x:auto;">
-        ${result.svgs.map((svg, i) => `<div style="flex:none;width:120px;border:1px solid var(--border-soft);border-radius:6px;padding:4px;">${svg}</div>`).join("")}
+        ${result.svgs.map((svg, i) => `<div style="flex:none;width:120px;border:1px solid var(--border-soft);border-radius:6px;padding:4px;text-align:center;">${svg}<div class="mono" style="font-size:11px;color:var(--text-soft);margin-top:4px;">${escapeHtml(String(plan.values[i]))}</div></div>`).join("")}
       </div>`;
   } catch (err) {
     showError(err);
@@ -339,7 +429,7 @@ function renderScrubber() {
 }
 
 function renderFrame() {
-  const frame = state.frames[state.currentFrame];
+  const frame = state.frames ? state.frames[state.currentFrame] : null;
   document.getElementById("svg-container").innerHTML = frame ? frame.svg : "";
   const legend = document.getElementById("legend");
   const materials = frame ? frame.materials : [];
@@ -369,6 +459,14 @@ async function loadExistingProcess() {
     renderSteps();
     document.getElementById("page-title").textContent = "Enregistrer une évolution";
     document.getElementById("launch-btn").textContent = "Enregistrer cette évolution";
+
+    const detail = await api.get(`/api/projects/${slug}/experiences/${evolveExperienceId}`);
+    document.getElementById("exp-title").value = detail.title;
+    document.getElementById("exp-intent").value = detail.intent;
+    document.getElementById("exp-hypothesis").value = detail.hypothesis || "";
+    const verification = detail.objective_verification || {};
+    state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
+    renderObjectives();
   } catch (err) {
     showError(err);
   }
@@ -387,11 +485,22 @@ document.getElementById("kind-select").addEventListener("change", (e) => renderK
 document.getElementById("add-step-btn").addEventListener("click", () => {
   clearError();
   try {
-    state.steps.push(buildStepFromForm());
-    renderSteps();
+    const step = buildStepFromForm();
+    if (state.editingIndex !== null) {
+      state.steps[state.editingIndex] = step;
+      cancelEditingStep();
+    } else {
+      state.steps.push(step);
+      renderSteps();
+    }
   } catch (err) {
     showError(err);
   }
+});
+
+document.getElementById("cancel-edit-btn").addEventListener("click", () => {
+  clearError();
+  cancelEditingStep();
 });
 
 document.getElementById("objective-form").addEventListener("submit", (event) => {
@@ -405,6 +514,8 @@ document.getElementById("objective-form").addEventListener("submit", (event) => 
     metric,
     direction: document.getElementById("obj-direction").value,
     target: targetRaw ? parseFloat(targetRaw) : null,
+    rationale: document.getElementById("obj-rationale").value.trim() || null,
+    verification_method: document.getElementById("obj-verification").value.trim() || null,
   });
   document.getElementById("objective-form").reset();
   renderObjectives();
@@ -442,6 +553,14 @@ document.getElementById("launch-btn").addEventListener("click", async () => {
     hypothesis: document.getElementById("exp-hypothesis").value || null,
     objectives: state.objectives,
   };
+  if (evolveExperienceId && document.getElementById("branch-fork").checked) {
+    const branchName = document.getElementById("new-branch-name").value.trim();
+    if (!branchName) {
+      showError(new Error("Donnez un nom à la nouvelle piste."));
+      return;
+    }
+    payload.new_branch = branchName;
+  }
   try {
     let endpoint;
     if (state.campaignPlan) {
@@ -459,16 +578,42 @@ document.getElementById("launch-btn").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("branch-continue").addEventListener("change", () => {
+  document.getElementById("new-branch-name").style.display = "none";
+});
+document.getElementById("branch-fork").addEventListener("change", () => {
+  document.getElementById("new-branch-name").style.display = "";
+});
+
+async function loadTemplateProcess() {
+  if (!templateExperienceId) return;
+  document.getElementById("page-title").textContent = "Nouvelle expérience (structure reprise)";
+  try {
+    const data = await api.get(`/api/projects/${slug}/experiences/${templateExperienceId}/process`);
+    document.getElementById("substrate-material").value = data.substrate.material;
+    document.getElementById("substrate-width").value = data.substrate.domain_width.value;
+    document.getElementById("substrate-width-unit").value = data.substrate.domain_width.unit;
+    document.getElementById("substrate-thickness").value = data.substrate.thickness.value;
+    document.getElementById("substrate-thickness-unit").value = data.substrate.thickness.unit;
+    state.steps = data.steps;
+    renderSteps();
+  } catch (err) {
+    showError(err);
+  }
+}
+
 async function init() {
   document.getElementById("crumb").textContent = "/ " + slug;
   if (evolveExperienceId) {
     document.getElementById("campaign-section").style.display = "none";
+    document.getElementById("branch-choice-wrap").style.display = "block";
   }
   await loadPickers();
   renderSteps();
   renderObjectives();
   renderFrame();
   await loadExistingProcess();
+  await loadTemplateProcess();
 }
 
 init();

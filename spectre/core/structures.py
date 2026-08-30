@@ -191,7 +191,10 @@ def render_structure_svg(structure_type: str, structure_data: dict[str, Any]) ->
     else:
         return None
 
-    material_colors = {m.name: m.color for m in materials_library()}
+    return _svg_for_process_structure(process_structure, {m.name: m.color for m in materials_library()})
+
+
+def _svg_for_process_structure(process_structure: ProcessStructure, material_colors: dict[str, str]) -> str:
     frame = Frame(
         step_index=0,
         step_kind="structure",
@@ -200,6 +203,14 @@ def render_structure_svg(structure_type: str, structure_data: dict[str, Any]) ->
         domain_width_nm=process_structure.domain_width_nm,
     )
     return frame_to_svg(frame, material_colors)
+
+
+def render_lot_svgs(lot: ProcessLot) -> list[str]:
+    """One SVG per entity in a committed campaign - the "atlas": every variant drawn side by
+    side, not just the reference one ``render_structure_svg`` shows on its own.
+    """
+    material_colors = {m.name: m.color for m in materials_library()}
+    return [_svg_for_process_structure(entry, material_colors) for entry in lot.entries]
 
 
 def process_metadata(substrate: SubstrateSpec, steps: list[ProcessStep]) -> dict[str, Any]:

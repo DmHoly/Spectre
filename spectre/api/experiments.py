@@ -27,7 +27,7 @@ from ..core.permissions import get_project as resolve_project
 from ..core.permissions import require_role
 from ..core.projects import Project
 from .deps import get_current_user
-from .structures import LaunchExperienceRequest
+from .structures import LaunchExperienceRequest, _unique_branch, split_objectives
 
 router = APIRouter(prefix="/api/projects", tags=["experiments"])
 
@@ -35,6 +35,26 @@ RUNNING_STATUSES = {"draft", "running"}
 CONCLUDED_STATUSES = {"concluded", "abandoned"}
 
 CAMPAIGN_FIELD_LABELS = {"thickness": "Épaisseur", "depth": "Profondeur", "target_level": "Niveau cible"}
+
+
+def _format_value_label(value: Any) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _derive_branch(repo: "follow.Repository", parent: Any, requested: str | None) -> str | None:
+    """Which branch to derive onto. An explicit fork request wins; otherwise continue the
+    parent's own branch as long as it's still the tip. If someone else already evolved past this
+    exact version (its branch has moved on), silently continue on a fresh branch instead of
+    letting Follow's own branch-collision error - raw, in English, full of git vocabulary -
+    reach a non-technical user.
+    """
+    if requested:
+        return requested
+    if repo.branches.get(parent.branch) == parent.id:
+        return None
+    return _unique_branch(repo, parent.title)
 
 
 class ObjectiveResultInput(BaseModel):
@@ -77,11 +97,20 @@ def _summary(experiment: Any) -> dict:
     }
 
 
-def _detail(experiment: Any) -> dict:
+def _detail(experiment: Any, repo: Any = None) -> dict:
+    # Every experiment whose own parents include this one - i.e. a version derived from here.
+    # More than one means this version is a fork point: two (or more) lines of work continued
+    # from it independently. repo is optional (a caller without one, if any, just skips this).
+    children = (
+        [{"id": exp.id, "title": exp.title, "branch": exp.branch} for exp in repo if experiment.id in exp.parents]
+        if repo is not None
+        else []
+    )
     return {
         "id": experiment.id,
         "parents": list(experiment.parents),
         "branch": experiment.branch,
+        "children": children,
         "created_at": experiment.created_at.isoformat(),
         "author": experiment.author,
         "title": experiment.title,
@@ -89,6 +118,7 @@ def _detail(experiment: Any) -> dict:
         "hypothesis": experiment.hypothesis,
         "status": experiment.conclusion.status,
         "objectives": [o.model_dump(mode="json") for o in experiment.objectives],
+        "objective_verification": experiment.metadata.get("objective_verification", {}),
         "conclusion": experiment.conclusion.model_dump(mode="json"),
         "references": [r.model_dump(mode="json") for r in experiment.references],
         "tags": list(experiment.tags),
@@ -139,6 +169,17 @@ def project_graph_html(project: Project = Depends(require_role("viewer"))) -> st
 
     figure = build_graph_figure(repo)
     figure.update_layout(title="Vue d'ensemble du projet")
+    # Follow's own figure labels branch tips and hover text with raw git vocabulary ("branche:
+    # ...", bare branch slugs) - not fit for Spectre's non-technical audience, so scrub it here
+    # rather than in Follow, which is deliberately generic.
+    if len(figure.data) >= 3:
+        figure.data = figure.data[:2]
+    node_trace = figure.data[1]
+    scrubbed_hover = [
+        "<br>".join(line for line in text.split("<br>") if not line.startswith("id: ") and not line.startswith("branche: "))
+        for text in (node_trace.hovertext or [])
+    ]
+    node_trace.hovertext = scrubbed_hover
     return figure.to_html(include_plotlyjs=True, full_html=True)
 
 
@@ -217,6 +258,7 @@ def evolve_experience(
 
     repo = projects.get_repository(project.slug)
     try:
+        parent = repo.get(ref)
         builder = follow_adapter.derive_experiment(
             repo,
             ref,
@@ -224,6 +266,7 @@ def evolve_experience(
             body.steps,
             title=body.title,
             intent=body.intent,
+            new_branch=_derive_branch(repo, parent, body.new_branch),
             author=user.name,
             hypothesis=body.hypothesis,
             carry_objectives=not body.objectives,
@@ -231,14 +274,22 @@ def evolve_experience(
     except follow.ExperimentNotFoundError as exc:
         raise _not_found(exc) from exc
 
+    builder.metadata = dict(parent.metadata)
     if body.objectives:
-        builder.objectives = [follow.Objective(**o.model_dump(exclude_none=True)) for o in body.objectives]
+        objectives, verification = split_objectives(body.objectives)
+        builder.objectives = objectives
+        if verification:
+            builder.metadata["objective_verification"] = verification
+        else:
+            builder.metadata.pop("objective_verification", None)
     builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
 
     try:
         experiment = builder.commit()
     except follow.FollowError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400, detail="Impossible d'enregistrer cette évolution - rechargez la page et réessayez."
+        ) from exc
     return {"id": experiment.id, "branch": experiment.branch}
 
 
@@ -265,7 +316,9 @@ def conclude_experience(
         for r in body.objective_results
     ]
 
-    builder = repo.derive(ref, title=parent.title, intent=parent.intent, author=user.name)
+    builder = repo.derive(
+        ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
+    )
     builder.metadata = dict(parent.metadata)
     builder.conclude(
         status=body.status,
@@ -277,7 +330,9 @@ def conclude_experience(
     try:
         experiment = builder.commit()
     except follow.FollowError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400, detail="Impossible d'enregistrer cette conclusion - rechargez la page et réessayez."
+        ) from exc
     return {"id": experiment.id}
 
 
@@ -304,7 +359,9 @@ def add_evidence(
             raise HTTPException(status_code=422, detail="une valeur est requise pour la mesure nommée")
         metric = {body.metric_name: follow.Quantity(value=body.metric_value, unit=body.metric_unit)}
 
-    builder = repo.derive(ref, title=parent.title, intent=parent.intent, author=user.name)
+    builder = repo.derive(
+        ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
+    )
     builder.metadata = dict(parent.metadata)
     builder.evidence = list(parent.evidence)
     builder.add_evidence(
@@ -316,7 +373,9 @@ def add_evidence(
     try:
         experiment = builder.commit()
     except follow.FollowError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400, detail="Impossible d'enregistrer cette preuve - rechargez la page et réessayez."
+        ) from exc
     return {"id": experiment.id}
 
 
@@ -373,12 +432,16 @@ def experience_batch(ref: str, project: Project = Depends(require_role("viewer")
     variation = follow.analyze_batch(lot.entries)
     payload = variation.model_dump(mode="json")
 
+    # The atlas: one drawn cross-section per entity - StructureForge does the actual rendering
+    # (structures.render_lot_svgs), Spectre only lines them up.
+    payload["svgs"] = structures.render_lot_svgs(lot)
+
     # The generic diff Follow computes names raw structure paths (e.g. "layers[1].rings[0]..."),
     # which is exactly the internal jargon Spectre's UI avoids everywhere else. Since Spectre is
     # also the only thing that ever creates a ProcessLot (via the guided campaign builder - see
     # :mod:`spectre.api.structures`), it already knows in plain terms what was varied: surface
-    # that as `factor_label`/`factor_values` so the page can lead with it and keep the raw path
-    # table as a secondary, opt-in detail rather than the headline.
+    # that as `factor_label`/`factor_values` (and per-entity `labels`) so the page can lead with
+    # it and keep the raw path table as a secondary, opt-in detail rather than the headline.
     plan = experiment.metadata.get("campaign_plan")
     process = experiment.metadata.get("structureforge_process")
     if plan and process:
@@ -386,8 +449,10 @@ def experience_batch(ref: str, project: Project = Depends(require_role("viewer")
             step = process["steps"][plan["step_index"]]
             payload["factor_label"] = f"{CAMPAIGN_FIELD_LABELS.get(plan['field'], plan['field'])} — {step['name']}"
             payload["factor_values"] = plan["values"]
+            payload["labels"] = [_format_value_label(v) for v in plan["values"]]
         except (KeyError, IndexError, TypeError):
             pass
+    payload.setdefault("labels", [f"#{i + 1}" for i in range(variation.entity_count)])
     return payload
 
 
@@ -398,4 +463,4 @@ def get_experience(ref: str, project: Project = Depends(require_role("viewer")))
         experiment = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
         raise _not_found(exc) from exc
-    return _detail(experiment)
+    return _detail(experiment, repo)

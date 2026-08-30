@@ -45,7 +45,7 @@
       </div>
 
       <div>
-        <div class="section-title" style="margin-bottom:14px;">Ajouter une étape</div>
+        <div class="section-title" style="margin-bottom:14px;" id="step-form-title">Ajouter une étape</div>
         <div class="field-group">
           <div>
             <label>Type d'étape</label>
@@ -61,13 +61,15 @@
           <div id="kind-fields" class="field-group"></div>
           <button class="btn btn-tint btn-block" id="add-step-btn" type="button">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
-            Ajouter cette étape
+            <span id="add-step-btn-label">Ajouter cette étape</span>
           </button>
+          <button class="btn btn-line btn-block" id="cancel-edit-btn" type="button" style="display:none;">Annuler la modification</button>
         </div>
       </div>
 
       <div style="flex:1;">
-        <div class="section-title" style="margin-bottom:14px;">Étapes du procédé (<span id="steps-count">0</span>)</div>
+        <div class="section-title" style="margin-bottom:6px;">Étapes du procédé (<span id="steps-count">0</span>)</div>
+        <div class="help" style="margin-bottom:10px;">Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.</div>
         <div id="steps-list" style="display:flex;flex-direction:column;gap:8px;"></div>
       </div>
 
@@ -87,31 +89,48 @@
       </div>
 
       <div>
-        <div class="section-title" style="margin-bottom:14px;">Objectifs</div>
-        <div id="objectives-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+        <div class="section-title" style="margin-bottom:6px;">Objectifs</div>
+        <div class="help" style="margin-bottom:12px;">Ce qu'on cherche à savoir avec cette expérience, et comment on saura si c'est atteint.</div>
+        <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
         <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
-          <input class="field" id="obj-name" placeholder="ex : isolation électrique" required>
+          <div><label>Objectif</label><input class="field" id="obj-name" placeholder="ex : isolation électrique" required></div>
+          <div><label>Pourquoi cet objectif</label><textarea class="field" id="obj-rationale" rows="2" placeholder="ex : condition pour passer en production"></textarea></div>
           <div class="field-row">
-            <input class="field" id="obj-metric" placeholder="mesure (ex : resistivity_ohm_cm)" required>
-            <select class="field" id="obj-direction">
-              <option value="observe">Observer</option>
-              <option value="maximize">Maximiser</option>
-              <option value="minimize">Minimiser</option>
-              <option value="target">Cible précise</option>
-            </select>
+            <div><label>Mesure</label><input class="field" id="obj-metric" placeholder="ex : resistivity_ohm_cm" required></div>
+            <div><label>Sens</label>
+              <select class="field" id="obj-direction">
+                <option value="observe">Observer</option>
+                <option value="maximize">Maximiser</option>
+                <option value="minimize">Minimiser</option>
+                <option value="target">Cible précise</option>
+              </select>
+            </div>
           </div>
-          <div class="field-row">
-            <input class="field" id="obj-target" type="number" placeholder="valeur cible (optionnel)">
-            <button class="btn btn-line" type="submit">Ajouter l'objectif</button>
-          </div>
+          <div><label>Valeur cible (optionnelle)</label><input class="field" id="obj-target" type="number"></div>
+          <div><label>Comment on compte le vérifier</label><textarea class="field" id="obj-verification" rows="2" placeholder="ex : mesure au profilomètre après dépôt"></textarea></div>
+          <button class="btn btn-line btn-block" type="submit">Ajouter l'objectif</button>
         </form>
+      </div>
+
+      <div id="branch-choice-wrap" style="display:none;">
+        <div class="section-title" style="margin-bottom:10px;">Piste</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px;color:var(--text);">
+            <input type="radio" name="branch-choice" id="branch-continue" value="continue" checked> Continuer cette piste
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px;color:var(--text);">
+            <input type="radio" name="branch-choice" id="branch-fork" value="fork"> Explorer une nouvelle piste à partir d'ici
+          </label>
+          <input class="field" id="new-branch-name" placeholder="nom de la nouvelle piste" style="display:none;">
+          <div class="help">Une nouvelle piste garde le lien avec la version de départ, mais évolue séparément — pratique pour comparer deux directions.</div>
+        </div>
       </div>
 
       <div>
         <div class="section-title" style="margin-bottom:14px;">Lancer</div>
         <div class="field-group">
           <div><label>Titre de l'expérience</label><input class="field" id="exp-title"></div>
-          <div><label>Intention</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier ?"></textarea></div>
+          <div><label>Intention (pourquoi fait-on cette expérience ?)</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier, et pourquoi maintenant ?"></textarea></div>
           <div><label>Hypothèse (optionnelle)</label><input class="field" id="exp-hypothesis"></div>
         </div>
       </div>

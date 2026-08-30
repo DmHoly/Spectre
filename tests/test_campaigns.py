@@ -76,6 +76,9 @@ def test_launch_campaign_and_read_matrix(client):
     assert len(matrix["varying"]) >= 1
     assert matrix["factor_label"] == "Épaisseur — Oxyde"
     assert matrix["factor_values"] == [10, 20, 30]
+    assert len(matrix["svgs"]) == 3
+    assert all("<svg" in svg for svg in matrix["svgs"])
+    assert matrix["labels"] == ["10", "20", "30"]
 
 
 def test_matrice_endpoint_rejects_non_batch_experience(client):
