@@ -43,6 +43,7 @@
           <h1 id="exp-title" style="font-size:24px;line-height:1.3;"></h1>
           <p id="exp-intent" style="color:var(--text-soft);font-size:14.5px;margin-top:10px;line-height:1.55;max-width:60ch;"></p>
           <div id="exp-meta" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);font-size:12.5px;color:var(--text-faint);line-height:1.7;"></div>
+          <div id="tags-row" style="margin-top:14px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;"></div>
         </div>
 
         <div class="card card-pad">
@@ -98,6 +99,18 @@
           <div class="section-title" style="margin-bottom:14px;">Liens</div>
           <div id="references-list"></div>
         </div>
+
+        <details class="card card-pad" id="advanced-actions" style="display:none;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:700;">Actions avancées</summary>
+          <div style="margin-top:14px;">
+            <label>Combiner avec une autre expérience</label>
+            <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, mais relie l'historique et les preuves de l'autre expérience choisie.</div>
+            <select class="field" id="combine-select" style="margin-bottom:8px;"></select>
+            <input class="field" id="combine-title" placeholder="Titre du résultat" style="margin-bottom:8px;">
+            <input class="field" id="combine-intent" placeholder="Pourquoi combiner ces deux pistes ?" style="margin-bottom:8px;">
+            <button class="btn btn-line btn-block" id="combine-btn" type="button">Combiner</button>
+          </div>
+        </details>
 
       </div>
     </div>

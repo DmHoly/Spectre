@@ -6,8 +6,9 @@ only resolves which project's repository to use and translates errors into HTTP 
 
 Route order matters: ``{ref:path}`` is greedy (it matches slashes too - see
 ``follow/api/app.py``'s own note on the same trick), so every route with a literal suffix after
-``{ref:path}`` (``/process``, ``/timeline``, ``/diff``, ``/evoluer``, ``/conclure``) is registered
-before the bare "get one experience" route below it - otherwise that catch-all would swallow them.
+``{ref:path}`` (``/process``, ``/timeline``, ``/diff``, ``/evoluer``, ``/conclure``, ``/preuves``,
+``/combiner``, ``/etiquettes``, ``/diff-externe``, ``/matrice``) is registered before the bare
+"get one experience" route below it - otherwise that catch-all would swallow them.
 """
 
 from __future__ import annotations
@@ -78,6 +79,16 @@ class EvidenceInput(BaseModel):
     metric_name: str | None = None
     metric_value: float | None = None
     metric_unit: str | None = None
+
+
+class CombineRequest(BaseModel):
+    other_id: str
+    title: str
+    intent: str
+
+
+class TagsRequest(BaseModel):
+    tags: list[str]
 
 
 def _not_found(exc: follow.ExperimentNotFoundError) -> HTTPException:
@@ -320,6 +331,7 @@ def conclude_experience(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.tags = list(parent.tags)
     builder.conclude(
         status=body.status,
         decision=body.decision,
@@ -364,6 +376,8 @@ def add_evidence(
     )
     builder.metadata = dict(parent.metadata)
     builder.evidence = list(parent.evidence)
+    builder.tags = list(parent.tags)
+    builder.conclusion = parent.conclusion
     builder.add_evidence(
         id=secrets.token_hex(6),
         description=body.description,
@@ -377,6 +391,95 @@ def add_evidence(
             status_code=400, detail="Impossible d'enregistrer cette preuve - rechargez la page et réessayez."
         ) from exc
     return {"id": experiment.id}
+
+
+@router.post("/{slug}/experiences/{ref:path}/combiner", status_code=201)
+def combine_experiences(
+    ref: str,
+    body: CombineRequest,
+    project: Project = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Combine two lines of work into one experience - Follow's ``repo.merge()`` supports
+    field-by-field conflict resolution (``take_structure``/``take_steps``), which is exactly the
+    kind of technical detail Spectre's UI avoids, so this always keeps ``ref``'s structure and
+    steps as-is and simply links the other experience in as a second parent, its history and
+    evidence still reachable from there. Both sides must be the same kind of structure (a single
+    experience can't combine with a campaign).
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        a = repo.get(ref)
+        b = repo.get(body.other_id)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+    if a.id == b.id:
+        raise HTTPException(status_code=422, detail="Choisissez deux expériences différentes.")
+    if a.structure_type != b.structure_type:
+        raise HTTPException(
+            status_code=422,
+            detail="Ces deux expériences ne peuvent pas être combinées (par exemple une expérience simple et une campagne).",
+        )
+
+    try:
+        builder = repo.merge(
+            ref,
+            body.other_id,
+            title=body.title,
+            intent=body.intent,
+            branch=_derive_branch(repo, a, None),
+            author=user.name,
+        )
+    except follow.FollowError as exc:
+        raise HTTPException(status_code=422, detail="Ces deux expériences ne peuvent pas être combinées.") from exc
+    builder.metadata = dict(a.metadata)
+    builder.tags = list(a.tags)
+    try:
+        experiment = builder.commit()
+    except follow.FollowError as exc:
+        raise HTTPException(
+            status_code=400, detail="Impossible de combiner ces expériences - rechargez la page et réessayez."
+        ) from exc
+    return {"id": experiment.id}
+
+
+@router.post("/{slug}/experiences/{ref:path}/etiquettes", status_code=201)
+def set_tags(
+    ref: str,
+    body: TagsRequest,
+    project: Project = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Replace this experience's tag set. Like ``conclure``/``preuves``, this is a lightweight
+    evolution - since committed experiences are immutable, "editing" the tags means recording a
+    new version that carries the status, structure, and everything else unchanged.
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        parent = repo.get(ref)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    cleaned: list[str] = []
+    for tag in body.tags:
+        tag = tag.strip()
+        if tag and tag not in cleaned:
+            cleaned.append(tag)
+
+    builder = repo.derive(
+        ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
+    )
+    builder.metadata = dict(parent.metadata)
+    builder.evidence = list(parent.evidence)
+    builder.conclusion = parent.conclusion
+    builder.tags = cleaned
+    try:
+        experiment = builder.commit()
+    except follow.FollowError as exc:
+        raise HTTPException(
+            status_code=400, detail="Impossible d'enregistrer les étiquettes - rechargez la page et réessayez."
+        ) from exc
+    return {"id": experiment.id, "tags": cleaned}
 
 
 @router.get("/{slug}/experiences/{ref:path}/diff-externe")

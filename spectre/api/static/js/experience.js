@@ -271,14 +271,16 @@ function renderConclusion(detail) {
       reasoning: document.getElementById(`obj-reasoning-${i}`).value.trim() || null,
     }));
     try {
-      await api.post(`/api/projects/${slug}/experiences/${experienceId}/conclure`, {
+      const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/conclure`, {
         status: document.getElementById("conclude-status").value,
         decision: document.getElementById("conclude-decision").value || null,
         summary: document.getElementById("conclude-summary").value || null,
         next_steps: document.getElementById("conclude-next-steps").value || null,
         objective_results: objectiveResults,
       });
-      window.location.reload();
+      // conclure records a new version carrying the conclusion (experiences are immutable) -
+      // go to it, not back to this now-superseded draft.
+      window.location.href = `/projets/${slug}/experiences/${result.id}`;
     } catch (err) {
       showError(err);
     }
@@ -380,13 +382,15 @@ function renderEvidence(detail) {
     const metricName = document.getElementById("evidence-metric-name").value.trim();
     const metricValueRaw = document.getElementById("evidence-metric-value").value;
     try {
-      await api.post(`/api/projects/${slug}/experiences/${experienceId}/preuves`, {
+      const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/preuves`, {
         description: document.getElementById("evidence-description").value,
         source: document.getElementById("evidence-source").value,
         metric_name: metricName || null,
         metric_value: metricValueRaw ? parseFloat(metricValueRaw) : null,
       });
-      window.location.reload();
+      // preuves records a new version carrying the evidence (experiences are immutable) - go to
+      // it, not back to this now-superseded version.
+      window.location.href = `/projets/${slug}/experiences/${result.id}`;
     } catch (err) {
       showError(err);
     }
@@ -407,6 +411,91 @@ function renderForksNote(detail) {
       .join("")}
     <a href="/projets/${slug}/graphe" style="font-size:12px;">Voir la vue d'ensemble &rarr;</a>`;
 }
+
+function renderTags(detail) {
+  const row = document.getElementById("tags-row");
+  const canEdit = currentRole === "editor" || currentRole === "owner";
+  const chips = detail.tags
+    .map(
+      (t, i) => `
+      <span class="badge badge-role">
+        ${escapeHtml(t)}
+        ${
+          canEdit
+            ? `<button class="js-remove-tag" data-index="${i}" type="button" style="background:none;border:none;cursor:pointer;color:inherit;padding:0;margin-left:2px;font-size:13px;line-height:1;">&times;</button>`
+            : ""
+        }
+      </span>`
+    )
+    .join("");
+  row.innerHTML =
+    chips +
+    (canEdit
+      ? `<input id="new-tag-input" placeholder="+ étiquette" style="border:1px dashed var(--border-soft);border-radius:999px;padding:4px 10px;font-size:12px;width:110px;background:transparent;">`
+      : "");
+
+  row.querySelectorAll(".js-remove-tag").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = [...detail.tags];
+      next.splice(parseInt(btn.dataset.index, 10), 1);
+      updateTags(next);
+    });
+  });
+  const input = document.getElementById("new-tag-input");
+  if (input) {
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && input.value.trim()) {
+        event.preventDefault();
+        updateTags([...detail.tags, input.value.trim()]);
+      }
+    });
+  }
+}
+
+async function updateTags(tags) {
+  clearError();
+  try {
+    const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/etiquettes`, { tags });
+    // like conclure/preuves, tagging records a new version - follow it there.
+    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+  } catch (err) {
+    showError(err);
+  }
+}
+
+async function populateCombineSelect() {
+  try {
+    const data = await api.get(`/api/projects/${slug}/experiences?status=all&limit=200`);
+    const options = data.items
+      .filter((exp) => exp.id !== experienceId)
+      .map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`)
+      .join("");
+    document.getElementById("combine-select").innerHTML = options || `<option value="">Aucune autre expérience à combiner</option>`;
+  } catch (err) {
+    // silent: advanced/secondary panel
+  }
+}
+
+document.getElementById("combine-btn").addEventListener("click", async () => {
+  clearError();
+  const otherId = document.getElementById("combine-select").value;
+  const title = document.getElementById("combine-title").value.trim();
+  const intent = document.getElementById("combine-intent").value.trim();
+  if (!otherId || !title || !intent) {
+    showError(new Error("Choisissez une expérience, un titre et une raison de combiner."));
+    return;
+  }
+  try {
+    const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/combiner`, {
+      other_id: otherId,
+      title,
+      intent,
+    });
+    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+  } catch (err) {
+    showError(err);
+  }
+});
 
 function renderReferences(detail) {
   const el = document.getElementById("references-list");
@@ -434,6 +523,7 @@ async function init() {
     document.getElementById("project-crumb").href = `/projets/${slug}`;
 
     renderHeader(currentDetail);
+    renderTags(currentDetail);
     renderObjectives(currentDetail);
     renderForksNote(currentDetail);
     renderReferences(currentDetail);
@@ -446,6 +536,8 @@ async function init() {
       document.getElementById("evolve-btn").addEventListener("click", () => {
         window.location.href = `/projets/${slug}/experiences/${experienceId}/evoluer`;
       });
+      document.getElementById("advanced-actions").style.display = "";
+      populateCombineSelect();
     }
 
     const [timeline, diff] = await Promise.all([

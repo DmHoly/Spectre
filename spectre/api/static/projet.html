@@ -47,6 +47,7 @@
     <div class="tabs" style="margin-bottom:24px;">
       <button class="tab active" data-tab="running">En cours</button>
       <button class="tab" data-tab="concluded">Terminées</button>
+      <button class="tab" data-tab="structures">Structures</button>
       <button class="tab" data-tab="members">Membres</button>
     </div>
 
@@ -58,6 +59,57 @@
     <div id="tab-concluded" class="tab-panel" style="display:none;">
       <div id="concluded-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;"></div>
       <div style="text-align:center;margin-top:20px;"><button class="btn btn-line" id="concluded-load-more" style="display:none;">Charger plus</button></div>
+    </div>
+
+    <div id="tab-structures" class="tab-panel" style="display:none;">
+      <div class="card card-pad" style="max-width:720px;">
+        <div class="section-title" style="margin-bottom:4px;">Recettes de dépôt</div>
+        <p class="help" style="margin-bottom:12px;">Disponibles dans le constructeur de structure pour ce projet.</p>
+        <div id="deposition-recipes-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+        <form id="deposition-recipe-form" class="field-group" style="display:none;padding-top:14px;border-top:1px solid var(--border-soft);">
+          <div class="field-row">
+            <div><label>Nom</label><input class="field" id="dep-name" required></div>
+            <div><label>Mode</label>
+              <select class="field" id="dep-mode">
+                <option value="conformal">Conforme</option>
+                <option value="directional">Directionnel</option>
+              </select>
+            </div>
+          </div>
+          <div><label>Angle (degrés)</label><input class="field" id="dep-angle" type="number" value="0"></div>
+          <div><label>Notes (optionnel)</label><input class="field" id="dep-notes"></div>
+          <button class="btn btn-line btn-block" type="submit">Ajouter la recette</button>
+        </form>
+      </div>
+
+      <div class="card card-pad" style="max-width:720px;margin-top:20px;">
+        <div class="section-title" style="margin-bottom:4px;">Recettes de gravure</div>
+        <p class="help" style="margin-bottom:12px;">Disponibles dans le constructeur de structure pour ce projet.</p>
+        <div id="etch-recipes-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+        <form id="etch-recipe-form" class="field-group" style="display:none;padding-top:14px;border-top:1px solid var(--border-soft);">
+          <div class="field-row">
+            <div><label>Nom</label><input class="field" id="etch-name" required></div>
+            <div><label>Mode</label>
+              <select class="field" id="etch-mode">
+                <option value="isotropic">Isotrope</option>
+                <option value="directional">Directionnel</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div><label>Angle (degrés)</label><input class="field" id="etch-angle" type="number" value="0"></div>
+            <div><label>Facteur par défaut</label><input class="field" id="etch-default-factor" type="number" value="1" step="0.1"></div>
+          </div>
+          <div>
+            <label>Sélectivité par matériau (optionnel)</label>
+            <div class="help" style="margin-bottom:6px;">Vitesse relative de gravure pour un matériau donné (1 = normal, plus grand = gravé plus vite).</div>
+            <div id="etch-selectivity-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
+            <button class="btn btn-line" type="button" id="etch-add-selectivity-row" style="padding:6px 12px;font-size:12.5px;">+ Ajouter un matériau</button>
+          </div>
+          <div><label>Notes (optionnel)</label><input class="field" id="etch-notes"></div>
+          <button class="btn btn-line btn-block" type="submit">Ajouter la recette</button>
+        </form>
+      </div>
     </div>
 
     <div id="tab-members" class="tab-panel" style="display:none;">
@@ -298,6 +350,105 @@
       }
     }
 
+    let materialsList = [];
+
+    function recipeRow(kind) {
+      return (r) => `
+        <div class="step-row" style="align-items:flex-start;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;">${escapeHtml(r.name)}</div>
+            <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(r.mode)}${r.angle_deg ? " · " + r.angle_deg + "°" : ""}${r.notes ? " · " + escapeHtml(r.notes) : ""}</div>
+          </div>
+          ${
+            r.is_custom
+              ? `<button class="step-remove js-remove-recipe" data-kind="${kind}" data-name="${escapeHtml(r.name)}" type="button">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M5 19L19 5"/></svg>
+                </button>`
+              : `<span style="font-size:11px;color:var(--text-faint);padding-top:2px;">standard</span>`
+          }
+        </div>`;
+    }
+
+    async function loadRecipes() {
+      try {
+        const data = await api.get(`/api/projects/${encodeURIComponent(slug)}/recipes`);
+        document.getElementById("deposition-recipes-list").innerHTML =
+          data.deposition.map(recipeRow("deposition")).join("") || `<div class="help">Aucune recette de dépôt.</div>`;
+        document.getElementById("etch-recipes-list").innerHTML =
+          data.etch.map(recipeRow("etch")).join("") || `<div class="help">Aucune recette de gravure.</div>`;
+        document.querySelectorAll(".js-remove-recipe").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            try {
+              await api.del(`/api/projects/${encodeURIComponent(slug)}/recipes/${btn.dataset.kind}/${encodeURIComponent(btn.dataset.name)}`);
+              loadRecipes();
+            } catch (err) {
+              showError(err);
+            }
+          });
+        });
+      } catch (err) {
+        showError(err);
+      }
+    }
+
+    function addSelectivityRow() {
+      const row = document.createElement("div");
+      row.className = "field-row js-selectivity-row";
+      row.style.gridTemplateColumns = "1fr 100px auto";
+      row.innerHTML = `
+        <select class="field js-sel-material">${materialsList.map((m) => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join("")}</select>
+        <input class="field js-sel-factor" type="number" step="0.1" placeholder="facteur">
+        <button class="btn btn-line js-sel-remove" type="button" style="padding:6px 10px;">&times;</button>`;
+      document.getElementById("etch-selectivity-rows").appendChild(row);
+      row.querySelector(".js-sel-remove").addEventListener("click", () => row.remove());
+    }
+
+    document.getElementById("etch-add-selectivity-row").addEventListener("click", addSelectivityRow);
+
+    document.getElementById("deposition-recipe-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearErrorFlash();
+      try {
+        await api.post(`/api/projects/${encodeURIComponent(slug)}/recipes/deposition`, {
+          name: document.getElementById("dep-name").value.trim(),
+          mode: document.getElementById("dep-mode").value,
+          angle_deg: parseFloat(document.getElementById("dep-angle").value) || 0,
+          notes: document.getElementById("dep-notes").value.trim() || null,
+        });
+        document.getElementById("deposition-recipe-form").reset();
+        loadRecipes();
+      } catch (err) {
+        showError(err);
+      }
+    });
+
+    document.getElementById("etch-recipe-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearErrorFlash();
+      const selectivity = {};
+      document.querySelectorAll(".js-selectivity-row").forEach((row) => {
+        const material = row.querySelector(".js-sel-material").value;
+        const factor = parseFloat(row.querySelector(".js-sel-factor").value);
+        if (material && !Number.isNaN(factor)) selectivity[material] = factor;
+      });
+      try {
+        await api.post(`/api/projects/${encodeURIComponent(slug)}/recipes/etch`, {
+          name: document.getElementById("etch-name").value.trim(),
+          mode: document.getElementById("etch-mode").value,
+          angle_deg: parseFloat(document.getElementById("etch-angle").value) || 0,
+          default_factor: parseFloat(document.getElementById("etch-default-factor").value) || 1,
+          selectivity_by_material: selectivity,
+          selectivity_by_category: {},
+          notes: document.getElementById("etch-notes").value.trim() || null,
+        });
+        document.getElementById("etch-recipe-form").reset();
+        document.getElementById("etch-selectivity-rows").innerHTML = "";
+        loadRecipes();
+      } catch (err) {
+        showError(err);
+      }
+    });
+
     document.querySelectorAll(".tab").forEach((tab) => {
       tab.addEventListener("click", () => {
         document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
@@ -350,6 +501,8 @@
         if (currentRole === "editor" || currentRole === "owner") {
           document.getElementById("new-structure-btn").style.display = "";
           document.getElementById("new-structure-btn").addEventListener("click", openNewExperienceDialog);
+          document.getElementById("deposition-recipe-form").style.display = "";
+          document.getElementById("etch-recipe-form").style.display = "";
         }
         if (currentRole === "owner") {
           document.getElementById("add-member-form").style.display = "grid";
@@ -374,6 +527,12 @@
       );
       loadMembers();
       loadInvitations();
+      try {
+        materialsList = await api.get(`/api/projects/${encodeURIComponent(slug)}/materials`);
+      } catch (err) {
+        materialsList = [];
+      }
+      loadRecipes();
     }
 
     init();
