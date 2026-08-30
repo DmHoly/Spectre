@@ -254,7 +254,7 @@ async function populateCompareProjectSelect() {
 async function populateCompareExperienceSelect(targetSlug) {
   const select = document.getElementById("compare-select");
   try {
-    const data = await api.get(`/api/projects/${targetSlug}/experiences?status=all`);
+    const data = await api.get(`/api/projects/${targetSlug}/experiences?status=all&limit=200`);
     const others = data.items.filter((item) => !(targetSlug === slug && item.id === experienceId));
     select.innerHTML = others.length
       ? others.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join("")

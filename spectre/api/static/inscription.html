@@ -18,9 +18,10 @@
 
       <div class="card card-pad">
         <h1 style="font-size:20px;margin-bottom:4px;">Créer un compte</h1>
-        <p style="color:var(--text-soft);font-size:13.5px;margin-bottom:20px;">Pour rejoindre un projet, demandez d'abord une invitation à son responsable.</p>
+        <p id="subtitle" style="color:var(--text-soft);font-size:13.5px;margin-bottom:20px;">Pour rejoindre un projet, demandez d'abord une invitation à son responsable.</p>
 
         <div id="error" class="error" style="display:none;margin-bottom:14px;"></div>
+        <div id="invitation-note" class="flash flash-ok" style="display:none;margin-bottom:14px;"></div>
 
         <form id="register-form" class="field-group">
           <div>
@@ -48,6 +49,22 @@
   <script>
     const form = document.getElementById("register-form");
     const errorBox = document.getElementById("error");
+    const invitationToken = new URLSearchParams(window.location.search).get("invitation");
+
+    async function loadInvitation() {
+      if (!invitationToken) return;
+      try {
+        const invitation = await api.get(`/api/auth/invitation/${invitationToken}`, { redirectOn401: false });
+        document.getElementById("subtitle").textContent = `Vous rejoignez le projet « ${invitation.project_name} ».`;
+        const emailField = document.getElementById("email");
+        emailField.value = invitation.email;
+        emailField.readOnly = true;
+      } catch (err) {
+        document.getElementById("invitation-note").className = "error";
+        document.getElementById("invitation-note").textContent = "Ce lien d'invitation est invalide ou a expiré - vous pouvez tout de même créer un compte.";
+        document.getElementById("invitation-note").style.display = "block";
+      }
+    }
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -56,13 +73,19 @@
       const email = document.getElementById("email").value;
       const password = document.getElementById("password").value;
       try {
-        await api.post("/api/auth/register", { name, email, password }, { redirectOn401: false });
+        await api.post(
+          "/api/auth/register",
+          { name, email, password, invitation: invitationToken || null },
+          { redirectOn401: false }
+        );
         window.location.href = "/";
       } catch (err) {
         errorBox.textContent = err.message;
         errorBox.style.display = "block";
       }
     });
+
+    loadInvitation();
   </script>
 </body>
 </html>

@@ -100,15 +100,26 @@ def _detail(experiment: Any) -> dict:
 
 
 @router.get("/{slug}/experiences")
-def list_experiences(status: str = "all", project: Project = Depends(require_role("viewer"))) -> dict:
+def list_experiences(
+    status: str = "all", offset: int = 0, limit: int = 30, project: Project = Depends(require_role("viewer"))
+) -> dict:
+    """Newest first, paginated - mirrors the ``{items, total, offset, limit}`` shape
+    ``follow/api/app.py``'s own ``/api/experiments`` already uses, since a project's history is
+    exactly the kind of list that can outgrow "load everything at once" as it grows.
+    """
     if status not in ("all", "running", "concluded"):
         raise HTTPException(status_code=422, detail="status doit être 'all', 'running' ou 'concluded'")
+    if offset < 0:
+        raise HTTPException(status_code=422, detail="offset doit être >= 0")
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=422, detail="limit doit être entre 1 et 200")
     wanted = RUNNING_STATUSES if status == "running" else CONCLUDED_STATUSES if status == "concluded" else None
 
     repo = projects.get_repository(project.slug)
     matches = [exp for exp in repo if wanted is None or exp.conclusion.status in wanted]
     matches.sort(key=lambda exp: exp.created_at, reverse=True)
-    return {"items": [_summary(exp) for exp in matches]}
+    page = matches[offset : offset + limit]
+    return {"items": [_summary(exp) for exp in page], "total": len(matches), "offset": offset, "limit": limit}
 
 
 @router.get("/{slug}/graphe.html", response_class=HTMLResponse)

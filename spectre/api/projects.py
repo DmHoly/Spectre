@@ -76,12 +76,25 @@ def list_members(project: Project = Depends(require_role("viewer"))) -> list[dic
 
 
 @router.post("/{slug}/members", status_code=201)
-def add_member(body: AddMemberRequest, project: Project = Depends(require_role("owner"))) -> list[dict]:
+def add_member(
+    body: AddMemberRequest, project: Project = Depends(require_role("owner")), user: User = Depends(get_current_user)
+) -> dict:
     try:
-        projects.add_member(project.id, body.email, body.role)
+        status = projects.add_member(project.id, project.name, body.email, body.role, invited_by=user.id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return projects.list_members(project.id)
+    return {"status": status, "members": projects.list_members(project.id), "invitations": projects.list_invitations(project.id)}
+
+
+@router.get("/{slug}/invitations")
+def list_invitations(project: Project = Depends(require_role("owner"))) -> list[dict]:
+    return projects.list_invitations(project.id)
+
+
+@router.delete("/{slug}/invitations/{token}")
+def cancel_invitation(token: str, project: Project = Depends(require_role("owner"))) -> list[dict]:
+    projects.cancel_invitation(project.id, token)
+    return projects.list_invitations(project.id)
 
 
 @router.delete("/{slug}/members/{user_id}")
@@ -90,3 +103,16 @@ def remove_member(user_id: int, project: Project = Depends(require_role("owner")
         raise HTTPException(status_code=400, detail="impossible de retirer la personne qui a créé le projet")
     projects.remove_member(project.id, user_id)
     return projects.list_members(project.id)
+
+
+@router.delete("/{slug}")
+def delete_project(confirm_name: str, project: Project = Depends(require_role("owner"))) -> dict:
+    """Irreversible: deletes the project's database rows and its whole on-disk Follow repository
+    (every experiment's history). ``confirm_name`` must match the project's name exactly - the
+    frontend already asks the owner to type it, this is the same guard enforced server-side so a
+    raw API call can't skip it.
+    """
+    if confirm_name.strip() != project.name:
+        raise HTTPException(status_code=422, detail="le nom saisi ne correspond pas au nom du projet")
+    projects.delete(project)
+    return {"status": "ok"}

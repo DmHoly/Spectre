@@ -106,25 +106,105 @@ def list_members(project_id: int) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def add_member(project_id: int, email: str, role: str) -> None:
+def add_member(project_id: int, project_name: str, email: str, role: str, *, invited_by: int) -> str:
+    """Add ``email`` to the project directly if they already have an account (returns
+    ``"added"``), or create a two-week invitation and e-mail them a signup link otherwise
+    (returns ``"invited"``) - see :func:`accept_invitation` for the other end of that link.
+    """
     from . import accounts
+    from . import email as email_module
+    from . import security
 
     if role not in ROLE_ORDER:
         raise ValueError(f"rôle inconnu : {role!r}")
+    email = email.strip().lower()
     user = accounts.get_by_email(email)
-    if user is None:
-        raise ValueError(f"aucun compte n'existe avec l'adresse {email!r}")
+    if user is not None:
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO memberships (project_id, user_id, role) VALUES (?, ?, ?) "
+                "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
+                (project_id, user.id, role),
+            )
+        return "added"
+
+    token = security.new_token()
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO memberships (project_id, user_id, role) VALUES (?, ?, ?) "
-            "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
-            (project_id, user.id, role),
+            "INSERT INTO invitations (token, project_id, email, role, invited_by, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (token, project_id, email, role, invited_by, security.invitation_expiry()),
         )
+    inviter = accounts.get_by_id(invited_by)
+    link = f"{email_module.base_url()}/inscription?invitation={token}"
+    email_module.send_email(
+        email,
+        f"Invitation à rejoindre « {project_name} » sur Spectre",
+        f"{inviter.name if inviter else 'Un membre'} vous invite à rejoindre le projet "
+        f"« {project_name} » sur Spectre.\n\n"
+        f"Pour créer votre compte et rejoindre le projet, ouvrez ce lien (valable 14 jours) :\n{link}",
+    )
+    return "invited"
 
 
 def remove_member(project_id: int, user_id: int) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM memberships WHERE project_id = ? AND user_id = ?", (project_id, user_id))
+
+
+def list_invitations(project_id: int) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT token, email, role, created_at FROM invitations WHERE project_id = ? ORDER BY created_at DESC",
+            (project_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def cancel_invitation(project_id: int, token: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM invitations WHERE project_id = ? AND token = ?", (project_id, token))
+
+
+def get_invitation(token: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT invitations.token, invitations.email, invitations.role, invitations.project_id, "
+            "projects.name AS project_name FROM invitations JOIN projects ON projects.id = invitations.project_id "
+            "WHERE invitations.token = ? AND invitations.expires_at > datetime('now')",
+            (token,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def accept_invitation(token: str, user_id: int, user_email: str) -> bool:
+    """Consume an invitation for a just-registered user - only if its email matches the one the
+    invitation was addressed to (a token alone isn't proof of that email address, since it
+    travels inside a plain URL). Returns whether it was accepted.
+    """
+    invitation = get_invitation(token)
+    if invitation is None or invitation["email"] != user_email.strip().lower():
+        return False
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO memberships (project_id, user_id, role) VALUES (?, ?, ?) "
+            "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
+            (invitation["project_id"], user_id, invitation["role"]),
+        )
+        conn.execute("DELETE FROM invitations WHERE token = ?", (token,))
+    return True
+
+
+def delete(project: Project) -> None:
+    """Permanently delete a project: its database rows (memberships and pending invitations
+    cascade via the foreign keys) and the on-disk directory holding its Follow repository and
+    StructureForge recipes - there is no undo, this is real experiment history.
+    """
+    import shutil
+
+    with get_conn() as conn:
+        conn.execute("DELETE FROM projects WHERE id = ?", (project.id,))
+    shutil.rmtree(project_dir(project.slug), ignore_errors=True)
 
 
 def project_dir(slug: str) -> Path:

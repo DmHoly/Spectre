@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mot de passe oublié — Spectre</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <span class="topbar__mark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
+        </span>
+        Spectre
+      </div>
+
+      <div class="card card-pad">
+        <h1 style="font-size:20px;margin-bottom:4px;">Mot de passe oublié</h1>
+        <p style="color:var(--text-soft);font-size:13.5px;margin-bottom:20px;">Indiquez votre adresse e-mail : si un compte existe, un lien de réinitialisation vous sera envoyé.</p>
+
+        <div id="error" class="error" style="display:none;margin-bottom:14px;"></div>
+        <div id="success" class="flash flash-ok" style="display:none;margin-bottom:14px;">Si un compte existe avec cette adresse, un e-mail vient d'être envoyé.</div>
+
+        <form id="forgot-form" class="field-group">
+          <div>
+            <label for="email">Adresse e-mail</label>
+            <input class="field" type="email" id="email" name="email" required autocomplete="email">
+          </div>
+          <button class="btn btn-primary btn-block" type="submit" style="margin-top:8px;">Envoyer le lien</button>
+        </form>
+      </div>
+
+      <div class="auth-switch"><a href="/connexion">&larr; Retour à la connexion</a></div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    const form = document.getElementById("forgot-form");
+    const errorBox = document.getElementById("error");
+    const successBox = document.getElementById("success");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorBox.style.display = "none";
+      try {
+        await api.post("/api/auth/mot-de-passe-oublie", { email: document.getElementById("email").value }, { redirectOn401: false });
+        successBox.style.display = "block";
+        form.style.display = "none";
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.style.display = "block";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -16,8 +16,10 @@
       <span class="topbar__crumb" id="crumb"></span>
     </div>
     <div class="topbar__actions">
-      <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
-      <div class="avatar js-user-initials"></div>
+      <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
+        <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
+        <div class="avatar js-user-initials"></div>
+      </a>
       <a href="#" class="js-logout btn btn-line" style="padding:6px 12px;font-size:12.5px;">Se déconnecter</a>
     </div>
   </div>
@@ -26,6 +28,7 @@
     <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">&larr; Mes projets</a></p>
 
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+    <div id="flash" class="flash flash-ok" style="display:none;margin-bottom:16px;"></div>
 
     <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;">
       <div>
@@ -49,10 +52,12 @@
 
     <div id="tab-running" class="tab-panel">
       <div id="running-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;"></div>
+      <div style="text-align:center;margin-top:20px;"><button class="btn btn-line" id="running-load-more" style="display:none;">Charger plus</button></div>
     </div>
 
     <div id="tab-concluded" class="tab-panel" style="display:none;">
       <div id="concluded-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;"></div>
+      <div style="text-align:center;margin-top:20px;"><button class="btn btn-line" id="concluded-load-more" style="display:none;">Charger plus</button></div>
     </div>
 
     <div id="tab-members" class="tab-panel" style="display:none;">
@@ -77,6 +82,17 @@
           </select>
           <button class="btn btn-primary" type="submit">Ajouter</button>
         </form>
+
+        <div id="invitations-wrap"></div>
+      </div>
+
+      <div class="card card-pad" id="danger-zone" style="display:none;max-width:640px;margin-top:20px;border-color:var(--danger-tint);">
+        <div class="section-title" style="margin-bottom:10px;color:var(--danger);">Zone dangereuse</div>
+        <p style="font-size:13px;color:var(--text-soft);margin-bottom:12px;">Supprimer ce projet efface définitivement toutes ses expériences et structures. Cette action est irréversible.</p>
+        <div class="field-row" style="grid-template-columns:1fr auto;">
+          <input class="field" id="delete-confirm-name" placeholder="Tapez le nom du projet pour confirmer">
+          <button class="btn btn-danger" id="delete-project-btn" type="button">Supprimer le projet</button>
+        </div>
       </div>
     </div>
   </div>
@@ -88,10 +104,22 @@
     const errorBox = document.getElementById("error");
     let currentUser = null;
     let currentRole = null;
+    let currentProjectName = null;
 
     function showError(err) {
       errorBox.textContent = err.message || String(err);
       errorBox.style.display = "block";
+    }
+
+    function clearErrorFlash() {
+      errorBox.style.display = "none";
+      document.getElementById("flash").style.display = "none";
+    }
+
+    function showFlash(message) {
+      const flashBox = document.getElementById("flash");
+      flashBox.textContent = message;
+      flashBox.style.display = "block";
     }
 
     function experienceCard(exp) {
@@ -115,10 +143,22 @@
       return `<div class="empty-state card" style="grid-column:1/-1;">${escapeHtml(message)}</div>`;
     }
 
-    async function loadExperiences(status, targetEl, emptyMessage) {
+    const PAGE_SIZE = 30;
+
+    async function loadExperiences(status, targetEl, emptyMessage, loadMoreBtn, offset = 0) {
       try {
-        const data = await api.get(`/api/projects/${encodeURIComponent(slug)}/experiences?status=${status}`);
-        targetEl.innerHTML = data.items.length ? data.items.map(experienceCard).join("") : emptyState(emptyMessage);
+        const data = await api.get(
+          `/api/projects/${encodeURIComponent(slug)}/experiences?status=${status}&offset=${offset}&limit=${PAGE_SIZE}`
+        );
+        const html = data.items.map(experienceCard).join("");
+        if (offset === 0) {
+          targetEl.innerHTML = data.items.length ? html : emptyState(emptyMessage);
+        } else {
+          targetEl.insertAdjacentHTML("beforeend", html);
+        }
+        const loaded = offset + data.items.length;
+        loadMoreBtn.style.display = loaded < data.total ? "" : "none";
+        loadMoreBtn.onclick = () => loadExperiences(status, targetEl, emptyMessage, loadMoreBtn, loaded);
       } catch (err) {
         showError(err);
       }
@@ -158,6 +198,43 @@
       }
     }
 
+    function invitationRow(invitation) {
+      return `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border-soft);">
+          <div>
+            <div style="font-size:13px;">${escapeHtml(invitation.email)}</div>
+            <div style="font-size:11.5px;color:var(--text-faint);">Invitation envoyée &middot; ${escapeHtml(roleLabel(invitation.role))}</div>
+          </div>
+          <button class="btn btn-line js-cancel-invitation" data-token="${escapeHtml(invitation.token)}" style="padding:5px 10px;font-size:12px;">Annuler</button>
+        </div>`;
+    }
+
+    async function loadInvitations() {
+      const wrap = document.getElementById("invitations-wrap");
+      if (currentRole !== "owner") {
+        wrap.innerHTML = "";
+        return;
+      }
+      try {
+        const invitations = await api.get(`/api/projects/${encodeURIComponent(slug)}/invitations`);
+        wrap.innerHTML = invitations.length
+          ? `<div style="margin-top:14px;"><div class="section-title" style="margin-bottom:4px;">Invitations en attente</div>${invitations.map(invitationRow).join("")}</div>`
+          : "";
+        document.querySelectorAll(".js-cancel-invitation").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            try {
+              await api.del(`/api/projects/${encodeURIComponent(slug)}/invitations/${btn.dataset.token}`);
+              loadInvitations();
+            } catch (err) {
+              showError(err);
+            }
+          });
+        });
+      } catch (err) {
+        // silent: owner-only, non-critical secondary list
+      }
+    }
+
     document.querySelectorAll(".tab").forEach((tab) => {
       tab.addEventListener("click", () => {
         document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
@@ -167,14 +244,31 @@
       });
     });
 
+    document.getElementById("delete-project-btn").addEventListener("click", async () => {
+      const typed = document.getElementById("delete-confirm-name").value.trim();
+      if (typed !== currentProjectName) {
+        showError(new Error("Le nom saisi ne correspond pas au nom du projet."));
+        return;
+      }
+      try {
+        await api.del(`/api/projects/${encodeURIComponent(slug)}?confirm_name=${encodeURIComponent(typed)}`);
+        window.location.href = "/";
+      } catch (err) {
+        showError(err);
+      }
+    });
+
     document.getElementById("add-member-form").addEventListener("submit", async (event) => {
       event.preventDefault();
+      clearErrorFlash();
       const email = document.getElementById("member-email").value;
       const role = document.getElementById("member-role").value;
       try {
-        await api.post(`/api/projects/${encodeURIComponent(slug)}/members`, { email, role });
+        const result = await api.post(`/api/projects/${encodeURIComponent(slug)}/members`, { email, role });
         document.getElementById("member-email").value = "";
+        showFlash(result.status === "invited" ? "Invitation envoyée par e-mail." : "Personne ajoutée au projet.");
         loadMembers();
+        loadInvitations();
       } catch (err) {
         showError(err);
       }
@@ -184,6 +278,7 @@
       try {
         const project = await api.get(`/api/projects/${encodeURIComponent(slug)}`);
         currentRole = project.role;
+        currentProjectName = project.name;
         document.getElementById("project-name").textContent = project.name;
         document.getElementById("project-description").textContent = project.description;
         document.getElementById("crumb").textContent = "/ " + project.name;
@@ -197,15 +292,27 @@
         }
         if (currentRole === "owner") {
           document.getElementById("add-member-form").style.display = "grid";
+          document.getElementById("danger-zone").style.display = "block";
         }
       } catch (err) {
         showError(err);
         return;
       }
 
-      loadExperiences("running", document.getElementById("running-list"), "Aucune expérience en cours pour l'instant.");
-      loadExperiences("concluded", document.getElementById("concluded-list"), "Aucune expérience terminée pour l'instant.");
+      loadExperiences(
+        "running",
+        document.getElementById("running-list"),
+        "Aucune expérience en cours pour l'instant.",
+        document.getElementById("running-load-more")
+      );
+      loadExperiences(
+        "concluded",
+        document.getElementById("concluded-list"),
+        "Aucune expérience terminée pour l'instant.",
+        document.getElementById("concluded-load-more")
+      );
       loadMembers();
+      loadInvitations();
     }
 
     init();
