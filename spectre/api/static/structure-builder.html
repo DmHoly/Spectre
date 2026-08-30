@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nouvelle structure — Spectre</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar__brand">
+      <span class="topbar__mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
+      </span>
+      <span id="page-title">Nouvelle structure</span>
+      <span class="topbar__crumb" id="crumb"></span>
+    </div>
+    <div class="topbar__actions">
+      <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
+      <div class="avatar js-user-initials"></div>
+      <a href="#" class="js-logout btn btn-line" style="padding:6px 12px;font-size:12.5px;">Se déconnecter</a>
+    </div>
+  </div>
+
+  <div id="error" class="error" style="display:none;margin:14px 32px 0;"></div>
+
+  <div class="builder-shell">
+    <div class="builder-sidebar">
+
+      <div>
+        <div class="section-title" style="margin-bottom:14px;">Substrat</div>
+        <div class="field-group">
+          <div><label>Matériau</label><select class="field" id="substrate-material"></select></div>
+          <div class="field-row">
+            <div><label>Largeur</label><input class="field" id="substrate-width" type="number" value="200"></div>
+            <div><label>Unité</label><select class="field" id="substrate-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
+          </div>
+          <div class="field-row">
+            <div><label>Épaisseur</label><input class="field" id="substrate-thickness" type="number" value="50"></div>
+            <div><label>Unité</label><select class="field" id="substrate-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title" style="margin-bottom:14px;">Ajouter une étape</div>
+        <div class="field-group">
+          <div>
+            <label>Type d'étape</label>
+            <select class="field" id="kind-select">
+              <option value="deposition">Dépôt</option>
+              <option value="etch">Gravure</option>
+              <option value="planarization">Planarisation</option>
+              <option value="lithography">Lithographie</option>
+              <option value="chemical">Étape chimique</option>
+              <option value="resist_strip">Retrait de résine</option>
+            </select>
+          </div>
+          <div id="kind-fields" class="field-group"></div>
+          <button class="btn btn-tint btn-block" id="add-step-btn" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+            Ajouter cette étape
+          </button>
+        </div>
+      </div>
+
+      <div style="flex:1;">
+        <div class="section-title" style="margin-bottom:14px;">Étapes du procédé (<span id="steps-count">0</span>)</div>
+        <div id="steps-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+
+      <div id="campaign-section" class="card" style="padding:16px;background:var(--bg);">
+        <div class="section-title" style="margin-bottom:10px;">Créer plusieurs variantes (optionnel)</div>
+        <div class="help" style="margin-bottom:10px;">Fait varier un paramètre d'une étape pour lancer une campagne de plusieurs échantillons en une seule expérience.</div>
+        <div class="field-group">
+          <div><label>Étape</label><select class="field" id="campaign-step"></select></div>
+          <div><label>Paramètre</label><select class="field" id="campaign-field"></select></div>
+          <div><label>Valeurs</label><input class="field" id="campaign-values" placeholder="ex : 10, 20, 30"></div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-line" id="campaign-preview-btn" type="button" style="flex:1;">Prévisualiser</button>
+            <button class="btn btn-line" id="campaign-clear-btn" type="button">Annuler</button>
+          </div>
+          <div id="campaign-result"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title" style="margin-bottom:14px;">Objectifs</div>
+        <div id="objectives-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+        <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
+          <input class="field" id="obj-name" placeholder="ex : isolation électrique" required>
+          <div class="field-row">
+            <input class="field" id="obj-metric" placeholder="mesure (ex : resistivity_ohm_cm)" required>
+            <select class="field" id="obj-direction">
+              <option value="observe">Observer</option>
+              <option value="maximize">Maximiser</option>
+              <option value="minimize">Minimiser</option>
+              <option value="target">Cible précise</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <input class="field" id="obj-target" type="number" placeholder="valeur cible (optionnel)">
+            <button class="btn btn-line" type="submit">Ajouter l'objectif</button>
+          </div>
+        </form>
+      </div>
+
+      <div>
+        <div class="section-title" style="margin-bottom:14px;">Lancer</div>
+        <div class="field-group">
+          <div><label>Titre de l'expérience</label><input class="field" id="exp-title"></div>
+          <div><label>Intention</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier ?"></textarea></div>
+          <div><label>Hypothèse (optionnelle)</label><input class="field" id="exp-hypothesis"></div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="launch-btn" style="font-size:15px;padding:13px;">Lancer le suivi de cette expérience</button>
+    </div>
+
+    <div class="builder-canvas">
+      <div class="mono" style="display:flex;align-items:center;gap:10px;">
+        <div style="font-size:11px;color:var(--text-faint);letter-spacing:.03em;">ÉTAPE</div>
+        <div class="scrubber-track" id="scrubber-track"></div>
+        <div style="font-size:12px;color:var(--text-soft);white-space:nowrap;" id="scrubber-label">Pas encore simulé</div>
+      </div>
+
+      <div class="card" style="flex:1;display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-soft);">
+          <div style="font-size:13.5px;font-weight:700;">Coupe transversale</div>
+          <button class="btn btn-tint" id="simulate-btn" type="button" style="padding:8px 16px;font-size:13px;">Simuler</button>
+        </div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto;" id="svg-container"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/structure-builder.js"></script>
+</body>
+</html>

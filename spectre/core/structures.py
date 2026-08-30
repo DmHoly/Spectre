@@ -1,0 +1,215 @@
+"""Bridges the structure-builder page to StructureForge: which materials/recipes a project can
+draw on, and turning a substrate + step list into simulated frames the page can show. All the
+physics stays in ``structureforge`` - this module only resolves per-project recipe libraries
+(:mod:`spectre.core.projects`) and turns each ``Frame`` into ready-to-embed SVG via
+``structureforge.presentation.svg.frame_to_svg``, so Spectre never draws a cross-section itself.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import follow
+from follow.doe.batch import BatchVariation, analyze_batch
+from pydantic import BaseModel
+from structureforge.adapters.follow_adapter import ProcessStructure, to_structure
+from structureforge.core.materials import MaterialLibrary, default_library
+from structureforge.core.recipes import RecipeLibrary, default_recipes
+from structureforge.core.units import Length
+from structureforge.geometry.engine import Geometry
+from structureforge.presentation.svg import frame_to_svg
+from structureforge.process.simulate import Frame, SimulationError, simulate
+from structureforge.process.steps import ProcessStep
+
+from . import projects
+
+
+class ProcessLot(follow.Structure):
+    """A Follow ``Structure`` holding several ``ProcessStructure`` variants (a DOE campaign's
+    wafers, say) - the one Spectre-level type needed so Follow's generic batch/DOE tooling
+    (``follow.doe.batch.analyze_batch``, ``follow.doe.design``) can work on structures built by
+    StructureForge, which only ever models one geometry at a time. See :mod:`spectre.api.structures`
+    for where variants are generated.
+    """
+
+    entries: list[ProcessStructure]
+
+
+class SubstrateSpec(BaseModel):
+    material: str
+    domain_width: Length
+    thickness: Length
+
+
+class SimulationFailedError(Exception):
+    pass
+
+
+def materials_library() -> MaterialLibrary:
+    return default_library()
+
+
+def recipes_library(slug: str) -> RecipeLibrary:
+    return projects.get_recipe_store(slug).combined_with(default_recipes())
+
+
+def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]) -> tuple[Geometry, list[Frame], MaterialLibrary]:
+    """Build the starting geometry and apply ``steps`` to it, the same way
+    ``structureforge.api.app`` does for its own ``/api/simulate`` - returns the live objects
+    (geometry, one frame per step, the material library used) for a caller that needs them for
+    more than just a preview (e.g. to commit the result as a Follow experiment).
+    """
+    materials = materials_library()
+    recipes = recipes_library(slug)
+    try:
+        materials.get(substrate.material)
+    except KeyError as exc:
+        raise SimulationFailedError(str(exc)) from exc
+
+    geometry = Geometry.substrate(substrate.material, substrate.domain_width.to_nm(), substrate.thickness.to_nm())
+    try:
+        frames = simulate(geometry, steps, materials, recipes)
+    except SimulationError as exc:
+        raise SimulationFailedError(str(exc)) from exc
+    return geometry, frames, materials
+
+
+def frames_payload(frames: list[Frame], materials: MaterialLibrary) -> dict[str, Any]:
+    material_colors = {m.name: m.color for m in materials}
+    return {
+        "frames": [
+            {
+                "step_index": frame.step_index,
+                "step_kind": frame.step_kind,
+                "step_name": frame.step_name,
+                "svg": frame_to_svg(frame, material_colors),
+                # only the materials this particular frame actually shows - material_colors below
+                # is the whole library (40+ entries), which would make a poor legend on its own.
+                "materials": sorted({layer.material for layer in frame.layers}),
+            }
+            for frame in frames
+        ],
+        "material_colors": material_colors,
+    }
+
+
+class VariantPlan(BaseModel):
+    """A single-parameter sweep: vary one numeric field (``thickness``, ``depth``,
+    ``target_level`` - whatever the chosen step carries as a ``Length``) of one step, across
+    ``values`` (in that field's own unit), holding everything else constant. This is the one
+    generator Spectre offers for a DOE campaign; Follow's own ``sweep``/``full_factorial``/
+    ``latin_hypercube`` (:mod:`follow.doe.design`) stay available for a domain that varies a
+    plain ``Structure`` field directly, which a process's *steps* never are.
+    """
+
+    step_index: int
+    field: str
+    values: list[float]
+
+
+class CampaignVariants(BaseModel):
+    """The result of :func:`generate_campaign_variants` in a shape both the preview endpoint and
+    the launch-a-campaign endpoint can use directly.
+    """
+
+    entries: list[ProcessStructure]
+    svgs: list[str]
+    variation: BatchVariation
+
+
+def _step_with_value(step: ProcessStep, field: str, value: float) -> ProcessStep:
+    current = getattr(step, field, None)
+    if not isinstance(current, Length):
+        numeric_fields = [name for name in type(step).model_fields if isinstance(getattr(step, name, None), Length)]
+        raise SimulationFailedError(
+            f"{field!r} n'est pas un paramètre numérique modifiable de cette étape "
+            f"(champs disponibles : {numeric_fields!r})"
+        )
+    return step.model_copy(update={field: Length(value=value, unit=current.unit)})
+
+
+def generate_campaign_variants(
+    slug: str, substrate: SubstrateSpec, steps: list[ProcessStep], plan: VariantPlan
+) -> CampaignVariants:
+    """Re-simulate ``steps`` once per value in ``plan.values``, varying ``plan.field`` of the step
+    at ``plan.step_index`` each time - everything else (substrate, every other step) held
+    constant. Returns one flattened ``ProcessStructure`` and one preview SVG per variant, plus
+    Follow's own constant/varying split (``follow.doe.batch.analyze_batch``) so the "matrice de
+    split" is available before anyone commits to the campaign, not only after.
+    """
+    if not plan.values:
+        raise SimulationFailedError("il faut au moins une valeur pour créer des variantes")
+    if not (0 <= plan.step_index < len(steps)):
+        raise SimulationFailedError("étape sélectionnée invalide")
+
+    entries: list[ProcessStructure] = []
+    svgs: list[str] = []
+    for value in plan.values:
+        varied_steps = list(steps)
+        varied_steps[plan.step_index] = _step_with_value(steps[plan.step_index], plan.field, value)
+        geometry, frames, materials = run_simulation(slug, substrate, varied_steps)
+        entries.append(to_structure(geometry))
+        material_colors = {m.name: m.color for m in materials}
+        svgs.append(frame_to_svg(frames[-1], material_colors))
+
+    variation = analyze_batch(entries)
+    return CampaignVariants(entries=entries, svgs=svgs, variation=variation)
+
+
+class _RenderableLayer:
+    """Duck-types as the ``structureforge.geometry.engine.Layer`` that
+    ``structureforge.presentation.svg.frame_to_svg`` expects (a ``material`` attribute plus a
+    ``rings()`` method) - built from the *already-flattened* ``LayerSpec`` a committed
+    ``ProcessStructure`` stores (``rings`` there is a plain field, not a method).
+    """
+
+    __slots__ = ("material", "_rings")
+
+    def __init__(self, material: str, rings: list[dict]) -> None:
+        self.material = material
+        self._rings = rings
+
+    def rings(self) -> list[dict]:
+        return self._rings
+
+
+def render_structure_svg(structure_type: str, structure_data: dict[str, Any]) -> str | None:
+    """SVG for an already-committed experiment's current structure, reusing
+    ``structureforge.presentation.svg.frame_to_svg`` on a synthetic single-frame ``Frame`` built
+    from the stored, already-flattened layers. ``None`` for any structure type StructureForge
+    doesn't know how to draw (the fiche just skips the diagram then) - a ``ProcessLot`` batch
+    renders its first entry, the representative case a DOE campaign's constant/varying split
+    (:func:`spectre.api.experiments`) already covers in full.
+    """
+    if structure_type == ProcessStructure.registry_key():
+        process_structure = ProcessStructure.model_validate(structure_data)
+    elif structure_type == ProcessLot.registry_key():
+        lot = ProcessLot.model_validate(structure_data)
+        if not lot.entries:
+            return None
+        process_structure = lot.entries[0]
+    else:
+        return None
+
+    material_colors = {m.name: m.color for m in materials_library()}
+    frame = Frame(
+        step_index=0,
+        step_kind="structure",
+        step_name="structure",
+        layers=[_RenderableLayer(layer.material, layer.rings) for layer in process_structure.layers],
+        domain_width_nm=process_structure.domain_width_nm,
+    )
+    return frame_to_svg(frame, material_colors)
+
+
+def process_metadata(substrate: SubstrateSpec, steps: list[ProcessStep]) -> dict[str, Any]:
+    """The raw, re-editable process (substrate + typed steps) as plain JSON - stashed on the
+    committed ``Experiment.metadata`` under this key, since the ``Structure`` Follow stores is the
+    *flattened* result (see ``structureforge.adapters.follow_adapter.ProcessStructure``) and can't
+    be turned back into an editable step list on its own. See :mod:`spectre.api.structures` for
+    where this is read back to pre-fill the builder when evolving an experiment.
+    """
+    return {
+        "substrate": substrate.model_dump(mode="json"),
+        "steps": [step.model_dump(mode="json") for step in steps],
+    }

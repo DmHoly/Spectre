@@ -1,0 +1,636 @@
+/* Spectre — feuille de style commune.
+   Direction visuelle : "instrument de labo fiable" - sobre, précis, sans jargon technique.
+   Tokens extraits de la maquette (voir README pour le lien vers le canevas de direction). */
+
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+  --bg: #faf9f6;
+  --surface: #ffffff;
+  --border: #e3e0d8;
+  --border-soft: #ede9df;
+
+  --text: #1f2420;
+  --text-soft: #5c655e;
+  --text-faint: #8b9187;
+
+  --accent: #0e5f68;
+  --accent-dark: #0a464d;
+  --accent-tint: #e7f1f0;
+
+  --draft: #8a8f8c;
+  --draft-tint: #eef0ee;
+  --running: #1d6fae;
+  --running-tint: #e8f1fa;
+  --done: #3f7d4a;
+  --done-tint: #e9f4ea;
+  --abandoned: #a45a3a;
+  --abandoned-tint: #f6ede7;
+  --danger: #b5392f;
+  --danger-tint: #fbeae8;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --shadow: 0 1px 2px rgba(24, 32, 28, 0.05), 0 2px 8px rgba(24, 32, 28, 0.05);
+  --font-ui: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--accent-dark);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+/* -- layout shell : topbar commune à toutes les pages connectées -------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 32px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.topbar__mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex: none;
+}
+
+.topbar__crumb {
+  color: var(--text-faint);
+  font-size: 13.5px;
+}
+
+.topbar__crumb a {
+  color: var(--text-faint);
+}
+.topbar__crumb a:hover {
+  color: var(--accent);
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  color: var(--accent-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  flex: none;
+}
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-7);
+}
+
+/* -- boutons ------------------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--accent-dark);
+}
+.btn-primary:disabled {
+  background: var(--draft);
+  cursor: not-allowed;
+}
+
+.btn-line {
+  background: #fff;
+  color: var(--text-soft);
+  border-color: var(--border);
+}
+.btn-line:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-tint {
+  background: var(--accent-tint);
+  color: var(--accent-dark);
+}
+.btn-tint:hover {
+  background: #d9ebe9;
+}
+
+.btn-danger {
+  background: #fff;
+  color: var(--danger);
+  border-color: var(--danger-tint);
+}
+.btn-danger:hover {
+  background: var(--danger-tint);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+/* -- cartes / cadres ------------------------------------------------------------------ */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.card-pad {
+  padding: var(--space-5) var(--space-6);
+}
+
+/* -- badges de statut ------------------------------------------------------------------ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-pill);
+  padding: 4px 10px 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: none;
+}
+
+.badge-draft {
+  background: var(--draft-tint);
+  color: var(--draft);
+}
+.badge-draft .dot {
+  background: var(--draft);
+}
+
+.badge-running {
+  background: var(--running-tint);
+  color: var(--running);
+}
+.badge-running .dot {
+  background: var(--running);
+}
+
+.badge-concluded {
+  background: var(--done-tint);
+  color: var(--done);
+}
+.badge-concluded .dot {
+  background: var(--done);
+}
+
+.badge-abandoned {
+  background: var(--abandoned-tint);
+  color: var(--abandoned);
+}
+.badge-abandoned .dot {
+  background: var(--abandoned);
+}
+
+.badge-role {
+  background: var(--border-soft);
+  color: var(--text-soft);
+}
+
+/* -- onglets ----------------------------------------------------------------------------- */
+
+.tabs {
+  display: flex;
+  gap: 28px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.tab {
+  padding: 10px 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-faint);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: inherit;
+}
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* -- formulaires -------------------------------------------------------------------------- */
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 6px;
+}
+
+.field,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+}
+
+.field:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.help {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+
+.error {
+  font-size: 12.5px;
+  color: var(--danger);
+  background: var(--danger-tint);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+/* -- petits titres de section ---------------------------------------------------------- */
+
+.section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* -- frise chronologique (suivi d'une expérience) --------------------------------------- */
+
+.timeline {
+  position: relative;
+  padding-left: 26px;
+}
+
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--border);
+}
+
+.timeline-item {
+  position: relative;
+  padding-bottom: 22px;
+}
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.timeline-item::before {
+  content: "";
+  position: absolute;
+  left: -26px;
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.timeline-item.current::before {
+  left: -27px;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--surface);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.timeline-date {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+}
+
+.timeline-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.timeline-desc {
+  font-size: 13px;
+  color: var(--text-soft);
+  margin-top: 3px;
+}
+
+/* -- états vides / messages ------------------------------------------------------------- */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: var(--space-7) var(--space-5);
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.empty-state svg {
+  opacity: 0.7;
+}
+
+.flash {
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13.5px;
+  margin-bottom: var(--space-4);
+}
+.flash-error {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+.flash-ok {
+  background: var(--done-tint);
+  color: var(--done);
+}
+
+/* -- constructeur de structure ---------------------------------------------------------- */
+
+.builder-shell {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  height: calc(100vh - 68px);
+}
+
+.builder-sidebar {
+  border-right: 1px solid var(--border-soft);
+  background: var(--surface);
+  padding: var(--space-5) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.builder-canvas {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.step-row.current {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.step-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.step-remove {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px;
+  flex: none;
+}
+.step-remove:hover {
+  color: var(--danger);
+}
+
+.scrubber-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-soft);
+  position: relative;
+  cursor: pointer;
+}
+
+.scrubber-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--accent);
+  cursor: pointer;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.objective-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 100px auto;
+  gap: 8px;
+  align-items: center;
+}
+
+/* -- auth pages (page centrée, sans topbar) ---------------------------------------------- */
+
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.auth-switch {
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-soft);
+}

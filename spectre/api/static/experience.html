@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fiche d'expérience — Spectre</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>.meta-value{color:var(--text-soft);font-weight:600;}</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar__brand">
+      <span class="topbar__mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
+      </span>
+      Spectre
+      <span class="topbar__crumb" id="crumb"></span>
+    </div>
+    <div class="topbar__actions">
+      <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
+      <div class="avatar js-user-initials"></div>
+      <a href="#" class="js-logout btn btn-line" style="padding:6px 12px;font-size:12.5px;">Se déconnecter</a>
+    </div>
+  </div>
+
+  <div class="page" style="max-width:1180px;">
+    <p style="color:var(--text-faint);margin-bottom:16px;"><a href="/">Mes projets</a> / <a id="project-crumb" href="/"></a></p>
+
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px;">
+      <button class="btn btn-primary" id="evolve-btn" style="display:none;">Enregistrer une évolution</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;">
+
+      <div style="display:flex;flex-direction:column;gap:20px;min-width:0;">
+
+        <div class="card card-pad">
+          <div id="status-badge" style="margin-bottom:14px;"></div>
+          <h1 id="exp-title" style="font-size:24px;line-height:1.3;"></h1>
+          <p id="exp-intent" style="color:var(--text-soft);font-size:14.5px;margin-top:10px;line-height:1.55;max-width:60ch;"></p>
+          <div id="exp-meta" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);font-size:12.5px;color:var(--text-faint);line-height:1.7;"></div>
+        </div>
+
+        <div class="card card-pad">
+          <div class="section-title" style="margin-bottom:16px;">Suivi de l'expérience</div>
+          <div class="timeline" id="timeline"></div>
+        </div>
+
+        <div class="card card-pad">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <div class="section-title">Structure actuelle</div>
+            <div style="font-size:12px;color:var(--text-faint);" id="diff-note"></div>
+          </div>
+          <div style="display:flex;justify-content:center;" id="structure-svg"></div>
+          <div id="diff-details" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="card card-pad" id="matrix-card" style="display:none;">
+          <div class="section-title" style="margin-bottom:16px;">Matrice de split</div>
+          <div id="matrix-content"></div>
+        </div>
+
+        <div class="card card-pad" id="conclusion-section"></div>
+
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:20px;">
+
+        <div class="card card-pad">
+          <div class="section-title" style="margin-bottom:14px;">Objectifs</div>
+          <div id="objectives-list" style="display:flex;flex-direction:column;gap:14px;"></div>
+        </div>
+
+        <div class="card card-pad">
+          <div class="section-title" style="margin-bottom:14px;">Comparer avec</div>
+          <select class="field" id="compare-select" style="margin-bottom:10px;"></select>
+          <button class="btn btn-line btn-block" id="compare-btn" type="button">Voir les différences</button>
+          <div id="compare-result" style="margin-top:12px;max-height:260px;overflow:auto;"></div>
+        </div>
+
+        <div class="card card-pad">
+          <div class="section-title" style="margin-bottom:14px;">Liens</div>
+          <div id="references-list"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/experience.js"></script>
+</body>
+</html>
