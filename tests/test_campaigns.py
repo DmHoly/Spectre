@@ -23,8 +23,36 @@ def _steps():
     ]
 
 
+def _steps_two():
+    return [
+        {
+            "kind": "deposition",
+            "name": "Oxyde",
+            "material": "SiO2",
+            "recipe": "CVD Conformal",
+            "thickness": {"value": 20, "unit": "nm"},
+        },
+        {
+            "kind": "deposition",
+            "name": "Nitrure",
+            "material": "SiO2",
+            "recipe": "CVD Conformal",
+            "thickness": {"value": 10, "unit": "nm"},
+        },
+    ]
+
+
 def _plan():
-    return {"step_index": 0, "field": "thickness", "values": [10, 20, 30]}
+    return {"factors": [{"step_index": 0, "field": "thickness", "values": [10, 20, 30]}]}
+
+
+def _plan_two_factors():
+    return {
+        "factors": [
+            {"step_index": 0, "field": "thickness", "values": [10, 20]},
+            {"step_index": 1, "field": "thickness", "values": [5, 15, 25]},
+        ]
+    }
 
 
 def test_preview_campaign_returns_svgs_and_variation(client):
@@ -46,12 +74,30 @@ def test_preview_campaign_returns_svgs_and_variation(client):
 
 def test_preview_campaign_rejects_non_numeric_field(client):
     slug = _setup_project(client)
-    bad_plan = {"step_index": 0, "field": "material", "values": [1, 2]}
+    bad_plan = {"factors": [{"step_index": 0, "field": "material", "values": [1, 2]}]}
     response = client.post(
         f"/api/projects/{slug}/structures/variantes",
         json={"substrate": _substrate(), "steps": _steps(), "plan": bad_plan},
     )
     assert response.status_code == 422
+
+
+def test_preview_campaign_with_two_factors_is_fully_crossed(client):
+    slug = _setup_project(client)
+    response = client.post(
+        f"/api/projects/{slug}/structures/variantes",
+        json={"substrate": _substrate(), "steps": _steps_two(), "plan": _plan_two_factors()},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["svgs"]) == 6  # 2 thicknesses x 3 depths, fully crossed
+    assert body["variation"]["entity_count"] == 6
+    assert body["factor_labels"] == ["Épaisseur — Oxyde", "Épaisseur — Nitrure"]
+    assert len(body["factor_values"]) == 6
+    assert all(len(row) == 2 for row in body["factor_values"])
+    assert sorted(body["labels"]) == sorted(
+        f"{t} · {d}" for t in (10, 20) for d in (5, 15, 25)
+    )
 
 
 def test_launch_campaign_and_read_matrix(client):
@@ -74,11 +120,31 @@ def test_launch_campaign_and_read_matrix(client):
     matrix = client.get(f"/api/projects/{slug}/experiences/{experiment_id}/matrice").json()
     assert matrix["entity_count"] == 3
     assert len(matrix["varying"]) >= 1
-    assert matrix["factor_label"] == "Épaisseur — Oxyde"
-    assert matrix["factor_values"] == [10, 20, 30]
+    assert matrix["factor_labels"] == ["Épaisseur — Oxyde"]
+    assert matrix["factor_values"] == [[10], [20], [30]]
     assert len(matrix["svgs"]) == 3
     assert all("<svg" in svg for svg in matrix["svgs"])
     assert matrix["labels"] == ["10", "20", "30"]
+
+
+def test_launch_campaign_with_two_factors(client):
+    slug = _setup_project(client, email="two-factors@example.com")
+    body = {
+        "substrate": _substrate(),
+        "steps": _steps_two(),
+        "plan": _plan_two_factors(),
+        "title": "Campagne croisee",
+        "intent": "Explorer epaisseur et profondeur ensemble",
+    }
+    response = client.post(f"/api/projects/{slug}/experiences/campagne", json=body)
+    assert response.status_code == 201
+    experiment_id = response.json()["id"]
+
+    matrix = client.get(f"/api/projects/{slug}/experiences/{experiment_id}/matrice").json()
+    assert matrix["entity_count"] == 6
+    assert matrix["factor_labels"] == ["Épaisseur — Oxyde", "Épaisseur — Nitrure"]
+    assert len(matrix["factor_values"]) == 6
+    assert all(len(row) == 2 for row in matrix["factor_values"])
 
 
 def test_matrice_endpoint_rejects_non_batch_experience(client):

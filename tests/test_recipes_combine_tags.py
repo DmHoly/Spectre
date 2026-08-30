@@ -135,7 +135,7 @@ def test_combine_rejects_a_single_experience_with_a_campaign(client):
         json={
             "substrate": _substrate(),
             "steps": _steps(),
-            "plan": {"step_index": 0, "field": "thickness", "values": [10, 20, 30]},
+            "plan": {"factors": [{"step_index": 0, "field": "thickness", "values": [10, 20, 30]}]},
             "title": "Campagne",
             "intent": "Balayage",
         },

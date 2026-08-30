@@ -230,7 +230,7 @@ function renderSteps() {
   list.querySelectorAll(".js-step-down").forEach((btn) => {
     btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), 1));
   });
-  renderCampaignStepOptions();
+  refreshCampaignFactorSteps();
   state.campaignPlan = null;
   document.getElementById("campaign-result").innerHTML = "";
 }
@@ -333,48 +333,81 @@ const CAMPAIGN_FIELD_OPTIONS = {
   resist_strip: [],
 };
 
-function renderCampaignStepOptions() {
-  const select = document.getElementById("campaign-step");
-  if (state.steps.length === 0) {
-    select.innerHTML = `<option value="">Ajoutez au moins une étape d'abord</option>`;
-    document.getElementById("campaign-field").innerHTML = "";
-    return;
-  }
-  select.innerHTML = state.steps
+function campaignStepOptionsHtml() {
+  if (state.steps.length === 0) return `<option value="">Ajoutez au moins une étape d'abord</option>`;
+  return state.steps
     .map((s, i) => `<option value="${i}">${i + 1}. ${escapeHtml(STEP_KINDS[s.kind].label)} — ${escapeHtml(s.name)}</option>`)
     .join("");
-  renderCampaignFieldOptions();
 }
 
-function renderCampaignFieldOptions() {
-  const stepIndex = parseInt(document.getElementById("campaign-step").value, 10);
+function campaignFieldOptionsHtml(stepIndex) {
   const step = state.steps[stepIndex];
-  const fieldSelect = document.getElementById("campaign-field");
   const options = step ? CAMPAIGN_FIELD_OPTIONS[step.kind] || [] : [];
-  fieldSelect.innerHTML = options.length
+  return options.length
     ? options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")
     : `<option value="">Aucun paramètre modifiable sur cette étape</option>`;
 }
 
-document.getElementById("campaign-step").addEventListener("change", renderCampaignFieldOptions);
+function addCampaignFactorRow() {
+  const row = document.createElement("div");
+  row.className = "js-campaign-factor-row";
+  row.style = "border:1px solid var(--border-soft);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px;";
+  row.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <label style="margin:0;">Étape</label>
+      <button class="js-remove-factor" type="button" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:14px;line-height:1;">&times;</button>
+    </div>
+    <select class="field js-factor-step">${campaignStepOptionsHtml()}</select>
+    <label>Paramètre</label>
+    <select class="field js-factor-field"></select>
+    <label>Valeurs</label>
+    <input class="field js-factor-values" placeholder="ex : 10, 20, 30">`;
+  document.getElementById("campaign-factors").appendChild(row);
+  const stepSelect = row.querySelector(".js-factor-step");
+  const fieldSelect = row.querySelector(".js-factor-field");
+  const refreshField = () => {
+    fieldSelect.innerHTML = campaignFieldOptionsHtml(parseInt(stepSelect.value, 10));
+  };
+  stepSelect.addEventListener("change", refreshField);
+  refreshField();
+  row.querySelector(".js-remove-factor").addEventListener("click", () => row.remove());
+}
+
+document.getElementById("campaign-add-factor-btn").addEventListener("click", addCampaignFactorRow);
+
+function refreshCampaignFactorSteps() {
+  document.querySelectorAll(".js-campaign-factor-row").forEach((row) => {
+    const stepSelect = row.querySelector(".js-factor-step");
+    const previous = stepSelect.value;
+    stepSelect.innerHTML = campaignStepOptionsHtml();
+    stepSelect.value = [...stepSelect.options].some((o) => o.value === previous) ? previous : stepSelect.value;
+    row.querySelector(".js-factor-field").innerHTML = campaignFieldOptionsHtml(parseInt(stepSelect.value, 10));
+  });
+}
 
 function campaignPlan() {
-  const stepIndex = parseInt(document.getElementById("campaign-step").value, 10);
-  const field = document.getElementById("campaign-field").value;
-  const values = document
-    .getElementById("campaign-values")
-    .value.split(",")
-    .map((v) => parseFloat(v.trim()))
-    .filter((v) => !Number.isNaN(v));
-  if (Number.isNaN(stepIndex) || !field || values.length === 0) return null;
-  return { step_index: stepIndex, field, values };
+  const rows = [...document.querySelectorAll(".js-campaign-factor-row")];
+  if (rows.length === 0) return null;
+  const factors = [];
+  for (const row of rows) {
+    const stepIndex = parseInt(row.querySelector(".js-factor-step").value, 10);
+    const field = row.querySelector(".js-factor-field").value;
+    const values = row
+      .querySelector(".js-factor-values")
+      .value.split(",")
+      .map((v) => parseFloat(v.trim()))
+      .filter((v) => !Number.isNaN(v));
+    if (Number.isNaN(stepIndex) || !field || values.length === 0) return null;
+    factors.push({ step_index: stepIndex, field, values });
+  }
+  return { factors };
 }
 
 document.getElementById("campaign-preview-btn").addEventListener("click", async () => {
   clearError();
   const plan = campaignPlan();
   if (!plan) {
-    showError(new Error("Choisissez une étape, un paramètre et au moins une valeur."));
+    showError(new Error("Pour chaque paramètre : choisissez une étape, un paramètre et au moins une valeur."));
     return;
   }
   try {
@@ -387,10 +420,10 @@ document.getElementById("campaign-preview-btn").addEventListener("click", async 
     const variation = result.variation;
     document.getElementById("campaign-result").innerHTML = `
       <div style="font-size:12.5px;color:var(--text-soft);margin-top:10px;">
-        ${variation.entity_count} variantes &middot; ${variation.varying.length} paramètre(s) réellement différent(s)
+        ${variation.entity_count} échantillons &middot; ${result.factor_labels.join(" &times; ")}
       </div>
       <div style="display:flex;gap:8px;margin-top:8px;overflow-x:auto;">
-        ${result.svgs.map((svg, i) => `<div style="flex:none;width:120px;border:1px solid var(--border-soft);border-radius:6px;padding:4px;text-align:center;">${svg}<div class="mono" style="font-size:11px;color:var(--text-soft);margin-top:4px;">${escapeHtml(String(plan.values[i]))}</div></div>`).join("")}
+        ${result.svgs.map((svg, i) => `<div style="flex:none;width:120px;border:1px solid var(--border-soft);border-radius:6px;padding:4px;text-align:center;">${svg}<div class="mono" style="font-size:11px;color:var(--text-soft);margin-top:4px;">${escapeHtml(result.labels[i])}</div></div>`).join("")}
       </div>`;
   } catch (err) {
     showError(err);
@@ -399,8 +432,9 @@ document.getElementById("campaign-preview-btn").addEventListener("click", async 
 
 document.getElementById("campaign-clear-btn").addEventListener("click", () => {
   state.campaignPlan = null;
+  document.getElementById("campaign-factors").innerHTML = "";
   document.getElementById("campaign-result").innerHTML = "";
-  document.getElementById("campaign-values").value = "";
+  addCampaignFactorRow();
 });
 
 function renderScrubber() {
@@ -614,6 +648,7 @@ async function init() {
   renderFrame();
   await loadExistingProcess();
   await loadTemplateProcess();
+  addCampaignFactorRow();
 }
 
 init();

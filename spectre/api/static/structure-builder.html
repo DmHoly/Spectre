@@ -75,17 +75,14 @@
 
       <div id="campaign-section" class="card" style="padding:16px;background:var(--bg);">
         <div class="section-title" style="margin-bottom:10px;">Créer plusieurs variantes (optionnel)</div>
-        <div class="help" style="margin-bottom:10px;">Fait varier un paramètre d'une étape pour lancer une campagne de plusieurs échantillons en une seule expérience.</div>
-        <div class="field-group">
-          <div><label>Étape</label><select class="field" id="campaign-step"></select></div>
-          <div><label>Paramètre</label><select class="field" id="campaign-field"></select></div>
-          <div><label>Valeurs</label><input class="field" id="campaign-values" placeholder="ex : 10, 20, 30"></div>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-line" id="campaign-preview-btn" type="button" style="flex:1;">Prévisualiser</button>
-            <button class="btn btn-line" id="campaign-clear-btn" type="button">Annuler</button>
-          </div>
-          <div id="campaign-result"></div>
+        <div class="help" style="margin-bottom:10px;">Faites varier un ou plusieurs paramètres pour lancer une campagne de plusieurs échantillons en une seule expérience. Avec plusieurs paramètres, toutes les combinaisons sont générées (ex : 3 épaisseurs &times; 3 angles = 9 échantillons).</div>
+        <div id="campaign-factors" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
+        <button class="btn btn-line btn-block" id="campaign-add-factor-btn" type="button" style="margin-bottom:10px;">+ Ajouter un paramètre</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-line" id="campaign-preview-btn" type="button" style="flex:1;">Prévisualiser</button>
+          <button class="btn btn-line" id="campaign-clear-btn" type="button">Annuler</button>
         </div>
+        <div id="campaign-result"></div>
       </div>
 
       <div>

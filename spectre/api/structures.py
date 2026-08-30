@@ -183,9 +183,9 @@ def launch_experience(
 
 @router.post("/{slug}/structures/variantes")
 def preview_campaign(body: CampaignPreviewRequest, project: Project = Depends(require_role("editor"))) -> dict:
-    """A preview of a DOE campaign: one simulated variant per value in ``body.plan.values``, plus
-    the constant/varying split (``follow.doe.batch.analyze_batch``) - the "matrice de split",
-    available before anyone commits to the campaign.
+    """A preview of a DOE campaign: one simulated variant per combination of ``body.plan.factors``
+    (fully crossed), plus the constant/varying split (``follow.doe.batch.analyze_batch``) - the
+    "matrice de split", available before anyone commits to the campaign.
     """
     try:
         result = structures.generate_campaign_variants(project.slug, body.substrate, body.steps, body.plan)
@@ -194,6 +194,9 @@ def preview_campaign(body: CampaignPreviewRequest, project: Project = Depends(re
     return {
         "svgs": result.svgs,
         "variation": result.variation.model_dump(mode="json"),
+        "labels": result.labels,
+        "factor_labels": result.factor_labels,
+        "factor_values": result.factor_values,
     }
 
 
@@ -204,8 +207,8 @@ def launch_campaign(
     user: User = Depends(get_current_user),
 ) -> dict:
     """Commit a whole DOE campaign as one experience: a ``ProcessLot`` holding one flattened
-    variant per value in ``body.plan.values``, with ``body.steps`` (the reference process) as the
-    shared protocol - the same "one experiment, many entities" shape
+    variant per combination of ``body.plan.factors`` (fully crossed), with ``body.steps`` (the
+    reference process) as the shared protocol - the same "one experiment, many entities" shape
     ``follow.doe.batch``/``follow/api/app.py`` already use generically for any domain.
     """
     try:
@@ -229,7 +232,9 @@ def launch_campaign(
         steps=follow_adapter.to_steps(body.steps),
     )
     builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
-    builder.metadata["campaign_plan"] = body.plan.model_dump(mode="json")
+    builder.metadata["campaign_labels"] = result.labels
+    builder.metadata["campaign_factor_labels"] = result.factor_labels
+    builder.metadata["campaign_factor_values"] = result.factor_values
     if verification:
         builder.metadata["objective_verification"] = verification
     try:

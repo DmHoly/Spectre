@@ -121,15 +121,37 @@ async function renderBatchMatrix(detail) {
   try {
     const variation = await api.get(`/api/projects/${slug}/experiences/${experienceId}/matrice`);
     const labels = variation.labels || variation.svgs.map((_, i) => `#${i + 1}`);
+    const canEdit = currentRole === "editor" || currentRole === "owner";
+    const tracking = variation.physical_tracking || [];
 
     // Cartographie : une vignette par échantillon, la structure réelle telle que StructureForge
-    // l'a simulée - pas juste la référence, chaque variante.
+    // l'a simulée - pas juste la référence, chaque variante. L'identifiant physique de
+    // l'échantillon (s'il y en a un) se pose juste en dessous.
     document.getElementById("atlas-content").innerHTML = `
       <div class="atlas-grid">
         ${variation.svgs
-          .map((svg, i) => `<div class="atlas-tile">${svg}<div class="atlas-label">${escapeHtml(labels[i])}</div></div>`)
+          .map((svg, i) => {
+            const sampleId = (tracking[i] && tracking[i].sample_id) || "";
+            const idField = canEdit
+              ? `<input class="field js-atlas-sample-id" data-index="${i}" value="${escapeHtml(sampleId)}" placeholder="identifiant" style="margin-top:6px;font-size:11px;padding:4px 6px;">`
+              : sampleId
+                ? `<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">${escapeHtml(sampleId)}</div>`
+                : "";
+            return `<div class="atlas-tile">${svg}<div class="atlas-label">${escapeHtml(labels[i])}</div>${idField}</div>`;
+          })
           .join("")}
-      </div>`;
+      </div>
+      ${canEdit ? `<button class="btn btn-line" id="save-atlas-tracking-btn" type="button" style="margin-top:10px;">Enregistrer les identifiants physiques</button>` : ""}`;
+
+    if (canEdit) {
+      document.getElementById("save-atlas-tracking-btn").addEventListener("click", () => {
+        const entities = variation.svgs.map((_, i) => {
+          const input = document.querySelector(`.js-atlas-sample-id[data-index="${i}"]`);
+          return { sample_id: input.value.trim() || null, location: (tracking[i] && tracking[i].location) || null };
+        });
+        savePhysicalTracking(entities);
+      });
+    }
 
     const el = document.getElementById("matrix-content");
     if (variation.varying.length === 0) {
@@ -137,23 +159,26 @@ async function renderBatchMatrix(detail) {
       return;
     }
 
-    // Feuille de split : une ligne par échantillon, la valeur du paramètre qui varie - lisible
-    // directement, pas les chemins de structure bruts (gardés en détail technique en dessous).
-    const factorHeader = variation.factor_label || "Paramètre";
+    // Feuille de split : une ligne par échantillon, une colonne par paramètre réellement varié -
+    // lisible directement, pas les chemins de structure bruts (gardés en détail technique en
+    // dessous). factor_labels/factor_values are absent on campaigns saved before multi-paramètre
+    // support - fall back to the single generic "Paramètre" column labels already covered.
+    const factorLabels = variation.factor_labels && variation.factor_labels.length ? variation.factor_labels : ["Paramètre"];
     const splitSheet = `
       <table style="border-collapse:collapse;font-size:13px;width:100%;">
         <thead><tr style="text-align:left;color:var(--text-faint);font-size:11px;text-transform:uppercase;">
           <th style="padding:4px 10px 4px 0;">Échantillon</th>
-          <th style="padding:4px 10px;">${escapeHtml(factorHeader)}</th>
+          ${factorLabels.map((label) => `<th style="padding:4px 10px;">${escapeHtml(label)}</th>`).join("")}
         </tr></thead>
         <tbody>
           ${labels
-            .map(
-              (label, i) => `<tr style="border-top:1px solid var(--border-soft);">
+            .map((label, i) => {
+              const values = variation.factor_values && variation.factor_values[i] ? variation.factor_values[i] : [label];
+              return `<tr style="border-top:1px solid var(--border-soft);">
                 <td class="mono" style="padding:6px 10px 6px 0;">${escapeHtml(label)}</td>
-                <td class="mono" style="padding:6px 10px;">${escapeHtml(variation.factor_values ? String(variation.factor_values[i]) : "—")}</td>
-              </tr>`
-            )
+                ${values.map((v) => `<td class="mono" style="padding:6px 10px;">${escapeHtml(String(v))}</td>`).join("")}
+              </tr>`;
+            })
             .join("")}
         </tbody>
       </table>`;
@@ -497,6 +522,51 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
   }
 });
 
+async function savePhysicalTracking(entities) {
+  clearError();
+  try {
+    const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/entites`, { entities });
+    // like tags/preuves, this records a new version - follow it there.
+    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+  } catch (err) {
+    showError(err);
+  }
+}
+
+function renderPhysicalTracking(detail) {
+  const card = document.getElementById("physical-tracking-content");
+  if (detail.is_batch) {
+    card.innerHTML = `<div class="help">Un identifiant physique par échantillon se pose juste sous chaque vignette de la cartographie des variantes, plus haut.</div>`;
+    return;
+  }
+  const canEdit = currentRole === "editor" || currentRole === "owner";
+  const current = detail.physical_tracking[0] || {};
+  if (!canEdit) {
+    card.innerHTML =
+      current.sample_id || current.location
+        ? `<div style="font-size:13px;">
+            ${current.sample_id ? `Identifiant&nbsp;: <strong>${escapeHtml(current.sample_id)}</strong>` : ""}
+            ${current.location ? `<br>Emplacement&nbsp;: <strong>${escapeHtml(current.location)}</strong>` : ""}
+          </div>`
+        : `<div class="help">Aucun suivi physique enregistré.</div>`;
+    return;
+  }
+  card.innerHTML = `
+    <div class="field-row" style="margin-bottom:10px;">
+      <div><label>Identifiant physique</label><input class="field" id="physical-sample-id" value="${escapeHtml(current.sample_id || "")}" placeholder="ex : W12-A3"></div>
+      <div><label>Emplacement</label><input class="field" id="physical-location" value="${escapeHtml(current.location || "")}" placeholder="ex : congélateur B, tiroir 2"></div>
+    </div>
+    <button class="btn btn-line" id="save-physical-tracking-btn" type="button">Enregistrer</button>`;
+  document.getElementById("save-physical-tracking-btn").addEventListener("click", () => {
+    savePhysicalTracking([
+      {
+        sample_id: document.getElementById("physical-sample-id").value.trim() || null,
+        location: document.getElementById("physical-location").value.trim() || null,
+      },
+    ]);
+  });
+}
+
 function renderReferences(detail) {
   const el = document.getElementById("references-list");
   if (detail.references.length === 0) {
@@ -529,6 +599,7 @@ async function init() {
     renderReferences(currentDetail);
     renderConclusion(currentDetail);
     renderBatchMatrix(currentDetail);
+    renderPhysicalTracking(currentDetail);
     renderEvidence(currentDetail);
 
     if (currentRole === "editor" || currentRole === "owner") {

@@ -1,0 +1,23 @@
+# Démarrage local ou déploiement simple : `docker compose up -d`.
+# Les identifiants SMTP sont optionnels - sans eux, les e-mails (invitation, mot de passe oublié)
+# sont simplement journalisés au lieu d'être envoyés (voir spectre/core/email.py).
+services:
+  spectre:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # URL publique utilisée dans les liens des e-mails envoyés (invitation, réinitialisation).
+      SPECTRE_BASE_URL: "http://localhost:8000"
+      # Décommenter et renseigner pour envoyer réellement les e-mails :
+      # SPECTRE_SMTP_HOST: "smtp.example.com"
+      # SPECTRE_SMTP_PORT: "587"
+      # SPECTRE_SMTP_USER: "spectre@example.com"
+      # SPECTRE_SMTP_PASSWORD: "changeme"
+      # SPECTRE_SMTP_FROM: "spectre@example.com"
+    volumes:
+      - spectre-data:/data
+    restart: unless-stopped
+
+volumes:
+  spectre-data:

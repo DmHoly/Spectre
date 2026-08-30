@@ -7,8 +7,8 @@ only resolves which project's repository to use and translates errors into HTTP 
 Route order matters: ``{ref:path}`` is greedy (it matches slashes too - see
 ``follow/api/app.py``'s own note on the same trick), so every route with a literal suffix after
 ``{ref:path}`` (``/process``, ``/timeline``, ``/diff``, ``/evoluer``, ``/conclure``, ``/preuves``,
-``/combiner``, ``/etiquettes``, ``/diff-externe``, ``/matrice``) is registered before the bare
-"get one experience" route below it - otherwise that catch-all would swallow them.
+``/combiner``, ``/etiquettes``, ``/entites``, ``/diff-externe``, ``/matrice``) is registered
+before the bare "get one experience" route below it - otherwise that catch-all would swallow them.
 """
 
 from __future__ import annotations
@@ -34,14 +34,6 @@ router = APIRouter(prefix="/api/projects", tags=["experiments"])
 
 RUNNING_STATUSES = {"draft", "running"}
 CONCLUDED_STATUSES = {"concluded", "abandoned"}
-
-CAMPAIGN_FIELD_LABELS = {"thickness": "Épaisseur", "depth": "Profondeur", "target_level": "Niveau cible"}
-
-
-def _format_value_label(value: Any) -> str:
-    if isinstance(value, float) and value.is_integer():
-        return str(int(value))
-    return str(value)
 
 
 def _derive_branch(repo: "follow.Repository", parent: Any, requested: str | None) -> str | None:
@@ -91,6 +83,15 @@ class TagsRequest(BaseModel):
     tags: list[str]
 
 
+class EntityTrackingInput(BaseModel):
+    sample_id: str | None = None
+    location: str | None = None
+
+
+class PhysicalTrackingRequest(BaseModel):
+    entities: list[EntityTrackingInput]
+
+
 def _not_found(exc: follow.ExperimentNotFoundError) -> HTTPException:
     return HTTPException(status_code=404, detail=str(exc.args[0]) if exc.args else "expérience introuvable")
 
@@ -137,6 +138,7 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
         "is_batch": experiment.structure_type == structures.ProcessLot.registry_key(),
         "has_editable_process": "structureforge_process" in experiment.metadata,
         "evidence": [e.model_dump(mode="json") for e in experiment.evidence],
+        "physical_tracking": experiment.metadata.get("physical_tracking", []),
     }
 
 
@@ -482,6 +484,58 @@ def set_tags(
     return {"id": experiment.id, "tags": cleaned}
 
 
+@router.post("/{slug}/experiences/{ref:path}/entites", status_code=201)
+def set_physical_tracking(
+    ref: str,
+    body: PhysicalTrackingRequest,
+    project: Project = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Attach a physical identifier and storage location to each entity this experience tracks -
+    a single sample for an ordinary experience, one per variant for a campaign
+    (:class:`spectre.core.structures.ProcessLot`). Purely descriptive bookkeeping Follow has no
+    field for, so like tags this rides in ``Experiment.metadata`` and, like ``etiquettes``, is a
+    lightweight evolution: recording a new version that carries everything else unchanged.
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        parent = repo.get(ref)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    expected_count = (
+        len(structures.ProcessLot.model_validate(parent.structure).entries)
+        if parent.structure_type == structures.ProcessLot.registry_key()
+        else 1
+    )
+    if len(body.entities) != expected_count:
+        raise HTTPException(
+            status_code=422,
+            detail=f"il faut exactement {expected_count} entrée(s) (une par échantillon suivi par cette expérience)",
+        )
+
+    def _clean(value: str | None) -> str | None:
+        return value.strip() or None if value else None
+
+    entities = [{"sample_id": _clean(e.sample_id), "location": _clean(e.location)} for e in body.entities]
+
+    builder = repo.derive(
+        ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
+    )
+    builder.metadata = dict(parent.metadata)
+    builder.evidence = list(parent.evidence)
+    builder.conclusion = parent.conclusion
+    builder.tags = list(parent.tags)
+    builder.metadata["physical_tracking"] = entities
+    try:
+        experiment = builder.commit()
+    except follow.FollowError as exc:
+        raise HTTPException(
+            status_code=400, detail="Impossible d'enregistrer le suivi physique - rechargez la page et réessayez."
+        ) from exc
+    return {"id": experiment.id, "entities": entities}
+
+
 @router.get("/{slug}/experiences/{ref:path}/diff-externe")
 def experience_diff_external(
     ref: str,
@@ -542,20 +596,14 @@ def experience_batch(ref: str, project: Project = Depends(require_role("viewer")
     # The generic diff Follow computes names raw structure paths (e.g. "layers[1].rings[0]..."),
     # which is exactly the internal jargon Spectre's UI avoids everywhere else. Since Spectre is
     # also the only thing that ever creates a ProcessLot (via the guided campaign builder - see
-    # :mod:`spectre.api.structures`), it already knows in plain terms what was varied: surface
-    # that as `factor_label`/`factor_values` (and per-entity `labels`) so the page can lead with
-    # it and keep the raw path table as a secondary, opt-in detail rather than the headline.
-    plan = experiment.metadata.get("campaign_plan")
-    process = experiment.metadata.get("structureforge_process")
-    if plan and process:
-        try:
-            step = process["steps"][plan["step_index"]]
-            payload["factor_label"] = f"{CAMPAIGN_FIELD_LABELS.get(plan['field'], plan['field'])} — {step['name']}"
-            payload["factor_values"] = plan["values"]
-            payload["labels"] = [_format_value_label(v) for v in plan["values"]]
-        except (KeyError, IndexError, TypeError):
-            pass
-    payload.setdefault("labels", [f"#{i + 1}" for i in range(variation.entity_count)])
+    # :mod:`spectre.api.structures`), it already computed, in plain terms, what was varied at
+    # launch time (`generate_campaign_variants`) and stashed it on the commit - surface that
+    # (`factor_labels`/`factor_values`/`labels`) so the page can lead with it and keep the raw
+    # path table as a secondary, opt-in detail rather than the headline.
+    payload["factor_labels"] = experiment.metadata.get("campaign_factor_labels", [])
+    payload["factor_values"] = experiment.metadata.get("campaign_factor_values", [])
+    payload["labels"] = experiment.metadata.get("campaign_labels") or [f"#{i + 1}" for i in range(variation.entity_count)]
+    payload["physical_tracking"] = experiment.metadata.get("physical_tracking", [])
     return payload
 
 

@@ -7,6 +7,7 @@ physics stays in ``structureforge`` - this module only resolves per-project reci
 
 from __future__ import annotations
 
+import itertools
 from typing import Any
 
 import follow
@@ -93,18 +94,29 @@ def frames_payload(frames: list[Frame], materials: MaterialLibrary) -> dict[str,
     }
 
 
-class VariantPlan(BaseModel):
-    """A single-parameter sweep: vary one numeric field (``thickness``, ``depth``,
-    ``target_level`` - whatever the chosen step carries as a ``Length``) of one step, across
-    ``values`` (in that field's own unit), holding everything else constant. This is the one
-    generator Spectre offers for a DOE campaign; Follow's own ``sweep``/``full_factorial``/
-    ``latin_hypercube`` (:mod:`follow.doe.design`) stay available for a domain that varies a
-    plain ``Structure`` field directly, which a process's *steps* never are.
-    """
+CAMPAIGN_FIELD_LABELS = {"thickness": "Épaisseur", "depth": "Profondeur", "target_level": "Niveau cible"}
+
+
+class VariantFactor(BaseModel):
+    """One parameter to vary: a numeric field (``thickness``, ``depth``, ``target_level`` -
+    whatever the chosen step carries as a ``Length``) of the step at ``step_index``, across
+    ``values`` (in that field's own unit)."""
 
     step_index: int
     field: str
     values: list[float]
+
+
+class VariantPlan(BaseModel):
+    """A DOE campaign plan: one or more factors, fully crossed - every combination of every
+    factor's values becomes one entity (5 thicknesses x 3 angles = 15 entities), the same "full
+    factorial" ``follow.doe.design.full_factorial`` offers for a plain ``Structure`` field, applied
+    here to a process's *steps* instead (which ``follow.doe.design`` never varies directly). A full
+    factorial is always statistically identifiable - every factor is crossed with every other by
+    construction - so there is nothing to warn about, unlike a hand-rolled "diagonal" sweep.
+    """
+
+    factors: list[VariantFactor]
 
 
 class CampaignVariants(BaseModel):
@@ -115,6 +127,15 @@ class CampaignVariants(BaseModel):
     entries: list[ProcessStructure]
     svgs: list[str]
     variation: BatchVariation
+    labels: list[str]  # one combined, human label per entity - e.g. "10 · 20" for 2 factors
+    factor_labels: list[str]  # one label per factor - e.g. "Épaisseur — Oxyde initial"
+    factor_values: list[list[float]]  # per entity, the raw value of each factor, same order
+
+
+def _format_value_label(value: Any) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 def _step_with_value(step: ProcessStep, field: str, value: float) -> ProcessStep:
@@ -131,29 +152,45 @@ def _step_with_value(step: ProcessStep, field: str, value: float) -> ProcessStep
 def generate_campaign_variants(
     slug: str, substrate: SubstrateSpec, steps: list[ProcessStep], plan: VariantPlan
 ) -> CampaignVariants:
-    """Re-simulate ``steps`` once per value in ``plan.values``, varying ``plan.field`` of the step
-    at ``plan.step_index`` each time - everything else (substrate, every other step) held
-    constant. Returns one flattened ``ProcessStructure`` and one preview SVG per variant, plus
-    Follow's own constant/varying split (``follow.doe.batch.analyze_batch``) so the "matrice de
-    split" is available before anyone commits to the campaign, not only after.
+    """Re-simulate ``steps`` once per combination in the full cross of every factor's values,
+    varying each factor's field on its step for that combination - everything else (substrate,
+    every other step, every other field) held constant. Returns one flattened ``ProcessStructure``
+    and one preview SVG per combination, plus Follow's own constant/varying split
+    (``follow.doe.batch.analyze_batch``) so the "matrice de split" is available before anyone
+    commits to the campaign, not only after.
     """
-    if not plan.values:
-        raise SimulationFailedError("il faut au moins une valeur pour créer des variantes")
-    if not (0 <= plan.step_index < len(steps)):
-        raise SimulationFailedError("étape sélectionnée invalide")
+    if not plan.factors:
+        raise SimulationFailedError("il faut au moins un paramètre à faire varier")
+    for factor in plan.factors:
+        if not factor.values:
+            raise SimulationFailedError("il faut au moins une valeur pour chaque paramètre")
+        if not (0 <= factor.step_index < len(steps)):
+            raise SimulationFailedError("étape sélectionnée invalide")
+
+    factor_labels = [
+        f"{CAMPAIGN_FIELD_LABELS.get(factor.field, factor.field)} — {steps[factor.step_index].name}"
+        for factor in plan.factors
+    ]
 
     entries: list[ProcessStructure] = []
     svgs: list[str] = []
-    for value in plan.values:
+    labels: list[str] = []
+    factor_values: list[list[float]] = []
+    for combo in itertools.product(*(factor.values for factor in plan.factors)):
         varied_steps = list(steps)
-        varied_steps[plan.step_index] = _step_with_value(steps[plan.step_index], plan.field, value)
+        for factor, value in zip(plan.factors, combo):
+            varied_steps[factor.step_index] = _step_with_value(varied_steps[factor.step_index], factor.field, value)
         geometry, frames, materials = run_simulation(slug, substrate, varied_steps)
         entries.append(to_structure(geometry))
         material_colors = {m.name: m.color for m in materials}
         svgs.append(frame_to_svg(frames[-1], material_colors))
+        labels.append(" · ".join(_format_value_label(v) for v in combo))
+        factor_values.append(list(combo))
 
     variation = analyze_batch(entries)
-    return CampaignVariants(entries=entries, svgs=svgs, variation=variation)
+    return CampaignVariants(
+        entries=entries, svgs=svgs, variation=variation, labels=labels, factor_labels=factor_labels, factor_values=factor_values
+    )
 
 
 class _RenderableLayer:
