@@ -62,6 +62,12 @@
           <div id="matrix-content"></div>
         </div>
 
+        <div class="card card-pad">
+          <div class="section-title" style="margin-bottom:16px;">Preuves</div>
+          <div id="evidence-list"></div>
+          <div id="add-evidence-wrap"></div>
+        </div>
+
         <div class="card card-pad" id="conclusion-section"></div>
 
       </div>
@@ -75,6 +81,9 @@
 
         <div class="card card-pad">
           <div class="section-title" style="margin-bottom:14px;">Comparer avec</div>
+          <label style="font-size:11px;">Projet</label>
+          <select class="field" id="compare-project-select" style="margin-bottom:8px;"></select>
+          <label style="font-size:11px;">Expérience</label>
           <select class="field" id="compare-select" style="margin-bottom:10px;"></select>
           <button class="btn btn-line btn-block" id="compare-btn" type="button">Voir les différences</button>
           <div id="compare-result" style="margin-top:12px;max-height:260px;overflow:auto;"></div>

@@ -237,23 +237,48 @@ function renderConclusion(detail) {
   });
 }
 
-async function populateCompareSelect() {
-  const select = document.getElementById("compare-select");
+async function populateCompareProjectSelect() {
+  const projectSelect = document.getElementById("compare-project-select");
   try {
-    const data = await api.get(`/api/projects/${slug}/experiences?status=all`);
-    const others = data.items.filter((item) => item.id !== experienceId);
-    select.innerHTML = others.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join("");
+    const myProjects = await api.get("/api/projects");
+    projectSelect.innerHTML = myProjects
+      .map((p) => `<option value="${p.slug}">${escapeHtml(p.name)}${p.slug === slug ? " (ce projet)" : ""}</option>`)
+      .join("");
+    projectSelect.value = slug;
   } catch (err) {
     // silent: comparison is a secondary feature
   }
+  await populateCompareExperienceSelect(projectSelect.value);
 }
 
+async function populateCompareExperienceSelect(targetSlug) {
+  const select = document.getElementById("compare-select");
+  try {
+    const data = await api.get(`/api/projects/${targetSlug}/experiences?status=all`);
+    const others = data.items.filter((item) => !(targetSlug === slug && item.id === experienceId));
+    select.innerHTML = others.length
+      ? others.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join("")
+      : `<option value="">Aucune expérience à comparer</option>`;
+  } catch (err) {
+    select.innerHTML = `<option value="">—</option>`;
+  }
+}
+
+document.getElementById("compare-project-select").addEventListener("change", (event) => {
+  populateCompareExperienceSelect(event.target.value);
+});
+
 document.getElementById("compare-btn").addEventListener("click", async () => {
+  const targetProject = document.getElementById("compare-project-select").value;
   const target = document.getElementById("compare-select").value;
   if (!target) return;
+  const box = document.getElementById("compare-result");
   try {
-    const diff = await api.get(`/api/projects/${slug}/experiences/${experienceId}/diff?against=${target}`);
-    const box = document.getElementById("compare-result");
+    const endpoint =
+      targetProject === slug
+        ? `/api/projects/${slug}/experiences/${experienceId}/diff?against=${target}`
+        : `/api/projects/${slug}/experiences/${experienceId}/diff-externe?autre_projet=${targetProject}&autre_experience=${target}`;
+    const diff = await api.get(endpoint);
     if (diff.entries.length === 0) {
       box.innerHTML = `<div class="help">Aucune différence de structure.</div>`;
     } else {
@@ -266,6 +291,59 @@ document.getElementById("compare-btn").addEventListener("click", async () => {
     showError(err);
   }
 });
+
+function renderEvidence(detail) {
+  const list = document.getElementById("evidence-list");
+  list.innerHTML = detail.evidence.length
+    ? detail.evidence
+        .map((e) => {
+          const metricEntries = Object.entries(e.metrics || {});
+          const metricText = metricEntries
+            .map(([name, q]) => `${escapeHtml(name)} : ${escapeHtml(String(q.value))}${q.unit ? " " + escapeHtml(q.unit) : ""}`)
+            .join(" · ");
+          return `
+            <div style="padding:10px 0;border-top:1px solid var(--border-soft);">
+              <div style="font-size:13px;font-weight:600;">${escapeHtml(e.description)}</div>
+              <div style="font-size:12px;color:var(--text-soft);margin-top:2px;word-break:break-all;">${e.source.startsWith("http") ? `<a href="${escapeHtml(e.source)}" target="_blank" rel="noopener">${escapeHtml(e.source)}</a>` : escapeHtml(e.source)}</div>
+              ${metricText ? `<div class="mono" style="font-size:11.5px;color:var(--text-faint);margin-top:4px;">${metricText}</div>` : ""}
+            </div>`;
+        })
+        .join("")
+    : `<div class="help">Aucune preuve enregistrée.</div>`;
+
+  const formWrap = document.getElementById("add-evidence-wrap");
+  if (currentRole !== "editor" && currentRole !== "owner") {
+    formWrap.innerHTML = "";
+    return;
+  }
+  formWrap.innerHTML = `
+    <form id="evidence-form" class="field-group" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
+      <div><label>Description</label><input class="field" id="evidence-description" placeholder="ex : mesure d'épaisseur au profilomètre" required></div>
+      <div><label>Source</label><input class="field" id="evidence-source" placeholder="lien, fichier ou référence" required></div>
+      <div class="field-row">
+        <input class="field" id="evidence-metric-name" placeholder="mesure (optionnel)">
+        <input class="field" id="evidence-metric-value" type="number" placeholder="valeur">
+      </div>
+      <button class="btn btn-line btn-block" type="submit">Ajouter la preuve</button>
+    </form>`;
+  document.getElementById("evidence-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearError();
+    const metricName = document.getElementById("evidence-metric-name").value.trim();
+    const metricValueRaw = document.getElementById("evidence-metric-value").value;
+    try {
+      await api.post(`/api/projects/${slug}/experiences/${experienceId}/preuves`, {
+        description: document.getElementById("evidence-description").value,
+        source: document.getElementById("evidence-source").value,
+        metric_name: metricName || null,
+        metric_value: metricValueRaw ? parseFloat(metricValueRaw) : null,
+      });
+      window.location.reload();
+    } catch (err) {
+      showError(err);
+    }
+  });
+}
 
 function renderReferences(detail) {
   const el = document.getElementById("references-list");
@@ -297,6 +375,7 @@ async function init() {
     renderReferences(currentDetail);
     renderConclusion(currentDetail);
     renderBatchMatrix(currentDetail);
+    renderEvidence(currentDetail);
 
     if (currentRole === "editor" || currentRole === "owner") {
       document.getElementById("evolve-btn").style.display = "";
@@ -311,7 +390,7 @@ async function init() {
     ]);
     renderTimeline(timeline.items);
     renderStructure(currentDetail, diff);
-    populateCompareSelect();
+    populateCompareProjectSelect();
   } catch (err) {
     showError(err);
   }

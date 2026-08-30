@@ -12,6 +12,7 @@ before the bare "get one experience" route below it - otherwise that catch-all w
 
 from __future__ import annotations
 
+import secrets
 from typing import Any
 
 import follow
@@ -22,6 +23,7 @@ from structureforge.adapters import follow_adapter
 
 from ..core import projects, structures
 from ..core.accounts import User
+from ..core.permissions import get_project as resolve_project
 from ..core.permissions import require_role
 from ..core.projects import Project
 from .deps import get_current_user
@@ -48,6 +50,14 @@ class ConcludeRequest(BaseModel):
     summary: str | None = None
     next_steps: str | None = None
     objective_results: list[ObjectiveResultInput] = []
+
+
+class EvidenceInput(BaseModel):
+    description: str
+    source: str
+    metric_name: str | None = None
+    metric_value: float | None = None
+    metric_unit: str | None = None
 
 
 def _not_found(exc: follow.ExperimentNotFoundError) -> HTTPException:
@@ -85,6 +95,7 @@ def _detail(experiment: Any) -> dict:
         "structure_svg": structures.render_structure_svg(experiment.structure_type, experiment.structure),
         "is_batch": experiment.structure_type == structures.ProcessLot.registry_key(),
         "has_editable_process": "structureforge_process" in experiment.metadata,
+        "evidence": [e.model_dump(mode="json") for e in experiment.evidence],
     }
 
 
@@ -115,7 +126,9 @@ def project_graph_html(project: Project = Depends(require_role("viewer"))) -> st
         )
     from follow.presentation.graphing import build_graph_figure
 
-    return build_graph_figure(repo).to_html(include_plotlyjs=True, full_html=True)
+    figure = build_graph_figure(repo)
+    figure.update_layout(title="Vue d'ensemble du projet")
+    return figure.to_html(include_plotlyjs=True, full_html=True)
 
 
 @router.get("/{slug}/experiences/{ref:path}/process")
@@ -255,6 +268,81 @@ def conclude_experience(
     except follow.FollowError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"id": experiment.id}
+
+
+@router.post("/{slug}/experiences/{ref:path}/preuves", status_code=201)
+def add_evidence(
+    ref: str,
+    body: EvidenceInput,
+    project: Project = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Attach a piece of evidence (a link, a measurement) to an experience - like ``conclure``,
+    this is a lightweight evolution (structure/steps/objectives all carried over unchanged, only
+    the evidence list grows) rather than a mutation, since committed experiences are immutable.
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        parent = repo.get(ref)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    metric = None
+    if body.metric_name:
+        if body.metric_value is None:
+            raise HTTPException(status_code=422, detail="une valeur est requise pour la mesure nommée")
+        metric = {body.metric_name: follow.Quantity(value=body.metric_value, unit=body.metric_unit)}
+
+    builder = repo.derive(ref, title=parent.title, intent=parent.intent, author=user.name)
+    builder.metadata = dict(parent.metadata)
+    builder.evidence = list(parent.evidence)
+    builder.add_evidence(
+        id=secrets.token_hex(6),
+        description=body.description,
+        source=body.source,
+        metrics=metric or {},
+    )
+    try:
+        experiment = builder.commit()
+    except follow.FollowError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"id": experiment.id}
+
+
+@router.get("/{slug}/experiences/{ref:path}/diff-externe")
+def experience_diff_external(
+    ref: str,
+    autre_projet: str,
+    autre_experience: str,
+    project: Project = Depends(require_role("viewer")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Compare this experience's structure against one in a *different* project - Follow's own
+    ``repo.diff`` only ever compares within one repository, so this calls
+    ``follow.diff_structures`` directly on the two experiments' raw structure dicts instead.
+    Requires at least read access to both projects - comparing against a project the caller can't
+    see would leak its content through the diff.
+    """
+    other_project = resolve_project(autre_projet)
+    role = projects.role_for(other_project.id, user.id)
+    if role is None:
+        raise HTTPException(status_code=403, detail="vous n'avez pas accès à cet autre projet")
+
+    repo = projects.get_repository(project.slug)
+    other_repo = projects.get_repository(other_project.slug)
+    try:
+        experiment = repo.get(ref)
+        other_experiment = other_repo.get(autre_experience)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    diff = follow.diff_structures(experiment.structure, other_experiment.structure)
+    return {
+        "target": other_experiment.id,
+        "target_project": other_project.name,
+        "target_title": other_experiment.title,
+        **diff.model_dump(mode="json"),
+    }
 
 
 @router.get("/{slug}/experiences/{ref:path}/matrice")
