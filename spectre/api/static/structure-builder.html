@@ -84,21 +84,35 @@
         <button class="btn btn-line btn-block" id="add-step-shortcut-btn" type="button" style="margin-top:10px;display:none;">+ Ajouter une couche</button>
       </div>
 
-      <details id="campaign-section" class="card" style="padding:16px;background:var(--bg);">
-        <summary class="section-title" style="margin-bottom:10px;cursor:pointer;">Créer plusieurs variantes (optionnel)</summary>
-        <div class="help" style="margin-bottom:10px;">Faites varier un ou plusieurs paramètres pour lancer une campagne de plusieurs échantillons en une seule expérience. Avec plusieurs paramètres, toutes les combinaisons sont générées (ex : 3 épaisseurs &times; 3 angles = 9 échantillons).</div>
-        <div id="campaign-factors" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
-        <button class="btn btn-line btn-block" id="campaign-add-factor-btn" type="button" style="margin-bottom:10px;">+ Ajouter un paramètre</button>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-line" id="campaign-preview-btn" type="button" style="flex:1;">Prévisualiser</button>
-          <button class="btn btn-line" id="campaign-clear-btn" type="button">Annuler</button>
+      <details id="campaign-section" class="card" style="padding:0;background:var(--bg);overflow:hidden;flex-shrink:0;">
+        <summary class="disclosure-btn disclosure-btn--tint">
+          <span>
+            Campagne DOE — plusieurs échantillons (split)
+            <span class="disclosure-btn__sub">Faire varier un ou plusieurs paramètres (ex : dopage) et lancer tous les échantillons en une fois.</span>
+          </span>
+          <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div style="padding:14px 16px 16px;">
+          <div class="help" style="margin-bottom:10px;">Faites varier un ou plusieurs paramètres pour lancer une campagne de plusieurs échantillons en une seule expérience. Avec plusieurs paramètres, toutes les combinaisons sont générées (ex : 3 épaisseurs &times; 3 angles = 9 échantillons). La feuille de split (qui a reçu quelle valeur) apparaîtra sur la fiche de l'expérience une fois lancée.</div>
+          <div id="campaign-factors" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
+          <button class="btn btn-line btn-block" id="campaign-add-factor-btn" type="button" style="margin-bottom:10px;">+ Ajouter un paramètre</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-line" id="campaign-preview-btn" type="button" style="flex:1;">Prévisualiser</button>
+            <button class="btn btn-line" id="campaign-clear-btn" type="button">Annuler</button>
+          </div>
+          <div id="campaign-result"></div>
         </div>
-        <div id="campaign-result"></div>
       </details>
 
-      <details id="objectives-section">
-        <summary class="section-title" style="margin-bottom:6px;cursor:pointer;">Objectifs</summary>
-        <div class="help" style="margin-bottom:12px;">Ce qu'on cherche à savoir avec cette expérience, et comment on saura si c'est atteint.</div>
+      <details id="objectives-section" class="card" style="padding:0;overflow:hidden;flex-shrink:0;">
+        <summary class="disclosure-btn disclosure-btn--line">
+          <span>
+            Objectifs
+            <span class="disclosure-btn__sub">Ce qu'on cherche à savoir, et comment on saura si c'est atteint.</span>
+          </span>
+          <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div style="padding:0 16px 16px;">
         <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
         <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
           <div><label>Objectif</label><input class="field" id="obj-name" placeholder="ex : isolation électrique" required></div>
@@ -118,6 +132,7 @@
           <div><label>Comment on compte le vérifier</label><textarea class="field" id="obj-verification" rows="2" placeholder="ex : mesure au profilomètre après dépôt"></textarea></div>
           <button class="btn btn-line btn-block" type="submit">Ajouter l'objectif</button>
         </form>
+        </div>
       </details>
 
       <div id="branch-choice-wrap" style="display:none;">

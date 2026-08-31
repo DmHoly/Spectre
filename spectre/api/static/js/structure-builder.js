@@ -83,9 +83,15 @@ function renderKindFields(kind) {
       </div>
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="20"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>
-      <details id="f-deposition-advanced">
-        <summary style="cursor:pointer;font-size:12px;color:var(--text-faint);">Plus de détails (paramètres process)</summary>
-        <div style="margin-top:10px;display:flex;flex-direction:column;gap:12px;">
+      <details id="f-deposition-advanced" class="card" style="padding:0;overflow:hidden;margin-top:4px;flex-shrink:0;">
+        <summary class="disclosure-btn disclosure-btn--tint" style="padding:10px 12px;font-size:13px;">
+          <span>
+            Paramètres process &amp; dopage
+            <span class="disclosure-btn__sub">Ajoutez un flux, une puissance... et une grandeur calculée à partir d'eux (ex : dopage).</span>
+          </span>
+          <svg class="disclosure-btn__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div style="padding:10px 12px 12px;display:flex;flex-direction:column;gap:12px;">
           <div>
             <label>Paramètres process</label>
             <div class="help" style="margin-bottom:6px;">Une grandeur du procédé (ex : flux) à suivre ou à faire varier.</div>
@@ -93,8 +99,8 @@ function renderKindFields(kind) {
             <button class="btn btn-line" id="f-add-process-param-btn" type="button" style="padding:6px 12px;font-size:12.5px;">+ Ajouter un paramètre</button>
           </div>
           <div>
-            <label>Grandeurs physiques estimées</label>
-            <div class="help" style="margin-bottom:6px;">Une estimation que vous définissez à partir d'un paramètre process (ex : dopage = flux &times; 2).</div>
+            <label>Grandeurs physiques estimées (ex : dopage)</label>
+            <div class="help" style="margin-bottom:6px;">Une grandeur qu'on ne simule pas directement, calculée à partir d'un paramètre process qui sert de proxy — par exemple <code>dopage = flux &times; 2</code>.</div>
             <div id="f-estimates-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px;"></div>
             <button class="btn btn-line" id="f-add-estimate-btn" type="button" style="padding:6px 12px;font-size:12.5px;">+ Ajouter une estimation</button>
           </div>
