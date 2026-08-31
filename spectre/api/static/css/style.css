@@ -1,8 +1,11 @@
 /* Spectre — feuille de style commune.
    Direction visuelle : "instrument de labo fiable" - sobre, précis, sans jargon technique.
-   Tokens extraits de la maquette (voir README pour le lien vers le canevas de direction). */
-
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+   Tokens extraits de la maquette (voir README pour le lien vers le canevas de direction).
+   Les polices (IBM Plex) sont chargées depuis chaque page HTML via un <link> asynchrone
+   (media="print" bascule en "all" une fois chargé), pas un @import ici : un @import est
+   toujours bloquant pour le rendu ET l'exécution des <script> qui suivent - un réseau lent ou
+   restrictif vers Google Fonts (courant sur un réseau d'entreprise/labo) suffirait sinon à
+   empêcher l'application entière de démarrer. */
 
 :root {
   --bg: #faf9f6;
