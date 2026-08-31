@@ -583,82 +583,60 @@ textarea:focus {
 
 /* -- constructeur de structure ---------------------------------------------------------- */
 
-.builder-shell {
+/* -- constructeur de structure : grille structure (gauche) / panneau contextuel (droite) - le
+   reste (campagne, objectifs) vit en accordéons pleine largeur en dessous, la page défile
+   normalement comme les autres écrans (plus de colonne verrouillée à la hauteur de l'écran). */
+
+.builder-grid {
   display: grid;
-  grid-template-columns: 460px minmax(0, 1fr);
-  height: calc(100vh - 68px);
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  align-items: start;
 }
 
-.builder-sidebar {
-  border-right: 1px solid var(--border-soft);
-  background: var(--surface);
-  padding: var(--space-5) var(--space-5);
+@media (max-width: 860px) {
+  .builder-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.builder-canvas-svg {
+  height: 340px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: auto;
+  padding: 12px;
+}
+
+.builder-canvas-svg svg {
+  max-height: 100%;
+  max-width: 100%;
+}
+
+#context-panel {
+  min-height: 340px;
+}
+
+.builder-empty-state {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
-  overflow-y: auto;
-  min-height: 0;
-}
-
-/* Champs un peu plus confortables dans le panneau des paramètres, maintenant qu'il a la
-   largeur pour ça - la taille de police globale (12-13.5px) reste correcte ailleurs (fiches,
-   formulaires courts), mais se sentait exigüe ici avec beaucoup de champs empilés. */
-.builder-sidebar label {
-  font-size: 12.5px;
-}
-.builder-sidebar .field,
-.builder-sidebar input,
-.builder-sidebar select,
-.builder-sidebar textarea {
-  font-size: 14.5px;
-  padding: 10px 12px;
-}
-
-.builder-canvas {
-  padding: var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  overflow-y: auto;
-  min-height: 0;
-}
-
-.builder-canvas-card {
-  max-height: 54vh;
-}
-
-/* -- onglets internes au constructeur (Structure / Campagne / Objectifs) ----------------- */
-
-.builder-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border-soft);
-  flex: none;
-}
-
-.builder-tab {
-  padding: 9px 12px;
-  font-size: 13px;
-  font-weight: 600;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
   color: var(--text-faint);
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  background: none;
-  border-top: none;
-  border-left: none;
-  border-right: none;
-  font-family: inherit;
+  padding: 48px 24px;
+  min-height: 300px;
 }
 
-.builder-tab.active {
-  color: var(--accent-dark);
-  border-bottom-color: var(--accent);
-}
-
-.builder-tab-panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
+.builder-empty-state p {
+  font-size: 13px;
+  max-width: 32ch;
+  line-height: 1.5;
 }
 
 .step-row {

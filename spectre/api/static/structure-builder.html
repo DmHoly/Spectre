@@ -28,41 +28,58 @@
     </div>
   </div>
 
-  <div id="error" class="error" style="display:none;margin:14px 32px 0;"></div>
+  <div class="page" style="max-width:1360px;">
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
 
-  <div class="builder-shell">
-    <div class="builder-sidebar">
-
-      <div class="builder-tabs">
-        <button class="builder-tab active" id="tab-btn-structure" type="button">Structure</button>
-        <button class="builder-tab" id="tab-btn-campagne" type="button">Campagne (DOE)</button>
-        <button class="builder-tab" id="tab-btn-objectifs" type="button">Objectifs</button>
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <div class="field-group">
+        <div><label>Titre de l'expérience</label><input class="field" id="exp-title" placeholder="ex : Contact ohmique PGaN, dopage cible"></div>
+        <div class="field-row">
+          <div><label>Intention (pourquoi fait-on cette expérience ?)</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier, et pourquoi maintenant ?"></textarea></div>
+          <div><label>Hypothèse (optionnelle)</label><textarea class="field" id="exp-hypothesis" rows="2" placeholder="Ce qu'on pense observer"></textarea></div>
+        </div>
       </div>
+    </div>
 
-      <div class="builder-tab-panel" id="tab-panel-structure">
-
+    <div class="builder-grid">
+      <div class="card card-pad">
         <div id="substrate-section">
-          <div class="section-title" style="margin-bottom:14px;">Substrat</div>
-          <div class="field-group">
+          <div class="section-title" style="margin-bottom:12px;">Substrat</div>
+          <div class="field-row" style="grid-template-columns:1.4fr 1fr 1fr;gap:8px;margin-bottom:14px;">
             <div><label>Matériau</label><select class="field" id="substrate-material"></select></div>
-            <div class="field-row">
-              <div><label>Largeur</label><input class="field" id="substrate-width" type="number" value="200"></div>
-              <div><label>Unité</label><select class="field" id="substrate-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
-            </div>
-            <div class="field-row">
-              <div><label>Épaisseur</label><input class="field" id="substrate-thickness" type="number" value="50"></div>
-              <div><label>Unité</label><select class="field" id="substrate-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
-            </div>
+            <div><label>Largeur</label><input class="field" id="substrate-width" type="number" value="200"></div>
+            <div><label>Unité</label><select class="field" id="substrate-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
+          </div>
+          <div class="field-row" style="grid-template-columns:1.4fr 1fr 1fr;gap:8px;">
+            <div></div>
+            <div><label>Épaisseur</label><input class="field" id="substrate-thickness" type="number" value="50"></div>
+            <div><label>Unité</label><select class="field" id="substrate-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
           </div>
         </div>
 
-        <div>
-          <div class="section-title" style="margin-bottom:8px;">Vue</div>
-          <div class="view-toggle" style="margin-bottom:14px;">
+        <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div class="view-toggle">
             <button class="view-toggle__btn active" id="view-mode-couches" type="button">Par couches</button>
             <button class="view-toggle__btn" id="view-mode-etapes" type="button">Par étapes</button>
           </div>
-          <div class="help" id="view-mode-help" style="margin-bottom:14px;">Cliquez une couche du dessin pour l'éditer. Disponible tant que la structure n'est faite que de dépôts (empilement d'épitaxie).</div>
+          <div style="font-size:11px;color:var(--text-faint);" id="scrubber-label">Pas encore simulé</div>
+        </div>
+        <div class="help" id="view-mode-help" style="margin:6px 0 12px;">Cliquez une couche du dessin pour l'éditer. Disponible tant que la structure n'est faite que de dépôts (empilement d'épitaxie).</div>
+
+        <div id="svg-container" class="builder-canvas-svg"></div>
+        <div class="scrubber-track" id="scrubber-track" style="margin:10px 0;"></div>
+        <div class="legend" id="legend" style="margin-bottom:14px;"></div>
+
+        <div class="section-title" style="margin-bottom:6px;">Étapes du procédé (<span id="steps-count">0</span>)</div>
+        <div class="help" style="margin-bottom:10px;" id="steps-list-help">Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.</div>
+        <div id="steps-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <button class="btn btn-line btn-block" id="add-step-shortcut-btn" type="button" style="margin-top:10px;display:none;">+ Ajouter une couche</button>
+      </div>
+
+      <div class="card card-pad" id="context-panel">
+        <div id="context-panel-empty" class="builder-empty-state">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
+          <p>Cliquez une couche du dessin, une étape dans la liste, ou « + Ajouter une couche », pour l'éditer ici.</p>
         </div>
 
         <div id="step-form-section" style="display:none;">
@@ -87,20 +104,20 @@
             <button class="btn btn-line btn-block" id="cancel-edit-btn" type="button" style="display:none;">Annuler la modification</button>
           </div>
         </div>
-
-        <div>
-          <div class="section-title" style="margin-bottom:6px;">Étapes du procédé (<span id="steps-count">0</span>)</div>
-          <div class="help" style="margin-bottom:10px;" id="steps-list-help">Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.</div>
-          <div id="steps-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-          <button class="btn btn-line btn-block" id="add-step-shortcut-btn" type="button" style="margin-top:10px;display:none;">+ Ajouter une couche</button>
-        </div>
-
       </div>
+    </div>
 
-      <div class="builder-tab-panel" id="tab-panel-campagne" style="display:none;">
-        <div>
-          <div class="section-title" style="margin-bottom:6px;">Campagne DOE — plusieurs échantillons (split)</div>
-          <div class="help" style="margin-bottom:12px;">Faites varier un ou plusieurs paramètres (ex : dopage) pour lancer une campagne de plusieurs échantillons en une seule expérience. Avec plusieurs paramètres, toutes les combinaisons sont générées (ex : 3 épaisseurs &times; 3 angles = 9 échantillons). La feuille de split (qui a reçu quelle valeur) apparaîtra sur la fiche de l'expérience une fois lancée.</div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin:20px 0;">
+      <details id="campaign-section" class="card" style="padding:0;background:var(--bg);overflow:hidden;">
+        <summary class="disclosure-btn disclosure-btn--tint">
+          <span>
+            Campagne DOE — plusieurs échantillons (split)
+            <span class="disclosure-btn__sub">Faire varier un ou plusieurs paramètres (ex : dopage) et lancer tous les échantillons en une fois.</span>
+          </span>
+          <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div style="padding:14px 16px 16px;">
+          <div class="help" style="margin-bottom:10px;">Avec plusieurs paramètres, toutes les combinaisons sont générées (ex : 3 épaisseurs &times; 3 angles = 9 échantillons). La feuille de split (qui a reçu quelle valeur) apparaîtra sur la fiche de l'expérience une fois lancée.</div>
           <div id="campaign-factors" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
           <button class="btn btn-line btn-block" id="campaign-add-factor-btn" type="button" style="margin-bottom:10px;">+ Ajouter un paramètre</button>
           <div style="display:flex;gap:8px;">
@@ -109,12 +126,17 @@
           </div>
           <div id="campaign-result"></div>
         </div>
-      </div>
+      </details>
 
-      <div class="builder-tab-panel" id="tab-panel-objectifs" style="display:none;">
-        <div>
-          <div class="section-title" style="margin-bottom:6px;">Objectifs</div>
-          <div class="help" style="margin-bottom:12px;">Ce qu'on cherche à savoir avec cette expérience, et comment on saura si c'est atteint.</div>
+      <details id="objectives-section" class="card" style="padding:0;overflow:hidden;">
+        <summary class="disclosure-btn disclosure-btn--line">
+          <span>
+            Objectifs
+            <span class="disclosure-btn__sub">Ce qu'on cherche à savoir, et comment on saura si c'est atteint.</span>
+          </span>
+          <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div style="padding:0 16px 16px;">
           <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
           <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
             <div><label>Objectif</label><input class="field" id="obj-name" placeholder="ex : isolation électrique" required></div>
@@ -135,9 +157,9 @@
             <button class="btn btn-line btn-block" type="submit">Ajouter l'objectif</button>
           </form>
         </div>
-      </div>
+      </details>
 
-      <div id="branch-choice-wrap" style="display:none;">
+      <div class="card card-pad" id="branch-choice-wrap" style="display:none;">
         <div class="section-title" style="margin-bottom:10px;">Piste</div>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px;color:var(--text);">
@@ -150,35 +172,9 @@
           <div class="help">Une nouvelle piste garde le lien avec la version de départ, mais évolue séparément — pratique pour comparer deux directions.</div>
         </div>
       </div>
-
-      <div>
-        <div class="section-title" style="margin-bottom:14px;">Lancer</div>
-        <div class="field-group">
-          <div><label>Titre de l'expérience</label><input class="field" id="exp-title"></div>
-          <div><label>Intention (pourquoi fait-on cette expérience ?)</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier, et pourquoi maintenant ?"></textarea></div>
-          <div><label>Hypothèse (optionnelle)</label><input class="field" id="exp-hypothesis"></div>
-        </div>
-      </div>
-
-      <button class="btn btn-primary btn-block" id="launch-btn" style="font-size:15px;padding:13px;">Lancer le suivi de cette expérience</button>
     </div>
 
-    <div class="builder-canvas">
-      <div class="mono" style="display:flex;align-items:center;gap:10px;">
-        <div style="font-size:11px;color:var(--text-faint);letter-spacing:.03em;">ÉTAPE</div>
-        <div class="scrubber-track" id="scrubber-track"></div>
-        <div style="font-size:12px;color:var(--text-soft);white-space:nowrap;" id="scrubber-label">Pas encore simulé</div>
-      </div>
-
-      <div class="card builder-canvas-card" style="display:flex;flex-direction:column;">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-soft);">
-          <div style="font-size:13.5px;font-weight:700;">Coupe transversale</div>
-          <button class="btn btn-tint" id="simulate-btn" type="button" style="padding:8px 16px;font-size:13px;">Simuler</button>
-        </div>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto;min-height:0;" id="svg-container"></div>
-        <div class="legend" id="legend"></div>
-      </div>
-    </div>
+    <button class="btn btn-primary btn-block" id="launch-btn" style="font-size:15px;padding:14px;">Lancer le suivi de cette expérience</button>
   </div>
 
   <script src="/static/js/api.js"></script>

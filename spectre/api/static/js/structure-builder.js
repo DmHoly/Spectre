@@ -380,6 +380,7 @@ function updateViewModeAvailability() {
 function updateStepFormVisibility() {
   const formVisible = state.viewMode === "etapes" || state.editingIndex !== null || state.showStepForm;
   document.getElementById("step-form-section").style.display = formVisible ? "" : "none";
+  document.getElementById("context-panel-empty").style.display = formVisible ? "none" : "";
   document.getElementById("add-step-shortcut-btn").style.display =
     !formVisible && state.viewMode === "couches" ? "" : "none";
   document.getElementById("cancel-edit-btn").style.display =
@@ -514,16 +515,6 @@ function setViewMode(mode) {
 document.getElementById("view-mode-couches").addEventListener("click", () => setViewMode("couches"));
 document.getElementById("view-mode-etapes").addEventListener("click", () => setViewMode("etapes"));
 
-const BUILDER_TABS = ["structure", "campagne", "objectifs"];
-function setActiveTab(tab) {
-  BUILDER_TABS.forEach((name) => {
-    document.getElementById(`tab-btn-${name}`).classList.toggle("active", name === tab);
-    document.getElementById(`tab-panel-${name}`).style.display = name === tab ? "" : "none";
-  });
-}
-BUILDER_TABS.forEach((name) => {
-  document.getElementById(`tab-btn-${name}`).addEventListener("click", () => setActiveTab(name));
-});
 document.getElementById("add-step-shortcut-btn").addEventListener("click", startAddingStep);
 
 document.getElementById("svg-container").addEventListener("click", (event) => {
@@ -763,7 +754,7 @@ async function loadExistingProcess() {
     const verification = detail.objective_verification || {};
     state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
     renderObjectives();
-    if (state.objectives.length > 0) setActiveTab("objectifs");
+    document.getElementById("objectives-section").open = state.objectives.length > 0;
   } catch (err) {
     showError(err);
   }
@@ -845,14 +836,6 @@ function scheduleSimulate(delay = 120) {
   }, delay);
 }
 
-document.getElementById("simulate-btn").addEventListener("click", () => {
-  if (simulateTimer) {
-    clearTimeout(simulateTimer);
-    simulateTimer = null;
-  }
-  simulateNow();
-});
-
 ["substrate-material", "substrate-width", "substrate-width-unit", "substrate-thickness", "substrate-thickness-unit"].forEach(
   (id) => document.getElementById(id).addEventListener("change", () => scheduleSimulate())
 );
@@ -925,7 +908,7 @@ async function loadTemplateProcess() {
 async function init() {
   document.getElementById("crumb").textContent = "/ " + slug;
   if (evolveExperienceId) {
-    document.getElementById("tab-btn-campagne").style.display = "none";
+    document.getElementById("campaign-section").style.display = "none";
     document.getElementById("branch-choice-wrap").style.display = "block";
   }
   await loadPickers();
