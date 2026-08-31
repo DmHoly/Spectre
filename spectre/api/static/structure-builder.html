@@ -29,7 +29,7 @@
   <div class="builder-shell">
     <div class="builder-sidebar">
 
-      <div>
+      <div id="substrate-section">
         <div class="section-title" style="margin-bottom:14px;">Substrat</div>
         <div class="field-group">
           <div><label>Matériau</label><select class="field" id="substrate-material"></select></div>
@@ -45,6 +45,15 @@
       </div>
 
       <div>
+        <div class="section-title" style="margin-bottom:8px;">Vue</div>
+        <div class="view-toggle" style="margin-bottom:14px;">
+          <button class="view-toggle__btn active" id="view-mode-couches" type="button">Par couches</button>
+          <button class="view-toggle__btn" id="view-mode-etapes" type="button">Par étapes</button>
+        </div>
+        <div class="help" id="view-mode-help" style="margin-bottom:14px;">Cliquez une couche du dessin pour l'éditer. Disponible tant que la structure n'est faite que de dépôts (empilement d'épitaxie).</div>
+      </div>
+
+      <div id="step-form-section" style="display:none;">
         <div class="section-title" style="margin-bottom:14px;" id="step-form-title">Ajouter une étape</div>
         <div class="field-group">
           <div>
@@ -69,12 +78,13 @@
 
       <div style="flex:1;">
         <div class="section-title" style="margin-bottom:6px;">Étapes du procédé (<span id="steps-count">0</span>)</div>
-        <div class="help" style="margin-bottom:10px;">Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.</div>
+        <div class="help" style="margin-bottom:10px;" id="steps-list-help">Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.</div>
         <div id="steps-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <button class="btn btn-line btn-block" id="add-step-shortcut-btn" type="button" style="margin-top:10px;display:none;">+ Ajouter une couche</button>
       </div>
 
-      <div id="campaign-section" class="card" style="padding:16px;background:var(--bg);">
-        <div class="section-title" style="margin-bottom:10px;">Créer plusieurs variantes (optionnel)</div>
+      <details id="campaign-section" class="card" style="padding:16px;background:var(--bg);">
+        <summary class="section-title" style="margin-bottom:10px;cursor:pointer;">Créer plusieurs variantes (optionnel)</summary>
         <div class="help" style="margin-bottom:10px;">Faites varier un ou plusieurs paramètres pour lancer une campagne de plusieurs échantillons en une seule expérience. Avec plusieurs paramètres, toutes les combinaisons sont générées (ex : 3 épaisseurs &times; 3 angles = 9 échantillons).</div>
         <div id="campaign-factors" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
         <button class="btn btn-line btn-block" id="campaign-add-factor-btn" type="button" style="margin-bottom:10px;">+ Ajouter un paramètre</button>
@@ -83,10 +93,10 @@
           <button class="btn btn-line" id="campaign-clear-btn" type="button">Annuler</button>
         </div>
         <div id="campaign-result"></div>
-      </div>
+      </details>
 
-      <div>
-        <div class="section-title" style="margin-bottom:6px;">Objectifs</div>
+      <details id="objectives-section">
+        <summary class="section-title" style="margin-bottom:6px;cursor:pointer;">Objectifs</summary>
         <div class="help" style="margin-bottom:12px;">Ce qu'on cherche à savoir avec cette expérience, et comment on saura si c'est atteint.</div>
         <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
         <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
@@ -107,7 +117,7 @@
           <div><label>Comment on compte le vérifier</label><textarea class="field" id="obj-verification" rows="2" placeholder="ex : mesure au profilomètre après dépôt"></textarea></div>
           <button class="btn btn-line btn-block" type="submit">Ajouter l'objectif</button>
         </form>
-      </div>
+      </details>
 
       <div id="branch-choice-wrap" style="display:none;">
         <div class="section-title" style="margin-bottom:10px;">Piste</div>

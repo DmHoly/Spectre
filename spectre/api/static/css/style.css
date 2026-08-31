@@ -317,6 +317,40 @@ p {
   border-bottom-color: var(--accent);
 }
 
+/* -- bascule de vue (couches / étapes) ---------------------------------------------------- */
+
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+  gap: 2px;
+}
+
+.view-toggle__btn {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.view-toggle__btn.active {
+  color: var(--accent-dark);
+  background: var(--accent-tint);
+}
+
+.view-toggle__btn:disabled {
+  color: var(--text-faint);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* -- formulaires -------------------------------------------------------------------------- */
 
 label {

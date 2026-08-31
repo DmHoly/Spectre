@@ -43,6 +43,8 @@ const state = {
   currentFrame: 0,
   campaignPlan: null,
   editingIndex: null,
+  viewMode: "couches", // "couches" (click a layer, epitaxy-style) or "etapes" (full step list)
+  showStepForm: false, // couches mode only: whether the add/edit form is open
 };
 
 const errorBox = document.getElementById("error");
@@ -78,7 +80,25 @@ function renderKindFields(kind) {
       <div><label>Matériau</label><select class="field" id="f-material">${materialOptions()}</select></div>
       <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("deposition")}</select></div>
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="20"></div>
-      <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>`;
+      <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>
+      <details id="f-deposition-advanced">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text-faint);">Plus de détails (paramètres process)</summary>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <label>Paramètres process</label>
+            <div class="help" style="margin-bottom:6px;">Une grandeur du procédé (ex : flux) à suivre ou à faire varier.</div>
+            <div id="f-process-params-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
+            <button class="btn btn-line" id="f-add-process-param-btn" type="button" style="padding:6px 12px;font-size:12.5px;">+ Ajouter un paramètre</button>
+          </div>
+          <div>
+            <label>Grandeurs physiques estimées</label>
+            <div class="help" style="margin-bottom:6px;">Une estimation que vous définissez à partir d'un paramètre process (ex : dopage = flux &times; 2).</div>
+            <div id="f-estimates-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px;"></div>
+            <button class="btn btn-line" id="f-add-estimate-btn" type="button" style="padding:6px 12px;font-size:12.5px;">+ Ajouter une estimation</button>
+          </div>
+        </div>
+      </details>`;
+    wireDepositionAdvanced();
   } else if (kind === "etch") {
     container.innerHTML = `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Gravure"></div>
@@ -117,6 +137,104 @@ function renderKindFields(kind) {
   }
 }
 
+function currentProcessParameters() {
+  const params = {};
+  document.querySelectorAll(".js-process-param-row").forEach((row) => {
+    const name = row.querySelector(".js-pp-name").value.trim();
+    const value = parseFloat(row.querySelector(".js-pp-value").value);
+    if (name && !Number.isNaN(value)) params[name] = value;
+  });
+  return params;
+}
+
+function currentDerivedEstimates() {
+  return [...document.querySelectorAll(".js-estimate-row")]
+    .map((row) => ({
+      name: row.querySelector(".js-est-name").value.trim(),
+      parameter: row.querySelector(".js-est-parameter").value,
+      coefficient: parseFloat(row.querySelector(".js-est-coefficient").value),
+      offset: parseFloat(row.querySelector(".js-est-offset").value) || 0,
+      unit: row.querySelector(".js-est-unit").value.trim() || null,
+    }))
+    .filter((e) => e.name && e.parameter && !Number.isNaN(e.coefficient));
+}
+
+function refreshEstimateParameterOptions() {
+  const names = [...document.querySelectorAll(".js-pp-name")].map((el) => el.value.trim()).filter(Boolean);
+  document.querySelectorAll(".js-est-parameter").forEach((select) => {
+    const previous = select.value;
+    select.innerHTML = names.length
+      ? names.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("")
+      : `<option value="">Ajoutez un paramètre process d'abord</option>`;
+    if (names.includes(previous)) select.value = previous;
+  });
+  updateEstimatePreviews();
+}
+
+function updateEstimatePreviews() {
+  const params = currentProcessParameters();
+  document.querySelectorAll(".js-estimate-row").forEach((row) => {
+    const parameter = row.querySelector(".js-est-parameter").value;
+    const coefficient = parseFloat(row.querySelector(".js-est-coefficient").value);
+    const offset = parseFloat(row.querySelector(".js-est-offset").value) || 0;
+    const unit = row.querySelector(".js-est-unit").value.trim();
+    const preview = row.querySelector(".js-est-preview");
+    if (parameter && parameter in params && !Number.isNaN(coefficient)) {
+      const value = offset + coefficient * params[parameter];
+      preview.textContent = `≈ ${value}${unit ? " " + unit : ""}`;
+    } else {
+      preview.textContent = "";
+    }
+  });
+}
+
+function addProcessParamRow(name, value) {
+  const row = document.createElement("div");
+  row.className = "field-row js-process-param-row";
+  row.style.gridTemplateColumns = "1fr 100px auto";
+  row.innerHTML = `
+    <input class="field js-pp-name" placeholder="nom (ex : flux)" value="${escapeHtml(name || "")}">
+    <input class="field js-pp-value" type="number" step="any" placeholder="valeur" value="${value != null ? value : ""}">
+    <button class="js-pp-remove" type="button" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:14px;">&times;</button>`;
+  document.getElementById("f-process-params-rows").appendChild(row);
+  row.querySelector(".js-pp-name").addEventListener("input", refreshEstimateParameterOptions);
+  row.querySelector(".js-pp-value").addEventListener("input", updateEstimatePreviews);
+  row.querySelector(".js-pp-remove").addEventListener("click", () => {
+    row.remove();
+    refreshEstimateParameterOptions();
+  });
+}
+
+function addEstimateRow(estimate) {
+  estimate = estimate || {};
+  const row = document.createElement("div");
+  row.className = "js-estimate-row";
+  row.style = "border:1px solid var(--border-soft);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;";
+  row.innerHTML = `
+    <div style="display:flex;justify-content:space-between;gap:6px;">
+      <input class="field js-est-name" placeholder="nom (ex : dopage)" style="flex:1;" value="${escapeHtml(estimate.name || "")}">
+      <button class="js-est-remove" type="button" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:14px;">&times;</button>
+    </div>
+    <select class="field js-est-parameter"></select>
+    <div class="field-row">
+      <input class="field js-est-coefficient" type="number" step="any" value="${estimate.coefficient != null ? estimate.coefficient : 1}" placeholder="coefficient">
+      <input class="field js-est-offset" type="number" step="any" value="${estimate.offset != null ? estimate.offset : 0}" placeholder="décalage">
+    </div>
+    <input class="field js-est-unit" placeholder="unité (optionnel)" value="${escapeHtml(estimate.unit || "")}">
+    <div class="js-est-preview" style="font-size:11.5px;color:var(--text-faint);"></div>`;
+  document.getElementById("f-estimates-rows").appendChild(row);
+  row.querySelectorAll("input").forEach((input) => input.addEventListener("input", updateEstimatePreviews));
+  row.querySelector(".js-est-remove").addEventListener("click", () => row.remove());
+  refreshEstimateParameterOptions();
+  if (estimate.parameter) row.querySelector(".js-est-parameter").value = estimate.parameter;
+  updateEstimatePreviews();
+}
+
+function wireDepositionAdvanced() {
+  document.getElementById("f-add-process-param-btn").addEventListener("click", () => addProcessParamRow());
+  document.getElementById("f-add-estimate-btn").addEventListener("click", () => addEstimateRow());
+}
+
 function parseOpenings(text) {
   if (!text.trim()) return [];
   return text.split(",").map((part) => {
@@ -135,6 +253,8 @@ function buildStepFromForm() {
       material: document.getElementById("f-material").value,
       recipe: document.getElementById("f-recipe").value,
       thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
+      process_parameters: currentProcessParameters(),
+      derived_estimates: currentDerivedEstimates(),
     };
   }
   if (kind === "etch") {
@@ -180,59 +300,114 @@ function stepSummary(step) {
   return step.material;
 }
 
+function stepRowHtml(step, i, compact) {
+  const highlight = state.editingIndex === i ? "border-color:var(--accent);background:var(--accent-tint);" : "";
+  if (compact) {
+    return `
+      <div class="step-row js-step-row" data-index="${i}" style="cursor:pointer;${highlight}">
+        ${stepIconHtml(step.kind)}
+        <div style="flex:1;min-width:0;font-size:13px;font-weight:600;">${i + 1}. ${escapeHtml(step.name)}</div>
+        <button class="step-remove js-step-remove" data-index="${i}" title="Retirer" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M5 19L19 5"/></svg>
+        </button>
+      </div>`;
+  }
+  return `
+    <div class="step-row js-step-row" data-index="${i}" style="cursor:pointer;${highlight}">
+      ${stepIconHtml(step.kind)}
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${i + 1}. ${escapeHtml(STEP_KINDS[step.kind].label)} &mdash; ${escapeHtml(step.name)}</div>
+        <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(stepSummary(step))}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;">
+        <button class="step-remove js-step-up" data-index="${i}" title="Monter" type="button" ${i === 0 ? "disabled style='opacity:.3;'" : ""}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 15l7-7 7 7"/></svg>
+        </button>
+        <button class="step-remove js-step-down" data-index="${i}" title="Descendre" type="button" ${i === state.steps.length - 1 ? "disabled style='opacity:.3;'" : ""}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 9l7 7 7-7"/></svg>
+        </button>
+      </div>
+      <button class="step-remove js-step-remove" data-index="${i}" title="Retirer" type="button">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M5 19L19 5"/></svg>
+      </button>
+    </div>`;
+}
+
+function updateViewModeAvailability() {
+  const eligible = state.steps.length === 0 || state.steps.every((s) => s.kind === "deposition");
+  const couchesBtn = document.getElementById("view-mode-couches");
+  couchesBtn.disabled = !eligible;
+  couchesBtn.title = eligible
+    ? ""
+    : "Disponible uniquement pour un empilement de dépôts (pas de gravure, planarisation, lithographie...)";
+  if (!eligible && state.viewMode === "couches") {
+    state.viewMode = "etapes";
+    state.showStepForm = true;
+    document.getElementById("view-mode-help").textContent =
+      "Passé en vue par étapes : cette structure contient une étape autre que dépôt.";
+  }
+  couchesBtn.classList.toggle("active", state.viewMode === "couches");
+  document.getElementById("view-mode-etapes").classList.toggle("active", state.viewMode === "etapes");
+  document.getElementById("steps-list-help").textContent =
+    state.viewMode === "couches"
+      ? "Cliquez une couche (dans le dessin ou ci-dessous) pour l'éditer."
+      : "Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.";
+}
+
+function updateStepFormVisibility() {
+  const formVisible = state.viewMode === "etapes" || state.editingIndex !== null || state.showStepForm;
+  document.getElementById("step-form-section").style.display = formVisible ? "" : "none";
+  document.getElementById("add-step-shortcut-btn").style.display =
+    !formVisible && state.viewMode === "couches" ? "" : "none";
+  document.getElementById("cancel-edit-btn").style.display =
+    state.editingIndex !== null || (state.viewMode === "couches" && state.showStepForm) ? "" : "none";
+}
+
+function highlightSelectedLayer() {
+  const container = document.getElementById("svg-container");
+  container.querySelectorAll("[data-layer-index]").forEach((path) => {
+    const stepIndex = parseInt(path.dataset.layerIndex, 10) - 1; // layer 0 is always the substrate
+    const selected = state.viewMode === "couches" && state.editingIndex === stepIndex;
+    path.style.stroke = selected ? "var(--accent)" : "";
+    path.style.strokeWidth = selected ? "2.5" : "";
+  });
+}
+
 function renderSteps() {
+  updateViewModeAvailability(); // may fall back to étapes mode before we render rows below
   const list = document.getElementById("steps-list");
   document.getElementById("steps-count").textContent = state.steps.length;
   if (state.steps.length === 0) {
     list.innerHTML = `<div class="help" style="padding:12px 0;">Aucune étape pour l'instant.</div>`;
-    return;
+  } else {
+    const compact = state.viewMode === "couches";
+    list.innerHTML = state.steps.map((step, i) => stepRowHtml(step, i, compact)).join("");
+    list.querySelectorAll(".js-step-row").forEach((row) => {
+      row.addEventListener("click", (event) => {
+        if (event.target.closest("button")) return;
+        startEditingStep(parseInt(row.dataset.index, 10));
+      });
+    });
+    list.querySelectorAll(".js-step-remove").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const index = parseInt(btn.dataset.index, 10);
+        state.steps.splice(index, 1);
+        if (state.editingIndex === index) cancelEditingStep();
+        else renderSteps();
+      });
+    });
+    list.querySelectorAll(".js-step-up").forEach((btn) => {
+      btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), -1));
+    });
+    list.querySelectorAll(".js-step-down").forEach((btn) => {
+      btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), 1));
+    });
   }
-  list.innerHTML = state.steps
-    .map(
-      (step, i) => `
-      <div class="step-row js-step-row" data-index="${i}" style="cursor:pointer;${state.editingIndex === i ? "border-color:var(--accent);background:var(--accent-tint);" : ""}">
-        ${stepIconHtml(step.kind)}
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:600;">${i + 1}. ${escapeHtml(STEP_KINDS[step.kind].label)} &mdash; ${escapeHtml(step.name)}</div>
-          <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(stepSummary(step))}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;">
-          <button class="step-remove js-step-up" data-index="${i}" title="Monter" type="button" ${i === 0 ? "disabled style='opacity:.3;'" : ""}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 15l7-7 7 7"/></svg>
-          </button>
-          <button class="step-remove js-step-down" data-index="${i}" title="Descendre" type="button" ${i === state.steps.length - 1 ? "disabled style='opacity:.3;'" : ""}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 9l7 7 7-7"/></svg>
-          </button>
-        </div>
-        <button class="step-remove js-step-remove" data-index="${i}" title="Retirer" type="button">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M5 19L19 5"/></svg>
-        </button>
-      </div>`
-    )
-    .join("");
-  list.querySelectorAll(".js-step-row").forEach((row) => {
-    row.addEventListener("click", (event) => {
-      if (event.target.closest("button")) return;
-      startEditingStep(parseInt(row.dataset.index, 10));
-    });
-  });
-  list.querySelectorAll(".js-step-remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const index = parseInt(btn.dataset.index, 10);
-      state.steps.splice(index, 1);
-      if (state.editingIndex === index) cancelEditingStep();
-      renderSteps();
-    });
-  });
-  list.querySelectorAll(".js-step-up").forEach((btn) => {
-    btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), -1));
-  });
-  list.querySelectorAll(".js-step-down").forEach((btn) => {
-    btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), 1));
-  });
   refreshCampaignFactorSteps();
   state.campaignPlan = null;
   document.getElementById("campaign-result").innerHTML = "";
+  updateStepFormVisibility();
+  highlightSelectedLayer();
 }
 
 function fillKindFields(step) {
@@ -244,6 +419,12 @@ function fillKindFields(step) {
     document.getElementById("f-recipe").value = step.recipe;
     document.getElementById("f-thickness").value = step.thickness.value;
     document.getElementById("f-thickness-unit").value = step.thickness.unit;
+    const processParameters = step.process_parameters || {};
+    const derivedEstimates = step.derived_estimates || [];
+    Object.entries(processParameters).forEach(([name, value]) => addProcessParamRow(name, value));
+    derivedEstimates.forEach((estimate) => addEstimateRow(estimate));
+    document.getElementById("f-deposition-advanced").open =
+      Object.keys(processParameters).length > 0 || derivedEstimates.length > 0;
   } else if (step.kind === "etch") {
     document.getElementById("f-recipe").value = step.recipe;
     document.getElementById("f-depth").value = step.depth.value;
@@ -275,18 +456,53 @@ function startEditingStep(index) {
   fillKindFields(state.steps[index]);
   document.getElementById("step-form-title").textContent = `Modifier l'étape ${index + 1}`;
   document.getElementById("add-step-btn-label").textContent = "Enregistrer les modifications";
-  document.getElementById("cancel-edit-btn").style.display = "";
   renderSteps();
 }
 
 function cancelEditingStep() {
   state.editingIndex = null;
+  if (state.viewMode === "couches") state.showStepForm = false;
   document.getElementById("step-form-title").textContent = "Ajouter une étape";
   document.getElementById("add-step-btn-label").textContent = "Ajouter cette étape";
-  document.getElementById("cancel-edit-btn").style.display = "none";
   renderKindFields(document.getElementById("kind-select").value);
   renderSteps();
 }
+
+function startAddingStep() {
+  state.editingIndex = null;
+  state.showStepForm = true;
+  document.getElementById("step-form-title").textContent = "Ajouter une étape";
+  document.getElementById("add-step-btn-label").textContent = "Ajouter cette étape";
+  renderKindFields(document.getElementById("kind-select").value);
+  renderSteps();
+}
+
+function setViewMode(mode) {
+  state.viewMode = mode;
+  state.showStepForm = false;
+  document.getElementById("view-mode-help").textContent =
+    mode === "couches"
+      ? "Cliquez une couche du dessin pour l'éditer. Disponible tant que la structure n'est faite que de dépôts (empilement d'épitaxie)."
+      : "Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.";
+  renderSteps();
+}
+
+document.getElementById("view-mode-couches").addEventListener("click", () => setViewMode("couches"));
+document.getElementById("view-mode-etapes").addEventListener("click", () => setViewMode("etapes"));
+document.getElementById("add-step-shortcut-btn").addEventListener("click", startAddingStep);
+
+document.getElementById("svg-container").addEventListener("click", (event) => {
+  if (state.viewMode !== "couches") return;
+  const path = event.target.closest("[data-layer-index]");
+  if (!path) return;
+  const layerIndex = parseInt(path.dataset.layerIndex, 10);
+  if (layerIndex === 0) {
+    document.getElementById("substrate-section").scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  const stepIndex = layerIndex - 1;
+  if (stepIndex >= 0 && stepIndex < state.steps.length) startEditingStep(stepIndex);
+});
 
 function moveStep(index, delta) {
   const target = index + delta;
@@ -343,9 +559,15 @@ function campaignStepOptionsHtml() {
 function campaignFieldOptionsHtml(stepIndex) {
   const step = state.steps[stepIndex];
   const options = step ? CAMPAIGN_FIELD_OPTIONS[step.kind] || [] : [];
-  return options.length
-    ? options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")
-    : `<option value="">Aucun paramètre modifiable sur cette étape</option>`;
+  const estimateOptions = step && step.derived_estimates ? step.derived_estimates : [];
+  const optionsHtml = options.map(([value, label]) => `<option value="${value}">${label}</option>`);
+  // a derived estimate (ex : dopage) is split by choosing target estimate values directly - the
+  // step's process parameter is solved from them server-side (see _step_with_estimate_value).
+  const estimateOptionsHtml = estimateOptions.map(
+    (e) => `<option value="estimate:${escapeHtml(e.name)}">${escapeHtml(e.name)} (estimée)</option>`
+  );
+  const all = [...optionsHtml, ...estimateOptionsHtml];
+  return all.length ? all.join("") : `<option value="">Aucun paramètre modifiable sur cette étape</option>`;
 }
 
 function addCampaignFactorRow() {
@@ -391,14 +613,18 @@ function campaignPlan() {
   const factors = [];
   for (const row of rows) {
     const stepIndex = parseInt(row.querySelector(".js-factor-step").value, 10);
-    const field = row.querySelector(".js-factor-field").value;
+    const fieldValue = row.querySelector(".js-factor-field").value;
     const values = row
       .querySelector(".js-factor-values")
       .value.split(",")
       .map((v) => parseFloat(v.trim()))
       .filter((v) => !Number.isNaN(v));
-    if (Number.isNaN(stepIndex) || !field || values.length === 0) return null;
-    factors.push({ step_index: stepIndex, field, values });
+    if (Number.isNaN(stepIndex) || !fieldValue || values.length === 0) return null;
+    if (fieldValue.startsWith("estimate:")) {
+      factors.push({ step_index: stepIndex, via_estimate: fieldValue.slice("estimate:".length), values });
+    } else {
+      factors.push({ step_index: stepIndex, field: fieldValue, values });
+    }
   }
   return { factors };
 }
@@ -471,6 +697,7 @@ function renderFrame() {
     .map((name) => `<div class="legend-item"><span class="legend-swatch" style="background:${state.materialColors[name] || "#999"};"></span>${escapeHtml(name)}</div>`)
     .join("");
   renderScrubber();
+  highlightSelectedLayer();
 }
 
 async function loadPickers() {
@@ -501,6 +728,7 @@ async function loadExistingProcess() {
     const verification = detail.objective_verification || {};
     state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
     renderObjectives();
+    document.getElementById("objectives-section").open = state.objectives.length > 0;
   } catch (err) {
     showError(err);
   }
@@ -522,11 +750,10 @@ document.getElementById("add-step-btn").addEventListener("click", () => {
     const step = buildStepFromForm();
     if (state.editingIndex !== null) {
       state.steps[state.editingIndex] = step;
-      cancelEditingStep();
     } else {
       state.steps.push(step);
-      renderSteps();
     }
+    cancelEditingStep();
   } catch (err) {
     showError(err);
   }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def _setup_project(client, email="owner@example.com", name="Owner"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
@@ -145,6 +147,104 @@ def test_launch_campaign_with_two_factors(client):
     assert matrix["factor_labels"] == ["Épaisseur — Oxyde", "Épaisseur — Nitrure"]
     assert len(matrix["factor_values"]) == 6
     assert all(len(row) == 2 for row in matrix["factor_values"])
+
+
+def _steps_with_estimate():
+    return [
+        {
+            "kind": "deposition",
+            "name": "PGaN",
+            "material": "GaN",
+            "recipe": "MOCVD Epitaxial",
+            "thickness": {"value": 50, "unit": "nm"},
+            "process_parameters": {"flux": 12.0},
+            "derived_estimates": [{"name": "Dopage", "parameter": "flux", "coefficient": 2.0, "unit": "cm-3"}],
+        }
+    ]
+
+
+def test_preview_campaign_split_on_a_derived_estimate_solves_the_process_parameter(client):
+    slug = _setup_project(client, email="estimate-split@example.com")
+    plan = {"factors": [{"step_index": 0, "via_estimate": "Dopage", "values": [20, 40]}]}
+    response = client.post(
+        f"/api/projects/{slug}/structures/variantes",
+        json={"substrate": _substrate(), "steps": _steps_with_estimate(), "plan": plan},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["factor_labels"] == ["Dopage (cm-3) — PGaN"]
+    # target doping values are what's displayed, not the underlying flux
+    assert body["labels"] == ["20", "40"]
+
+
+def test_launch_campaign_split_on_a_derived_estimate_stores_the_solved_flux(client):
+    slug = _setup_project(client, email="estimate-launch@example.com")
+    plan = {"factors": [{"step_index": 0, "via_estimate": "Dopage", "values": [20, 40]}]}
+    body = {
+        "substrate": _substrate(),
+        "steps": _steps_with_estimate(),
+        "plan": plan,
+        "title": "Campagne dopage",
+        "intent": "Balayer le dopage cible",
+    }
+    response = client.post(f"/api/projects/{slug}/experiences/campagne", json=body)
+    assert response.status_code == 201
+    experiment_id = response.json()["id"]
+
+    # the committed metadata["structureforge_process"] is the single shared reference process
+    # (pre-variation), not per-entity, so what's directly assertable here is that launching
+    # succeeded and the matrix reflects the target doping values (see the unit test below for the
+    # actual flux each target solves to).
+    matrix = client.get(f"/api/projects/{slug}/experiences/{experiment_id}/matrice").json()
+    assert matrix["labels"] == ["20", "40"]
+    assert matrix["factor_labels"] == ["Dopage (cm-3) — PGaN"]
+
+
+def test_step_with_estimate_value_solves_the_process_parameter():
+    from structureforge.process.steps import Deposition
+
+    from spectre.core.structures import _step_with_estimate_value
+
+    step = Deposition(
+        name="PGaN",
+        material="GaN",
+        recipe="MOCVD Epitaxial",
+        thickness={"value": 50, "unit": "nm"},
+        process_parameters={"flux": 12.0},
+        derived_estimates=[{"name": "Dopage", "parameter": "flux", "coefficient": 2.0}],
+    )
+    # dopage = flux * 2 -> flux = dopage / 2
+    solved_20 = _step_with_estimate_value(step, "Dopage", 20.0)
+    solved_40 = _step_with_estimate_value(step, "Dopage", 40.0)
+    assert solved_20.process_parameters["flux"] == 10.0
+    assert solved_40.process_parameters["flux"] == 20.0
+
+
+def test_campaign_rejects_an_unknown_estimate_name(client):
+    slug = _setup_project(client, email="estimate-unknown@example.com")
+    plan = {"factors": [{"step_index": 0, "via_estimate": "Ne existe pas", "values": [20]}]}
+    response = client.post(
+        f"/api/projects/{slug}/structures/variantes",
+        json={"substrate": _substrate(), "steps": _steps_with_estimate(), "plan": plan},
+    )
+    assert response.status_code == 422
+
+
+def test_campaign_rejects_a_zero_coefficient_estimate():
+    from structureforge.process.steps import Deposition
+
+    from spectre.core.structures import SimulationFailedError, _step_with_estimate_value
+
+    step = Deposition(
+        name="PGaN",
+        material="GaN",
+        recipe="MOCVD Epitaxial",
+        thickness={"value": 50, "unit": "nm"},
+        process_parameters={"flux": 12.0},
+        derived_estimates=[{"name": "Dopage", "parameter": "flux", "coefficient": 0.0}],
+    )
+    with pytest.raises(SimulationFailedError, match="coefficient nul"):
+        _step_with_estimate_value(step, "Dopage", 20.0)
 
 
 def test_matrice_endpoint_rejects_non_batch_experience(client):
