@@ -78,7 +78,9 @@ function renderKindFields(kind) {
     container.innerHTML = `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Dépôt"></div>
       <div><label>Matériau</label><select class="field" id="f-material">${materialOptions()}</select></div>
-      <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("deposition")}</select></div>
+      <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("deposition")}</select>
+        <div class="help" id="f-recipe-hint" style="margin-top:4px;"></div>
+      </div>
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="20"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>
       <details id="f-deposition-advanced">
@@ -99,12 +101,16 @@ function renderKindFields(kind) {
         </div>
       </details>`;
     wireDepositionAdvanced();
+    wireRecipeHint("deposition");
   } else if (kind === "etch") {
     container.innerHTML = `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Gravure"></div>
-      <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("etch")}</select></div>
+      <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("etch")}</select>
+        <div class="help" id="f-recipe-hint" style="margin-top:4px;"></div>
+      </div>
       <div class="field-row"><div><label>Profondeur</label><input class="field" id="f-depth" type="number" value="10"></div>
       <div><label>Unité</label><select class="field" id="f-depth-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>`;
+    wireRecipeHint("etch");
   } else if (kind === "planarization") {
     container.innerHTML = `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Planarisation"></div>
@@ -233,6 +239,17 @@ function addEstimateRow(estimate) {
 function wireDepositionAdvanced() {
   document.getElementById("f-add-process-param-btn").addEventListener("click", () => addProcessParamRow());
   document.getElementById("f-add-estimate-btn").addEventListener("click", () => addEstimateRow());
+}
+
+function wireRecipeHint(kind) {
+  const select = document.getElementById("f-recipe");
+  const hint = document.getElementById("f-recipe-hint");
+  const update = () => {
+    const recipe = state.recipes[kind].find((r) => r.name === select.value);
+    hint.textContent = recipe ? recipe.description_fr || recipe.notes || "" : "";
+  };
+  select.addEventListener("change", update);
+  update();
 }
 
 function parseOpenings(text) {
@@ -408,6 +425,7 @@ function renderSteps() {
   document.getElementById("campaign-result").innerHTML = "";
   updateStepFormVisibility();
   highlightSelectedLayer();
+  scheduleSimulate();
 }
 
 function fillKindFields(step) {
@@ -782,7 +800,7 @@ document.getElementById("objective-form").addEventListener("submit", (event) => 
   renderObjectives();
 });
 
-document.getElementById("simulate-btn").addEventListener("click", async () => {
+async function simulateNow() {
   clearError();
   try {
     const result = await api.post(`/api/projects/${slug}/structures/simulate`, {
@@ -796,7 +814,31 @@ document.getElementById("simulate-btn").addEventListener("click", async () => {
   } catch (err) {
     showError(err);
   }
+}
+
+// Coalesces the several renderSteps()/substrate-change calls that can happen in the same tick
+// (e.g. moving a step touches editingIndex then re-renders) into a single simulate call, without
+// making the auto-preview feel like a deliberate delay - not a debounce for its own sake.
+let simulateTimer = null;
+function scheduleSimulate(delay = 120) {
+  if (simulateTimer) clearTimeout(simulateTimer);
+  simulateTimer = setTimeout(() => {
+    simulateTimer = null;
+    simulateNow();
+  }, delay);
+}
+
+document.getElementById("simulate-btn").addEventListener("click", () => {
+  if (simulateTimer) {
+    clearTimeout(simulateTimer);
+    simulateTimer = null;
+  }
+  simulateNow();
 });
+
+["substrate-material", "substrate-width", "substrate-width-unit", "substrate-thickness", "substrate-thickness-unit"].forEach(
+  (id) => document.getElementById(id).addEventListener("change", () => scheduleSimulate())
+);
 
 document.getElementById("launch-btn").addEventListener("click", async () => {
   clearError();

@@ -20,6 +20,7 @@ from ..core import projects, structures
 from ..core.accounts import User
 from ..core.permissions import require_role
 from ..core.projects import Project
+from ..core.recipe_labels import DEPOSITION_DESCRIPTIONS_FR, ETCH_DESCRIPTIONS_FR
 from .deps import get_current_user
 
 router = APIRouter(prefix="/api/projects", tags=["structures"])
@@ -105,9 +106,21 @@ def list_recipes(project: Project = Depends(require_role("viewer"))) -> dict:
     combined = structures.recipes_library(project.slug)
     return {
         "deposition": [
-            {**r.model_dump(mode="json"), "is_custom": r.name in custom.deposition} for r in combined.deposition.values()
+            {
+                **r.model_dump(mode="json"),
+                "is_custom": r.name in custom.deposition,
+                "description_fr": DEPOSITION_DESCRIPTIONS_FR.get(r.name),
+            }
+            for r in combined.deposition.values()
         ],
-        "etch": [{**r.model_dump(mode="json"), "is_custom": r.name in custom.etch} for r in combined.etch.values()],
+        "etch": [
+            {
+                **r.model_dump(mode="json"),
+                "is_custom": r.name in custom.etch,
+                "description_fr": ETCH_DESCRIPTIONS_FR.get(r.name),
+            }
+            for r in combined.etch.values()
+        ],
     }
 
 

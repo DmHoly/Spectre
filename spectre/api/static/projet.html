@@ -353,12 +353,19 @@
 
     let materialsList = [];
 
+    const MODE_LABELS_FR = { conformal: "Conforme", directional: "Directionnel", isotropic: "Isotrope" };
+
     function recipeRow(kind) {
       return (r) => `
         <div class="step-row" style="align-items:flex-start;">
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:600;">${escapeHtml(r.name)}</div>
-            <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(r.mode)}${r.angle_deg ? " · " + r.angle_deg + "°" : ""}${r.notes ? " · " + escapeHtml(r.notes) : ""}</div>
+            <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(MODE_LABELS_FR[r.mode] || r.mode)}${r.angle_deg ? " · " + r.angle_deg + "°" : ""}</div>
+            ${
+              r.description_fr || r.notes
+                ? `<div style="font-size:12px;color:var(--text-soft);margin-top:3px;max-width:56ch;">${escapeHtml(r.description_fr || r.notes)}</div>`
+                : ""
+            }
           </div>
           ${
             r.is_custom
