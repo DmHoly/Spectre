@@ -698,3 +698,157 @@ textarea:focus {
   font-size: 13.5px;
   color: var(--text-soft);
 }
+
+/* -- documentation ------------------------------------------------------------------------ */
+
+.docs-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.docs-nav {
+  position: sticky;
+  top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: calc(100vh - var(--space-7));
+  overflow-y: auto;
+  padding-right: var(--space-2);
+}
+
+.docs-nav__group {
+  margin-top: var(--space-4);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.docs-nav__group:first-child {
+  margin-top: 0;
+}
+
+.docs-nav a {
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-soft);
+  text-decoration: none;
+}
+.docs-nav a:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+.docs-nav a.active {
+  background: var(--accent-tint);
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+
+.docs-content {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.docs-content section {
+  margin-bottom: var(--space-7);
+  scroll-margin-top: var(--space-5);
+}
+
+.docs-content h1 {
+  font-size: 24px;
+  margin-bottom: var(--space-2);
+}
+
+.docs-content h2 {
+  font-size: 18px;
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.docs-content h3 {
+  font-size: 14.5px;
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.docs-content p {
+  margin-bottom: var(--space-3);
+  color: var(--text-soft);
+  max-width: 74ch;
+}
+
+.docs-content ul,
+.docs-content ol {
+  margin: 0 0 var(--space-3) var(--space-4);
+  color: var(--text-soft);
+}
+.docs-content li {
+  margin-bottom: var(--space-1);
+}
+
+.docs-content code {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12.5px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.docs-content pre {
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+  margin-bottom: var(--space-3);
+}
+.docs-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.docs-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: var(--space-4);
+  font-size: 13px;
+}
+.docs-content th,
+.docs-content td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+.docs-content th {
+  color: var(--text-faint);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.docs-callout {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-tint);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  font-size: 13px;
+  color: var(--accent-dark);
+}
+
+.docs-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-5);
+}

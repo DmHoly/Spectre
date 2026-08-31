@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Architecture technique — Spectre</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar__brand">
+      <span class="topbar__mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
+      </span>
+      Spectre
+      <span class="topbar__crumb">/ Documentation / Architecture</span>
+    </div>
+    <div class="topbar__actions">
+      <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
+        <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
+        <div class="avatar js-user-initials"></div>
+      </a>
+      <a href="#" class="js-logout btn btn-line" style="padding:6px 12px;font-size:12.5px;">Se déconnecter</a>
+    </div>
+  </div>
+
+  <div class="page" style="max-width:1180px;">
+    <p style="color:var(--text-faint);margin-bottom:16px;"><a href="/docs">&larr; Documentation</a></p>
+
+    <div class="docs-shell">
+      <nav class="docs-nav">
+        <a href="#vue-ensemble">Vue d'ensemble</a>
+        <a href="#organisation">Organisation du code</a>
+        <a href="#donnees">Modèle de données</a>
+        <a href="#pont-follow">Le pont vers Follow</a>
+        <a href="#evolution-legere">Le modèle « évolution légère »</a>
+        <a href="#vocabulaire">Vocabulaire UI</a>
+        <a href="#droits">Droits</a>
+        <a href="#doe">DOE et campagnes</a>
+        <a href="#estimations">Paramètres process et estimations</a>
+        <a href="#etendre">Comment étendre</a>
+        <a href="#tests">Tests</a>
+        <a href="#deploiement">Déploiement</a>
+      </nav>
+
+      <div class="docs-content">
+        <h1>Architecture technique</h1>
+        <p>Cette page documente comment Spectre est construit, pour quiconque touche au code. Elle suppose une lecture du <a href="/docs/guide">guide d'utilisation</a> pour le vocabulaire fonctionnel.</p>
+
+        <section id="vue-ensemble">
+          <h2>Vue d'ensemble</h2>
+          <p>Spectre est l'application métier qui relie deux bibliothèques Python indépendantes :</p>
+          <ul>
+            <li><strong>Follow</strong> — suivi d'expériences façon « git » : dépôt, commits immuables (<code>Experiment</code>), branches, tags, fusion, diff, DOE générique, graphe de filiation. Volontairement sans authentification ni notion de projet multiple.</li>
+            <li><strong>StructureForge</strong> — simulateur 2D de procédé : substrat + étapes (dépôt, gravure, planarisation, lithographie, chimie) &rarr; géométrie de couches, rendu SVG.</li>
+          </ul>
+          <p>Spectre n'écrit <strong>aucune</strong> logique de simulation, de diff, de DOE ou de versioning — ces deux bibliothèques sont importées telles quelles. Ce que Spectre ajoute : des comptes utilisateurs, plusieurs projets isolés avec des droits, et une interface unique et non technique qui orchestre les deux bibliothèques (« intégration métier », pas réécriture).</p>
+          <div class="docs-callout">Règle de conception qui traverse tout le code : si une modification touche à la simulation, au diff ou au versioning eux-mêmes, elle appartient à StructureForge ou Follow, pas à Spectre.</div>
+        </section>
+
+        <section id="organisation">
+          <h2>Organisation du code</h2>
+          <pre><code>spectre/
+  core/           # logique métier pure, sans FastAPI
+    db.py           # sqlite3 (schéma, connexion) - la seule base relationnelle
+    security.py      # hachage de mot de passe, sessions
+    accounts.py       # comptes utilisateurs, réinitialisation de mot de passe
+    projects.py         # projets, appartenance/rôles, invitations
+    permissions.py       # require_role et résolution projet-depuis-l'URL
+    structures.py         # ProcessLot, simulation, campagnes DOE, rendu SVG
+    email.py               # envoi optionnel (log si SMTP non configuré)
+  api/            # FastAPI : routes JSON + pages
+    app.py          # create_app(), montage des routers et des pages statiques
+    deps.py          # get_current_user (dépendance FastAPI)
+    auth.py           # /api/auth/*
+    projects.py        # /api/projects (liste/création/membres/invitations)
+    structures.py         # /api/projects/{slug}/{materials,recipes,structures/*}
+    experiments.py          # /api/projects/{slug}/experiences/*
+    static/                   # une page = un fichier HTML + son JS dédié
+  cli.py          # `spectre --host --port` (uvicorn)</code></pre>
+          <p>Règle de dépendance : <code>core/</code> ne connaît rien de FastAPI ; <code>api/</code> résout la requête (projet, droits) puis délègue à <code>core/</code> ou directement aux bibliothèques.</p>
+        </section>
+
+        <section id="donnees">
+          <h2>Modèle de données</h2>
+          <p>Deux systèmes de stockage cohabitent, pour deux besoins différents :</p>
+          <table>
+            <thead><tr><th>Donnée</th><th>Où</th></tr></thead>
+            <tbody>
+              <tr><td>Comptes, sessions, projets, appartenances, invitations, réinitialisations</td><td>SQLite (<code>core/db.py</code>), un fichier sous <code>SPECTRE_DATA_DIR</code></td></tr>
+              <tr><td>Expériences d'un projet (versions, objectifs, preuves, conclusion...)</td><td>Un dépôt Follow par projet, fichiers plats sous <code>&lt;data&gt;/projects/&lt;slug&gt;/follow</code></td></tr>
+              <tr><td>Recettes personnalisées d'un projet</td><td>Un fichier JSON par projet sous <code>&lt;data&gt;/projects/&lt;slug&gt;/recipes.json</code></td></tr>
+            </tbody>
+          </table>
+          <p>Follow et StructureForge stockent tout en JSON plat ; SQLite n'existe que pour ce qui a vraiment besoin de requêtes relationnelles (unicité d'un e-mail, appartenance à un projet, rôle). Un <code>Repository</code> Follow est reconstruit à chaque requête plutôt que mis en cache — il recharge depuis le disque à la construction, et Spectre sert potentiellement beaucoup de projets, pas un seul dépôt.</p>
+        </section>
+
+        <section id="pont-follow">
+          <h2>Le pont vers Follow</h2>
+          <p>Le problème central : la <code>Structure</code> que Follow stocke (<code>ProcessStructure</code>, dans <code>structureforge.adapters.follow_adapter</code>) est la géométrie <em>déjà aplatie</em> — largeur de domaine + couches avec leurs contours. Elle ne permet pas de reconstituer les étapes d'origine (dépôt/gravure/angle/épaisseur) pour rééditer une structure déjà lancée.</p>
+          <p>Convention Spectre, sans toucher au schéma Follow : le procédé StructureForge original (substrat + liste d'étapes typées, en JSON) est stocké dans le champ libre <code>Experiment.metadata</code>, sous la clé <code>"structureforge_process"</code> (voir <code>spectre/core/structures.py::process_metadata()</code>). Pour faire évoluer une expérience, Spectre relit cette clé, préremplit le constructeur, laisse l'utilisateur modifier, resimule, puis commit via :</p>
+          <ul>
+            <li><code>structureforge.adapters.follow_adapter.build_experiment()</code> — premier lancement (équivalent d'un commit initial), retourne un <code>ExperimentBuilder</code> non committé pour que Spectre pose ses métadonnées avant <code>.commit()</code>.</li>
+            <li><code>structureforge.adapters.follow_adapter.derive_experiment()</code> — une évolution, équivalent de <code>repo.derive()</code> mais avec une nouvelle <code>Geometry</code>/liste d'étapes.</li>
+          </ul>
+          <p>D'autres clés du même champ libre suivent le même principe : <code>campaign_labels</code>/<code>campaign_factor_labels</code>/<code>campaign_factor_values</code> (les libellés lisibles d'une campagne DOE, calculés une fois à la création plutôt que reconstruits à chaque lecture), <code>objective_verification</code> (le « comment vérifier » d'un objectif, un champ que <code>follow.Objective</code> n'a pas nativement), <code>physical_tracking</code> (identifiant/emplacement par échantillon).</p>
+        </section>
+
+        <section id="evolution-legere">
+          <h2>Le modèle « évolution légère »</h2>
+          <p>Un <code>Experiment</code> Follow est immuable une fois committé. Conclure, ajouter une preuve, poser une étiquette ou un suivi physique doivent donc chacun créer une <strong>nouvelle version</strong> — mais une version qui ne change qu'un seul aspect, en gardant tout le reste (structure, étapes, objectifs, statut, étiquettes, métadonnées) strictement identique à la version précédente.</p>
+          <p>Le motif, répété dans <code>spectre/api/experiments.py</code> pour <code>conclure</code>/<code>preuves</code>/<code>etiquettes</code>/<code>entites</code>/<code>combiner</code> :</p>
+          <pre><code>builder = repo.derive(ref, title=parent.title, intent=parent.intent,
+                       new_branch=_derive_branch(repo, parent, None), author=user.name)
+builder.metadata = dict(parent.metadata)
+builder.evidence = list(parent.evidence)
+builder.tags = list(parent.tags)
+builder.conclusion = parent.conclusion   # sauf conclure, qui remplace précisément ceci
+# ... puis la seule modification propre à cet endpoint ...
+experiment = builder.commit()</code></pre>
+          <p><code>_derive_branch()</code> mérite une explication : dériver directement sur la branche du parent échoue si ce parent n'est plus la pointe de sa branche (quelqu'un a déjà continué depuis) — Follow lève alors une erreur brute, en anglais, pleine de vocabulaire git, exactement ce que l'interface doit éviter. <code>_derive_branch()</code> détecte ce cas et dérive silencieusement sur une branche fraîche générée (<code>structures.py::_unique_branch()</code>) au lieu de laisser l'erreur remonter — l'utilisateur ne voit jamais la distinction, chaque action « légère » aboutit toujours à une nouvelle version affichée normalement.</p>
+        </section>
+
+        <section id="vocabulaire">
+          <h2>Vocabulaire UI</h2>
+          <p>Le jargon git de Follow ne doit jamais atteindre l'interface. Table de correspondance appliquée partout dans <code>spectre/api/static/</code> :</p>
+          <table>
+            <thead><tr><th>Interne (Follow)</th><th>Dans l'interface</th></tr></thead>
+            <tbody>
+              <tr><td>commit</td><td>enregistrer / version</td></tr>
+              <tr><td>dériver (derive)</td><td>enregistrer une évolution</td></tr>
+              <tr><td>branche</td><td>piste (jamais nommée explicitement dans le flux principal — un nom est généré automatiquement)</td></tr>
+              <tr><td>fork / nouvelle branche</td><td>explorer une nouvelle piste</td></tr>
+              <tr><td>merge</td><td>combiner (action avancée, repliée)</td></tr>
+              <tr><td>graphe de filiation</td><td>frise chronologique (fiche) / vue d'ensemble (page dédiée, avancée)</td></tr>
+            </tbody>
+          </table>
+          <p>Deux endroits ont dû être corrigés explicitement pour une fuite de ce vocabulaire : le graphe Plotly de Follow (<code>follow.presentation.graphing.build_graph_figure</code>) étiquette nativement ses pointes de branche et son survol avec <code>"branche: ..."</code> — <code>spectre/api/experiments.py::project_graph_html()</code> retire cette trace et nettoie le texte de survol avant de servir la page. Et toute erreur remontée par un <code>commit()</code> Follow est traduite en message français générique plutôt que transmise telle quelle (voir « évolution légère » ci-dessus).</p>
+        </section>
+
+        <section id="droits">
+          <h2>Droits</h2>
+          <p><code>spectre/core/permissions.py::require_role(min_role)</code> est une dépendance FastAPI : elle résout le projet depuis le slug dans l'URL, vérifie l'appartenance de l'utilisateur courant et son rôle, renvoie 403 sinon. Ordre des rôles : <code>viewer &lt; editor &lt; owner</code>. Chaque route déclare le rôle minimum requis via <code>Depends(require_role("editor"))</code> etc.</p>
+        </section>
+
+        <section id="doe">
+          <h2>DOE et campagnes</h2>
+          <p>Follow analyse génériquement des lots d'entités (<code>follow.doe.batch.analyze_batch</code>), mais StructureForge ne simule qu'une géométrie à la fois. Le pont : <code>ProcessLot</code> (<code>spectre/core/structures.py</code>), une <code>follow.Structure</code> qui contient une liste de <code>ProcessStructure</code> — le seul concept neuf que Spectre ajoute au modèle de données.</p>
+          <p><code>generate_campaign_variants()</code> construit un plan croisé : <code>VariantPlan.factors</code> est une liste de <code>VariantFactor</code> (étape, champ ou estimation, valeurs), et chaque combinaison du produit cartésien de toutes les valeurs (<code>itertools.product</code>) devient une entité re-simulée. Un plan factoriel complet est toujours statistiquement identifiable — chaque facteur croise chaque autre par construction — donc rien à vérifier après coup, contrairement à un balayage « diagonal » construit à la main.</p>
+        </section>
+
+        <section id="estimations">
+          <h2>Paramètres process et estimations</h2>
+          <p>Une étape de dépôt (<code>structureforge.process.steps.Deposition</code>) porte deux champs purement descriptifs, sans effet sur la géométrie (le même statut que <code>ChemicalStep.parameters</code>/<code>.description</code>) :</p>
+          <ul>
+            <li><code>process_parameters: dict[str, float]</code> — une grandeur du procédé (ex. <code>{"flux": 12.0}</code>).</li>
+            <li><code>derived_estimates: list[DerivedEstimate]</code> — une relation linéaire définie par l'utilisateur (<code>estimate = offset + coefficient * process_parameters[parameter]</code>), avec son inverse (<code>solve_parameter_for_estimate</code>) pour en déduire le paramètre process nécessaire à une valeur cible.</li>
+          </ul>
+          <p>Une campagne DOE peut faire varier soit le champ brut, soit une estimation nommée : <code>VariantFactor.via_estimate</code> déclenche <code>_step_with_estimate_value()</code> (<code>spectre/core/structures.py</code>) plutôt que <code>_step_with_value()</code>, qui résout le paramètre process par inversion avant de simuler chaque combinaison. Les libellés et valeurs affichés dans la feuille de split restent les valeurs cibles saisies (ex. un dopage), jamais le paramètre process sous-jacent.</p>
+          <p>Ces champs voyagent gratuitement à travers Spectre : <code>process_metadata()</code> sérialise chaque étape en JSON tel quel (<code>step.model_dump(mode="json")</code>), donc toute nouvelle propriété d'un type d'étape StructureForge est automatiquement conservée dans <code>metadata["structureforge_process"]</code> sans changement côté Spectre.</p>
+        </section>
+
+        <section id="etendre">
+          <h2>Comment étendre</h2>
+          <h3>Ajouter un type d'étape process</h3>
+          <p>Le type appartient à StructureForge (<code>structureforge/process/steps.py</code>, union discriminée <code>ProcessStep</code>), avec sa logique de mutation de géométrie dans <code>structureforge/process/simulate.py::_apply()</code>. Côté Spectre, ajouter le nouveau <code>kind</code> à <code>STEP_KINDS</code>/<code>STEP_ICON_PATHS</code> et une branche dans <code>renderKindFields()</code>/<code>buildStepFromForm()</code>/<code>fillKindFields()</code> (<code>structure-builder.js</code>) suffit généralement — le reste (simulation, DOE, persistance) suit sans changement.</p>
+          <h3>Ajouter une recette</h3>
+          <p>Les recettes standard vivent dans <code>structureforge.core.recipes.default_recipes()</code> ; les recettes propres à un projet dans son <code>RecipeStore</code> (<code>spectre/core/projects.py::get_recipe_store()</code>), exposées via l'onglet « Structures » du projet et les routes <code>POST/DELETE /api/projects/{slug}/recipes/{deposition,etch}</code>.</p>
+          <h3>Ajouter un endpoint « évolution légère »</h3>
+          <p>Suivre le motif de la section « évolution légère » ci-dessus : dériver via <code>_derive_branch()</code>, copier tout ce qui ne change pas, remplacer uniquement le nouveau champ, traduire toute <code>follow.FollowError</code> en message français plutôt que de la laisser remonter.</p>
+        </section>
+
+        <section id="tests">
+          <h2>Tests</h2>
+          <p><code>pytest</code> dans chacun des trois dépôts (<code>follow</code>, <code>structureforge</code>, <code>spectre</code>). Côté Spectre, <code>tests/conftest.py</code> fournit une fixture <code>client</code> (un <code>TestClient</code> FastAPI avec <code>SPECTRE_DATA_DIR</code> pointé sur un répertoire temporaire par test — aucun état partagé entre tests). Chaque fonctionnalité a son fichier (<code>test_campaigns.py</code>, <code>test_branching.py</code>, <code>test_physical_tracking.py</code>...), généralement un flux complet via l'API JSON plutôt que des mocks.</p>
+        </section>
+
+        <section id="deploiement">
+          <h2>Déploiement</h2>
+          <p><code>Dockerfile</code> à la racine de <code>spectre/</code> : une seule étape, utilisateur non privilégié, données sous <code>/data</code> (variable <code>SPECTRE_DATA_DIR</code>, à monter en volume). <code>docker-compose.yml</code> pour un démarrage local. Variables d'environnement : voir le <code>README.md</code> du dépôt pour la liste complète (<code>SPECTRE_DATA_DIR</code>, <code>SPECTRE_BASE_URL</code>, <code>SPECTRE_SMTP_*</code>). Pas de pipeline d'intégration continue à ce jour.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script>initDocsNav();</script>
+</body>
+</html>
