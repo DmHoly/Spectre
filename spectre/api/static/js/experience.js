@@ -154,7 +154,8 @@ async function renderBatchMatrix(detail) {
     }
 
     const el = document.getElementById("matrix-content");
-    if (variation.varying.length === 0) {
+    const hasFactors = variation.factor_labels && variation.factor_labels.length > 0;
+    if (variation.varying.length === 0 && !hasFactors) {
       el.innerHTML = `<div class="help">Les ${variation.entity_count} échantillons sont identiques sur tous les paramètres suivis.</div>`;
       return;
     }
@@ -183,7 +184,8 @@ async function renderBatchMatrix(detail) {
         </tbody>
       </table>`;
 
-    const rawTable = `
+    const rawTable = variation.varying.length
+      ? `
       <table style="border-collapse:collapse;font-size:12px;width:100%;">
         <thead><tr style="text-align:left;color:var(--text-faint);font-size:11px;text-transform:uppercase;">
           <th style="padding:4px 10px 4px 0;">Repère interne</th>
@@ -199,7 +201,8 @@ async function renderBatchMatrix(detail) {
             )
             .join("")}
         </tbody>
-      </table>`;
+      </table>`
+      : `<div class="help">Ces paramètres ne changent pas la géométrie simulée (ex : un paramètre process ou une estimation) - rien à comparer structure par structure.</div>`;
 
     el.innerHTML = `
       <div style="overflow-x:auto;">${splitSheet}</div>

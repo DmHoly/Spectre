@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
     app.get("/profil")(_page("profil.html"))
     app.get("/docs")(_page("docs.html"))
     app.get("/docs/guide")(_page("docs-guide.html"))
+    app.get("/docs/exemples")(_page("docs-exemples.html"))
     app.get("/docs/architecture")(_page("docs-architecture.html"))
     app.get("/projets/{slug}")(_page("projet.html"))
     app.get("/projets/{slug}/structures/nouvelle")(_page("structure-builder.html"))

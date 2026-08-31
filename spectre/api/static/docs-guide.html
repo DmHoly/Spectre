@@ -69,18 +69,21 @@
 
       <div class="docs-content">
         <h1>Guide d'utilisation</h1>
-        <p>Ce guide suit le déroulé normal d'un projet dans Spectre : créer un compte, monter un projet, construire une structure, suivre une expérience jusqu'à sa conclusion, puis la faire évoluer ou la comparer à d'autres. Chaque section correspond à un écran réel de l'application.</p>
+        <p>Ce guide suit le déroulé normal d'un projet dans Spectre : créer un compte, monter un projet, construire une structure, suivre une expérience jusqu'à sa conclusion, puis la faire évoluer ou la comparer à d'autres. Chaque section correspond à un écran réel de l'application. Pour des recettes complètes et reproductibles (nanofils, plots de report), voir <a href="/docs/exemples">Exemples pas à pas</a>.</p>
 
         <section id="compte">
           <h2>Créer un compte</h2>
           <p>Depuis l'écran de connexion, le lien « Créer un compte » ouvre l'inscription : nom, e-mail, mot de passe (8 caractères minimum). Si quelqu'un vous a invité à rejoindre un projet, ouvrez le lien reçu par e-mail : votre adresse sera déjà pré-remplie et vous rejoindrez automatiquement le projet une fois le compte créé.</p>
+          <img class="docs-shot" src="/static/docs/img/01-inscription.png" alt="Formulaire d'inscription Spectre">
           <p>Mot de passe oublié ? Le lien « Mot de passe oublié » sur l'écran de connexion envoie un e-mail de réinitialisation, valable un temps limité.</p>
         </section>
 
         <section id="projets">
           <h2>Créer un projet</h2>
           <p>Un projet regroupe toutes les expériences d'une même étude : ses structures, ses recettes, ses membres. Depuis « Mes projets », le bouton « Nouveau projet » demande un nom et une description optionnelle. Vous en devenez automatiquement propriétaire.</p>
+          <img class="docs-shot" src="/static/docs/img/02-dashboard.png" alt="Tableau de bord, liste des projets">
           <p>Chaque carte de projet affiche votre rôle dessus et le nombre d'expériences en cours / terminées.</p>
+          <img class="docs-shot" src="/static/docs/img/03-nouveau-projet.png" alt="Dialogue de création d'un nouveau projet">
         </section>
 
         <section id="roles">
@@ -95,11 +98,14 @@
             </tbody>
           </table>
           <p>Depuis l'onglet « Membres » du projet (visible aux propriétaires), ajouter quelqu'un par e-mail : s'il a déjà un compte, il rejoint le projet immédiatement ; sinon, une invitation par e-mail lui est envoyée avec un lien d'inscription valable deux semaines.</p>
+          <img class="docs-shot" src="/static/docs/img/04-membres-invitation.png" alt="Onglet Membres, invitation par e-mail">
         </section>
 
         <section id="substrat">
           <h2>Le substrat</h2>
           <p>Toute structure part d'un substrat : un matériau, une largeur et une épaisseur. C'est le point de départ visible en bas de la coupe transversale, et il reste modifiable à tout moment tant que l'expérience n'est pas lancée.</p>
+          <img class="docs-shot" src="/static/docs/img/05-builder-initial.png" alt="Constructeur de structure, état initial avec seulement le substrat">
+          <p class="docs-shot-caption">Le constructeur au départ : seulement le substrat, rien d'autre. Le formulaire d'étape reste caché tant qu'on n'a rien à y faire.</p>
         </section>
 
         <section id="etapes">
@@ -114,6 +120,7 @@
             <li><strong>Retrait de résine</strong> — retire la résine posée par une lithographie.</li>
           </ul>
           <p>Cliquer une étape déjà ajoutée l'ouvre en édition ; les flèches ▲▼ la déplacent dans l'ordre du procédé.</p>
+          <img class="docs-shot" src="/static/docs/img/06-etape-ajoutee.png" alt="Une étape de dépôt ajoutée, affichée en pastille compacte">
         </section>
 
         <section id="vues">
@@ -123,6 +130,9 @@
             <li><strong>Par couches</strong> — pour un empilement de dépôts uniquement (typiquement une épitaxie). Cliquer une couche directement dans le dessin (ou sa pastille dans la liste) ouvre ses caractéristiques. Le formulaire d'ajout reste discret jusqu'à ce qu'on clique « + Ajouter une couche » ou une couche existante.</li>
             <li><strong>Par étapes</strong> — la liste complète, pour tout le reste (gravure, lithographie, intégration de contacts...). Cette vue s'active automatiquement dès qu'une étape autre que dépôt est ajoutée.</li>
           </ul>
+          <img class="docs-shot" src="/static/docs/img/07-vue-etapes.png" alt="Bascule manuelle sur la vue par étapes">
+          <p class="docs-shot-caption">Bascule manuelle : ici on repasse en « Par étapes » même si la structure ne contient encore que des dépôts.</p>
+          <div class="docs-callout">Pourquoi deux vues ? Une épitaxie se pense couche par couche (« la couche de PGaN », « le canal ») — cliquer directement dans le dessin colle à cette façon de voir. Une intégration (contacts, gravures, nettoyages) se pense comme une suite d'opérations dans l'ordre — la liste d'étapes colle mieux à ce déroulé. Dès qu'une étape non-dépôt existe, la vue par couches n'a plus de sens (une couche ne correspond plus forcément à une étape) et se désactive automatiquement.</div>
         </section>
 
         <section id="parametres-avances">
@@ -132,34 +142,49 @@
             <li><strong>Paramètres process</strong> — une grandeur du procédé que vous voulez suivre ou faire varier (par exemple un flux).</li>
             <li><strong>Grandeurs physiques estimées</strong> — une estimation que vous définissez vous-même à partir d'un paramètre process, par une relation simple : <code>estimation = décalage + coefficient &times; paramètre</code>. Par exemple <code>dopage = flux &times; 2</code>. L'aperçu se calcule en direct pendant la saisie.</li>
           </ul>
-          <div class="docs-callout">C'est une estimation que vous posez, pas une valeur simulée : Spectre ne connaît pas la physique du dopage, seulement la relation que vous lui donnez.</div>
+          <img class="docs-shot" src="/static/docs/img/08-parametres-avances.png" alt="Paramètres process et grandeur estimée sur une étape de dépôt">
+          <p class="docs-shot-caption">Un paramètre process « flux » à 12, une estimation « Dopage » = flux &times; 2 : l'aperçu affiche déjà « ≈ 24 cm-3 » pendant la saisie.</p>
+
+          <h3>À quoi ça sert concrètement</h3>
+          <p>La coupe transversale ne connaît que la géométrie : matériaux, épaisseurs, formes. Le dopage, la résistivité, la composition ne s'y voient pas — ils ne sont pas simulés. Ces deux champs servent à les garder attachés à l'étape sans les inventer :</p>
+          <ol>
+            <li>Vous entrez un <strong>paramètre process</strong> : une valeur que la recette utilise vraiment (un flux, une puissance, une température...).</li>
+            <li>Vous posez une <strong>estimation</strong> : la relation, telle que vous la connaissez de votre procédé, entre ce paramètre et une grandeur physique qui vous intéresse.</li>
+            <li>Spectre calcule l'estimation à l'affichage, et peut aussi faire l'inverse : si vous demandez une campagne « dopage = 20, 40, 60 », il résout le flux nécessaire pour chaque valeur cible et lance la simulation avec ce flux (voir la section Campagnes plus bas).</li>
+          </ol>
+          <div class="docs-callout">C'est une estimation que vous posez, pas une valeur simulée : Spectre ne connaît pas la physique du dopage, seulement la relation linéaire que vous lui donnez. Si votre procédé n'est pas linéaire sur la plage qui vous intéresse, l'estimation ne sera fiable que localement — à vous de le garder en tête.</div>
           <p>Ces grandeurs deviennent ensuite disponibles comme paramètre à faire varier dans une campagne (voir plus bas).</p>
         </section>
 
         <section id="simuler">
           <h2>Simuler</h2>
           <p>Le bouton « Simuler » calcule la coupe transversale après chaque étape et affiche le résultat final. Le curseur au-dessus de la coupe permet de rejouer le procédé étape par étape.</p>
+          <img class="docs-shot" src="/static/docs/img/09-structure-simulee.png" alt="Structure simulée, empilement PGaN puis contact Ni/Au">
         </section>
 
         <section id="lancer">
           <h2>Lancer le suivi</h2>
           <p>Une fois la structure prête, le formulaire « Lancer » demande un titre, une intention (pourquoi fait-on cette expérience, et pourquoi maintenant) et, optionnellement, une hypothèse.</p>
           <p>La section « Objectifs » (repliée par défaut) permet de poser, pour chacun : pourquoi cet objectif compte, la mesure suivie, le sens recherché (observer / maximiser / minimiser / cible précise) et comment on compte le vérifier. Les réponses viendront à la conclusion.</p>
+          <img class="docs-shot" src="/static/docs/img/10-lancer.png" alt="Formulaire de lancement, titre et intention">
         </section>
 
         <section id="fiche">
           <h2>La fiche d'expérience</h2>
           <p>Chaque expérience a sa propre fiche : statut, suivi chronologique (une ligne par version), structure actuelle avec les différences par rapport à la version précédente, objectifs, liens vers d'autres expériences, et — selon le cas — cartographie de campagne, suivi physique, preuves et conclusion.</p>
+          <img class="docs-shot" src="/static/docs/img/11-fiche-experience.png" alt="Fiche d'expérience complète">
         </section>
 
         <section id="preuves">
           <h2>Preuves</h2>
           <p>À tout moment, ajouter une preuve : une description, une source (lien, fichier, référence) et, optionnellement, une mesure nommée avec sa valeur. Chaque preuve ajoutée enregistre une nouvelle version de l'expérience.</p>
+          <img class="docs-shot" src="/static/docs/img/12-preuves.png" alt="Formulaire d'ajout d'une preuve avec mesure nommée">
         </section>
 
         <section id="conclure">
           <h2>Conclure</h2>
           <p>Conclure répond, pour chaque objectif posé au lancement, à son statut (atteint / non atteint / partiellement atteint / non concluant) et à ce qui a été constaté. Un résumé général, une décision (retenir comme référence, explorer une variante, reproduire, abandonner, non concluant) et une prochaine étape optionnelle complètent la conclusion.</p>
+          <img class="docs-shot" src="/static/docs/img/13-conclure.png" alt="Formulaire de conclusion, réponse à un objectif">
         </section>
 
         <section id="evoluer">
@@ -169,6 +194,7 @@
             <li><strong>Continuer cette piste</strong> — la nouvelle version prolonge directement celle-ci.</li>
             <li><strong>Explorer une nouvelle piste à partir d'ici</strong> — un embranchement : la version de départ reste inchangée, et une deuxième direction se développe en parallèle, comparable à tout moment à la première. La fiche d'une version qui a donné plusieurs pistes affiche un lien vers chacune.</li>
           </ul>
+          <img class="docs-shot" src="/static/docs/img/14-evoluer.png" alt="Évolution d'une expérience avec l'option d'embranchement cochée">
         </section>
 
         <section id="gabarit">
@@ -184,52 +210,76 @@
         <section id="campagnes">
           <h2>Plusieurs échantillons (campagne)</h2>
           <p>La section « Créer plusieurs variantes » du constructeur permet de lancer une seule expérience qui suit plusieurs échantillons à la fois. Pour chaque paramètre à faire varier : une étape, un paramètre (une grandeur numérique de l'étape, ou une estimation si l'étape en a une) et une liste de valeurs.</p>
-          <p>Avec plusieurs paramètres, toutes les combinaisons sont générées : 3 épaisseurs &times; 3 angles donnent 9 échantillons. « Prévisualiser » montre le résultat avant de lancer.</p>
+          <img class="docs-shot" src="/static/docs/img/15-campagne-facteurs.png" alt="Section campagne, facteur splitté sur une grandeur estimée">
+          <p class="docs-shot-caption">Ici la campagne varie « Dopage (estimée) » sur 20, 40 et 60 cm-3 — pas directement le flux, la grandeur qui intéresse vraiment.</p>
+
+          <h3>Pourquoi croiser plusieurs paramètres</h3>
+          <p>Une variation à la fois (une épaisseur, puis à part un angle) ne dit rien sur les combinaisons : peut-être que l'effet de l'épaisseur change selon l'angle. Ajouter un deuxième facteur à la campagne ne remplace pas le premier, il se croise avec : toutes les combinaisons sont générées automatiquement (3 épaisseurs &times; 3 angles = 9 échantillons), pas seulement une diagonale. C'est ce qui distingue une campagne d'une suite de tests isolés — chaque échantillon de la grille documente une combinaison précise, et rien n'est laissé au hasard sur qui a reçu quoi.</p>
+          <p>« Prévisualiser » calcule toutes les combinaisons et montre le résultat avant de lancer quoi que ce soit ; « Lancer » enregistre la campagne et fige les échantillons.</p>
+
+          <h3>Paramètre process ou grandeur estimée : lequel choisir ?</h3>
+          <p>Le sélecteur de paramètre d'un facteur liste les deux quand l'étape en a :</p>
+          <ul>
+            <li>Splitter sur un <strong>paramètre process</strong> (ex. un flux, une puissance) fait varier directement cette valeur d'un échantillon à l'autre.</li>
+            <li>Splitter sur une <strong>grandeur estimée</strong> (ex. « Dopage (estimée) ») laisse entrer les valeurs cibles qui vous intéressent réellement ; Spectre résout tout seul, pour chacune, le paramètre process nécessaire (en inversant la relation posée dans « Paramètres avancés »), et lance la simulation avec cette valeur résolue.</li>
+          </ul>
+          <p>Le deuxième mode est presque toujours le bon quand vous raisonnez « je veux ces dopages-là » plutôt que « je veux tester ces flux-là ».</p>
         </section>
 
         <section id="cartographie">
           <h2>Cartographie et feuille de split</h2>
           <p>Sur la fiche d'une campagne : la <strong>cartographie des variantes</strong> montre un dessin par échantillon, et la <strong>feuille de split</strong> liste, en tableau, la valeur de chaque paramètre varié pour chaque échantillon — la référence à consulter avant de traiter les échantillons physiques.</p>
+          <img class="docs-shot" src="/static/docs/img/16-cartographie-split.png" alt="Cartographie des variantes et feuille de split d'une campagne dopage">
+          <p class="docs-shot-caption">La feuille de split affiche « Dopage (cm-3) — PGaN » pour chaque échantillon, même si le dopage lui-même ne change rien à la coupe transversale dessinée.</p>
+          <div class="docs-callout">Un paramètre process ou une estimation ne change pas la géométrie simulée (les trois dessins ci-dessus sont identiques) — seule la feuille de split le montre. Le résumé « Détails techniques », lui, ne liste que ce qui a réellement changé dans la coupe (une épaisseur, une profondeur...) ; pour un split purement process/estimé, il reste vide et l'indique.</div>
         </section>
 
         <section id="suivi-physique">
           <h2>Suivi physique par échantillon</h2>
           <p>Un identifiant et un emplacement peuvent être posés sur une expérience simple (dans la fiche), ou par échantillon pour une campagne (directement sous chaque vignette de la cartographie). Utile pour retrouver quel échantillon physique correspond à quelle ligne de la feuille de split.</p>
+          <img class="docs-shot" src="/static/docs/img/17-suivi-physique.png" alt="Identifiants physiques renseignés sous chaque vignette de la cartographie">
         </section>
 
         <section id="comparer">
           <h2>Comparer deux expériences</h2>
           <p>La section « Comparer avec » d'une fiche permet de choisir un autre projet (accessible) puis une expérience dedans, et d'afficher les différences de structure entre les deux.</p>
+          <img class="docs-shot" src="/static/docs/img/18-comparer.png" alt="Résultat d'une comparaison inter-projets, différences de structure">
         </section>
 
         <section id="combiner">
           <h2>Combiner deux expériences</h2>
           <p>Sous « Actions avancées » (repliées), « Combiner avec une autre expérience » crée une nouvelle version qui garde la structure de la fiche courante, mais relie l'historique et les preuves de l'expérience choisie. Les deux doivent être du même type (une expérience simple ne se combine pas avec une campagne).</p>
+          <img class="docs-shot" src="/static/docs/img/19-combiner.png" alt="Formulaire de combinaison de deux expériences">
         </section>
 
         <section id="etiquettes">
           <h2>Étiquettes</h2>
           <p>De courtes étiquettes libres (« à valider », « prioritaire »...) se posent et se retirent directement dans l'en-tête d'une fiche.</p>
+          <img class="docs-shot" src="/static/docs/img/20-etiquettes.png" alt="Étiquette ajoutée dans l'en-tête d'une fiche d'expérience">
         </section>
 
         <section id="vue-ensemble">
           <h2>Vue d'ensemble du projet</h2>
           <p>Le lien « Vue d'ensemble » d'un projet affiche toutes ses expériences reliées entre elles : chaque point est une version, chaque trait un lien de filiation. Une vue avancée, pratique pour repérer d'un coup d'œil où un embranchement a eu lieu.</p>
+          <img class="docs-shot" src="/static/docs/img/21-vue-ensemble.png" alt="Vue d'ensemble d'un projet, filiation entre versions">
         </section>
 
         <section id="recettes">
           <h2>Gérer les recettes</h2>
           <p>L'onglet « Structures » d'un projet liste les recettes de dépôt et de gravure disponibles dans le constructeur, avec la possibilité d'en ajouter (nom, mode, angle, et pour une gravure, la sélectivité par matériau). Les recettes standard ne peuvent pas être retirées ; celles ajoutées au projet le peuvent.</p>
+          <img class="docs-shot" src="/static/docs/img/22-recettes.png" alt="Onglet Structures, recette de dépôt ajoutée">
         </section>
 
         <section id="compte-gestion">
           <h2>Profil et mot de passe</h2>
           <p>Depuis « Mon profil » : modifier son nom, changer son mot de passe (l'ancien est demandé).</p>
+          <img class="docs-shot" src="/static/docs/img/23-profil.png" alt="Page de profil utilisateur">
         </section>
 
         <section id="projet-gestion">
           <h2>Suppression et invitations</h2>
           <p>Un propriétaire peut supprimer un projet depuis son onglet « Membres », zone dangereuse — il faut retaper le nom exact du projet pour confirmer. Cette action efface définitivement toutes ses expériences et structures. Les invitations en attente apparaissent dans le même onglet, avec la possibilité de les annuler avant qu'elles soient acceptées.</p>
+          <img class="docs-shot" src="/static/docs/img/24-projet-gestion.png" alt="Zone dangereuse, suppression de projet">
         </section>
       </div>
     </div>

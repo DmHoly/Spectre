@@ -39,6 +39,7 @@
         <a href="#doe">DOE et campagnes</a>
         <a href="#estimations">Paramètres process et estimations</a>
         <a href="#etendre">Comment étendre</a>
+        <a href="#limites">Limites connues</a>
         <a href="#tests">Tests</a>
         <a href="#deploiement">Déploiement</a>
       </nav>
@@ -168,6 +169,14 @@ experiment = builder.commit()</code></pre>
           <p>Les recettes standard vivent dans <code>structureforge.core.recipes.default_recipes()</code> ; les recettes propres à un projet dans son <code>RecipeStore</code> (<code>spectre/core/projects.py::get_recipe_store()</code>), exposées via l'onglet « Structures » du projet et les routes <code>POST/DELETE /api/projects/{slug}/recipes/{deposition,etch}</code>.</p>
           <h3>Ajouter un endpoint « évolution légère »</h3>
           <p>Suivre le motif de la section « évolution légère » ci-dessus : dériver via <code>_derive_branch()</code>, copier tout ce qui ne change pas, remplacer uniquement le nouveau champ, traduire toute <code>follow.FollowError</code> en message français plutôt que de la laisser remonter.</p>
+        </section>
+
+        <section id="limites">
+          <h2>Limites connues</h2>
+          <h3>Pas de retournement de structure (griding face arrière, flip-chip)</h3>
+          <p>StructureForge modélise le substrat à sens unique : <code>Geometry.substrate()</code> pose un <code>floor_nm</code> (masse infinie protégée, jamais gravée ni recouverte), utilisé aussi bien par le dépôt que par la gravure pour ne jamais dépasser le fond du substrat (<code>_bulk_pad</code>/<code>_clamp_floor</code> dans <code>geometry/engine.py</code>). <code>remove_floating_debris()</code> ancre en dur sur <code>self.layers[0].polygon</code> — toujours la toute première couche déposée.</p>
+          <p>Retourner une structure (pour amincir ou graver la face arrière, coller une puce à l'envers) demanderait soit une transformation de coordonnées (miroir en y + recalcul de <code>floor_nm</code>) à chaque retournement, soit une deuxième frontière protégée symétrique à <code>floor_nm</code> — dans les deux cas, ça touche le dépôt ET la gravure, plus l'ancrage de <code>remove_floating_debris()</code> qui ne serait plus forcément <code>layers[0]</code> une fois la face d'origine posée contre autre chose. Aucun concept de face arrière n'existe aujourd'hui dans le code : ce serait un nouveau type de <code>ProcessStep</code>, avec des décisions de modélisation réelles à trancher avant toute implémentation (les motifs de la face d'origine, une fois enterrés, redeviennent-ils gravables une fois amincis jusqu'à eux ? comment <code>floor_nm</code> se redéfinit-il après un retournement ?).</p>
+          <div class="docs-callout">Ce que Spectre sait faire aujourd'hui pour une intégration de type flip-chip : motifs de plots métalliques (dépôt + lithographie + gravure), vus dans <a href="/docs/exemples#flip-chip">Exemples : plots de report</a>. Ce qu'il ne sait pas faire : le retournement lui-même, l'amincissement ou la gravure de la face arrière, le collage de deux structures l'une sur l'autre.</div>
         </section>
 
         <section id="tests">
