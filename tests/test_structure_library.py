@@ -110,6 +110,32 @@ def test_delete_a_saved_structure(client):
     assert deleted.json()["projet"] == []
 
 
+def test_builtin_presets_are_listed_and_can_be_duplicated_into_a_real_structure(client):
+    slug = _register_and_project(client, "libH@example.com")
+
+    listed = client.get(f"/api/projects/{slug}/structures-sauvegardees").json()
+    presets = listed["presets"]
+    assert any(s["name"] == "Nanofil pointe semipolaire (V-pit inversé)" for s in presets)
+    preset = next(s for s in presets if s["name"] == "Nanofil pointe semipolaire (V-pit inversé)")
+    assert preset["scope"] == "preset"
+    assert any(step["kind"] == "semipolar_facet" for step in preset["steps"])
+
+    # duplicating a preset creates a real, editable structure (presets themselves aren't stored)
+    derived = client.post(
+        f"/api/projects/{slug}/structures-sauvegardees",
+        json={
+            "name": "Mon nanofil",
+            "substrate": preset["substrate"],
+            "steps": preset["steps"],
+            "derived_from": preset["name"],
+            "partagee": False,
+        },
+    )
+    assert derived.status_code == 201
+    saved = next(s for s in derived.json()["projet"] if s["name"] == "Mon nanofil")
+    assert saved["derived_from"] == "Nanofil pointe semipolaire (V-pit inversé)"
+
+
 def test_viewer_cannot_create_a_saved_structure(client):
     slug = _register_and_project(client, "libG-owner@example.com")
     client.post("/api/auth/logout")

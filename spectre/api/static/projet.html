@@ -301,12 +301,14 @@
 
     function savedStructureOptionsHtml(library) {
       const entries = [
+        ...(library.presets || []).map((s) => ({ ...s, scope: "preset" })),
         ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
         ...library.projet.map((s) => ({ ...s, scope: "projet" })),
       ];
       if (!entries.length) return { html: `<option value="">Aucune structure enregistrée</option>`, empty: true };
+      const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", projet: "" };
       const html = entries
-        .map((s) => `<option value="${s.scope}::${encodeURIComponent(s.name)}">${escapeHtml(s.name)}${s.scope === "partagee" ? " (partagée)" : ""}</option>`)
+        .map((s) => `<option value="${s.scope}::${encodeURIComponent(s.name)}">${escapeHtml(s.name)}${scopeSuffix[s.scope]}</option>`)
         .join("");
       return { html, empty: false };
     }
@@ -438,23 +440,30 @@
       }
     }
 
+    const SCOPE_NOTE = {
+      preset: `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· préset, disponible dans tous les projets</span>`,
+      partagee: `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les projets</span>`,
+      projet: "",
+    };
+
     function savedStructureRow(structure) {
       const canManage = currentRole === "editor" || currentRole === "owner";
+      const isPreset = structure.scope === "preset";
       const useHref = `/projets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${encodeURIComponent(structure.name)}&scope=${structure.scope}`;
       const editHref = `/projets/${encodeURIComponent(slug)}/structures/bibliotheque/${encodeURIComponent(structure.name)}?scope=${structure.scope}`;
       const duplicateHref = `${editHref}&dupliquer=1`;
       return `
         <div class="step-row" style="align-items:flex-start;">
           <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:600;">${escapeHtml(structure.name)}${structure.scope === "partagee" ? ` <span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les projets</span>` : ""}</div>
+            <div style="font-size:13px;font-weight:600;">${escapeHtml(structure.name)} ${SCOPE_NOTE[structure.scope] || ""}</div>
             <div style="font-size:12px;color:var(--text-faint);">${structure.steps.length} étape(s)${structure.derived_from ? " · dérivée de " + escapeHtml(structure.derived_from) : ""}</div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
             ${canManage ? `<a class="btn btn-line" href="${useHref}" style="padding:5px 10px;font-size:12px;">Utiliser</a>` : ""}
             ${canManage ? `<a class="btn btn-line" href="${duplicateHref}" style="padding:5px 10px;font-size:12px;">Dupliquer</a>` : ""}
-            ${canManage ? `<a class="btn btn-line" href="${editHref}" style="padding:5px 10px;font-size:12px;">Modifier</a>` : ""}
+            ${canManage && !isPreset ? `<a class="btn btn-line" href="${editHref}" style="padding:5px 10px;font-size:12px;">Modifier</a>` : ""}
             ${
-              canManage
+              canManage && !isPreset
                 ? `<button class="btn btn-line js-remove-saved-structure" data-name="${escapeHtml(structure.name)}" data-scope="${structure.scope}" type="button" style="padding:5px 10px;font-size:12px;color:var(--danger);">Supprimer</button>`
                 : ""
             }
@@ -466,6 +475,7 @@
       try {
         const library = await fetchSavedStructures();
         const entries = [
+          ...(library.presets || []).map((s) => ({ ...s, scope: "preset" })),
           ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
           ...library.projet.map((s) => ({ ...s, scope: "projet" })),
         ];

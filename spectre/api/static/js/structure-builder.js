@@ -9,6 +9,7 @@ const STEP_KINDS = {
   lithography: { label: "Lithographie", icon: "lithography", color: "#7a4a97", tint: "#f2e9f7" },
   chemical: { label: "Étape chimique", icon: "chemical", color: "#3f7d4a", tint: "#e9f4ea" },
   resist_strip: { label: "Retrait de résine", icon: "resist_strip", color: "#a45a3a", tint: "#f6ede7" },
+  semipolar_facet: { label: "Facette semipolaire", icon: "semipolar_facet", color: "#b8860b", tint: "#faf3df" },
 };
 
 const STEP_ICON_PATHS = {
@@ -18,6 +19,7 @@ const STEP_ICON_PATHS = {
   lithography: '<path d="M6 4l12 16M18 4L6 20"/>',
   chemical: '<path d="M9 3h6M10 3v5l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3"/>',
   resist_strip: '<path d="M5 5l14 14M5 19L19 5"/>',
+  semipolar_facet: '<path d="M4 20L12 4L20 20Z"/>',
 };
 
 function stepIconHtml(kind) {
@@ -157,6 +159,25 @@ function renderKindFields(kind) {
     container.innerHTML = `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Retrait de résine"></div>
       <div><label>Matériau</label><select class="field" id="f-material">${materialOptions("Photoresist")}</select></div>`;
+  } else if (kind === "semipolar_facet") {
+    container.innerHTML = `
+      <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Facette semipolaire"></div>
+      <div><label>Sens</label>
+        <select class="field" id="f-orientation">
+          <option value="tip">Pointe (anti-V-pit, croît vers le haut)</option>
+          <option value="notch">Creux (V-pit, s'enfonce vers le bas)</option>
+        </select>
+        <div class="help" style="margin-top:4px;">Une facette symétrique à angle précis, comme sur un flanc semipolaire de nanofil ou de LED III-N &mdash; ni une recette directionnelle ni isotrope ne peut produire cette forme.</div>
+      </div>
+      <div class="field-row"><div><label>Largeur de base</label><input class="field" id="f-base-half-width" type="number" value="30"></div>
+      <div><label>Unité</label><select class="field" id="f-base-half-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
+      <div class="field-row"><div><label>Largeur de pointe</label><input class="field" id="f-tip-half-width" type="number" value="0"></div>
+      <div><label>Unité</label><select class="field" id="f-tip-half-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
+      <div class="help" style="margin-top:-6px;">0 = converge en une pointe. Doit rester strictement inférieure à la largeur de base.</div>
+      <div><label>Angle de facette (degrés depuis l'horizontale)</label><input class="field" id="f-facet-angle" type="number" value="60"></div>
+      <div><label>Position (optionnelle)</label><input class="field" id="f-position" type="number" placeholder="laisser vide = centre du domaine">
+        <div class="help" style="margin-top:4px;">Position en nm depuis le bord gauche. Vide = centrée automatiquement.</div>
+      </div>`;
   }
 }
 
@@ -322,6 +343,18 @@ function buildStepFromForm() {
   if (kind === "chemical") {
     return { kind, name, description: document.getElementById("f-description").value || null, parameters: {} };
   }
+  if (kind === "semipolar_facet") {
+    const positionRaw = document.getElementById("f-position").value;
+    return {
+      kind,
+      name,
+      orientation: document.getElementById("f-orientation").value,
+      base_half_width: { value: parseFloat(document.getElementById("f-base-half-width").value) || 0, unit: document.getElementById("f-base-half-width-unit").value },
+      tip_half_width: { value: parseFloat(document.getElementById("f-tip-half-width").value) || 0, unit: document.getElementById("f-tip-half-width-unit").value },
+      facet_angle_deg: parseFloat(document.getElementById("f-facet-angle").value) || 60,
+      position: positionRaw ? { value: parseFloat(positionRaw) || 0, unit: "nm" } : null,
+    };
+  }
   return { kind, name, material: document.getElementById("f-material").value };
 }
 
@@ -331,6 +364,10 @@ function stepSummary(step) {
   if (step.kind === "planarization") return step.target_level ? `jusqu'à ${step.target_level.value} ${step.target_level.unit}` : `jusqu'au ${step.stop_material}`;
   if (step.kind === "lithography") return `${step.resist_material} · ${step.openings.length} ouverture(s)`;
   if (step.kind === "chemical") return step.description || "sans effet géométrique";
+  if (step.kind === "semipolar_facet") {
+    const orientationLabel = step.orientation === "notch" ? "creux (V-pit)" : "pointe (anti-V-pit)";
+    return `${orientationLabel} · ${step.facet_angle_deg}° · base ${step.base_half_width.value} ${step.base_half_width.unit}`;
+  }
   return step.material;
 }
 
@@ -484,6 +521,14 @@ function fillKindFields(step) {
     document.getElementById("f-description").value = step.description || "";
   } else if (step.kind === "resist_strip") {
     document.getElementById("f-material").value = step.material;
+  } else if (step.kind === "semipolar_facet") {
+    document.getElementById("f-orientation").value = step.orientation;
+    document.getElementById("f-base-half-width").value = step.base_half_width.value;
+    document.getElementById("f-base-half-width-unit").value = step.base_half_width.unit;
+    document.getElementById("f-tip-half-width").value = step.tip_half_width.value;
+    document.getElementById("f-tip-half-width-unit").value = step.tip_half_width.unit;
+    document.getElementById("f-facet-angle").value = step.facet_angle_deg;
+    document.getElementById("f-position").value = step.position != null ? step.position.value : "";
   }
 }
 
@@ -920,7 +965,7 @@ async function fetchSavedStructures() {
 }
 
 function findSavedStructure(list, name, scope) {
-  const bucket = scope === "partagee" ? list.partagees : list.projet;
+  const bucket = scope === "preset" ? list.presets : scope === "partagee" ? list.partagees : list.projet;
   return (bucket || []).find((s) => s.name === name) || null;
 }
 
@@ -1003,8 +1048,13 @@ async function initLibraryMode() {
     setSubstrateFields(found.substrate);
     state.steps = found.steps;
     renderSteps();
-    if (libraryDuplicateMode) {
-      document.getElementById("page-title").textContent = "Dupliquer une structure";
+    // A preset (structureforge built-in) has no backing store to edit in place - forcing
+    // duplicate mode turns "Modifier" into "dupliquer sous un nouveau nom", which is the only
+    // thing that makes sense for it.
+    const duplicateMode = libraryDuplicateMode || librarySourceScope === "preset";
+    if (duplicateMode) {
+      document.getElementById("page-title").textContent =
+        librarySourceScope === "preset" ? "Enregistrer ce préset sous un nouveau nom" : "Dupliquer une structure";
       document.getElementById("library-name").placeholder = `ex : ${found.name} + ...`;
       state.derivedFrom = found.name;
       document.getElementById("library-derived-note").style.display = "";

@@ -22,7 +22,7 @@ from ..core.accounts import User
 from ..core.permissions import require_role
 from ..core.projects import Project
 from ..core.recipe_labels import DEPOSITION_DESCRIPTIONS_FR, ETCH_DESCRIPTIONS_FR
-from ..core.structure_library import SavedStructure
+from ..core.structure_library import SavedStructure, default_structure_presets
 from .deps import get_current_user
 
 router = APIRouter(prefix="/api/projects", tags=["structures"])
@@ -171,6 +171,7 @@ def list_saved_structures(project: Project = Depends(require_role("viewer"))) ->
     shared = projects.get_shared_structure_store().load()
     own = projects.get_structure_store(project.slug).load()
     return {
+        "presets": [_saved_structure_payload(s, "preset") for s in default_structure_presets().values()],
         "partagees": [_saved_structure_payload(s, "partagee") for s in shared.structures.values()],
         "projet": [_saved_structure_payload(s, "projet") for s in own.structures.values()],
     }
