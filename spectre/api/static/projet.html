@@ -66,6 +66,15 @@
     </div>
 
     <div id="tab-structures" class="tab-panel" style="display:none;">
+      <div class="card card-pad" style="max-width:720px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;">
+          <div class="section-title" style="margin-bottom:0;">Structures sauvegardées</div>
+          <a class="btn btn-line" id="new-library-structure-link" href="#" style="padding:6px 12px;font-size:12.5px;display:none;">+ Nouvelle structure</a>
+        </div>
+        <p class="help" style="margin-bottom:12px;">Réutilisables et dérivables (« dupliquer ») depuis n'importe quelle nouvelle expérience, sans avoir à tout reconstruire. Les structures partagées sont visibles dans tous les projets.</p>
+        <div id="saved-structures-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+
       <div class="card card-pad" style="max-width:720px;">
         <div class="section-title" style="margin-bottom:4px;">Recettes de dépôt</div>
         <p class="help" style="margin-bottom:12px;">Disponibles dans le constructeur de structure pour ce projet.</p>
@@ -164,10 +173,11 @@
         </div>
 
         <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
-          <label>Repartir d'une structure existante</label>
-          <div class="help" style="margin-bottom:8px;">Reprend la structure telle quelle comme point de départ, sans lien de filiation.</div>
+          <label>Repartir d'une structure de la bibliothèque</label>
+          <div class="help" style="margin-bottom:8px;">Structures enregistrées (partagées ou propres à ce projet), réutilisables tel quel.</div>
           <select class="field" id="template-select" style="margin-bottom:8px;"></select>
           <button class="btn btn-line btn-block" id="option-template" type="button">Utiliser cette structure</button>
+          <a class="btn btn-line btn-block" id="option-new-library-structure" href="#" style="margin-top:8px;">+ Créer une nouvelle structure</a>
         </div>
 
         <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
@@ -285,14 +295,34 @@
 
     const newExperienceDialog = document.getElementById("new-experience-dialog");
 
+    async function fetchSavedStructures() {
+      return api.get(`/api/projects/${encodeURIComponent(slug)}/structures-sauvegardees`);
+    }
+
+    function savedStructureOptionsHtml(library) {
+      const entries = [
+        ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
+        ...library.projet.map((s) => ({ ...s, scope: "projet" })),
+      ];
+      if (!entries.length) return { html: `<option value="">Aucune structure enregistrée</option>`, empty: true };
+      const html = entries
+        .map((s) => `<option value="${s.scope}::${encodeURIComponent(s.name)}">${escapeHtml(s.name)}${s.scope === "partagee" ? " (partagée)" : ""}</option>`)
+        .join("");
+      return { html, empty: false };
+    }
+
     async function openNewExperienceDialog() {
       clearErrorFlash();
       try {
-        const data = await api.get(`/api/projects/${encodeURIComponent(slug)}/experiences?status=all&limit=200`);
-        const options = data.items.map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`).join("");
-        const empty = `<option value="">Aucune expérience pour l'instant</option>`;
-        document.getElementById("template-select").innerHTML = data.items.length ? options : empty;
-        document.getElementById("continue-select").innerHTML = data.items.length ? options : empty;
+        const [experiences, library] = await Promise.all([
+          api.get(`/api/projects/${encodeURIComponent(slug)}/experiences?status=all&limit=200`),
+          fetchSavedStructures(),
+        ]);
+        const expOptions = experiences.items.map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`).join("");
+        document.getElementById("continue-select").innerHTML = experiences.items.length
+          ? expOptions
+          : `<option value="">Aucune expérience pour l'instant</option>`;
+        document.getElementById("template-select").innerHTML = savedStructureOptionsHtml(library).html;
         newExperienceDialog.showModal();
       } catch (err) {
         showError(err);
@@ -306,7 +336,13 @@
     document.getElementById("option-template").addEventListener("click", () => {
       const source = document.getElementById("template-select").value;
       if (!source) return;
-      window.location.href = `/projets/${encodeURIComponent(slug)}/structures/nouvelle?depuis=${encodeURIComponent(source)}`;
+      const [scope, name] = source.split("::");
+      window.location.href = `/projets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${name}&scope=${scope}`;
+    });
+
+    document.getElementById("option-new-library-structure").addEventListener("click", (event) => {
+      event.preventDefault();
+      window.location.href = `/projets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle?retour=nouvelle-experience`;
     });
 
     document.getElementById("option-continue").addEventListener("click", () => {
@@ -392,6 +428,57 @@
             try {
               await api.del(`/api/projects/${encodeURIComponent(slug)}/recipes/${btn.dataset.kind}/${encodeURIComponent(btn.dataset.name)}`);
               loadRecipes();
+            } catch (err) {
+              showError(err);
+            }
+          });
+        });
+      } catch (err) {
+        showError(err);
+      }
+    }
+
+    function savedStructureRow(structure) {
+      const canManage = currentRole === "editor" || currentRole === "owner";
+      const useHref = `/projets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${encodeURIComponent(structure.name)}&scope=${structure.scope}`;
+      const editHref = `/projets/${encodeURIComponent(slug)}/structures/bibliotheque/${encodeURIComponent(structure.name)}?scope=${structure.scope}`;
+      const duplicateHref = `${editHref}&dupliquer=1`;
+      return `
+        <div class="step-row" style="align-items:flex-start;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;">${escapeHtml(structure.name)}${structure.scope === "partagee" ? ` <span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les projets</span>` : ""}</div>
+            <div style="font-size:12px;color:var(--text-faint);">${structure.steps.length} étape(s)${structure.derived_from ? " · dérivée de " + escapeHtml(structure.derived_from) : ""}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+            ${canManage ? `<a class="btn btn-line" href="${useHref}" style="padding:5px 10px;font-size:12px;">Utiliser</a>` : ""}
+            ${canManage ? `<a class="btn btn-line" href="${duplicateHref}" style="padding:5px 10px;font-size:12px;">Dupliquer</a>` : ""}
+            ${canManage ? `<a class="btn btn-line" href="${editHref}" style="padding:5px 10px;font-size:12px;">Modifier</a>` : ""}
+            ${
+              canManage
+                ? `<button class="btn btn-line js-remove-saved-structure" data-name="${escapeHtml(structure.name)}" data-scope="${structure.scope}" type="button" style="padding:5px 10px;font-size:12px;color:var(--danger);">Supprimer</button>`
+                : ""
+            }
+          </div>
+        </div>`;
+    }
+
+    async function loadSavedStructuresList() {
+      try {
+        const library = await fetchSavedStructures();
+        const entries = [
+          ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
+          ...library.projet.map((s) => ({ ...s, scope: "projet" })),
+        ];
+        document.getElementById("saved-structures-list").innerHTML = entries.length
+          ? entries.map(savedStructureRow).join("")
+          : `<div class="help">Aucune structure enregistrée pour l'instant. « + Nouvelle structure » pour en créer une, ou « Enregistrer dans la bibliothèque » depuis le constructeur.</div>`;
+        document.querySelectorAll(".js-remove-saved-structure").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            try {
+              await api.del(
+                `/api/projects/${encodeURIComponent(slug)}/structures-sauvegardees/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.scope === "partagee"}`
+              );
+              loadSavedStructuresList();
             } catch (err) {
               showError(err);
             }
@@ -514,7 +601,10 @@
           document.getElementById("new-structure-btn").addEventListener("click", openNewExperienceDialog);
           document.getElementById("deposition-recipe-form").style.display = "";
           document.getElementById("etch-recipe-form").style.display = "";
+          document.getElementById("new-library-structure-link").style.display = "";
         }
+        document.getElementById("new-library-structure-link").href =
+          `/projets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle`;
         if (currentRole === "owner") {
           document.getElementById("add-member-form").style.display = "grid";
           document.getElementById("danger-zone").style.display = "block";
@@ -544,6 +634,7 @@
         materialsList = [];
       }
       loadRecipes();
+      loadSavedStructuresList();
     }
 
     init();

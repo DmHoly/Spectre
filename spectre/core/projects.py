@@ -221,6 +221,29 @@ def recipes_path(slug: str) -> Path:
     return project_dir(slug) / "recipes.json"
 
 
+def structures_path(slug: str) -> Path:
+    return project_dir(slug) / "structures.json"
+
+
+def shared_structures_path() -> Path:
+    """Not inside any project's own directory - visible from every project, see
+    :mod:`spectre.core.structure_library`.
+    """
+    return data_dir() / "structures_partagees.json"
+
+
+def get_structure_store(slug: str):
+    from .structure_library import StructureLibraryStore
+
+    return StructureLibraryStore(structures_path(slug))
+
+
+def get_shared_structure_store():
+    from .structure_library import StructureLibraryStore
+
+    return StructureLibraryStore(shared_structures_path())
+
+
 def get_repository(slug: str):
     """A fresh ``follow.storage.repository.Repository`` for this project, reloaded from disk on
     every call - Spectre serves many projects from one process, so nothing is cached in memory

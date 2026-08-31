@@ -30,8 +30,16 @@ function stepIconHtml(kind) {
 
 const pathParts = window.location.pathname.split("/").filter(Boolean);
 const slug = pathParts[1];
-const evolveExperienceId = pathParts[2] === "experiences" ? pathParts[3] : null;
-const templateExperienceId = evolveExperienceId ? null : new URLSearchParams(window.location.search).get("depuis");
+const isLibraryMode = pathParts[2] === "structures" && pathParts[3] === "bibliotheque";
+const libraryStructureName = isLibraryMode && pathParts[4] !== "nouvelle" ? decodeURIComponent(pathParts[4]) : null;
+const queryParams = new URLSearchParams(window.location.search);
+const librarySourceScope = queryParams.get("scope") || "projet";
+const libraryDuplicateMode = queryParams.get("dupliquer") === "1";
+const evolveExperienceId = !isLibraryMode && pathParts[2] === "experiences" ? pathParts[3] : null;
+const templateExperienceId = !isLibraryMode && !evolveExperienceId ? queryParams.get("depuis") : null;
+const chosenStructureName = !isLibraryMode && !evolveExperienceId ? queryParams.get("structure") : null;
+const chosenStructureScope = queryParams.get("scope") || "projet";
+const returnTo = queryParams.get("retour"); // where "Enregistrer" in library mode sends you back to
 
 const state = {
   materials: [],
@@ -45,6 +53,9 @@ const state = {
   editingIndex: null,
   viewMode: "couches", // "couches" (click a layer, epitaxy-style) or "etapes" (full step list)
   showStepForm: false, // couches mode only: whether the add/edit form is open
+  derivedFrom: null, // library mode only: name of the structure this one was derived from, if any
+  editingLibraryName: null, // library mode only: name of the saved structure being edited in place (null = new)
+  editingLibraryScope: null, // library mode only: "projet" or "partagee", matching editingLibraryName
 };
 
 const errorBox = document.getElementById("error");
@@ -737,11 +748,7 @@ async function loadExistingProcess() {
   if (!evolveExperienceId) return;
   try {
     const data = await api.get(`/api/projects/${slug}/experiences/${evolveExperienceId}/process`);
-    document.getElementById("substrate-material").value = data.substrate.material;
-    document.getElementById("substrate-width").value = data.substrate.domain_width.value;
-    document.getElementById("substrate-width-unit").value = data.substrate.domain_width.unit;
-    document.getElementById("substrate-thickness").value = data.substrate.thickness.value;
-    document.getElementById("substrate-thickness-unit").value = data.substrate.thickness.unit;
+    setSubstrateFields(data.substrate);
     state.steps = data.steps;
     renderSteps();
     document.getElementById("page-title").textContent = "Enregistrer une évolution";
@@ -754,10 +761,17 @@ async function loadExistingProcess() {
     const verification = detail.objective_verification || {};
     state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
     renderObjectives();
-    document.getElementById("objectives-section").open = state.objectives.length > 0;
   } catch (err) {
     showError(err);
   }
+}
+
+function setSubstrateFields(substrate) {
+  document.getElementById("substrate-material").value = substrate.material;
+  document.getElementById("substrate-width").value = substrate.domain_width.value;
+  document.getElementById("substrate-width-unit").value = substrate.domain_width.unit;
+  document.getElementById("substrate-thickness").value = substrate.thickness.value;
+  document.getElementById("substrate-thickness-unit").value = substrate.thickness.unit;
 }
 
 function substrateSpec() {
@@ -893,13 +907,121 @@ async function loadTemplateProcess() {
   document.getElementById("page-title").textContent = "Nouvelle expérience (structure reprise)";
   try {
     const data = await api.get(`/api/projects/${slug}/experiences/${templateExperienceId}/process`);
-    document.getElementById("substrate-material").value = data.substrate.material;
-    document.getElementById("substrate-width").value = data.substrate.domain_width.value;
-    document.getElementById("substrate-width-unit").value = data.substrate.domain_width.unit;
-    document.getElementById("substrate-thickness").value = data.substrate.thickness.value;
-    document.getElementById("substrate-thickness-unit").value = data.substrate.thickness.unit;
+    setSubstrateFields(data.substrate);
     state.steps = data.steps;
     renderSteps();
+  } catch (err) {
+    showError(err);
+  }
+}
+
+async function fetchSavedStructures() {
+  return api.get(`/api/projects/${slug}/structures-sauvegardees`);
+}
+
+function findSavedStructure(list, name, scope) {
+  const bucket = scope === "partagee" ? list.partagees : list.projet;
+  return (bucket || []).find((s) => s.name === name) || null;
+}
+
+async function loadChosenStructureForExperience() {
+  if (!chosenStructureName) return;
+  try {
+    const list = await fetchSavedStructures();
+    const found = findSavedStructure(list, chosenStructureName, chosenStructureScope);
+    if (!found) {
+      showError(new Error(`Structure "${chosenStructureName}" introuvable dans la bibliothèque.`));
+      return;
+    }
+    setSubstrateFields(found.substrate);
+    state.steps = found.steps;
+    renderSteps();
+    document.getElementById("based-on-note").style.display = "";
+    document.getElementById("based-on-name").textContent = found.name;
+    document.getElementById("edit-structure-link").href =
+      `/projets/${slug}/structures/bibliotheque/${encodeURIComponent(found.name)}` +
+      `?scope=${chosenStructureScope}&dupliquer=1&retour=nouvelle-experience`;
+  } catch (err) {
+    showError(err);
+  }
+}
+
+document.getElementById("library-save-btn").addEventListener("click", () => saveLibraryStructure(false));
+document.getElementById("library-save-as-btn").addEventListener("click", () => saveLibraryStructure(true));
+
+async function saveLibraryStructure(forceNew) {
+  clearError();
+  const name = document.getElementById("library-name").value.trim();
+  if (!name) {
+    showError(new Error("Donnez un nom à cette structure pour l'enregistrer."));
+    return;
+  }
+  const partagee = document.getElementById("library-shared-checkbox").checked;
+  const payload = {
+    name,
+    substrate: substrateSpec(),
+    steps: state.steps,
+    derived_from: state.derivedFrom || null,
+    partagee,
+  };
+  try {
+    if (!forceNew && state.editingLibraryName) {
+      await api.put(
+        `/api/projects/${slug}/structures-sauvegardees/${encodeURIComponent(state.editingLibraryName)}` +
+          `?partagee=${state.editingLibraryScope === "partagee"}`,
+        payload
+      );
+    } else {
+      await api.post(`/api/projects/${slug}/structures-sauvegardees`, payload);
+    }
+    const scope = partagee ? "partagee" : "projet";
+    if (returnTo === "nouvelle-experience") {
+      window.location.href = `/projets/${slug}/structures/nouvelle?structure=${encodeURIComponent(name)}&scope=${scope}`;
+    } else {
+      window.location.href = `/projets/${slug}#structures`;
+    }
+  } catch (err) {
+    showError(err);
+  }
+}
+
+async function initLibraryMode() {
+  document.getElementById("library-header").style.display = "";
+  document.getElementById("experience-sections").style.display = "none";
+
+  if (!libraryStructureName) {
+    document.getElementById("page-title").textContent = "Nouvelle structure";
+    return;
+  }
+  try {
+    const list = await fetchSavedStructures();
+    const found = findSavedStructure(list, libraryStructureName, librarySourceScope);
+    if (!found) {
+      showError(new Error(`Structure "${libraryStructureName}" introuvable.`));
+      return;
+    }
+    setSubstrateFields(found.substrate);
+    state.steps = found.steps;
+    renderSteps();
+    if (libraryDuplicateMode) {
+      document.getElementById("page-title").textContent = "Dupliquer une structure";
+      document.getElementById("library-name").placeholder = `ex : ${found.name} + ...`;
+      state.derivedFrom = found.name;
+      document.getElementById("library-derived-note").style.display = "";
+      document.getElementById("library-derived-note").textContent = `Dérivée de : ${found.name}`;
+    } else {
+      document.getElementById("page-title").textContent = "Modifier la structure";
+      document.getElementById("library-name").value = found.name;
+      document.getElementById("library-shared-checkbox").checked = librarySourceScope === "partagee";
+      state.derivedFrom = found.derived_from || null;
+      state.editingLibraryName = found.name;
+      state.editingLibraryScope = librarySourceScope;
+      document.getElementById("library-save-as-btn").style.display = "";
+      if (found.derived_from) {
+        document.getElementById("library-derived-note").style.display = "";
+        document.getElementById("library-derived-note").textContent = `Dérivée de : ${found.derived_from}`;
+      }
+    }
   } catch (err) {
     showError(err);
   }
@@ -915,8 +1037,13 @@ async function init() {
   renderSteps();
   renderObjectives();
   renderFrame();
-  await loadExistingProcess();
-  await loadTemplateProcess();
+  if (isLibraryMode) {
+    await initLibraryMode();
+  } else {
+    await loadExistingProcess();
+    await loadTemplateProcess();
+    await loadChosenStructureForExperience();
+  }
   addCampaignFactorRow();
 }
 

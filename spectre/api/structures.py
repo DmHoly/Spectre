@@ -8,6 +8,7 @@ for exactly this "commit once fully formed" use.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 
 import follow
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,6 +22,7 @@ from ..core.accounts import User
 from ..core.permissions import require_role
 from ..core.projects import Project
 from ..core.recipe_labels import DEPOSITION_DESCRIPTIONS_FR, ETCH_DESCRIPTIONS_FR
+from ..core.structure_library import SavedStructure
 from .deps import get_current_user
 
 router = APIRouter(prefix="/api/projects", tags=["structures"])
@@ -146,6 +148,73 @@ def upsert_etch_recipe(recipe: EtchRecipe, project: Project = Depends(require_ro
 def delete_etch_recipe(name: str, project: Project = Depends(require_role("editor"))) -> dict:
     projects.get_recipe_store(project.slug).remove_etch(name)
     return list_recipes(project)
+
+
+class SavedStructureInput(BaseModel):
+    name: str
+    substrate: structures.SubstrateSpec
+    steps: list[ProcessStep]
+    derived_from: str | None = None
+    partagee: bool = False
+
+
+def _saved_structure_store(project: Project, partagee: bool):
+    return projects.get_shared_structure_store() if partagee else projects.get_structure_store(project.slug)
+
+
+def _saved_structure_payload(structure: SavedStructure, scope: str) -> dict:
+    return {**structure.model_dump(mode="json"), "scope": scope}
+
+
+@router.get("/{slug}/structures-sauvegardees")
+def list_saved_structures(project: Project = Depends(require_role("viewer"))) -> dict:
+    shared = projects.get_shared_structure_store().load()
+    own = projects.get_structure_store(project.slug).load()
+    return {
+        "partagees": [_saved_structure_payload(s, "partagee") for s in shared.structures.values()],
+        "projet": [_saved_structure_payload(s, "projet") for s in own.structures.values()],
+    }
+
+
+@router.post("/{slug}/structures-sauvegardees", status_code=201)
+def create_saved_structure(body: SavedStructureInput, project: Project = Depends(require_role("editor"))) -> dict:
+    store = _saved_structure_store(project, body.partagee)
+    if body.name in store.load().structures:
+        raise HTTPException(status_code=409, detail=f"Une structure nommée {body.name!r} existe déjà dans cette bibliothèque.")
+    saved = SavedStructure(
+        name=body.name,
+        substrate=body.substrate,
+        steps=body.steps,
+        derived_from=body.derived_from,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    store.upsert(saved)
+    return list_saved_structures(project)
+
+
+@router.put("/{slug}/structures-sauvegardees/{name}")
+def update_saved_structure(
+    name: str, body: SavedStructureInput, partagee: bool = False, project: Project = Depends(require_role("editor"))
+) -> dict:
+    store = _saved_structure_store(project, partagee)
+    existing = store.load().structures.get(name)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"Structure {name!r} introuvable.")
+    saved = SavedStructure(
+        name=body.name,
+        substrate=body.substrate,
+        steps=body.steps,
+        derived_from=existing.derived_from,
+        created_at=existing.created_at,
+    )
+    store.rename(name, saved)
+    return list_saved_structures(project)
+
+
+@router.delete("/{slug}/structures-sauvegardees/{name}")
+def delete_saved_structure(name: str, partagee: bool = False, project: Project = Depends(require_role("editor"))) -> dict:
+    _saved_structure_store(project, partagee).remove(name)
+    return list_saved_structures(project)
 
 
 @router.post("/{slug}/structures/simulate")

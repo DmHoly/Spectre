@@ -31,13 +31,25 @@
   <div class="page" style="max-width:1360px;">
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
 
-    <div class="card card-pad" style="margin-bottom:20px;">
-      <div class="field-group">
-        <div><label>Titre de l'expérience</label><input class="field" id="exp-title" placeholder="ex : Contact ohmique PGaN, dopage cible"></div>
-        <div class="field-row">
-          <div><label>Intention (pourquoi fait-on cette expérience ?)</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier, et pourquoi maintenant ?"></textarea></div>
-          <div><label>Hypothèse (optionnelle)</label><textarea class="field" id="exp-hypothesis" rows="2" placeholder="Ce qu'on pense observer"></textarea></div>
-        </div>
+    <!-- Mode bibliothèque : juste un nom + enregistrer/enregistrer sous, rien d'autre. -->
+    <div class="card card-pad" id="library-header" style="display:none;margin-bottom:20px;">
+      <div class="field-row" style="grid-template-columns:2fr auto auto;align-items:end;">
+        <div><label>Nom de la structure</label><input class="field" id="library-name" placeholder="ex : Épitaxie PGaN standard"></div>
+        <button class="btn btn-primary" id="library-save-btn" type="button">Enregistrer</button>
+        <button class="btn btn-line" id="library-save-as-btn" type="button" style="display:none;">Enregistrer sous...</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:12.5px;color:var(--text-soft);margin-top:12px;">
+        <input type="checkbox" id="library-shared-checkbox"> Partager avec tous les projets (visible partout, pas seulement ici)
+      </label>
+      <div class="help" id="library-derived-note" style="margin-top:8px;display:none;"></div>
+    </div>
+
+    <!-- Mode expérience : indique la structure de départ, avec un accès pour la faire évoluer via
+         la bibliothèque plutôt que de forcer une édition sur place. -->
+    <div class="card card-pad" id="based-on-note" style="display:none;margin-bottom:20px;background:var(--bg);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:13px;color:var(--text-soft);">Structure de départ : <strong id="based-on-name"></strong></div>
+        <a class="btn btn-line" id="edit-structure-link" href="#" style="padding:6px 12px;font-size:12.5px;">Modifier cette structure (bibliothèque)</a>
       </div>
     </div>
 
@@ -107,7 +119,9 @@
       </div>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:12px;margin:20px 0;">
+    <!-- Mode expérience uniquement, dans cet ordre : structure (ci-dessus) > paramètres/campagne >
+         objectifs et intention > lancer. -->
+    <div id="experience-sections" style="display:flex;flex-direction:column;gap:12px;margin:20px 0;">
       <details id="campaign-section" class="card" style="padding:0;background:var(--bg);overflow:hidden;">
         <summary class="disclosure-btn disclosure-btn--tint">
           <span>
@@ -128,15 +142,23 @@
         </div>
       </details>
 
-      <details id="objectives-section" class="card" style="padding:0;overflow:hidden;">
+      <details id="objectives-section" class="card" style="padding:0;overflow:hidden;" open>
         <summary class="disclosure-btn disclosure-btn--line">
           <span>
-            Objectifs
-            <span class="disclosure-btn__sub">Ce qu'on cherche à savoir, et comment on saura si c'est atteint.</span>
+            Objectifs et intention
+            <span class="disclosure-btn__sub">Pourquoi cette expérience, ce qu'on cherche à savoir, et comment on saura si c'est atteint.</span>
           </span>
           <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
         </summary>
         <div style="padding:0 16px 16px;">
+          <div class="field-group" style="margin-bottom:16px;">
+            <div><label>Titre de l'expérience</label><input class="field" id="exp-title" placeholder="ex : Contact ohmique PGaN, dopage cible"></div>
+            <div class="field-row">
+              <div><label>Intention (pourquoi fait-on cette expérience ?)</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier, et pourquoi maintenant ?"></textarea></div>
+              <div><label>Hypothèse (optionnelle)</label><textarea class="field" id="exp-hypothesis" rows="2" placeholder="Ce qu'on pense observer"></textarea></div>
+            </div>
+          </div>
+          <div class="section-title" style="margin-bottom:6px;">Objectifs</div>
           <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
           <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
             <div><label>Objectif</label><input class="field" id="obj-name" placeholder="ex : isolation électrique" required></div>
@@ -172,9 +194,9 @@
           <div class="help">Une nouvelle piste garde le lien avec la version de départ, mais évolue séparément — pratique pour comparer deux directions.</div>
         </div>
       </div>
-    </div>
 
-    <button class="btn btn-primary btn-block" id="launch-btn" style="font-size:15px;padding:14px;">Lancer le suivi de cette expérience</button>
+      <button class="btn btn-primary btn-block" id="launch-btn" style="font-size:15px;padding:14px;">Lancer le suivi de cette expérience</button>
+    </div>
   </div>
 
   <script src="/static/js/api.js"></script>
