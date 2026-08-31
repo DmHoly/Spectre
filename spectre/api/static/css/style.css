@@ -585,7 +585,7 @@ textarea:focus {
 
 .builder-shell {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: 460px minmax(0, 1fr);
   height: calc(100vh - 68px);
 }
 
@@ -595,9 +595,23 @@ textarea:focus {
   padding: var(--space-5) var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-5);
   overflow-y: auto;
   min-height: 0;
+}
+
+/* Champs un peu plus confortables dans le panneau des paramètres, maintenant qu'il a la
+   largeur pour ça - la taille de police globale (12-13.5px) reste correcte ailleurs (fiches,
+   formulaires courts), mais se sentait exigüe ici avec beaucoup de champs empilés. */
+.builder-sidebar label {
+  font-size: 12.5px;
+}
+.builder-sidebar .field,
+.builder-sidebar input,
+.builder-sidebar select,
+.builder-sidebar textarea {
+  font-size: 14.5px;
+  padding: 10px 12px;
 }
 
 .builder-canvas {
@@ -607,6 +621,44 @@ textarea:focus {
   gap: var(--space-5);
   overflow-y: auto;
   min-height: 0;
+}
+
+.builder-canvas-card {
+  max-height: 54vh;
+}
+
+/* -- onglets internes au constructeur (Structure / Campagne / Objectifs) ----------------- */
+
+.builder-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-soft);
+  flex: none;
+}
+
+.builder-tab {
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-faint);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: inherit;
+}
+
+.builder-tab.active {
+  color: var(--accent-dark);
+  border-bottom-color: var(--accent);
+}
+
+.builder-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
 }
 
 .step-row {

@@ -33,70 +33,74 @@
   <div class="builder-shell">
     <div class="builder-sidebar">
 
-      <div id="substrate-section">
-        <div class="section-title" style="margin-bottom:14px;">Substrat</div>
-        <div class="field-group">
-          <div><label>Matériau</label><select class="field" id="substrate-material"></select></div>
-          <div class="field-row">
-            <div><label>Largeur</label><input class="field" id="substrate-width" type="number" value="200"></div>
-            <div><label>Unité</label><select class="field" id="substrate-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
-          </div>
-          <div class="field-row">
-            <div><label>Épaisseur</label><input class="field" id="substrate-thickness" type="number" value="50"></div>
-            <div><label>Unité</label><select class="field" id="substrate-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
+      <div class="builder-tabs">
+        <button class="builder-tab active" id="tab-btn-structure" type="button">Structure</button>
+        <button class="builder-tab" id="tab-btn-campagne" type="button">Campagne (DOE)</button>
+        <button class="builder-tab" id="tab-btn-objectifs" type="button">Objectifs</button>
+      </div>
+
+      <div class="builder-tab-panel" id="tab-panel-structure">
+
+        <div id="substrate-section">
+          <div class="section-title" style="margin-bottom:14px;">Substrat</div>
+          <div class="field-group">
+            <div><label>Matériau</label><select class="field" id="substrate-material"></select></div>
+            <div class="field-row">
+              <div><label>Largeur</label><input class="field" id="substrate-width" type="number" value="200"></div>
+              <div><label>Unité</label><select class="field" id="substrate-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
+            </div>
+            <div class="field-row">
+              <div><label>Épaisseur</label><input class="field" id="substrate-thickness" type="number" value="50"></div>
+              <div><label>Unité</label><select class="field" id="substrate-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div>
-        <div class="section-title" style="margin-bottom:8px;">Vue</div>
-        <div class="view-toggle" style="margin-bottom:14px;">
-          <button class="view-toggle__btn active" id="view-mode-couches" type="button">Par couches</button>
-          <button class="view-toggle__btn" id="view-mode-etapes" type="button">Par étapes</button>
-        </div>
-        <div class="help" id="view-mode-help" style="margin-bottom:14px;">Cliquez une couche du dessin pour l'éditer. Disponible tant que la structure n'est faite que de dépôts (empilement d'épitaxie).</div>
-      </div>
-
-      <div id="step-form-section" style="display:none;">
-        <div class="section-title" style="margin-bottom:14px;" id="step-form-title">Ajouter une étape</div>
-        <div class="field-group">
-          <div>
-            <label>Type d'étape</label>
-            <select class="field" id="kind-select">
-              <option value="deposition">Dépôt</option>
-              <option value="etch">Gravure</option>
-              <option value="planarization">Planarisation</option>
-              <option value="lithography">Lithographie</option>
-              <option value="chemical">Étape chimique</option>
-              <option value="resist_strip">Retrait de résine</option>
-            </select>
+        <div>
+          <div class="section-title" style="margin-bottom:8px;">Vue</div>
+          <div class="view-toggle" style="margin-bottom:14px;">
+            <button class="view-toggle__btn active" id="view-mode-couches" type="button">Par couches</button>
+            <button class="view-toggle__btn" id="view-mode-etapes" type="button">Par étapes</button>
           </div>
-          <div id="kind-fields" class="field-group"></div>
-          <button class="btn btn-tint btn-block" id="add-step-btn" type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
-            <span id="add-step-btn-label">Ajouter cette étape</span>
-          </button>
-          <button class="btn btn-line btn-block" id="cancel-edit-btn" type="button" style="display:none;">Annuler la modification</button>
+          <div class="help" id="view-mode-help" style="margin-bottom:14px;">Cliquez une couche du dessin pour l'éditer. Disponible tant que la structure n'est faite que de dépôts (empilement d'épitaxie).</div>
         </div>
+
+        <div id="step-form-section" style="display:none;">
+          <div class="section-title" style="margin-bottom:14px;" id="step-form-title">Ajouter une étape</div>
+          <div class="field-group">
+            <div>
+              <label>Type d'étape</label>
+              <select class="field" id="kind-select">
+                <option value="deposition">Dépôt</option>
+                <option value="etch">Gravure</option>
+                <option value="planarization">Planarisation</option>
+                <option value="lithography">Lithographie</option>
+                <option value="chemical">Étape chimique</option>
+                <option value="resist_strip">Retrait de résine</option>
+              </select>
+            </div>
+            <div id="kind-fields" class="field-group"></div>
+            <button class="btn btn-tint btn-block" id="add-step-btn" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+              <span id="add-step-btn-label">Ajouter cette étape</span>
+            </button>
+            <button class="btn btn-line btn-block" id="cancel-edit-btn" type="button" style="display:none;">Annuler la modification</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title" style="margin-bottom:6px;">Étapes du procédé (<span id="steps-count">0</span>)</div>
+          <div class="help" style="margin-bottom:10px;" id="steps-list-help">Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.</div>
+          <div id="steps-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+          <button class="btn btn-line btn-block" id="add-step-shortcut-btn" type="button" style="margin-top:10px;display:none;">+ Ajouter une couche</button>
+        </div>
+
       </div>
 
-      <div style="flex:1;">
-        <div class="section-title" style="margin-bottom:6px;">Étapes du procédé (<span id="steps-count">0</span>)</div>
-        <div class="help" style="margin-bottom:10px;" id="steps-list-help">Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.</div>
-        <div id="steps-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-        <button class="btn btn-line btn-block" id="add-step-shortcut-btn" type="button" style="margin-top:10px;display:none;">+ Ajouter une couche</button>
-      </div>
-
-      <details id="campaign-section" class="card" style="padding:0;background:var(--bg);overflow:hidden;flex-shrink:0;">
-        <summary class="disclosure-btn disclosure-btn--tint">
-          <span>
-            Campagne DOE — plusieurs échantillons (split)
-            <span class="disclosure-btn__sub">Faire varier un ou plusieurs paramètres (ex : dopage) et lancer tous les échantillons en une fois.</span>
-          </span>
-          <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
-        </summary>
-        <div style="padding:14px 16px 16px;">
-          <div class="help" style="margin-bottom:10px;">Faites varier un ou plusieurs paramètres pour lancer une campagne de plusieurs échantillons en une seule expérience. Avec plusieurs paramètres, toutes les combinaisons sont générées (ex : 3 épaisseurs &times; 3 angles = 9 échantillons). La feuille de split (qui a reçu quelle valeur) apparaîtra sur la fiche de l'expérience une fois lancée.</div>
+      <div class="builder-tab-panel" id="tab-panel-campagne" style="display:none;">
+        <div>
+          <div class="section-title" style="margin-bottom:6px;">Campagne DOE — plusieurs échantillons (split)</div>
+          <div class="help" style="margin-bottom:12px;">Faites varier un ou plusieurs paramètres (ex : dopage) pour lancer une campagne de plusieurs échantillons en une seule expérience. Avec plusieurs paramètres, toutes les combinaisons sont générées (ex : 3 épaisseurs &times; 3 angles = 9 échantillons). La feuille de split (qui a reçu quelle valeur) apparaîtra sur la fiche de l'expérience une fois lancée.</div>
           <div id="campaign-factors" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
           <button class="btn btn-line btn-block" id="campaign-add-factor-btn" type="button" style="margin-bottom:10px;">+ Ajouter un paramètre</button>
           <div style="display:flex;gap:8px;">
@@ -105,38 +109,33 @@
           </div>
           <div id="campaign-result"></div>
         </div>
-      </details>
+      </div>
 
-      <details id="objectives-section" class="card" style="padding:0;overflow:hidden;flex-shrink:0;">
-        <summary class="disclosure-btn disclosure-btn--line">
-          <span>
-            Objectifs
-            <span class="disclosure-btn__sub">Ce qu'on cherche à savoir, et comment on saura si c'est atteint.</span>
-          </span>
-          <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
-        </summary>
-        <div style="padding:0 16px 16px;">
-        <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
-        <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
-          <div><label>Objectif</label><input class="field" id="obj-name" placeholder="ex : isolation électrique" required></div>
-          <div><label>Pourquoi cet objectif</label><textarea class="field" id="obj-rationale" rows="2" placeholder="ex : condition pour passer en production"></textarea></div>
-          <div class="field-row">
-            <div><label>Mesure</label><input class="field" id="obj-metric" placeholder="ex : resistivity_ohm_cm" required></div>
-            <div><label>Sens</label>
-              <select class="field" id="obj-direction">
-                <option value="observe">Observer</option>
-                <option value="maximize">Maximiser</option>
-                <option value="minimize">Minimiser</option>
-                <option value="target">Cible précise</option>
-              </select>
+      <div class="builder-tab-panel" id="tab-panel-objectifs" style="display:none;">
+        <div>
+          <div class="section-title" style="margin-bottom:6px;">Objectifs</div>
+          <div class="help" style="margin-bottom:12px;">Ce qu'on cherche à savoir avec cette expérience, et comment on saura si c'est atteint.</div>
+          <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
+          <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
+            <div><label>Objectif</label><input class="field" id="obj-name" placeholder="ex : isolation électrique" required></div>
+            <div><label>Pourquoi cet objectif</label><textarea class="field" id="obj-rationale" rows="2" placeholder="ex : condition pour passer en production"></textarea></div>
+            <div class="field-row">
+              <div><label>Mesure</label><input class="field" id="obj-metric" placeholder="ex : resistivity_ohm_cm" required></div>
+              <div><label>Sens</label>
+                <select class="field" id="obj-direction">
+                  <option value="observe">Observer</option>
+                  <option value="maximize">Maximiser</option>
+                  <option value="minimize">Minimiser</option>
+                  <option value="target">Cible précise</option>
+                </select>
+              </div>
             </div>
-          </div>
-          <div><label>Valeur cible (optionnelle)</label><input class="field" id="obj-target" type="number"></div>
-          <div><label>Comment on compte le vérifier</label><textarea class="field" id="obj-verification" rows="2" placeholder="ex : mesure au profilomètre après dépôt"></textarea></div>
-          <button class="btn btn-line btn-block" type="submit">Ajouter l'objectif</button>
-        </form>
+            <div><label>Valeur cible (optionnelle)</label><input class="field" id="obj-target" type="number"></div>
+            <div><label>Comment on compte le vérifier</label><textarea class="field" id="obj-verification" rows="2" placeholder="ex : mesure au profilomètre après dépôt"></textarea></div>
+            <button class="btn btn-line btn-block" type="submit">Ajouter l'objectif</button>
+          </form>
         </div>
-      </details>
+      </div>
 
       <div id="branch-choice-wrap" style="display:none;">
         <div class="section-title" style="margin-bottom:10px;">Piste</div>
@@ -171,12 +170,12 @@
         <div style="font-size:12px;color:var(--text-soft);white-space:nowrap;" id="scrubber-label">Pas encore simulé</div>
       </div>
 
-      <div class="card" style="flex:1;display:flex;flex-direction:column;">
+      <div class="card builder-canvas-card" style="display:flex;flex-direction:column;">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-soft);">
           <div style="font-size:13.5px;font-weight:700;">Coupe transversale</div>
           <button class="btn btn-tint" id="simulate-btn" type="button" style="padding:8px 16px;font-size:13px;">Simuler</button>
         </div>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto;" id="svg-container"></div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto;min-height:0;" id="svg-container"></div>
         <div class="legend" id="legend"></div>
       </div>
     </div>

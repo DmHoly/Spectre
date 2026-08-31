@@ -513,6 +513,17 @@ function setViewMode(mode) {
 
 document.getElementById("view-mode-couches").addEventListener("click", () => setViewMode("couches"));
 document.getElementById("view-mode-etapes").addEventListener("click", () => setViewMode("etapes"));
+
+const BUILDER_TABS = ["structure", "campagne", "objectifs"];
+function setActiveTab(tab) {
+  BUILDER_TABS.forEach((name) => {
+    document.getElementById(`tab-btn-${name}`).classList.toggle("active", name === tab);
+    document.getElementById(`tab-panel-${name}`).style.display = name === tab ? "" : "none";
+  });
+}
+BUILDER_TABS.forEach((name) => {
+  document.getElementById(`tab-btn-${name}`).addEventListener("click", () => setActiveTab(name));
+});
 document.getElementById("add-step-shortcut-btn").addEventListener("click", startAddingStep);
 
 document.getElementById("svg-container").addEventListener("click", (event) => {
@@ -752,7 +763,7 @@ async function loadExistingProcess() {
     const verification = detail.objective_verification || {};
     state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
     renderObjectives();
-    document.getElementById("objectives-section").open = state.objectives.length > 0;
+    if (state.objectives.length > 0) setActiveTab("objectifs");
   } catch (err) {
     showError(err);
   }
@@ -914,7 +925,7 @@ async function loadTemplateProcess() {
 async function init() {
   document.getElementById("crumb").textContent = "/ " + slug;
   if (evolveExperienceId) {
-    document.getElementById("campaign-section").style.display = "none";
+    document.getElementById("tab-btn-campagne").style.display = "none";
     document.getElementById("branch-choice-wrap").style.display = "block";
   }
   await loadPickers();
