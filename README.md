@@ -16,11 +16,35 @@ interface unique et simple - une **fiche d'identité** par expérience.
 
 ## Démarrer en local
 
+### Windows
+
+Prérequis : [Python 3.11+](https://www.python.org/downloads/) (cocher « Add python.exe to PATH »
+à l'installation) et [Git](https://git-scm.com/download/win).
+
+1. Cloner le dépôt puis ouvrir le dossier :
+   ```bat
+   git clone https://github.com/DmHoly/Spectre.git
+   cd Spectre
+   ```
+2. Double-cliquer **`install.bat`** (ou l'exécuter depuis une invite de commandes). Il crée un
+   environnement virtuel `.venv` et installe Spectre avec ses dépendances (StructureForge,
+   Follow - téléchargées depuis GitHub, ça peut prendre quelques minutes).
+3. Double-cliquer **`start.bat`**. Une fenêtre s'ouvre avec les journaux du serveur, et le
+   navigateur s'ouvre automatiquement sur `http://127.0.0.1:8000/`.
+
+Pour arrêter le serveur : fermer la fenêtre de journaux (ou `Ctrl+C` dedans). Pour relancer plus
+tard, `start.bat` suffit - pas besoin de relancer `install.bat` à chaque fois (seulement après une
+mise à jour du code, pour récupérer d'éventuelles nouvelles dépendances).
+
+### macOS / Linux
+
 ```bash
 pip install -e ".[dev]"
 spectre --port 8000
 #   http://127.0.0.1:8000/
 ```
+
+### Dans tous les cas
 
 Les données (comptes, projets, dépôts d'expériences, recettes) sont écrites sous `./data` par
 défaut - voir `SPECTRE_DATA_DIR` pour changer cet emplacement.
