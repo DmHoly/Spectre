@@ -11,6 +11,7 @@ const STEP_KINDS = {
   resist_strip: { label: "Retrait de résine", icon: "resist_strip", color: "#a45a3a", tint: "#f6ede7" },
   semipolar_facet: { label: "Facette semipolaire", icon: "semipolar_facet", color: "#b8860b", tint: "#faf3df" },
   selective_growth: { label: "Croissance sélective", icon: "selective_growth", color: "#2e8b57", tint: "#e6f4ec" },
+  flip: { label: "Retournement", icon: "flip", color: "#6b5ca5", tint: "#efecf9" },
 };
 
 const STEP_ICON_PATHS = {
@@ -22,6 +23,7 @@ const STEP_ICON_PATHS = {
   resist_strip: '<path d="M5 5l14 14M5 19L19 5"/>',
   semipolar_facet: '<path d="M4 20L12 4L20 20Z"/>',
   selective_growth: '<path d="M12 20V4M12 4l-5 5M12 4l5 5M6 14l6-4 6 4"/>',
+  flip: '<path d="M7 7l5-4 5 4M12 3v9M7 17l5 4 5-4M12 21v-9"/>',
 };
 
 function stepIconHtml(kind) {
@@ -280,6 +282,10 @@ function renderKindFields(kind) {
       <div><label>Vitesse relative — facette semipolaire</label><input class="field" id="f-rate-sp" type="number" value="0.15" step="0.01" min="0" max="1"></div>
       <div class="help" id="f-rate-order-hint" style="margin-top:-6px;">Doit vérifier C (1.0) &gt; plan M &gt; semipolaire, sinon la facette la plus lente ne l'emporte jamais — c'est ce qui referme la pointe au fil des étapes.</div>`;
     wireSelectiveGrowthRateCheck();
+  } else if (kind === "flip") {
+    container.innerHTML = `
+      <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Retournement"></div>
+      <div class="help">Retourne la structure pour travailler la face arrière (amincissement, via, contact) — la face avant, protégée, n'est plus modifiable tant qu'on ne retourne pas à nouveau. Nécessite une surface avant plane sur toute la largeur (ex : une planarisation juste avant), comme pour un vrai collage sur support temporaire.</div>`;
   }
 }
 
@@ -460,6 +466,9 @@ function buildStepFromForm() {
       position: positionRaw ? { value: parseFloat(positionRaw) || 0, unit: "nm" } : null,
     };
   }
+  if (kind === "flip") {
+    return { kind, name };
+  }
   return { kind, name, material: document.getElementById("f-material").value };
 }
 
@@ -481,6 +490,7 @@ function stepSummary(step) {
     const orientationLabel = step.orientation === "notch" ? "creux (V-pit)" : "pointe (anti-V-pit)";
     return `${orientationLabel} · ${step.facet_angle_deg}° · base ${step.base_half_width.value} ${step.base_half_width.unit}`;
   }
+  if (step.kind === "flip") return "face avant ↔ face arrière";
   return step.material;
 }
 
@@ -754,6 +764,7 @@ const CAMPAIGN_FIELD_OPTIONS = {
   lithography: [["thickness", "Épaisseur"]],
   chemical: [],
   resist_strip: [],
+  flip: [],
 };
 
 function campaignStepOptionsHtml() {
@@ -1235,6 +1246,7 @@ const PY_STEP_CLASS = {
   resist_strip: "ResistStrip",
   semipolar_facet: "SemipolarFacet",
   selective_growth: "SelectiveGrowth",
+  flip: "Flip",
 };
 
 function toNm(length) {
@@ -1299,6 +1311,9 @@ function pyStepCode(step) {
     ];
     if (step.position) parts.push(`position=${pyLength(step.position)}`);
     return `SemipolarFacet(${parts.join(", ")})`;
+  }
+  if (step.kind === "flip") {
+    return `Flip(name=${name})`;
   }
   return `# étape non reconnue: ${step.kind}`;
 }

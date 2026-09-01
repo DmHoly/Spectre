@@ -42,6 +42,38 @@ def test_simulate_returns_one_svg_per_frame(client):
     assert "<svg" in body["frames"][-1]["svg"]
 
 
+def test_simulate_accepts_a_flip_step_for_backside_processing(client):
+    slug = _register_and_create_project(client)
+    steps = [
+        {"kind": "deposition", "name": "Metal avant", "material": "Au", "mode": "directional", "angle_deg": 0.0, "thickness": {"value": 20, "unit": "nm"}},
+        {"kind": "flip", "name": "Retournement"},
+        {"kind": "deposition", "name": "Metal arriere", "material": "Ti", "mode": "conformal", "thickness": {"value": 10, "unit": "nm"}},
+    ]
+    response = client.post(
+        f"/api/projects/{slug}/structures/simulate", json={"substrate": _substrate(), "steps": steps}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["frames"]) == 4
+    assert [f["step_kind"] for f in body["frames"][1:]] == ["deposition", "flip", "deposition"]
+
+
+def test_simulate_rejects_a_flip_on_a_non_flat_surface(client):
+    slug = _register_and_create_project(client)
+    steps = [
+        # a directional deposit through a resist opening leaves an isolated bump, narrower than
+        # the domain - flip() should reject it rather than silently producing broken geometry.
+        {"kind": "lithography", "name": "Masque", "resist_material": "Photoresist", "thickness": {"value": 20, "unit": "nm"}, "openings": [[80, 120]]},
+        {"kind": "deposition", "name": "Plot", "material": "Au", "mode": "directional", "angle_deg": 0.0, "thickness": {"value": 15, "unit": "nm"}},
+        {"kind": "resist_strip", "name": "Retrait resine"},
+        {"kind": "flip", "name": "Retournement"},
+    ]
+    response = client.post(
+        f"/api/projects/{slug}/structures/simulate", json={"substrate": _substrate(), "steps": steps}
+    )
+    assert response.status_code == 422
+
+
 def test_simulate_rejects_unknown_material(client):
     slug = _register_and_create_project(client)
     bad_substrate = {**_substrate(), "material": "Vibranium"}

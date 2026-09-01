@@ -36,6 +36,7 @@
       <nav class="docs-nav">
         <a href="#nanofils">Nanofils (lithographie + gravure)</a>
         <a href="#flip-chip">Plots de report (flip-chip)</a>
+        <a href="#retournement">Retournement et via de face arrière</a>
         <a href="#pourquoi-anisotrope">Isotrope ou anisotrope : pourquoi ça compte</a>
       </nav>
 
@@ -72,7 +73,7 @@
 
         <section id="flip-chip">
           <h2>Plots de report (flip-chip)</h2>
-          <div class="docs-callout">Ce que cet exemple montre est réellement simulé par Spectre : un motif de plots métalliques isolés, obtenu par dépôt puis gravure sélective. Ce qu'il ne montre pas — parce que Spectre ne le sait pas faire aujourd'hui — c'est le retournement de la puce elle-même, l'amincissement ou la gravure de la face arrière, ni le collage sur un second substrat. Le détail technique de cette limite (le substrat est modélisé à sens unique) est expliqué dans <a href="/docs/architecture#limites">Architecture technique — Limites connues</a>.</div>
+          <div class="docs-callout">Ce que cet exemple montre est réellement simulé par Spectre : un motif de plots métalliques isolés, obtenu par dépôt puis gravure sélective. Le retournement de la puce et le traitement de sa face arrière sont désormais possibles aussi — voir <a href="#retournement">Retournement et via de face arrière</a> plus bas. Ce qui reste hors de portée : coller la structure retournée sur une <em>seconde</em> structure simulée séparément (voir <a href="/docs/architecture#limites">Architecture technique — Limites connues</a>).</div>
           <p>Un report flip-chip commence, côté puce, par des plots métalliques isolés à des emplacements précis — ce que Spectre simule ici par un motif obtenu en gravant sélectivement un dépôt métallique pleine plaque à travers un masque de résine.</p>
 
           <div class="docs-recipe-steps">
@@ -99,7 +100,58 @@
           </div>
 
           <img class="docs-shot" src="/static/docs/img/26-bump-pattern.png" alt="Deux plots d'or isolés sur silicium après gravure sélective">
-          <p class="docs-shot-caption">Résultat : deux plots d'or de 80 nm, isolés — prêts, dans un vrai procédé, pour un report flip-chip. Le retournement lui-même reste hors de portée de Spectre aujourd'hui.</p>
+          <p class="docs-shot-caption">Résultat : deux plots d'or de 80 nm, isolés — prêts, dans un vrai procédé, pour un report flip-chip.</p>
+        </section>
+
+        <section id="retournement">
+          <h2>Retournement et via de face arrière</h2>
+          <p>La suite logique de l'exemple précédent : une fois la face avant construite et protégée, on retourne la structure pour amincir sa face arrière et y percer un via qui vient contacter le métal enterré — le flux qu'une intégration 3D ou un flip-chip complet demande réellement. Le détail du mécanisme (comment <code>floor_nm</code> change de rôle, pourquoi la face avant doit être plane avant de retourner) est expliqué dans <a href="/docs/architecture#retournement">Architecture technique — Retournement de structure</a> ; cette recette-ci se limite au déroulé pratique.</p>
+
+          <div class="docs-recipe-steps">
+            <div class="docs-recipe-step">
+              <div class="docs-recipe-step__num">1</div>
+              <div class="docs-recipe-step__body"><strong>Substrat</strong>Si · largeur 300 nm · épaisseur 150 nm.</div>
+            </div>
+            <div class="docs-recipe-step">
+              <div class="docs-recipe-step__num">2</div>
+              <div class="docs-recipe-step__body"><strong>Dépôt — « Métal de contact »</strong>Matériau Au · mode directionnel · épaisseur 20 nm. Pleine plaque ici, sans motif — le motif de plots isolés est celui de l'exemple précédent ; on se concentre sur le retournement.</div>
+            </div>
+            <div class="docs-recipe-step">
+              <div class="docs-recipe-step__num">3</div>
+              <div class="docs-recipe-step__body"><strong>Dépôt — « Oxyde de scellement »</strong>Matériau SiO2 · mode conforme · épaisseur 80 nm. Encapsule le métal avant collage sur un support temporaire.</div>
+            </div>
+            <div class="docs-recipe-step">
+              <div class="docs-recipe-step__num">4</div>
+              <div class="docs-recipe-step__body"><strong>Planarisation — « CMP de scellement »</strong>Niveau cible 110 nm. Indispensable avant tout retournement : la face collée doit être plane sur toute la largeur.</div>
+            </div>
+            <div class="docs-recipe-step">
+              <div class="docs-recipe-step__num">5</div>
+              <div class="docs-recipe-step__body"><strong>Retournement</strong>La face avant (métal + oxyde) devient protégée ; la face arrière du substrat (silicium brut) devient la nouvelle surface exposée.</div>
+            </div>
+            <div class="docs-recipe-step">
+              <div class="docs-recipe-step__num">6</div>
+              <div class="docs-recipe-step__body"><strong>Gravure — « Amincissement de la face arrière »</strong>Mode isotrope · profondeur 120 nm. Réduit les 150 nm de substrat à environ 30 nm restants.</div>
+            </div>
+            <div class="docs-recipe-step">
+              <div class="docs-recipe-step__num">7</div>
+              <div class="docs-recipe-step__body"><strong>Lithographie — « Masque du via »</strong>Résine Photoresist · épaisseur 40 nm · une ouverture étroite centrée sur le plot enterré.</div>
+            </div>
+            <div class="docs-recipe-step">
+              <div class="docs-recipe-step__num">8</div>
+              <div class="docs-recipe-step__body"><strong>Gravure — « Gravure du via »</strong>Mode directionnel · profondeur 75 nm. Traverse le silicium aminci restant et le métal de contact enterré — le via vient toucher le plot, il ne s'arrête pas dessus par magie.</div>
+            </div>
+            <div class="docs-recipe-step">
+              <div class="docs-recipe-step__num">9</div>
+              <div class="docs-recipe-step__body"><strong>Retrait de résine</strong>Matériau Photoresist.</div>
+            </div>
+            <div class="docs-recipe-step">
+              <div class="docs-recipe-step__num">10</div>
+              <div class="docs-recipe-step__body"><strong>Dépôt — « Métal de la face arrière »</strong>Matériau Cu · mode directionnel · épaisseur 15 nm. Remplit le via et contacte le plot de la face avant — le cuivre est le choix habituel pour un via traversant réel.</div>
+            </div>
+          </div>
+
+          <img class="docs-shot" src="/static/docs/img/27-retournement-via.png" alt="Structure retournée avec via de face arrière contactant le plot métallique enterré">
+          <p class="docs-shot-caption">Résultat : le via traverse la face arrière amincie et touche directement le plot d'or enterré côté face avant.</p>
         </section>
 
         <section id="pourquoi-anisotrope">

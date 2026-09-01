@@ -115,7 +115,7 @@
 
         <section id="etapes">
           <h2>Ajouter des étapes</h2>
-          <p>Une structure se construit étape par étape. Huit types d'étapes sont disponibles :</p>
+          <p>Une structure se construit étape par étape. Neuf types d'étapes sont disponibles :</p>
           <ul>
             <li><strong>Dépôt</strong> — ajoute une couche d'un matériau, avec un mode (conforme ou directionnel, avec un angle) et une épaisseur. Un préset d'étape (voir <a href="#presets-etapes">Gérer les présets d'étapes</a>) préremplit le mode et l'angle en un clic.</li>
             <li><strong>Gravure</strong> — retire de la matière selon un mode (isotrope ou directionnel), une sélectivité par matériau optionnelle, et une profondeur.</li>
@@ -125,6 +125,7 @@
             <li><strong>Retrait de résine</strong> — retire la résine posée par une lithographie.</li>
             <li><strong>Facette semipolaire</strong> — pose une facette symétrique à un angle choisi à la main (pointe ou creux en V), pour reproduire un angle déjà connu en une seule étape.</li>
             <li><strong>Croissance sélective</strong> — simule une croissance épitaxiale bas en haut, avec une vitesse relative par plan cristallin (C &gt; M &gt; semipolaire) : c'est ce qui fait émerger une pointe de nanofil naturellement, au fil de plusieurs étapes.</li>
+            <li><strong>Retournement</strong> — retourne physiquement la structure pour travailler sa face arrière (amincissement, via traversant, contact) ; la face avant devient protégée jusqu'au prochain retournement. Nécessite une face avant plane sur toute la largeur (une planarisation juste avant), comme un vrai collage sur support temporaire. Voir <a href="/docs/exemples#retournement">Exemples : retournement et via de face arrière</a>.</li>
           </ul>
           <p>Cliquer une étape déjà ajoutée l'ouvre en édition ; les flèches ▲▼ la déplacent dans l'ordre du procédé.</p>
           <img class="docs-shot" src="/static/docs/img/06-etape-ajoutee.png" alt="Une étape de dépôt ajoutée, affichée en pastille compacte">
