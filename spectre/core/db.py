@@ -1,9 +1,9 @@
 """SQLite storage for everything Follow and StructureForge don't model: accounts, projects,
-membership. Deliberately the only relational piece of Spectre - both dependencies keep their own
-data as flat JSON files (see ``follow.storage.backends.JsonFileStore`` and
-``structureforge.core.recipe_store.RecipeStore``), and Spectre does not touch that; this module
-only ever stores rows that need to be queried by something other than an id (an email, a project
-membership).
+membership. Deliberately the only relational piece of Spectre - both dependencies (plus Spectre's
+own libraries, e.g. ``spectre.core.step_presets.StepPresetStore``) keep their own data as flat
+JSON files (see ``follow.storage.backends.JsonFileStore``), and Spectre does not touch that; this
+module only ever stores rows that need to be queried by something other than an id (an email, a
+project membership).
 """
 
 from __future__ import annotations
@@ -74,8 +74,8 @@ CREATE INDEX IF NOT EXISTS idx_invitations_project ON invitations(project_id);
 
 def data_dir() -> Path:
     """Where Spectre keeps everything it owns: the sqlite db, and one subdirectory per project
-    holding that project's Follow repository and StructureForge recipe library. Overridable with
-    ``SPECTRE_DATA_DIR`` (tests point this at a temp directory).
+    holding that project's Follow repository and its saved structures/step presets. Overridable
+    with ``SPECTRE_DATA_DIR`` (tests point this at a temp directory).
     """
     path = Path(os.environ.get("SPECTRE_DATA_DIR", "data")).resolve()
     path.mkdir(parents=True, exist_ok=True)

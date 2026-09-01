@@ -50,8 +50,8 @@ spectre --port 8000
 
 ### Dans tous les cas
 
-Les données (comptes, projets, dépôts d'expériences, recettes) sont écrites sous `./data` par
-défaut - voir `SPECTRE_DATA_DIR` pour changer cet emplacement.
+Les données (comptes, projets, dépôts d'expériences, présets d'étape) sont écrites sous `./data`
+par défaut - voir `SPECTRE_DATA_DIR` pour changer cet emplacement.
 
 ## Déploiement
 
@@ -74,7 +74,7 @@ Variables d'environnement reconnues :
 
 | Variable | Rôle | Par défaut |
 |---|---|---|
-| `SPECTRE_DATA_DIR` | Où sont écrites les données (comptes, projets, dépôts Follow, recettes) | `./data` |
+| `SPECTRE_DATA_DIR` | Où sont écrites les données (comptes, projets, dépôts Follow, présets d'étape) | `./data` |
 | `SPECTRE_BASE_URL` | URL publique utilisée dans les liens des e-mails envoyés (invitation, mot de passe oublié) | (vide) |
 | `SPECTRE_SMTP_HOST` | Serveur SMTP pour l'envoi réel des e-mails - absent, les e-mails sont journalisés au lieu d'être envoyés | (aucun) |
 | `SPECTRE_SMTP_PORT` | Port SMTP | `587` |

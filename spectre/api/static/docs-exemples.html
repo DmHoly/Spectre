@@ -11,6 +11,7 @@
 </head>
 <body>
   <div class="topbar">
+    <a href="/" style="display:flex;align-items:center;">
     <div class="topbar__brand">
       <span class="topbar__mark">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
@@ -18,6 +19,7 @@
       Spectre
       <span class="topbar__crumb">/ Documentation / Exemples</span>
     </div>
+    </a>
     <div class="topbar__actions">
       <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
         <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
@@ -56,7 +58,7 @@
             </div>
             <div class="docs-recipe-step">
               <div class="docs-recipe-step__num">3</div>
-              <div class="docs-recipe-step__body"><strong>Gravure — « Gravure profonde Si »</strong>Recette <code>SF6 Deep RIE (Si)</code> · profondeur 150 nm. Cette recette grave le silicium au rythme nominal et la résine environ 20 fois plus lentement (elle protège presque parfaitement) — le silicium exposé disparaît, celui sous la résine reste, en trois piliers.</div>
+              <div class="docs-recipe-step__body"><strong>Gravure — « Gravure profonde Si »</strong>Préset <code>SF6 Deep RIE (Si)</code> · profondeur 150 nm. Ce préset grave le silicium au rythme nominal et la résine environ 20 fois plus lentement (elle protège presque parfaitement) — le silicium exposé disparaît, celui sous la résine reste, en trois piliers.</div>
             </div>
             <div class="docs-recipe-step">
               <div class="docs-recipe-step__num">4</div>
@@ -80,7 +82,7 @@
             </div>
             <div class="docs-recipe-step">
               <div class="docs-recipe-step__num">2</div>
-              <div class="docs-recipe-step__body"><strong>Dépôt — « Métal de bump »</strong>Matériau Au · recette <code>Sputter Metal (normal)</code> · épaisseur 200 nm. Un dépôt pleine plaque, sans motif — le motif vient de la gravure qui suit.</div>
+              <div class="docs-recipe-step__body"><strong>Dépôt — « Métal de bump »</strong>Matériau Au · préset <code>Sputter Metal (normal)</code> · épaisseur 200 nm. Un dépôt pleine plaque, sans motif — le motif vient de la gravure qui suit.</div>
             </div>
             <div class="docs-recipe-step">
               <div class="docs-recipe-step__num">3</div>
@@ -88,7 +90,7 @@
             </div>
             <div class="docs-recipe-step">
               <div class="docs-recipe-step__num">4</div>
-              <div class="docs-recipe-step__body"><strong>Gravure — « Gravure du métal exposé »</strong>Recette <code>Anisotropic RIE</code> · profondeur 210 nm. Retire l'or non protégé jusqu'au substrat ; la résine protège l'or sous les plots. Voir plus bas pourquoi cette recette précisément, et pas une gravure isotrope.</div>
+              <div class="docs-recipe-step__body"><strong>Gravure — « Gravure du métal exposé »</strong>Préset <code>Anisotropic RIE</code> · profondeur 210 nm. Retire l'or non protégé jusqu'au substrat ; la résine protège l'or sous les plots. Voir plus bas pourquoi ce préset précisément, et pas une gravure isotrope.</div>
             </div>
             <div class="docs-recipe-step">
               <div class="docs-recipe-step__num">5</div>
@@ -104,8 +106,8 @@
           <h2>Isotrope ou anisotrope : pourquoi ça compte</h2>
           <p>Le premier essai de l'exemple des plots utilisait une gravure isotrope (« Wet Metal Etch ») plutôt qu'anisotrope. Résultat : les deux plots ont complètement disparu, alors que la résine les protégeait bien par le dessus.</p>
           <p>La raison tient à la géométrie, pas à un bug : une gravure isotrope attaque <em>dans toutes les directions</em>, y compris latéralement, depuis les flancs exposés d'un plot — pas seulement verticalement depuis le dessus. Avec des plots de 80 nm de large et une profondeur de référence de 210 nm, l'attaque latérale a eu largement le temps de manger les plots par les côtés avant même que la profondeur verticale ne devienne pertinente. C'est le même phénomène de « sous-gravure » (undercut) qui limite la résolution des gravures humides en salle blanche réelle.</p>
-          <p>Une gravure anisotrope (directionnelle) attaque verticalement seulement : elle traverse les 200 nm d'or exposé sans jamais grignoter les flancs protégés par la résine. C'est pour ça que l'exemple ci-dessus utilise <code>Anisotropic RIE</code> plutôt qu'une recette isotrope.</p>
-          <div class="docs-callout">Règle pratique : pour un motif fin protégé par une résine, préférez toujours une recette directionnelle. Une recette isotrope reste correcte pour une gravure sans masque fin à préserver (une gravure pleine plaque, ou un retrait volontairement isotrope comme un HF dip sur de l'oxyde), mais devient risquée dès que la largeur du motif protégé approche ou dépasse la profondeur de gravure.</div>
+          <p>Une gravure anisotrope (directionnelle) attaque verticalement seulement : elle traverse les 200 nm d'or exposé sans jamais grignoter les flancs protégés par la résine. C'est pour ça que l'exemple ci-dessus utilise <code>Anisotropic RIE</code> plutôt qu'un mode isotrope.</p>
+          <div class="docs-callout">Règle pratique : pour un motif fin protégé par une résine, préférez toujours un mode directionnel. Un mode isotrope reste correct pour une gravure sans masque fin à préserver (une gravure pleine plaque, ou un retrait volontairement isotrope comme un HF dip sur de l'oxyde), mais devient risqué dès que la largeur du motif protégé approche ou dépasse la profondeur de gravure.</div>
         </section>
       </div>
     </div>

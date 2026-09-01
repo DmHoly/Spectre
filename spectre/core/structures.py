@@ -1,8 +1,9 @@
-"""Bridges the structure-builder page to StructureForge: which materials/recipes a project can
-draw on, and turning a substrate + step list into simulated frames the page can show. All the
-physics stays in ``structureforge`` - this module only resolves per-project recipe libraries
-(:mod:`spectre.core.projects`) and turns each ``Frame`` into ready-to-embed SVG via
-``structureforge.presentation.svg.frame_to_svg``, so Spectre never draws a cross-section itself.
+"""Bridges the structure-builder page to StructureForge: which materials a project can draw on,
+and turning a substrate + step list into simulated frames the page can show. All the physics
+stays in ``structureforge`` - each ``Deposition``/``Etch`` step now carries its own mode/angle/
+selectivity directly (no recipe library to resolve), so this module only turns each ``Frame`` into
+ready-to-embed SVG via ``structureforge.presentation.svg.frame_to_svg``, so Spectre never draws a
+cross-section itself.
 """
 
 from __future__ import annotations
@@ -15,14 +16,11 @@ from follow.doe.batch import BatchVariation, analyze_batch
 from pydantic import BaseModel
 from structureforge.adapters.follow_adapter import ProcessStructure, to_structure
 from structureforge.core.materials import MaterialLibrary, default_library
-from structureforge.core.recipes import RecipeLibrary, default_recipes
 from structureforge.core.units import Length
 from structureforge.geometry.engine import Geometry
 from structureforge.presentation.svg import frame_to_svg
 from structureforge.process.simulate import Frame, SimulationError, simulate
 from structureforge.process.steps import ProcessStep, solve_parameter_for_estimate
-
-from . import projects
 
 
 class ProcessLot(follow.Structure):
@@ -50,18 +48,15 @@ def materials_library() -> MaterialLibrary:
     return default_library()
 
 
-def recipes_library(slug: str) -> RecipeLibrary:
-    return projects.get_recipe_store(slug).combined_with(default_recipes())
-
-
 def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]) -> tuple[Geometry, list[Frame], MaterialLibrary]:
     """Build the starting geometry and apply ``steps`` to it, the same way
     ``structureforge.api.app`` does for its own ``/api/simulate`` - returns the live objects
     (geometry, one frame per step, the material library used) for a caller that needs them for
-    more than just a preview (e.g. to commit the result as a Follow experiment).
+    more than just a preview (e.g. to commit the result as a Follow experiment). ``slug`` is kept
+    in the signature even though every project shares the same material/step physics now - callers
+    already pass it, and a project-specific material library is a plausible future need.
     """
     materials = materials_library()
-    recipes = recipes_library(slug)
     try:
         materials.get(substrate.material)
     except KeyError as exc:
@@ -69,7 +64,7 @@ def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]
 
     geometry = Geometry.substrate(substrate.material, substrate.domain_width.to_nm(), substrate.thickness.to_nm())
     try:
-        frames = simulate(geometry, steps, materials, recipes)
+        frames = simulate(geometry, steps, materials)
     except SimulationError as exc:
         raise SimulationFailedError(str(exc)) from exc
     return geometry, frames, materials

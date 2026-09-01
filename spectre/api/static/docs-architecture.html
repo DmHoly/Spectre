@@ -11,6 +11,7 @@
 </head>
 <body>
   <div class="topbar">
+    <a href="/" style="display:flex;align-items:center;">
     <div class="topbar__brand">
       <span class="topbar__mark">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
@@ -18,6 +19,7 @@
       Spectre
       <span class="topbar__crumb">/ Documentation / Architecture</span>
     </div>
+    </a>
     <div class="topbar__actions">
       <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
         <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
@@ -41,6 +43,7 @@
         <a href="#droits">Droits</a>
         <a href="#doe">DOE et campagnes</a>
         <a href="#estimations">Paramètres process et estimations</a>
+        <a href="#croissance-selective">Croissance sélective vs facette semipolaire</a>
         <a href="#etendre">Comment étendre</a>
         <a href="#limites">Limites connues</a>
         <a href="#securite">Sécurité</a>
@@ -79,7 +82,7 @@
     deps.py          # get_current_user (dépendance FastAPI)
     auth.py           # /api/auth/*
     projects.py        # /api/projects (liste/création/membres/invitations)
-    structures.py         # /api/projects/{slug}/{materials,recipes,structures/*}
+    structures.py         # /api/projects/{slug}/{materials,presets-etapes,structures/*}
     experiments.py          # /api/projects/{slug}/experiences/*
     static/                   # une page = un fichier HTML + son JS dédié
   cli.py          # `spectre --host --port` (uvicorn)</code></pre>
@@ -94,7 +97,7 @@
             <tbody>
               <tr><td>Comptes, sessions, projets, appartenances, invitations, réinitialisations</td><td>SQLite (<code>core/db.py</code>), un fichier sous <code>SPECTRE_DATA_DIR</code></td></tr>
               <tr><td>Expériences d'un projet (versions, objectifs, preuves, conclusion...)</td><td>Un dépôt Follow par projet, fichiers plats sous <code>&lt;data&gt;/projects/&lt;slug&gt;/follow</code></td></tr>
-              <tr><td>Recettes personnalisées d'un projet</td><td>Un fichier JSON par projet sous <code>&lt;data&gt;/projects/&lt;slug&gt;/recipes.json</code></td></tr>
+              <tr><td>Présets d'étape personnalisés d'un projet</td><td>Un fichier JSON par projet sous <code>&lt;data&gt;/projects/&lt;slug&gt;/presets_etapes.json</code>, plus un fichier partagé entre tous les projets</td></tr>
             </tbody>
           </table>
           <p>Follow et StructureForge stockent tout en JSON plat ; SQLite n'existe que pour ce qui a vraiment besoin de requêtes relationnelles (unicité d'un e-mail, appartenance à un projet, rôle). Un <code>Repository</code> Follow est reconstruit à chaque requête plutôt que mis en cache — il recharge depuis le disque à la construction, et Spectre sert potentiellement beaucoup de projets, pas un seul dépôt.</p>
@@ -165,12 +168,22 @@ experiment = builder.commit()</code></pre>
           <p>Ces champs voyagent gratuitement à travers Spectre : <code>process_metadata()</code> sérialise chaque étape en JSON tel quel (<code>step.model_dump(mode="json")</code>), donc toute nouvelle propriété d'un type d'étape StructureForge est automatiquement conservée dans <code>metadata["structureforge_process"]</code> sans changement côté Spectre.</p>
         </section>
 
+        <section id="croissance-selective">
+          <h2>Croissance sélective vs facette semipolaire</h2>
+          <p>Deux façons de faire apparaître une facette à angle dans une structure, complémentaires plutôt que redondantes :</p>
+          <ul>
+            <li><code>SemipolarFacet</code> pose une facette symétrique ponctuelle, à un angle choisi à la main (<code>facet_angle_deg</code>) — une seule étape, l'angle est un paramètre libre, pas une conséquence de la physique du matériau. C'est le bon outil quand on connaît déjà l'angle voulu et qu'on veut le poser directement (ex. reproduire un V-pit ou une pointe anti-V-pit mesurée expérimentalement).</li>
+            <li><code>SelectiveGrowth</code> simule une vraie croissance épitaxiale sélective, bas en haut : chaque étape fait avancer la surface le long de sa propre normale, à une vitesse qui dépend du plan cristallin local — la plus rapide sur le plan C (le sommet plat), plus lente sur les plans M (flancs verticaux, <code>rate_m</code>), la plus lente sur les facettes semipolaires qui émergent entre les deux (<code>rate_sp</code>). L'ordre C &gt; M &gt; SP (validé côté serveur : <code>0 &lt; rate_sp &lt; rate_m &lt; 1.0</code>) est ce qui fait qu'une facette lente « gagne » et persiste pendant qu'une facette rapide rétrécit — exactement ce qui referme progressivement un nanofil en pointe au fil de plusieurs étapes de croissance successives, sans qu'aucun angle ne soit choisi à la main.</li>
+          </ul>
+          <p>Géométriquement, <code>Geometry.grow_selective()</code> (<code>structureforge/geometry/engine.py</code>) construit une véritable construction de Wulff : plutôt que d'offsetter chaque arête existante du contour (ce qui ne peut qu'élargir des coins, jamais les faire converger), l'algorithme échantillonne un grand nombre de directions couvrant l'arc montant à 180°, classe chacune en plan C/M/semipolaire selon son angle depuis la verticale, calcule la fonction d'appui du matériau germe dans cette direction, puis intersecte tous les demi-plans obtenus. Cette intersection est ce qui permet à une facette lente sans arête préexistante de « couper » un coin entre deux facettes plus rapides — la seule façon d'obtenir un vrai rétrécissement plutôt qu'un simple élargissement des coins.</p>
+        </section>
+
         <section id="etendre">
           <h2>Comment étendre</h2>
           <h3>Ajouter un type d'étape process</h3>
           <p>Le type appartient à StructureForge (<code>structureforge/process/steps.py</code>, union discriminée <code>ProcessStep</code>), avec sa logique de mutation de géométrie dans <code>structureforge/process/simulate.py::_apply()</code>. Côté Spectre, ajouter le nouveau <code>kind</code> à <code>STEP_KINDS</code>/<code>STEP_ICON_PATHS</code> et une branche dans <code>renderKindFields()</code>/<code>buildStepFromForm()</code>/<code>fillKindFields()</code> (<code>structure-builder.js</code>) suffit généralement — le reste (simulation, DOE, persistance) suit sans changement.</p>
-          <h3>Ajouter une recette</h3>
-          <p>Les recettes standard vivent dans <code>structureforge.core.recipes.default_recipes()</code> ; les recettes propres à un projet dans son <code>RecipeStore</code> (<code>spectre/core/projects.py::get_recipe_store()</code>), exposées via l'onglet « Structures » du projet et les routes <code>POST/DELETE /api/projects/{slug}/recipes/{deposition,etch}</code>.</p>
+          <h3>Ajouter un préset d'étape</h3>
+          <p>Un préset d'étape (dépôt ou gravure préconfiguré) n'existe que côté Spectre — StructureForge n'a plus aucune notion de nom résolu, chaque étape porte directement son <code>mode</code>/<code>angle_deg</code>/sélectivité (<code>structureforge.process.steps.Deposition</code>/<code>Etch</code>). Les présets intégrés vivent dans <code>spectre.core.step_presets.default_step_presets()</code> (portage 1:1 des anciennes recettes standard de StructureForge, mêmes noms et valeurs) ; les présets propres à un projet dans son <code>StepPresetStore</code> (<code>spectre/core/projects.py::get_step_preset_store()</code>/<code>get_shared_step_preset_store()</code>), exposés via la page dédiée <code>/projets/{slug}/presets-etapes</code> et les routes <code>GET/POST/PUT/DELETE /api/projects/{slug}/presets-etapes</code>. Choisir un préset dans le constructeur ne fait que préremplir le formulaire d'étape (<code>wireModeAngleToggle()</code> dans <code>structure-builder.js</code>) — une fois l'étape ajoutée, elle ne référence plus le préset par nom, exactement comme une structure dérivée d'un préset de bibliothèque (voir « Le modèle "évolution légère" »).</p>
           <h3>Ajouter un endpoint « évolution légère »</h3>
           <p>Suivre le motif de la section « évolution légère » ci-dessus : dériver via <code>_derive_branch()</code>, copier tout ce qui ne change pas, remplacer uniquement le nouveau champ, traduire toute <code>follow.FollowError</code> en message français plutôt que de la laisser remonter.</p>
         </section>
@@ -186,7 +199,7 @@ experiment = builder.commit()</code></pre>
         <section id="securite">
           <h2>Sécurité</h2>
           <h3>Corrigé : échappement HTML incomplet dans <code>escapeHtml()</code> (XSS stockée)</h3>
-          <p><code>escapeHtml()</code> (<code>static/js/common.js</code>) échappait <code>&amp;</code>/<code>&lt;</code>/<code>&gt;</code> mais pas les guillemets, alors que tous ses appelants l'utilisent pour insérer une valeur dans un attribut HTML entre guillemets doubles (<code>value="..."</code>, <code>data-name="..."</code>, <code>href="..."</code>). Un nom de structure, de recette ou une URL de preuve contenant un <code>"</code> sortait donc de l'attribut. Vérifié en conditions réelles : un simple éditeur de projet peut créer une structure nommée <code>x" onmouseover="…"</code>, dont le JavaScript s'exécute chez n'importe quel autre membre du projet (y compris lecture seule) qui survole le bouton correspondant dans l'onglet Structures — sans clic requis. Corrigé à la source (la fonction échappe maintenant aussi <code>'</code> et <code>"</code>) plutôt que dans chaque appelant.</p>
+          <p><code>escapeHtml()</code> (<code>static/js/common.js</code>) échappait <code>&amp;</code>/<code>&lt;</code>/<code>&gt;</code> mais pas les guillemets, alors que tous ses appelants l'utilisent pour insérer une valeur dans un attribut HTML entre guillemets doubles (<code>value="..."</code>, <code>data-name="..."</code>, <code>href="..."</code>). Un nom de structure, de préset d'étape ou une URL de preuve contenant un <code>"</code> sortait donc de l'attribut. Vérifié en conditions réelles : un simple éditeur de projet peut créer une structure nommée <code>x" onmouseover="…"</code>, dont le JavaScript s'exécute chez n'importe quel autre membre du projet (y compris lecture seule) qui survole le bouton correspondant dans l'onglet Structures — sans clic requis. Corrigé à la source (la fonction échappe maintenant aussi <code>'</code> et <code>"</code>) plutôt que dans chaque appelant.</p>
           <h3>Durcissement possible, non fait</h3>
           <ul>
             <li>Pas de limitation du nombre de tentatives sur <code>/api/auth/login</code> ni sur <code>/api/auth/mot-de-passe-oublie</code> — un compte peut être attaqué en force brute à débit lent.</li>

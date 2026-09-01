@@ -11,7 +11,7 @@ def _steps(thickness=20):
             "kind": "deposition",
             "name": "Oxyde",
             "material": "SiO2",
-            "recipe": "CVD Conformal",
+            "mode": "conformal",
             "thickness": {"value": thickness, "unit": "nm"},
         }
     ]
@@ -20,69 +20,6 @@ def _steps(thickness=20):
 def _register_and_project(client, email):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
     return client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
-
-
-def test_add_and_remove_a_custom_deposition_recipe(client):
-    slug = _register_and_project(client, "recipes@example.com")
-
-    recipes = client.get(f"/api/projects/{slug}/recipes").json()
-    assert not any(r["name"] == "Nitrure maison" for r in recipes["deposition"])
-
-    added = client.post(
-        f"/api/projects/{slug}/recipes/deposition",
-        json={"name": "Nitrure maison", "mode": "conformal", "angle_deg": 0, "notes": "recette perso"},
-    )
-    assert added.status_code == 200
-    custom = next(r for r in added.json()["deposition"] if r["name"] == "Nitrure maison")
-    assert custom["is_custom"] is True
-
-    # usable right away in the structure builder
-    sim = client.post(
-        f"/api/projects/{slug}/structures/simulate",
-        json={
-            "substrate": _substrate(),
-            "steps": [{"kind": "deposition", "name": "Nitrure", "material": "SiO2", "recipe": "Nitrure maison", "thickness": {"value": 10, "unit": "nm"}}],
-        },
-    )
-    assert sim.status_code == 200
-
-    removed = client.delete(f"/api/projects/{slug}/recipes/deposition/Nitrure maison")
-    assert removed.status_code == 200
-    assert not any(r["name"] == "Nitrure maison" for r in removed.json()["deposition"])
-
-
-def test_add_a_custom_etch_recipe_with_selectivity(client):
-    slug = _register_and_project(client, "etchrecipe@example.com")
-    response = client.post(
-        f"/api/projects/{slug}/recipes/etch",
-        json={
-            "name": "Gravure selective",
-            "mode": "isotropic",
-            "angle_deg": 0,
-            "default_factor": 1,
-            "selectivity_by_material": {"SiO2": 3.5},
-            "selectivity_by_category": {},
-            "notes": None,
-        },
-    )
-    assert response.status_code == 200
-    custom = next(r for r in response.json()["etch"] if r["name"] == "Gravure selective")
-    assert custom["is_custom"] is True
-    assert custom["selectivity_by_material"]["SiO2"] == 3.5
-
-
-def test_viewer_cannot_manage_recipes(client):
-    client.post("/api/auth/register", json={"email": "viewer-recipe@example.com", "password": "supersecret", "name": "V"})
-    client.post("/api/auth/logout")
-
-    client.post("/api/auth/register", json={"email": "owner-recipe@example.com", "password": "supersecret", "name": "O"})
-    slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
-    client.post(f"/api/projects/{slug}/members", json={"email": "viewer-recipe@example.com", "role": "viewer"})
-    client.post("/api/auth/logout")
-
-    client.post("/api/auth/login", json={"email": "viewer-recipe@example.com", "password": "supersecret"})
-    response = client.post(f"/api/projects/{slug}/recipes/deposition", json={"name": "X", "mode": "conformal"})
-    assert response.status_code == 403
 
 
 def test_combine_two_experiences_keeps_the_base_structure_and_links_the_other(client):

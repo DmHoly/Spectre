@@ -5,7 +5,8 @@ that being tied to launching a particular experience. Two stores per Spectre ins
 across every project, one private to a single project - see :func:`spectre.core.projects.
 get_shared_structure_store`/``get_structure_store``. Deliberately not a Follow repository: saved
 structures have no lifecycle of their own (no conclusion, no evidence) - they are just a named,
-overwritable snapshot a new experience starts from, similar in spirit to ``RecipeStore``.
+overwritable snapshot a new experience starts from, similar in spirit to :mod:`spectre.core.
+step_presets`.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import json
 from pathlib import Path
 
 from pydantic import BaseModel, Field
+from structureforge.core.recipes import DepositionMode, EtchMode
 from structureforge.core.units import Length
 from structureforge.process.steps import Deposition, Etch, Lithography, ProcessStep, ResistStrip, SemipolarFacet
 
@@ -34,8 +36,8 @@ def _nanofil_vpit_inverse_preset() -> SavedStructure:
     convex mesa growing up instead of a concave notch growing down), the shape
     ``structureforge/examples/nanowire_semipolar_tip.py`` demonstrates. Everything but the facet
     itself is ordinary Deposition/Etch/Lithography; the facet is a
-    :class:`structureforge.process.steps.SemipolarFacet`, the one shape those recipes can't
-    reproduce on their own (see its docstring).
+    :class:`structureforge.process.steps.SemipolarFacet`, the one shape ordinary directional/
+    isotropic deposition and etch can't reproduce on their own (see its docstring).
     """
     domain_width_nm = 300.0
     cx = domain_width_nm / 2
@@ -44,15 +46,22 @@ def _nanofil_vpit_inverse_preset() -> SavedStructure:
         name="Nanofil pointe semipolaire (V-pit inversé)",
         substrate=SubstrateSpec(material="Sapphire", domain_width=Length.nm(domain_width_nm), thickness=Length.nm(20)),
         steps=[
-            Deposition(name="Tampon AlN", material="AlN", recipe="MOCVD Epitaxial", thickness=Length.nm(10)),
-            Deposition(name="GaN (précurseur)", material="GaN", recipe="MOCVD Epitaxial", thickness=Length.nm(60)),
+            Deposition(name="Tampon AlN", material="AlN", mode=DepositionMode.conformal, thickness=Length.nm(10)),
+            Deposition(name="GaN (précurseur)", material="GaN", mode=DepositionMode.conformal, thickness=Length.nm(60)),
             Lithography(
                 name="Masque du nanofil",
                 resist_material="Photoresist",
                 thickness=Length.nm(80),
                 openings=[(0.0, cx - pillar_half_width_nm), (cx + pillar_half_width_nm, domain_width_nm)],
             ),
-            Etch(name="Gravure RIE du nanofil", recipe="Cl2 ICP-RIE (III-N)", depth=Length.nm(60)),
+            Etch(
+                name="Gravure RIE du nanofil",
+                mode=EtchMode.directional,
+                angle_deg=0.0,
+                selectivity_by_material={"GaN": 1.0, "AlGaN": 1.0, "InGaN": 1.0, "AlN": 1.0},
+                default_factor=0.05,
+                depth=Length.nm(60),
+            ),
             ResistStrip(name="Retrait résine"),
             SemipolarFacet(
                 name="Pointe semipolaire (anti-V-pit)",
@@ -61,9 +70,9 @@ def _nanofil_vpit_inverse_preset() -> SavedStructure:
                 tip_half_width=Length.nm(8),
                 facet_angle_deg=60.0,
             ),
-            Deposition(name="Puits quantique InGaN", material="InGaN", recipe="MOCVD Epitaxial", thickness=Length.nm(3)),
-            Deposition(name="Capot GaN", material="GaN", recipe="MOCVD Epitaxial", thickness=Length.nm(8)),
-            Deposition(name="Contact ITO", material="ITO", recipe="Sputter Metal (normal)", thickness=Length.nm(15)),
+            Deposition(name="Puits quantique InGaN", material="InGaN", mode=DepositionMode.conformal, thickness=Length.nm(3)),
+            Deposition(name="Capot GaN", material="GaN", mode=DepositionMode.conformal, thickness=Length.nm(8)),
+            Deposition(name="Contact ITO", material="ITO", mode=DepositionMode.directional, angle_deg=0.0, thickness=Length.nm(15)),
         ],
         derived_from=None,
         created_at="preset",
@@ -72,8 +81,8 @@ def _nanofil_vpit_inverse_preset() -> SavedStructure:
 
 def default_structure_presets() -> dict[str, SavedStructure]:
     """Built-in structure presets, the same "standard, not stored, not deletable" status
-    ``structureforge.core.recipes.default_recipes()`` gives standard recipes - always available
-    from every project's structure library, under their own ``"preset"`` scope (see
+    :func:`spectre.core.step_presets.default_step_presets` gives standard step presets - always
+    available from every project's structure library, under their own ``"preset"`` scope (see
     :func:`spectre.api.structures.list_saved_structures`), never written to a JSON store.
     """
     return {s.name: s for s in [_nanofil_vpit_inverse_preset()]}

@@ -1,5 +1,5 @@
 """Projects and membership - the data-access layer over the ``projects``/``memberships`` tables,
-plus where each project's own Follow repository and StructureForge recipe library live on disk.
+plus where each project's own Follow repository, saved structures, and step presets live on disk.
 Follow and StructureForge never know a "project" exists; this is the one place that maps a slug
 to the paths they're given.
 """
@@ -64,7 +64,7 @@ def create(name: str, description: str, *, owner_id: int) -> Project:
             "INSERT INTO memberships (project_id, user_id, role) VALUES (?, ?, 'owner')",
             (project_id, owner_id),
         )
-    project_dir(slug)  # create the on-disk home for this project's Follow repo/recipes upfront
+    project_dir(slug)  # create the on-disk home for this project's Follow repo/structures upfront
     return Project(id=project_id, slug=slug, name=name, description=description.strip(), created_by=owner_id)
 
 
@@ -197,8 +197,8 @@ def accept_invitation(token: str, user_id: int, user_email: str) -> bool:
 
 def delete(project: Project) -> None:
     """Permanently delete a project: its database rows (memberships and pending invitations
-    cascade via the foreign keys) and the on-disk directory holding its Follow repository and
-    StructureForge recipes - there is no undo, this is real experiment history.
+    cascade via the foreign keys) and the on-disk directory holding its Follow repository, saved
+    structures, and step presets - there is no undo, this is real experiment history.
     """
     import shutil
 
@@ -215,10 +215,6 @@ def project_dir(slug: str) -> Path:
 
 def follow_repo_path(slug: str) -> Path:
     return project_dir(slug) / "follow"
-
-
-def recipes_path(slug: str) -> Path:
-    return project_dir(slug) / "recipes.json"
 
 
 def structures_path(slug: str) -> Path:
@@ -254,7 +250,24 @@ def get_repository(slug: str):
     return follow.Repository(follow_repo_path(slug))
 
 
-def get_recipe_store(slug: str):
-    from structureforge.core.recipe_store import RecipeStore
+def step_presets_path(slug: str) -> Path:
+    return project_dir(slug) / "presets_etapes.json"
 
-    return RecipeStore(recipes_path(slug))
+
+def shared_step_presets_path() -> Path:
+    """Not inside any project's own directory - visible from every project, see
+    :mod:`spectre.core.step_presets` (same split as :func:`shared_structures_path`).
+    """
+    return data_dir() / "presets_etapes_partages.json"
+
+
+def get_step_preset_store(slug: str):
+    from .step_presets import StepPresetStore
+
+    return StepPresetStore(step_presets_path(slug))
+
+
+def get_shared_step_preset_store():
+    from .step_presets import StepPresetStore
+
+    return StepPresetStore(shared_step_presets_path())

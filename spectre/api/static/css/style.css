@@ -589,14 +589,33 @@ textarea:focus {
 
 .builder-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 300px 1fr 340px;
   gap: var(--space-5);
-  align-items: start;
+  align-items: stretch;
 }
 
-@media (max-width: 860px) {
+.builder-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.builder-col__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+@media (max-width: 1100px) {
   .builder-grid {
     grid-template-columns: 1fr;
+  }
+  .builder-col {
+    min-height: unset;
+  }
+  .builder-col__scroll {
+    flex: none;
+    overflow: visible;
   }
 }
 
@@ -615,6 +634,7 @@ textarea:focus {
 .builder-canvas-svg svg {
   max-height: 100%;
   max-width: 100%;
+  transform-origin: center top;
 }
 
 #context-panel {
@@ -623,6 +643,7 @@ textarea:focus {
 
 .builder-empty-state {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -677,7 +698,7 @@ textarea:focus {
 }
 
 .scrubber-track {
-  flex: 1;
+  flex: none;
   height: 4px;
   border-radius: 999px;
   background: var(--border-soft);

@@ -11,7 +11,7 @@ def _steps():
             "kind": "deposition",
             "name": "PGaN",
             "material": "GaN",
-            "recipe": "MOCVD Epitaxial",
+            "mode": "conformal",
             "thickness": {"value": 50, "unit": "nm"},
         }
     ]
@@ -56,7 +56,7 @@ def test_derive_a_structure_keeps_a_derived_from_link(client):
     )
 
     derived_steps = _steps() + [
-        {"kind": "deposition", "name": "Contact", "material": "Au", "recipe": "Sputter Metal (normal)", "thickness": {"value": 80, "unit": "nm"}}
+        {"kind": "deposition", "name": "Contact", "material": "Au", "mode": "directional", "angle_deg": 0, "thickness": {"value": 80, "unit": "nm"}}
     ]
     derived = client.post(
         f"/api/projects/{slug}/structures-sauvegardees",

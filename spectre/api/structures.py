@@ -1,5 +1,5 @@
-"""Structure definition and launch: materials/recipes pickers, the simulation preview, and
-turning a simulated process into a new tracked experience. All simulation and rendering logic is
+"""Structure definition and launch: the materials picker, the simulation preview, and turning a
+simulated process into a new tracked experience. All simulation and rendering logic is
 ``structureforge``'s (see :mod:`spectre.core.structures`); Follow's part (committing the result) is
 ``structureforge.adapters.follow_adapter``, extended in this repository with ``build_experiment``
 for exactly this "commit once fully formed" use.
@@ -14,14 +14,13 @@ import follow
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
-from structureforge.core.recipes import DepositionRecipe, EtchRecipe
 from structureforge.process.steps import ProcessStep
 
 from ..core import projects, structures
 from ..core.accounts import User
 from ..core.permissions import require_role
 from ..core.projects import Project
-from ..core.recipe_labels import DEPOSITION_DESCRIPTIONS_FR, ETCH_DESCRIPTIONS_FR
+from ..core.step_presets import StepPreset, StepPresetPayload, default_step_presets
 from ..core.structure_library import SavedStructure, default_structure_presets
 from .deps import get_current_user
 
@@ -102,52 +101,64 @@ def list_materials(project: Project = Depends(require_role("viewer"))) -> list[d
     return [m.model_dump(mode="json") for m in structures.materials_library()]
 
 
-@router.get("/{slug}/recipes")
-def list_recipes(project: Project = Depends(require_role("viewer"))) -> dict:
-    custom = projects.get_recipe_store(project.slug).load()
-    combined = structures.recipes_library(project.slug)
+class StepPresetInput(BaseModel):
+    name: str
+    payload: StepPresetPayload
+    notes: str | None = None
+    partagee: bool = False
+
+
+def _step_preset_store(project: Project, partagee: bool):
+    return projects.get_shared_step_preset_store() if partagee else projects.get_step_preset_store(project.slug)
+
+
+def _step_preset_payload(preset: StepPreset, scope: str) -> dict:
+    return {**preset.model_dump(mode="json"), "scope": scope}
+
+
+@router.get("/{slug}/presets-etapes")
+def list_step_presets(project: Project = Depends(require_role("viewer"))) -> dict:
+    shared = projects.get_shared_step_preset_store().load()
+    own = projects.get_step_preset_store(project.slug).load()
     return {
-        "deposition": [
-            {
-                **r.model_dump(mode="json"),
-                "is_custom": r.name in custom.deposition,
-                "description_fr": DEPOSITION_DESCRIPTIONS_FR.get(r.name),
-            }
-            for r in combined.deposition.values()
-        ],
-        "etch": [
-            {
-                **r.model_dump(mode="json"),
-                "is_custom": r.name in custom.etch,
-                "description_fr": ETCH_DESCRIPTIONS_FR.get(r.name),
-            }
-            for r in combined.etch.values()
-        ],
+        "presets": [_step_preset_payload(p, "preset") for p in default_step_presets().values()],
+        "partagees": [_step_preset_payload(p, "partagee") for p in shared.presets.values()],
+        "projet": [_step_preset_payload(p, "projet") for p in own.presets.values()],
     }
 
 
-@router.post("/{slug}/recipes/deposition")
-def upsert_deposition_recipe(recipe: DepositionRecipe, project: Project = Depends(require_role("editor"))) -> dict:
-    projects.get_recipe_store(project.slug).upsert_deposition(recipe)
-    return list_recipes(project)
+@router.post("/{slug}/presets-etapes", status_code=201)
+def create_step_preset(body: StepPresetInput, project: Project = Depends(require_role("editor"))) -> dict:
+    store = _step_preset_store(project, body.partagee)
+    if body.name in store.load().presets:
+        raise HTTPException(status_code=409, detail=f"Un préset nommé {body.name!r} existe déjà dans cette bibliothèque.")
+    preset = StepPreset(
+        name=body.name,
+        payload=body.payload,
+        notes=body.notes,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    store.upsert(preset)
+    return list_step_presets(project)
 
 
-@router.delete("/{slug}/recipes/deposition/{name}")
-def delete_deposition_recipe(name: str, project: Project = Depends(require_role("editor"))) -> dict:
-    projects.get_recipe_store(project.slug).remove_deposition(name)
-    return list_recipes(project)
+@router.put("/{slug}/presets-etapes/{name}")
+def update_step_preset(
+    name: str, body: StepPresetInput, partagee: bool = False, project: Project = Depends(require_role("editor"))
+) -> dict:
+    store = _step_preset_store(project, partagee)
+    existing = store.load().presets.get(name)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"Préset {name!r} introuvable.")
+    preset = StepPreset(name=body.name, payload=body.payload, notes=body.notes, created_at=existing.created_at)
+    store.rename(name, preset)
+    return list_step_presets(project)
 
 
-@router.post("/{slug}/recipes/etch")
-def upsert_etch_recipe(recipe: EtchRecipe, project: Project = Depends(require_role("editor"))) -> dict:
-    projects.get_recipe_store(project.slug).upsert_etch(recipe)
-    return list_recipes(project)
-
-
-@router.delete("/{slug}/recipes/etch/{name}")
-def delete_etch_recipe(name: str, project: Project = Depends(require_role("editor"))) -> dict:
-    projects.get_recipe_store(project.slug).remove_etch(name)
-    return list_recipes(project)
+@router.delete("/{slug}/presets-etapes/{name}")
+def delete_step_preset(name: str, partagee: bool = False, project: Project = Depends(require_role("editor"))) -> dict:
+    _step_preset_store(project, partagee).remove(name)
+    return list_step_presets(project)
 
 
 class SavedStructureInput(BaseModel):

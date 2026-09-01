@@ -19,32 +19,16 @@ def _steps():
             "kind": "deposition",
             "name": "Oxyde",
             "material": "SiO2",
-            "recipe": "CVD Conformal",
+            "mode": "conformal",
             "thickness": {"value": 20, "unit": "nm"},
         }
     ]
 
 
-def test_list_materials_and_recipes(client):
+def test_list_materials(client):
     slug = _register_and_create_project(client)
     materials = client.get(f"/api/projects/{slug}/materials").json()
     assert any(m["name"] == "Si" for m in materials)
-
-    recipes = client.get(f"/api/projects/{slug}/recipes").json()
-    assert any(r["name"] == "CVD Conformal" for r in recipes["deposition"])
-
-
-def test_custom_recipe_round_trip(client):
-    slug = _register_and_create_project(client)
-    custom = {"name": "Mon depot maison", "mode": "conformal", "angle_deg": 0, "notes": "test"}
-    result = client.post(f"/api/projects/{slug}/recipes/deposition", json=custom)
-    assert result.status_code == 200
-    names = [r["name"] for r in result.json()["deposition"]]
-    assert "Mon depot maison" in names
-
-    result = client.delete(f"/api/projects/{slug}/recipes/deposition/Mon depot maison")
-    names = [r["name"] for r in result.json()["deposition"]]
-    assert "Mon depot maison" not in names
 
 
 def test_simulate_returns_one_svg_per_frame(client):

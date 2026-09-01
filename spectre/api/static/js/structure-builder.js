@@ -10,6 +10,7 @@ const STEP_KINDS = {
   chemical: { label: "Étape chimique", icon: "chemical", color: "#3f7d4a", tint: "#e9f4ea" },
   resist_strip: { label: "Retrait de résine", icon: "resist_strip", color: "#a45a3a", tint: "#f6ede7" },
   semipolar_facet: { label: "Facette semipolaire", icon: "semipolar_facet", color: "#b8860b", tint: "#faf3df" },
+  selective_growth: { label: "Croissance sélective", icon: "selective_growth", color: "#2e8b57", tint: "#e6f4ec" },
 };
 
 const STEP_ICON_PATHS = {
@@ -20,6 +21,7 @@ const STEP_ICON_PATHS = {
   chemical: '<path d="M9 3h6M10 3v5l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3"/>',
   resist_strip: '<path d="M5 5l14 14M5 19L19 5"/>',
   semipolar_facet: '<path d="M4 20L12 4L20 20Z"/>',
+  selective_growth: '<path d="M12 20V4M12 4l-5 5M12 4l5 5M6 14l6-4 6 4"/>',
 };
 
 function stepIconHtml(kind) {
@@ -45,7 +47,7 @@ const returnTo = queryParams.get("retour"); // where "Enregistrer" in library mo
 
 const state = {
   materials: [],
-  recipes: { deposition: [], etch: [] },
+  stepPresets: { presets: [], partagees: [], projet: [] },
   steps: [],
   objectives: [],
   frames: null,
@@ -58,6 +60,7 @@ const state = {
   derivedFrom: null, // library mode only: name of the structure this one was derived from, if any
   editingLibraryName: null, // library mode only: name of the saved structure being edited in place (null = new)
   editingLibraryScope: null, // library mode only: "projet" or "partagee", matching editingLibraryName
+  zoom: 1,
 };
 
 const errorBox = document.getElementById("error");
@@ -79,10 +82,81 @@ function materialOptions(selectedValue) {
     .join("");
 }
 
-function recipeOptions(kind, selectedValue) {
-  return state.recipes[kind]
-    .map((r) => `<option value="${escapeHtml(r.name)}" ${r.name === selectedValue ? "selected" : ""}>${escapeHtml(r.name)}</option>`)
+function presetOptionsHtml(kind) {
+  const entries = [
+    ...state.stepPresets.presets.map((p) => ({ ...p, scope: "preset" })),
+    ...state.stepPresets.partagees.map((p) => ({ ...p, scope: "partagee" })),
+    ...state.stepPresets.projet.map((p) => ({ ...p, scope: "projet" })),
+  ].filter((p) => p.payload.kind === kind);
+  const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", projet: "" };
+  return entries
+    .map((p) => `<option value="${p.scope}::${encodeURIComponent(p.name)}">${escapeHtml(p.name)}${scopeSuffix[p.scope]}</option>`)
     .join("");
+}
+
+function findStepPreset(scope, name) {
+  const bucket = scope === "preset" ? state.stepPresets.presets : scope === "partagee" ? state.stepPresets.partagees : state.stepPresets.projet;
+  return (bucket || []).find((p) => p.name === name) || null;
+}
+
+function wireModeAngleToggle(kind) {
+  const modeSelect = document.getElementById("f-mode");
+  const angleWrap = document.getElementById("f-angle-wrap");
+  const update = () => {
+    angleWrap.style.display = modeSelect.value === "directional" ? "" : "none";
+  };
+  modeSelect.addEventListener("change", update);
+  update();
+  document.getElementById("f-preset").addEventListener("change", (e) => {
+    const value = e.target.value;
+    if (!value) return;
+    const [scope, name] = value.split("::");
+    const preset = findStepPreset(scope, decodeURIComponent(name));
+    if (!preset) return;
+    modeSelect.value = preset.payload.mode;
+    document.getElementById("f-angle").value = preset.payload.angle_deg || 0;
+    update();
+    if (kind === "etch") {
+      document.getElementById("f-default-factor").value = preset.payload.default_factor != null ? preset.payload.default_factor : 1.0;
+      document.getElementById("f-selectivity-rows").innerHTML = "";
+      Object.entries(preset.payload.selectivity_by_material || {}).forEach(([material, factor]) => addSelectivityRow(material, factor));
+    }
+  });
+}
+
+function addSelectivityRow(material, factor) {
+  const row = document.createElement("div");
+  row.className = "field-row js-selectivity-row";
+  row.style.gridTemplateColumns = "1fr 100px auto";
+  row.innerHTML = `
+    <select class="field js-sel-material">${materialOptions(material)}</select>
+    <input class="field js-sel-factor" type="number" step="0.01" min="0" placeholder="facteur" value="${factor != null ? factor : ""}">
+    <button class="js-sel-remove" type="button" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:14px;">&times;</button>`;
+  document.getElementById("f-selectivity-rows").appendChild(row);
+  row.querySelector(".js-sel-remove").addEventListener("click", () => row.remove());
+}
+
+function currentSelectivityByMaterial() {
+  const out = {};
+  document.querySelectorAll("#f-selectivity-rows .js-selectivity-row").forEach((row) => {
+    const material = row.querySelector(".js-sel-material").value;
+    const factor = parseFloat(row.querySelector(".js-sel-factor").value);
+    if (material && !Number.isNaN(factor)) out[material] = factor;
+  });
+  return out;
+}
+
+function wireSelectiveGrowthRateCheck() {
+  const check = () => {
+    const rateM = parseFloat(document.getElementById("f-rate-m").value);
+    const rateSp = parseFloat(document.getElementById("f-rate-sp").value);
+    const hint = document.getElementById("f-rate-order-hint");
+    const ok = rateSp > 0 && rateM > rateSp && rateM < 1.0;
+    hint.style.color = ok ? "" : "var(--danger)";
+  };
+  document.getElementById("f-rate-m").addEventListener("input", check);
+  document.getElementById("f-rate-sp").addEventListener("input", check);
+  check();
 }
 
 function renderKindFields(kind) {
@@ -91,9 +165,13 @@ function renderKindFields(kind) {
     container.innerHTML = `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Dépôt"></div>
       <div><label>Matériau</label><select class="field" id="f-material">${materialOptions()}</select></div>
-      <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("deposition")}</select>
-        <div class="help" id="f-recipe-hint" style="margin-top:4px;"></div>
+      <div><label>Préset (optionnel)</label><select class="field" id="f-preset"><option value="">Personnalisé</option>${presetOptionsHtml("deposition")}</select>
+        <div class="help" style="margin-top:4px;">Préremplit le mode et l'angle ci-dessous — reste ensuite librement modifiable.</div>
       </div>
+      <div><label>Mode</label>
+        <select class="field" id="f-mode"><option value="conformal">Conforme</option><option value="directional">Directionnel</option></select>
+      </div>
+      <div id="f-angle-wrap" style="display:none;"><label>Angle (degrés, 0 = incidence normale)</label><input class="field" id="f-angle" type="number" value="0"></div>
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="20"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>
       <details id="f-deposition-advanced" class="card" style="padding:0;overflow:hidden;margin-top:4px;flex-shrink:0;">
@@ -120,16 +198,28 @@ function renderKindFields(kind) {
         </div>
       </details>`;
     wireDepositionAdvanced();
-    wireRecipeHint("deposition");
+    wireModeAngleToggle("deposition");
   } else if (kind === "etch") {
     container.innerHTML = `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Gravure"></div>
-      <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("etch")}</select>
-        <div class="help" id="f-recipe-hint" style="margin-top:4px;"></div>
+      <div><label>Préset (optionnel)</label><select class="field" id="f-preset"><option value="">Personnalisé</option>${presetOptionsHtml("etch")}</select>
+        <div class="help" style="margin-top:4px;">Préremplit mode/angle/sélectivité ci-dessous — reste ensuite librement modifiable.</div>
+      </div>
+      <div><label>Mode</label>
+        <select class="field" id="f-mode"><option value="isotropic">Isotrope</option><option value="directional">Directionnel</option></select>
+      </div>
+      <div id="f-angle-wrap" style="display:none;"><label>Angle (degrés, 0 = incidence normale)</label><input class="field" id="f-angle" type="number" value="0"></div>
+      <div><label>Facteur par défaut</label><input class="field" id="f-default-factor" type="number" value="1.0" step="0.01" min="0"></div>
+      <div>
+        <label>Sélectivité par matériau (optionnel)</label>
+        <div class="help" style="margin-bottom:6px;">Vitesse relative de gravure pour un matériau donné (1 = normal, plus grand = gravé plus vite, 0 = protégé).</div>
+        <div id="f-selectivity-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
+        <button class="btn btn-line" id="f-add-selectivity-btn" type="button" style="padding:6px 12px;font-size:12.5px;">+ Ajouter un matériau</button>
       </div>
       <div class="field-row"><div><label>Profondeur</label><input class="field" id="f-depth" type="number" value="10"></div>
       <div><label>Unité</label><select class="field" id="f-depth-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>`;
-    wireRecipeHint("etch");
+    document.getElementById("f-add-selectivity-btn").addEventListener("click", () => addSelectivityRow());
+    wireModeAngleToggle("etch");
   } else if (kind === "planarization") {
     container.innerHTML = `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Planarisation"></div>
@@ -167,7 +257,7 @@ function renderKindFields(kind) {
           <option value="tip">Pointe (anti-V-pit, croît vers le haut)</option>
           <option value="notch">Creux (V-pit, s'enfonce vers le bas)</option>
         </select>
-        <div class="help" style="margin-top:4px;">Une facette symétrique à angle précis, comme sur un flanc semipolaire de nanofil ou de LED III-N &mdash; ni une recette directionnelle ni isotrope ne peut produire cette forme.</div>
+        <div class="help" style="margin-top:4px;">Une facette symétrique à angle précis, comme sur un flanc semipolaire de nanofil ou de LED III-N &mdash; ni un dépôt/gravure directionnel ni isotrope ne peut produire cette forme.</div>
       </div>
       <div class="field-row"><div><label>Largeur de base</label><input class="field" id="f-base-half-width" type="number" value="30"></div>
       <div><label>Unité</label><select class="field" id="f-base-half-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
@@ -178,6 +268,18 @@ function renderKindFields(kind) {
       <div><label>Position (optionnelle)</label><input class="field" id="f-position" type="number" placeholder="laisser vide = centre du domaine">
         <div class="help" style="margin-top:4px;">Position en nm depuis le bord gauche. Vide = centrée automatiquement.</div>
       </div>`;
+  } else if (kind === "selective_growth") {
+    container.innerHTML = `
+      <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Croissance sélective"></div>
+      <div><label>Matériau</label><select class="field" id="f-material">${materialOptions()}</select>
+        <div class="help" style="margin-top:4px;">La croissance ne reprend que sur ce matériau — ailleurs (substrat, masque...) rien ne pousse, comme un masque de croissance réel. Sans dépôt existant de ce matériau, la toute première couche pousse sur toute la surface exposée (à amorcer avec un dépôt classique avant, comme dans l'exemple de préset nanofil).</div>
+      </div>
+      <div class="field-row"><div><label>Épaisseur (plan C, le plus rapide)</label><input class="field" id="f-thickness" type="number" value="10"></div>
+      <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
+      <div><label>Vitesse relative — plan M (flancs verticaux)</label><input class="field" id="f-rate-m" type="number" value="0.4" step="0.01" min="0" max="1"></div>
+      <div><label>Vitesse relative — facette semipolaire</label><input class="field" id="f-rate-sp" type="number" value="0.15" step="0.01" min="0" max="1"></div>
+      <div class="help" id="f-rate-order-hint" style="margin-top:-6px;">Doit vérifier C (1.0) &gt; plan M &gt; semipolaire, sinon la facette la plus lente ne l'emporte jamais — c'est ce qui referme la pointe au fil des étapes.</div>`;
+    wireSelectiveGrowthRateCheck();
   }
 }
 
@@ -279,17 +381,6 @@ function wireDepositionAdvanced() {
   document.getElementById("f-add-estimate-btn").addEventListener("click", () => addEstimateRow());
 }
 
-function wireRecipeHint(kind) {
-  const select = document.getElementById("f-recipe");
-  const hint = document.getElementById("f-recipe-hint");
-  const update = () => {
-    const recipe = state.recipes[kind].find((r) => r.name === select.value);
-    hint.textContent = recipe ? recipe.description_fr || recipe.notes || "" : "";
-  };
-  select.addEventListener("change", update);
-  update();
-}
-
 function parseOpenings(text) {
   if (!text.trim()) return [];
   return text.split(",").map((part) => {
@@ -306,7 +397,8 @@ function buildStepFromForm() {
       kind,
       name,
       material: document.getElementById("f-material").value,
-      recipe: document.getElementById("f-recipe").value,
+      mode: document.getElementById("f-mode").value,
+      angle_deg: parseFloat(document.getElementById("f-angle").value) || 0,
       thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
       process_parameters: currentProcessParameters(),
       derived_estimates: currentDerivedEstimates(),
@@ -316,8 +408,21 @@ function buildStepFromForm() {
     return {
       kind,
       name,
-      recipe: document.getElementById("f-recipe").value,
+      mode: document.getElementById("f-mode").value,
+      angle_deg: parseFloat(document.getElementById("f-angle").value) || 0,
+      default_factor: parseFloat(document.getElementById("f-default-factor").value) || 1.0,
+      selectivity_by_material: currentSelectivityByMaterial(),
       depth: { value: parseFloat(document.getElementById("f-depth").value) || 0, unit: document.getElementById("f-depth-unit").value },
+    };
+  }
+  if (kind === "selective_growth") {
+    return {
+      kind,
+      name,
+      material: document.getElementById("f-material").value,
+      thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
+      rate_m: parseFloat(document.getElementById("f-rate-m").value),
+      rate_sp: parseFloat(document.getElementById("f-rate-sp").value),
     };
   }
   if (kind === "planarization") {
@@ -358,9 +463,17 @@ function buildStepFromForm() {
   return { kind, name, material: document.getElementById("f-material").value };
 }
 
+const MODE_LABELS = { conformal: "conforme", directional: "directionnel", isotropic: "isotrope", anisotropic: "anisotrope" };
+
+function modeSummary(mode, angle_deg) {
+  const label = MODE_LABELS[mode] || mode;
+  return angle_deg ? `${label} (${angle_deg}°)` : label;
+}
+
 function stepSummary(step) {
-  if (step.kind === "deposition") return `${step.material} · ${step.thickness.value} ${step.thickness.unit} · ${step.recipe}`;
-  if (step.kind === "etch") return `${step.recipe} · ${step.depth.value} ${step.depth.unit}`;
+  if (step.kind === "deposition") return `${step.material} · ${step.thickness.value} ${step.thickness.unit} · ${modeSummary(step.mode, step.angle_deg)}`;
+  if (step.kind === "etch") return `${modeSummary(step.mode, step.angle_deg)} · ${step.depth.value} ${step.depth.unit}`;
+  if (step.kind === "selective_growth") return `${step.material} · +${step.thickness.value} ${step.thickness.unit} (C) · M×${step.rate_m} · SP×${step.rate_sp}`;
   if (step.kind === "planarization") return step.target_level ? `jusqu'à ${step.target_level.value} ${step.target_level.unit}` : `jusqu'au ${step.stop_material}`;
   if (step.kind === "lithography") return `${step.resist_material} · ${step.openings.length} ouverture(s)`;
   if (step.kind === "chemical") return step.description || "sans effet géométrique";
@@ -489,7 +602,9 @@ function fillKindFields(step) {
   document.getElementById("f-name").value = step.name;
   if (step.kind === "deposition") {
     document.getElementById("f-material").value = step.material;
-    document.getElementById("f-recipe").value = step.recipe;
+    document.getElementById("f-mode").value = step.mode;
+    document.getElementById("f-angle").value = step.angle_deg || 0;
+    document.getElementById("f-angle-wrap").style.display = step.mode === "directional" ? "" : "none";
     document.getElementById("f-thickness").value = step.thickness.value;
     document.getElementById("f-thickness-unit").value = step.thickness.unit;
     const processParameters = step.process_parameters || {};
@@ -499,9 +614,19 @@ function fillKindFields(step) {
     document.getElementById("f-deposition-advanced").open =
       Object.keys(processParameters).length > 0 || derivedEstimates.length > 0;
   } else if (step.kind === "etch") {
-    document.getElementById("f-recipe").value = step.recipe;
+    document.getElementById("f-mode").value = step.mode;
+    document.getElementById("f-angle").value = step.angle_deg || 0;
+    document.getElementById("f-angle-wrap").style.display = step.mode === "directional" ? "" : "none";
+    document.getElementById("f-default-factor").value = step.default_factor != null ? step.default_factor : 1.0;
+    Object.entries(step.selectivity_by_material || {}).forEach(([material, factor]) => addSelectivityRow(material, factor));
     document.getElementById("f-depth").value = step.depth.value;
     document.getElementById("f-depth-unit").value = step.depth.unit;
+  } else if (step.kind === "selective_growth") {
+    document.getElementById("f-material").value = step.material;
+    document.getElementById("f-thickness").value = step.thickness.value;
+    document.getElementById("f-thickness-unit").value = step.thickness.unit;
+    document.getElementById("f-rate-m").value = step.rate_m;
+    document.getElementById("f-rate-sp").value = step.rate_sp;
   } else if (step.kind === "planarization") {
     const mode = step.target_level ? "level" : "material";
     document.getElementById("f-plana-mode").value = mode;
@@ -770,6 +895,12 @@ function renderScrubber() {
   label.textContent = `${state.currentFrame + 1} / ${n} · ${current.step_name}`;
 }
 
+function applyZoom() {
+  const svg = document.querySelector("#svg-container svg");
+  if (svg) svg.style.transform = `scale(${state.zoom})`;
+  document.getElementById("zoom-level-label").textContent = `${Math.round(state.zoom * 100)}%`;
+}
+
 function renderFrame() {
   const frame = state.frames ? state.frames[state.currentFrame] : null;
   document.getElementById("svg-container").innerHTML = frame ? frame.svg : "";
@@ -780,11 +911,12 @@ function renderFrame() {
     .join("");
   renderScrubber();
   highlightSelectedLayer();
+  applyZoom();
 }
 
 async function loadPickers() {
   state.materials = await api.get(`/api/projects/${slug}/materials`);
-  state.recipes = await api.get(`/api/projects/${slug}/recipes`);
+  state.stepPresets = await api.get(`/api/projects/${slug}/presets-etapes`);
   document.getElementById("substrate-material").innerHTML = materialOptions("Si");
   renderKindFields(document.getElementById("kind-select").value);
 }
@@ -1076,6 +1208,148 @@ async function initLibraryMode() {
     showError(err);
   }
 }
+
+document.getElementById("zoom-in-btn").addEventListener("click", () => {
+  state.zoom = Math.min(4, +(state.zoom + 0.25).toFixed(2));
+  applyZoom();
+});
+document.getElementById("zoom-out-btn").addEventListener("click", () => {
+  state.zoom = Math.max(0.25, +(state.zoom - 0.25).toFixed(2));
+  applyZoom();
+});
+document.getElementById("zoom-reset-btn").addEventListener("click", () => {
+  state.zoom = 1;
+  applyZoom();
+});
+
+/* -- "Voir le code" : sérialise le substrat + les étapes courantes en script StructureForge
+   autonome, indépendant de Spectre - mêmes classes/champs que structureforge.process.steps. */
+
+const LENGTH_TO_NM = { A: 0.1, nm: 1, um: 1000, mm: 1_000_000 };
+const PY_STEP_CLASS = {
+  deposition: "Deposition",
+  etch: "Etch",
+  planarization: "Planarization",
+  chemical: "ChemicalStep",
+  lithography: "Lithography",
+  resist_strip: "ResistStrip",
+  semipolar_facet: "SemipolarFacet",
+  selective_growth: "SelectiveGrowth",
+};
+
+function toNm(length) {
+  return length.value * (LENGTH_TO_NM[length.unit] || 1);
+}
+
+function pyStr(value) {
+  return JSON.stringify(String(value));
+}
+
+function pyLength(length) {
+  return `Length(value=${length.value}, unit=${pyStr(length.unit)})`;
+}
+
+function pyDict(obj) {
+  const entries = Object.entries(obj || {});
+  if (entries.length === 0) return "{}";
+  return `{${entries.map(([k, v]) => `${pyStr(k)}: ${v}`).join(", ")}}`;
+}
+
+function pyStepCode(step) {
+  const name = pyStr(step.name);
+  if (step.kind === "deposition") {
+    const parts = [`name=${name}`, `material=${pyStr(step.material)}`, `mode=DepositionMode.${step.mode}`];
+    if (step.angle_deg) parts.push(`angle_deg=${step.angle_deg}`);
+    parts.push(`thickness=${pyLength(step.thickness)}`);
+    if (step.process_parameters && Object.keys(step.process_parameters).length) parts.push(`process_parameters=${pyDict(step.process_parameters)}`);
+    return `Deposition(${parts.join(", ")})`;
+  }
+  if (step.kind === "etch") {
+    const parts = [`name=${name}`, `mode=EtchMode.${step.mode}`];
+    if (step.angle_deg) parts.push(`angle_deg=${step.angle_deg}`);
+    if (step.selectivity_by_material && Object.keys(step.selectivity_by_material).length) parts.push(`selectivity_by_material=${pyDict(step.selectivity_by_material)}`);
+    if (step.default_factor != null && step.default_factor !== 1.0) parts.push(`default_factor=${step.default_factor}`);
+    parts.push(`depth=${pyLength(step.depth)}`);
+    return `Etch(${parts.join(", ")})`;
+  }
+  if (step.kind === "selective_growth") {
+    return `SelectiveGrowth(name=${name}, material=${pyStr(step.material)}, thickness=${pyLength(step.thickness)}, rate_m=${step.rate_m}, rate_sp=${step.rate_sp})`;
+  }
+  if (step.kind === "planarization") {
+    if (step.target_level) return `Planarization(name=${name}, target_level=${pyLength(step.target_level)})`;
+    return `Planarization(name=${name}, stop_material=${pyStr(step.stop_material)})`;
+  }
+  if (step.kind === "chemical") {
+    return `ChemicalStep(name=${name}${step.description ? `, description=${pyStr(step.description)}` : ""})`;
+  }
+  if (step.kind === "lithography") {
+    const openings = step.openings.map(([a, b]) => `(${a}, ${b})`).join(", ");
+    return `Lithography(name=${name}, resist_material=${pyStr(step.resist_material)}, thickness=${pyLength(step.thickness)}, openings=[${openings}])`;
+  }
+  if (step.kind === "resist_strip") {
+    return `ResistStrip(name=${name}, material=${pyStr(step.material)})`;
+  }
+  if (step.kind === "semipolar_facet") {
+    const parts = [
+      `name=${name}`,
+      `orientation=${pyStr(step.orientation)}`,
+      `base_half_width=${pyLength(step.base_half_width)}`,
+      `tip_half_width=${pyLength(step.tip_half_width)}`,
+      `facet_angle_deg=${step.facet_angle_deg}`,
+    ];
+    if (step.position) parts.push(`position=${pyLength(step.position)}`);
+    return `SemipolarFacet(${parts.join(", ")})`;
+  }
+  return `# étape non reconnue: ${step.kind}`;
+}
+
+function generateStructureForgeCode() {
+  const substrate = substrateSpec();
+  const usedKinds = [...new Set(state.steps.map((s) => s.kind))];
+  const importNames = new Set(["Geometry", "Length", "default_library", "save_svg", "simulate"]);
+  usedKinds.forEach((k) => importNames.add(PY_STEP_CLASS[k] || k));
+  if (usedKinds.includes("deposition")) importNames.add("DepositionMode");
+  if (usedKinds.includes("etch")) importNames.add("EtchMode");
+  const stepsLines = state.steps.length ? state.steps.map((s) => `    ${pyStepCode(s)},`).join("\n") : "    # aucune étape pour l'instant";
+  return `from structureforge import (
+    ${[...importNames].sort().join(",\n    ")},
+)
+
+materials = default_library()
+geometry = Geometry.substrate(
+    ${pyStr(substrate.material)},
+    domain_width_nm=${toNm(substrate.domain_width)},
+    thickness_nm=${toNm(substrate.thickness)},
+)
+
+steps = [
+${stepsLines}
+]
+
+frames = simulate(geometry, steps, materials)
+material_colors = {m.name: m.color for m in materials}
+save_svg("structure.svg", frames[-1], material_colors)
+`;
+}
+
+document.getElementById("show-code-btn").addEventListener("click", () => {
+  document.getElementById("code-modal-pre").textContent = generateStructureForgeCode();
+  document.getElementById("code-modal").showModal();
+});
+document.getElementById("code-modal-close-btn").addEventListener("click", () => {
+  document.getElementById("code-modal").close();
+});
+document.getElementById("code-modal-copy-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("code-modal-copy-btn");
+  try {
+    await navigator.clipboard.writeText(document.getElementById("code-modal-pre").textContent);
+    const original = btn.textContent;
+    btn.textContent = "Copié !";
+    setTimeout(() => (btn.textContent = original), 1500);
+  } catch (err) {
+    showError(new Error("Impossible de copier automatiquement - sélectionnez le code et copiez-le manuellement."));
+  }
+});
 
 async function init() {
   document.getElementById("crumb").textContent = "/ " + slug;

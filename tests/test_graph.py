@@ -22,7 +22,7 @@ def test_graph_html_with_experiments(client):
             "kind": "deposition",
             "name": "Oxyde",
             "material": "SiO2",
-            "recipe": "CVD Conformal",
+            "mode": "conformal",
             "thickness": {"value": 20, "unit": "nm"},
         }
     ]

@@ -19,7 +19,7 @@ def _steps():
             "kind": "deposition",
             "name": "Oxyde",
             "material": "SiO2",
-            "recipe": "CVD Conformal",
+            "mode": "conformal",
             "thickness": {"value": 20, "unit": "nm"},
         }
     ]
@@ -31,14 +31,14 @@ def _steps_two():
             "kind": "deposition",
             "name": "Oxyde",
             "material": "SiO2",
-            "recipe": "CVD Conformal",
+            "mode": "conformal",
             "thickness": {"value": 20, "unit": "nm"},
         },
         {
             "kind": "deposition",
             "name": "Nitrure",
             "material": "SiO2",
-            "recipe": "CVD Conformal",
+            "mode": "conformal",
             "thickness": {"value": 10, "unit": "nm"},
         },
     ]
@@ -155,7 +155,7 @@ def _steps_with_estimate():
             "kind": "deposition",
             "name": "PGaN",
             "material": "GaN",
-            "recipe": "MOCVD Epitaxial",
+            "mode": "conformal",
             "thickness": {"value": 50, "unit": "nm"},
             "process_parameters": {"flux": 12.0},
             "derived_estimates": [{"name": "Dopage", "parameter": "flux", "coefficient": 2.0, "unit": "cm-3"}],

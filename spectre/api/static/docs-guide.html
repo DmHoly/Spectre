@@ -11,6 +11,7 @@
 </head>
 <body>
   <div class="topbar">
+    <a href="/" style="display:flex;align-items:center;">
     <div class="topbar__brand">
       <span class="topbar__mark">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
@@ -18,6 +19,7 @@
       Spectre
       <span class="topbar__crumb">/ Documentation / Guide</span>
     </div>
+    </a>
     <div class="topbar__actions">
       <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
         <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
@@ -63,7 +65,7 @@
         <a href="#combiner">Combiner deux expériences</a>
         <a href="#etiquettes">Étiquettes</a>
         <a href="#vue-ensemble">Vue d'ensemble du projet</a>
-        <a href="#recettes">Gérer les recettes</a>
+        <a href="#presets-etapes">Gérer les présets d'étapes</a>
 
         <div class="docs-nav__group">Compte et projet</div>
         <a href="#compte-gestion">Profil et mot de passe</a>
@@ -83,7 +85,7 @@
 
         <section id="projets">
           <h2>Créer un projet</h2>
-          <p>Un projet regroupe toutes les expériences d'une même étude : ses structures, ses recettes, ses membres. Depuis « Mes projets », le bouton « Nouveau projet » demande un nom et une description optionnelle. Vous en devenez automatiquement propriétaire.</p>
+          <p>Un projet regroupe toutes les expériences d'une même étude : ses structures, ses présets d'étape, ses membres. Depuis « Mes projets », le bouton « Nouveau projet » demande un nom et une description optionnelle. Vous en devenez automatiquement propriétaire.</p>
           <img class="docs-shot" src="/static/docs/img/02-dashboard.png" alt="Tableau de bord, liste des projets">
           <p>Chaque carte de projet affiche votre rôle dessus et le nombre d'expériences en cours / terminées.</p>
           <img class="docs-shot" src="/static/docs/img/03-nouveau-projet.png" alt="Dialogue de création d'un nouveau projet">
@@ -96,7 +98,7 @@
             <thead><tr><th>Rôle</th><th>Peut faire</th></tr></thead>
             <tbody>
               <tr><td><strong>Lecture seule</strong></td><td>Voir les expériences, structures, comparaisons et la vue d'ensemble.</td></tr>
-              <tr><td><strong>Peut modifier</strong></td><td>Tout ce qui précède, plus créer/faire évoluer/conclure une expérience, lancer une campagne, gérer les recettes.</td></tr>
+              <tr><td><strong>Peut modifier</strong></td><td>Tout ce qui précède, plus créer/faire évoluer/conclure une expérience, lancer une campagne, gérer les présets d'étapes.</td></tr>
               <tr><td><strong>Propriétaire</strong></td><td>Tout ce qui précède, plus gérer les membres et supprimer le projet.</td></tr>
             </tbody>
           </table>
@@ -113,14 +115,16 @@
 
         <section id="etapes">
           <h2>Ajouter des étapes</h2>
-          <p>Une structure se construit étape par étape. Six types d'étapes sont disponibles :</p>
+          <p>Une structure se construit étape par étape. Huit types d'étapes sont disponibles :</p>
           <ul>
-            <li><strong>Dépôt</strong> — ajoute une couche d'un matériau, avec une recette (conforme ou directionnelle) et une épaisseur.</li>
-            <li><strong>Gravure</strong> — retire de la matière selon une recette et une profondeur.</li>
+            <li><strong>Dépôt</strong> — ajoute une couche d'un matériau, avec un mode (conforme ou directionnel, avec un angle) et une épaisseur. Un préset d'étape (voir <a href="#presets-etapes">Gérer les présets d'étapes</a>) préremplit le mode et l'angle en un clic.</li>
+            <li><strong>Gravure</strong> — retire de la matière selon un mode (isotrope ou directionnel), une sélectivité par matériau optionnelle, et une profondeur.</li>
             <li><strong>Planarisation</strong> — aplanit jusqu'à un niveau précis ou jusqu'à atteindre un matériau donné.</li>
             <li><strong>Lithographie</strong> — dépose une résine avec des ouvertures (zones non couvertes).</li>
             <li><strong>Étape chimique</strong> — un nettoyage, un recuit... sans effet visible sur la coupe, gardé pour la traçabilité.</li>
             <li><strong>Retrait de résine</strong> — retire la résine posée par une lithographie.</li>
+            <li><strong>Facette semipolaire</strong> — pose une facette symétrique à un angle choisi à la main (pointe ou creux en V), pour reproduire un angle déjà connu en une seule étape.</li>
+            <li><strong>Croissance sélective</strong> — simule une croissance épitaxiale bas en haut, avec une vitesse relative par plan cristallin (C &gt; M &gt; semipolaire) : c'est ce qui fait émerger une pointe de nanofil naturellement, au fil de plusieurs étapes.</li>
           </ul>
           <p>Cliquer une étape déjà ajoutée l'ouvre en édition ; les flèches ▲▼ la déplacent dans l'ordre du procédé.</p>
           <img class="docs-shot" src="/static/docs/img/06-etape-ajoutee.png" alt="Une étape de dépôt ajoutée, affichée en pastille compacte">
@@ -151,7 +155,7 @@
           <h3>À quoi ça sert concrètement</h3>
           <p>La coupe transversale ne connaît que la géométrie : matériaux, épaisseurs, formes. Le dopage, la résistivité, la composition ne s'y voient pas — ils ne sont pas simulés. Ces deux champs servent à les garder attachés à l'étape sans les inventer :</p>
           <ol>
-            <li>Vous entrez un <strong>paramètre process</strong> : une valeur que la recette utilise vraiment (un flux, une puissance, une température...).</li>
+            <li>Vous entrez un <strong>paramètre process</strong> : une valeur que le dépôt utilise vraiment (un flux, une puissance, une température...).</li>
             <li>Vous posez une <strong>estimation</strong> : la relation, telle que vous la connaissez de votre procédé, entre ce paramètre et une grandeur physique qui vous intéresse.</li>
             <li>Spectre calcule l'estimation à l'affichage, et peut aussi faire l'inverse : si vous demandez une campagne « dopage = 20, 40, 60 », il résout le flux nécessaire pour chaque valeur cible et lance la simulation avec ce flux (voir la section Campagnes plus bas).</li>
           </ol>
@@ -267,10 +271,10 @@
           <img class="docs-shot" src="/static/docs/img/21-vue-ensemble.png" alt="Vue d'ensemble d'un projet, filiation entre versions">
         </section>
 
-        <section id="recettes">
-          <h2>Gérer les recettes</h2>
-          <p>L'onglet « Structures » d'un projet liste les recettes de dépôt et de gravure disponibles dans le constructeur, avec la possibilité d'en ajouter (nom, mode, angle, et pour une gravure, la sélectivité par matériau). Les recettes standard ne peuvent pas être retirées ; celles ajoutées au projet le peuvent.</p>
-          <img class="docs-shot" src="/static/docs/img/22-recettes.png" alt="Onglet Structures, recette de dépôt ajoutée">
+        <section id="presets-etapes">
+          <h2>Gérer les présets d'étapes</h2>
+          <p>Un préset d'étape est un dépôt ou une gravure préconfiguré (nom, mode, angle, et pour une gravure, la sélectivité par matériau) — le sélectionner dans le formulaire d'une étape en préremplit les champs, sans créer de lien permanent avec le préset : l'étape ajoutée reste ensuite librement modifiable, exactement comme une structure dupliquée depuis la bibliothèque. L'onglet « Structures » d'un projet propose un lien « Gérer les présets d'étapes » vers une page dédiée qui liste les présets intégrés (non modifiables, seulement duplicables), ceux partagés entre tous les projets, et ceux propres au projet — avec la possibilité d'en créer, modifier ou supprimer un.</p>
+          <p class="docs-shot-caption">(Capture d'écran à refaire pour cette page.)</p>
         </section>
 
         <section id="compte-gestion">

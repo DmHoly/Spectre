@@ -11,6 +11,7 @@
 </head>
 <body>
   <div class="topbar">
+    <a href="/" style="display:flex;align-items:center;">
     <div class="topbar__brand">
       <span class="topbar__mark">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
@@ -18,6 +19,7 @@
       <span id="page-title">Nouvelle structure</span>
       <span class="topbar__crumb" id="crumb"></span>
     </div>
+    </a>
     <div class="topbar__actions">
       <a href="/docs" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Documentation</a>
       <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
@@ -54,7 +56,14 @@
     </div>
 
     <div class="builder-grid">
-      <div class="card card-pad">
+      <div class="card card-pad builder-col" id="steps-panel">
+        <div class="section-title" style="margin-bottom:6px;">Étapes du procédé (<span id="steps-count">0</span>)</div>
+        <div class="help" style="margin-bottom:10px;" id="steps-list-help">Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.</div>
+        <div id="steps-list" class="builder-col__scroll" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <button class="btn btn-line btn-block" id="add-step-shortcut-btn" type="button" style="margin-top:10px;display:none;">+ Ajouter une couche</button>
+      </div>
+
+      <div class="card card-pad builder-col">
         <div id="substrate-section">
           <div class="section-title" style="margin-bottom:12px;">Substrat</div>
           <div class="field-row" style="grid-template-columns:1.4fr 1fr 1fr;gap:8px;margin-bottom:14px;">
@@ -78,23 +87,24 @@
         </div>
         <div class="help" id="view-mode-help" style="margin:6px 0 12px;">Cliquez une couche du dessin pour l'éditer. Disponible tant que la structure n'est faite que de dépôts (empilement d'épitaxie).</div>
 
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-bottom:6px;">
+          <button class="btn btn-line" id="zoom-out-btn" type="button" title="Zoom arrière" style="padding:4px 9px;font-size:13px;line-height:1;">&minus;</button>
+          <button class="btn btn-line" id="zoom-reset-btn" type="button" title="Réinitialiser le zoom" style="padding:4px 9px;font-size:11.5px;"><span id="zoom-level-label">100%</span></button>
+          <button class="btn btn-line" id="zoom-in-btn" type="button" title="Zoom avant" style="padding:4px 9px;font-size:13px;line-height:1;">&plus;</button>
+          <button class="btn btn-line" id="show-code-btn" type="button" style="padding:4px 10px;font-size:12px;margin-left:6px;">&lt;/&gt; Voir le code</button>
+        </div>
         <div id="svg-container" class="builder-canvas-svg"></div>
         <div class="scrubber-track" id="scrubber-track" style="margin:10px 0;"></div>
-        <div class="legend" id="legend" style="margin-bottom:14px;"></div>
-
-        <div class="section-title" style="margin-bottom:6px;">Étapes du procédé (<span id="steps-count">0</span>)</div>
-        <div class="help" style="margin-bottom:10px;" id="steps-list-help">Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.</div>
-        <div id="steps-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-        <button class="btn btn-line btn-block" id="add-step-shortcut-btn" type="button" style="margin-top:10px;display:none;">+ Ajouter une couche</button>
+        <div class="legend" id="legend"></div>
       </div>
 
-      <div class="card card-pad" id="context-panel">
+      <div class="card card-pad builder-col" id="context-panel">
         <div id="context-panel-empty" class="builder-empty-state">
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
           <p>Cliquez une couche du dessin, une étape dans la liste, ou « + Ajouter une couche », pour l'éditer ici.</p>
         </div>
 
-        <div id="step-form-section" style="display:none;">
+        <div id="step-form-section" class="builder-col__scroll" style="display:none;">
           <div class="section-title" style="margin-bottom:14px;" id="step-form-title">Ajouter une étape</div>
           <div class="field-group">
             <div>
@@ -107,6 +117,7 @@
                 <option value="chemical">Étape chimique</option>
                 <option value="resist_strip">Retrait de résine</option>
                 <option value="semipolar_facet">Facette semipolaire (pointe / V-pit)</option>
+                <option value="selective_growth">Croissance sélective (épitaxie, nanofils)</option>
               </select>
             </div>
             <div id="kind-fields" class="field-group"></div>
@@ -119,6 +130,18 @@
         </div>
       </div>
     </div>
+
+    <dialog id="code-modal" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);max-width:min(680px,92vw);width:100%;">
+      <div class="card-pad" style="max-height:80vh;display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+          <div class="section-title" style="margin-bottom:0;">Code StructureForge</div>
+          <button class="btn btn-line" id="code-modal-close-btn" type="button" style="padding:5px 10px;font-size:12px;">Fermer</button>
+        </div>
+        <p class="help" style="margin-bottom:10px;">Reproduit la structure courante avec la bibliothèque StructureForge, indépendamment de Spectre.</p>
+        <pre id="code-modal-pre" style="flex:1;overflow:auto;background:var(--bg);border:1px solid var(--border-soft);border-radius:var(--radius-sm);padding:12px;font-family:var(--font-mono, monospace);font-size:12px;line-height:1.5;white-space:pre;"></pre>
+        <button class="btn btn-primary btn-block" id="code-modal-copy-btn" type="button" style="margin-top:10px;">Copier</button>
+      </div>
+    </dialog>
 
     <!-- Mode expérience uniquement, dans cet ordre : structure (ci-dessus) > paramètres/campagne >
          objectifs et intention > lancer. -->

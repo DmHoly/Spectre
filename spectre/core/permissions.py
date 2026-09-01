@@ -1,5 +1,5 @@
 """Who can do what in a project: ``viewer`` reads, ``editor`` also creates/evolves/concludes
-experiments and manages recipes, ``owner`` also manages membership. Follow and StructureForge have
+experiments and manages step presets, ``owner`` also manages membership. Follow and StructureForge have
 no notion of any of this - it lives entirely here, as a FastAPI dependency that resolves the
 project from the URL and checks the caller's membership before the route body ever runs.
 """
