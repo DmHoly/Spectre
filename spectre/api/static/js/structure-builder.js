@@ -285,7 +285,7 @@ function renderKindFields(kind) {
   } else if (kind === "flip") {
     container.innerHTML = `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Retournement"></div>
-      <div class="help">Retourne la structure pour travailler la face arrière (amincissement, via, contact) — la face avant, protégée, n'est plus modifiable tant qu'on ne retourne pas à nouveau. Nécessite une surface avant plane sur toute la largeur (ex : une planarisation juste avant), comme pour un vrai collage sur support temporaire.</div>`;
+      <div class="help">Retourne la structure pour travailler la face arrière (amincissement, via, contact). La face avant n'est plus directement exposée, mais elle reste atteignable : un amincissement ou une gravure de face arrière suffisamment profond la traverse légitimement (comme un via qui vient contacter un plot enterré) — ce n'est pas un bouclier qui la rend immunisée. Nécessite une surface avant plane sur toute la largeur (ex : une planarisation juste avant), comme pour un vrai collage sur support temporaire.</div>`;
   }
 }
 
