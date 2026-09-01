@@ -64,9 +64,15 @@ function timeAgo(iso) {
 }
 
 function escapeHtml(value) {
+  // textContent->innerHTML escapes & < > but NOT quotes - every call site in this codebase also
+  // interpolates the result inside a double-quoted HTML attribute (value="...", data-x="...",
+  // href="..."), where an unescaped `"` breaks out and lets attacker-controlled text (a structure
+  // name, a recipe name, an evidence source URL - anything a project editor can set) inject a
+  // live attribute (onmouseover=...) that fires for any other member who views the page. Escaping
+  // both quote characters here closes that regardless of which attribute a caller uses it in.
   const div = document.createElement("div");
   div.textContent = value == null ? "" : String(value);
-  return div.innerHTML;
+  return div.innerHTML.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 async function mountUserBadge() {
