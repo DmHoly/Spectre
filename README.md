@@ -33,8 +33,12 @@ Prérequis : [Python 3.11+](https://www.python.org/downloads/) (cocher « Add py
    navigateur s'ouvre automatiquement sur `http://127.0.0.1:8000/`.
 
 Pour arrêter le serveur : fermer la fenêtre de journaux (ou `Ctrl+C` dedans). Pour relancer plus
-tard, `start.bat` suffit - pas besoin de relancer `install.bat` à chaque fois (seulement après une
-mise à jour du code, pour récupérer d'éventuelles nouvelles dépendances).
+tard, `start.bat` suffit - pas besoin de relancer `install.bat` à chaque fois.
+
+Pour mettre à jour vers la dernière version : double-cliquer **`update.bat`**. Il récupère les
+derniers changements de Spectre (`git pull`) et force le rechargement de StructureForge et Follow
+depuis GitHub - les trois dépôts dont dépend l'application - puisque `pip` garde sinon la version
+déjà installée même quand ces dépôts ont changé.
 
 ### macOS / Linux
 
