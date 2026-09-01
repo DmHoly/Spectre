@@ -43,6 +43,7 @@
         <a href="#estimations">Paramètres process et estimations</a>
         <a href="#etendre">Comment étendre</a>
         <a href="#limites">Limites connues</a>
+        <a href="#securite">Sécurité</a>
         <a href="#tests">Tests</a>
         <a href="#deploiement">Déploiement</a>
       </nav>
@@ -180,6 +181,19 @@ experiment = builder.commit()</code></pre>
           <p>StructureForge modélise le substrat à sens unique : <code>Geometry.substrate()</code> pose un <code>floor_nm</code> (masse infinie protégée, jamais gravée ni recouverte), utilisé aussi bien par le dépôt que par la gravure pour ne jamais dépasser le fond du substrat (<code>_bulk_pad</code>/<code>_clamp_floor</code> dans <code>geometry/engine.py</code>). <code>remove_floating_debris()</code> ancre en dur sur <code>self.layers[0].polygon</code> — toujours la toute première couche déposée.</p>
           <p>Retourner une structure (pour amincir ou graver la face arrière, coller une puce à l'envers) demanderait soit une transformation de coordonnées (miroir en y + recalcul de <code>floor_nm</code>) à chaque retournement, soit une deuxième frontière protégée symétrique à <code>floor_nm</code> — dans les deux cas, ça touche le dépôt ET la gravure, plus l'ancrage de <code>remove_floating_debris()</code> qui ne serait plus forcément <code>layers[0]</code> une fois la face d'origine posée contre autre chose. Aucun concept de face arrière n'existe aujourd'hui dans le code : ce serait un nouveau type de <code>ProcessStep</code>, avec des décisions de modélisation réelles à trancher avant toute implémentation (les motifs de la face d'origine, une fois enterrés, redeviennent-ils gravables une fois amincis jusqu'à eux ? comment <code>floor_nm</code> se redéfinit-il après un retournement ?).</p>
           <div class="docs-callout">Ce que Spectre sait faire aujourd'hui pour une intégration de type flip-chip : motifs de plots métalliques (dépôt + lithographie + gravure), vus dans <a href="/docs/exemples#flip-chip">Exemples : plots de report</a>. Ce qu'il ne sait pas faire : le retournement lui-même, l'amincissement ou la gravure de la face arrière, le collage de deux structures l'une sur l'autre.</div>
+        </section>
+
+        <section id="securite">
+          <h2>Sécurité</h2>
+          <h3>Corrigé : échappement HTML incomplet dans <code>escapeHtml()</code> (XSS stockée)</h3>
+          <p><code>escapeHtml()</code> (<code>static/js/common.js</code>) échappait <code>&amp;</code>/<code>&lt;</code>/<code>&gt;</code> mais pas les guillemets, alors que tous ses appelants l'utilisent pour insérer une valeur dans un attribut HTML entre guillemets doubles (<code>value="..."</code>, <code>data-name="..."</code>, <code>href="..."</code>). Un nom de structure, de recette ou une URL de preuve contenant un <code>"</code> sortait donc de l'attribut. Vérifié en conditions réelles : un simple éditeur de projet peut créer une structure nommée <code>x" onmouseover="…"</code>, dont le JavaScript s'exécute chez n'importe quel autre membre du projet (y compris lecture seule) qui survole le bouton correspondant dans l'onglet Structures — sans clic requis. Corrigé à la source (la fonction échappe maintenant aussi <code>'</code> et <code>"</code>) plutôt que dans chaque appelant.</p>
+          <h3>Durcissement possible, non fait</h3>
+          <ul>
+            <li>Pas de limitation du nombre de tentatives sur <code>/api/auth/login</code> ni sur <code>/api/auth/mot-de-passe-oublie</code> — un compte peut être attaqué en force brute à débit lent.</li>
+            <li>Le cookie de session (<code>spectre_session</code>) n'est pas marqué <code>Secure</code> — sans incidence en HTTP local, mais à activer si l'application tourne derrière HTTPS.</li>
+          </ul>
+          <h3>Vérifié correct (pas juste supposé)</h3>
+          <p>Mots de passe hashés PBKDF2-SHA256 (200 000 itérations) avec comparaison à temps constant ; cookies <code>httponly</code>/<code>samesite=lax</code> ; chaque route API passe par <code>require_role()</code> (<code>core/permissions.py</code>), vérifié route par route — aucune route sensible sans contrôle de droits ; <code>experience_diff_external</code> (comparaison inter-projets) vérifie l'accès aux <em>deux</em> projets avant de renvoyer le diff, pas seulement celui de l'URL ; les slugs de projet sont assainis (<code>[^a-z0-9]+</code> retiré) avant de servir de nom de dossier — pas de traversée de chemin possible ; les liens envoyés par e-mail (réinitialisation, invitation) utilisent <code>SPECTRE_BASE_URL</code> en configuration, jamais l'en-tête <code>Host</code> de la requête ; l'image Docker tourne en utilisateur non privilégié.</p>
         </section>
 
         <section id="tests">
