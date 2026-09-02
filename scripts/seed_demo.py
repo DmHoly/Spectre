@@ -124,6 +124,14 @@ def objective(name, metric, direction, *, target=None, rationale=None, verificat
     return {"name": name, "metric": metric, "direction": direction, "target": target, "rationale": rationale, "verification_method": verification_method}
 
 
+def objres(objective_name, status, reasoning, observed=None):
+    """One line of ``objective_results`` at conclude time - the actual answer to "was this
+    objective met" for a given objective, referenced by name. ``inconclusive`` is used honestly
+    here whenever a beat didn't carry a measurement bearing on that particular objective, rather
+    than silently defaulting every objective to "met" alongside the beat's own headline metric."""
+    return {"objective": objective_name, "status": status, "observed": observed, "reasoning": reasoning}
+
+
 # --------------------------------------------------------------------------------------------
 # Client HTTP - une session par compte (chacune garde ses propres cookies), toutes contre la
 # même application/mêmes données sur disque.
@@ -200,10 +208,10 @@ class Project:
         )
         return record(result["id"], days_ago)
 
-    def conclude(self, session: Session, ref: str, *, status="concluded", decision=None, summary=None, next_steps=None, days_ago) -> str:
+    def conclude(self, session: Session, ref: str, *, status="concluded", decision=None, summary=None, next_steps=None, objective_results=None, days_ago) -> str:
         result = session.post(
             f"/api/projects/{self.slug}/experiences/{ref}/conclure",
-            json={"status": status, "decision": decision, "summary": summary, "next_steps": next_steps, "objective_results": []},
+            json={"status": status, "decision": decision, "summary": summary, "next_steps": next_steps, "objective_results": objective_results or []},
         )
         return record(result["id"], days_ago)
 
@@ -274,7 +282,15 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=375,
     )
     b1 = proj.evidence(demo, b1, description="Bords un peu secs, centre encore humide - test du cure-dent limite.", source="Dégustation en famille", metric_name="moelleux", metric_value=64, metric_unit="%", days_ago=372)
-    b1 = proj.conclude(demo, b1, decision="branch", summary="Bonne base, à ajuster sur la cuisson - trop sec sur les bords.", days_ago=370)
+    b1 = proj.conclude(
+        demo, b1, decision="branch", summary="Bonne base, à ajuster sur la cuisson - trop sec sur les bords.",
+        objective_results=[
+            objres("Moelleux", "not_met", "64% de moelleux mesuré, loin de la cible de 80% - bords secs.", {"value": 64, "unit": "%"}),
+            objres("Temps de préparation", "met", "60 minutes au total, sous la cible de 70."),
+            objres("Note de dégustation", "inconclusive", "Pas encore de vote formalisé sur cette version."),
+        ],
+        days_ago=370,
+    )
     b1 = proj.tag(demo, b1, ["recette-de-base"], days_ago=370)
 
     # 2. Cuisson plus douce et plus longue
@@ -288,7 +304,15 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=345,
     )
     b2 = proj.evidence(demo, b2, description="Nettement plus moelleux, bords encore acceptables.", source="Dégustation en famille", metric_name="moelleux", metric_value=73, metric_unit="%", days_ago=343)
-    b2 = proj.conclude(demo, b2, decision="promote", summary="Amélioration nette, on garde cette base.", days_ago=342)
+    b2 = proj.conclude(
+        demo, b2, decision="promote", summary="Amélioration nette, on garde cette base.",
+        objective_results=[
+            objres("Moelleux", "partially_met", "73% de moelleux, net progrès mais encore sous la cible de 80%."),
+            objres("Temps de préparation", "met", "70 minutes au total, pile la cible."),
+            objres("Note de dégustation", "inconclusive", "Pas encore de vote formalisé sur cette version."),
+        ],
+        days_ago=342,
+    )
     b2 = proj.tag(demo, b2, ["recette-de-base", "approuvee"], days_ago=342)
 
     # 3. Un oeuf de plus (abandonné)
@@ -302,7 +326,15 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=320,
     )
     b3 = proj.evidence(lea, b3, description="Texture plus dense, presque un peu lourde.", source="Dégustation en famille", metric_name="note_degustation", metric_value=6.5, metric_unit="/10", days_ago=318)
-    b3 = proj.conclude(lea, b3, status="abandoned", decision="abandon", summary="Trop dense, on revient à 3 oeufs.", days_ago=317)
+    b3 = proj.conclude(
+        lea, b3, status="abandoned", decision="abandon", summary="Trop dense, on revient à 3 oeufs.",
+        objective_results=[
+            objres("Moelleux", "inconclusive", "Texture jugée plus dense à l'oeil, pas de mesure formelle du moelleux sur cet essai."),
+            objres("Temps de préparation", "inconclusive", "Pas de chronométrage réalisé pour cet essai."),
+            objres("Note de dégustation", "not_met", "6.5/10, en dessous de la cible de 8 - trop dense."),
+        ],
+        days_ago=317,
+    )
     proj.tag(lea, b3, ["a-eviter"], days_ago=317)
 
     # 4. Fork sans-gluten (abandonné pour l'instant)
@@ -317,7 +349,15 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=300,
     )
     b4 = proj.evidence(marc, b4, description="Texture plus friable, s'effrite un peu à la découpe.", source="Dégustation en famille", metric_name="moelleux", metric_value=58, metric_unit="%", days_ago=298)
-    b4 = proj.conclude(marc, b4, status="abandoned", decision="inconclusive", summary="À retravailler - manque de liant.", days_ago=297)
+    b4 = proj.conclude(
+        marc, b4, status="abandoned", decision="inconclusive", summary="À retravailler - manque de liant.",
+        objective_results=[
+            objres("Moelleux", "not_met", "58%, nettement sous la cible - texture friable sans le gluten.", {"value": 58, "unit": "%"}),
+            objres("Temps de préparation", "inconclusive", "Pas de chronométrage dédié pour cette variante."),
+            objres("Note de dégustation", "inconclusive", "Pas de vote formalisé, la texture friable a fait hésiter les dégustateurs."),
+        ],
+        days_ago=297,
+    )
     proj.tag(marc, b4, ["sans-gluten", "a-retravailler"], days_ago=297)
 
     # 5. Campagne four x glaçage
@@ -347,7 +387,15 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=260,
     )
     b6 = proj.evidence(demo, b6, description="Résultat très apprécié, meilleur jusqu'ici.", source="Dégustation en famille", metric_name="note_degustation", metric_value=8.7, metric_unit="/10", days_ago=258)
-    b6 = proj.conclude(demo, b6, decision="promote", summary="Nouvelle recette de référence.", days_ago=257)
+    b6 = proj.conclude(
+        demo, b6, decision="promote", summary="Nouvelle recette de référence.",
+        objective_results=[
+            objres("Moelleux", "inconclusive", "Pas de mesure de moelleux dédiée sur ce run, mais aucun retour négatif sur la texture."),
+            objres("Temps de préparation", "inconclusive", "Pas de chronométrage dédié pour cette combinaison."),
+            objres("Note de dégustation", "met", "8.7/10, largement au-dessus de la cible de 8.", {"value": 8.7, "unit": "/10"}),
+        ],
+        days_ago=257,
+    )
     b6 = proj.tag(demo, b6, ["recette-approuvee", "meilleure-recette"], days_ago=257)
 
     # 7. Fork vegan
@@ -362,7 +410,15 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=230,
     )
     b7 = proj.evidence(lea, b7, description="Bonne surprise, presque aussi moelleux que l'original.", source="Dégustation en famille", metric_name="moelleux", metric_value=79, metric_unit="%", days_ago=228)
-    b7 = proj.conclude(lea, b7, decision="promote", summary="Bonne alternative, à garder pour les convives vegan.", days_ago=227)
+    b7 = proj.conclude(
+        lea, b7, decision="promote", summary="Bonne alternative, à garder pour les convives vegan.",
+        objective_results=[
+            objres("Moelleux", "partially_met", "79%, tout proche de la cible de 80% malgré l'absence de beurre et d'oeufs.", {"value": 79, "unit": "%"}),
+            objres("Temps de préparation", "inconclusive", "Pas de chronométrage dédié pour cette variante."),
+            objres("Note de dégustation", "inconclusive", "Pas de vote formalisé sur cette variante vegan."),
+        ],
+        days_ago=227,
+    )
     proj.tag(lea, b7, ["vegan", "recette-approuvee"], days_ago=227)
 
     # 8. Glaçage plus intense
@@ -376,7 +432,15 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=200,
     )
     b8 = proj.evidence(demo, b8, description="Goût plus marqué, très apprécié des amateurs de chocolat noir.", source="Dégustation en famille", metric_name="note_degustation", metric_value=9.1, metric_unit="/10", days_ago=198)
-    b8 = proj.conclude(demo, b8, decision="promote", summary="Adopté comme glaçage par défaut.", days_ago=197)
+    b8 = proj.conclude(
+        demo, b8, decision="promote", summary="Adopté comme glaçage par défaut.",
+        objective_results=[
+            objres("Moelleux", "inconclusive", "Pas de nouvelle mesure de moelleux, seul le glaçage a changé."),
+            objres("Temps de préparation", "inconclusive", "Pas de chronométrage dédié, temps de préparation inchangé par rapport à la base."),
+            objres("Note de dégustation", "met", "9.1/10, la meilleure note obtenue jusqu'ici.", {"value": 9.1, "unit": "/10"}),
+        ],
+        days_ago=197,
+    )
     b8 = proj.tag(demo, b8, ["recette-approuvee"], days_ago=197)
 
     # 8.5. Fusion : réunir la piste vegan (b7) et le glaçage intense (b8) dans une seule recette -
@@ -398,7 +462,15 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=175,
     )
     b11 = proj.evidence(demo, b11, description="Combinaison réussie, aucun compromis nécessaire sur le goût ou la texture.", source="Dégustation en famille", metric_name="note_degustation", metric_value=8.9, metric_unit="/10", days_ago=173)
-    b11 = proj.conclude(demo, b11, decision="promote", summary="Les deux pistes se combinent bien - recette vegan à glaçage intense adoptée.", days_ago=171)
+    b11 = proj.conclude(
+        demo, b11, decision="promote", summary="Les deux pistes se combinent bien - recette vegan à glaçage intense adoptée.",
+        objective_results=[
+            objres("Moelleux", "partially_met", "79% de moelleux mesuré sur la piste vegan avant fusion, non re-testé avec le glaçage intense mais aucun retour négatif."),
+            objres("Temps de préparation", "inconclusive", "Pas de chronométrage dédié pour la version combinée."),
+            objres("Note de dégustation", "met", "8.9/10, largement au-dessus de la cible malgré la combinaison des deux ajustements.", {"value": 8.9, "unit": "/10"}),
+        ],
+        days_ago=171,
+    )
     proj.tag(demo, b11, ["vegan", "recette-approuvee", "fusion"], days_ago=171)
 
     # 9. Format familial
@@ -412,7 +484,15 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=150,
     )
     b9 = proj.evidence(marc, b9, description="Cuisson à coeur correcte, un peu long à préparer mais résultat à la hauteur.", source="Dégustation famille élargie", metric_name="temps_total_min", metric_value=88, metric_unit="min", days_ago=148)
-    b9 = proj.conclude(marc, b9, decision="replicate", summary="Bon résultat pour les grandes tablées.", days_ago=147)
+    b9 = proj.conclude(
+        marc, b9, decision="replicate", summary="Bon résultat pour les grandes tablées.",
+        objective_results=[
+            objres("Moelleux", "inconclusive", "Pas de mesure dédiée pour ce format, la cuisson à coeur a simplement été jugée correcte."),
+            objres("Temps de préparation", "not_met", "88 minutes au total pour ce grand format, au-dessus de la cible de 70 - attendu vu la taille, mais à noter.", {"value": 88, "unit": "min"}),
+            objres("Note de dégustation", "inconclusive", "Pas de vote chiffré, seulement un retour qualitatif positif."),
+        ],
+        days_ago=147,
+    )
     proj.tag(marc, b9, ["format-familial", "recette-approuvee"], days_ago=147)
 
     # 10. Version finale documentée
@@ -426,7 +506,16 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=40,
     )
     b10 = proj.evidence(demo, b10, description="Version testée trois fois de suite avec un résultat constant.", source="Dégustation en famille", metric_name="note_degustation", metric_value=9.3, metric_unit="/10", days_ago=38)
-    b10 = proj.conclude(demo, b10, decision="promote", summary="Recette finale validée, prête à être partagée - un an d'essais pour arriver à cette version, moelleuse, avec un glaçage intense, faisable en semaine.", days_ago=35)
+    b10 = proj.conclude(
+        demo, b10, decision="promote",
+        summary="Recette finale validée, prête à être partagée - un an d'essais pour arriver à cette version, moelleuse, avec un glaçage intense, faisable en semaine.",
+        objective_results=[
+            objres("Moelleux", "met", "Version testée trois fois avec un résultat moelleux constant, cohérent avec les 79-80% déjà mesurés sur cette base.", {"value": 80, "unit": "%"}),
+            objres("Temps de préparation", "met", "45 minutes de cuisson, temps total sous la cible de 70 minutes.", {"value": 72, "unit": "min"}),
+            objres("Note de dégustation", "met", "9.3/10, la meilleure note de l'année, confirmée sur trois essais consécutifs.", {"value": 9.3, "unit": "/10"}),
+        ],
+        days_ago=35,
+    )
     proj.tag(demo, b10, ["recette-du-mois", "recette-approuvee", "version-finale"], days_ago=35)
 
     proj.save_structure(demo, name="Gâteau au chocolat - recette finale", substrate=cake_substrate, steps=[pate(160, 3, 250, 180, 120, 45, 72), glacage(85)])
@@ -496,7 +585,16 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=epi_substrate(), steps=epi_stack(10), objectives=OBJ, days_ago=350,
     )
     b1 = proj.evidence(demo, b1, description="Imagerie AFM : rugosité RMS mesurée à 1.2nm, quelques dislocations visibles.", source="AFM salle blanche", metric_name="rugosite_rms_nm", metric_value=1.2, metric_unit="nm", days_ago=347)
-    b1 = proj.conclude(demo, b1, decision="branch", summary="Bon point de départ, tampon un peu fin.", days_ago=345)
+    b1 = proj.conclude(
+        demo, b1, decision="branch", summary="Bon point de départ, tampon un peu fin.",
+        objective_results=[
+            objres("Rugosité de surface", "not_met", "1.2nm de rugosité RMS mesurée, au-dessus de la cible de 1.0nm.", {"value": 1.2, "unit": "nm"}),
+            objres("Diamètre de pointe", "inconclusive", "Pas encore de piliers à ce stade, pas de pointe à mesurer."),
+            objres("Longueur d'onde d'émission estimée", "inconclusive", "Zone active pas encore déposée."),
+            objres("Résistance de contact face arrière", "inconclusive", "Contact face arrière pas encore abordé à ce stade."),
+        ],
+        days_ago=345,
+    )
     b1 = proj.tag(demo, b1, ["epitaxie", "wafer-lot-A"], days_ago=345)
 
     # 2. Tampon AlN plus épais
@@ -508,7 +606,16 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=epi_substrate(), steps=epi_stack(15), days_ago=320,
     )
     b2 = proj.evidence(lea, b2, description="Rugosité RMS réduite à 0.6nm - nette amélioration.", source="AFM salle blanche", metric_name="rugosite_rms_nm", metric_value=0.6, metric_unit="nm", days_ago=318)
-    b2 = proj.conclude(lea, b2, decision="promote", summary="Tampon 15nm adopté comme standard.", days_ago=317)
+    b2 = proj.conclude(
+        lea, b2, decision="promote", summary="Tampon 15nm adopté comme standard.",
+        objective_results=[
+            objres("Rugosité de surface", "met", "0.6nm de rugosité RMS, sous la cible de 1.0nm.", {"value": 0.6, "unit": "nm"}),
+            objres("Diamètre de pointe", "inconclusive", "Pas encore de piliers définis."),
+            objres("Longueur d'onde d'émission estimée", "inconclusive", "Zone active pas encore déposée."),
+            objres("Résistance de contact face arrière", "inconclusive", "Pas encore abordé."),
+        ],
+        days_ago=317,
+    )
     b2 = proj.tag(lea, b2, ["epitaxie", "recette-approuvee"], days_ago=317)
 
     # 3. Piliers par lithographie + gravure
@@ -520,7 +627,16 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=epi_substrate(), steps=epi_stack(15) + litho_etch, days_ago=295,
     )
     b3 = proj.evidence(demo, b3, description="Piliers bien définis au MEB, flancs verticaux, diamètre proche de la cible.", source="MEB salle blanche", metric_name="diametre_pointe_nm", metric_value=60, metric_unit="nm", days_ago=293)
-    b3 = proj.conclude(demo, b3, decision="promote", summary="Gravure validée pour la suite.", days_ago=291)
+    b3 = proj.conclude(
+        demo, b3, decision="promote", summary="Gravure validée pour la suite.",
+        objective_results=[
+            objres("Rugosité de surface", "inconclusive", "Pas de nouvelle mesure AFM après la gravure des piliers."),
+            objres("Diamètre de pointe", "not_met", "60nm mesurés au sommet des piliers, loin de la cible de 15nm - attendu avant la croissance sélective.", {"value": 60, "unit": "nm"}),
+            objres("Longueur d'onde d'émission estimée", "inconclusive", "Zone active pas encore déposée."),
+            objres("Résistance de contact face arrière", "inconclusive", "Pas encore abordé."),
+        ],
+        days_ago=291,
+    )
     b3 = proj.tag(demo, b3, ["gravure", "wafer-lot-A"], days_ago=291)
 
     # 4. Croissance sélective - pointe semipolaire
@@ -532,7 +648,16 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=epi_substrate(), steps=epi_stack(15) + litho_etch + growth_taper, days_ago=270,
     )
     b4 = proj.evidence(demo, b4, description="Pointe bien refermée, diamètre résiduel mesuré au MEB.", source="MEB salle blanche", metric_name="diametre_pointe_nm", metric_value=18, metric_unit="nm", days_ago=268)
-    b4 = proj.conclude(demo, b4, decision="promote", summary="Pointe semipolaire obtenue, proche de l'objectif.", days_ago=266)
+    b4 = proj.conclude(
+        demo, b4, decision="promote", summary="Pointe semipolaire obtenue, proche de l'objectif.",
+        objective_results=[
+            objres("Rugosité de surface", "inconclusive", "Pas de nouvelle mesure AFM sur cette étape."),
+            objres("Diamètre de pointe", "partially_met", "18nm résiduels, proche de la cible de 15nm après trois croissances sélectives successives.", {"value": 18, "unit": "nm"}),
+            objres("Longueur d'onde d'émission estimée", "inconclusive", "Zone active pas encore déposée."),
+            objres("Résistance de contact face arrière", "inconclusive", "Pas encore abordé."),
+        ],
+        days_ago=266,
+    )
     b4 = proj.tag(demo, b4, ["croissance-selective", "wafer-lot-A"], days_ago=266)
 
     # 5. Fork substrat SiC
@@ -544,7 +669,16 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=epi_substrate("SiC"), steps=epi_stack(15), new_branch="substrat-sic", days_ago=250,
     )
     b5 = proj.evidence(marc, b5, description="Rugosité RMS à 0.4nm, meilleure que sur saphir, mais coût du substrat très supérieur.", source="AFM salle blanche", metric_name="rugosite_rms_nm", metric_value=0.4, metric_unit="nm", days_ago=248)
-    b5 = proj.conclude(marc, b5, decision="inconclusive", summary="Qualité supérieure confirmée, réservé aux lots critiques vu le coût.", days_ago=247)
+    b5 = proj.conclude(
+        marc, b5, decision="inconclusive", summary="Qualité supérieure confirmée, réservé aux lots critiques vu le coût.",
+        objective_results=[
+            objres("Rugosité de surface", "met", "0.4nm sur SiC, meilleure valeur obtenue jusqu'ici, mais coût du substrat très supérieur - réservé aux lots critiques.", {"value": 0.4, "unit": "nm"}),
+            objres("Diamètre de pointe", "inconclusive", "Pas de piliers gravés sur cet essai, comparaison limitée au tampon."),
+            objres("Longueur d'onde d'émission estimée", "inconclusive", "Zone active pas abordée sur cette variante."),
+            objres("Résistance de contact face arrière", "inconclusive", "Pas abordé."),
+        ],
+        days_ago=247,
+    )
     proj.tag(marc, b5, ["substrat-sic", "a-verifier"], days_ago=247)
 
     # 6. Zone active InGaN/GaN
@@ -556,7 +690,16 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=epi_substrate(), steps=epi_stack(15) + litho_etch + growth_taper + active_region(18), days_ago=230,
     )
     b6 = proj.evidence(demo, b6, description="Composition d'indium confirmée par EDX à 17-19%, cohérent avec la cible.", source="EDX salle blanche", metric_name="longueur_onde_nm", metric_value=451, metric_unit="nm", days_ago=228)
-    b6 = proj.conclude(demo, b6, decision="branch", summary="Zone active en place, à caractériser en photoluminescence.", days_ago=226)
+    b6 = proj.conclude(
+        demo, b6, decision="branch", summary="Zone active en place, à caractériser en photoluminescence.",
+        objective_results=[
+            objres("Rugosité de surface", "inconclusive", "Pas de nouvelle mesure AFM après le dépôt de la zone active."),
+            objres("Diamètre de pointe", "inconclusive", "Pas de nouvelle mesure MEB à cette étape, pointe déjà validée précédemment."),
+            objres("Longueur d'onde d'émission estimée", "met", "451nm estimé par EDX à partir de la composition d'indium, quasiment pile sur la cible de 450nm - à confirmer en photoluminescence.", {"value": 451, "unit": "nm"}),
+            objres("Résistance de contact face arrière", "inconclusive", "Contact face arrière pas encore abordé."),
+        ],
+        days_ago=226,
+    )
     b6 = proj.tag(demo, b6, ["zone-active", "wafer-lot-B"], days_ago=226)
 
     # 7. Contact ITO
@@ -568,7 +711,16 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=epi_substrate(), steps=epi_stack(15) + litho_etch + growth_taper + active_region(18) + ito_contact, days_ago=210,
     )
     b7 = proj.evidence(lea, b7, description="Contact continu observé au MEB, pas de zones découvertes.", source="MEB salle blanche", days_ago=208)
-    b7 = proj.conclude(lea, b7, decision="promote", summary="Contact avant validé.", days_ago=206)
+    b7 = proj.conclude(
+        lea, b7, decision="promote", summary="Contact avant validé.",
+        objective_results=[
+            objres("Rugosité de surface", "inconclusive", "Pas de nouvelle mesure AFM après le dépôt du contact."),
+            objres("Diamètre de pointe", "inconclusive", "Pas de nouvelle mesure MEB dédiée à la pointe sur cette étape."),
+            objres("Longueur d'onde d'émission estimée", "inconclusive", "Pas de nouvelle mesure optique, contact avant seulement."),
+            objres("Résistance de contact face arrière", "inconclusive", "Contact avant validé visuellement, mais la résistance de contact face arrière reste à valider (voir le wafer test dédié)."),
+        ],
+        days_ago=206,
+    )
     b7 = proj.tag(lea, b7, ["contact", "wafer-lot-B"], days_ago=206)
 
     # 8. Campagne composition du puits quantique
@@ -593,7 +745,16 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=epi_substrate(), steps=epi_stack(15) + litho_etch + growth_taper + active_region(18.5) + ito_contact, days_ago=160,
     )
     b9 = proj.evidence(demo, b9, description="Wafer marqué comme référence pour la suite du projet.", source="Suivi de lot", days_ago=158)
-    b9 = proj.conclude(demo, b9, decision="promote", summary="Nouvelle référence de composition.", days_ago=156)
+    b9 = proj.conclude(
+        demo, b9, decision="promote", summary="Nouvelle référence de composition.",
+        objective_results=[
+            objres("Rugosité de surface", "inconclusive", "Pas de nouvelle mesure AFM, épitaxie inchangée depuis le lot précédent."),
+            objres("Diamètre de pointe", "inconclusive", "Pas de nouvelle mesure MEB, géométrie de pointe inchangée."),
+            objres("Longueur d'onde d'émission estimée", "partially_met", "Composition ajustée à 18.5% d'après la campagne pour viser 450nm, mesure de confirmation en photoluminescence pas encore réalisée."),
+            objres("Résistance de contact face arrière", "inconclusive", "Pas encore abordé sur ce wafer."),
+        ],
+        days_ago=156,
+    )
     proj.tag(demo, b9, ["recette-approuvee", "wafer-lot-C"], days_ago=156)
 
     # 10. Wafer test - validation du retournement pour contact face arrière (procédé
@@ -623,7 +784,16 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=substrate("Si", width_nm=300, thickness_nm=150), steps=flip_steps, objectives=OBJ, days_ago=90,
     )
     b10 = proj.evidence(demo, b10, description="Contact mesuré continu entre le plot avant et le métal arrière (distance quasi nulle au MEB) - procédé validé.", source="MEB en coupe", metric_name="resistance_contact", metric_value=0.8, metric_unit="Ω·mm²", days_ago=87)
-    b10 = proj.conclude(demo, b10, decision="promote", summary="Procédé de retournement validé, prêt à être appliqué à la ligne GaN.", days_ago=85)
+    b10 = proj.conclude(
+        demo, b10, decision="promote", summary="Procédé de retournement validé, prêt à être appliqué à la ligne GaN.",
+        objective_results=[
+            objres("Rugosité de surface", "inconclusive", "Wafer test Si, sans rapport avec la rugosité d'épitaxie GaN suivie sur les autres lots."),
+            objres("Diamètre de pointe", "inconclusive", "Wafer test plan, pas de nanofils sur cet essai."),
+            objres("Longueur d'onde d'émission estimée", "inconclusive", "Wafer test sans zone active, objectif non applicable ici."),
+            objres("Résistance de contact face arrière", "met", "0.8Ω·mm² mesuré, sous la cible de 1.0 - contact continu confirmé au MEB en coupe.", {"value": 0.8, "unit": "Ω·mm²"}),
+        ],
+        days_ago=85,
+    )
     b10 = proj.tag(demo, b10, ["retournement", "design-valide", "wafer-test"], days_ago=85)
 
     # 11. Fusion : relier la ligne principale (b9) et la validation du retournement (b10) - deux
@@ -642,6 +812,12 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         demo, b11, decision="branch",
         summary="Fusion des deux pistes de travail - le retournement est prêt pour le prochain lot GaN.",
         next_steps="Appliquer le retournement/via à un wafer GaN complet (épitaxie + nanofils + retournement) lors du prochain run.",
+        objective_results=[
+            objres("Rugosité de surface", "inconclusive", "Pas de nouvelle mesure, cette étape documente la fusion des deux pistes plutôt qu'un nouveau run."),
+            objres("Diamètre de pointe", "inconclusive", "Pas de nouvelle mesure, géométrie de pointe inchangée depuis le lot C."),
+            objres("Longueur d'onde d'émission estimée", "partially_met", "Composition à 18.5% conservée de la ligne principale, viser 450nm reste à confirmer en photoluminescence."),
+            objres("Résistance de contact face arrière", "met", "Procédé de retournement validé à 0.8Ω·mm² sur wafer test, prêt à être appliqué au prochain lot GaN complet.", {"value": 0.8, "unit": "Ω·mm²"}),
+        ],
         days_ago=65,
     )
     proj.tag(demo, b11, ["fusion", "wafer-lot-C"], days_ago=65)
