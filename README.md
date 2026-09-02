@@ -106,3 +106,46 @@ propres tests unitaires, sans aucune dépendance à installer - juste [Node.js](
 ```bash
 node --test
 ```
+
+### Couverture de code
+
+```bash
+pytest --cov --cov-report=term-missing   # Python (pip install -e ".[dev]" installe pytest-cov)
+node --test --experimental-test-coverage # JavaScript
+```
+
+Python, par module (`spectre/`, 109 tests, 91 % au total à la dernière mesure) :
+
+| Module | Couverture |
+|---|---|
+| `spectre/__init__.py` | 100 % |
+| `spectre/api/app.py` | 100 % |
+| `spectre/api/auth.py` | 96 % |
+| `spectre/api/deps.py` | 86 % |
+| `spectre/api/experiments.py` | 83 % |
+| `spectre/api/keyed_resource.py` | 100 % |
+| `spectre/api/projects.py` | 87 % |
+| `spectre/api/structures.py` | 95 % |
+| `spectre/cli.py` | 0 % *(point d'entrée `spectre --port`, non exercé par les tests HTTP)* |
+| `spectre/core/accounts.py` | 97 % |
+| `spectre/core/db.py` | 100 % |
+| `spectre/core/email.py` | 48 % *(l'envoi SMTP réel n'est pas simulé en test)* |
+| `spectre/core/keyed_store.py` | 100 % |
+| `spectre/core/permissions.py` | 100 % |
+| `spectre/core/projects.py` | 97 % |
+| `spectre/core/security.py` | 100 % |
+| `spectre/core/step_presets.py` | 100 % |
+| `spectre/core/structure_library.py` | 100 % |
+| `spectre/core/structures.py` | 95 % |
+
+JavaScript (`tests_js/`, `node --test` exécute les vrais fichiers de `spectre/api/static/js/
+structure-builder/` - voir `tests_js/helpers/load-structure-builder.js`) : encore partiel, seule
+la logique pure du registre `STEP_KIND_DEFS` est couverte pour l'instant, le reste du constructeur
+dépend du DOM et n'a que la vérification manuelle (Playwright) faite pendant le développement.
+
+| Module | Couverture (lignes) |
+|---|---|
+| `step-kinds.js` | 51 % |
+| `code-export.js` | 44 % |
+| `form-widgets.js` | 16 % *(les widgets eux-mêmes touchent le DOM ; seuls `modeSummary`/`parseOpenings` sont testés)* |
+| `context.js`, `substrate.js`, `step-list.js`, `objectives.js`, `campaign.js`, `simulation.js`, `experience-launch.js`, `library-mode.js`, `main.js` | 0 % *(pilotage du DOM/état - pas encore de tests automatisés)* |

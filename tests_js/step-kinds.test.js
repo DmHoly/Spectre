@@ -4,22 +4,33 @@
    step-kinds.js) and the small pure helpers it depends on - the part of the modularization that
    replaced nine scattered per-kind branches with one entry per step kind. Run with:
 
-     node --test tests_js
+     node --test
 
-   No external dependency: Node's built-in test runner loads the real production files through a
-   minimal vm sandbox (see helpers/load-structure-builder.js) - not a reimplementation, the actual
-   shipped source. */
+   No external dependency: Node's built-in test runner loads the real production files as-is (see
+   helpers/load-structure-builder.js) - not a reimplementation, the actual shipped source. */
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { loadStructureBuilder, toPlain } = require("./helpers/load-structure-builder");
+const { loadStructureBuilder } = require("./helpers/load-structure-builder");
 
-const sandbox = loadStructureBuilder(
-  ["form-widgets.js", "code-export.js", "step-kinds.js"],
-  ["STEP_KIND_DEFS", "STEP_KINDS", "CAMPAIGN_FIELD_OPTIONS", "PY_STEP_CLASS"]
-);
 const { STEP_KIND_DEFS, STEP_KINDS, CAMPAIGN_FIELD_OPTIONS, PY_STEP_CLASS, stepSummary, pyStepCode, modeSummary, parseOpenings, pyStr, pyLength, pyDict, toNm } =
-  sandbox;
+  loadStructureBuilder(
+    ["form-widgets.js", "code-export.js", "step-kinds.js"],
+    [
+      "STEP_KIND_DEFS",
+      "STEP_KINDS",
+      "CAMPAIGN_FIELD_OPTIONS",
+      "PY_STEP_CLASS",
+      "stepSummary",
+      "pyStepCode",
+      "modeSummary",
+      "parseOpenings",
+      "pyStr",
+      "pyLength",
+      "pyDict",
+      "toNm",
+    ]
+  );
 
 test("modeSummary formats a mode with an optional angle suffix", () => {
   assert.equal(modeSummary("conformal", 0), "conforme");
@@ -28,16 +39,13 @@ test("modeSummary formats a mode with an optional angle suffix", () => {
 });
 
 test("parseOpenings turns 'a-b, c-d' text into pairs of numbers", () => {
-  assert.deepEqual(toPlain(parseOpenings("")), []);
-  assert.deepEqual(toPlain(parseOpenings("   ")), []);
-  assert.deepEqual(toPlain(parseOpenings("20-40")), [[20, 40]]);
-  assert.deepEqual(
-    toPlain(parseOpenings("20-40, 100-140")),
-    [
-      [20, 40],
-      [100, 140],
-    ]
-  );
+  assert.deepEqual(parseOpenings(""), []);
+  assert.deepEqual(parseOpenings("   "), []);
+  assert.deepEqual(parseOpenings("20-40"), [[20, 40]]);
+  assert.deepEqual(parseOpenings("20-40, 100-140"), [
+    [20, 40],
+    [100, 140],
+  ]);
 });
 
 test("pyStr/pyLength/pyDict/toNm render Python literals", () => {
@@ -87,8 +95,8 @@ test("STEP_KINDS/CAMPAIGN_FIELD_OPTIONS/PY_STEP_CLASS are derived for every kind
   assert.deepEqual(Object.keys(PY_STEP_CLASS).sort(), kinds);
   assert.equal(STEP_KINDS.deposition.label, "Dépôt");
   assert.equal(PY_STEP_CLASS.flip, "Flip");
-  assert.deepEqual(toPlain(CAMPAIGN_FIELD_OPTIONS.deposition), [["thickness", "Épaisseur"]]);
-  assert.deepEqual(toPlain(CAMPAIGN_FIELD_OPTIONS.chemical), []);
+  assert.deepEqual(CAMPAIGN_FIELD_OPTIONS.deposition, [["thickness", "Épaisseur"]]);
+  assert.deepEqual(CAMPAIGN_FIELD_OPTIONS.chemical, []);
 });
 
 // One representative step per kind, in exactly the shape buildStepFromForm() produces - used to
