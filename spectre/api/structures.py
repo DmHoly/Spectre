@@ -23,6 +23,7 @@ from ..core.projects import Project
 from ..core.step_presets import StepPreset, StepPresetPayload, default_step_presets
 from ..core.structure_library import SavedStructure, default_structure_presets
 from .deps import get_current_user
+from .keyed_resource import list_three_buckets, reject_duplicate, require_existing
 
 router = APIRouter(prefix="/api/projects", tags=["structures"])
 
@@ -118,20 +119,18 @@ def _step_preset_payload(preset: StepPreset, scope: str) -> dict:
 
 @router.get("/{slug}/presets-etapes")
 def list_step_presets(project: Project = Depends(require_role("viewer"))) -> dict:
-    shared = projects.get_shared_step_preset_store().load()
-    own = projects.get_step_preset_store(project.slug).load()
-    return {
-        "presets": [_step_preset_payload(p, "preset") for p in default_step_presets().values()],
-        "partagees": [_step_preset_payload(p, "partagee") for p in shared.presets.values()],
-        "projet": [_step_preset_payload(p, "projet") for p in own.presets.values()],
-    }
+    return list_three_buckets(
+        projects.get_step_preset_store(project.slug),
+        projects.get_shared_step_preset_store(),
+        default_step_presets(),
+        _step_preset_payload,
+    )
 
 
 @router.post("/{slug}/presets-etapes", status_code=201)
 def create_step_preset(body: StepPresetInput, project: Project = Depends(require_role("editor"))) -> dict:
     store = _step_preset_store(project, body.partagee)
-    if body.name in store.load().presets:
-        raise HTTPException(status_code=409, detail=f"Un préset nommé {body.name!r} existe déjà dans cette bibliothèque.")
+    reject_duplicate(store, body.name, message=f"Un préset nommé {body.name!r} existe déjà dans cette bibliothèque.")
     preset = StepPreset(
         name=body.name,
         payload=body.payload,
@@ -147,9 +146,7 @@ def update_step_preset(
     name: str, body: StepPresetInput, partagee: bool = False, project: Project = Depends(require_role("editor"))
 ) -> dict:
     store = _step_preset_store(project, partagee)
-    existing = store.load().presets.get(name)
-    if existing is None:
-        raise HTTPException(status_code=404, detail=f"Préset {name!r} introuvable.")
+    existing = require_existing(store, name, message=f"Préset {name!r} introuvable.")
     preset = StepPreset(name=body.name, payload=body.payload, notes=body.notes, created_at=existing.created_at)
     store.rename(name, preset)
     return list_step_presets(project)
@@ -179,20 +176,18 @@ def _saved_structure_payload(structure: SavedStructure, scope: str) -> dict:
 
 @router.get("/{slug}/structures-sauvegardees")
 def list_saved_structures(project: Project = Depends(require_role("viewer"))) -> dict:
-    shared = projects.get_shared_structure_store().load()
-    own = projects.get_structure_store(project.slug).load()
-    return {
-        "presets": [_saved_structure_payload(s, "preset") for s in default_structure_presets().values()],
-        "partagees": [_saved_structure_payload(s, "partagee") for s in shared.structures.values()],
-        "projet": [_saved_structure_payload(s, "projet") for s in own.structures.values()],
-    }
+    return list_three_buckets(
+        projects.get_structure_store(project.slug),
+        projects.get_shared_structure_store(),
+        default_structure_presets(),
+        _saved_structure_payload,
+    )
 
 
 @router.post("/{slug}/structures-sauvegardees", status_code=201)
 def create_saved_structure(body: SavedStructureInput, project: Project = Depends(require_role("editor"))) -> dict:
     store = _saved_structure_store(project, body.partagee)
-    if body.name in store.load().structures:
-        raise HTTPException(status_code=409, detail=f"Une structure nommée {body.name!r} existe déjà dans cette bibliothèque.")
+    reject_duplicate(store, body.name, message=f"Une structure nommée {body.name!r} existe déjà dans cette bibliothèque.")
     saved = SavedStructure(
         name=body.name,
         substrate=body.substrate,
@@ -209,9 +204,7 @@ def update_saved_structure(
     name: str, body: SavedStructureInput, partagee: bool = False, project: Project = Depends(require_role("editor"))
 ) -> dict:
     store = _saved_structure_store(project, partagee)
-    existing = store.load().structures.get(name)
-    if existing is None:
-        raise HTTPException(status_code=404, detail=f"Structure {name!r} introuvable.")
+    existing = require_existing(store, name, message=f"Structure {name!r} introuvable.")
     saved = SavedStructure(
         name=body.name,
         substrate=body.substrate,

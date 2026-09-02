@@ -16,13 +16,14 @@ the structure library already has between a preset structure and the experience 
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 from structureforge.core.materials import MaterialCategory
 from structureforge.core.recipes import DepositionMode, EtchMode
+
+from .keyed_store import KeyedJsonStore
 
 
 class DepositionPreset(BaseModel):
@@ -54,41 +55,8 @@ class StepPresetLibrary(BaseModel):
     presets: dict[str, StepPreset] = Field(default_factory=dict)
 
 
-class StepPresetStore:
-    def __init__(self, path: str | Path):
-        self.path = Path(path)
-
-    def load(self) -> StepPresetLibrary:
-        if not self.path.exists():
-            return StepPresetLibrary()
-        data = json.loads(self.path.read_text(encoding="utf-8"))
-        return StepPresetLibrary.model_validate(data)
-
-    def save(self, library: StepPresetLibrary) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(library.model_dump_json(indent=2), encoding="utf-8")
-
-    def upsert(self, preset: StepPreset) -> StepPresetLibrary:
-        library = self.load()
-        library.presets[preset.name] = preset
-        self.save(library)
-        return library
-
-    def rename(self, old_name: str, preset: StepPreset) -> StepPresetLibrary:
-        """Replace whatever is saved under ``old_name`` with ``preset`` - used when editing a
-        preset in place also changes its name, so the old key doesn't linger.
-        """
-        library = self.load()
-        library.presets.pop(old_name, None)
-        library.presets[preset.name] = preset
-        self.save(library)
-        return library
-
-    def remove(self, name: str) -> StepPresetLibrary:
-        library = self.load()
-        library.presets.pop(name, None)
-        self.save(library)
-        return library
+def StepPresetStore(path: str | Path) -> KeyedJsonStore[StepPresetLibrary, StepPreset]:
+    return KeyedJsonStore(path, StepPresetLibrary, "presets")
 
 
 def default_step_presets() -> dict[str, StepPreset]:

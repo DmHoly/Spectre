@@ -11,7 +11,6 @@ step_presets`.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -19,6 +18,7 @@ from structureforge.core.recipes import DepositionMode, EtchMode
 from structureforge.core.units import Length
 from structureforge.process.steps import Deposition, Etch, Lithography, ProcessStep, ResistStrip, SemipolarFacet
 
+from .keyed_store import KeyedJsonStore
 from .structures import SubstrateSpec
 
 
@@ -92,38 +92,5 @@ class StructureLibrary(BaseModel):
     structures: dict[str, SavedStructure] = Field(default_factory=dict)
 
 
-class StructureLibraryStore:
-    def __init__(self, path: str | Path):
-        self.path = Path(path)
-
-    def load(self) -> StructureLibrary:
-        if not self.path.exists():
-            return StructureLibrary()
-        data = json.loads(self.path.read_text(encoding="utf-8"))
-        return StructureLibrary.model_validate(data)
-
-    def save(self, library: StructureLibrary) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(library.model_dump_json(indent=2), encoding="utf-8")
-
-    def upsert(self, structure: SavedStructure) -> StructureLibrary:
-        library = self.load()
-        library.structures[structure.name] = structure
-        self.save(library)
-        return library
-
-    def rename(self, old_name: str, structure: SavedStructure) -> StructureLibrary:
-        """Replace whatever is saved under ``old_name`` with ``structure`` - used when editing a
-        saved structure in place also changes its name, so the old key doesn't linger.
-        """
-        library = self.load()
-        library.structures.pop(old_name, None)
-        library.structures[structure.name] = structure
-        self.save(library)
-        return library
-
-    def remove(self, name: str) -> StructureLibrary:
-        library = self.load()
-        library.structures.pop(name, None)
-        self.save(library)
-        return library
+def StructureLibraryStore(path: str | Path) -> KeyedJsonStore[StructureLibrary, SavedStructure]:
+    return KeyedJsonStore(path, StructureLibrary, "structures")

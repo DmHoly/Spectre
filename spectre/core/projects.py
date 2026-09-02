@@ -217,27 +217,32 @@ def follow_repo_path(slug: str) -> Path:
     return project_dir(slug) / "follow"
 
 
-def structures_path(slug: str) -> Path:
-    return project_dir(slug) / "structures.json"
-
-
-def shared_structures_path() -> Path:
-    """Not inside any project's own directory - visible from every project, see
-    :mod:`spectre.core.structure_library`.
+def _scoped_store_getters(own_filename: str, shared_filename: str, store_factory):
+    """A ``(get_own, get_shared)`` pair of store getters for a JSON-backed keyed collection that
+    lives, the same way for every one of them (see :mod:`spectre.core.keyed_store`), as one file
+    inside a project's own directory and one shared file visible from every project - the split
+    :func:`get_structure_store`/:func:`get_step_preset_store` and their ``get_shared_*``
+    counterparts both need, with only the filename and the store type differing.
     """
-    return data_dir() / "structures_partagees.json"
+
+    def get_own(slug: str):
+        return store_factory(project_dir(slug) / own_filename)
+
+    def get_shared():
+        return store_factory(data_dir() / shared_filename)
+
+    return get_own, get_shared
 
 
-def get_structure_store(slug: str):
+def _structure_library_store(path: Path):
     from .structure_library import StructureLibraryStore
 
-    return StructureLibraryStore(structures_path(slug))
+    return StructureLibraryStore(path)
 
 
-def get_shared_structure_store():
-    from .structure_library import StructureLibraryStore
-
-    return StructureLibraryStore(shared_structures_path())
+get_structure_store, get_shared_structure_store = _scoped_store_getters(
+    "structures.json", "structures_partagees.json", _structure_library_store
+)
 
 
 def get_repository(slug: str):
@@ -250,24 +255,12 @@ def get_repository(slug: str):
     return follow.Repository(follow_repo_path(slug))
 
 
-def step_presets_path(slug: str) -> Path:
-    return project_dir(slug) / "presets_etapes.json"
-
-
-def shared_step_presets_path() -> Path:
-    """Not inside any project's own directory - visible from every project, see
-    :mod:`spectre.core.step_presets` (same split as :func:`shared_structures_path`).
-    """
-    return data_dir() / "presets_etapes_partages.json"
-
-
-def get_step_preset_store(slug: str):
+def _step_preset_store(path: Path):
     from .step_presets import StepPresetStore
 
-    return StepPresetStore(step_presets_path(slug))
+    return StepPresetStore(path)
 
 
-def get_shared_step_preset_store():
-    from .step_presets import StepPresetStore
-
-    return StepPresetStore(shared_step_presets_path())
+get_step_preset_store, get_shared_step_preset_store = _scoped_store_getters(
+    "presets_etapes.json", "presets_etapes_partages.json", _step_preset_store
+)
