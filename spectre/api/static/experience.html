@@ -40,93 +40,114 @@
       <button class="btn btn-primary" id="evolve-btn" style="display:none;">Enregistrer une évolution</button>
     </div>
 
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;">
+    <!-- Titre de l'étude, seul en pleine largeur. -->
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <div id="status-badge" style="margin-bottom:14px;"></div>
+      <h1 id="exp-title" style="font-size:24px;line-height:1.3;"></h1>
+      <p id="exp-intent" style="color:var(--text-soft);font-size:14.5px;margin-top:10px;line-height:1.55;max-width:70ch;"></p>
+      <div id="exp-meta" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);font-size:12.5px;color:var(--text-faint);line-height:1.7;"></div>
+      <div id="tags-row" style="margin-top:14px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;"></div>
+    </div>
 
-      <div style="display:flex;flex-direction:column;gap:20px;min-width:0;">
+    <!-- Structure / suivi de l'expérience / objectifs, côte à côte : vue d'ensemble d'un coup
+         d'oeil, sans avoir à faire défiler pour recouper les trois. -->
+    <div class="fiche-3col" style="margin-bottom:20px;">
 
-        <div class="card card-pad">
-          <div id="status-badge" style="margin-bottom:14px;"></div>
-          <h1 id="exp-title" style="font-size:24px;line-height:1.3;"></h1>
-          <p id="exp-intent" style="color:var(--text-soft);font-size:14.5px;margin-top:10px;line-height:1.55;max-width:60ch;"></p>
-          <div id="exp-meta" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);font-size:12.5px;color:var(--text-faint);line-height:1.7;"></div>
-          <div id="tags-row" style="margin-top:14px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;"></div>
+      <div class="card card-pad">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div class="section-title">Structure actuelle</div>
+          <div style="font-size:12px;color:var(--text-faint);" id="diff-note"></div>
         </div>
+        <div class="layer-clickable" style="display:flex;justify-content:center;" id="structure-svg"></div>
+        <div class="help" id="structure-click-hint" style="margin-top:8px;display:none;">Cliquez une couche pour voir les paramètres de l'étape qui l'a produite.</div>
+        <div id="diff-details" style="margin-top:10px;"></div>
+      </div>
 
-        <div class="card card-pad">
-          <div class="section-title" style="margin-bottom:16px;">Suivi de l'expérience</div>
+      <div class="card card-pad">
+        <div class="section-title" style="margin-bottom:16px;">Suivi de l'expérience</div>
+        <div class="timeline-scroll" id="timeline-scroll">
           <div class="timeline" id="timeline"></div>
-          <div id="forks-note" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);"></div>
         </div>
-
-        <div class="card card-pad">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-            <div class="section-title">Structure actuelle</div>
-            <div style="font-size:12px;color:var(--text-faint);" id="diff-note"></div>
-          </div>
-          <div style="display:flex;justify-content:center;" id="structure-svg"></div>
-          <div id="diff-details" style="margin-top:10px;"></div>
-        </div>
-
-        <div class="card card-pad" id="matrix-card" style="display:none;">
-          <div class="section-title" style="margin-bottom:16px;">Cartographie des variantes</div>
-          <div id="atlas-content" style="margin-bottom:20px;"></div>
-          <div class="section-title" style="margin-bottom:16px;">Feuille de split</div>
-          <div id="matrix-content"></div>
-        </div>
-
-        <div class="card card-pad">
-          <div class="section-title" style="margin-bottom:16px;">Suivi physique</div>
-          <div class="help" style="margin-bottom:14px;">Où en est l'échantillon réel : son identifiant et son emplacement.</div>
-          <div id="physical-tracking-content"></div>
-        </div>
-
-        <div class="card card-pad">
-          <div class="section-title" style="margin-bottom:16px;">Preuves</div>
-          <div id="evidence-list"></div>
-          <div id="add-evidence-wrap"></div>
-        </div>
-
-        <div class="card card-pad" id="conclusion-section"></div>
-
+        <div id="forks-note" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);"></div>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:20px;">
-
-        <div class="card card-pad">
-          <div class="section-title" style="margin-bottom:14px;">Objectifs</div>
-          <div id="objectives-list" style="display:flex;flex-direction:column;gap:14px;"></div>
-        </div>
-
-        <div class="card card-pad">
-          <div class="section-title" style="margin-bottom:14px;">Comparer avec</div>
-          <label style="font-size:11px;">Projet</label>
-          <select class="field" id="compare-project-select" style="margin-bottom:8px;"></select>
-          <label style="font-size:11px;">Expérience</label>
-          <select class="field" id="compare-select" style="margin-bottom:10px;"></select>
-          <button class="btn btn-line btn-block" id="compare-btn" type="button">Voir les différences</button>
-          <div id="compare-result" style="margin-top:12px;max-height:260px;overflow:auto;"></div>
-        </div>
-
-        <div class="card card-pad">
-          <div class="section-title" style="margin-bottom:14px;">Liens</div>
-          <div id="references-list"></div>
-        </div>
-
-        <details class="card card-pad" id="advanced-actions" style="display:none;">
-          <summary style="cursor:pointer;font-size:13px;font-weight:700;">Actions avancées</summary>
-          <div style="margin-top:14px;">
-            <label>Combiner avec une autre expérience</label>
-            <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, mais relie l'historique et les preuves de l'autre expérience choisie.</div>
-            <select class="field" id="combine-select" style="margin-bottom:8px;"></select>
-            <input class="field" id="combine-title" placeholder="Titre du résultat" style="margin-bottom:8px;">
-            <input class="field" id="combine-intent" placeholder="Pourquoi combiner ces deux pistes ?" style="margin-bottom:8px;">
-            <button class="btn btn-line btn-block" id="combine-btn" type="button">Combiner</button>
-          </div>
-        </details>
-
+      <div class="card card-pad">
+        <div class="section-title" style="margin-bottom:14px;">Objectifs</div>
+        <div id="objectives-list" style="display:flex;flex-direction:column;gap:14px;"></div>
       </div>
+
+    </div>
+
+    <!-- Suivi physique, preuves et conclusion (avec réponses aux objectifs) : le détail d'une
+         seule étude, en pleine largeur plutôt qu'écrasé dans une colonne étroite. -->
+    <div style="display:flex;flex-direction:column;gap:20px;">
+
+      <div class="card card-pad" id="matrix-card" style="display:none;">
+        <div class="section-title" style="margin-bottom:16px;">Cartographie des variantes</div>
+        <div id="atlas-content" style="margin-bottom:20px;"></div>
+        <div class="section-title" style="margin-bottom:16px;">Feuille de split</div>
+        <div id="matrix-content"></div>
+      </div>
+
+      <div class="card card-pad">
+        <div class="section-title" style="margin-bottom:16px;">Suivi physique</div>
+        <div class="help" style="margin-bottom:14px;">Où en est l'échantillon réel : son identifiant et son emplacement.</div>
+        <div id="physical-tracking-content"></div>
+      </div>
+
+      <div class="card card-pad">
+        <div class="section-title" style="margin-bottom:16px;">Preuves</div>
+        <div id="evidence-list"></div>
+        <div id="add-evidence-wrap"></div>
+      </div>
+
+      <div class="card card-pad" id="conclusion-section"></div>
+
+      <div class="card card-pad">
+        <div class="section-title" style="margin-bottom:14px;">Comparer avec</div>
+        <div class="field-row">
+          <div>
+            <label style="font-size:11px;">Projet</label>
+            <select class="field" id="compare-project-select"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;">Expérience</label>
+            <select class="field" id="compare-select"></select>
+          </div>
+        </div>
+        <button class="btn btn-line btn-block" id="compare-btn" type="button" style="margin-top:10px;">Voir les différences</button>
+        <div id="compare-result" style="margin-top:12px;max-height:260px;overflow:auto;"></div>
+      </div>
+
+      <div class="card card-pad">
+        <div class="section-title" style="margin-bottom:14px;">Liens</div>
+        <div id="references-list"></div>
+      </div>
+
+      <details class="card card-pad" id="advanced-actions" style="display:none;">
+        <summary style="cursor:pointer;font-size:13px;font-weight:700;">Actions avancées</summary>
+        <div style="margin-top:14px;max-width:480px;">
+          <label>Combiner avec une autre expérience</label>
+          <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, mais relie l'historique et les preuves de l'autre expérience choisie.</div>
+          <select class="field" id="combine-select" style="margin-bottom:8px;"></select>
+          <input class="field" id="combine-title" placeholder="Titre du résultat" style="margin-bottom:8px;">
+          <input class="field" id="combine-intent" placeholder="Pourquoi combiner ces deux pistes ?" style="margin-bottom:8px;">
+          <button class="btn btn-line" id="combine-btn" type="button">Combiner</button>
+        </div>
+      </details>
+
     </div>
   </div>
+
+  <dialog id="layer-modal" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);max-width:min(520px,92vw);width:100%;">
+    <div class="card-pad" style="max-height:80vh;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+        <div class="section-title" id="layer-modal-title" style="margin-bottom:0;">Couche</div>
+        <button class="btn btn-line" id="layer-modal-close-btn" type="button" style="padding:5px 10px;font-size:12px;">Fermer</button>
+      </div>
+      <div id="layer-modal-body" style="overflow:auto;font-size:13px;line-height:1.7;"></div>
+    </div>
+  </dialog>
 
   <script src="/static/js/api.js"></script>
   <script src="/static/js/common.js"></script>

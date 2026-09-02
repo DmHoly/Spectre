@@ -549,6 +549,31 @@ textarea:focus {
   margin-top: 3px;
 }
 
+.timeline-scroll {
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* -- fiche d'expérience : structure / suivi / objectifs côte à côte --------------------- */
+
+.fiche-3col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 300px;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .fiche-3col {
+    grid-template-columns: 1fr;
+  }
+}
+
+.layer-clickable [data-layer-index] {
+  cursor: pointer;
+}
+
 /* -- états vides / messages ------------------------------------------------------------- */
 
 .empty-state {

@@ -106,6 +106,10 @@ def _summary(experiment: Any) -> dict:
         "created_at": experiment.created_at.isoformat(),
         "branch": experiment.branch,
         "tags": list(experiment.tags),
+        # The list is where a project's studies are seen all at once - a concluded study's own
+        # summary belongs here too, not just on its own fiche, so where it fits is clear without
+        # opening it.
+        "conclusion_summary": experiment.conclusion.summary,
     }
 
 

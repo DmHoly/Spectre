@@ -32,6 +32,8 @@ function clearError() {
 
 let currentRole = null;
 let currentDetail = null;
+let currentProcess = null; // {substrate, steps} from /process - absent for structures without an
+// editable StructureForge recipe recorded (e.g. a campaign's representative entry).
 
 function objectiveResultFor(detail, objectiveName) {
   return (detail.conclusion.objective_results || []).find((r) => r.objective === objectiveName);
@@ -82,12 +84,16 @@ function renderObjectives(detail) {
 
 function renderTimeline(items) {
   const el = document.getElementById("timeline");
-  el.innerHTML = items
+  // Most recent first - the scrollable box (see .timeline-scroll) starts at the top, so the
+  // last few commits are visible without scrolling ; the rest of the history is a scroll away
+  // instead of pushing the page down.
+  el.innerHTML = [...items]
+    .reverse()
     .map((item, i) => {
-      const isLast = i === items.length - 1;
+      const isCurrent = i === 0;
       return `
-        <div class="timeline-item ${isLast ? "current" : ""}">
-          <div class="timeline-date">${formatDate(item.created_at)}${isLast ? " · version actuelle" : ""}</div>
+        <div class="timeline-item ${isCurrent ? "current" : ""}">
+          <div class="timeline-date">${formatDate(item.created_at)}${isCurrent ? " · version actuelle" : ""}</div>
           <div class="timeline-title">${escapeHtml(item.title)}</div>
           <div class="timeline-desc">${escapeHtml(item.intent)}</div>
         </div>`;
@@ -97,6 +103,7 @@ function renderTimeline(items) {
 
 function renderStructure(detail, diff) {
   document.getElementById("structure-svg").innerHTML = detail.structure_svg || "<div class='help'>Pas de schéma pour ce type de structure.</div>";
+  document.getElementById("structure-click-hint").style.display = currentProcess ? "" : "none";
   const diffNote = document.getElementById("diff-note");
   const diffDetails = document.getElementById("diff-details");
   if (!diff || !diff.target || diff.entries.length === 0) {
@@ -110,6 +117,102 @@ function renderStructure(detail, diff) {
     .map((e) => `<div class="mono" style="font-size:11.5px;color:var(--text-soft);padding:2px 0;">${escapeHtml(e.path)} : ${escapeHtml(JSON.stringify(e.before))} &rarr; ${escapeHtml(JSON.stringify(e.after))}</div>`)
     .join("");
 }
+
+// Cliquer une couche du dessin ouvre une modale avec les paramètres de l'étape qui l'a produite
+// - même convention data-layer-index que le constructeur de structure (0 = substrat, N = l'étape
+// N-1 du procédé) sur le même SVG (structures.render_structure_svg réutilise frame_to_svg).
+
+const STEP_KIND_LABELS = {
+  deposition: "Dépôt",
+  etch: "Gravure",
+  lithography: "Lithographie",
+  resist_strip: "Retrait de résine",
+  planarization: "Planarisation",
+  selective_growth: "Croissance sélective",
+  flip: "Retournement",
+};
+
+const STEP_FIELD_LABELS = {
+  material: "Matériau",
+  mode: "Mode",
+  angle_deg: "Angle",
+  thickness: "Épaisseur",
+  depth: "Profondeur",
+  default_factor: "Facteur par défaut",
+  selectivity_by_material: "Sélectivité par matériau",
+  resist_material: "Résine",
+  openings: "Ouvertures",
+  process_parameters: "Paramètres procédé",
+  derived_estimates: "Estimations dérivées",
+  target_level: "Niveau cible",
+  rate_m: "Vitesse relative (plan M)",
+  rate_sp: "Vitesse relative (semipolaire)",
+};
+
+function formatStepValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "object" && !Array.isArray(value) && "value" in value && "unit" in value) {
+    return `${value.value}${value.unit ? " " + value.unit : ""}`;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    return value.map((v) => (typeof v === "object" ? JSON.stringify(v) : String(v))).join(", ");
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value)
+      .map(([k, v]) => [k, formatStepValue(v)])
+      .filter(([, v]) => v !== null);
+    return entries.length ? entries.map(([k, v]) => `${k} : ${v}`).join(" · ") : null;
+  }
+  return String(value);
+}
+
+function openLayerModal(title, fields) {
+  document.getElementById("layer-modal-title").textContent = title;
+  document.getElementById("layer-modal-body").innerHTML = fields.length
+    ? fields
+        .map(
+          ([label, value]) => `
+      <div style="padding:8px 0;border-top:1px solid var(--border-soft);">
+        <span style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(label)}</span><br>
+        <span>${escapeHtml(value)}</span>
+      </div>`
+        )
+        .join("")
+    : `<div class="help">Pas de paramètre à afficher pour cette couche.</div>`;
+  document.getElementById("layer-modal").showModal();
+}
+
+function showLayerModal(layerIndex) {
+  if (!currentProcess) return;
+  if (layerIndex === 0) {
+    const s = currentProcess.substrate || {};
+    const fields = [
+      ["Matériau", s.material],
+      ["Largeur du domaine", formatStepValue(s.domain_width)],
+      ["Épaisseur", formatStepValue(s.thickness)],
+    ].filter(([, v]) => v);
+    openLayerModal("Substrat", fields);
+    return;
+  }
+  const step = (currentProcess.steps || [])[layerIndex - 1];
+  if (!step) return;
+  const fields = Object.entries(step)
+    .filter(([key]) => key !== "kind" && key !== "name")
+    .map(([key, value]) => [STEP_FIELD_LABELS[key] || key, formatStepValue(value)])
+    .filter(([, value]) => value !== null);
+  openLayerModal(`${STEP_KIND_LABELS[step.kind] || step.kind} — ${step.name}`, fields);
+}
+
+document.getElementById("structure-svg").addEventListener("click", (event) => {
+  const path = event.target.closest("[data-layer-index]");
+  if (!path) return;
+  showLayerModal(parseInt(path.dataset.layerIndex, 10));
+});
+
+document.getElementById("layer-modal-close-btn").addEventListener("click", () => {
+  document.getElementById("layer-modal").close();
+});
 
 async function renderBatchMatrix(detail) {
   const card = document.getElementById("matrix-card");
@@ -614,10 +717,12 @@ async function init() {
       populateCombineSelect();
     }
 
-    const [timeline, diff] = await Promise.all([
+    const [timeline, diff, process] = await Promise.all([
       api.get(`/api/projects/${slug}/experiences/${experienceId}/timeline`),
       api.get(`/api/projects/${slug}/experiences/${experienceId}/diff`),
+      api.get(`/api/projects/${slug}/experiences/${experienceId}/process`).catch(() => null),
     ]);
+    currentProcess = process;
     renderTimeline(timeline.items);
     renderStructure(currentDetail, diff);
     populateCompareProjectSelect();
