@@ -53,6 +53,23 @@ spectre --port 8000
 Les données (comptes, projets, dépôts d'expériences, présets d'étape) sont écrites sous `./data`
 par défaut - voir `SPECTRE_DATA_DIR` pour changer cet emplacement.
 
+### Compte de démonstration
+
+```bash
+python scripts/seed_demo.py
+```
+
+Crée un compte (`demo@spectre.local` / `demo1234`) avec deux projets déjà remplis, comme si
+l'équipe utilisait Spectre depuis un an : **Gâteau au chocolat** (une recette optimisée au fil de
+dizaines d'essais - température, dosages, glaçage - pour montrer que le suivi d'expérience marche
+sur n'importe quel procédé, pas seulement en salle blanche) et **Nanofils GaN** (épitaxie,
+gravure, croissance sélective, campagnes DOE, retournement pour contact face arrière - plus
+proche du métier réel). Tout passe par les vraies routes HTTP, donc les données sont garanties
+valides ; seules les dates de création sont recalées après coup pour étaler l'historique sur
+l'année (voir le script pour le détail). Lancer sur un répertoire de données neuf (`--data-dir`
+sinon `SPECTRE_DATA_DIR`/`./data`) - relancer sur un répertoire déjà semé recréerait les mêmes
+comptes et échouerait sur l'inscription.
+
 ## Déploiement
 
 ```bash
