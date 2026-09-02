@@ -97,3 +97,12 @@ déployer reste une étape manuelle.
 ```bash
 pytest
 ```
+
+Le front-end (`spectre/api/static/js/`) reste des balises `<script>` classiques sans bundler, mais
+la logique pure du constructeur de structure (génération du code Python, résumés d'étape...) a ses
+propres tests unitaires, sans aucune dépendance à installer - juste [Node.js](https://nodejs.org/)
+18+ et son test runner intégré :
+
+```bash
+node --test
+```

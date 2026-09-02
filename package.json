@@ -1,0 +1,8 @@
+{
+  "name": "spectre-js-tests",
+  "private": true,
+  "description": "Test-only manifest for the JS unit tests in tests_js/ - the app itself ships as plain <script> tags with no bundler or dependency (see spectre/api/static/js/). No dependencies here either: Node's built-in test runner is enough.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
