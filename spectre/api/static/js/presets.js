@@ -1,6 +1,6 @@
 /* Page dédiée aux présets d'étape : liste (présets intégrés / partagés / projet) + formulaire de
    création/édition. Un préset ne fait que préremplir mode/angle/sélectivité dans le formulaire
-   d'étape du constructeur (structure-builder.js) - il n'est jamais référencé par nom ensuite. */
+   d'étape du constructeur (js/structure-builder/) - il n'est jamais référencé par nom ensuite. */
 
 const pathParts = window.location.pathname.split("/").filter(Boolean);
 const slug = pathParts[1];
