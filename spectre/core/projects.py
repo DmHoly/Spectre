@@ -255,6 +255,29 @@ def get_repository(slug: str):
     return follow.Repository(follow_repo_path(slug))
 
 
+RUNNING_STATUSES = {"draft", "running"}
+CONCLUDED_STATUSES = {"concluded", "abandoned"}
+
+
+def branch_tips(repo) -> list:
+    """One experiment per branch - its current tip - rather than every version ever committed to
+    it. A branch is one line of study: "conclure"/"preuves"/"étiquettes" all record a new,
+    otherwise-identical version (experiments are immutable), so without this a single study could
+    show up as several cards, its own earlier drafts included, even after being concluded. The
+    full version-by-version history is still there on the fiche itself ("Suivi de l'expérience")
+    and on the project's graph - this only thins out summary lists (the experiences list, project
+    counts, "comparer avec", "combiner avec").
+    """
+    seen_ids: set[str] = set()
+    tips = []
+    for tip_id in repo.branches.values():
+        if tip_id in seen_ids:
+            continue
+        seen_ids.add(tip_id)
+        tips.append(repo.get(tip_id))
+    return tips
+
+
 def _step_preset_store(path: Path):
     from .step_presets import StepPresetStore
 

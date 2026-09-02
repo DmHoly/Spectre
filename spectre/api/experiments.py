@@ -32,8 +32,8 @@ from .structures import LaunchExperienceRequest, _unique_branch, split_objective
 
 router = APIRouter(prefix="/api/projects", tags=["experiments"])
 
-RUNNING_STATUSES = {"draft", "running"}
-CONCLUDED_STATUSES = {"concluded", "abandoned"}
+RUNNING_STATUSES = projects.RUNNING_STATUSES
+CONCLUDED_STATUSES = projects.CONCLUDED_STATUSES
 
 
 def _derive_branch(repo: "follow.Repository", parent: Any, requested: str | None) -> str | None:
@@ -159,7 +159,7 @@ def list_experiences(
     wanted = RUNNING_STATUSES if status == "running" else CONCLUDED_STATUSES if status == "concluded" else None
 
     repo = projects.get_repository(project.slug)
-    matches = [exp for exp in repo if wanted is None or exp.conclusion.status in wanted]
+    matches = [exp for exp in projects.branch_tips(repo) if wanted is None or exp.conclusion.status in wanted]
     matches.sort(key=lambda exp: exp.created_at, reverse=True)
     page = matches[offset : offset + limit]
     return {"items": [_summary(exp) for exp in page], "total": len(matches), "offset": offset, "limit": limit}

@@ -16,8 +16,8 @@ from .deps import get_current_user
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
-RUNNING_STATUSES = {"draft", "running"}
-CONCLUDED_STATUSES = {"concluded", "abandoned"}
+RUNNING_STATUSES = projects.RUNNING_STATUSES
+CONCLUDED_STATUSES = projects.CONCLUDED_STATUSES
 
 
 class CreateProjectRequest(BaseModel):
@@ -31,9 +31,9 @@ class AddMemberRequest(BaseModel):
 
 
 def _experiment_counts(slug: str) -> tuple[int, int]:
-    repo = projects.get_repository(slug)
-    running = sum(1 for exp in repo if exp.conclusion.status in RUNNING_STATUSES)
-    concluded = sum(1 for exp in repo if exp.conclusion.status in CONCLUDED_STATUSES)
+    tips = projects.branch_tips(projects.get_repository(slug))
+    running = sum(1 for exp in tips if exp.conclusion.status in RUNNING_STATUSES)
+    concluded = sum(1 for exp in tips if exp.conclusion.status in CONCLUDED_STATUSES)
     return running, concluded
 
 
