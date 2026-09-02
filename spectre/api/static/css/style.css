@@ -549,29 +549,33 @@ textarea:focus {
   margin-top: 3px;
 }
 
-.timeline-scroll {
-  max-height: 340px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
+/* -- fiche d'expérience : structure / suivi / objectifs côte à côte, même hauteur -------- */
 
-/* -- fiche d'expérience : structure / suivi / objectifs côte à côte --------------------- */
+/* Same recipe as .builder-grid below (align-items: stretch + a .builder-col/.builder-col__scroll
+   scrollable region per column) rather than a separate one: the structure column's fixed-height
+   .builder-canvas-svg is the anchor, the other two stretch to match and scroll internally instead
+   of growing the row - so the three cards line up exactly regardless of how long the timeline or
+   the objectives list is. */
 
 .fiche-3col {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 300px;
   gap: 20px;
-  align-items: start;
-}
-
-@media (max-width: 1100px) {
-  .fiche-3col {
-    grid-template-columns: 1fr;
-  }
+  align-items: stretch;
 }
 
 .layer-clickable [data-layer-index] {
   cursor: pointer;
+}
+
+/* Unlike the builder page, all three fiche columns can carry a .builder-col__scroll region (the
+   structure column's own is usually tiny, but isn't guaranteed to be) - without a cap, a grid
+   row's auto height is sized off each item's *unclamped* content, so whichever one has the most
+   history/objectives would drag all three columns up to its full height instead of scrolling.
+   Capping every scroll region to the structure column's own fixed .builder-canvas-svg height
+   keeps that column the real anchor. */
+.fiche-3col .builder-col__scroll {
+  max-height: 340px;
 }
 
 /* -- états vides / messages ------------------------------------------------------------- */
@@ -632,7 +636,8 @@ textarea:focus {
 }
 
 @media (max-width: 1100px) {
-  .builder-grid {
+  .builder-grid,
+  .fiche-3col {
     grid-template-columns: 1fr;
   }
   .builder-col {

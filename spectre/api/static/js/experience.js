@@ -84,9 +84,10 @@ function renderObjectives(detail) {
 
 function renderTimeline(items) {
   const el = document.getElementById("timeline");
-  // Most recent first - the scrollable box (see .timeline-scroll) starts at the top, so the
-  // last few commits are visible without scrolling ; the rest of the history is a scroll away
-  // instead of pushing the page down.
+  // Most recent first - #timeline is a .builder-col__scroll box that starts scrolled to the top,
+  // so the last few commits are visible without scrolling ; the rest of the history is a scroll
+  // away instead of pushing the page down (and stretched to match the other two columns' height
+  // - see .fiche-3col in style.css).
   el.innerHTML = [...items]
     .reverse()
     .map((item, i) => {
