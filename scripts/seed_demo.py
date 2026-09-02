@@ -211,6 +211,16 @@ class Project:
         result = session.post(f"/api/projects/{self.slug}/experiences/{ref}/etiquettes", json={"tags": tags})
         return record(result["id"], days_ago)
 
+    def combine(self, session: Session, ref: str, *, other_id: str, title, intent, days_ago) -> str:
+        """Merge two lines of work - keeps `ref`'s structure/steps as-is and links `other_id` in
+        as a second parent (a real content merge, if wanted, is a normal evolve() right after -
+        see the "Gâteau vegan et glaçage intense"/"Intégration du retournement" beats)."""
+        result = session.post(
+            f"/api/projects/{self.slug}/experiences/{ref}/combiner",
+            json={"other_id": other_id, "title": title, "intent": intent},
+        )
+        return record(result["id"], days_ago)
+
     def save_structure(self, session: Session, *, name, substrate, steps, partagee=False, derived_from=None):
         session.post(
             f"/api/projects/{self.slug}/structures-sauvegardees",
@@ -368,6 +378,28 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
     b8 = proj.evidence(demo, b8, description="Goût plus marqué, très apprécié des amateurs de chocolat noir.", source="Dégustation en famille", metric_name="note_degustation", metric_value=9.1, metric_unit="/10", days_ago=198)
     b8 = proj.conclude(demo, b8, decision="promote", summary="Adopté comme glaçage par défaut.", days_ago=197)
     b8 = proj.tag(demo, b8, ["recette-approuvee"], days_ago=197)
+
+    # 8.5. Fusion : réunir la piste vegan (b7) et le glaçage intense (b8) dans une seule recette -
+    # combine() ne fait que lier b7 comme second parent en gardant les étapes de b8 telles
+    # quelles ; l'evolve() juste après applique la vraie combinaison des deux ajustements.
+    b11 = proj.combine(
+        demo, b8, other_id=b7,
+        title="Gâteau vegan et glaçage intense",
+        intent="Réunir la version vegan et le glaçage à 85% de cacao dans une seule recette.",
+        days_ago=180,
+    )
+    b11 = proj.evolve(
+        demo, b11,
+        title="Gâteau vegan et glaçage intense",
+        intent="Réunir la version vegan et le glaçage à 85% de cacao dans une seule recette.",
+        hypothesis="Les deux ajustements (huile/compote et cacao à 85%) devraient bien se combiner sans interaction négative.",
+        substrate=cake_substrate,
+        steps=[pate(160, 0, 250, 180, 0, 48, 75, extra_params={"huile_g": 90, "compote_g": 80}), glacage(85)],
+        days_ago=175,
+    )
+    b11 = proj.evidence(demo, b11, description="Combinaison réussie, aucun compromis nécessaire sur le goût ou la texture.", source="Dégustation en famille", metric_name="note_degustation", metric_value=8.9, metric_unit="/10", days_ago=173)
+    b11 = proj.conclude(demo, b11, decision="promote", summary="Les deux pistes se combinent bien - recette vegan à glaçage intense adoptée.", days_ago=171)
+    proj.tag(demo, b11, ["vegan", "recette-approuvee", "fusion"], days_ago=171)
 
     # 9. Format familial
     b9 = proj.evolve(
@@ -592,7 +624,27 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
     )
     b10 = proj.evidence(demo, b10, description="Contact mesuré continu entre le plot avant et le métal arrière (distance quasi nulle au MEB) - procédé validé.", source="MEB en coupe", metric_name="resistance_contact", metric_value=0.8, metric_unit="Ω·mm²", days_ago=87)
     b10 = proj.conclude(demo, b10, decision="promote", summary="Procédé de retournement validé, prêt à être appliqué à la ligne GaN.", days_ago=85)
-    proj.tag(demo, b10, ["retournement", "design-valide", "wafer-test"], days_ago=85)
+    b10 = proj.tag(demo, b10, ["retournement", "design-valide", "wafer-test"], days_ago=85)
+
+    # 11. Fusion : relier la ligne principale (b9) et la validation du retournement (b10) - deux
+    # pistes indépendantes qui convergent. combine() garde les étapes de b9 telles quelles (pas
+    # de nouvelle simulation risquée : le retournement a été validé sur une géométrie plane,
+    # pas sur la pointe semipolaire) ; l'application réelle du retournement à un wafer GaN
+    # complet est notée en next_steps plutôt que simulée ici.
+    b11 = proj.combine(
+        demo, b9, other_id=b10,
+        title="Intégration du retournement validé dans la ligne principale",
+        intent="Documenter que le procédé de retournement/contact face arrière, validé sur wafer test, est prêt à être appliqué à un wafer GaN réel de la ligne principale.",
+        days_ago=70,
+    )
+    b11 = proj.evidence(demo, b11, description="Les deux pistes de travail (épitaxie/nanofils et validation du retournement) sont désormais reliées dans l'historique du projet.", source="Revue de projet", days_ago=68)
+    b11 = proj.conclude(
+        demo, b11, decision="branch",
+        summary="Fusion des deux pistes de travail - le retournement est prêt pour le prochain lot GaN.",
+        next_steps="Appliquer le retournement/via à un wafer GaN complet (épitaxie + nanofils + retournement) lors du prochain run.",
+        days_ago=65,
+    )
+    proj.tag(demo, b11, ["fusion", "wafer-lot-C"], days_ago=65)
 
     proj.save_structure(demo, name="Nanofil LED semipolaire - référence", substrate=epi_substrate(), steps=epi_stack(15) + litho_etch + growth_taper + active_region(18.5) + ito_contact)
 

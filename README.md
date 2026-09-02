@@ -64,8 +64,12 @@ l'équipe utilisait Spectre depuis un an : **Gâteau au chocolat** (une recette 
 dizaines d'essais - température, dosages, glaçage - pour montrer que le suivi d'expérience marche
 sur n'importe quel procédé, pas seulement en salle blanche) et **Nanofils GaN** (épitaxie,
 gravure, croissance sélective, campagnes DOE, retournement pour contact face arrière - plus
-proche du métier réel). Tout passe par les vraies routes HTTP, donc les données sont garanties
-valides ; seules les dates de création sont recalées après coup pour étaler l'historique sur
+proche du métier réel). Les deux montrent l'éventail complet des flux de filiation, pas seulement
+des évolutions linéaires : embranchements (une piste vegan et une piste sans-gluten pour le
+gâteau, un essai sur substrat SiC pour les nanofils) puis fusion de deux pistes indépendantes en
+une seule expérience (`/combiner`, visible dans le graphe du projet comme un losange). Tout passe
+par les vraies routes HTTP, donc les données sont garanties valides ; seules les dates de création
+sont recalées après coup pour étaler l'historique sur
 l'année (voir le script pour le détail). Lancer sur un répertoire de données neuf (`--data-dir`
 sinon `SPECTRE_DATA_DIR`/`./data`) - relancer sur un répertoire déjà semé recréerait les mêmes
 comptes et échouerait sur l'inscription.
