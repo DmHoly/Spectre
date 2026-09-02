@@ -53,6 +53,24 @@ def test_add_evidence_creates_a_new_version_and_carries_forward(client):
     assert len(detail2["evidence"]) == 2
 
 
+def test_concluding_an_experience_keeps_its_evidence(client):
+    client.post("/api/auth/register", json={"email": "owner-concl@example.com", "password": "supersecret", "name": "Owner"})
+    slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
+    launched = _launch(client, slug)
+
+    with_evidence = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        json={"description": "Mesure d'epaisseur au profilometre", "source": "https://labo.example/mesures/142"},
+    ).json()["id"]
+
+    concluded = client.post(f"/api/projects/{slug}/experiences/{with_evidence}/conclure", json={"status": "concluded"})
+    assert concluded.status_code == 201
+
+    detail = client.get(f"/api/projects/{slug}/experiences/{concluded.json()['id']}").json()
+    assert len(detail["evidence"]) == 1
+    assert detail["evidence"][0]["description"] == "Mesure d'epaisseur au profilometre"
+
+
 def test_viewer_cannot_add_evidence(client):
     client.post("/api/auth/register", json={"email": "owner2@example.com", "password": "supersecret", "name": "O"})
     slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]

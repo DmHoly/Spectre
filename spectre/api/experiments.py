@@ -334,6 +334,7 @@ def conclude_experience(
     )
     builder.metadata = dict(parent.metadata)
     builder.tags = list(parent.tags)
+    builder.evidence = list(parent.evidence)
     builder.conclude(
         status=body.status,
         decision=body.decision,
