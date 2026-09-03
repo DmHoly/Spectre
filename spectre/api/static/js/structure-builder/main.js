@@ -4,8 +4,10 @@
 async function loadPickers() {
   state.materials = await api.get(`/api/projects/${slug}/materials`);
   state.stepPresets = await api.get(`/api/projects/${slug}/presets-etapes`);
+  state.techBricks = await api.get(`/api/projects/${slug}/briques-technologiques`);
   document.getElementById("substrate-material").innerHTML = materialOptions("Si");
   renderKindFields(document.getElementById("kind-select").value);
+  populateInsertBrickSelect();
 }
 
 async function init() {
@@ -20,6 +22,8 @@ async function init() {
   renderFrame();
   if (isLibraryMode) {
     await initLibraryMode();
+  } else if (isBrickMode) {
+    await initBrickMode();
   } else {
     await loadExistingProcess();
     await loadTemplateProcess();

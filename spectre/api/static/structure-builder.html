@@ -46,6 +46,20 @@
       <div class="help" id="library-derived-note" style="margin-top:8px;display:none;"></div>
     </div>
 
+    <!-- Mode brique : un nom + des notes + enregistrer/enregistrer sous, comme le mode
+         bibliothèque - une brique n'a pas de substrat propre (voir #brick-preview-note plus bas). -->
+    <div class="card card-pad" id="brick-header" style="display:none;margin-bottom:20px;">
+      <div class="field-row" style="grid-template-columns:2fr auto auto;align-items:end;">
+        <div><label>Nom de la brique</label><input class="field" id="brick-name" placeholder="ex : Masque + gravure RIE standard"></div>
+        <button class="btn btn-primary" id="brick-save-btn" type="button">Enregistrer</button>
+        <button class="btn btn-line" id="brick-save-as-btn" type="button" style="display:none;">Enregistrer sous...</button>
+      </div>
+      <div style="margin-top:12px;"><label>Notes (optionnel)</label><textarea class="field" id="brick-notes" rows="2" placeholder="À quoi sert cette brique, quand l'utiliser..."></textarea></div>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:12.5px;color:var(--text-soft);margin-top:12px;">
+        <input type="checkbox" id="brick-shared-checkbox"> Partager avec tous les projets (visible partout, pas seulement ici)
+      </label>
+    </div>
+
     <!-- Mode expérience : indique la structure de départ, avec un accès pour la faire évoluer via
          la bibliothèque plutôt que de forcer une édition sur place. -->
     <div class="card card-pad" id="based-on-note" style="display:none;margin-bottom:20px;background:var(--bg);">
@@ -61,6 +75,11 @@
         <div class="help" style="margin-bottom:10px;" id="steps-list-help">Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.</div>
         <div id="steps-list" class="builder-col__scroll" style="display:flex;flex-direction:column;gap:8px;"></div>
         <button class="btn btn-line btn-block" id="add-step-shortcut-btn" type="button" style="margin-top:10px;display:none;">+ Ajouter une couche</button>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-soft);flex-shrink:0;">
+          <label style="font-size:11px;">Insérer une brique technologique</label>
+          <select class="field" id="insert-brick-select" style="margin-bottom:6px;"><option value="">— choisir —</option></select>
+          <button class="btn btn-line btn-block" id="insert-brick-btn" type="button">Insérer</button>
+        </div>
       </div>
 
       <div class="card card-pad builder-col">
@@ -76,6 +95,7 @@
             <div><label>Épaisseur</label><input class="field" id="substrate-thickness" type="number" value="50"></div>
             <div><label>Unité</label><select class="field" id="substrate-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
           </div>
+          <div class="help" id="brick-preview-note" style="display:none;margin-top:8px;">Ce substrat ne sert qu'à prévisualiser les étapes ci-dessous - il n'est pas enregistré avec la brique, qui s'appliquera sur la structure existante au moment de l'insertion.</div>
         </div>
 
         <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -242,6 +262,7 @@
   <script src="/static/js/structure-builder/simulation.js"></script>
   <script src="/static/js/structure-builder/experience-launch.js"></script>
   <script src="/static/js/structure-builder/library-mode.js"></script>
+  <script src="/static/js/structure-builder/brick-mode.js"></script>
   <script src="/static/js/structure-builder/main.js"></script>
 </body>
 </html>

@@ -22,6 +22,7 @@ from ..core.permissions import require_role
 from ..core.projects import Project
 from ..core.step_presets import StepPreset, StepPresetPayload, default_step_presets
 from ..core.structure_library import SavedStructure, default_structure_presets
+from ..core.tech_bricks import TechBrick, default_tech_bricks
 from .deps import get_current_user
 from .keyed_resource import list_three_buckets, reject_duplicate, require_existing
 
@@ -229,6 +230,57 @@ def update_saved_structure(
 def delete_saved_structure(name: str, partagee: bool = False, project: Project = Depends(require_role("editor"))) -> dict:
     _saved_structure_store(project, partagee).remove(name)
     return list_saved_structures(project)
+
+
+class TechBrickInput(BaseModel):
+    name: str
+    steps: list[ProcessStep]
+    notes: str | None = None
+    partagee: bool = False
+
+
+def _tech_brick_store(project: Project, partagee: bool):
+    return projects.get_shared_tech_brick_store() if partagee else projects.get_tech_brick_store(project.slug)
+
+
+def _tech_brick_payload(brick: TechBrick, scope: str) -> dict:
+    return {**brick.model_dump(mode="json"), "scope": scope}
+
+
+@router.get("/{slug}/briques-technologiques")
+def list_tech_bricks(project: Project = Depends(require_role("viewer"))) -> dict:
+    return list_three_buckets(
+        projects.get_tech_brick_store(project.slug),
+        projects.get_shared_tech_brick_store(),
+        default_tech_bricks(),
+        _tech_brick_payload,
+    )
+
+
+@router.post("/{slug}/briques-technologiques", status_code=201)
+def create_tech_brick(body: TechBrickInput, project: Project = Depends(require_role("editor"))) -> dict:
+    store = _tech_brick_store(project, body.partagee)
+    reject_duplicate(store, body.name, message=f"Une brique nommée {body.name!r} existe déjà dans cette bibliothèque.")
+    brick = TechBrick(name=body.name, steps=body.steps, notes=body.notes, created_at=datetime.now(timezone.utc).isoformat())
+    store.upsert(brick)
+    return list_tech_bricks(project)
+
+
+@router.put("/{slug}/briques-technologiques/{name}")
+def update_tech_brick(
+    name: str, body: TechBrickInput, partagee: bool = False, project: Project = Depends(require_role("editor"))
+) -> dict:
+    store = _tech_brick_store(project, partagee)
+    existing = require_existing(store, name, message=f"Brique {name!r} introuvable.")
+    brick = TechBrick(name=body.name, steps=body.steps, notes=body.notes, created_at=existing.created_at)
+    store.rename(name, brick)
+    return list_tech_bricks(project)
+
+
+@router.delete("/{slug}/briques-technologiques/{name}")
+def delete_tech_brick(name: str, partagee: bool = False, project: Project = Depends(require_role("editor"))) -> dict:
+    _tech_brick_store(project, partagee).remove(name)
+    return list_tech_bricks(project)
 
 
 @router.post("/{slug}/structures/simulate")

@@ -86,6 +86,16 @@
           <a class="btn btn-line" id="presets-etapes-link" href="#" style="padding:6px 12px;font-size:12.5px;white-space:nowrap;">Gérer les présets d'étapes</a>
         </div>
       </div>
+
+      <div class="card card-pad" style="max-width:720px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div>
+            <div class="section-title" style="margin-bottom:4px;">Briques technologiques</div>
+            <p class="help" style="margin-bottom:0;">Des séquences d'étapes réutilisables (ex : masque + gravure standard) à insérer d'un coup dans le constructeur.</p>
+          </div>
+          <a class="btn btn-line" id="briques-link" href="#" style="padding:6px 12px;font-size:12.5px;white-space:nowrap;">Gérer les briques technologiques</a>
+        </div>
+      </div>
     </div>
 
     <div id="tab-members" class="tab-panel" style="display:none;">
@@ -476,6 +486,7 @@
         document.getElementById("new-library-structure-link").href =
           `/projets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle`;
         document.getElementById("presets-etapes-link").href = `/projets/${encodeURIComponent(slug)}/presets-etapes`;
+        document.getElementById("briques-link").href = `/projets/${encodeURIComponent(slug)}/briques-technologiques`;
         if (currentRole === "owner") {
           document.getElementById("add-member-form").style.display = "grid";
           document.getElementById("danger-zone").style.display = "block";

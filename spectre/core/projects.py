@@ -206,7 +206,7 @@ def accept_invitation(token: str, user_id: int, user_email: str) -> bool:
 def delete(project: Project) -> None:
     """Permanently delete a project: its database rows (memberships and pending invitations
     cascade via the foreign keys) and the on-disk directory holding its Follow repository, saved
-    structures, and step presets - there is no undo, this is real experiment history.
+    structures, step presets, and tech bricks - there is no undo, this is real experiment history.
     """
     import shutil
 
@@ -305,4 +305,15 @@ def _step_preset_store(path: Path):
 
 get_step_preset_store, get_shared_step_preset_store = _scoped_store_getters(
     "presets_etapes.json", "presets_etapes_partages.json", _step_preset_store
+)
+
+
+def _tech_brick_store(path: Path):
+    from .tech_bricks import TechBrickStore
+
+    return TechBrickStore(path)
+
+
+get_tech_brick_store, get_shared_tech_brick_store = _scoped_store_getters(
+    "briques.json", "briques_partagees.json", _tech_brick_store
 )

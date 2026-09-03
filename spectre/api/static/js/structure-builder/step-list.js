@@ -207,3 +207,37 @@ document.getElementById("cancel-edit-btn").addEventListener("click", () => {
   clearError();
   cancelEditingStep();
 });
+
+// Une brique technologique est une séquence d'étapes préenregistrée (voir brick-mode.js /
+// spectre.core.tech_bricks) - l'insérer copie ses étapes dans la structure courante une bonne
+// fois pour toutes, comme un préset : aucun lien vivant après coup avec la brique elle-même.
+function populateInsertBrickSelect() {
+  const select = document.getElementById("insert-brick-select");
+  const entries = [
+    ...state.techBricks.presets.map((b) => ({ ...b, scope: "preset" })),
+    ...state.techBricks.partagees.map((b) => ({ ...b, scope: "partagee" })),
+    ...state.techBricks.projet.map((b) => ({ ...b, scope: "projet" })),
+  ];
+  const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", projet: "" };
+  select.innerHTML =
+    `<option value="">— choisir —</option>` +
+    entries
+      .map((b) => `<option value="${b.scope}::${encodeURIComponent(b.name)}">${escapeHtml(b.name)}${scopeSuffix[b.scope]}</option>`)
+      .join("");
+}
+
+document.getElementById("insert-brick-btn").addEventListener("click", () => {
+  clearError();
+  const [scope, encodedName] = document.getElementById("insert-brick-select").value.split("::");
+  if (!scope) return;
+  const name = decodeURIComponent(encodedName);
+  const bucket = scope === "preset" ? state.techBricks.presets : scope === "partagee" ? state.techBricks.partagees : state.techBricks.projet;
+  const brick = bucket.find((b) => b.name === name);
+  if (!brick) return;
+  const insertAt = state.editingIndex !== null ? state.editingIndex : state.steps.length;
+  const copiedSteps = JSON.parse(JSON.stringify(brick.steps));
+  state.steps.splice(insertAt, 0, ...copiedSteps);
+  if (state.editingIndex !== null) state.editingIndex += copiedSteps.length;
+  document.getElementById("insert-brick-select").value = "";
+  renderSteps();
+});

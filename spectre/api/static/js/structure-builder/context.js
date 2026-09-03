@@ -6,18 +6,24 @@ const pathParts = window.location.pathname.split("/").filter(Boolean);
 const slug = pathParts[1];
 const isLibraryMode = pathParts[2] === "structures" && pathParts[3] === "bibliotheque";
 const libraryStructureName = isLibraryMode && pathParts[4] !== "nouvelle" ? decodeURIComponent(pathParts[4]) : null;
+// Mode brique : réutilise ce même constructeur pour composer/éditer une brique technologique (une
+// séquence d'étapes réutilisable, sans substrat propre - voir brick-mode.js). Mutuellement exclusif
+// avec le mode bibliothèque, mêmes conventions d'URL (bibliotheque/{nom|nouvelle}, ?scope=/?dupliquer=1).
+const isBrickMode = pathParts[2] === "briques-technologiques" && pathParts[3] === "bibliotheque";
+const brickName = isBrickMode && pathParts[4] !== "nouvelle" ? decodeURIComponent(pathParts[4]) : null;
 const queryParams = new URLSearchParams(window.location.search);
 const librarySourceScope = queryParams.get("scope") || "projet";
 const libraryDuplicateMode = queryParams.get("dupliquer") === "1";
-const evolveExperienceId = !isLibraryMode && pathParts[2] === "experiences" ? pathParts[3] : null;
-const templateExperienceId = !isLibraryMode && !evolveExperienceId ? queryParams.get("depuis") : null;
-const chosenStructureName = !isLibraryMode && !evolveExperienceId ? queryParams.get("structure") : null;
+const evolveExperienceId = !isLibraryMode && !isBrickMode && pathParts[2] === "experiences" ? pathParts[3] : null;
+const templateExperienceId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("depuis") : null;
+const chosenStructureName = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("structure") : null;
 const chosenStructureScope = queryParams.get("scope") || "projet";
-const returnTo = queryParams.get("retour"); // where "Enregistrer" in library mode sends you back to
+const returnTo = queryParams.get("retour"); // where "Enregistrer" in library/brick mode sends you back to
 
 const state = {
   materials: [],
   stepPresets: { presets: [], partagees: [], projet: [] },
+  techBricks: { presets: [], partagees: [], projet: [] },
   steps: [],
   objectives: [],
   frames: null,
@@ -30,6 +36,8 @@ const state = {
   derivedFrom: null, // library mode only: name of the structure this one was derived from, if any
   editingLibraryName: null, // library mode only: name of the saved structure being edited in place (null = new)
   editingLibraryScope: null, // library mode only: "projet" or "partagee", matching editingLibraryName
+  editingBrickName: null, // brick mode only: name of the tech brick being edited in place (null = new)
+  editingBrickScope: null, // brick mode only: "projet" or "partagee", matching editingBrickName
   zoom: 1,
 };
 
