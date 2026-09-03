@@ -73,7 +73,7 @@ def test_atlas_shows_one_experience_node_per_branch_tip_with_entities_and_object
     exp = project["experiences"][0]
     assert exp["id"] == concluded["id"]
     assert exp["status"] == "concluded"
-    assert exp["entities"] == [{"sample_id": "W1-A1", "location": "congélateur B"}]
+    assert exp["entities"] == [{"index": 0, "sample_id": "W1-A1", "location": "congélateur B"}]
     assert exp["objectives"] == [{"name": "Rugosité", "status": "met"}]
 
 
@@ -88,6 +88,36 @@ def test_atlas_skips_physical_tracking_entries_with_no_sample_id_or_location(cli
     atlas = client.get("/api/atlas").json()
     project = next(p for p in atlas["projects"] if p["slug"] == slug)
     assert project["experiences"][0]["entities"] == []
+
+
+def test_atlas_entity_index_survives_a_partially_tracked_campaign(client):
+    """A campaign variant left untracked must not shift the *index* of the ones after it - that
+    index is the addressing spectre.core.links (and the attachment upload form) both rely on, so
+    a naive "filter then enumerate the result" would silently point a link/attachment at the
+    wrong sample the moment a middle variant is skipped.
+    """
+    slug = _register_and_project(client, "atlas-partial-tracking@example.com")
+    campaign = client.post(
+        f"/api/projects/{slug}/experiences/campagne",
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "plan": {"factors": [{"step_index": 0, "field": "thickness", "values": [10, 20, 30]}]},
+            "title": "Campagne",
+            "intent": "Balayer l'épaisseur",
+            "objectives": [],
+        },
+    ).json()
+    # 3 variants, only the first and last tracked - the middle one stays blank.
+    client.post(
+        f"/api/projects/{slug}/experiences/{campaign['id']}/entites",
+        json={"entities": [{"sample_id": "V0"}, {}, {"sample_id": "V2"}]},
+    )
+
+    atlas = client.get("/api/atlas").json()
+    project = next(p for p in atlas["projects"] if p["slug"] == slug)
+    entities = project["experiences"][0]["entities"]
+    assert {(e["index"], e["sample_id"]) for e in entities} == {(0, "V0"), (2, "V2")}
 
 
 def test_atlas_condenses_a_fork_and_merge_into_tip_to_tip_edges(client):

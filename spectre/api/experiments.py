@@ -7,18 +7,22 @@ only resolves which project's repository to use and translates errors into HTTP 
 Route order matters: ``{ref:path}`` is greedy (it matches slashes too - see
 ``follow/api/app.py``'s own note on the same trick), so every route with a literal suffix after
 ``{ref:path}`` (``/process``, ``/timeline``, ``/diff``, ``/evoluer``, ``/conclure``, ``/preuves``,
-``/combiner``, ``/etiquettes``, ``/entites``, ``/diff-externe``, ``/matrice``) is registered
-before the bare "get one experience" route below it - otherwise that catch-all would swallow them.
+``/combiner``, ``/etiquettes``, ``/entites``, ``/pieces-jointes``, ``/diff-externe``, ``/matrice``)
+is registered before the bare "get one experience" route below it - otherwise that catch-all
+would swallow them.
 """
 
 from __future__ import annotations
 
+import json
+import re
 import secrets
+from datetime import datetime, timezone
 from typing import Any
 
 import follow
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
 
@@ -34,6 +38,21 @@ router = APIRouter(prefix="/api/projects", tags=["experiments"])
 
 RUNNING_STATUSES = projects.RUNNING_STATUSES
 CONCLUDED_STATUSES = projects.CONCLUDED_STATUSES
+
+# Pièces jointes (spectre.core.projects.attachments_dir) : mesure, wafer map, photo, rapport -
+# assez large pour couvrir ces cas sans ouvrir la porte à n'importe quel type de fichier.
+# image/svg+xml volontairement absent : un SVG peut embarquer du <script>, un vecteur XSS stocké
+# classique pour un fichier destiné à être affiché tel quel dans le navigateur.
+ATTACHMENT_ALLOWED_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "application/pdf",
+    "text/csv",
+    "text/plain",
+}
+ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
 
 
 def _derive_branch(repo: "follow.Repository", parent: Any, requested: str | None) -> str | None:
@@ -143,6 +162,7 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
         "has_editable_process": "structureforge_process" in experiment.metadata,
         "evidence": [e.model_dump(mode="json") for e in experiment.evidence],
         "physical_tracking": experiment.metadata.get("physical_tracking", []),
+        "attachments": experiment.metadata.get("attachments", []),
     }
 
 
@@ -539,6 +559,161 @@ def set_physical_tracking(
             status_code=400, detail="Impossible d'enregistrer le suivi physique - rechargez la page et réessayez."
         ) from exc
     return {"id": experiment.id, "entities": entities}
+
+
+_ATTACHMENT_ID_RE = re.compile(r"^att_[0-9a-f]{20}$")
+
+
+def _safe_ascii_filename(name: str) -> str:
+    """A best-effort ASCII fallback for Content-Disposition's ``filename=`` (the quoted-string
+    form isn't reliably read as non-ASCII across browsers) - the real name, accents included,
+    still round-trips through the JSON sidecar for display in the UI."""
+    return name.encode("ascii", "ignore").decode("ascii").strip() or "fichier"
+
+
+@router.post("/{slug}/experiences/{ref:path}/pieces-jointes", status_code=201)
+async def upload_attachment(
+    ref: str,
+    file: UploadFile = File(...),
+    entity_index_raw: str | None = Form(None, alias="entity_index"),
+    project: Project = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Attach a file (mesure, wafer map, photo...) to this experience, or to one of the physical
+    entities it tracks - ``entity_index`` into that experience's current ``physical_tracking``
+    list, the same addressing the atlas's entity nodes and :mod:`spectre.core.links` already use;
+    omitted, the attachment belongs to the study as a whole. Like tags/physical_tracking, this
+    rides in ``Experiment.metadata`` and records a new version rather than mutating anything in
+    place. The uploaded bytes themselves live separately
+    (:func:`spectre.core.projects.attachments_dir`), named by a fresh id rather than the uploaded
+    filename so nothing here ever has to turn a user-supplied name into a safe path.
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        parent = repo.get(ref)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    entity_index: int | None = None
+    if entity_index_raw not in (None, ""):
+        try:
+            entity_index = int(entity_index_raw)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="entity_index doit être un entier") from exc
+        expected_count = (
+            len(structures.ProcessLot.model_validate(parent.structure).entries)
+            if parent.structure_type == structures.ProcessLot.registry_key()
+            else 1
+        )
+        if entity_index < 0 or entity_index >= expected_count:
+            raise HTTPException(status_code=422, detail="cette entité n'existe pas sur cette expérience")
+
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in ATTACHMENT_ALLOWED_TYPES:
+        raise HTTPException(status_code=422, detail=f"type de fichier non autorisé : {content_type or 'inconnu'}")
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=422, detail="fichier vide")
+    if len(contents) > ATTACHMENT_MAX_BYTES:
+        raise HTTPException(status_code=422, detail="fichier trop volumineux (10 Mo maximum)")
+
+    attachment_id = f"att_{secrets.token_hex(10)}"
+    directory = projects.attachments_dir(project.slug)
+    original_name = (file.filename or "fichier").strip() or "fichier"
+    sidecar = {"filename": original_name, "content_type": content_type, "size": len(contents)}
+    (directory / attachment_id).write_bytes(contents)
+    (directory / f"{attachment_id}.json").write_text(json.dumps(sidecar), encoding="utf-8")
+
+    record = {
+        "id": attachment_id,
+        "filename": original_name,
+        "content_type": content_type,
+        "size": len(contents),
+        "entity_index": entity_index,
+        "uploaded_by": user.name,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    attachments = list(parent.metadata.get("attachments", [])) + [record]
+
+    builder = repo.derive(
+        ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
+    )
+    builder.metadata = dict(parent.metadata)
+    builder.evidence = list(parent.evidence)
+    builder.conclusion = parent.conclusion
+    builder.tags = list(parent.tags)
+    builder.metadata["attachments"] = attachments
+    try:
+        experiment = builder.commit()
+    except follow.FollowError as exc:
+        (directory / attachment_id).unlink(missing_ok=True)
+        (directory / f"{attachment_id}.json").unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400, detail="Impossible d'enregistrer la pièce jointe - rechargez la page et réessayez."
+        ) from exc
+    return {"id": experiment.id, "attachment": record}
+
+
+@router.delete("/{slug}/experiences/{ref:path}/pieces-jointes/{attachment_id}")
+def remove_attachment(
+    ref: str,
+    attachment_id: str,
+    project: Project = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Detach a file from this experience's current tip - a new version without it in the list,
+    same as removing a tag. The uploaded file itself is left on disk: an older version of this
+    experience may still list it in its own (immutable) metadata, and nothing else in this app
+    deletes old history either.
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        parent = repo.get(ref)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    existing = parent.metadata.get("attachments", [])
+    attachments = [a for a in existing if a.get("id") != attachment_id]
+    if len(attachments) == len(existing):
+        raise HTTPException(status_code=404, detail="pièce jointe introuvable sur cette version")
+
+    builder = repo.derive(
+        ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
+    )
+    builder.metadata = dict(parent.metadata)
+    builder.evidence = list(parent.evidence)
+    builder.conclusion = parent.conclusion
+    builder.tags = list(parent.tags)
+    builder.metadata["attachments"] = attachments
+    try:
+        experiment = builder.commit()
+    except follow.FollowError as exc:
+        raise HTTPException(
+            status_code=400, detail="Impossible de retirer la pièce jointe - rechargez la page et réessayez."
+        ) from exc
+    return {"id": experiment.id}
+
+
+@router.get("/{slug}/pieces-jointes/{attachment_id}")
+def download_attachment(attachment_id: str, project: Project = Depends(require_role("viewer"))) -> FileResponse:
+    """Serve an uploaded file's bytes directly off disk - deliberately not scoped to a specific
+    experience version (an attachment's identity as a file doesn't depend on which commit still
+    lists it), just to the project it belongs to. Images are served inline so a preview can use
+    them directly as an ``<img src>``; everything else downloads.
+    """
+    if not _ATTACHMENT_ID_RE.fullmatch(attachment_id):
+        raise HTTPException(status_code=404, detail="pièce jointe introuvable")
+    directory = projects.attachments_dir(project.slug)
+    blob_path = directory / attachment_id
+    sidecar_path = directory / f"{attachment_id}.json"
+    if not blob_path.is_file() or not sidecar_path.is_file():
+        raise HTTPException(status_code=404, detail="pièce jointe introuvable")
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    content_type = sidecar.get("content_type", "application/octet-stream")
+    headers = {}
+    if not content_type.startswith("image/"):
+        headers["Content-Disposition"] = f'attachment; filename="{_safe_ascii_filename(sidecar.get("filename", "fichier"))}"'
+    return FileResponse(blob_path, media_type=content_type, headers=headers)
 
 
 @router.get("/{slug}/experiences/{ref:path}/diff-externe")

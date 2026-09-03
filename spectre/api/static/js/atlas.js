@@ -8,6 +8,11 @@
    refuse une référence pointée hors de son propre dépôt, donc ça ne pouvait pas vivre là. Dessinés
    en tirets accent par-dessus les clusters, créés/retirés depuis le panneau contextuel d'un projet
    ou d'une entité.
+
+   Pièces jointes (spectre.api.experiments) : contrairement aux liens, ça enregistre une nouvelle
+   version Follow (comme une étiquette ou le suivi physique) - l'id d'expérience/l'id de noeud
+   change donc après un envoi ou un retrait. Le formulaire réutilise l'id renvoyé par l'upload pour
+   resélectionner le bon noeud après refresh() plutôt que l'ancien id, devenu périmé.
 */
 
 const STATUS_COLOR = {
@@ -60,6 +65,56 @@ function panelEmptyState() {
   return `
     <div class="section-title" style="margin-bottom:10px;">Atlas</div>
     <p class="help">Chaque grande étiquette est un projet. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis. Cliquez un élément pour le détail ici ; zoomez pour voir les noms.</p>`;
+}
+
+async function uploadFile(url, formData) {
+  // Deliberately not api.post(): that helper always JSON.stringifies its body and forces
+  // Content-Type: application/json, both wrong for a multipart upload (the browser needs to set
+  // its own Content-Type with the form's boundary). Same error-shape as api.js otherwise.
+  const response = await fetch(url, { method: "POST", credentials: "same-origin", body: formData });
+  const text = await response.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = text;
+    }
+  }
+  if (!response.ok) {
+    const detail = data && typeof data === "object" ? data.detail : data;
+    throw new Error(typeof detail === "string" ? detail : "Une erreur est survenue.");
+  }
+  return data;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function attachmentItemHtml(a, projectSlug) {
+  const url = `/api/projects/${encodeURIComponent(projectSlug)}/pieces-jointes/${encodeURIComponent(a.id)}`;
+  const isImage = a.content_type.startsWith("image/");
+  return `
+    <div class="js-attachment-item" data-id="${a.id}" style="padding:8px 0;border-top:1px solid var(--border-soft);font-size:12.5px;">
+      ${isImage ? `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${escapeHtml(a.filename)}" style="max-width:100%;border-radius:var(--radius-sm);margin-bottom:6px;display:block;"></a>` : ""}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <a href="${url}" target="_blank" rel="noopener" style="font-weight:600;word-break:break-all;">${escapeHtml(a.filename)}</a>
+        ${deleteLinkButtonHtml("js-delete-attachment", a.id)}
+      </div>
+      <div style="color:var(--text-faint);margin-top:2px;">${formatFileSize(a.size)}</div>
+    </div>`;
+}
+
+function attachmentUploadFormHtml() {
+  return `
+    <form id="attachment-upload-form" style="margin-top:12px;">
+      <input class="field" type="file" id="attachment-file-input" required style="margin-bottom:8px;">
+      <div class="help" style="margin-bottom:8px;">Image, PDF, CSV ou texte - 10 Mo maximum.</div>
+      <button class="btn btn-line btn-block" type="submit">Ajouter un fichier</button>
+    </form>`;
 }
 
 function deleteLinkButtonHtml(cls, id) {
@@ -149,6 +204,7 @@ function renderExperiencePanel(d) {
       </div>`
     )
     .join("");
+  const attachmentsHtml = d.attachments.map((a) => attachmentItemHtml(a, d.projectSlug)).join("");
   panel.innerHTML = `
     <div class="section-title" style="margin-bottom:6px;">Étude</div>
     <div style="margin-bottom:8px;">${statusBadgeHtml(d.status)}</div>
@@ -156,7 +212,38 @@ function renderExperiencePanel(d) {
     <p style="font-size:13px;color:var(--text-soft);line-height:1.55;margin-bottom:10px;">${escapeHtml(d.intent)}</p>
     ${d.conclusion_summary ? `<div style="font-size:12.5px;background:var(--bg);border-radius:var(--radius-sm);padding:8px 10px;line-height:1.5;margin-bottom:12px;">${escapeHtml(d.conclusion_summary)}</div>` : ""}
     ${objectives ? `<div style="margin-bottom:14px;">${objectives}</div>` : ""}
-    <a class="btn btn-primary btn-block" href="/projets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}">Ouvrir la fiche &rarr;</a>`;
+    <a class="btn btn-primary btn-block" href="/projets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}">Ouvrir la fiche &rarr;</a>
+
+    <div class="section-title" style="margin:20px 0 8px;">Pièces jointes</div>
+    ${d.attachments.length ? attachmentsHtml : `<div class="help">Aucune pièce jointe.</div>`}
+    ${attachmentUploadFormHtml()}`;
+
+  document.getElementById("attachment-upload-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearPanelError();
+    const input = document.getElementById("attachment-file-input");
+    const file = input.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const result = await uploadFile(`/api/projects/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes`, formData);
+      await refresh(result.id);
+    } catch (err) {
+      showPanelError(err);
+    }
+  });
+  panel.querySelectorAll(".js-delete-attachment").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      clearPanelError();
+      try {
+        const result = await api.del(`/api/projects/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes/${btn.dataset.id}`);
+        await refresh(result.id);
+      } catch (err) {
+        showPanelError(err);
+      }
+    });
+  });
 }
 
 function populateEntityLinkExperienceSelect() {
@@ -177,7 +264,7 @@ function populateEntityLinkEntitySelect() {
   const exp = proj ? proj.experiences.find((e) => e.id === expId) : null;
   const select = document.getElementById("entity-link-entity-select");
   select.innerHTML = exp
-    ? exp.entities.map((ent, i) => `<option value="${i}">${escapeHtml(ent.sample_id || ent.location || "Échantillon " + (i + 1))}</option>`).join("")
+    ? exp.entities.map((ent) => `<option value="${ent.index}">${escapeHtml(ent.sample_id || ent.location || "Échantillon " + (ent.index + 1))}</option>`).join("")
     : "";
 }
 
@@ -200,6 +287,7 @@ function renderEntityPanel(d) {
     .join("");
 
   const hasAnyEntityElsewhere = currentAtlas.projects.some((p) => p.experiences.some((e) => e.entities.length > 0));
+  const attachmentsHtml = d.attachments.map((a) => attachmentItemHtml(a, d.projectSlug)).join("");
 
   panel.innerHTML = `
     <div class="section-title" style="margin-bottom:6px;">Entité physique</div>
@@ -208,6 +296,10 @@ function renderEntityPanel(d) {
     <div class="help" style="margin-bottom:10px;">Suivie sur l'étude :</div>
     <div style="font-size:13.5px;font-weight:600;margin-bottom:10px;">${escapeHtml(d.experienceTitle)}</div>
     <a class="btn btn-line btn-block" href="/projets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}">Ouvrir la fiche &rarr;</a>
+
+    <div class="section-title" style="margin:20px 0 8px;">Pièces jointes</div>
+    ${d.attachments.length ? attachmentsHtml : `<div class="help">Aucune pièce jointe.</div>`}
+    ${attachmentUploadFormHtml()}
 
     <div class="section-title" style="margin:20px 0 8px;">Entités liées</div>
     ${myLinks.length ? linksHtml : `<div class="help">Aucun lien pour l'instant.</div>`}
@@ -227,6 +319,34 @@ function renderEntityPanel(d) {
           </form>`
         : `<div class="help" style="margin-top:10px;">Aucune autre entité suivie à lier pour l'instant.</div>`
     }`;
+
+  document.getElementById("attachment-upload-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearPanelError();
+    const input = document.getElementById("attachment-file-input");
+    const file = input.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("entity_index", String(d.entityIndex));
+    try {
+      const result = await uploadFile(`/api/projects/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes`, formData);
+      await refresh(entityKey({ experience_id: result.id, entity_index: d.entityIndex }));
+    } catch (err) {
+      showPanelError(err);
+    }
+  });
+  panel.querySelectorAll(".js-delete-attachment").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      clearPanelError();
+      try {
+        const result = await api.del(`/api/projects/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes/${btn.dataset.id}`);
+        await refresh(entityKey({ experience_id: result.id, entity_index: d.entityIndex }));
+      } catch (err) {
+        showPanelError(err);
+      }
+    });
+  });
 
   const projectSelect = document.getElementById("entity-link-project-select");
   if (projectSelect) {
@@ -328,21 +448,26 @@ function build(atlas) {
         status: exp.status,
         conclusion_summary: exp.conclusion_summary,
         objectives: exp.objectives,
+        attachments: exp.attachments.filter((a) => a.entity_index === null),
         color: anchor.color,
         x: anchor.x + (Math.random() - 0.5) * 20,
         y: anchor.y + (Math.random() - 0.5) * 20,
       });
-      exp.entities.forEach((entity, i) => {
-        const entityId = `entity:${exp.id}:${i}`;
+      exp.entities.forEach((entity) => {
+        // entity.index is its position in the *raw* physical_tracking list (spectre.core.atlas's
+        // entities_for()), not in this already-filtered array - the addressing links/attachments
+        // use, so it has to survive some campaign variants being untracked.
+        const entityId = `entity:${exp.id}:${entity.index}`;
         entityNodes.push({
           id: entityId,
           type: "entity",
           projectSlug: p.slug,
           experienceId: exp.id,
           experienceTitle: exp.title,
-          entityIndex: i,
+          entityIndex: entity.index,
           sample_id: entity.sample_id,
           location: entity.location,
+          attachments: exp.attachments.filter((a) => a.entity_index === entity.index),
           x: anchor.x,
           y: anchor.y,
         });

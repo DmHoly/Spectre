@@ -225,6 +225,17 @@ def follow_repo_path(slug: str) -> Path:
     return project_dir(slug) / "follow"
 
 
+def attachments_dir(slug: str) -> Path:
+    """Where uploaded files live for this project (see :mod:`spectre.api.experiments`'s
+    attachment routes) - one blob plus a small JSON sidecar (original filename/content
+    type/size) per attachment, named by its id rather than the uploaded filename so nothing here
+    ever has to sanitize that into a safe path.
+    """
+    path = project_dir(slug) / "attachments"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _scoped_store_getters(own_filename: str, shared_filename: str, store_factory):
     """A ``(get_own, get_shared)`` pair of store getters for a JSON-backed keyed collection that
     lives, the same way for every one of them (see :mod:`spectre.core.keyed_store`), as one file

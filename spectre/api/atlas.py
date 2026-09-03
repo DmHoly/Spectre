@@ -34,6 +34,7 @@ def get_atlas(user: User = Depends(get_current_user)) -> dict:
                 "conclusion_summary": exp.conclusion.summary,
                 "objectives": atlas_core.objective_statuses(exp),
                 "entities": atlas_core.entities_for(exp),
+                "attachments": atlas_core.attachments_for(exp),
             }
             for exp in tips
         ]

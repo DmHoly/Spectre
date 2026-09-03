@@ -41,10 +41,15 @@ def condensed_edges(repo: Any, tips: list[Any]) -> list[tuple[str, str]]:
 def entities_for(experiment: Any) -> list[dict]:
     """The physical entities worth showing as their own atlas node - entries that carry no
     ``sample_id``/``location`` at all (the common case: most experiments never fill this in)
-    don't get a point, there'd be nothing to show or label."""
+    don't get a point, there'd be nothing to show or label. ``index`` is the entry's position in
+    the *raw* ``physical_tracking`` list, not in this (filtered, so potentially shorter) returned
+    one - the addressing :mod:`spectre.core.links` and attachments both use, so it has to survive
+    a campaign with some variants tracked and others still blank rather than silently compacting
+    and pointing a link/attachment at the wrong sample.
+    """
     return [
-        {"sample_id": entry.get("sample_id"), "location": entry.get("location")}
-        for entry in experiment.metadata.get("physical_tracking", [])
+        {"index": i, "sample_id": entry.get("sample_id"), "location": entry.get("location")}
+        for i, entry in enumerate(experiment.metadata.get("physical_tracking", []))
         if entry.get("sample_id") or entry.get("location")
     ]
 
@@ -57,4 +62,20 @@ def objective_statuses(experiment: Any) -> list[dict]:
     return [
         {"name": objective.name, "status": results_by_name[objective.name].status if objective.name in results_by_name else None}
         for objective in experiment.objectives
+    ]
+
+
+def attachments_for(experiment: Any) -> list[dict]:
+    """Files uploaded on this experience (spectre.api.experiments's pieces-jointes routes) -
+    ``entity_index`` is ``None`` for one attached to the study as a whole, or an index into this
+    same tip's :func:`entities_for` list for one attached to a specific physical entity."""
+    return [
+        {
+            "id": a["id"],
+            "filename": a["filename"],
+            "content_type": a["content_type"],
+            "size": a["size"],
+            "entity_index": a.get("entity_index"),
+        }
+        for a in experiment.metadata.get("attachments", [])
     ]
