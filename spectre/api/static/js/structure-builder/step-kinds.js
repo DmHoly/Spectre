@@ -211,7 +211,36 @@ const STEP_KIND_DEFS = {
       <div><label>Résine</label><select class="field" id="f-resist-material">${materialOptions("Photoresist")}</select></div>
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="500"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option></select></div></div>
-      <div><label>Ouvertures (nm)</label><input class="field" id="f-openings" placeholder="ex : 80-140, 300-360"><div class="help">Zones où le masque est ouvert, séparées par des virgules.</div></div>`,
+      <div class="card" style="padding:10px 12px;margin:4px 0;background:var(--bg);">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Réseau périodique (optionnel)</div>
+        <div class="field-row">
+          <div><label>Pas (pitch, nm)</label><input class="field" id="f-litho-pitch" type="number" min="0"></div>
+          <div><label>Diamètre d'ouverture (nm)</label><input class="field" id="f-litho-diameter" type="number" min="0"></div>
+        </div>
+        <div class="field-row">
+          <div><label>Nombre (optionnel)</label><input class="field" id="f-litho-count" type="number" min="1" placeholder="rempli le domaine"></div>
+          <div><label>Décalage du centre (optionnel)</label><input class="field" id="f-litho-offset" type="number" placeholder="centré"></div>
+        </div>
+        <button class="btn btn-line btn-block" id="f-litho-generate-btn" type="button" style="margin-top:6px;">Générer les ouvertures</button>
+      </div>
+      <div><label>Ouvertures (nm)</label><input class="field" id="f-openings" placeholder="ex : 80-140, 300-360"><div class="help">Zones où le masque est ouvert, séparées par des virgules — modifiable librement après génération.</div></div>`,
+    wire: () => {
+      document.getElementById("f-litho-generate-btn").addEventListener("click", () => {
+        const pitch = parseFloat(document.getElementById("f-litho-pitch").value);
+        const diameter = parseFloat(document.getElementById("f-litho-diameter").value);
+        const countRaw = document.getElementById("f-litho-count").value;
+        const offsetRaw = document.getElementById("f-litho-offset").value;
+        const domainWidthNm = toNm(substrateSpec().domain_width);
+        const openings = generatePeriodicOpenings(
+          pitch,
+          diameter,
+          domainWidthNm,
+          countRaw ? parseInt(countRaw, 10) : null,
+          offsetRaw ? parseFloat(offsetRaw) : null
+        );
+        document.getElementById("f-openings").value = openings.map((pair) => pair.join("-")).join(", ");
+      });
+    },
     buildFromForm: (name) => ({
       kind: "lithography",
       name,
@@ -341,31 +370,37 @@ const STEP_KIND_DEFS = {
     renderFields: () => `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Croissance sélective"></div>
       <div><label>Matériau</label><select class="field" id="f-material">${materialOptions()}</select>
-        <div class="help" style="margin-top:4px;">La croissance ne reprend que sur ce matériau — ailleurs (substrat, masque...) rien ne pousse, comme un masque de croissance réel. Sans dépôt existant de ce matériau, la toute première couche pousse sur toute la surface exposée (à amorcer avec un dépôt classique avant, comme dans l'exemple de préset nanofil).</div>
+        <div class="help" style="margin-top:4px;">La croissance ne reprend que sur ce matériau — ailleurs (substrat, masque...) rien ne pousse, comme un masque de croissance réel. Sans dépôt existant de ce matériau, la toute première couche pousse sur toute la surface exposée (à amorcer avec un dépôt classique avant, comme dans l'exemple de préset nanofil), sauf si un matériau d'amorçage est choisi ci-dessous.</div>
+      </div>
+      <div><label>Matériau d'amorçage (optionnel — hétéroépitaxie)</label><select class="field" id="f-seed-material"><option value="">— même matériau —</option>${materialOptions()}</select>
+        <div class="help" style="margin-top:4px;">Pour faire pousser un matériau B uniquement là où un matériau A existe déjà (ex : coquille AlGaN sur un cœur GaN) — sinon laissez sur « même matériau ».</div>
       </div>
       <div class="field-row"><div><label>Épaisseur (plan C, le plus rapide)</label><input class="field" id="f-thickness" type="number" value="10"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
       <div><label>Vitesse relative — plan M (flancs verticaux)</label><input class="field" id="f-rate-m" type="number" value="0.4" step="0.01" min="0" max="1"></div>
       <div><label>Vitesse relative — facette semipolaire</label><input class="field" id="f-rate-sp" type="number" value="0.15" step="0.01" min="0" max="1"></div>
-      <div class="help" id="f-rate-order-hint" style="margin-top:-6px;">Doit vérifier C (1.0) &gt; plan M &gt; semipolaire, sinon la facette la plus lente ne l'emporte jamais — c'est ce qui referme la pointe au fil des étapes.</div>`,
+      <div class="help" id="f-rate-order-hint" style="margin-top:-6px;">Doit vérifier C (1.0) &gt;= plan M &gt;= semipolaire, sinon la facette la plus lente ne l'emporte jamais — c'est ce qui referme la pointe au fil des étapes. Les valeurs limites sont valides : 0/0 pour une croissance purement axiale (rien ne pousse latéralement), 1.0/1.0 pour une croissance conforme/isotrope (tout pousse à la même vitesse).</div>`,
     wire: () => wireSelectiveGrowthRateCheck(),
     buildFromForm: (name) => ({
       kind: "selective_growth",
       name,
       material: document.getElementById("f-material").value,
+      seed_material: document.getElementById("f-seed-material").value || null,
       thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
       rate_m: parseFloat(document.getElementById("f-rate-m").value),
       rate_sp: parseFloat(document.getElementById("f-rate-sp").value),
     }),
     fillFields: (step) => {
       document.getElementById("f-material").value = step.material;
+      document.getElementById("f-seed-material").value = step.seed_material || "";
       document.getElementById("f-thickness").value = step.thickness.value;
       document.getElementById("f-thickness-unit").value = step.thickness.unit;
       document.getElementById("f-rate-m").value = step.rate_m;
       document.getElementById("f-rate-sp").value = step.rate_sp;
     },
-    summary: (step) => `${step.material} · +${step.thickness.value} ${step.thickness.unit} (C) · M×${step.rate_m} · SP×${step.rate_sp}`,
-    pyCode: (step) => `SelectiveGrowth(name=${pyStr(step.name)}, material=${pyStr(step.material)}, thickness=${pyLength(step.thickness)}, rate_m=${step.rate_m}, rate_sp=${step.rate_sp})`,
+    summary: (step) => `${step.material}${step.seed_material ? ` (sur ${step.seed_material})` : ""} · +${step.thickness.value} ${step.thickness.unit} (C) · M×${step.rate_m} · SP×${step.rate_sp}`,
+    pyCode: (step) =>
+      `SelectiveGrowth(name=${pyStr(step.name)}, material=${pyStr(step.material)}${step.seed_material ? `, seed_material=${pyStr(step.seed_material)}` : ""}, thickness=${pyLength(step.thickness)}, rate_m=${step.rate_m}, rate_sp=${step.rate_sp})`,
   },
 
   flip: {

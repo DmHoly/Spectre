@@ -77,7 +77,7 @@ function wireSelectiveGrowthRateCheck() {
     const rateM = parseFloat(document.getElementById("f-rate-m").value);
     const rateSp = parseFloat(document.getElementById("f-rate-sp").value);
     const hint = document.getElementById("f-rate-order-hint");
-    const ok = rateSp > 0 && rateM > rateSp && rateM < 1.0;
+    const ok = rateSp >= 0 && rateM >= rateSp && rateM <= 1.0 && rateSp <= 1.0;
     hint.style.color = ok ? "" : "var(--danger)";
   };
   document.getElementById("f-rate-m").addEventListener("input", check);
@@ -189,6 +189,25 @@ function parseOpenings(text) {
     const [a, b] = part.split("-").map((n) => parseFloat(n.trim()));
     return [a, b];
   });
+}
+
+// Un réseau périodique d'ouvertures (pas + diamètre) plutôt que de taper chaque plage à la main -
+// écrit dans le même champ texte que parseOpenings lit déjà (voir le formulaire de lithographie
+// dans step-kinds.js), pas de nouveau format ni de lien vivant après coup.
+function generatePeriodicOpenings(pitchNm, diameterNm, domainWidthNm, count, offsetNm) {
+  if (!(pitchNm > 0) || !(diameterNm > 0) || diameterNm > pitchNm) return [];
+  const n = count && count >= 1 ? Math.floor(count) : Math.max(1, Math.floor((domainWidthNm - diameterNm) / pitchNm) + 1);
+  const span = (n - 1) * pitchNm;
+  const startCenter = offsetNm != null && !Number.isNaN(offsetNm) ? offsetNm : (domainWidthNm - span) / 2;
+  const round = (v) => Math.round(v * 1000) / 1000;
+  const openings = [];
+  for (let i = 0; i < n; i++) {
+    const center = startCenter + i * pitchNm;
+    const a = Math.max(0, center - diameterNm / 2);
+    const b = Math.min(domainWidthNm, center + diameterNm / 2);
+    if (b > a) openings.push([round(a), round(b)]);
+  }
+  return openings;
 }
 
 const MODE_LABELS = { conformal: "conforme", directional: "directionnel", isotropic: "isotrope", anisotropic: "anisotrope" };
