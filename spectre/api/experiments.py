@@ -90,6 +90,7 @@ class EvidenceInput(BaseModel):
     metric_name: str | None = None
     metric_value: float | None = None
     metric_unit: str | None = None
+    step_index: int | None = None
 
 
 class CombineRequest(BaseModel):
@@ -307,6 +308,8 @@ def evolve_experience(
         raise _not_found(exc) from exc
 
     builder.metadata = dict(parent.metadata)
+    builder.evidence = list(parent.evidence)
+    builder.tags = list(parent.tags)
     if body.objectives:
         objectives, verification = split_objectives(body.objectives)
         builder.objectives = objectives
@@ -403,6 +406,17 @@ def add_evidence(
     except follow.ExperimentNotFoundError as exc:
         raise _not_found(exc) from exc
 
+    if body.step_index is not None:
+        process = parent.metadata.get("structureforge_process")
+        steps = process.get("steps", []) if process else []
+        if not steps:
+            raise HTTPException(
+                status_code=422,
+                detail="cette expérience n'a pas de procédé éditable enregistré : impossible d'associer une étape",
+            )
+        if not (0 <= body.step_index < len(steps)):
+            raise HTTPException(status_code=422, detail="étape sélectionnée invalide")
+
     metric = None
     if body.metric_name:
         if body.metric_value is None:
@@ -421,6 +435,7 @@ def add_evidence(
         description=body.description,
         source=body.source,
         metrics=metric or {},
+        step_index=body.step_index,
     )
     try:
         experiment = builder.commit()

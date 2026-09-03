@@ -97,6 +97,81 @@ def test_viewer_cannot_add_evidence(client):
     assert response.status_code == 403
 
 
+def test_evidence_step_index_round_trips_and_is_labeled_in_the_process(client):
+    client.post("/api/auth/register", json={"email": "owner-step@example.com", "password": "supersecret", "name": "Owner"})
+    slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
+    launched = _launch(client, slug)
+
+    response = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        json={
+            "description": "Mesure de perf apres depot",
+            "source": "https://labo.example/mesures/1",
+            "metric_name": "perf",
+            "metric_value": 12.5,
+            "step_index": 0,
+        },
+    )
+    assert response.status_code == 201
+    detail = client.get(f"/api/projects/{slug}/experiences/{response.json()['id']}").json()
+    assert detail["evidence"][0]["step_index"] == 0
+
+    # omitting step_index still defaults to None (not tied to any step)
+    without_step = client.post(
+        f"/api/projects/{slug}/experiences/{response.json()['id']}/preuves",
+        json={"description": "Preuve generale", "source": "https://labo.example/mesures/2"},
+    ).json()
+    detail2 = client.get(f"/api/projects/{slug}/experiences/{without_step['id']}").json()
+    assert detail2["evidence"][-1]["step_index"] is None
+
+
+def test_evidence_step_index_must_be_within_process_bounds(client):
+    client.post("/api/auth/register", json={"email": "owner-bounds@example.com", "password": "supersecret", "name": "Owner"})
+    slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
+    launched = _launch(client, slug)  # a single-step process (_steps() above)
+
+    response = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        json={"description": "Hors bornes", "source": "y", "step_index": 5},
+    )
+    assert response.status_code == 422
+
+    negative = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        json={"description": "Negatif", "source": "y", "step_index": -1},
+    )
+    assert negative.status_code == 422
+
+
+def test_evolving_an_experience_preserves_its_evidence_and_tags(client):
+    client.post("/api/auth/register", json={"email": "owner-evolve@example.com", "password": "supersecret", "name": "Owner"})
+    slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
+    launched = _launch(client, slug)
+
+    with_evidence = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        json={"description": "Mesure avant evolution", "source": "https://labo.example/mesures/1"},
+    ).json()
+    with_tag = client.post(
+        f"/api/projects/{slug}/experiences/{with_evidence['id']}/etiquettes", json={"tags": ["important"]}
+    ).json()
+
+    evolve_body = {
+        "substrate": _substrate(),
+        "steps": _steps(thickness=10),
+        "title": "Essai",
+        "intent": "Reduire l'epaisseur",
+        "objectives": [],
+    }
+    evolved = client.post(f"/api/projects/{slug}/experiences/{with_tag['id']}/evoluer", json=evolve_body)
+    assert evolved.status_code == 201
+
+    detail = client.get(f"/api/projects/{slug}/experiences/{evolved.json()['id']}").json()
+    assert len(detail["evidence"]) == 1
+    assert detail["evidence"][0]["description"] == "Mesure avant evolution"
+    assert detail["tags"] == ["important"]
+
+
 def test_cross_project_diff(client):
     client.post("/api/auth/register", json={"email": "cross@example.com", "password": "supersecret", "name": "Cross"})
     slug_a = client.post("/api/projects", json={"name": "Projet A"}).json()["slug"]

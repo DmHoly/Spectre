@@ -547,9 +547,13 @@ function renderEvidence(detail) {
           const metricText = metricEntries
             .map(([name, q]) => `${escapeHtml(name)} : ${escapeHtml(String(q.value))}${q.unit ? " " + escapeHtml(q.unit) : ""}`)
             .join(" · ");
+          const stepBadge =
+            e.step_index != null
+              ? `<span class="badge badge-role" style="font-size:10.5px;margin-left:6px;">${escapeHtml(stepLabelFor(e.step_index))}</span>`
+              : "";
           return `
             <div style="padding:10px 0;border-top:1px solid var(--border-soft);">
-              <div style="font-size:13px;font-weight:600;">${escapeHtml(e.description)}</div>
+              <div style="font-size:13px;font-weight:600;">${escapeHtml(e.description)}${stepBadge}</div>
               <div style="font-size:12px;color:var(--text-soft);margin-top:2px;word-break:break-all;">${e.source.startsWith("http") ? `<a href="${escapeHtml(e.source)}" target="_blank" rel="noopener">${escapeHtml(e.source)}</a>` : escapeHtml(e.source)}</div>
               ${metricText ? `<div class="mono" style="font-size:11.5px;color:var(--text-faint);margin-top:4px;">${metricText}</div>` : ""}
             </div>`;
@@ -557,15 +561,26 @@ function renderEvidence(detail) {
         .join("")
     : `<div class="help">Aucune preuve enregistrée.</div>`;
 
+  renderEvidenceCompareTool(detail);
+
   const formWrap = document.getElementById("add-evidence-wrap");
   if (!isEditorRole() || viewMode) {
     formWrap.innerHTML = "";
     return;
   }
+  // Rattacher une preuve à une étape n'a de sens que si le procédé est éditable (currentProcess
+  // non nul, voir applyModeVisibility) - sinon il n'y a simplement aucune étape à choisir.
+  const stepOptions = currentProcess
+    ? `<div><label>Étape associée (optionnel)</label><select class="field" id="evidence-step-select">
+         <option value="">— aucune —</option>
+         ${(currentProcess.steps || []).map((s, i) => `<option value="${i}">${escapeHtml(stepLabelFor(i))}</option>`).join("")}
+       </select></div>`
+    : "";
   formWrap.innerHTML = `
     <form id="evidence-form" class="field-group" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
       <div><label>Description</label><input class="field" id="evidence-description" placeholder="ex : mesure d'épaisseur au profilomètre" required></div>
       <div><label>Source</label><input class="field" id="evidence-source" placeholder="lien, fichier ou référence" required></div>
+      ${stepOptions}
       <div class="field-row">
         <input class="field" id="evidence-metric-name" placeholder="mesure (optionnel)">
         <input class="field" id="evidence-metric-value" type="number" placeholder="valeur">
@@ -577,12 +592,14 @@ function renderEvidence(detail) {
     clearError();
     const metricName = document.getElementById("evidence-metric-name").value.trim();
     const metricValueRaw = document.getElementById("evidence-metric-value").value;
+    const stepSelect = document.getElementById("evidence-step-select");
     try {
       const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/preuves`, {
         description: document.getElementById("evidence-description").value,
         source: document.getElementById("evidence-source").value,
         metric_name: metricName || null,
         metric_value: metricValueRaw ? parseFloat(metricValueRaw) : null,
+        step_index: stepSelect && stepSelect.value !== "" ? parseInt(stepSelect.value, 10) : null,
       });
       // preuves records a new version carrying the evidence (experiences are immutable) - go to
       // it, not back to this now-superseded version.
@@ -592,6 +609,83 @@ function renderEvidence(detail) {
     }
   });
 }
+
+// Texte "Kind — nom" pour l'étape à cet index dans le procédé courant (currentProcess.steps),
+// réutilisant STEP_KIND_LABELS déjà utilisé pour la modale de couche ci-dessus. Une preuve dont
+// step_index ne correspond plus au procédé *actuel* (une évolution ultérieure a raccourci ou
+// changé la liste d'étapes) dégrade proprement vers "introuvable" plutôt que de planter - aucun
+// lien vivant vers la version où elle a été prise n'est maintenu.
+function stepLabelFor(index) {
+  const step = currentProcess?.steps?.[index];
+  if (!step) return `étape #${index + 1} (introuvable)`;
+  return `${STEP_KIND_LABELS[step.kind] || step.kind} — ${step.name}`;
+}
+
+// Comparaison de deux preuves entre elles (ex : une mesure après un dépôt d'ITO à 400 nm puis à
+// 200 nm) - entièrement côté client, detail.evidence est déjà chargé en entier avec ses mesures.
+function renderEvidenceCompareTool(detail) {
+  const tool = document.getElementById("evidence-compare-tool");
+  if (detail.evidence.length < 2) {
+    tool.style.display = "none";
+    return;
+  }
+  tool.style.display = "block";
+  const options = detail.evidence
+    .map(
+      (e) =>
+        `<option value="${e.id}">${escapeHtml(e.description)}${e.step_index != null ? " — " + escapeHtml(stepLabelFor(e.step_index)) : ""}</option>`
+    )
+    .join("");
+  const selectA = document.getElementById("evidence-compare-a");
+  const selectB = document.getElementById("evidence-compare-b");
+  selectA.innerHTML = options;
+  selectB.innerHTML = options;
+  // par défaut, les deux preuves les plus récentes - le cas le plus probable ("comparer où j'en suis
+  // par rapport à juste avant").
+  selectA.selectedIndex = Math.max(0, detail.evidence.length - 2);
+  selectB.selectedIndex = detail.evidence.length - 1;
+  document.getElementById("evidence-compare-result").innerHTML = "";
+}
+
+document.getElementById("evidence-compare-btn").addEventListener("click", () => {
+  const idA = document.getElementById("evidence-compare-a").value;
+  const idB = document.getElementById("evidence-compare-b").value;
+  const box = document.getElementById("evidence-compare-result");
+  if (!idA || !idB) return;
+  if (idA === idB) {
+    box.innerHTML = `<div class="help">Choisissez deux preuves différentes.</div>`;
+    return;
+  }
+  const a = currentDetail.evidence.find((e) => e.id === idA);
+  const b = currentDetail.evidence.find((e) => e.id === idB);
+  const names = [...new Set([...Object.keys(a.metrics || {}), ...Object.keys(b.metrics || {})])];
+  if (names.length === 0) {
+    box.innerHTML = `<div class="help">Aucune des deux preuves n'a de mesure chiffrée à comparer.</div>`;
+    return;
+  }
+  const fmt = (q) => (q ? `${q.value}${q.unit ? " " + q.unit : ""}` : "—");
+  const rows = names
+    .map((name) => {
+      const qa = (a.metrics || {})[name];
+      const qb = (b.metrics || {})[name];
+      let delta = "—";
+      if (qa && qb && typeof qa.value === "number" && typeof qb.value === "number") {
+        if (qa.unit === qb.unit) {
+          const d = qb.value - qa.value;
+          delta = `${d > 0 ? "+" : ""}${d}${qb.unit ? " " + qb.unit : ""}`;
+        } else {
+          delta = "unités différentes";
+        }
+      }
+      return `<tr><td>${escapeHtml(name)}</td><td class="mono">${escapeHtml(fmt(qa))}</td><td class="mono">${escapeHtml(fmt(qb))}</td><td class="mono">${escapeHtml(delta)}</td></tr>`;
+    })
+    .join("");
+  box.innerHTML = `
+    <table style="width:100%;font-size:12.5px;border-collapse:collapse;">
+      <thead><tr style="color:var(--text-faint);text-align:left;"><th>Mesure</th><th>${escapeHtml(a.description)}</th><th>${escapeHtml(b.description)}</th><th>Écart</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+});
 
 function renderForksNote(detail) {
   const box = document.getElementById("forks-note");
@@ -779,7 +873,7 @@ async function generateReportHtml() {
   body{background:var(--bg);padding:28px 16px;}
   .report-page{max-width:1180px;margin:0 auto;}
   .report-banner{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:20px;font-size:12px;color:var(--text-faint);}
-  #evolve-btn,#mode-toggle-btn,#export-report-btn,#advanced-actions{display:none !important;}
+  #evolve-btn,#mode-toggle-btn,#export-report-btn,#advanced-actions,#structure-evolve-link,#evidence-compare-tool{display:none !important;}
 </style>
 </head>
 <body>
@@ -809,9 +903,17 @@ async function downloadReport() {
   }
 }
 
+function goToEvolve() {
+  window.location.href = `/projets/${slug}/experiences/${experienceId}/evoluer`;
+}
+
 function applyModeVisibility() {
   const editing = isEditorRole() && !viewMode;
   document.getElementById("evolve-btn").style.display = editing ? "" : "none";
+  // currentProcess n'est connu qu'après le chargement de /process (voir init()) - avant ça, ce
+  // lien reste caché même si editing est vrai, applyModeVisibility() étant rappelée une fois de
+  // plus dès que currentProcess est résolu.
+  document.getElementById("structure-evolve-link").style.display = editing && currentProcess ? "" : "none";
   document.getElementById("advanced-actions").style.display = editing ? "" : "none";
   document.getElementById("mode-toggle-btn").textContent = viewMode ? "Repasser en mode édition" : "Passer en mode vue";
   // un visiteur (rôle viewer) est déjà en permanence sur une fiche épurée - le bouton d'export lui
@@ -847,14 +949,12 @@ async function init() {
     renderConclusion(currentDetail);
     renderBatchMatrix(currentDetail);
     renderPhysicalTracking(currentDetail);
-    renderEvidence(currentDetail);
 
     if (isEditorRole()) {
       document.getElementById("mode-toggle-btn").style.display = "";
       document.getElementById("mode-toggle-btn").addEventListener("click", toggleViewMode);
-      document.getElementById("evolve-btn").addEventListener("click", () => {
-        window.location.href = `/projets/${slug}/experiences/${experienceId}/evoluer`;
-      });
+      document.getElementById("evolve-btn").addEventListener("click", goToEvolve);
+      document.getElementById("structure-evolve-link").addEventListener("click", goToEvolve);
       populateCombineSelect();
     }
     document.getElementById("export-report-btn").addEventListener("click", downloadReport);
@@ -866,6 +966,10 @@ async function init() {
       api.get(`/api/projects/${slug}/experiences/${experienceId}/process`).catch(() => null),
     ]);
     currentProcess = process;
+    // rejoués maintenant que currentProcess est connu - applyModeVisibility gère #structure-evolve-link,
+    // renderEvidence le badge/select par étape et l'outil de comparaison (voir stepLabelFor).
+    applyModeVisibility();
+    renderEvidence(currentDetail);
     renderTimeline(timeline.items);
     renderStructure(currentDetail, diff);
     populateCompareProjectSelect();
