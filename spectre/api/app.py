@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..core.db import init_db
+from . import atlas as atlas_router
 from . import auth as auth_router
 from . import experiments as experiments_router
 from . import projects as projects_router
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router.router)
     app.include_router(structures_router.router)
     app.include_router(experiments_router.router)
+    app.include_router(atlas_router.router)
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -43,6 +45,7 @@ def create_app() -> FastAPI:
         return handler
 
     app.get("/")(_page("index.html"))
+    app.get("/atlas")(_page("atlas.html"))
     app.get("/connexion")(_page("connexion.html"))
     app.get("/inscription")(_page("inscription.html"))
     app.get("/mot-de-passe-oublie")(_page("mot-de-passe-oublie.html"))

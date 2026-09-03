@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atlas — Spectre</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+  <style>
+    /* Catégorielle par projet (une couleur ne suffit jamais seule à distinguer une identité - les
+       étiquettes de cluster, toujours visibles, portent l'essentiel ; la couleur ne fait que
+       renforcer). Ordre fixe, jamais recalculé dynamiquement. */
+    :root {
+      --atlas-cat-1: #2a78d6;
+      --atlas-cat-2: #eb6834;
+      --atlas-cat-3: #1baf7a;
+      --atlas-cat-4: #eda100;
+      --atlas-cat-5: #e87ba4;
+      --atlas-cat-6: #008300;
+      --atlas-cat-7: #4a3aa7;
+      --atlas-cat-8: #e34948;
+    }
+
+    /* Fills exactly what's left below the topbar, whatever its real height ends up being,
+       rather than a hardcoded pixel guess. */
+    html, body {
+      height: 100%;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+    .atlas-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .atlas-canvas-wrap {
+      position: relative;
+      flex: 1 1 auto;
+      min-width: 0;
+      background: var(--bg);
+    }
+
+    #atlas-svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+    #atlas-svg:active {
+      cursor: grabbing;
+    }
+
+    .atlas-node-experience {
+      stroke: var(--surface);
+      stroke-width: 1.5px;
+    }
+    .atlas-node-entity {
+      fill: var(--text-faint);
+      stroke: var(--surface);
+      stroke-width: 1px;
+    }
+    .atlas-edge {
+      stroke: var(--text-faint);
+      stroke-opacity: 0.35;
+      stroke-width: 1.2px;
+      fill: none;
+    }
+    .atlas-leash {
+      stroke: var(--border);
+      stroke-width: 1px;
+      fill: none;
+    }
+    .atlas-cluster-halo {
+      fill-opacity: 0.06;
+      stroke-opacity: 0.25;
+      stroke-width: 1px;
+    }
+    .atlas-label {
+      font-family: var(--font-ui);
+      fill: var(--text-soft);
+      pointer-events: none;
+      paint-order: stroke;
+      stroke: var(--bg);
+      stroke-width: 3px;
+      stroke-linejoin: round;
+    }
+    .atlas-label-project {
+      font-size: 13px;
+      font-weight: 700;
+      fill: var(--text);
+      pointer-events: auto; /* unlike the other two label kinds, this one IS the click target */
+    }
+    .atlas-label-experience {
+      font-size: 10.5px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .atlas-label-entity {
+      font-size: 9px;
+      fill: var(--text-faint);
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    #atlas-svg[data-zoom="mid"] .atlas-label-experience,
+    #atlas-svg[data-zoom="close"] .atlas-label-experience {
+      opacity: 1;
+    }
+    #atlas-svg[data-zoom="close"] .atlas-label-entity {
+      opacity: 1;
+    }
+
+    .atlas-node-experience,
+    .atlas-node-entity,
+    .atlas-node-project {
+      cursor: pointer;
+    }
+    .atlas-node-selected {
+      stroke: var(--accent) !important;
+      stroke-width: 2.5px !important;
+    }
+
+    .atlas-side-panel {
+      flex: 0 0 340px;
+      border-left: 1px solid var(--border-soft);
+      background: var(--surface);
+      overflow-y: auto;
+      padding: var(--space-5);
+    }
+
+    .atlas-legend {
+      position: absolute;
+      left: var(--space-4);
+      bottom: var(--space-4);
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 11.5px;
+      color: var(--text-faint);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .atlas-legend__row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .atlas-legend__dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      flex: none;
+    }
+
+    .atlas-zoom-controls {
+      position: absolute;
+      right: var(--space-4);
+      top: var(--space-4);
+      display: flex;
+      gap: 6px;
+    }
+
+    .atlas-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-faint);
+      font-size: 13.5px;
+      text-align: center;
+      padding: 0 var(--space-6);
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/" style="display:flex;align-items:center;">
+    <div class="topbar__brand">
+      <span class="topbar__mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
+      </span>
+      Spectre
+      <span class="topbar__crumb">/ Atlas</span>
+    </div>
+    </a>
+    <div class="topbar__actions">
+      <a href="/docs" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Documentation</a>
+      <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
+        <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
+        <div class="avatar js-user-initials"></div>
+      </a>
+      <a href="#" class="js-logout btn btn-line" style="padding:6px 12px;font-size:12.5px;">Se déconnecter</a>
+    </div>
+  </div>
+
+  <div class="atlas-body">
+    <div class="atlas-canvas-wrap">
+      <svg id="atlas-svg" data-zoom="far"></svg>
+
+      <div class="atlas-zoom-controls">
+        <button class="btn btn-line" id="atlas-zoom-out" type="button" title="Zoom arrière" style="padding:4px 9px;font-size:13px;line-height:1;">&minus;</button>
+        <button class="btn btn-line" id="atlas-zoom-reset" type="button" title="Réinitialiser le zoom" style="padding:4px 9px;font-size:11.5px;">Réinitialiser</button>
+        <button class="btn btn-line" id="atlas-zoom-in" type="button" title="Zoom avant" style="padding:4px 9px;font-size:13px;line-height:1;">&plus;</button>
+      </div>
+
+      <div class="atlas-legend">
+        <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--draft);"></span>Brouillon</div>
+        <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--running);"></span>En cours</div>
+        <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--done);"></span>Conclue</div>
+        <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--abandoned);"></span>Abandonnée</div>
+        <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--text-faint);"></span>Entité physique</div>
+      </div>
+
+      <div class="atlas-empty" id="atlas-empty" style="display:none;">
+        Aucun projet à cartographier pour l'instant. <a href="/">Créer un projet</a> pour commencer.
+      </div>
+    </div>
+
+    <div class="atlas-side-panel" id="atlas-panel">
+      <div class="section-title" style="margin-bottom:10px;">Atlas</div>
+      <p class="help">Chaque grande étiquette est un projet. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis. Cliquez un élément pour le détail ici ; zoomez pour voir les noms.</p>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/common.js"></script>
+  <!-- D3 vendored locally (spectre/api/static/js/vendor/, ISC license - see D3-LICENSE there)
+       rather than loaded from a CDN: the rest of this app deliberately has no external JS
+       dependency (see style.css's own note on why Google Fonts is loaded async, for the same
+       "a lab/corporate network can block this" concern) - this page shouldn't be the exception. -->
+  <script src="/static/js/vendor/d3.v7.9.0.min.js"></script>
+  <script src="/static/js/atlas.js"></script>
+</body>
+</html>

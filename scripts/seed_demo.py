@@ -219,6 +219,13 @@ class Project:
         result = session.post(f"/api/projects/{self.slug}/experiences/{ref}/etiquettes", json={"tags": tags})
         return record(result["id"], days_ago)
 
+    def track(self, session: Session, ref: str, *, sample_id, location, days_ago) -> str:
+        result = session.post(
+            f"/api/projects/{self.slug}/experiences/{ref}/entites",
+            json={"entities": [{"sample_id": sample_id, "location": location}]},
+        )
+        return record(result["id"], days_ago)
+
     def combine(self, session: Session, ref: str, *, other_id: str, title, intent, days_ago) -> str:
         """Merge two lines of work - keeps `ref`'s structure/steps as-is and links `other_id` in
         as a second parent (a real content merge, if wanted, is a normal evolve() right after -
@@ -292,6 +299,7 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=370,
     )
     b1 = proj.tag(demo, b1, ["recette-de-base"], days_ago=370)
+    b1 = proj.track(demo, b1, sample_id="Gâteau-A1", location="Photos + carnet de recette, classeur cuisine", days_ago=370)
 
     # 2. Cuisson plus douce et plus longue
     b2 = proj.evolve(
@@ -397,6 +405,7 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=257,
     )
     b6 = proj.tag(demo, b6, ["recette-approuvee", "meilleure-recette"], days_ago=257)
+    b6 = proj.track(demo, b6, sample_id="Gâteau-B2", location="Congélateur, tiroir du haut", days_ago=257)
 
     # 7. Fork vegan
     b7 = proj.evolve(
@@ -419,7 +428,7 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         ],
         days_ago=227,
     )
-    proj.tag(lea, b7, ["vegan", "recette-approuvee"], days_ago=227)
+    b7 = proj.tag(lea, b7, ["vegan", "recette-approuvee"], days_ago=227)
 
     # 8. Glaçage plus intense
     b8 = proj.evolve(
@@ -471,7 +480,8 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         ],
         days_ago=171,
     )
-    proj.tag(demo, b11, ["vegan", "recette-approuvee", "fusion"], days_ago=171)
+    b11 = proj.tag(demo, b11, ["vegan", "recette-approuvee", "fusion"], days_ago=171)
+    proj.track(demo, b11, sample_id="Gâteau-Vegan85-1", location="Congélateur, tiroir du haut", days_ago=171)
 
     # 9. Format familial
     b9 = proj.evolve(
@@ -493,7 +503,8 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         ],
         days_ago=147,
     )
-    proj.tag(marc, b9, ["format-familial", "recette-approuvee"], days_ago=147)
+    b9 = proj.tag(marc, b9, ["format-familial", "recette-approuvee"], days_ago=147)
+    proj.track(marc, b9, sample_id="Gâteau-Familial-1", location="Photos, dossier partagé famille", days_ago=147)
 
     # 10. Version finale documentée
     b10 = proj.evolve(
@@ -516,7 +527,8 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         ],
         days_ago=35,
     )
-    proj.tag(demo, b10, ["recette-du-mois", "recette-approuvee", "version-finale"], days_ago=35)
+    b10 = proj.tag(demo, b10, ["recette-du-mois", "recette-approuvee", "version-finale"], days_ago=35)
+    proj.track(demo, b10, sample_id="Gâteau-Final-1", location="Photos + recette imprimée, classeur cuisine", days_ago=35)
 
     proj.save_structure(demo, name="Gâteau au chocolat - recette finale", substrate=cake_substrate, steps=[pate(160, 3, 250, 180, 120, 45, 72), glacage(85)])
 
@@ -596,6 +608,7 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=345,
     )
     b1 = proj.tag(demo, b1, ["epitaxie", "wafer-lot-A"], days_ago=345)
+    b1 = proj.track(demo, b1, sample_id="W-A1", location="Boîte à wafers, salle blanche, tiroir 1", days_ago=345)
 
     # 2. Tampon AlN plus épais
     b2 = proj.evolve(
@@ -701,6 +714,7 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=226,
     )
     b6 = proj.tag(demo, b6, ["zone-active", "wafer-lot-B"], days_ago=226)
+    b6 = proj.track(demo, b6, sample_id="W-B1", location="Boîte à wafers, salle blanche, tiroir 2", days_ago=226)
 
     # 7. Contact ITO
     b7 = proj.evolve(
@@ -755,7 +769,8 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         ],
         days_ago=156,
     )
-    proj.tag(demo, b9, ["recette-approuvee", "wafer-lot-C"], days_ago=156)
+    b9 = proj.tag(demo, b9, ["recette-approuvee", "wafer-lot-C"], days_ago=156)
+    proj.track(demo, b9, sample_id="W-C1", location="Boîte à wafers, salle blanche, tiroir 3", days_ago=156)
 
     # 10. Wafer test - validation du retournement pour contact face arrière (procédé
     # indépendant, validé sur un wafer test Si avant d'être appliqué à la ligne active GaN -
@@ -795,6 +810,7 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=85,
     )
     b10 = proj.tag(demo, b10, ["retournement", "design-valide", "wafer-test"], days_ago=85)
+    b10 = proj.track(demo, b10, sample_id="Si-Test-1", location="Boîte à wafers, salle blanche, tiroir test", days_ago=85)
 
     # 11. Fusion : relier la ligne principale (b9) et la validation du retournement (b10) - deux
     # pistes indépendantes qui convergent. combine() garde les étapes de b9 telles quelles (pas
@@ -820,7 +836,8 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         ],
         days_ago=65,
     )
-    proj.tag(demo, b11, ["fusion", "wafer-lot-C"], days_ago=65)
+    b11 = proj.tag(demo, b11, ["fusion", "wafer-lot-C"], days_ago=65)
+    proj.track(demo, b11, sample_id="W-C1", location="Boîte à wafers, salle blanche, tiroir 3", days_ago=65)
 
     proj.save_structure(demo, name="Nanofil LED semipolaire - référence", substrate=epi_substrate(), steps=epi_stack(15) + litho_etch + growth_taper + active_region(18.5) + ito_contact)
 

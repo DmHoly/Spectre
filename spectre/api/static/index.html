@@ -35,10 +35,16 @@
         <h1 style="font-size:22px;">Mes projets</h1>
         <p style="color:var(--text-soft);font-size:14px;margin-top:4px;">Les études de suivi d'expériences auxquelles vous participez.</p>
       </div>
-      <button id="new-project-btn" class="btn btn-primary">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-        Nouveau projet
-      </button>
+      <div style="display:flex;gap:10px;">
+        <a href="/atlas" class="btn btn-line">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="7" r="2.4"/><circle cx="7" cy="18" r="2.4"/><path d="M8 7.5l8.5-0.7M7.4 16l7.5-7.5"/></svg>
+          Atlas
+        </a>
+        <button id="new-project-btn" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          Nouveau projet
+        </button>
+      </div>
     </div>
 
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
