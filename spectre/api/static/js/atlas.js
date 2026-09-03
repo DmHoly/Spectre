@@ -3,6 +3,11 @@
    petit point par échantillon physique suivi. Force-layout D3 plutôt que Plotly pour un vrai
    contrôle du zoom (affichage progressif des noms) et du clic (panneau contextuel) - voir la
    conversation de conception pour le pourquoi.
+
+   Liens inter-projets (spectre.core.links) : la seule relation qui traverse deux projets - Follow
+   refuse une référence pointée hors de son propre dépôt, donc ça ne pouvait pas vivre là. Dessinés
+   en tirets accent par-dessus les clusters, créés/retirés depuis le panneau contextuel d'un projet
+   ou d'une entité.
 */
 
 const STATUS_COLOR = {
@@ -25,10 +30,30 @@ const CLUSTER_PADDING = 46;
 
 const svg = d3.select("#atlas-svg");
 const panel = document.getElementById("atlas-panel");
+const panelErrorBox = document.getElementById("panel-error");
 let selection = null; // the currently-clicked node's datum, for the side panel
+let currentAtlas = null; // the raw /api/atlas payload, for building link lists/pickers
+let nodesById = new Map(); // rebuilt on every build() - project:*/experience-id/entity:*:* -> node
 
 function projectColor(index) {
   return `var(--atlas-cat-${(index % 8) + 1})`;
+}
+
+function entityKey(ref) {
+  return `entity:${ref.experience_id}:${ref.entity_index}`;
+}
+
+function matchesEntity(ref, d) {
+  return ref.project_slug === d.projectSlug && ref.experience_id === d.experienceId && ref.entity_index === d.entityIndex;
+}
+
+function showPanelError(err) {
+  panelErrorBox.textContent = err.message || String(err);
+  panelErrorBox.style.display = "block";
+}
+
+function clearPanelError() {
+  panelErrorBox.style.display = "none";
 }
 
 function panelEmptyState() {
@@ -37,9 +62,30 @@ function panelEmptyState() {
     <p class="help">Chaque grande étiquette est un projet. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis. Cliquez un élément pour le détail ici ; zoomez pour voir les noms.</p>`;
 }
 
+function deleteLinkButtonHtml(cls, id) {
+  return `<button class="${cls}" data-id="${id}" type="button" title="Retirer le lien" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;font-size:15px;line-height:1;flex:none;">&times;</button>`;
+}
+
 function renderProjectPanel(d) {
   const experienceCount = d.experiences.length;
   const entityCount = d.experiences.reduce((n, e) => n + e.entities.length, 0);
+  const myLinks = (currentAtlas.project_links || []).filter((l) => l.a.slug === d.slug || l.b.slug === d.slug);
+  const otherProjects = currentAtlas.projects.filter((p) => p.slug !== d.slug);
+
+  const linksHtml = myLinks
+    .map((l) => {
+      const other = l.a.slug === d.slug ? l.b : l.a;
+      return `
+        <div style="padding:8px 0;border-top:1px solid var(--border-soft);font-size:12.5px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div>
+            <span style="font-weight:600;">${escapeHtml(other.name)}</span>
+            ${l.note ? `<div style="color:var(--text-faint);margin-top:2px;">${escapeHtml(l.note)}</div>` : ""}
+          </div>
+          ${deleteLinkButtonHtml("js-delete-project-link", l.id)}
+        </div>`;
+    })
+    .join("");
+
   panel.innerHTML = `
     <div class="section-title" style="margin-bottom:6px;">Projet</div>
     <h2 style="font-size:18px;margin:0 0 8px;">${escapeHtml(d.name)}</h2>
@@ -47,7 +93,50 @@ function renderProjectPanel(d) {
     <div style="font-size:12.5px;color:var(--text-faint);margin-bottom:14px;">
       ${escapeHtml(roleLabel(d.role))} &middot; ${experienceCount} étude${experienceCount > 1 ? "s" : ""}${entityCount ? ` &middot; ${entityCount} entité${entityCount > 1 ? "s" : ""} physique${entityCount > 1 ? "s" : ""}` : ""}
     </div>
-    <a class="btn btn-primary btn-block" href="/projets/${encodeURIComponent(d.slug)}">Ouvrir le projet &rarr;</a>`;
+    <a class="btn btn-primary btn-block" href="/projets/${encodeURIComponent(d.slug)}">Ouvrir le projet &rarr;</a>
+
+    <div class="section-title" style="margin:20px 0 8px;">Projets liés</div>
+    ${myLinks.length ? linksHtml : `<div class="help">Aucun lien pour l'instant.</div>`}
+    ${
+      otherProjects.length
+        ? `<form id="project-link-form" style="margin-top:12px;">
+            <select class="field" id="project-link-select" style="margin-bottom:6px;">
+              ${otherProjects.map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}</option>`).join("")}
+            </select>
+            <input class="field" id="project-link-note" placeholder="Pourquoi ces deux projets se rejoignent (optionnel)" style="margin-bottom:8px;">
+            <button class="btn btn-line btn-block" type="submit">Lier à ce projet</button>
+          </form>`
+        : `<div class="help" style="margin-top:10px;">Aucun autre projet à lier.</div>`
+    }`;
+
+  const form = document.getElementById("project-link-form");
+  if (form) {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearPanelError();
+      try {
+        await api.post("/api/liens-projets", {
+          project_a: d.slug,
+          project_b: document.getElementById("project-link-select").value,
+          note: document.getElementById("project-link-note").value.trim(),
+        });
+        await refresh(`project:${d.slug}`);
+      } catch (err) {
+        showPanelError(err);
+      }
+    });
+  }
+  panel.querySelectorAll(".js-delete-project-link").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      clearPanelError();
+      try {
+        await api.del(`/api/liens-projets/${btn.dataset.id}`);
+        await refresh(`project:${d.slug}`);
+      } catch (err) {
+        showPanelError(err);
+      }
+    });
+  });
 }
 
 function renderExperiencePanel(d) {
@@ -70,18 +159,119 @@ function renderExperiencePanel(d) {
     <a class="btn btn-primary btn-block" href="/projets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}">Ouvrir la fiche &rarr;</a>`;
 }
 
+function populateEntityLinkExperienceSelect() {
+  const projSlug = document.getElementById("entity-link-project-select").value;
+  const proj = currentAtlas.projects.find((p) => p.slug === projSlug);
+  const withEntities = (proj ? proj.experiences : []).filter((e) => e.entities.length > 0);
+  const select = document.getElementById("entity-link-experience-select");
+  select.innerHTML = withEntities.length
+    ? withEntities.map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.title)}</option>`).join("")
+    : `<option value="">Aucune étude avec entité suivie</option>`;
+  populateEntityLinkEntitySelect();
+}
+
+function populateEntityLinkEntitySelect() {
+  const projSlug = document.getElementById("entity-link-project-select").value;
+  const expId = document.getElementById("entity-link-experience-select").value;
+  const proj = currentAtlas.projects.find((p) => p.slug === projSlug);
+  const exp = proj ? proj.experiences.find((e) => e.id === expId) : null;
+  const select = document.getElementById("entity-link-entity-select");
+  select.innerHTML = exp
+    ? exp.entities.map((ent, i) => `<option value="${i}">${escapeHtml(ent.sample_id || ent.location || "Échantillon " + (i + 1))}</option>`).join("")
+    : "";
+}
+
 function renderEntityPanel(d) {
+  const myLinks = (currentAtlas.entity_links || []).filter((l) => matchesEntity(l.a, d) || matchesEntity(l.b, d));
+  const linksHtml = myLinks
+    .map((l) => {
+      const other = matchesEntity(l.a, d) ? l.b : l.a;
+      const otherNode = nodesById.get(entityKey(other));
+      const label = otherNode ? otherNode.sample_id || otherNode.location || "Échantillon" : "Échantillon";
+      return `
+        <div style="padding:8px 0;border-top:1px solid var(--border-soft);font-size:12.5px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div>
+            <span style="font-weight:600;">${escapeHtml(label)}</span>
+            <div style="color:var(--text-faint);margin-top:2px;">${escapeHtml(other.project_slug)}${l.note ? " — " + escapeHtml(l.note) : ""}</div>
+          </div>
+          ${deleteLinkButtonHtml("js-delete-entity-link", l.id)}
+        </div>`;
+    })
+    .join("");
+
+  const hasAnyEntityElsewhere = currentAtlas.projects.some((p) => p.experiences.some((e) => e.entities.length > 0));
+
   panel.innerHTML = `
     <div class="section-title" style="margin-bottom:6px;">Entité physique</div>
     <h2 style="font-size:17px;margin:0 0 10px;">${escapeHtml(d.sample_id || "Échantillon sans identifiant")}</h2>
     ${d.location ? `<div style="font-size:13px;color:var(--text-soft);margin-bottom:14px;">Emplacement&nbsp;: ${escapeHtml(d.location)}</div>` : ""}
     <div class="help" style="margin-bottom:10px;">Suivie sur l'étude :</div>
     <div style="font-size:13.5px;font-weight:600;margin-bottom:10px;">${escapeHtml(d.experienceTitle)}</div>
-    <a class="btn btn-line btn-block" href="/projets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}">Ouvrir la fiche &rarr;</a>`;
+    <a class="btn btn-line btn-block" href="/projets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}">Ouvrir la fiche &rarr;</a>
+
+    <div class="section-title" style="margin:20px 0 8px;">Entités liées</div>
+    ${myLinks.length ? linksHtml : `<div class="help">Aucun lien pour l'instant.</div>`}
+    ${
+      hasAnyEntityElsewhere
+        ? `<form id="entity-link-form" style="margin-top:12px;">
+            <label style="font-size:11px;">Projet</label>
+            <select class="field" id="entity-link-project-select" style="margin-bottom:6px;">
+              ${currentAtlas.projects.map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}</option>`).join("")}
+            </select>
+            <label style="font-size:11px;">Étude</label>
+            <select class="field" id="entity-link-experience-select" style="margin-bottom:6px;"></select>
+            <label style="font-size:11px;">Entité</label>
+            <select class="field" id="entity-link-entity-select" style="margin-bottom:6px;"></select>
+            <input class="field" id="entity-link-note" placeholder="Pourquoi ces deux échantillons se rejoignent (optionnel)" style="margin-bottom:8px;">
+            <button class="btn btn-line btn-block" type="submit">Lier à cette entité</button>
+          </form>`
+        : `<div class="help" style="margin-top:10px;">Aucune autre entité suivie à lier pour l'instant.</div>`
+    }`;
+
+  const projectSelect = document.getElementById("entity-link-project-select");
+  if (projectSelect) {
+    projectSelect.addEventListener("change", populateEntityLinkExperienceSelect);
+    document.getElementById("entity-link-experience-select").addEventListener("change", populateEntityLinkEntitySelect);
+    populateEntityLinkExperienceSelect();
+
+    document.getElementById("entity-link-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearPanelError();
+      const bProjectSlug = projectSelect.value;
+      const bExperienceId = document.getElementById("entity-link-experience-select").value;
+      const bEntityIndexRaw = document.getElementById("entity-link-entity-select").value;
+      if (!bExperienceId || bEntityIndexRaw === "") {
+        showPanelError(new Error("Choisissez une étude et une entité à lier."));
+        return;
+      }
+      try {
+        await api.post("/api/liens-entites", {
+          a: { project_slug: d.projectSlug, experience_id: d.experienceId, entity_index: d.entityIndex },
+          b: { project_slug: bProjectSlug, experience_id: bExperienceId, entity_index: parseInt(bEntityIndexRaw, 10) },
+          note: document.getElementById("entity-link-note").value.trim(),
+        });
+        await refresh(entityKey({ experience_id: d.experienceId, entity_index: d.entityIndex }));
+      } catch (err) {
+        showPanelError(err);
+      }
+    });
+  }
+  panel.querySelectorAll(".js-delete-entity-link").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      clearPanelError();
+      try {
+        await api.del(`/api/liens-entites/${btn.dataset.id}`);
+        await refresh(entityKey({ experience_id: d.experienceId, entity_index: d.entityIndex }));
+      } catch (err) {
+        showPanelError(err);
+      }
+    });
+  });
 }
 
 function select(datum, element) {
   selection = datum;
+  clearPanelError();
   svg.selectAll(".atlas-node-selected").classed("atlas-node-selected", false);
   if (element) d3.select(element).classed("atlas-node-selected", true);
   if (!datum) {
@@ -96,11 +286,15 @@ function select(datum, element) {
 }
 
 function build(atlas) {
+  svg.selectAll("*").remove();
+  nodesById = new Map();
+
   const projects = atlas.projects;
   if (projects.length === 0) {
     document.getElementById("atlas-empty").style.display = "";
     return;
   }
+  document.getElementById("atlas-empty").style.display = "none";
 
   const width = svg.node().clientWidth;
   const height = svg.node().clientHeight;
@@ -146,6 +340,7 @@ function build(atlas) {
           projectSlug: p.slug,
           experienceId: exp.id,
           experienceTitle: exp.title,
+          entityIndex: i,
           sample_id: entity.sample_id,
           location: entity.location,
           x: anchor.x,
@@ -158,10 +353,15 @@ function build(atlas) {
   });
 
   const allNodes = [...projectNodes, ...experienceNodes, ...entityNodes];
+  allNodes.forEach((n) => nodesById.set(n.id, n));
+
+  const resolvableEntityLinks = (atlas.entity_links || []).filter((l) => nodesById.has(entityKey(l.a)) && nodesById.has(entityKey(l.b)));
+  const resolvableProjectLinks = (atlas.project_links || []).filter((l) => projectBySlug.has(l.a.slug) && projectBySlug.has(l.b.slug));
 
   const g = svg.append("g");
   const haloLayer = g.append("g");
   const edgeLayer = g.append("g");
+  const crossLinkLayer = g.append("g");
   const nodeLayer = g.append("g");
   const labelLayer = g.append("g");
 
@@ -176,6 +376,22 @@ function build(atlas) {
     .data(links.filter((l) => l.kind === "leash"))
     .join("line")
     .attr("class", "atlas-leash");
+
+  const projectLinkSelection = crossLinkLayer
+    .selectAll("line.atlas-project-link")
+    .data(resolvableProjectLinks)
+    .join("line")
+    .attr("class", "atlas-project-link")
+    .attr("x1", (l) => projectBySlug.get(l.a.slug).fx)
+    .attr("y1", (l) => projectBySlug.get(l.a.slug).fy)
+    .attr("x2", (l) => projectBySlug.get(l.b.slug).fx)
+    .attr("y2", (l) => projectBySlug.get(l.b.slug).fy);
+
+  const entityLinkSelection = crossLinkLayer
+    .selectAll("line.atlas-entity-link")
+    .data(resolvableEntityLinks)
+    .join("line")
+    .attr("class", "atlas-entity-link");
 
   const haloSelection = haloLayer
     .selectAll("circle")
@@ -274,6 +490,15 @@ function build(atlas) {
       .attr("y2", (d) => d.target.y);
     edgeSelection.attr("d", (d) => `M${d.source.x},${d.source.y} L${d.target.x},${d.target.y}`);
 
+    // Cross-project entity links aren't part of the force simulation (their two ends can belong
+    // to unrelated clusters - pulling them together would fight the per-project clustering), so
+    // their endpoints are just read live from whichever node they reference.
+    entityLinkSelection
+      .attr("x1", (l) => nodesById.get(entityKey(l.a)).x)
+      .attr("y1", (l) => nodesById.get(entityKey(l.a)).y)
+      .attr("x2", (l) => nodesById.get(entityKey(l.b)).x)
+      .attr("y2", (l) => nodesById.get(entityKey(l.b)).y);
+
     // The halo is sized to whatever currently sits farthest from its project's anchor, so it
     // keeps enclosing the cluster as the simulation settles rather than a guessed fixed radius.
     haloSelection.attr("r", (d) => {
@@ -302,11 +527,21 @@ function build(atlas) {
   document.getElementById("atlas-zoom-reset").addEventListener("click", () => svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity));
 }
 
+async function refresh(reselectId) {
+  const atlas = await api.get("/api/atlas");
+  currentAtlas = atlas;
+  build(atlas);
+  if (reselectId && nodesById.has(reselectId)) {
+    select(nodesById.get(reselectId), null);
+  } else {
+    select(null, null);
+  }
+}
+
 async function init() {
   select(null, null);
   try {
-    const atlas = await api.get("/api/atlas");
-    build(atlas);
+    await refresh(null);
   } catch (err) {
     panel.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div>`;
   }

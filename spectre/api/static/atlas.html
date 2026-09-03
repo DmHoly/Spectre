@@ -81,6 +81,22 @@
       stroke-opacity: 0.25;
       stroke-width: 1px;
     }
+    /* Cross-project links (spectre.core.links) - the one relationship allowed to reach across
+       clusters, so it's drawn distinctly (dashed, accent-colored) from filiation/containment. */
+    .atlas-project-link,
+    .atlas-entity-link {
+      stroke: var(--accent);
+      stroke-opacity: 0.55;
+      stroke-dasharray: 5 4;
+      fill: none;
+      pointer-events: none;
+    }
+    .atlas-project-link {
+      stroke-width: 1.5px;
+    }
+    .atlas-entity-link {
+      stroke-width: 1px;
+    }
     .atlas-label {
       font-family: var(--font-ui);
       fill: var(--text-soft);
@@ -159,6 +175,12 @@
       border-radius: 999px;
       flex: none;
     }
+    .atlas-legend__line {
+      width: 14px;
+      height: 0;
+      border-top: 2px dashed var(--accent);
+      flex: none;
+    }
 
     .atlas-zoom-controls {
       position: absolute;
@@ -217,6 +239,7 @@
         <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--done);"></span>Conclue</div>
         <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--abandoned);"></span>Abandonnée</div>
         <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--text-faint);"></span>Entité physique</div>
+        <div class="atlas-legend__row"><span class="atlas-legend__line"></span>Lien entre projets/entités</div>
       </div>
 
       <div class="atlas-empty" id="atlas-empty" style="display:none;">
@@ -224,9 +247,12 @@
       </div>
     </div>
 
-    <div class="atlas-side-panel" id="atlas-panel">
-      <div class="section-title" style="margin-bottom:10px;">Atlas</div>
-      <p class="help">Chaque grande étiquette est un projet. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis. Cliquez un élément pour le détail ici ; zoomez pour voir les noms.</p>
+    <div class="atlas-side-panel">
+      <div id="panel-error" class="error" style="display:none;margin-bottom:12px;"></div>
+      <div id="atlas-panel">
+        <div class="section-title" style="margin-bottom:10px;">Atlas</div>
+        <p class="help">Chaque grande étiquette est un projet. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis. Cliquez un élément pour le détail ici ; zoomez pour voir les noms.</p>
+      </div>
     </div>
   </div>
 

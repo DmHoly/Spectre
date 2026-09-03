@@ -64,11 +64,49 @@ CREATE TABLE IF NOT EXISTS invitations (
     expires_at TEXT NOT NULL
 );
 
+-- Cross-project links (spectre.core.links) - the one relationship that reaches across two
+-- projects' otherwise-isolated Follow repositories, so it lives here rather than as a Follow
+-- reference (follow.core.models.ReferenceLink is validated to always point within its own
+-- repository - see repository.py's own commit-time check) or in Experiment.metadata (which,
+-- like physical_tracking, only one side could ever read).
+CREATE TABLE IF NOT EXISTS project_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_a_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_b_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    note TEXT NOT NULL DEFAULT '',
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (project_a_id <> project_b_id)
+);
+
+-- One physical entity is identified by (project, experience, index into that experience's
+-- current physical_tracking list) - the same addressing the atlas already uses for its entity
+-- nodes (entity:{experience_id}:{index}). Not a foreign key: the referenced experience lives in
+-- a Follow repository, not this database, so nothing here can enforce it still exists - a link to
+-- a since-deleted project or a physical_tracking entry that got reordered/removed by a later edit
+-- is a stale row the atlas just quietly stops resolving, same as it already does for entities.
+CREATE TABLE IF NOT EXISTS entity_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    a_project_slug TEXT NOT NULL,
+    a_experience_id TEXT NOT NULL,
+    a_entity_index INTEGER NOT NULL,
+    b_project_slug TEXT NOT NULL,
+    b_experience_id TEXT NOT NULL,
+    b_entity_index INTEGER NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);
 CREATE INDEX IF NOT EXISTS idx_invitations_email ON invitations(email);
 CREATE INDEX IF NOT EXISTS idx_invitations_project ON invitations(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_links_a ON project_links(project_a_id);
+CREATE INDEX IF NOT EXISTS idx_project_links_b ON project_links(project_b_id);
+CREATE INDEX IF NOT EXISTS idx_entity_links_a ON entity_links(a_project_slug);
+CREATE INDEX IF NOT EXISTS idx_entity_links_b ON entity_links(b_project_slug);
 """
 
 

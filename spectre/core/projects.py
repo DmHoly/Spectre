@@ -76,6 +76,14 @@ def get_by_slug(slug: str) -> Project:
     return _project_from_row(row)
 
 
+def get_by_id(project_id: int) -> Project:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if row is None:
+        raise ProjectNotFoundError(str(project_id))
+    return _project_from_row(row)
+
+
 def list_for_user(user_id: int) -> list[tuple[Project, str]]:
     with get_conn() as conn:
         rows = conn.execute(
