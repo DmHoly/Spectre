@@ -8,7 +8,33 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
-  <style>.meta-value{color:var(--text-soft);font-weight:600;}</style>
+  <style>
+    .meta-value{color:var(--text-soft);font-weight:600;}
+    /* Survoler une couche du dessin de structure la met en surbrillance et affiche un aperçu de
+       ses paramètres - le clic garde le détail complet dans la modale (voir experience.js). */
+    .layer-clickable [data-layer-index]:hover {
+      stroke: var(--accent) !important;
+      stroke-width: 2px !important;
+    }
+    .layer-tooltip {
+      position: fixed;
+      z-index: 1000;
+      background: var(--text);
+      color: var(--surface);
+      font-size: 12px;
+      line-height: 1.6;
+      padding: 8px 11px;
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow);
+      pointer-events: none;
+      max-width: 240px;
+    }
+    .layer-tooltip strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 12.5px;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -136,6 +162,8 @@
 
     </div>
   </div>
+
+  <div id="layer-tooltip" class="layer-tooltip" style="display:none;"></div>
 
   <dialog id="layer-modal" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);max-width:min(520px,92vw);width:100%;">
     <div class="card-pad" style="max-height:80vh;display:flex;flex-direction:column;">

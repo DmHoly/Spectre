@@ -205,11 +205,66 @@ function showLayerModal(layerIndex) {
   openLayerModal(`${STEP_KIND_LABELS[step.kind] || step.kind} — ${step.name}`, fields);
 }
 
+// Survoler une couche affiche un aperçu condensé (nom + quelques paramètres clés) dans une
+// infobulle qui suit le curseur - même source de champs que la modale (showLayerModal), juste
+// limitée aux 4 premiers pour rester lisible dans un petit encart.
+function layerSummaryFields(layerIndex) {
+  if (!currentProcess) return null;
+  if (layerIndex === 0) {
+    const s = currentProcess.substrate || {};
+    const fields = [
+      ["Matériau", s.material],
+      ["Largeur du domaine", formatStepValue(s.domain_width)],
+      ["Épaisseur", formatStepValue(s.thickness)],
+    ].filter(([, v]) => v);
+    return { title: "Substrat", fields };
+  }
+  const step = (currentProcess.steps || [])[layerIndex - 1];
+  if (!step) return null;
+  const fields = Object.entries(step)
+    .filter(([key]) => key !== "kind" && key !== "name")
+    .map(([key, value]) => [STEP_FIELD_LABELS[key] || key, formatStepValue(value)])
+    .filter(([, value]) => value !== null)
+    .slice(0, 4);
+  return { title: `${STEP_KIND_LABELS[step.kind] || step.kind} — ${step.name}`, fields };
+}
+
+function showLayerTooltip(layerIndex, x, y) {
+  const summary = layerSummaryFields(layerIndex);
+  const tooltip = document.getElementById("layer-tooltip");
+  if (!summary) {
+    hideLayerTooltip();
+    return;
+  }
+  tooltip.innerHTML = `
+    <strong>${escapeHtml(summary.title)}</strong>
+    ${summary.fields.map(([label, value]) => `${escapeHtml(label)} : ${escapeHtml(value)}`).join("<br>")}`;
+  tooltip.style.display = "";
+  // décalé du curseur pour ne pas se retrouver caché par la pointe de la souris.
+  tooltip.style.left = `${x + 14}px`;
+  tooltip.style.top = `${y + 14}px`;
+}
+
+function hideLayerTooltip() {
+  document.getElementById("layer-tooltip").style.display = "none";
+}
+
 document.getElementById("structure-svg").addEventListener("click", (event) => {
   const path = event.target.closest("[data-layer-index]");
   if (!path) return;
   showLayerModal(parseInt(path.dataset.layerIndex, 10));
 });
+
+document.getElementById("structure-svg").addEventListener("mousemove", (event) => {
+  const path = event.target.closest("[data-layer-index]");
+  if (!path) {
+    hideLayerTooltip();
+    return;
+  }
+  showLayerTooltip(parseInt(path.dataset.layerIndex, 10), event.clientX, event.clientY);
+});
+
+document.getElementById("structure-svg").addEventListener("mouseleave", hideLayerTooltip);
 
 document.getElementById("layer-modal-close-btn").addEventListener("click", () => {
   document.getElementById("layer-modal").close();
