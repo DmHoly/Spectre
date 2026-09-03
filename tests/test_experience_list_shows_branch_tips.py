@@ -26,7 +26,13 @@ def test_evidence_then_conclusion_only_shows_the_final_version_once(client):
     slug = _register_and_project(client, "tips-a@example.com")
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Etude", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Etude",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
 
     with_evidence = client.post(
@@ -53,7 +59,13 @@ def test_project_counts_reflect_one_status_per_branch(client):
     slug = _register_and_project(client, "tips-b@example.com")
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Etude", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Etude",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     with_evidence = client.post(
         f"/api/projects/{slug}/experiences/{launched['id']}/preuves", json={"description": "Mesure", "source": "labo"}
@@ -69,7 +81,13 @@ def test_a_fork_still_shows_both_branches_once_each(client):
     slug = _register_and_project(client, "tips-c@example.com")
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(20), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(20),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     continued = client.post(
         f"/api/projects/{slug}/experiences/{launched['id']}/evoluer",

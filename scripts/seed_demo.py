@@ -172,10 +172,20 @@ class Project:
     def __init__(self, slug: str):
         self.slug = slug
 
-    def launch(self, session: Session, *, title, intent, hypothesis, substrate, steps, objectives, days_ago) -> str:
+    def launch(self, session: Session, *, title, intent, hypothesis, substrate, steps, objectives, sample_id, location=None, days_ago) -> str:
+        # every experience needs a physical entity from the moment it's created (spectre.api.structures
+        # enforces this) - passed straight through rather than tracked as an afterthought.
         result = session.post(
             f"/api/projects/{self.slug}/experiences",
-            json={"substrate": substrate, "steps": steps, "title": title, "intent": intent, "hypothesis": hypothesis, "objectives": objectives},
+            json={
+                "substrate": substrate,
+                "steps": steps,
+                "title": title,
+                "intent": intent,
+                "hypothesis": hypothesis,
+                "objectives": objectives,
+                "entities": [{"sample_id": sample_id, "location": location}],
+            },
         )
         return record(result["id"], days_ago)
 
@@ -194,10 +204,20 @@ class Project:
         )
         return record(result["id"], days_ago)
 
-    def campaign(self, session: Session, *, title, intent, substrate, steps, plan, days_ago) -> str:
+    def campaign(self, session: Session, *, title, intent, substrate, steps, plan, sample_id, days_ago) -> str:
+        # the reference sample for the campaign as a whole - individual variants get their own
+        # identifier later, through the atlas's own tracking form, once real samples exist.
         result = session.post(
             f"/api/projects/{self.slug}/experiences/campagne",
-            json={"substrate": substrate, "steps": steps, "plan": plan, "title": title, "intent": intent, "objectives": []},
+            json={
+                "substrate": substrate,
+                "steps": steps,
+                "plan": plan,
+                "title": title,
+                "intent": intent,
+                "objectives": [],
+                "entities": [{"sample_id": sample_id}],
+            },
         )
         return record(result["id"], days_ago)
 
@@ -286,6 +306,8 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=cake_substrate,
         steps=[pate(180, 3, 250, 180, 120, 35, 60), glacage(70)],
         objectives=OBJ,
+        sample_id="Gâteau-A1",
+        location="Photos + carnet de recette, classeur cuisine",
         days_ago=375,
     )
     b1 = proj.evidence(demo, b1, description="Bords un peu secs, centre encore humide - test du cure-dent limite.", source="Dégustation en famille", metric_name="moelleux", metric_value=64, metric_unit="%", days_ago=372)
@@ -380,6 +402,7 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
             {"step_index": 0, "via_estimate": "moelleux", "values": [70, 80, 90]},
             {"step_index": 1, "via_estimate": "intensite_gout", "values": [6, 8]},
         ]},
+        sample_id="Gâteau-Campagne1",
         days_ago=280,
     )
     proj.tag(demo, b5, ["campagne"], days_ago=278)
@@ -594,7 +617,9 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         title="Épitaxie de référence AlN/GaN sur saphir",
         intent="Établir une épitaxie GaN de référence sur saphir avant d'aller plus loin.",
         hypothesis="Un tampon AlN de 10nm devrait suffire à amorcer une croissance GaN correcte, avec une rugosité autour de 1-1.5nm.",
-        substrate=epi_substrate(), steps=epi_stack(10), objectives=OBJ, days_ago=350,
+        substrate=epi_substrate(), steps=epi_stack(10), objectives=OBJ,
+        sample_id="W-A1", location="Boîte à wafers, salle blanche, tiroir 1",
+        days_ago=350,
     )
     b1 = proj.evidence(demo, b1, description="Imagerie AFM : rugosité RMS mesurée à 1.2nm, quelques dislocations visibles.", source="AFM salle blanche", metric_name="rugosite_rms_nm", metric_value=1.2, metric_unit="nm", days_ago=347)
     b1 = proj.conclude(
@@ -746,6 +771,7 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         intent="Balayer la composition d'indium pour cartographier la longueur d'onde d'émission visée.",
         substrate=epi_substrate(), steps=campaign_steps,
         plan={"factors": [{"step_index": indium_step_index, "via_estimate": "longueur_onde_nm", "values": [430, 450, 470, 490]}]},
+        sample_id="Wafer-Campagne1",
         days_ago=190,
     )
     proj.tag(demo, b8, ["campagne", "zone-active"], days_ago=188)
@@ -796,7 +822,9 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
         title="Wafer test Si - validation du retournement pour contact face arrière",
         intent="Valider le procédé de retournement et de via traversant sur un wafer test Si, moins coûteux, avant de l'appliquer à la ligne GaN sur saphir.",
         hypothesis="Un amincissement à 120nm puis une gravure de via à 75nm devraient traverser le substrat aminci et atteindre le plot de contact enterré.",
-        substrate=substrate("Si", width_nm=300, thickness_nm=150), steps=flip_steps, objectives=OBJ, days_ago=90,
+        substrate=substrate("Si", width_nm=300, thickness_nm=150), steps=flip_steps, objectives=OBJ,
+        sample_id="Si-Test-1", location="Boîte à wafers, salle blanche, tiroir test",
+        days_ago=90,
     )
     b10 = proj.evidence(demo, b10, description="Contact mesuré continu entre le plot avant et le métal arrière (distance quasi nulle au MEB) - procédé validé.", source="MEB en coupe", metric_name="resistance_contact", metric_value=0.8, metric_unit="Ω·mm²", days_ago=87)
     b10 = proj.conclude(

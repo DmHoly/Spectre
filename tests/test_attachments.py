@@ -29,7 +29,13 @@ def _register_and_project(client, email, project_name="Projet"):
 def _launch(client, slug, title="Etude"):
     return client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": title, "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": title,
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
 
 

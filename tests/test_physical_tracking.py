@@ -26,7 +26,13 @@ def test_setting_physical_tracking_on_a_single_experience(client):
     slug = _register_and_project(client, "physical@example.com")
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "placeholder"}],
+        },
     ).json()
 
     response = client.post(
@@ -46,7 +52,13 @@ def test_physical_tracking_rejects_wrong_entity_count_for_a_single_experience(cl
     slug = _register_and_project(client, "physicalcount@example.com")
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "placeholder"}],
+        },
     ).json()
     response = client.post(
         f"/api/projects/{slug}/experiences/{launched['id']}/entites",
@@ -65,6 +77,7 @@ def test_physical_tracking_on_a_campaign_matches_entity_count(client):
             "plan": {"factors": [{"step_index": 0, "field": "thickness", "values": [10, 20, 30]}]},
             "title": "Campagne",
             "intent": "Balayage",
+            "entities": [{"sample_id": "placeholder"}],
         },
     ).json()
 
@@ -88,7 +101,13 @@ def test_physical_tracking_carries_forward_through_evidence_and_conclude(client)
     slug = _register_and_project(client, "physicalcarry@example.com")
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "placeholder"}],
+        },
     ).json()
     tracked = client.post(
         f"/api/projects/{slug}/experiences/{launched['id']}/entites",

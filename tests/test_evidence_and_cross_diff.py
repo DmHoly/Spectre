@@ -18,7 +18,13 @@ def _steps(thickness=20):
 
 
 def _launch(client, slug, title="Essai"):
-    body = {"substrate": _substrate(), "steps": _steps(), "title": title, "intent": "Verifier"}
+    body = {
+        "substrate": _substrate(),
+        "steps": _steps(),
+        "title": title,
+        "intent": "Verifier",
+        "entities": [{"sample_id": "W1"}],
+    }
     return client.post(f"/api/projects/{slug}/experiences", json=body).json()
 
 
@@ -97,7 +103,13 @@ def test_cross_project_diff(client):
     slug_b = client.post("/api/projects", json={"name": "Projet B"}).json()["slug"]
 
     exp_a = _launch(client, slug_a, title="Essai A")
-    exp_b_body = {"substrate": _substrate(), "steps": _steps(thickness=40), "title": "Essai B", "intent": "Verifier"}
+    exp_b_body = {
+        "substrate": _substrate(),
+        "steps": _steps(thickness=40),
+        "title": "Essai B",
+        "intent": "Verifier",
+        "entities": [{"sample_id": "W2"}],
+    }
     exp_b = client.post(f"/api/projects/{slug_b}/experiences", json=exp_b_body).json()
 
     response = client.get(

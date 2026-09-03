@@ -28,7 +28,13 @@ def test_graph_html_with_experiments(client):
     ]
     client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": substrate, "steps": steps, "title": "Essai", "intent": "Verifier"},
+        json={
+            "substrate": substrate,
+            "steps": steps,
+            "title": "Essai",
+            "intent": "Verifier",
+            "entities": [{"sample_id": "W1"}],
+        },
     )
     response = client.get(f"/api/projects/{slug}/graphe.html")
     assert response.status_code == 200

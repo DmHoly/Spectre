@@ -53,6 +53,7 @@ def test_atlas_shows_one_experience_node_per_branch_tip_with_entities_and_object
             "title": "Etude",
             "intent": "Depart",
             "objectives": [{"name": "Rugosité", "metric": "rugosite", "direction": "minimize", "target": 1.0}],
+            "entities": [{"sample_id": "placeholder"}],
         },
     ).json()
     with_entity = client.post(
@@ -81,7 +82,13 @@ def test_atlas_skips_physical_tracking_entries_with_no_sample_id_or_location(cli
     slug = _register_and_project(client, "atlas-empty-entity@example.com")
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Etude", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Etude",
+            "intent": "Depart",
+            "entities": [{"sample_id": "placeholder"}],
+        },
     ).json()
     client.post(f"/api/projects/{slug}/experiences/{launched['id']}/entites", json={"entities": [{}]})
 
@@ -106,6 +113,7 @@ def test_atlas_entity_index_survives_a_partially_tracked_campaign(client):
             "title": "Campagne",
             "intent": "Balayer l'épaisseur",
             "objectives": [],
+            "entities": [{"sample_id": "placeholder"}],
         },
     ).json()
     # 3 variants, only the first and last tracked - the middle one stays blank.
@@ -124,7 +132,13 @@ def test_atlas_condenses_a_fork_and_merge_into_tip_to_tip_edges(client):
     slug = _register_and_project(client, "atlas-merge@example.com")
     root = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(10), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(10),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     # branch_a stays on the default branch, branch_b forks onto its own - so combiner (which
     # always advances `ref`'s own branch, see experiments.py::combine_experiences) supersedes

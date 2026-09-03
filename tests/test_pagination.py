@@ -24,7 +24,13 @@ def test_experiences_are_paginated(client):
     for i in range(5):
         client.post(
             f"/api/projects/{slug}/experiences",
-            json={"substrate": _substrate(), "steps": _steps(), "title": f"Essai {i}", "intent": "x"},
+            json={
+                "substrate": _substrate(),
+                "steps": _steps(),
+                "title": f"Essai {i}",
+                "intent": "x",
+                "entities": [{"sample_id": f"W{i}"}],
+            },
         )
 
     page1 = client.get(f"/api/projects/{slug}/experiences?status=all&offset=0&limit=2").json()

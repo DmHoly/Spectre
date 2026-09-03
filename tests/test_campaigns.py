@@ -110,6 +110,7 @@ def test_launch_campaign_and_read_matrix(client):
         "plan": _plan(),
         "title": "Campagne epaisseur",
         "intent": "Explorer l'effet de l'epaisseur d'oxyde",
+        "entities": [{"sample_id": "W1"}],
     }
     response = client.post(f"/api/projects/{slug}/experiences/campagne", json=body)
     assert response.status_code == 201
@@ -137,6 +138,7 @@ def test_launch_campaign_with_two_factors(client):
         "plan": _plan_two_factors(),
         "title": "Campagne croisee",
         "intent": "Explorer epaisseur et profondeur ensemble",
+        "entities": [{"sample_id": "W1"}],
     }
     response = client.post(f"/api/projects/{slug}/experiences/campagne", json=body)
     assert response.status_code == 201
@@ -186,6 +188,7 @@ def test_launch_campaign_split_on_a_derived_estimate_stores_the_solved_flux(clie
         "plan": plan,
         "title": "Campagne dopage",
         "intent": "Balayer le dopage cible",
+        "entities": [{"sample_id": "W1"}],
     }
     response = client.post(f"/api/projects/{slug}/experiences/campagne", json=body)
     assert response.status_code == 201
@@ -251,7 +254,13 @@ def test_matrice_endpoint_rejects_non_batch_experience(client):
     slug = _setup_project(client)
     single = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Essai simple", "intent": "Verifier"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Essai simple",
+            "intent": "Verifier",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     response = client.get(f"/api/projects/{slug}/experiences/{single['id']}/matrice")
     assert response.status_code == 400

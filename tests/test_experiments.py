@@ -30,6 +30,7 @@ def _launch(client, slug, title="Essai initial", thickness=20):
         "title": title,
         "intent": "Verifier l'isolation",
         "objectives": [{"name": "Isolation", "metric": "resistivity_ohm_cm", "direction": "target", "target": 1e6}],
+        "entities": [{"sample_id": "W1"}],
     }
     return client.post(f"/api/projects/{slug}/experiences", json=body).json()
 

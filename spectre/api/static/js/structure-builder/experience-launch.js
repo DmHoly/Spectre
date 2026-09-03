@@ -18,6 +18,17 @@ async function loadExistingProcess() {
     const verification = detail.objective_verification || {};
     state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
     renderObjectives();
+
+    // en évolution, l'entité physique se transmet automatiquement de la version précédente
+    // (voir experiments.py::evolve_experience) - le champ reste modifiable pour la corriger,
+    // mais n'est obligatoire que si la piste n'en a jamais eu.
+    const currentEntity = (detail.physical_tracking && detail.physical_tracking[0]) || {};
+    document.getElementById("exp-entity-sample-id").value = currentEntity.sample_id || "";
+    document.getElementById("exp-entity-location").value = currentEntity.location || "";
+    document.getElementById("entity-field-label").textContent = "Entité physique";
+    document.getElementById("entity-field-hint").textContent = currentEntity.sample_id
+      ? "Reprise de la version précédente - modifiez-la si besoin."
+      : "Aucune entité physique n'a encore été renseignée sur cette piste - il en faut une pour continuer.";
   } catch (err) {
     showError(err);
   }
@@ -31,6 +42,16 @@ document.getElementById("launch-btn").addEventListener("click", async () => {
     showError(new Error("Le titre et l'intention sont obligatoires."));
     return;
   }
+  const entitySampleId = document.getElementById("exp-entity-sample-id").value.trim();
+  const entityLocation = document.getElementById("exp-entity-location").value.trim();
+  // une nouvelle expérience (ou campagne) doit toujours pouvoir être reliée à un échantillon réel ;
+  // en évolution c'est optionnel côté formulaire puisque le serveur reprend celui de la version
+  // précédente automatiquement (voir loadExistingProcess ci-dessus) - il ne redevient obligatoire
+  // ici que si cette piste n'en a effectivement jamais eu, ce que le serveur détecte lui-même.
+  if (!evolveExperienceId && !entitySampleId) {
+    showError(new Error("L'entité physique (l'échantillon réel suivi) est obligatoire."));
+    return;
+  }
   const payload = {
     substrate: substrateSpec(),
     steps: state.steps,
@@ -38,6 +59,7 @@ document.getElementById("launch-btn").addEventListener("click", async () => {
     intent,
     hypothesis: document.getElementById("exp-hypothesis").value || null,
     objectives: state.objectives,
+    entities: entitySampleId ? [{ sample_id: entitySampleId, location: entityLocation || null }] : [],
   };
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
     const branchName = document.getElementById("new-branch-name").value.trim();

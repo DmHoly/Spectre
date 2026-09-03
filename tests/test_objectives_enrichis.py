@@ -36,6 +36,7 @@ def test_launch_stores_rationale_and_verification_method(client):
                 "verification_method": "mesure au profilometre",
             }
         ],
+        "entities": [{"sample_id": "W1"}],
     }
     launched = client.post(f"/api/projects/{slug}/experiences", json=body).json()
 
@@ -53,6 +54,7 @@ def test_conclude_captures_reasoning_per_objective(client):
         "title": "Essai",
         "intent": "Verifier",
         "objectives": [{"name": "Isolation", "metric": "r", "direction": "observe"}],
+        "entities": [{"sample_id": "W1"}],
     }
     launched = client.post(f"/api/projects/{slug}/experiences", json=body).json()
 
@@ -77,6 +79,7 @@ def test_evolve_carries_verification_when_objectives_unchanged(client):
         "objectives": [
             {"name": "Isolation", "metric": "r", "direction": "observe", "verification_method": "profilometre"}
         ],
+        "entities": [{"sample_id": "W1"}],
     }
     launched = client.post(f"/api/projects/{slug}/experiences", json=body).json()
 

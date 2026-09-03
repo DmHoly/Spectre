@@ -32,7 +32,7 @@ from ..core.permissions import get_project as resolve_project
 from ..core.permissions import require_role
 from ..core.projects import Project
 from .deps import get_current_user
-from .structures import LaunchExperienceRequest, _unique_branch, split_objectives
+from .structures import EntityTrackingInput, LaunchExperienceRequest, _unique_branch, split_objectives
 
 router = APIRouter(prefix="/api/projects", tags=["experiments"])
 
@@ -100,11 +100,6 @@ class CombineRequest(BaseModel):
 
 class TagsRequest(BaseModel):
     tags: list[str]
-
-
-class EntityTrackingInput(BaseModel):
-    sample_id: str | None = None
-    location: str | None = None
 
 
 class PhysicalTrackingRequest(BaseModel):
@@ -320,6 +315,16 @@ def evolve_experience(
         else:
             builder.metadata.pop("objective_verification", None)
     builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
+    # entities are usually inherited unchanged from the parent (physical_tracking rides along in
+    # builder.metadata above) - body.entities only matters to fix forward a lineage that started
+    # before this rule existed, or predates the entity ever being set (see has_tracked_physical_entity).
+    if body.entities:
+        builder.metadata["physical_tracking"] = structures.clean_entity_entries(body.entities)
+    if not structures.has_tracked_physical_entity(builder.metadata):
+        raise HTTPException(
+            status_code=422,
+            detail="Une entité physique (l'échantillon réel suivi) est obligatoire - ajoutez-en une sur la version actuelle avant de continuer.",
+        )
 
     try:
         experiment = builder.commit()
@@ -342,6 +347,12 @@ def conclude_experience(
         parent = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
         raise _not_found(exc) from exc
+
+    if not structures.has_tracked_physical_entity(parent.metadata):
+        raise HTTPException(
+            status_code=422,
+            detail="Impossible de conclure : aucune entité physique (échantillon réel) n'a été renseignée sur cette expérience.",
+        )
 
     objective_results = [
         follow.ObjectiveResult(
@@ -539,10 +550,7 @@ def set_physical_tracking(
             detail=f"il faut exactement {expected_count} entrée(s) (une par échantillon suivi par cette expérience)",
         )
 
-    def _clean(value: str | None) -> str | None:
-        return value.strip() or None if value else None
-
-    entities = [{"sample_id": _clean(e.sample_id), "location": _clean(e.location)} for e in body.entities]
+    entities = structures.clean_entity_entries(body.entities)
 
     builder = repo.derive(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name

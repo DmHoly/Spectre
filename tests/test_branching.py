@@ -23,7 +23,13 @@ def test_fork_creates_a_new_branch_and_is_visible_as_a_child(client):
 
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(20), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(20),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     assert launched["branch"] == "reference"
 
@@ -62,11 +68,23 @@ def test_forking_onto_an_existing_branch_name_from_elsewhere_is_rejected(client)
     slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     other = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(30), "title": "Autre depart", "intent": "Depart 2"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(30),
+            "title": "Autre depart",
+            "intent": "Depart 2",
+            "entities": [{"sample_id": "W2"}],
+        },
     ).json()
 
     client.post(
@@ -101,7 +119,13 @@ def test_continuing_from_a_version_that_is_no_longer_the_tip_does_not_crash(clie
     slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     client.post(
         f"/api/projects/{slug}/experiences/{launched['id']}/evoluer",
@@ -122,7 +146,13 @@ def test_concluding_a_version_that_is_no_longer_the_tip_does_not_crash(client):
     slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     client.post(
         f"/api/projects/{slug}/experiences/{launched['id']}/evoluer",

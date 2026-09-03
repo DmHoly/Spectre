@@ -23,7 +23,13 @@ def test_reusing_a_structure_as_template_starts_a_fresh_lineage(client):
 
     source = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(20), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(20),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
 
     # the structure builder fetches this to pre-fill, then POSTs a brand-new /experiences (not /evoluer)
@@ -35,6 +41,7 @@ def test_reusing_a_structure_as_template_starts_a_fresh_lineage(client):
             "steps": process["steps"],
             "title": "Nouvelle piste independante",
             "intent": "Reprend la meme structure sans heriter de la lignee",
+            "entities": [{"sample_id": "W2"}],
         },
     ).json()
 

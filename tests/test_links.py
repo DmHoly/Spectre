@@ -79,14 +79,26 @@ def test_editor_on_both_projects_can_link_two_physical_entities(client):
     slug_a = _register_and_project(client, "entity-link-a@example.com", "Projet A")
     exp_a = client.post(
         f"/api/projects/{slug_a}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Etude A", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Etude A",
+            "intent": "Depart",
+            "entities": [{"sample_id": "placeholder"}],
+        },
     ).json()
     client.post(f"/api/projects/{slug_a}/experiences/{exp_a['id']}/entites", json={"entities": [{"sample_id": "W-A1", "location": "Salle blanche"}]})
 
     slug_b = client.post("/api/projects", json={"name": "Projet B"}).json()["slug"]
     exp_b = client.post(
         f"/api/projects/{slug_b}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Etude B", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Etude B",
+            "intent": "Depart",
+            "entities": [{"sample_id": "placeholder"}],
+        },
     ).json()
     client.post(f"/api/projects/{slug_b}/experiences/{exp_b['id']}/entites", json={"entities": [{"sample_id": "W-B1", "location": "Salle blanche"}]})
 

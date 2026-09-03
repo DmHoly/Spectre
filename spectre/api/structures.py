@@ -43,6 +43,11 @@ class ObjectiveInput(BaseModel):
     verification_method: str | None = None  # comment on prévoit de le vérifier
 
 
+class EntityTrackingInput(BaseModel):
+    sample_id: str | None = None
+    location: str | None = None
+
+
 class LaunchExperienceRequest(BaseModel):
     substrate: structures.SubstrateSpec
     steps: list[ProcessStep]
@@ -50,6 +55,9 @@ class LaunchExperienceRequest(BaseModel):
     intent: str
     hypothesis: str | None = None
     objectives: list[ObjectiveInput] = []
+    # required on a brand-new launch (see launch_experience below) ; optional when evolving, where
+    # it's only needed to fix forward an experience whose lineage never got one (see evolve_experience).
+    entities: list[EntityTrackingInput] = []
     new_branch: str | None = None  # only meaningful when evolving: fork instead of continuing
 
 
@@ -64,6 +72,7 @@ class LaunchCampaignRequest(CampaignPreviewRequest):
     intent: str
     hypothesis: str | None = None
     objectives: list[ObjectiveInput] = []
+    entities: list[EntityTrackingInput] = []  # at least one (the reference sample) is required
 
 
 def _slugify_branch(title: str) -> str:
@@ -237,6 +246,13 @@ def launch_experience(
     project: Project = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
+    entities = structures.clean_entity_entries(body.entities)
+    if not any(e["sample_id"] for e in entities):
+        raise HTTPException(
+            status_code=422,
+            detail="Une entité physique (l'échantillon réel suivi) est obligatoire pour lancer une expérience.",
+        )
+
     try:
         geometry, _frames, _materials = structures.run_simulation(project.slug, body.substrate, body.steps)
     except structures.SimulationFailedError as exc:
@@ -258,6 +274,7 @@ def launch_experience(
         objectives=objectives,
     )
     builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
+    builder.metadata["physical_tracking"] = entities
     if verification:
         builder.metadata["objective_verification"] = verification
     try:
@@ -298,6 +315,13 @@ def launch_campaign(
     reference process) as the shared protocol - the same "one experiment, many entities" shape
     ``follow.doe.batch``/``follow/api/app.py`` already use generically for any domain.
     """
+    entities = structures.clean_entity_entries(body.entities)
+    if not any(e["sample_id"] for e in entities):
+        raise HTTPException(
+            status_code=422,
+            detail="Une entité physique (l'échantillon de référence) est obligatoire pour lancer une campagne.",
+        )
+
     try:
         result = structures.generate_campaign_variants(project.slug, body.substrate, body.steps, body.plan)
     except structures.SimulationFailedError as exc:
@@ -307,6 +331,11 @@ def launch_campaign(
     branch = _unique_branch(repo, body.title)
     objectives, verification = split_objectives(body.objectives)
     lot = structures.ProcessLot(entries=result.entries)
+    # exactly one tracking slot per variant (set_physical_tracking's own invariant) - the entities
+    # supplied at launch fill the first slots, the rest start blank and get an id later as those
+    # samples come off the campaign (see the atlas "Enregistrer les identifiants physiques" flow).
+    padding = [{"sample_id": None, "location": None}] * max(0, len(result.entries) - len(entities))
+    physical_tracking = (entities + padding)[: len(result.entries)]
 
     builder = repo.new(
         branch=branch,
@@ -319,6 +348,7 @@ def launch_campaign(
         steps=follow_adapter.to_steps(body.steps),
     )
     builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
+    builder.metadata["physical_tracking"] = physical_tracking
     builder.metadata["campaign_labels"] = result.labels
     builder.metadata["campaign_factor_labels"] = result.factor_labels
     builder.metadata["campaign_factor_values"] = result.factor_values

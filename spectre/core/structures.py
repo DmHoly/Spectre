@@ -285,6 +285,27 @@ def render_lot_svgs(lot: ProcessLot) -> list[str]:
     return [_svg_for_process_structure(entry, material_colors) for entry in lot.entries]
 
 
+def clean_entity_entries(entities: list[Any]) -> list[dict[str, str | None]]:
+    """Normalize a list of entity-tracking inputs (each with a ``sample_id``/``location``
+    attribute) into the plain dict shape stored in ``Experiment.metadata["physical_tracking"]`` -
+    blank strings become ``None``, the same cleanup ``spectre.api.experiments::set_physical_tracking``
+    already applied locally before this was shared with the launch routes below.
+    """
+
+    def _clean(value: str | None) -> str | None:
+        return value.strip() or None if value else None
+
+    return [{"sample_id": _clean(e.sample_id), "location": _clean(e.location)} for e in entities]
+
+
+def has_tracked_physical_entity(metadata: dict[str, Any]) -> bool:
+    """Whether at least one physical entity (a real sample identifier, not just a blank tracking
+    slot) has ever been recorded on this experience - every experience must be traceable to
+    something physical, checked when it's created and enforced again before it can be concluded.
+    """
+    return any(entry.get("sample_id") for entry in metadata.get("physical_tracking", []))
+
+
 def process_metadata(substrate: SubstrateSpec, steps: list[ProcessStep]) -> dict[str, Any]:
     """The raw, re-editable process (substrate + typed steps) as plain JSON - stashed on the
     committed ``Experiment.metadata`` under this key, since the ``Structure`` Follow stores is the

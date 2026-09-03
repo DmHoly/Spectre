@@ -91,6 +91,7 @@ def test_launch_experience_creates_a_tracked_experiment(client):
         "title": "Ma premiere experience",
         "intent": "Verifier le depot d'oxyde",
         "objectives": [{"name": "Epaisseur cible", "metric": "thickness_nm", "direction": "target", "target": 20}],
+        "entities": [{"sample_id": "W1"}],
     }
     response = client.post(f"/api/projects/{slug}/experiences", json=body)
     assert response.status_code == 201

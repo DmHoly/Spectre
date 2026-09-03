@@ -26,11 +26,23 @@ def test_combine_two_experiences_keeps_the_base_structure_and_links_the_other(cl
     slug = _register_and_project(client, "combine@example.com")
     a = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(20), "title": "Piste A", "intent": "Depart A"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(20),
+            "title": "Piste A",
+            "intent": "Depart A",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     b = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(40), "title": "Piste B", "intent": "Depart B"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(40),
+            "title": "Piste B",
+            "intent": "Depart B",
+            "entities": [{"sample_id": "W2"}],
+        },
     ).json()
 
     combined = client.post(
@@ -52,7 +64,13 @@ def test_combine_rejects_combining_an_experience_with_itself(client):
     slug = _register_and_project(client, "combineself@example.com")
     a = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Solo", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Solo",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     response = client.post(
         f"/api/projects/{slug}/experiences/{a['id']}/combiner",
@@ -65,7 +83,13 @@ def test_combine_rejects_a_single_experience_with_a_campaign(client):
     slug = _register_and_project(client, "combinetypes@example.com")
     single = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Solo", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Solo",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     campaign = client.post(
         f"/api/projects/{slug}/experiences/campagne",
@@ -75,6 +99,7 @@ def test_combine_rejects_a_single_experience_with_a_campaign(client):
             "plan": {"factors": [{"step_index": 0, "field": "thickness", "values": [10, 20, 30]}]},
             "title": "Campagne",
             "intent": "Balayage",
+            "entities": [{"sample_id": "placeholder"}],
         },
     ).json()
     response = client.post(
@@ -88,7 +113,13 @@ def test_setting_and_removing_tags_records_a_new_version_and_preserves_status(cl
     slug = _register_and_project(client, "tags@example.com")
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
 
     tagged = client.post(
@@ -112,7 +143,13 @@ def test_adding_evidence_or_concluding_preserves_existing_tags(client):
     slug = _register_and_project(client, "tagscarry@example.com")
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     tagged = client.post(
         f"/api/projects/{slug}/experiences/{launched['id']}/etiquettes", json={"tags": ["important"]}
@@ -139,7 +176,13 @@ def test_concluding_does_not_reset_status_of_a_later_evidence_addition(client):
     slug = _register_and_project(client, "statuscarry@example.com")
     launched = client.post(
         f"/api/projects/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Reference", "intent": "Depart"},
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Reference",
+            "intent": "Depart",
+            "entities": [{"sample_id": "W1"}],
+        },
     ).json()
     concluded = client.post(
         f"/api/projects/{slug}/experiences/{launched['id']}/conclure",

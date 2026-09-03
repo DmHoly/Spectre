@@ -182,6 +182,11 @@
               <div><label>Intention (pourquoi fait-on cette expérience ?)</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier, et pourquoi maintenant ?"></textarea></div>
               <div><label>Hypothèse (optionnelle)</label><textarea class="field" id="exp-hypothesis" rows="2" placeholder="Ce qu'on pense observer"></textarea></div>
             </div>
+            <div class="field-row">
+              <div><label id="entity-field-label">Entité physique (obligatoire)</label><input class="field" id="exp-entity-sample-id" placeholder="ex : W12-A3"></div>
+              <div><label>Emplacement (optionnel)</label><input class="field" id="exp-entity-location" placeholder="ex : congélateur B, tiroir 2"></div>
+            </div>
+            <div class="help" id="entity-field-hint" style="margin-top:-4px;">Chaque expérience doit être reliée à un échantillon réel - c'est cet identifiant qui permet de la retrouver.</div>
           </div>
           <div class="section-title" style="margin-bottom:6px;">Objectifs</div>
           <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
