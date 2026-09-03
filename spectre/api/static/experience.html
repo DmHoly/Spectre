@@ -63,11 +63,13 @@
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
 
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px;">
+      <button class="btn btn-line" id="mode-toggle-btn" style="display:none;">Passer en mode vue</button>
+      <button class="btn btn-line" id="export-report-btn" style="display:none;">Télécharger le rapport</button>
       <button class="btn btn-primary" id="evolve-btn" style="display:none;">Enregistrer une évolution</button>
     </div>
 
     <!-- Titre de l'étude, seul en pleine largeur. -->
-    <div class="card card-pad" style="margin-bottom:20px;">
+    <div class="card card-pad" id="header-card" style="margin-bottom:20px;">
       <div id="status-badge" style="margin-bottom:14px;"></div>
       <h1 id="exp-title" style="font-size:24px;line-height:1.3;"></h1>
       <p id="exp-intent" style="color:var(--text-soft);font-size:14.5px;margin-top:10px;line-height:1.55;max-width:70ch;"></p>
@@ -113,13 +115,13 @@
         <div id="matrix-content"></div>
       </div>
 
-      <div class="card card-pad">
+      <div class="card card-pad" id="physical-tracking-card">
         <div class="section-title" style="margin-bottom:16px;">Suivi physique</div>
         <div class="help" style="margin-bottom:14px;">Où en est l'échantillon réel : son identifiant et son emplacement.</div>
         <div id="physical-tracking-content"></div>
       </div>
 
-      <div class="card card-pad">
+      <div class="card card-pad" id="evidence-card">
         <div class="section-title" style="margin-bottom:16px;">Preuves</div>
         <div id="evidence-list"></div>
         <div id="add-evidence-wrap"></div>
@@ -143,7 +145,7 @@
         <div id="compare-result" style="margin-top:12px;max-height:260px;overflow:auto;"></div>
       </div>
 
-      <div class="card card-pad">
+      <div class="card card-pad" id="references-card">
         <div class="section-title" style="margin-bottom:14px;">Liens</div>
         <div id="references-list"></div>
       </div>

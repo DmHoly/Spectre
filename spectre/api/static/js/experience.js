@@ -31,9 +31,18 @@ function clearError() {
 }
 
 let currentRole = null;
+let currentProjectName = null;
 let currentDetail = null;
 let currentProcess = null; // {substrate, steps} from /process - absent for structures without an
 // editable StructureForge recipe recorded (e.g. a campaign's representative entry).
+
+// Mode vue : masque les formulaires d'édition (évoluer, conclure, ajouter une preuve, etc.) pour
+// une fiche épurée, exportable telle quelle en rapport autonome (voir generateReportHtml plus bas).
+// Un simple visiteur (rôle viewer) est déjà toujours en mode vue - seuls editor/owner basculent.
+let viewMode = false;
+function isEditorRole() {
+  return currentRole === "editor" || currentRole === "owner";
+}
 
 function objectiveResultFor(detail, objectiveName) {
   return (detail.conclusion.objective_results || []).find((r) => r.objective === objectiveName);
@@ -280,7 +289,7 @@ async function renderBatchMatrix(detail) {
   try {
     const variation = await api.get(`/api/projects/${slug}/experiences/${experienceId}/matrice`);
     const labels = variation.labels || variation.svgs.map((_, i) => `#${i + 1}`);
-    const canEdit = currentRole === "editor" || currentRole === "owner";
+    const canEdit = isEditorRole() && !viewMode;
     const tracking = variation.physical_tracking || [];
 
     // Cartographie : une vignette par échantillon, la structure réelle telle que StructureForge
@@ -399,7 +408,7 @@ function renderConclusion(detail) {
     `;
     return;
   }
-  if (currentRole !== "editor" && currentRole !== "owner") {
+  if (!isEditorRole() || viewMode) {
     container.innerHTML = `<div class="section-title" style="margin-bottom:14px;">Conclusion</div><div class="help" style="font-style:italic;">Pas encore conclue — expérience en cours.</div>`;
     return;
   }
@@ -549,7 +558,7 @@ function renderEvidence(detail) {
     : `<div class="help">Aucune preuve enregistrée.</div>`;
 
   const formWrap = document.getElementById("add-evidence-wrap");
-  if (currentRole !== "editor" && currentRole !== "owner") {
+  if (!isEditorRole() || viewMode) {
     formWrap.innerHTML = "";
     return;
   }
@@ -601,7 +610,7 @@ function renderForksNote(detail) {
 
 function renderTags(detail) {
   const row = document.getElementById("tags-row");
-  const canEdit = currentRole === "editor" || currentRole === "owner";
+  const canEdit = isEditorRole() && !viewMode;
   const chips = detail.tags
     .map(
       (t, i) => `
@@ -701,7 +710,7 @@ function renderPhysicalTracking(detail) {
     card.innerHTML = `<div class="help">Un identifiant physique par échantillon se pose juste sous chaque vignette de la cartographie des variantes, plus haut.</div>`;
     return;
   }
-  const canEdit = currentRole === "editor" || currentRole === "owner";
+  const canEdit = isEditorRole() && !viewMode;
   const current = detail.physical_tracking[0] || {};
   if (!canEdit) {
     card.innerHTML =
@@ -746,11 +755,87 @@ function renderReferences(detail) {
     .join("");
 }
 
+// Le rapport reprend tel quel le contenu déjà affiché (le mode vue garantit qu'aucun formulaire
+// d'édition ne s'y trouve) - pas de génération séparée à maintenir en double, juste les cartes qui
+// ont un sens hors de l'appli (pas "Comparer avec", un outil interactif, ni "Actions avancées").
+const REPORT_SECTION_IDS = ["header-card", "matrix-card", "physical-tracking-card", "evidence-card", "conclusion-section", "references-card"];
+
+async function generateReportHtml() {
+  const css = await fetch("/static/css/style.css").then((r) => r.text());
+  const threeCol = document.querySelector(".fiche-3col");
+  const sections = [document.getElementById("header-card"), threeCol, ...REPORT_SECTION_IDS.slice(1).map((id) => document.getElementById(id))]
+    .filter((el) => el)
+    .map((el) => el.outerHTML)
+    .join("\n");
+  const generatedAt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short" }).format(new Date());
+  return `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(currentDetail.title)} — rapport d'expérience</title>
+<style>${css}</style>
+<style>
+  body{background:var(--bg);padding:28px 16px;}
+  .report-page{max-width:1180px;margin:0 auto;}
+  .report-banner{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:20px;font-size:12px;color:var(--text-faint);}
+  #evolve-btn,#mode-toggle-btn,#export-report-btn,#advanced-actions{display:none !important;}
+</style>
+</head>
+<body>
+  <div class="report-page">
+    <div class="report-banner">Rapport d'expérience — extrait de Spectre (projet « ${escapeHtml(currentProjectName || "")} ») le ${generatedAt}. Document autonome : une photographie de cette fiche à cet instant, sans lien avec les données vivantes du projet.</div>
+    ${sections}
+  </div>
+</body>
+</html>`;
+}
+
+async function downloadReport() {
+  clearError();
+  try {
+    const html = await generateReportHtml();
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rapport-${slug}-${experienceId}.html`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+function applyModeVisibility() {
+  const editing = isEditorRole() && !viewMode;
+  document.getElementById("evolve-btn").style.display = editing ? "" : "none";
+  document.getElementById("advanced-actions").style.display = editing ? "" : "none";
+  document.getElementById("mode-toggle-btn").textContent = viewMode ? "Repasser en mode édition" : "Passer en mode vue";
+  // un visiteur (rôle viewer) est déjà en permanence sur une fiche épurée - le bouton d'export lui
+  // reste donc toujours proposé, sans passer par le bouton de bascule qui n'a de sens que pour
+  // editor/owner.
+  document.getElementById("export-report-btn").style.display = !isEditorRole() || viewMode ? "" : "none";
+}
+
+function toggleViewMode() {
+  viewMode = !viewMode;
+  applyModeVisibility();
+  renderTags(currentDetail);
+  renderPhysicalTracking(currentDetail);
+  renderEvidence(currentDetail);
+  renderConclusion(currentDetail);
+  renderBatchMatrix(currentDetail);
+}
+
 async function init() {
   try {
     currentDetail = await api.get(`/api/projects/${slug}/experiences/${experienceId}`);
     const project = await api.get(`/api/projects/${slug}`);
     currentRole = project.role;
+    currentProjectName = project.name;
     document.getElementById("project-crumb").textContent = project.name;
     document.getElementById("project-crumb").href = `/projets/${slug}`;
 
@@ -764,14 +849,16 @@ async function init() {
     renderPhysicalTracking(currentDetail);
     renderEvidence(currentDetail);
 
-    if (currentRole === "editor" || currentRole === "owner") {
-      document.getElementById("evolve-btn").style.display = "";
+    if (isEditorRole()) {
+      document.getElementById("mode-toggle-btn").style.display = "";
+      document.getElementById("mode-toggle-btn").addEventListener("click", toggleViewMode);
       document.getElementById("evolve-btn").addEventListener("click", () => {
         window.location.href = `/projets/${slug}/experiences/${experienceId}/evoluer`;
       });
-      document.getElementById("advanced-actions").style.display = "";
       populateCombineSelect();
     }
+    document.getElementById("export-report-btn").addEventListener("click", downloadReport);
+    applyModeVisibility();
 
     const [timeline, diff, process] = await Promise.all([
       api.get(`/api/projects/${slug}/experiences/${experienceId}/timeline`),
