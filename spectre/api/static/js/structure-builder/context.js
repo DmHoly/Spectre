@@ -31,6 +31,7 @@ const state = {
   currentFrame: 0,
   campaignPlan: null,
   editingIndex: null,
+  selectedStepIndices: new Set(), // indices currently checked for "grouper en brique" - cleared on any structural change (add/remove/move/insert)
   viewMode: "couches", // "couches" (click a layer, epitaxy-style) or "etapes" (full step list)
   showStepForm: false, // couches mode only: whether the add/edit form is open
   derivedFrom: null, // library mode only: name of the structure this one was derived from, if any
