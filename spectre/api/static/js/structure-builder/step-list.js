@@ -14,7 +14,7 @@ function stepSelectCheckboxHtml(i) {
   return `<input type="checkbox" class="js-step-select" data-index="${i}" ${state.selectedStepIndices.has(i) ? "checked" : ""} title="Sélectionner pour grouper en brique" style="margin-top:2px;flex:none;cursor:pointer;">`;
 }
 
-function stepRowHtml(step, i, compact) {
+function stepRowHtml(step, i, compact, locked) {
   const highlight = state.editingIndex === i ? "border-color:var(--accent);background:var(--accent-tint);" : "";
   if (compact) {
     return `
@@ -27,6 +27,12 @@ function stepRowHtml(step, i, compact) {
         </button>
       </div>`;
   }
+  // Une étape membre d'une brique ne se réordonne pas individuellement (voir moveStep) - ses
+  // propres flèches sont désactivées, seul le bloc entier se déplace via l'en-tête du groupe.
+  const upTitle = locked ? "Dissociez la brique pour réordonner ses étapes" : "Monter";
+  const downTitle = locked ? "Dissociez la brique pour réordonner ses étapes" : "Descendre";
+  const upDisabled = locked || i === 0;
+  const downDisabled = locked || i === state.steps.length - 1;
   return `
     <div class="step-row js-step-row" data-index="${i}" style="cursor:pointer;${highlight}">
       ${stepSelectCheckboxHtml(i)}
@@ -36,10 +42,10 @@ function stepRowHtml(step, i, compact) {
         <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(stepSummary(step))}</div>
       </div>
       <div style="display:flex;flex-direction:column;">
-        <button class="step-remove js-step-up" data-index="${i}" title="Monter" type="button" ${i === 0 ? "disabled style='opacity:.3;'" : ""}>
+        <button class="step-remove js-step-up" data-index="${i}" title="${upTitle}" type="button" ${upDisabled ? "disabled style='opacity:.3;'" : ""}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 15l7-7 7 7"/></svg>
         </button>
-        <button class="step-remove js-step-down" data-index="${i}" title="Descendre" type="button" ${i === state.steps.length - 1 ? "disabled style='opacity:.3;'" : ""}>
+        <button class="step-remove js-step-down" data-index="${i}" title="${downTitle}" type="button" ${downDisabled ? "disabled style='opacity:.3;'" : ""}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 9l7 7 7-7"/></svg>
         </button>
       </div>
@@ -59,28 +65,66 @@ function stepsListHtml(compact) {
   while (i < state.steps.length) {
     const groupId = state.steps[i].brick_group_id;
     if (!groupId) {
-      parts.push(stepRowHtml(state.steps[i], i, compact));
+      parts.push(stepRowHtml(state.steps[i], i, compact, false));
       i += 1;
       continue;
     }
     const rows = [];
     const brickName = state.steps[i].brick_name;
+    const groupStart = i;
     let j = i;
     while (j < state.steps.length && state.steps[j].brick_group_id === groupId) {
-      rows.push(stepRowHtml(state.steps[j], j, compact));
+      // en mode compact (couches) il n'y a pas de flèches par étape à désactiver de toute façon
+      rows.push(stepRowHtml(state.steps[j], j, compact, !compact));
       j += 1;
     }
+    const groupEnd = j - 1;
+    // Les flèches du bloc déplacent la brique entière d'un cran (voir moveStep) - jamais une
+    // étape isolée à l'intérieur, ce qui scinderait le bracket en deux morceaux disjoints.
     parts.push(`
       <div class="step-brick-group" style="border:1.5px dashed var(--accent);border-radius:var(--radius-sm);padding:8px;display:flex;flex-direction:column;gap:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
           <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.02em;">🧱 ${escapeHtml(brickName || "Brique")}</div>
-          <button class="js-ungroup-brick" data-group-id="${escapeHtml(groupId)}" type="button" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:11px;">Dissocier</button>
+          <div style="display:flex;align-items:center;gap:4px;">
+            ${
+              compact
+                ? ""
+                : `<button class="step-remove js-group-up" data-index="${groupStart}" title="Monter la brique" type="button" ${groupStart === 0 ? "disabled style='opacity:.3;'" : ""}>
+                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 15l7-7 7 7"/></svg>
+                   </button>
+                   <button class="step-remove js-group-down" data-index="${groupStart}" title="Descendre la brique" type="button" ${groupEnd === state.steps.length - 1 ? "disabled style='opacity:.3;'" : ""}>
+                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 9l7 7 7-7"/></svg>
+                   </button>`
+            }
+            <button class="js-ungroup-brick" data-group-id="${escapeHtml(groupId)}" type="button" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:11px;">Dissocier</button>
+          </div>
         </div>
         ${rows.join("")}
       </div>`);
     i = j;
   }
   return parts.join("");
+}
+
+// Bornes [début, fin] (incluses) du bloc auquel appartient l'étape à `index` - toute la brique si
+// elle en fait partie, sinon juste elle-même. Utilisé par moveStep pour déplacer une brique comme
+// un seul bloc (jamais scinder son bracket) et par l'insertion pour ne jamais atterrir en son
+// milieu.
+function brickSpanAt(index) {
+  const groupId = state.steps[index].brick_group_id;
+  if (!groupId) return [index, index];
+  let start = index;
+  while (start > 0 && state.steps[start - 1].brick_group_id === groupId) start -= 1;
+  let end = index;
+  while (end < state.steps.length - 1 && state.steps[end + 1].brick_group_id === groupId) end += 1;
+  return [start, end];
+}
+
+// Échange deux blocs adjacents et contigus de `steps` en place.
+function swapBlocks(steps, aStart, aEnd, bStart, bEnd) {
+  const blockA = steps.slice(aStart, aEnd + 1);
+  const blockB = steps.slice(bStart, bEnd + 1);
+  steps.splice(aStart, bEnd - aStart + 1, ...blockB, ...blockA);
 }
 
 function generateBrickGroupId() {
@@ -164,6 +208,12 @@ function renderSteps() {
       btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), -1));
     });
     list.querySelectorAll(".js-step-down").forEach((btn) => {
+      btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), 1));
+    });
+    list.querySelectorAll(".js-group-up").forEach((btn) => {
+      btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), -1));
+    });
+    list.querySelectorAll(".js-group-down").forEach((btn) => {
       btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), 1));
     });
     list.querySelectorAll(".js-step-select").forEach((cb) => {
@@ -262,13 +312,26 @@ document.getElementById("svg-container").addEventListener("click", (event) => {
   if (stepIndex >= 0 && stepIndex < state.steps.length) startEditingStep(stepIndex);
 });
 
+// Déplace le bloc (une brique entière si `index` en fait partie, sinon l'étape seule) d'un cran,
+// en échange avec son voisin - qui peut lui-même être une brique entière, auquel cas on la
+// dépasse en un clic plutôt que d'atterrir au milieu. Ça garantit qu'un bracket de brique reste
+// toujours un unique morceau contigu (voir le bug historique : scinder un groupe en deux moitiés
+// affichant le même nom, découvert en réordonnant une étape à l'intérieur d'un groupe).
 function moveStep(index, delta) {
-  const target = index + delta;
-  if (target < 0 || target >= state.steps.length) return;
-  const [step] = state.steps.splice(index, 1);
-  state.steps.splice(target, 0, step);
-  if (state.editingIndex === index) state.editingIndex = target;
-  else if (state.editingIndex === target) state.editingIndex = index;
+  const editingStep = state.editingIndex !== null ? state.steps[state.editingIndex] : null;
+  const [start, end] = brickSpanAt(index);
+  if (delta === -1) {
+    if (start === 0) return;
+    const [neighborStart, neighborEnd] = brickSpanAt(start - 1);
+    swapBlocks(state.steps, neighborStart, neighborEnd, start, end);
+  } else if (delta === 1) {
+    if (end === state.steps.length - 1) return;
+    const [neighborStart, neighborEnd] = brickSpanAt(end + 1);
+    swapBlocks(state.steps, start, end, neighborStart, neighborEnd);
+  } else {
+    return;
+  }
+  if (editingStep) state.editingIndex = state.steps.indexOf(editingStep);
   state.selectedStepIndices.clear();
   renderSteps();
 }
@@ -324,7 +387,10 @@ document.getElementById("insert-brick-btn").addEventListener("click", () => {
   const bucket = scope === "preset" ? state.techBricks.presets : scope === "partagee" ? state.techBricks.partagees : state.techBricks.projet;
   const brick = bucket.find((b) => b.name === name);
   if (!brick) return;
-  const insertAt = state.editingIndex !== null ? state.editingIndex : state.steps.length;
+  // Si l'étape en cours d'édition appartient déjà à une brique, insérer juste avant elle
+  // atterrirait au milieu de ce groupe et scinderait son bracket - on insère avant le groupe
+  // entier à la place (voir brickSpanAt).
+  const insertAt = state.editingIndex !== null ? brickSpanAt(state.editingIndex)[0] : state.steps.length;
   const groupId = generateBrickGroupId();
   const copiedSteps = JSON.parse(JSON.stringify(brick.steps)).map((s) => ({ ...s, brick_group_id: groupId, brick_name: brick.name }));
   state.steps.splice(insertAt, 0, ...copiedSteps);
