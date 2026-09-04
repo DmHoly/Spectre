@@ -21,6 +21,12 @@ const OBJECTIVE_STATUS_LABELS = {
   inconclusive: "Non concluant",
 };
 
+const EVIDENCE_KIND_LABELS = {
+  standard: "Standard",
+  image: "Image",
+  graph: "Graphique",
+};
+
 const errorBox = document.getElementById("error");
 function showError(err) {
   errorBox.textContent = err.message || String(err);
@@ -58,10 +64,18 @@ function renderHeader(detail) {
 
 function renderObjectives(detail) {
   const list = document.getElementById("objectives-list");
+  const summary = document.getElementById("objectives-summary");
   if (detail.objectives.length === 0) {
+    summary.style.display = "none";
     list.innerHTML = `<div class="help">Aucun objectif défini.</div>`;
     return;
   }
+  const metCount = detail.objectives.filter((o) => {
+    const result = objectiveResultFor(detail, o.name);
+    return result && result.status === "met";
+  }).length;
+  summary.style.display = "";
+  summary.textContent = `${metCount} / ${detail.objectives.length} atteint${metCount > 1 ? "s" : ""}`;
   list.innerHTML = detail.objectives
     .map((o) => {
       const result = objectiveResultFor(detail, o.name);
@@ -74,7 +88,7 @@ function renderObjectives(detail) {
       const statusText = result ? OBJECTIVE_STATUS_LABELS[result.status] || result.status : "En cours de vérification";
       const verification = (detail.objective_verification || {})[o.name];
       return `
-        <div style="display:flex;gap:10px;align-items:flex-start;">
+        <div class="marked-card" style="display:flex;gap:10px;align-items:flex-start;">
           <div style="width:18px;height:18px;border-radius:999px;background:${iconBg};color:${iconColor};display:flex;align-items:center;justify-content:center;flex:none;margin-top:1px;">${icon}</div>
           <div>
             <div style="font-size:13px;font-weight:600;">${escapeHtml(o.name)}</div>
@@ -557,6 +571,211 @@ document.getElementById("compare-btn").addEventListener("click", async () => {
   }
 });
 
+// Pièces jointes - même pattern que atlas.js:70-118 (panneau Atlas), porté ici pour les preuves de
+// type "image" plutôt que dupliqué tel quel : atlas.js liste des pièces jointes autonomes avec un
+// bouton de suppression, alors qu'ici une pièce jointe est propriété d'une preuve précise et ne se
+// supprime qu'en même temps qu'elle - pas besoin de deleteLinkButtonHtml.
+async function uploadFile(url, formData) {
+  const response = await fetch(url, { method: "POST", credentials: "same-origin", body: formData });
+  const text = await response.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = text;
+    }
+  }
+  if (!response.ok) {
+    const detail = data && typeof data === "object" ? data.detail : data;
+    throw new Error(typeof detail === "string" ? detail : "Une erreur est survenue.");
+  }
+  return data;
+}
+
+async function saveAnnotations(evidenceId, annotations) {
+  clearError();
+  try {
+    const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/preuves/${evidenceId}/annotations`, {
+      annotations,
+    });
+    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// Superposition SVG des annotations (flèche / cadre) sur une image de preuve. Les coordonnées sont
+// stockées en % de l'image (x/y/x2/y2) - le viewBox 0..100 avec preserveAspectRatio="none" les
+// reprojette directement sur les dimensions réelles affichées, quel que soit le ratio de l'image.
+function annotationMarkersSvg(annotations) {
+  const shapes = (annotations || [])
+    .map((a) => {
+      if (a.type === "arrow") {
+        return `<line x1="${a.x}" y1="${a.y}" x2="${a.x2}" y2="${a.y2}" stroke="var(--accent)" stroke-width="0.8" vector-effect="non-scaling-stroke" marker-end="url(#annotation-arrowhead)"/>`;
+      }
+      const x = Math.min(a.x, a.x2);
+      const y = Math.min(a.y, a.y2);
+      const w = Math.abs(a.x2 - a.x);
+      const h = Math.abs(a.y2 - a.y);
+      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="var(--accent)" fill-opacity="0.18" stroke="var(--accent)" stroke-width="0.8" vector-effect="non-scaling-stroke"/>`;
+    })
+    .join("");
+  return `
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;">
+      <defs>
+        <marker id="annotation-arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" viewBox="0 0 8 6">
+          <path d="M0,0 L8,3 L0,6 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+      ${shapes}
+    </svg>`;
+}
+
+function imageEvidenceHtml(detail, e) {
+  const attachment = (detail.attachments || []).find((a) => a.evidence_id === e.id);
+  if (!attachment) {
+    return `<div class="help" style="margin-top:8px;">Image en cours d'envoi ou absente.</div>`;
+  }
+  const url = `/api/projects/${encodeURIComponent(slug)}/pieces-jointes/${encodeURIComponent(attachment.id)}`;
+  const canEdit = isEditorRole();
+  const annotations = e.image_annotations || [];
+  const annotationsListHtml = annotations
+    .map(
+      (a, i) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;padding:3px 0;">
+        <span>${a.type === "arrow" ? "Flèche" : "Cadre"}${a.label ? " — " + escapeHtml(a.label) : ""}</span>
+        ${
+          canEdit
+            ? `<button type="button" class="js-remove-annotation" data-evidence-id="${e.id}" data-index="${i}" data-report-hide style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:14px;line-height:1;">&times;</button>`
+            : ""
+        }
+      </div>`
+    )
+    .join("");
+  return `
+    <div style="margin-top:10px;">
+      <div class="js-annotation-image" data-evidence-id="${e.id}" data-attachment-id="${attachment.id}" style="position:relative;display:inline-block;max-width:100%;cursor:${canEdit ? "crosshair" : "default"};">
+        <img src="${url}" alt="${escapeHtml(attachment.filename)}" style="max-width:100%;display:block;border-radius:var(--radius-sm);">
+        ${annotationMarkersSvg(annotations)}
+      </div>
+      ${annotationsListHtml ? `<div style="margin-top:6px;">${annotationsListHtml}</div>` : ""}
+      ${
+        canEdit
+          ? `<div class="js-annotation-tools" data-evidence-id="${e.id}" data-report-hide style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+              <button type="button" class="btn btn-line js-annotation-tool" data-tool="arrow" style="padding:4px 10px;font-size:11.5px;">Flèche</button>
+              <button type="button" class="btn btn-line js-annotation-tool" data-tool="box" style="padding:4px 10px;font-size:11.5px;">Cadre</button>
+              <button type="button" class="btn btn-primary js-annotation-save" style="padding:4px 10px;font-size:11.5px;">Enregistrer les annotations</button>
+              <span class="help js-annotation-hint" style="margin:0;"></span>
+            </div>`
+          : ""
+      }
+    </div>`;
+}
+
+function graphEvidenceHtml(e) {
+  const cfg = e.graph_config || {};
+  if (!cfg.data_source_url) {
+    return `
+      <div style="margin-top:10px;padding:12px 14px;background:var(--bg);border-radius:var(--radius-sm);border:1px dashed var(--border-soft);">
+        <div style="font-size:11.5px;font-weight:600;color:var(--text-faint);">En attente de connexion</div>
+        ${cfg.title ? `<div style="font-size:12.5px;margin-top:4px;">${escapeHtml(cfg.title)}</div>` : ""}
+        ${
+          cfg.x_label || cfg.y_label
+            ? `<div style="font-size:11.5px;color:var(--text-faint);margin-top:2px;">${escapeHtml(cfg.x_label || "")}${cfg.x_label && cfg.y_label ? " / " : ""}${escapeHtml(cfg.y_label || "")}</div>`
+            : ""
+        }
+        ${cfg.query ? `<div class="mono" style="font-size:11px;color:var(--text-faint);margin-top:6px;">${escapeHtml(cfg.query)}</div>` : ""}
+      </div>`;
+  }
+  return `<div class="js-graph-mount" data-url="${escapeHtml(cfg.data_source_url)}" data-title="${escapeHtml(cfg.title || "")}" data-x-label="${escapeHtml(cfg.x_label || "")}" data-y-label="${escapeHtml(cfg.y_label || "")}" style="margin-top:10px;min-height:120px;background:var(--bg);border-radius:var(--radius-sm);padding:12px;font-size:11.5px;color:var(--text-faint);">Chargement du graphique…</div>`;
+}
+
+// Trace un nuage de points/ligne à la main en SVG (pas de bibliothèque de graphiques - cohérent
+// avec le reste de l'app, sans étape de build).
+function svgPlotHtml(points, title, xLabel, yLabel) {
+  const w = 320;
+  const h = 180;
+  const pad = 28;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const xMin = Math.min(...xs);
+  const xMax = Math.max(...xs);
+  const yMin = Math.min(...ys);
+  const yMax = Math.max(...ys);
+  const xRange = xMax - xMin || 1;
+  const yRange = yMax - yMin || 1;
+  const sx = (x) => pad + ((x - xMin) / xRange) * (w - 2 * pad);
+  const sy = (y) => h - pad - ((y - yMin) / yRange) * (h - 2 * pad);
+  const sorted = [...points].sort((a, b) => a.x - b.x);
+  const linePoints = sorted.map((p) => `${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ");
+  const dots = points.map((p) => `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="2.5" fill="var(--accent)"/>`).join("");
+  return `
+    ${title ? `<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">${escapeHtml(title)}</div>` : ""}
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;">
+      <line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="var(--border-soft)"/>
+      <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="var(--border-soft)"/>
+      <polyline points="${linePoints}" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+      ${dots}
+    </svg>
+    <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-faint);margin-top:2px;">
+      <span>${escapeHtml(xLabel || "")}</span><span>${escapeHtml(yLabel || "")}</span>
+    </div>`;
+}
+
+// fetch() côté client, jamais côté serveur : un fetch serveur vers une URL fournie par
+// l'utilisateur ouvrirait une vraie surface SSRF pour une cible encore inconnue (le futur service
+// de données de graph_config.data_source_url) ; le fetch navigateur n'a pas ce problème, au prix
+// du CORS que devra exposer ce futur service - documenté dans l'aide du champ du formulaire.
+async function drawGraphFromUrl(mount) {
+  try {
+    const response = await fetch(mount.dataset.url);
+    if (!response.ok) throw new Error("réponse HTTP " + response.status);
+    const data = await response.json();
+    const points = Array.isArray(data.points) ? data.points : [];
+    if (!points.length) {
+      mount.innerHTML = `<div class="help" style="margin:0;">Aucune donnée renvoyée.</div>`;
+      return;
+    }
+    mount.innerHTML = svgPlotHtml(points, mount.dataset.title, mount.dataset.xLabel, mount.dataset.yLabel);
+  } catch (err) {
+    mount.innerHTML = `<div class="help" style="margin:0;">Impossible de charger le graphique (${escapeHtml(err.message || String(err))}).</div>`;
+  }
+}
+
+function evidenceFormFieldsHtml(kind) {
+  if (kind === "image") {
+    return `<div><label>Image</label><input class="field" type="file" id="evidence-image-input" accept="image/png,image/jpeg,image/gif,image/webp" required><div class="help">10 Mo maximum - une flèche ou un cadre pourront être ajoutés une fois la preuve créée.</div></div>`;
+  }
+  if (kind === "graph") {
+    return `
+      <div><label>Source</label><input class="field" id="evidence-source" placeholder="lien, fichier ou référence"></div>
+      <div class="field-row">
+        <input class="field" id="evidence-graph-x-label" placeholder="libellé axe X">
+        <input class="field" id="evidence-graph-y-label" placeholder="libellé axe Y">
+      </div>
+      <div><label>Requête</label><input class="field" id="evidence-graph-query" placeholder="ex : split vs intensité PL">
+        <div class="help">Sera interprété par un futur service de données - laissez tel quel en attendant.</div>
+      </div>
+      <div><label>URL de source de données (optionnel)</label><input class="field" id="evidence-graph-url" placeholder="https://...">
+        <div class="help">Si renseignée, le graphique se trace dès maintenant à partir de ce qu'elle renvoie (JSON {points:[{x,y},...]}).</div>
+      </div>`;
+  }
+  const stepOptions = currentProcess
+    ? `<div><label>Étape associée (optionnel)</label><select class="field" id="evidence-step-select">
+         <option value="">— aucune —</option>
+         ${(currentProcess.steps || []).map((s, i) => `<option value="${i}">${escapeHtml(stepLabelFor(i))}</option>`).join("")}
+       </select></div>`
+    : "";
+  return `
+    <div><label>Source</label><input class="field" id="evidence-source" placeholder="lien, fichier ou référence" required></div>
+    ${stepOptions}
+    <div class="field-row">
+      <input class="field" id="evidence-metric-name" placeholder="mesure (optionnel)">
+      <input class="field" id="evidence-metric-value" type="number" placeholder="valeur">
+    </div>`;
+}
+
 function renderEvidence(detail) {
   const list = document.getElementById("evidence-list");
   list.innerHTML = detail.evidence.length
@@ -570,15 +789,106 @@ function renderEvidence(detail) {
             e.step_index != null
               ? `<span class="badge badge-role" style="font-size:10.5px;margin-left:6px;">${escapeHtml(stepLabelFor(e.step_index))}</span>`
               : "";
+          const kindBadge = `<span class="badge badge-role" style="font-size:10.5px;margin-left:6px;">${EVIDENCE_KIND_LABELS[e.kind] || e.kind}</span>`;
+          const objectiveLine = e.objective
+            ? `<div style="font-size:12px;color:var(--text-soft);margin-top:4px;">Objectif visé&nbsp;: <strong>${escapeHtml(e.objective)}</strong></div>`
+            : "";
+          const interpretationBlock = e.interpretation
+            ? `<div style="font-size:12.5px;color:var(--text-soft);margin-top:6px;line-height:1.5;font-style:italic;">${escapeHtml(e.interpretation)}</div>`
+            : "";
+          let bodyHtml = "";
+          if (e.kind === "image") {
+            bodyHtml = imageEvidenceHtml(detail, e);
+          } else if (e.kind === "graph") {
+            bodyHtml = graphEvidenceHtml(e);
+          }
           return `
-            <div style="padding:10px 0;border-top:1px solid var(--border-soft);">
-              <div style="font-size:13px;font-weight:600;">${escapeHtml(e.description)}${stepBadge}</div>
-              <div style="font-size:12px;color:var(--text-soft);margin-top:2px;word-break:break-all;">${e.source.startsWith("http") ? `<a href="${escapeHtml(e.source)}" target="_blank" rel="noopener">${escapeHtml(e.source)}</a>` : escapeHtml(e.source)}</div>
+            <div class="marked-card" style="margin-top:12px;">
+              <div style="font-size:13px;font-weight:600;">${escapeHtml(e.description)}${stepBadge}${kindBadge}</div>
+              ${e.source ? `<div style="font-size:12px;color:var(--text-soft);margin-top:2px;word-break:break-all;">${e.source.startsWith("http") ? `<a href="${escapeHtml(e.source)}" target="_blank" rel="noopener">${escapeHtml(e.source)}</a>` : escapeHtml(e.source)}</div>` : ""}
               ${metricText ? `<div class="mono" style="font-size:11.5px;color:var(--text-faint);margin-top:4px;">${metricText}</div>` : ""}
+              ${objectiveLine}
+              ${interpretationBlock}
+              ${bodyHtml}
             </div>`;
         })
         .join("")
     : `<div class="help">Aucune preuve enregistrée.</div>`;
+
+  document.querySelectorAll(".js-graph-mount").forEach((mount) => drawGraphFromUrl(mount));
+
+  document.querySelectorAll(".js-remove-annotation").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const evidenceId = btn.dataset.evidenceId;
+      const idx = parseInt(btn.dataset.index, 10);
+      const evidence = detail.evidence.find((ev) => ev.id === evidenceId);
+      if (!evidence) return;
+      const updated = (evidence.image_annotations || []).filter((_, i) => i !== idx);
+      saveAnnotations(evidenceId, updated);
+    });
+  });
+
+  document.querySelectorAll(".js-annotation-image").forEach((container) => {
+    const evidenceId = container.dataset.evidenceId;
+    const evidence = detail.evidence.find((ev) => ev.id === evidenceId);
+    const toolsBar = document.querySelector(`.js-annotation-tools[data-evidence-id="${evidenceId}"]`);
+    if (!evidence || !toolsBar) return;
+    const hint = toolsBar.querySelector(".js-annotation-hint");
+    const localAnnotations = (evidence.image_annotations || []).map((a) => ({ ...a }));
+    let tool = null;
+    let dragStart = null;
+
+    function redraw() {
+      const svg = container.querySelector("svg");
+      if (svg) svg.remove();
+      container.insertAdjacentHTML("beforeend", annotationMarkersSvg(localAnnotations));
+    }
+
+    function pct(evt) {
+      const rect = container.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(100, ((evt.clientX - rect.left) / rect.width) * 100)),
+        y: Math.max(0, Math.min(100, ((evt.clientY - rect.top) / rect.height) * 100)),
+      };
+    }
+
+    function finishAnnotation(shape) {
+      const label = window.prompt("Libellé de l'annotation (optionnel)");
+      localAnnotations.push({ attachment_id: container.dataset.attachmentId, ...shape, label: label || null });
+      redraw();
+      tool = null;
+      hint.textContent = "";
+    }
+
+    toolsBar.querySelectorAll(".js-annotation-tool").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        tool = btn.dataset.tool;
+        dragStart = null;
+        hint.textContent = tool === "arrow" ? "Cliquez le départ puis l'arrivée de la flèche." : "Cliquez-glissez pour dessiner le cadre.";
+      });
+    });
+    container.addEventListener("mousedown", (evt) => {
+      if (tool !== "box") return;
+      dragStart = pct(evt);
+    });
+    container.addEventListener("mouseup", (evt) => {
+      if (tool !== "box" || !dragStart) return;
+      finishAnnotation({ type: "box", x: dragStart.x, y: dragStart.y, x2: pct(evt).x, y2: pct(evt).y });
+      dragStart = null;
+    });
+    container.addEventListener("click", (evt) => {
+      if (tool !== "arrow") return;
+      const point = pct(evt);
+      if (!dragStart) {
+        dragStart = point;
+        hint.textContent = "Cliquez l'arrivée de la flèche.";
+      } else {
+        finishAnnotation({ type: "arrow", x: dragStart.x, y: dragStart.y, x2: point.x, y2: point.y });
+        dragStart = null;
+      }
+    });
+    toolsBar.querySelector(".js-annotation-save").addEventListener("click", () => saveAnnotations(evidenceId, localAnnotations));
+  });
 
   renderEvidenceCompareTool(detail);
 
@@ -587,42 +897,82 @@ function renderEvidence(detail) {
     formWrap.innerHTML = "";
     return;
   }
-  // Rattacher une preuve à une étape n'a de sens que si le procédé est éditable (currentProcess
-  // non nul, voir applyModeVisibility) - sinon il n'y a simplement aucune étape à choisir.
-  const stepOptions = currentProcess
-    ? `<div><label>Étape associée (optionnel)</label><select class="field" id="evidence-step-select">
-         <option value="">— aucune —</option>
-         ${(currentProcess.steps || []).map((s, i) => `<option value="${i}">${escapeHtml(stepLabelFor(i))}</option>`).join("")}
+  const objectiveField = detail.objectives.length
+    ? `<div><label>Objectif visé (optionnel)</label><select class="field" id="evidence-objective-select">
+         <option value="">— aucun —</option>
+         ${detail.objectives.map((o) => `<option value="${escapeHtml(o.name)}">${escapeHtml(o.name)}</option>`).join("")}
        </select></div>`
     : "";
   formWrap.innerHTML = `
     <form id="evidence-form" class="field-group" data-report-hide style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
-      <div><label>Description</label><input class="field" id="evidence-description" placeholder="ex : mesure d'épaisseur au profilomètre" required></div>
-      <div><label>Source</label><input class="field" id="evidence-source" placeholder="lien, fichier ou référence" required></div>
-      ${stepOptions}
-      <div class="field-row">
-        <input class="field" id="evidence-metric-name" placeholder="mesure (optionnel)">
-        <input class="field" id="evidence-metric-value" type="number" placeholder="valeur">
+      <div><label>Type de preuve</label>
+        <select class="field" id="evidence-kind-select">
+          <option value="standard">Standard</option>
+          <option value="image">Image</option>
+          <option value="graph">Graphique</option>
+        </select>
       </div>
+      <div><label>Description</label><input class="field" id="evidence-description" placeholder="ex : mesure d'épaisseur au profilomètre" required></div>
+      ${objectiveField}
+      <div><label>Interprétation (optionnel)</label><textarea class="field" id="evidence-interpretation" rows="2" placeholder="pourquoi ce résultat est cohérent avec le changement"></textarea></div>
+      <div id="evidence-kind-fields">${evidenceFormFieldsHtml("standard")}</div>
       <button class="btn btn-line btn-block" type="submit">Ajouter la preuve</button>
     </form>`;
+  document.getElementById("evidence-kind-select").addEventListener("change", (event) => {
+    document.getElementById("evidence-kind-fields").innerHTML = evidenceFormFieldsHtml(event.target.value);
+  });
   document.getElementById("evidence-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     clearError();
-    const metricName = document.getElementById("evidence-metric-name").value.trim();
-    const metricValueRaw = document.getElementById("evidence-metric-value").value;
-    const stepSelect = document.getElementById("evidence-step-select");
+    const kind = document.getElementById("evidence-kind-select").value;
+    const objectiveSelect = document.getElementById("evidence-objective-select");
+    const interpretation = document.getElementById("evidence-interpretation").value.trim();
+    let source = "";
+    let graphConfig = null;
+    let imageFile = null;
     try {
+      if (kind === "image") {
+        imageFile = document.getElementById("evidence-image-input").files[0];
+        if (!imageFile) throw new Error("Choisissez une image.");
+        source = imageFile.name;
+      } else if (kind === "graph") {
+        source = document.getElementById("evidence-source").value.trim();
+        graphConfig = {
+          title: document.getElementById("evidence-description").value.trim(),
+          x_label: document.getElementById("evidence-graph-x-label").value.trim() || null,
+          y_label: document.getElementById("evidence-graph-y-label").value.trim() || null,
+          query: document.getElementById("evidence-graph-query").value.trim() || null,
+          data_source_url: document.getElementById("evidence-graph-url").value.trim() || null,
+        };
+      } else {
+        source = document.getElementById("evidence-source").value;
+      }
+      const metricNameEl = document.getElementById("evidence-metric-name");
+      const metricValueEl = document.getElementById("evidence-metric-value");
+      const stepSelect = document.getElementById("evidence-step-select");
       const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/preuves`, {
         description: document.getElementById("evidence-description").value,
-        source: document.getElementById("evidence-source").value,
-        metric_name: metricName || null,
-        metric_value: metricValueRaw ? parseFloat(metricValueRaw) : null,
+        source,
+        kind,
+        objective: objectiveSelect && objectiveSelect.value ? objectiveSelect.value : null,
+        interpretation: interpretation || null,
+        graph_config: graphConfig,
+        metric_name: metricNameEl ? metricNameEl.value.trim() || null : null,
+        metric_value: metricValueEl && metricValueEl.value ? parseFloat(metricValueEl.value) : null,
         step_index: stepSelect && stepSelect.value !== "" ? parseInt(stepSelect.value, 10) : null,
       });
       // preuves records a new version carrying the evidence (experiences are immutable) - go to
-      // it, not back to this now-superseded version.
-      window.location.href = `/projets/${slug}/experiences/${result.id}`;
+      // it, not back to this now-superseded version. For an image preuve, the upload itself
+      // records yet another version - navigate to that one instead once it's done.
+      let finalId = result.id;
+      if (kind === "image" && imageFile) {
+        const formData = new FormData();
+        formData.append("file", imageFile);
+        formData.append("evidence_id", result.evidence_id);
+        const uploadResult = await uploadFile(`/api/projects/${slug}/experiences/${result.id}/pieces-jointes`, formData);
+        finalId = uploadResult.id;
+      }
+      window.location.href = `/projets/${slug}/experiences/${finalId}`;
     } catch (err) {
       showError(err);
     }

@@ -474,6 +474,18 @@ textarea:focus {
   display: none;
 }
 
+/* Item de liste distinctif (un objectif, une preuve) - même motif que .docs-callout (liseré +
+   fond teinté) mais pensé pour s'empiler dans une liste plutôt que ponctuer de la prose. */
+.marked-card {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-tint);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: var(--space-3) var(--space-4);
+}
+.marked-card + .marked-card {
+  margin-top: var(--space-3);
+}
+
 .error {
   font-size: 12.5px;
   color: var(--danger);
