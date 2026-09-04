@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from ..core import atlas as atlas_core
 from ..core import projects
 from ..core.accounts import User
 from ..core.permissions import require_role
@@ -103,6 +104,16 @@ def remove_member(user_id: int, project: Project = Depends(require_role("owner")
         raise HTTPException(status_code=400, detail="impossible de retirer la personne qui a créé le projet")
     projects.remove_member(project.id, user_id)
     return projects.list_members(project.id)
+
+
+@router.get("/{slug}/entites/historique")
+def entity_history(project: Project = Depends(require_role("viewer"))) -> dict:
+    """Every distinct sample_id/location already used on this project's current lines of study -
+    feeds the autocomplete on the physical-entities editor (see spectre.core.atlas.entity_history_for_project).
+    """
+    repo = projects.get_repository(project.slug)
+    tips = projects.branch_tips(repo)
+    return atlas_core.entity_history_for_project(repo, tips)
 
 
 @router.delete("/{slug}")

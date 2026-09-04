@@ -63,7 +63,6 @@
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
 
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px;">
-      <button class="btn btn-line" id="mode-toggle-btn" style="display:none;">Passer en mode vue</button>
       <button class="btn btn-line" id="export-report-btn" style="display:none;">Télécharger le rapport</button>
       <button class="btn btn-primary" id="evolve-btn" style="display:none;">Enregistrer une évolution</button>
     </div>
@@ -86,7 +85,7 @@
           <div class="section-title">Structure actuelle</div>
           <div style="display:flex;align-items:center;gap:10px;">
             <div style="font-size:12px;color:var(--text-faint);" id="diff-note"></div>
-            <button type="button" id="structure-evolve-link" style="display:none;background:none;border:none;padding:0;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;">Corriger une étape &rarr;</button>
+            <button type="button" id="structure-evolve-link" data-report-hide style="display:none;background:none;border:none;padding:0;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;">Corriger une étape &rarr;</button>
           </div>
         </div>
         <div class="layer-clickable builder-canvas-svg" id="structure-svg"></div>
@@ -124,11 +123,17 @@
         <div id="physical-tracking-content"></div>
       </div>
 
+      <!-- Autocomplétion des identifiants/emplacements déjà utilisés ailleurs dans le projet -
+           remplis au chargement depuis /entites/historique, référencés par les champs des entités
+           (suivi physique simple + cartographie des variantes) via l'attribut list="...". -->
+      <datalist id="entity-sample-id-history"></datalist>
+      <datalist id="entity-location-history"></datalist>
+
       <div class="card card-pad" id="evidence-card">
         <div class="section-title" style="margin-bottom:16px;">Preuves</div>
         <div id="evidence-list"></div>
         <div id="add-evidence-wrap"></div>
-        <div id="evidence-compare-tool" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
+        <div id="evidence-compare-tool" data-report-hide style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
           <label style="font-size:11px;">Comparer deux preuves</label>
           <div class="field-row" style="margin-top:6px;">
             <select class="field" id="evidence-compare-a"></select>

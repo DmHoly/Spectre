@@ -467,6 +467,13 @@ textarea:focus {
   margin-top: 4px;
 }
 
+/* Miroir texte d'une valeur normalement portée par un champ éditable - invisible sur la fiche
+   vivante, révélé uniquement dans le rapport exporté (voir generateReportHtml/experience.js) une
+   fois le champ lui-même retiré (data-report-hide). */
+.report-only {
+  display: none;
+}
+
 .error {
   font-size: 12.5px;
   color: var(--danger);

@@ -54,6 +54,25 @@ def entities_for(experiment: Any) -> list[dict]:
     ]
 
 
+def entity_history_for_project(repo: Any, tips: list[Any]) -> dict[str, list[str]]:
+    """Every distinct sample_id/location already used anywhere on the project's current branch
+    tips - not the full commit history (a superseded intermediate version's entities don't
+    surface), the same "current state, not every version" scope :func:`entities_for` already
+    works at. Meant to feed an autocomplete on the physical-entities editor so a user typing a
+    sample id or location sees what's already in use elsewhere in the project, rather than
+    re-typing a slightly different spelling of the same thing.
+    """
+    sample_ids: set[str] = set()
+    locations: set[str] = set()
+    for tip in tips:
+        for entry in entities_for(tip):
+            if entry["sample_id"]:
+                sample_ids.add(entry["sample_id"])
+            if entry["location"]:
+                locations.add(entry["location"])
+    return {"sample_ids": sorted(sample_ids), "locations": sorted(locations)}
+
+
 def objective_statuses(experiment: Any) -> list[dict]:
     """Each objective paired with its answer at conclude time, if any - the same lookup
     ``objectiveResultFor`` does client-side on the fiche (:mod:`spectre.api.static.js.experience`),

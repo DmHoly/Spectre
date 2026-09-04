@@ -36,10 +36,6 @@ let currentDetail = null;
 let currentProcess = null; // {substrate, steps} from /process - absent for structures without an
 // editable StructureForge recipe recorded (e.g. a campaign's representative entry).
 
-// Mode vue : masque les formulaires d'édition (évoluer, conclure, ajouter une preuve, etc.) pour
-// une fiche épurée, exportable telle quelle en rapport autonome (voir generateReportHtml plus bas).
-// Un simple visiteur (rôle viewer) est déjà toujours en mode vue - seuls editor/owner basculent.
-let viewMode = false;
 function isEditorRole() {
   return currentRole === "editor" || currentRole === "owner";
 }
@@ -279,6 +275,32 @@ document.getElementById("layer-modal-close-btn").addEventListener("click", () =>
   document.getElementById("layer-modal").close();
 });
 
+// Rendu partagé d'une ligne "entité physique" (identifiant + emplacement), utilisé une fois pour
+// l'unique entité d'une expérience simple (renderPhysicalTracking) et une fois par variante d'un
+// lot (renderBatchMatrix, compact=true - tient sous une vignette plutôt qu'à côté). Les deux champs
+// portent une autocomplétion (list=, remplie depuis /entites/historique - voir populateEntityHistory)
+// et sont marqués data-report-hide + accompagnés d'un miroir texte .report-only, même mécanique que
+// partout ailleurs sur la fiche depuis la suppression du mode vue (voir generateReportHtml).
+function entityFieldsHtml(current, indexAttr, canEdit, compact) {
+  const sampleId = current.sample_id || "";
+  const location = current.location || "";
+  const roText = sampleId || location
+    ? `${sampleId ? `Identifiant&nbsp;: <strong>${escapeHtml(sampleId)}</strong>` : ""}${location ? `${sampleId ? "<br>" : ""}Emplacement&nbsp;: <strong>${escapeHtml(location)}</strong>` : ""}`
+    : "";
+  if (!canEdit) {
+    return roText
+      ? `<div style="font-size:${compact ? "11px" : "13px"};">${roText}</div>`
+      : `<div class="help">Aucun suivi physique enregistré.</div>`;
+  }
+  const idInput = `<input class="field js-entity-sample-id" data-index="${indexAttr}" data-report-hide list="entity-sample-id-history" value="${escapeHtml(sampleId)}" placeholder="${compact ? "identifiant" : "ex : W12-A3"}" style="${compact ? "margin-top:6px;font-size:11px;padding:4px 6px;" : ""}">`;
+  const locInput = `<input class="field js-entity-location" data-index="${indexAttr}" data-report-hide list="entity-location-history" value="${escapeHtml(location)}" placeholder="${compact ? "emplacement" : "ex : congélateur B, tiroir 2"}" style="${compact ? "margin-top:4px;font-size:11px;padding:4px 6px;" : ""}">`;
+  const layout = compact
+    ? `${idInput}${locInput}`
+    : `<div class="field-row" style="margin-bottom:10px;"><div><label>Identifiant physique</label>${idInput}</div><div><label>Emplacement</label>${locInput}</div></div>`;
+  const roMirror = roText ? `<span class="report-only" style="font-size:${compact ? "11px" : "13px"};margin-top:4px;">${roText}</span>` : "";
+  return `${layout}${roMirror}`;
+}
+
 async function renderBatchMatrix(detail) {
   const card = document.getElementById("matrix-card");
   if (!detail.is_batch) {
@@ -289,33 +311,29 @@ async function renderBatchMatrix(detail) {
   try {
     const variation = await api.get(`/api/projects/${slug}/experiences/${experienceId}/matrice`);
     const labels = variation.labels || variation.svgs.map((_, i) => `#${i + 1}`);
-    const canEdit = isEditorRole() && !viewMode;
+    const canEdit = isEditorRole();
     const tracking = variation.physical_tracking || [];
 
     // Cartographie : une vignette par échantillon, la structure réelle telle que StructureForge
-    // l'a simulée - pas juste la référence, chaque variante. L'identifiant physique de
-    // l'échantillon (s'il y en a un) se pose juste en dessous.
+    // l'a simulée - pas juste la référence, chaque variante. Identifiant + emplacement se posent
+    // juste en dessous (entityFieldsHtml, mode compact - voir sa doc plus haut).
     document.getElementById("atlas-content").innerHTML = `
       <div class="atlas-grid">
         ${variation.svgs
           .map((svg, i) => {
-            const sampleId = (tracking[i] && tracking[i].sample_id) || "";
-            const idField = canEdit
-              ? `<input class="field js-atlas-sample-id" data-index="${i}" value="${escapeHtml(sampleId)}" placeholder="identifiant" style="margin-top:6px;font-size:11px;padding:4px 6px;">`
-              : sampleId
-                ? `<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">${escapeHtml(sampleId)}</div>`
-                : "";
+            const idField = entityFieldsHtml(tracking[i] || {}, i, canEdit, true);
             return `<div class="atlas-tile">${svg}<div class="atlas-label">${escapeHtml(labels[i])}</div>${idField}</div>`;
           })
           .join("")}
       </div>
-      ${canEdit ? `<button class="btn btn-line" id="save-atlas-tracking-btn" type="button" style="margin-top:10px;">Enregistrer les identifiants physiques</button>` : ""}`;
+      ${canEdit ? `<button class="btn btn-line" id="save-atlas-tracking-btn" type="button" data-report-hide style="margin-top:10px;">Enregistrer les identifiants physiques</button>` : ""}`;
 
     if (canEdit) {
       document.getElementById("save-atlas-tracking-btn").addEventListener("click", () => {
         const entities = variation.svgs.map((_, i) => {
-          const input = document.querySelector(`.js-atlas-sample-id[data-index="${i}"]`);
-          return { sample_id: input.value.trim() || null, location: (tracking[i] && tracking[i].location) || null };
+          const sampleInput = document.querySelector(`.js-entity-sample-id[data-index="${i}"]`);
+          const locInput = document.querySelector(`.js-entity-location[data-index="${i}"]`);
+          return { sample_id: sampleInput.value.trim() || null, location: locInput.value.trim() || null };
         });
         savePhysicalTracking(entities);
       });
@@ -408,13 +426,14 @@ function renderConclusion(detail) {
     `;
     return;
   }
-  if (!isEditorRole() || viewMode) {
+  if (!isEditorRole()) {
     container.innerHTML = `<div class="section-title" style="margin-bottom:14px;">Conclusion</div><div class="help" style="font-style:italic;">Pas encore conclue — expérience en cours.</div>`;
     return;
   }
   container.innerHTML = `
     <div class="section-title" style="margin-bottom:14px;">Conclure l'expérience</div>
-    <form id="conclude-form" class="field-group">
+    <span class="report-only help" style="font-style:italic;">Pas encore conclue — expérience en cours.</span>
+    <form id="conclude-form" class="field-group" data-report-hide>
       <div id="objective-results"></div>
       <div><label>Résumé</label><textarea class="field" id="conclude-summary" rows="2"></textarea></div>
       <div class="field-row">
@@ -564,7 +583,7 @@ function renderEvidence(detail) {
   renderEvidenceCompareTool(detail);
 
   const formWrap = document.getElementById("add-evidence-wrap");
-  if (!isEditorRole() || viewMode) {
+  if (!isEditorRole()) {
     formWrap.innerHTML = "";
     return;
   }
@@ -577,7 +596,7 @@ function renderEvidence(detail) {
        </select></div>`
     : "";
   formWrap.innerHTML = `
-    <form id="evidence-form" class="field-group" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
+    <form id="evidence-form" class="field-group" data-report-hide style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
       <div><label>Description</label><input class="field" id="evidence-description" placeholder="ex : mesure d'épaisseur au profilomètre" required></div>
       <div><label>Source</label><input class="field" id="evidence-source" placeholder="lien, fichier ou référence" required></div>
       ${stepOptions}
@@ -704,7 +723,7 @@ function renderForksNote(detail) {
 
 function renderTags(detail) {
   const row = document.getElementById("tags-row");
-  const canEdit = isEditorRole() && !viewMode;
+  const canEdit = isEditorRole();
   const chips = detail.tags
     .map(
       (t, i) => `
@@ -712,7 +731,7 @@ function renderTags(detail) {
         ${escapeHtml(t)}
         ${
           canEdit
-            ? `<button class="js-remove-tag" data-index="${i}" type="button" style="background:none;border:none;cursor:pointer;color:inherit;padding:0;margin-left:2px;font-size:13px;line-height:1;">&times;</button>`
+            ? `<button class="js-remove-tag" data-index="${i}" type="button" data-report-hide style="background:none;border:none;cursor:pointer;color:inherit;padding:0;margin-left:2px;font-size:13px;line-height:1;">&times;</button>`
             : ""
         }
       </span>`
@@ -721,7 +740,7 @@ function renderTags(detail) {
   row.innerHTML =
     chips +
     (canEdit
-      ? `<input id="new-tag-input" placeholder="+ étiquette" style="border:1px dashed var(--border-soft);border-radius:999px;padding:4px 10px;font-size:12px;width:110px;background:transparent;">`
+      ? `<input id="new-tag-input" data-report-hide placeholder="+ étiquette" style="border:1px dashed var(--border-soft);border-radius:999px;padding:4px 10px;font-size:12px;width:110px;background:transparent;">`
       : "");
 
   row.querySelectorAll(".js-remove-tag").forEach((btn) => {
@@ -804,32 +823,18 @@ function renderPhysicalTracking(detail) {
     card.innerHTML = `<div class="help">Un identifiant physique par échantillon se pose juste sous chaque vignette de la cartographie des variantes, plus haut.</div>`;
     return;
   }
-  const canEdit = isEditorRole() && !viewMode;
+  const canEdit = isEditorRole();
   const current = detail.physical_tracking[0] || {};
-  if (!canEdit) {
-    card.innerHTML =
-      current.sample_id || current.location
-        ? `<div style="font-size:13px;">
-            ${current.sample_id ? `Identifiant&nbsp;: <strong>${escapeHtml(current.sample_id)}</strong>` : ""}
-            ${current.location ? `<br>Emplacement&nbsp;: <strong>${escapeHtml(current.location)}</strong>` : ""}
-          </div>`
-        : `<div class="help">Aucun suivi physique enregistré.</div>`;
-    return;
-  }
   card.innerHTML = `
-    <div class="field-row" style="margin-bottom:10px;">
-      <div><label>Identifiant physique</label><input class="field" id="physical-sample-id" value="${escapeHtml(current.sample_id || "")}" placeholder="ex : W12-A3"></div>
-      <div><label>Emplacement</label><input class="field" id="physical-location" value="${escapeHtml(current.location || "")}" placeholder="ex : congélateur B, tiroir 2"></div>
-    </div>
-    <button class="btn btn-line" id="save-physical-tracking-btn" type="button">Enregistrer</button>`;
-  document.getElementById("save-physical-tracking-btn").addEventListener("click", () => {
-    savePhysicalTracking([
-      {
-        sample_id: document.getElementById("physical-sample-id").value.trim() || null,
-        location: document.getElementById("physical-location").value.trim() || null,
-      },
-    ]);
-  });
+    ${entityFieldsHtml(current, 0, canEdit, false)}
+    ${canEdit ? `<button class="btn btn-line" id="save-physical-tracking-btn" type="button" data-report-hide>Enregistrer</button>` : ""}`;
+  if (canEdit) {
+    document.getElementById("save-physical-tracking-btn").addEventListener("click", () => {
+      const sampleInput = document.querySelector('.js-entity-sample-id[data-index="0"]');
+      const locInput = document.querySelector('.js-entity-location[data-index="0"]');
+      savePhysicalTracking([{ sample_id: sampleInput.value.trim() || null, location: locInput.value.trim() || null }]);
+    });
+  }
 }
 
 function renderReferences(detail) {
@@ -849,17 +854,28 @@ function renderReferences(detail) {
     .join("");
 }
 
-// Le rapport reprend tel quel le contenu déjà affiché (le mode vue garantit qu'aucun formulaire
-// d'édition ne s'y trouve) - pas de génération séparée à maintenir en double, juste les cartes qui
-// ont un sens hors de l'appli (pas "Comparer avec", un outil interactif, ni "Actions avancées").
+// Le rapport est une capture de ce qui est affiché, purgée de tout ce qui n'a de sens que dans
+// l'appli vivante - plutôt que de dépendre d'un mode dédié qui garantissait autrefois qu'aucun
+// formulaire d'édition ne traînait dans le DOM au moment de l'export (l'ancien "mode vue"), chaque
+// section est clonée puis débarrassée de tout nœud marqué data-report-hide (un formulaire, un
+// bouton d'action, un champ éditable...) ; le miroir texte .report-only qui l'accompagne parfois
+// (cf. entityFieldsHtml) - invisible sur la fiche vivante - est alors révélé pour porter la valeur
+// à sa place. Ne garde que les cartes qui ont un sens hors de l'appli (pas "Comparer avec", un
+// outil interactif, ni "Actions avancées").
 const REPORT_SECTION_IDS = ["header-card", "matrix-card", "physical-tracking-card", "evidence-card", "conclusion-section", "references-card"];
+
+function cleanSectionForReport(el) {
+  const clone = el.cloneNode(true);
+  clone.querySelectorAll("[data-report-hide]").forEach((node) => node.remove());
+  return clone.outerHTML;
+}
 
 async function generateReportHtml() {
   const css = await fetch("/static/css/style.css").then((r) => r.text());
   const threeCol = document.querySelector(".fiche-3col");
   const sections = [document.getElementById("header-card"), threeCol, ...REPORT_SECTION_IDS.slice(1).map((id) => document.getElementById(id))]
     .filter((el) => el)
-    .map((el) => el.outerHTML)
+    .map((el) => cleanSectionForReport(el))
     .join("\n");
   const generatedAt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short" }).format(new Date());
   return `<!doctype html>
@@ -873,7 +889,7 @@ async function generateReportHtml() {
   body{background:var(--bg);padding:28px 16px;}
   .report-page{max-width:1180px;margin:0 auto;}
   .report-banner{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:20px;font-size:12px;color:var(--text-faint);}
-  #evolve-btn,#mode-toggle-btn,#export-report-btn,#advanced-actions,#structure-evolve-link,#evidence-compare-tool{display:none !important;}
+  .report-only{display:inline !important;}
 </style>
 </head>
 <body>
@@ -908,28 +924,17 @@ function goToEvolve() {
 }
 
 function applyModeVisibility() {
-  const editing = isEditorRole() && !viewMode;
+  const editing = isEditorRole();
   document.getElementById("evolve-btn").style.display = editing ? "" : "none";
   // currentProcess n'est connu qu'après le chargement de /process (voir init()) - avant ça, ce
   // lien reste caché même si editing est vrai, applyModeVisibility() étant rappelée une fois de
   // plus dès que currentProcess est résolu.
   document.getElementById("structure-evolve-link").style.display = editing && currentProcess ? "" : "none";
   document.getElementById("advanced-actions").style.display = editing ? "" : "none";
-  document.getElementById("mode-toggle-btn").textContent = viewMode ? "Repasser en mode édition" : "Passer en mode vue";
-  // un visiteur (rôle viewer) est déjà en permanence sur une fiche épurée - le bouton d'export lui
-  // reste donc toujours proposé, sans passer par le bouton de bascule qui n'a de sens que pour
-  // editor/owner.
-  document.getElementById("export-report-btn").style.display = !isEditorRole() || viewMode ? "" : "none";
-}
-
-function toggleViewMode() {
-  viewMode = !viewMode;
-  applyModeVisibility();
-  renderTags(currentDetail);
-  renderPhysicalTracking(currentDetail);
-  renderEvidence(currentDetail);
-  renderConclusion(currentDetail);
-  renderBatchMatrix(currentDetail);
+  // le rapport reste disponible pour tout le monde en permanence - un éditeur voit ses propres
+  // formulaires d'édition sur la fiche vivante, mais l'export les retire toujours (data-report-hide,
+  // voir generateReportHtml) : plus besoin d'un mode dédié pour garantir un rapport propre.
+  document.getElementById("export-report-btn").style.display = "";
 }
 
 async function init() {
@@ -951,8 +956,6 @@ async function init() {
     renderPhysicalTracking(currentDetail);
 
     if (isEditorRole()) {
-      document.getElementById("mode-toggle-btn").style.display = "";
-      document.getElementById("mode-toggle-btn").addEventListener("click", toggleViewMode);
       document.getElementById("evolve-btn").addEventListener("click", goToEvolve);
       document.getElementById("structure-evolve-link").addEventListener("click", goToEvolve);
       populateCombineSelect();
@@ -960,12 +963,15 @@ async function init() {
     document.getElementById("export-report-btn").addEventListener("click", downloadReport);
     applyModeVisibility();
 
-    const [timeline, diff, process] = await Promise.all([
+    const [timeline, diff, process, entityHistory] = await Promise.all([
       api.get(`/api/projects/${slug}/experiences/${experienceId}/timeline`),
       api.get(`/api/projects/${slug}/experiences/${experienceId}/diff`),
       api.get(`/api/projects/${slug}/experiences/${experienceId}/process`).catch(() => null),
+      api.get(`/api/projects/${slug}/entites/historique`).catch(() => ({ sample_ids: [], locations: [] })),
     ]);
     currentProcess = process;
+    document.getElementById("entity-sample-id-history").innerHTML = entityHistory.sample_ids.map((v) => `<option value="${escapeHtml(v)}">`).join("");
+    document.getElementById("entity-location-history").innerHTML = entityHistory.locations.map((v) => `<option value="${escapeHtml(v)}">`).join("");
     // rejoués maintenant que currentProcess est connu - applyModeVisibility gère #structure-evolve-link,
     // renderEvidence le badge/select par étape et l'outil de comparaison (voir stepLabelFor).
     applyModeVisibility();

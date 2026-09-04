@@ -35,3 +35,37 @@ def test_nonexistent_project_is_404(client):
 def test_project_requires_authentication(client):
     response = client.get("/api/projects")
     assert response.status_code == 401
+
+
+def _substrate():
+    return {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
+
+
+def _steps():
+    return [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "mode": "conformal", "thickness": {"value": 20, "unit": "nm"}}]
+
+
+def test_entity_history_is_empty_for_a_project_with_no_tracked_entities(client):
+    register_and_login(client, "hist-empty@example.com", "Owner")
+    slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
+    history = client.get(f"/api/projects/{slug}/entites/historique").json()
+    assert history == {"sample_ids": [], "locations": []}
+
+
+def test_entity_history_collects_distinct_values_across_experiences(client):
+    register_and_login(client, "hist@example.com", "Owner")
+    slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
+
+    client.post(
+        f"/api/projects/{slug}/experiences",
+        json={"substrate": _substrate(), "steps": _steps(), "title": "A", "intent": "x", "entities": [{"sample_id": "W1-A1", "location": "congélateur B"}]},
+    )
+    second = client.post(
+        f"/api/projects/{slug}/experiences",
+        json={"substrate": _substrate(), "steps": _steps(), "title": "B", "intent": "x", "entities": [{"sample_id": "W1-A2", "location": "congélateur B"}]},
+    ).json()
+    # a repeated value (même emplacement) doit rester unique dans l'historique
+    client.post(f"/api/projects/{slug}/experiences/{second['id']}/entites", json={"entities": [{"sample_id": "W1-A2", "location": "congélateur B"}]})
+
+    history = client.get(f"/api/projects/{slug}/entites/historique").json()
+    assert history == {"sample_ids": ["W1-A1", "W1-A2"], "locations": ["congélateur B"]}
