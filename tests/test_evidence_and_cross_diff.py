@@ -215,3 +215,66 @@ def test_cross_project_diff_requires_access_to_other_project(client):
         f"?autre_projet={slug_d}&autre_experience={exp_d['id']}"
     )
     assert response.status_code == 403
+
+
+def test_evidence_kind_objective_and_interpretation_round_trip(client):
+    client.post("/api/auth/register", json={"email": "owner-kind@example.com", "password": "supersecret", "name": "Owner"})
+    slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
+    launched = client.post(
+        f"/api/projects/{slug}/experiences",
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "title": "Essai",
+            "intent": "Verifier",
+            "entities": [{"sample_id": "W1"}],
+            "objectives": [{"name": "Isolation", "metric": "resistivity_ohm_cm", "direction": "target", "target": 1e6}],
+        },
+    ).json()
+
+    response = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        json={
+            "description": "Split vs PL",
+            "source": "—",
+            "kind": "graph",
+            "objective": "Isolation",
+            "interpretation": "L'isolation augmente avec l'epaisseur, coherent avec le changement",
+            "graph_config": {"title": "Split vs PL", "x_label": "Epaisseur (nm)", "y_label": "Intensite PL", "query": "TODO", "data_source_url": None},
+        },
+    )
+    assert response.status_code == 201
+    detail = client.get(f"/api/projects/{slug}/experiences/{response.json()['id']}").json()
+    evidence = detail["evidence"][0]
+    assert evidence["kind"] == "graph"
+    assert evidence["objective"] == "Isolation"
+    assert evidence["interpretation"].startswith("L'isolation")
+    assert evidence["graph_config"]["query"] == "TODO"
+
+
+def test_evidence_objective_must_exist_on_the_experience(client):
+    client.post("/api/auth/register", json={"email": "owner-badobj@example.com", "password": "supersecret", "name": "Owner"})
+    slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
+    launched = _launch(client, slug)
+
+    response = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        json={"description": "x", "source": "y", "objective": "Objectif inexistant"},
+    )
+    assert response.status_code == 422
+
+
+def test_evidence_kind_defaults_to_standard(client):
+    client.post("/api/auth/register", json={"email": "owner-default@example.com", "password": "supersecret", "name": "Owner"})
+    slug = client.post("/api/projects", json={"name": "Projet"}).json()["slug"]
+    launched = _launch(client, slug)
+
+    response = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        json={"description": "x", "source": "y"},
+    )
+    assert response.status_code == 201
+    detail = client.get(f"/api/projects/{slug}/experiences/{response.json()['id']}").json()
+    assert detail["evidence"][0]["kind"] == "standard"
+    assert detail["evidence"][0]["objective"] is None
+    assert detail["evidence"][0]["image_annotations"] == []

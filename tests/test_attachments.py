@@ -159,6 +159,84 @@ def test_removing_an_attachment_records_a_new_version_without_it(client):
     assert download.status_code == 200
 
 
+def test_attachment_can_be_scoped_to_a_preuve_and_then_annotated(client):
+    slug = _register_and_project(client, "attach-evidence@example.com")
+    launched = _launch(client, slug)
+    with_evidence = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        json={"description": "SEM du bord", "source": "—", "kind": "image"},
+    ).json()
+    evidence_id = with_evidence["evidence_id"]
+
+    upload = client.post(
+        f"/api/projects/{slug}/experiences/{with_evidence['id']}/pieces-jointes",
+        data={"evidence_id": evidence_id},
+        files={"file": ("sem.png", _png_bytes(), "image/png")},
+    )
+    assert upload.status_code == 201
+    assert upload.json()["attachment"]["evidence_id"] == evidence_id
+    attachment_id = upload.json()["attachment"]["id"]
+    version_with_image = upload.json()["id"]
+
+    # evidence_id that doesn't exist on this experience is rejected
+    invalid = client.post(
+        f"/api/projects/{slug}/experiences/{version_with_image}/pieces-jointes",
+        data={"evidence_id": "does-not-exist"},
+        files={"file": ("autre.png", _png_bytes(), "image/png")},
+    )
+    assert invalid.status_code == 422
+
+    annotated = client.post(
+        f"/api/projects/{slug}/experiences/{version_with_image}/preuves/{evidence_id}/annotations",
+        json={
+            "annotations": [
+                {"attachment_id": attachment_id, "type": "box", "x": 10.0, "y": 20.0, "x2": 30.0, "y2": 40.0, "label": "défaut ici"},
+                {"attachment_id": attachment_id, "type": "arrow", "x": 5.0, "y": 5.0, "x2": 15.0, "y2": 15.0, "label": None},
+            ]
+        },
+    )
+    assert annotated.status_code == 200
+
+    detail = client.get(f"/api/projects/{slug}/experiences/{annotated.json()['id']}").json()
+    evidence = next(e for e in detail["evidence"] if e["id"] == evidence_id)
+    assert len(evidence["image_annotations"]) == 2
+    assert evidence["image_annotations"][0]["label"] == "défaut ici"
+    # the attachment itself carried forward unaffected
+    assert detail["attachments"][0]["id"] == attachment_id
+
+
+def test_annotations_reject_an_attachment_that_does_not_belong_to_the_preuve(client):
+    slug = _register_and_project(client, "attach-annot-mismatch@example.com")
+    launched = _launch(client, slug)
+    with_evidence = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        json={"description": "SEM", "source": "—", "kind": "image"},
+    ).json()
+    evidence_id = with_evidence["evidence_id"]
+
+    # an attachment not scoped to this evidence at all (whole-study attachment)
+    upload = client.post(
+        f"/api/projects/{slug}/experiences/{with_evidence['id']}/pieces-jointes",
+        files={"file": ("autre.png", _png_bytes(), "image/png")},
+    ).json()
+
+    response = client.post(
+        f"/api/projects/{slug}/experiences/{upload['id']}/preuves/{evidence_id}/annotations",
+        json={"annotations": [{"attachment_id": upload["attachment"]["id"], "type": "box", "x": 1.0, "y": 1.0}]},
+    )
+    assert response.status_code == 422
+
+
+def test_annotations_on_a_nonexistent_evidence_id_is_404(client):
+    slug = _register_and_project(client, "attach-annot-404@example.com")
+    launched = _launch(client, slug)
+    response = client.post(
+        f"/api/projects/{slug}/experiences/{launched['id']}/preuves/does-not-exist/annotations",
+        json={"annotations": []},
+    )
+    assert response.status_code == 404
+
+
 def test_viewer_cannot_upload_an_attachment(client):
     owner_slug = _register_and_project(client, "attach-owner@example.com")
     launched = _launch(client, owner_slug)

@@ -18,7 +18,7 @@ import json
 import re
 import secrets
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import follow
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -91,6 +91,24 @@ class EvidenceInput(BaseModel):
     metric_value: float | None = None
     metric_unit: str | None = None
     step_index: int | None = None
+    kind: Literal["standard", "image", "graph"] = "standard"
+    objective: str | None = None
+    interpretation: str | None = None
+    graph_config: dict[str, Any] | None = None
+
+
+class AnnotationInput(BaseModel):
+    attachment_id: str
+    type: Literal["arrow", "box"]
+    x: float
+    y: float
+    x2: float | None = None
+    y2: float | None = None
+    label: str | None = None
+
+
+class EvidenceAnnotationsRequest(BaseModel):
+    annotations: list[AnnotationInput]
 
 
 class CombineRequest(BaseModel):
@@ -417,6 +435,9 @@ def add_evidence(
         if not (0 <= body.step_index < len(steps)):
             raise HTTPException(status_code=422, detail="étape sélectionnée invalide")
 
+    if body.objective is not None and not any(o.name == body.objective for o in parent.objectives):
+        raise HTTPException(status_code=422, detail=f"objectif {body.objective!r} introuvable sur cette expérience")
+
     metric = None
     if body.metric_name:
         if body.metric_value is None:
@@ -430,12 +451,17 @@ def add_evidence(
     builder.evidence = list(parent.evidence)
     builder.tags = list(parent.tags)
     builder.conclusion = parent.conclusion
+    evidence_id = secrets.token_hex(6)
     builder.add_evidence(
-        id=secrets.token_hex(6),
+        id=evidence_id,
         description=body.description,
         source=body.source,
         metrics=metric or {},
         step_index=body.step_index,
+        kind=body.kind,
+        objective=body.objective,
+        interpretation=body.interpretation,
+        graph_config=body.graph_config,
     )
     try:
         experiment = builder.commit()
@@ -443,7 +469,7 @@ def add_evidence(
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer cette preuve - rechargez la page et réessayez."
         ) from exc
-    return {"id": experiment.id}
+    return {"id": experiment.id, "evidence_id": evidence_id}
 
 
 @router.post("/{slug}/experiences/{ref:path}/combiner", status_code=201)
@@ -599,17 +625,20 @@ async def upload_attachment(
     ref: str,
     file: UploadFile = File(...),
     entity_index_raw: str | None = Form(None, alias="entity_index"),
+    evidence_id: str | None = Form(None),
     project: Project = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
-    """Attach a file (mesure, wafer map, photo...) to this experience, or to one of the physical
-    entities it tracks - ``entity_index`` into that experience's current ``physical_tracking``
-    list, the same addressing the atlas's entity nodes and :mod:`spectre.core.links` already use;
-    omitted, the attachment belongs to the study as a whole. Like tags/physical_tracking, this
-    rides in ``Experiment.metadata`` and records a new version rather than mutating anything in
-    place. The uploaded bytes themselves live separately
-    (:func:`spectre.core.projects.attachments_dir`), named by a fresh id rather than the uploaded
-    filename so nothing here ever has to turn a user-supplied name into a safe path.
+    """Attach a file (mesure, wafer map, photo...) to this experience, to one of the physical
+    entities it tracks (``entity_index``, into that experience's current ``physical_tracking``
+    list - the same addressing the atlas's entity nodes and :mod:`spectre.core.links` already use),
+    or to one of its preuves (``evidence_id`` - typically a ``kind="image"`` preuve the client will
+    then annotate, see :func:`update_evidence_annotations`). Omitting both means the attachment
+    belongs to the study as a whole. Like tags/physical_tracking, this rides in
+    ``Experiment.metadata`` and records a new version rather than mutating anything in place. The
+    uploaded bytes themselves live separately (:func:`spectre.core.projects.attachments_dir`),
+    named by a fresh id rather than the uploaded filename so nothing here ever has to turn a
+    user-supplied name into a safe path.
     """
     repo = projects.get_repository(project.slug)
     try:
@@ -630,6 +659,9 @@ async def upload_attachment(
         )
         if entity_index < 0 or entity_index >= expected_count:
             raise HTTPException(status_code=422, detail="cette entité n'existe pas sur cette expérience")
+
+    if evidence_id is not None and not any(e.id == evidence_id for e in parent.evidence):
+        raise HTTPException(status_code=422, detail="preuve introuvable sur cette expérience")
 
     content_type = (file.content_type or "").split(";")[0].strip().lower()
     if content_type not in ATTACHMENT_ALLOWED_TYPES:
@@ -653,6 +685,7 @@ async def upload_attachment(
         "content_type": content_type,
         "size": len(contents),
         "entity_index": entity_index,
+        "evidence_id": evidence_id,
         "uploaded_by": user.name,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -713,6 +746,56 @@ def remove_attachment(
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible de retirer la pièce jointe - rechargez la page et réessayez."
+        ) from exc
+    return {"id": experiment.id}
+
+
+@router.post("/{slug}/experiences/{ref:path}/preuves/{evidence_id}/annotations")
+def update_evidence_annotations(
+    ref: str,
+    evidence_id: str,
+    body: EvidenceAnnotationsRequest,
+    project: Project = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Replace a ``kind="image"`` preuve's annotations (arrows/boxes marking up one of its attached
+    images) - a separate step from uploading the image itself, since annotating happens by
+    clicking on the picture once it's already visible. Same lightweight-evolution shape as every
+    other mutation on evidence (tags/preuves/entités carried over unchanged, only this one preuve's
+    ``image_annotations`` changes).
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        parent = repo.get(ref)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    target = next((e for e in parent.evidence if e.id == evidence_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="preuve introuvable sur cette version")
+
+    attachment_ids = {a.get("id") for a in parent.metadata.get("attachments", []) if a.get("evidence_id") == evidence_id}
+    for annotation in body.annotations:
+        if annotation.attachment_id not in attachment_ids:
+            raise HTTPException(status_code=422, detail="pièce jointe introuvable sur cette preuve")
+
+    updated_evidence = [
+        e.model_copy(update={"image_annotations": [a.model_dump() for a in body.annotations]}) if e.id == evidence_id else e
+        for e in parent.evidence
+    ]
+
+    builder = repo.derive(
+        ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
+    )
+    builder.metadata = dict(parent.metadata)
+    builder.evidence = updated_evidence
+    builder.tags = list(parent.tags)
+    builder.conclusion = parent.conclusion
+    try:
+        experiment = builder.commit()
+    except follow.FollowError as exc:
+        raise HTTPException(
+            status_code=400, detail="Impossible d'enregistrer les annotations - rechargez la page et réessayez."
         ) from exc
     return {"id": experiment.id}
 
