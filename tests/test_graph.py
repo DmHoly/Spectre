@@ -41,6 +41,32 @@ def test_graph_html_with_experiments(client):
     assert "plotly" in response.text.lower()
 
 
+def test_graph_html_still_renders_with_a_tag_only_commit_collapsed_out(client):
+    # the collapsing rules themselves (which commits are kept/removed) are unit-tested in
+    # tests/test_versioning.py - this just proves the endpoint is wired up to them without crashing.
+    slug = _setup_project(client)
+    substrate = {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
+    steps = [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
+    launched = client.post(
+        f"/api/projects/{slug}/experiences",
+        json={"substrate": substrate, "steps": steps, "title": "Essai", "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
+    ).json()
+    tagged = client.post(f"/api/projects/{slug}/experiences/{launched['id']}/etiquettes", json={"tags": ["a-suivre"]}).json()
+    client.post(
+        f"/api/projects/{slug}/experiences/{tagged['id']}/evoluer",
+        json={
+            "substrate": substrate,
+            "steps": [{**steps[0], "thickness": {"value": 40, "unit": "nm"}}],
+            "title": "Essai",
+            "intent": "Doubler l'epaisseur",
+            "objectives": [],
+        },
+    )
+    response = client.get(f"/api/projects/{slug}/graphe.html")
+    assert response.status_code == 200
+    assert "plotly" in response.text.lower()
+
+
 def test_graph_page_is_served(client):
     slug = _setup_project(client)
     assert client.get(f"/projets/{slug}/graphe").status_code == 200

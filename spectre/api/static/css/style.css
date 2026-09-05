@@ -568,6 +568,31 @@ textarea:focus {
   margin-top: 3px;
 }
 
+.timeline-version {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-tint);
+  color: var(--accent-dark);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* Un commit qui n'a pas fait bouger la version (une preuve, un tag, un titre...) - toujours dans
+   l'historique complet, mais visuellement en retrait par rapport à un vrai changement de version. */
+.timeline-item.no-version-change {
+  opacity: 0.65;
+}
+.timeline-item.no-version-change::before {
+  background: var(--text-faint);
+  box-shadow: 0 0 0 1px var(--text-faint);
+}
+.timeline-item.no-version-change .timeline-title {
+  font-weight: 500;
+}
+
 /* -- fiche d'expérience : structure / suivi / objectifs côte à côte, même hauteur -------- */
 
 /* Same recipe as .builder-grid below (align-items: stretch + a .builder-col/.builder-col__scroll

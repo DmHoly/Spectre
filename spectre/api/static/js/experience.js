@@ -101,23 +101,47 @@ function renderObjectives(detail) {
     .join("");
 }
 
-function renderTimeline(items) {
+// Niveau de changement de procédé/structure (voir spectre.core.versioning) -> libellé affiché à
+// côté du numéro de version. "none" n'apparaît que dans l'historique complet (voir
+// renderFullHistory) : la frise des versions ne garde que les entrées qui en ont un.
+const CHANGE_LEVEL_LABELS = {
+  initial: "version initiale",
+  major: "changement majeur",
+  minor: "changement mineur",
+  patch: "ajustement mineur",
+  none: null,
+};
+
+function versionBadge(item) {
+  return `<span class="timeline-version" title="${escapeHtml(CHANGE_LEVEL_LABELS[item.change_level] || "")}">v${escapeHtml(item.version)}</span>`;
+}
+
+// item.is_current vient du serveur (la toute dernière entrée de la piste) - jamais déduit de la
+// position dans la liste affichée, puisque la frise des versions peut omettre des entrées
+// intermédiaires (voir renderTimeline) et donc ne pas se terminer sur le vrai commit courant.
+function renderTimelineItem(item, extraClass) {
+  return `
+    <div class="timeline-item ${item.is_current ? "current" : ""} ${extraClass || ""}">
+      <div class="timeline-date">${formatDate(item.created_at)}${item.is_current ? " · version actuelle" : ""} ${versionBadge(item)}</div>
+      <div class="timeline-title">${escapeHtml(item.title)}</div>
+      <div class="timeline-desc">${escapeHtml(item.intent)}</div>
+    </div>`;
+}
+
+function renderTimeline(versions) {
   const el = document.getElementById("timeline");
   // Most recent first - #timeline is a .builder-col__scroll box that starts scrolled to the top,
-  // so the last few commits are visible without scrolling ; the rest of the history is a scroll
-  // away instead of pushing the page down (and stretched to match the other two columns' height
-  // - see .fiche-3col in style.css).
+  // so the last few commits are visible without scrolling ; le reste (dont chaque étape qui n'a
+  // pas fait bouger la version) est dans l'historique complet en bas de la fiche, pas ici.
+  el.innerHTML = [...versions].reverse().map((item) => renderTimelineItem(item)).join("");
+}
+
+function renderFullHistory(items) {
+  const el = document.getElementById("full-history");
+  if (!el) return;
   el.innerHTML = [...items]
     .reverse()
-    .map((item, i) => {
-      const isCurrent = i === 0;
-      return `
-        <div class="timeline-item ${isCurrent ? "current" : ""}">
-          <div class="timeline-date">${formatDate(item.created_at)}${isCurrent ? " · version actuelle" : ""}</div>
-          <div class="timeline-title">${escapeHtml(item.title)}</div>
-          <div class="timeline-desc">${escapeHtml(item.intent)}</div>
-        </div>`;
-    })
+    .map((item) => renderTimelineItem(item, item.change_level === "none" ? "no-version-change" : ""))
     .join("");
 }
 
@@ -1329,7 +1353,8 @@ async function init() {
     // renderEvidence le badge/select par étape et l'outil de comparaison (voir stepLabelFor).
     applyModeVisibility();
     renderEvidence(currentDetail);
-    renderTimeline(timeline.items);
+    renderTimeline(timeline.versions);
+    renderFullHistory(timeline.items);
     renderStructure(currentDetail, diff);
     populateCompareProjectSelect();
   } catch (err) {
