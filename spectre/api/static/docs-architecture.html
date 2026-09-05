@@ -40,6 +40,7 @@
         <a href="#pont-follow">Le pont vers Follow</a>
         <a href="#evolution-legere">Le modèle « évolution légère »</a>
         <a href="#vocabulaire">Vocabulaire UI</a>
+        <a href="#versionnage">Version de procédé (X.Y.Z)</a>
         <a href="#droits">Droits</a>
         <a href="#doe">DOE et campagnes</a>
         <a href="#croissance-selective">Croissance épitaxiale vs croissance facettée</a>
@@ -144,10 +145,24 @@ experiment = builder.commit()</code></pre>
               <tr><td>branche</td><td>piste (jamais nommée explicitement dans le flux principal — un nom est généré automatiquement)</td></tr>
               <tr><td>fork / nouvelle branche</td><td>explorer une nouvelle piste</td></tr>
               <tr><td>merge</td><td>combiner (action avancée, repliée)</td></tr>
-              <tr><td>graphe de filiation</td><td>frise chronologique (fiche) / vue d'ensemble (page dédiée, avancée)</td></tr>
+              <tr><td>graphe de filiation</td><td>versions du procédé + historique complet (fiche) / vue d'ensemble (page dédiée, avancée)</td></tr>
             </tbody>
           </table>
           <p>Deux endroits ont dû être corrigés explicitement pour une fuite de ce vocabulaire : le graphe Plotly de Follow (<code>follow.presentation.graphing.build_graph_figure</code>) étiquette nativement ses pointes de branche et son survol avec <code>"branche: ..."</code> — <code>spectre/api/experiments.py::project_graph_html()</code> retire cette trace et nettoie le texte de survol avant de servir la page. Et toute erreur remontée par un <code>commit()</code> Follow est traduite en message français générique plutôt que transmise telle quelle (voir « évolution légère » ci-dessus).</p>
+        </section>
+
+        <section id="versionnage">
+          <h2>Version de procédé (X.Y.Z) vs historique complet</h2>
+          <p>Follow committe une nouvelle version immuable à chaque action - lancer, évoluer, conclure, ajouter une preuve, taguer... - sans distinguer un changement de structure d'une simple mise à jour de métadonnée : c'est délibéré, Follow ne sait pas ce que "structurel" veut dire pour un domaine qu'il ne connaît pas. Cette distinction est spécifique à StructureForge (un substrat + une liste ordonnée de <code>ProcessStep</code>) et vit donc entièrement côté Spectre, dans <code>spectre/core/versioning.py</code> - un calcul dérivé à la lecture, jamais stocké : rien de nouveau n'est écrit dans Follow, aucun endpoint de commit n'a changé.</p>
+          <p><code>classify_process_change(before, after)</code> compare deux <code>structureforge_process</code> (substrat + étapes, voir <code>spectre.core.structures.process_metadata</code>) et classe le passage de l'un à l'autre :</p>
+          <ul>
+            <li><strong>majeur (X)</strong> - le substrat a changé, ou la liste des étapes a changé de forme (une étape ajoutée, retirée, ou l'ordre/la séquence des <code>kind</code> a changé).</li>
+            <li><strong>mineur (Y)</strong> - même substrat, même forme d'étapes, mais au moins un champ autre que le <code>name</code> d'une étape diffère (un matériau, une recette, une épaisseur, une orientation...) - tout ce qui peut réellement changer la géométrie simulée.</li>
+            <li><strong>correctif (Z)</strong> - la seule différence est le <code>name</code> d'une étape - un simple libellé, sans aucun effet sur la simulation (<code>structureforge.process.simulate._apply</code> ne lit jamais ce champ).</li>
+            <li><strong>aucun</strong> - le procédé est identique bit à bit ; ce qui a changé sur ce commit (un tag, un titre, une preuve...) n'est pas un changement de structure/procédé.</li>
+          </ul>
+          <p><code>compute_branch_versions(history)</code> parcourt l'historique premier-parent d'une piste (<code>reversed(repo.log(ref))</code>, déjà utilisé par <code>GET .../timeline</code>) et assigne un <code>X.Y.Z</code> à chaque commit, y compris ceux classés "aucun" - qui héritent simplement du numéro de leur prédécesseur. <code>GET .../timeline</code> renvoie donc deux vues de la même piste : <code>items</code> (tout, numéro de version inclus, pour l'historique complet en bas de la fiche) et <code>versions</code> (uniquement les entrées dont le niveau n'est pas "aucun", pour la frise "Versions du procédé" au-dessus).</p>
+          <p>Le graphe de projet (<code>project_graph_html()</code>) applique la même idée à l'échelle du dépôt entier : <code>determine_keep_ids()</code> garde toujours une racine, une fusion (deux pistes qui se rejoignent restent visibles quel que soit leur contenu) ou la pointe d'une branche, et sinon ne garde un commit que s'il a fait bouger la version ; <code>collapsed_dag()</code> reconstruit ensuite le graphe en reliant chaque nœud gardé à ses plus proches ancêtres gardés, en traversant les commits retirés. Le résultat est passé à <code>build_graph_figure(repo, dag=...)</code>, dont le paramètre <code>dag</code> (optionnel, <code>None</code> = <code>repo.graph()</code>) a été ajouté côté Follow spécifiquement pour ce besoin - Follow reste générique, il dessine simplement le graphe qu'on lui donne.</p>
         </section>
 
         <section id="droits">

@@ -83,6 +83,41 @@ def test_evolve_then_timeline_and_diff(client):
     assert len(diff["entries"]) >= 1
 
 
+def test_timeline_versions_only_lists_process_changes_full_history_lists_everything(client):
+    slug = _setup_project(client)
+    launched = _launch(client, slug, thickness=20)
+
+    # a tag-only commit does not touch the process at all
+    tagged = client.post(f"/api/projects/{slug}/experiences/{launched['id']}/etiquettes", json={"tags": ["a-suivre"]})
+    assert tagged.status_code == 201
+    tagged_id = tagged.json()["id"]
+
+    evolve_body = {
+        "substrate": _substrate(),
+        "steps": _steps(thickness=10),
+        "title": "Essai initial",
+        "intent": "Reduire l'epaisseur",
+        "objectives": [],
+    }
+    evolved = client.post(f"/api/projects/{slug}/experiences/{tagged_id}/evoluer", json=evolve_body)
+    assert evolved.status_code == 201
+    evolved_id = evolved.json()["id"]
+
+    timeline = client.get(f"/api/projects/{slug}/experiences/{evolved_id}/timeline").json()
+
+    assert [item["id"] for item in timeline["items"]] == [launched["id"], tagged_id, evolved_id]
+    by_id = {item["id"]: item for item in timeline["items"]}
+    assert by_id[launched["id"]]["change_level"] == "initial"
+    assert by_id[launched["id"]]["version"] == "1.0.0"
+    assert by_id[tagged_id]["change_level"] == "none"
+    assert by_id[tagged_id]["version"] == "1.0.0"  # unchanged - the tag didn't touch the process
+    assert by_id[evolved_id]["change_level"] == "minor"  # same step, only the thickness changed
+    assert by_id[evolved_id]["version"] == "1.1.0"
+
+    # the tag-only commit is in the full history but not in the version-only view
+    assert [item["id"] for item in timeline["versions"]] == [launched["id"], evolved_id]
+
+
 def test_conclude_experience(client):
     slug = _setup_project(client)
     launched = _launch(client, slug)

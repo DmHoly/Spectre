@@ -1,8 +1,12 @@
 """Experiment endpoints: wraps ``follow.storage.repository.Repository`` for one project. Deep
-logic (versioning, diffing, DOE) stays in ``follow``; turning a re-edited process into a new
+logic (commits, diffing, DOE) stays in ``follow``; turning a re-edited process into a new
 committed version goes through ``structureforge.adapters.follow_adapter.derive_experiment`` (added
-in this repository's StructureForge branch specifically for Spectre's "evolve" flow). This module
-only resolves which project's repository to use and translates errors into HTTP responses.
+in this repository's StructureForge branch specifically for Spectre's "evolve" flow). The one
+thing Follow deliberately doesn't know is what "structural" means for a StructureForge process
+(a substrate + ordered ``ProcessStep``s) - that classification, and the X.Y.Z it produces, lives
+in :mod:`spectre.core.versioning`, layered on top of Follow's plain commit chain. This module
+otherwise only resolves which project's repository to use and translates errors into HTTP
+responses.
 
 Route order matters: ``{ref:path}`` is greedy (it matches slashes too - see
 ``follow/api/app.py``'s own note on the same trick), so every route with a literal suffix after
@@ -26,7 +30,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
 
-from ..core import projects, structures
+from ..core import projects, structures, versioning
 from ..core.accounts import User
 from ..core.permissions import get_project as resolve_project
 from ..core.permissions import require_role
@@ -205,10 +209,16 @@ def list_experiences(
 
 @router.get("/{slug}/graphe.html", response_class=HTMLResponse)
 def project_graph_html(project: Project = Depends(require_role("viewer"))) -> str:
-    """The project's full lineage as a self-contained Plotly page - the same figure Follow's own
+    """The project's lineage as a self-contained Plotly page - the same rendering Follow's own
     GUI embeds (``follow.presentation.graphing.build_graph_figure``), served directly so the
     "vue d'ensemble" page can drop it into an iframe. An advanced, opt-in view: the fiche's own
     frise chronologique (see :mod:`spectre.api.static.js.experience`) is the everyday one.
+
+    Only shows commits that actually moved a process/structure forward (plus every root, merge,
+    and branch tip, so a join between two lines of work and "where things stand" are never
+    hidden) - see :mod:`spectre.core.versioning`. A tag, a piece of evidence, a title edit... on
+    an otherwise-unchanged process is collapsed out of this graph the same way it's kept out of
+    a fiche's version-only frise; it's still on the fiche's full history, just not here.
     """
     repo = projects.get_repository(project.slug)
     if len(repo) == 0:
@@ -218,7 +228,13 @@ def project_graph_html(project: Project = Depends(require_role("viewer"))) -> st
         )
     from follow.presentation.graphing import build_graph_figure
 
-    figure = build_graph_figure(repo)
+    experiments = {exp.id: exp for exp in repo}
+    dag = {exp_id: exp.parents for exp_id, exp in experiments.items()}
+    processes = {exp_id: exp.metadata.get("structureforge_process") for exp_id, exp in experiments.items()}
+    keep = versioning.determine_keep_ids(dag, processes, tips=set(repo.branches.values()))
+    filtered_dag = versioning.collapsed_dag(dag, keep)
+
+    figure = build_graph_figure(repo, dag=filtered_dag)
     figure.update_layout(title="Vue d'ensemble du projet")
     # Follow's own figure labels branch tips and hover text with raw git vocabulary ("branche:
     # ...", bare branch slugs) - not fit for Spectre's non-technical audience, so scrub it here
@@ -249,6 +265,12 @@ def experience_process(ref: str, project: Project = Depends(require_role("viewer
 
 @router.get("/{slug}/experiences/{ref:path}/timeline")
 def experience_timeline(ref: str, project: Project = Depends(require_role("viewer"))) -> dict:
+    """Two views of the same lineage. ``versions`` keeps only the commits that actually moved the
+    process/structure forward (see :mod:`spectre.core.versioning`), each carrying its own X.Y.Z -
+    the frise chronologique's everyday view. ``items`` is every commit in the branch (a tag, a
+    piece of evidence, a title edit... included), version number and all, for the "historique
+    complet" at the bottom of the fiche.
+    """
     repo = projects.get_repository(project.slug)
     try:
         history = repo.log(ref)
@@ -256,6 +278,7 @@ def experience_timeline(ref: str, project: Project = Depends(require_role("viewe
         raise _not_found(exc) from exc
 
     chronological = list(reversed(history))
+    branch_versions = versioning.compute_branch_versions(chronological)
     items = [
         {
             "id": exp.id,
@@ -264,10 +287,13 @@ def experience_timeline(ref: str, project: Project = Depends(require_role("viewe
             "created_at": exp.created_at.isoformat(),
             "author": exp.author,
             "is_current": i == len(chronological) - 1,
+            "version": branch_versions[exp.id]["version"],
+            "change_level": branch_versions[exp.id]["level"],
         }
         for i, exp in enumerate(chronological)
     ]
-    return {"items": items}
+    versions = [item for item in items if item["change_level"] != "none"]
+    return {"items": items, "versions": versions}
 
 
 @router.get("/{slug}/experiences/{ref:path}/diff")
