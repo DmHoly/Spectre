@@ -14,7 +14,7 @@ def _steps():
             "kind": "deposition",
             "name": "PGaN",
             "material": "GaN",
-            "mode": "conformal",
+            "recipe": "CVD Conformal",
             "thickness": {"value": 50, "unit": "nm"},
         }
     ]

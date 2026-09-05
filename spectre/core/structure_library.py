@@ -14,9 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from pydantic import BaseModel, Field
-from structureforge.core.recipes import DepositionMode, EtchMode
 from structureforge.core.units import Length
-from structureforge.process.steps import Deposition, Etch, Lithography, ProcessStep, ResistStrip, SemipolarFacet
+from structureforge.process.steps import Deposition, Etch, FacetedGrowth, Lithography, ProcessStep, ResistStrip
 
 from .keyed_store import KeyedJsonStore
 from .structures import SubstrateSpec
@@ -33,11 +32,11 @@ class SavedStructure(BaseModel):
 def _nanofil_vpit_inverse_preset() -> SavedStructure:
     """A selective-area-grown GaN nanowire tapering to a facetted point on two symmetric
     semipolar planes - an "anti-V-pit" (the same {1-101}-type facets a V-pit shows, but on a
-    convex mesa growing up instead of a concave notch growing down), the shape
-    ``structureforge/examples/nanowire_semipolar_tip.py`` demonstrates. Everything but the facet
-    itself is ordinary Deposition/Etch/Lithography; the facet is a
-    :class:`structureforge.process.steps.SemipolarFacet`, the one shape ordinary directional/
-    isotropic deposition and etch can't reproduce on their own (see its docstring).
+    convex mesa growing up instead of a concave notch growing down). Everything but the tip
+    itself is ordinary Deposition/Etch/Lithography; the tip is a
+    :class:`structureforge.process.steps.FacetedGrowth` (kinetic Wulff growth) with the semi-polar
+    rate dominating the c-plane rate, so the two facets close in on a point instead of the pillar
+    just growing straight up.
     """
     domain_width_nm = 300.0
     cx = domain_width_nm / 2
@@ -46,8 +45,8 @@ def _nanofil_vpit_inverse_preset() -> SavedStructure:
         name="Nanofil pointe semipolaire (V-pit inversé)",
         substrate=SubstrateSpec(material="Sapphire", domain_width=Length.nm(domain_width_nm), thickness=Length.nm(20)),
         steps=[
-            Deposition(name="Tampon AlN", material="AlN", mode=DepositionMode.conformal, thickness=Length.nm(10)),
-            Deposition(name="GaN (précurseur)", material="GaN", mode=DepositionMode.conformal, thickness=Length.nm(60)),
+            Deposition(name="Tampon AlN", material="AlN", recipe="MOCVD Epitaxial", thickness=Length.nm(10)),
+            Deposition(name="GaN (précurseur)", material="GaN", recipe="MOCVD Epitaxial", thickness=Length.nm(60)),
             Lithography(
                 name="Masque du nanofil",
                 resist_material="Photoresist",
@@ -56,23 +55,23 @@ def _nanofil_vpit_inverse_preset() -> SavedStructure:
             ),
             Etch(
                 name="Gravure RIE du nanofil",
-                mode=EtchMode.directional,
-                angle_deg=0.0,
-                selectivity_by_material={"GaN": 1.0, "AlGaN": 1.0, "InGaN": 1.0, "AlN": 1.0},
-                default_factor=0.05,
+                recipe="Cl2 ICP-RIE (III-N)",
                 depth=Length.nm(60),
             ),
             ResistStrip(name="Retrait résine"),
-            SemipolarFacet(
+            FacetedGrowth(
                 name="Pointe semipolaire (anti-V-pit)",
-                orientation="tip",
-                base_half_width=Length.nm(pillar_half_width_nm),
-                tip_half_width=Length.nm(8),
-                facet_angle_deg=60.0,
+                material="GaN",
+                thickness=Length.nm(40),
+                rate_c=0.3,
+                rate_m=0.0,
+                rate_sp=0.5,
+                semi_polar_angle_deg=30.0,
+                seed_materials=["GaN"],
             ),
-            Deposition(name="Puits quantique InGaN", material="InGaN", mode=DepositionMode.conformal, thickness=Length.nm(3)),
-            Deposition(name="Capot GaN", material="GaN", mode=DepositionMode.conformal, thickness=Length.nm(8)),
-            Deposition(name="Contact ITO", material="ITO", mode=DepositionMode.directional, angle_deg=0.0, thickness=Length.nm(15)),
+            Deposition(name="Puits quantique InGaN", material="InGaN", recipe="MOCVD Epitaxial", thickness=Length.nm(3)),
+            Deposition(name="Capot GaN", material="GaN", recipe="MOCVD Epitaxial", thickness=Length.nm(8)),
+            Deposition(name="Contact ITO", material="ITO", recipe="Sputter Metal (normal)", thickness=Length.nm(15)),
         ],
         derived_from=None,
         created_at="preset",

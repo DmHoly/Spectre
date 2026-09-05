@@ -112,6 +112,18 @@ def list_materials(project: Project = Depends(require_role("viewer"))) -> list[d
     return [m.model_dump(mode="json") for m in structures.materials_library()]
 
 
+@router.get("/{slug}/recettes")
+def list_recipes(project: Project = Depends(require_role("viewer"))) -> dict:
+    """The named deposition/etch recipes a step can pick from - mode/angle/selectivity live on
+    the recipe (see :mod:`structureforge.core.recipes`), not on the step itself.
+    """
+    recipes = structures.recipes_library()
+    return {
+        "deposition": [r.model_dump(mode="json") for r in recipes.deposition.values()],
+        "etch": [r.model_dump(mode="json") for r in recipes.etch.values()],
+    }
+
+
 class StepPresetInput(BaseModel):
     name: str
     payload: StepPresetPayload

@@ -148,25 +148,28 @@ const STEP_KIND_LABELS = {
   lithography: "Lithographie",
   resist_strip: "Retrait de résine",
   planarization: "Planarisation",
-  selective_growth: "Croissance sélective",
+  chemical: "Étape chimique",
+  faceted_growth: "Croissance facettée",
+  epitaxial_growth: "Croissance épitaxiale",
   flip: "Retournement",
 };
 
 const STEP_FIELD_LABELS = {
   material: "Matériau",
-  mode: "Mode",
+  recipe: "Recette",
   angle_deg: "Angle",
   thickness: "Épaisseur",
   depth: "Profondeur",
-  default_factor: "Facteur par défaut",
-  selectivity_by_material: "Sélectivité par matériau",
   resist_material: "Résine",
   openings: "Ouvertures",
-  process_parameters: "Paramètres procédé",
-  derived_estimates: "Estimations dérivées",
   target_level: "Niveau cible",
+  stop_material: "S'arrête sur",
+  orientation: "Orientation",
+  rate_c: "Vitesse relative (plan C)",
   rate_m: "Vitesse relative (plan M)",
   rate_sp: "Vitesse relative (semipolaire)",
+  semi_polar_angle_deg: "Angle semipolaire",
+  seed_materials: "Matériaux d'amorçage (SAG)",
 };
 
 function formatStepValue(value) {

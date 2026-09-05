@@ -18,74 +18,30 @@ const STEP_KIND_DEFS = {
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Dépôt"></div>
       <div><label>Matériau</label><select class="field" id="f-material">${materialOptions()}</select></div>
       <div><label>Préset (optionnel)</label><select class="field" id="f-preset"><option value="">Personnalisé</option>${presetOptionsHtml("deposition")}</select>
-        <div class="help" style="margin-top:4px;">Préremplit le mode et l'angle ci-dessous — reste ensuite librement modifiable.</div>
+        <div class="help" style="margin-top:4px;">Choisit la recette ci-dessous — reste ensuite librement modifiable.</div>
       </div>
-      <div><label>Mode</label>
-        <select class="field" id="f-mode"><option value="conformal">Conforme</option><option value="directional">Directionnel</option></select>
+      <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("deposition")}</select>
+        <div class="help" id="f-recipe-hint" style="margin-top:4px;"></div>
       </div>
-      <div id="f-angle-wrap" style="display:none;"><label>Angle (degrés, 0 = incidence normale)</label><input class="field" id="f-angle" type="number" value="0"></div>
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="20"></div>
-      <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>
-      <details id="f-deposition-advanced" class="card" style="padding:0;overflow:hidden;margin-top:4px;flex-shrink:0;">
-        <summary class="disclosure-btn disclosure-btn--tint" style="padding:10px 12px;font-size:13px;">
-          <span>
-            Paramètres process &amp; dopage
-            <span class="disclosure-btn__sub">Ajoutez un flux, une puissance... et une grandeur calculée à partir d'eux (ex : dopage).</span>
-          </span>
-          <svg class="disclosure-btn__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
-        </summary>
-        <div style="padding:10px 12px 12px;display:flex;flex-direction:column;gap:12px;">
-          <div>
-            <label>Paramètres process</label>
-            <div class="help" style="margin-bottom:6px;">Une grandeur du procédé (ex : flux) à suivre ou à faire varier.</div>
-            <div id="f-process-params-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
-            <button class="btn btn-line" id="f-add-process-param-btn" type="button" style="padding:6px 12px;font-size:12.5px;">+ Ajouter un paramètre</button>
-          </div>
-          <div>
-            <label>Grandeurs physiques estimées (ex : dopage)</label>
-            <div class="help" style="margin-bottom:6px;">Une grandeur qu'on ne simule pas directement, calculée à partir d'un paramètre process qui sert de proxy — par exemple <code>dopage = flux &times; 2</code>.</div>
-            <div id="f-estimates-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px;"></div>
-            <button class="btn btn-line" id="f-add-estimate-btn" type="button" style="padding:6px 12px;font-size:12.5px;">+ Ajouter une estimation</button>
-          </div>
-        </div>
-      </details>`,
-    wire: () => {
-      wireDepositionAdvanced();
-      wireModeAngleToggle("deposition");
-    },
+      <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>`,
+    wire: () => wireRecipeField("deposition"),
     buildFromForm: (name) => ({
       kind: "deposition",
       name,
       material: document.getElementById("f-material").value,
-      mode: document.getElementById("f-mode").value,
-      angle_deg: parseFloat(document.getElementById("f-angle").value) || 0,
+      recipe: document.getElementById("f-recipe").value,
       thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
-      process_parameters: currentProcessParameters(),
-      derived_estimates: currentDerivedEstimates(),
     }),
     fillFields: (step) => {
       document.getElementById("f-material").value = step.material;
-      document.getElementById("f-mode").value = step.mode;
-      document.getElementById("f-angle").value = step.angle_deg || 0;
-      document.getElementById("f-angle-wrap").style.display = step.mode === "directional" ? "" : "none";
+      document.getElementById("f-recipe").value = step.recipe;
       document.getElementById("f-thickness").value = step.thickness.value;
       document.getElementById("f-thickness-unit").value = step.thickness.unit;
-      const processParameters = step.process_parameters || {};
-      const derivedEstimates = step.derived_estimates || [];
-      Object.entries(processParameters).forEach(([name, value]) => addProcessParamRow(name, value));
-      derivedEstimates.forEach((estimate) => addEstimateRow(estimate));
-      document.getElementById("f-deposition-advanced").open =
-        Object.keys(processParameters).length > 0 || derivedEstimates.length > 0;
     },
-    summary: (step) => `${step.material} · ${step.thickness.value} ${step.thickness.unit} · ${modeSummary(step.mode, step.angle_deg)}`,
-    pyCode: (step) => {
-      const name = pyStr(step.name);
-      const parts = [`name=${name}`, `material=${pyStr(step.material)}`, `mode=DepositionMode.${step.mode}`];
-      if (step.angle_deg) parts.push(`angle_deg=${step.angle_deg}`);
-      parts.push(`thickness=${pyLength(step.thickness)}`);
-      if (step.process_parameters && Object.keys(step.process_parameters).length) parts.push(`process_parameters=${pyDict(step.process_parameters)}`);
-      return `Deposition(${parts.join(", ")})`;
-    },
+    summary: (step) => `${step.material} · ${step.thickness.value} ${step.thickness.unit} · ${step.recipe}`,
+    pyCode: (step) =>
+      `Deposition(name=${pyStr(step.name)}, material=${pyStr(step.material)}, recipe=${pyStr(step.recipe)}, thickness=${pyLength(step.thickness)})`,
   },
 
   etch: {
@@ -98,53 +54,27 @@ const STEP_KIND_DEFS = {
     renderFields: () => `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Gravure"></div>
       <div><label>Préset (optionnel)</label><select class="field" id="f-preset"><option value="">Personnalisé</option>${presetOptionsHtml("etch")}</select>
-        <div class="help" style="margin-top:4px;">Préremplit mode/angle/sélectivité ci-dessous — reste ensuite librement modifiable.</div>
+        <div class="help" style="margin-top:4px;">Choisit la recette ci-dessous — reste ensuite librement modifiable.</div>
       </div>
-      <div><label>Mode</label>
-        <select class="field" id="f-mode"><option value="isotropic">Isotrope</option><option value="directional">Directionnel</option></select>
-      </div>
-      <div id="f-angle-wrap" style="display:none;"><label>Angle (degrés, 0 = incidence normale)</label><input class="field" id="f-angle" type="number" value="0"></div>
-      <div><label>Facteur par défaut</label><input class="field" id="f-default-factor" type="number" value="1.0" step="0.01" min="0"></div>
-      <div>
-        <label>Sélectivité par matériau (optionnel)</label>
-        <div class="help" style="margin-bottom:6px;">Vitesse relative de gravure pour un matériau donné (1 = normal, plus grand = gravé plus vite, 0 = protégé).</div>
-        <div id="f-selectivity-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
-        <button class="btn btn-line" id="f-add-selectivity-btn" type="button" style="padding:6px 12px;font-size:12.5px;">+ Ajouter un matériau</button>
+      <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("etch")}</select>
+        <div class="help" id="f-recipe-hint" style="margin-top:4px;"></div>
       </div>
       <div class="field-row"><div><label>Profondeur</label><input class="field" id="f-depth" type="number" value="10"></div>
       <div><label>Unité</label><select class="field" id="f-depth-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>`,
-    wire: () => {
-      document.getElementById("f-add-selectivity-btn").addEventListener("click", () => addSelectivityRow());
-      wireModeAngleToggle("etch");
-    },
+    wire: () => wireRecipeField("etch"),
     buildFromForm: (name) => ({
       kind: "etch",
       name,
-      mode: document.getElementById("f-mode").value,
-      angle_deg: parseFloat(document.getElementById("f-angle").value) || 0,
-      default_factor: parseFloat(document.getElementById("f-default-factor").value) || 1.0,
-      selectivity_by_material: currentSelectivityByMaterial(),
+      recipe: document.getElementById("f-recipe").value,
       depth: { value: parseFloat(document.getElementById("f-depth").value) || 0, unit: document.getElementById("f-depth-unit").value },
     }),
     fillFields: (step) => {
-      document.getElementById("f-mode").value = step.mode;
-      document.getElementById("f-angle").value = step.angle_deg || 0;
-      document.getElementById("f-angle-wrap").style.display = step.mode === "directional" ? "" : "none";
-      document.getElementById("f-default-factor").value = step.default_factor != null ? step.default_factor : 1.0;
-      Object.entries(step.selectivity_by_material || {}).forEach(([material, factor]) => addSelectivityRow(material, factor));
+      document.getElementById("f-recipe").value = step.recipe;
       document.getElementById("f-depth").value = step.depth.value;
       document.getElementById("f-depth-unit").value = step.depth.unit;
     },
-    summary: (step) => `${modeSummary(step.mode, step.angle_deg)} · ${step.depth.value} ${step.depth.unit}`,
-    pyCode: (step) => {
-      const name = pyStr(step.name);
-      const parts = [`name=${name}`, `mode=EtchMode.${step.mode}`];
-      if (step.angle_deg) parts.push(`angle_deg=${step.angle_deg}`);
-      if (step.selectivity_by_material && Object.keys(step.selectivity_by_material).length) parts.push(`selectivity_by_material=${pyDict(step.selectivity_by_material)}`);
-      if (step.default_factor != null && step.default_factor !== 1.0) parts.push(`default_factor=${step.default_factor}`);
-      parts.push(`depth=${pyLength(step.depth)}`);
-      return `Etch(${parts.join(", ")})`;
-    },
+    summary: (step) => `${step.recipe} · ${step.depth.value} ${step.depth.unit}`,
+    pyCode: (step) => `Etch(name=${pyStr(step.name)}, recipe=${pyStr(step.recipe)}, depth=${pyLength(step.depth)})`,
   },
 
   planarization: {
@@ -297,110 +227,131 @@ const STEP_KIND_DEFS = {
     pyCode: (step) => `ResistStrip(name=${pyStr(step.name)}, material=${pyStr(step.material)})`,
   },
 
-  semipolar_facet: {
-    label: "Facette semipolaire",
+  faceted_growth: {
+    label: "Croissance facettée",
     color: "#b8860b",
     tint: "#faf3df",
     iconPath: '<path d="M4 20L12 4L20 20Z"/>',
-    campaignFields: [],
-    pyClass: "SemipolarFacet",
+    campaignFields: [["thickness", "Épaisseur"]],
+    pyClass: "FacetedGrowth",
     renderFields: () => `
-      <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Facette semipolaire"></div>
-      <div><label>Sens</label>
-        <select class="field" id="f-orientation">
-          <option value="tip">Pointe (anti-V-pit, croît vers le haut)</option>
-          <option value="notch">Creux (V-pit, s'enfonce vers le bas)</option>
-        </select>
-        <div class="help" style="margin-top:4px;">Une facette symétrique à angle précis, comme sur un flanc semipolaire de nanofil ou de LED III-N &mdash; ni un dépôt/gravure directionnel ni isotrope ne peut produire cette forme.</div>
-      </div>
-      <div class="field-row"><div><label>Largeur de base</label><input class="field" id="f-base-half-width" type="number" value="30"></div>
-      <div><label>Unité</label><select class="field" id="f-base-half-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
-      <div class="field-row"><div><label>Largeur de pointe</label><input class="field" id="f-tip-half-width" type="number" value="0"></div>
-      <div><label>Unité</label><select class="field" id="f-tip-half-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
-      <div class="help" style="margin-top:-6px;">0 = converge en une pointe. Doit rester strictement inférieure à la largeur de base.</div>
-      <div><label>Angle de facette (degrés depuis l'horizontale)</label><input class="field" id="f-facet-angle" type="number" value="60"></div>
-      <div><label>Position (optionnelle)</label><input class="field" id="f-position" type="number" placeholder="laisser vide = centre du domaine">
-        <div class="help" style="margin-top:4px;">Position en nm depuis le bord gauche. Vide = centrée automatiquement.</div>
+      <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Croissance facettée"></div>
+      <div><label>Matériau</label><select class="field" id="f-material">${materialOptions("GaN")}</select></div>
+      <div class="field-row"><div><label>Épaisseur nominale (plan C)</label><input class="field" id="f-thickness" type="number" value="10" min="0.1" step="0.1"></div>
+      <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
+      <div class="help">Vitesses relatives par plan cristallin (plan C = référence 1.0). L'épaisseur nominale ci-dessus est celle déposée sur le plan C ; les plans M et semipolaire avancent chacun à leur propre vitesse relative — construction de Wulff cinétique, la même géométrie qu'un nanofil en crayon ou une pointe de LED III-N.</div>
+      <div class="field-row"><div><label>Vitesse plan C (réf.)</label><input class="field" id="f-rate-c" type="number" value="1.0" min="0" step="0.05"></div>
+      <div><label>Vitesse plan M (flancs)</label><input class="field" id="f-rate-m" type="number" value="0.25" min="0" step="0.05"></div></div>
+      <div class="field-row"><div><label>Vitesse semipolaire</label><input class="field" id="f-rate-sp" type="number" value="0.5" min="0" step="0.05"></div>
+      <div><label>Angle semipolaire (° depuis l'axe c)</label><input class="field" id="f-angle-sp" type="number" value="30" min="1" max="89" step="1"></div></div>
+      <div class="help" id="f-tip-hint" style="margin-top:-6px;"></div>
+      <div><label>Matériaux d'amorçage — SAG (optionnel)</label><input class="field" id="f-seed-materials" placeholder="ex : GaN, AlN">
+        <div class="help" style="margin-top:4px;">Noms séparés par des virgules. Vide = croissance sur toute surface exposée, sans sélectivité.</div>
       </div>`,
+    wire: () => wireFacetedGrowthTipHint(),
+    buildFromForm: (name) => ({
+      kind: "faceted_growth",
+      name,
+      material: document.getElementById("f-material").value,
+      thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
+      rate_c: parseFloat(document.getElementById("f-rate-c").value) || 0,
+      rate_m: parseFloat(document.getElementById("f-rate-m").value) || 0,
+      rate_sp: parseFloat(document.getElementById("f-rate-sp").value) || 0,
+      semi_polar_angle_deg: parseFloat(document.getElementById("f-angle-sp").value) || 30,
+      seed_materials: parseCommaList(document.getElementById("f-seed-materials").value),
+    }),
+    fillFields: (step) => {
+      document.getElementById("f-material").value = step.material;
+      document.getElementById("f-thickness").value = step.thickness.value;
+      document.getElementById("f-thickness-unit").value = step.thickness.unit;
+      document.getElementById("f-rate-c").value = step.rate_c;
+      document.getElementById("f-rate-m").value = step.rate_m;
+      document.getElementById("f-rate-sp").value = step.rate_sp;
+      document.getElementById("f-angle-sp").value = step.semi_polar_angle_deg;
+      document.getElementById("f-seed-materials").value = (step.seed_materials || []).join(", ");
+    },
+    summary: (step) =>
+      `${step.material} · +${step.thickness.value} ${step.thickness.unit} (C) · M×${step.rate_m} · SP×${step.rate_sp}` +
+      (step.seed_materials && step.seed_materials.length ? ` · SAG sur ${step.seed_materials.join("/")}` : ""),
+    pyCode: (step) => {
+      const parts = [
+        `name=${pyStr(step.name)}`,
+        `material=${pyStr(step.material)}`,
+        `thickness=${pyLength(step.thickness)}`,
+        `rate_c=${step.rate_c}`,
+        `rate_m=${step.rate_m}`,
+        `rate_sp=${step.rate_sp}`,
+        `semi_polar_angle_deg=${step.semi_polar_angle_deg}`,
+      ];
+      if (step.seed_materials && step.seed_materials.length) parts.push(`seed_materials=${pyList(step.seed_materials)}`);
+      return `FacetedGrowth(${parts.join(", ")})`;
+    },
+  },
+
+  epitaxial_growth: {
+    label: "Croissance épitaxiale",
+    color: "#2e8b57",
+    tint: "#e6f4ec",
+    iconPath: '<path d="M12 20V4M12 4l-5 5M12 4l5 5M6 14l6-4 6 4"/>',
+    campaignFields: [["thickness", "Épaisseur"]],
+    pyClass: "EpitaxialGrowth",
+    renderFields: () => `
+      <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Croissance épitaxiale"></div>
+      <div><label>Matériau</label><select class="field" id="f-material">${materialOptions("GaN")}</select></div>
+      <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="20"></div>
+      <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
+      <div><label>Orientation cristalline</label>
+        <select class="field" id="f-orientation">
+          <option value="c_plane">Plan C [0001] — vertical</option>
+          <option value="m_plane">Plan M {10-10} — latéral (flancs)</option>
+          <option value="semi_polar">Semi-polaire — incliné</option>
+        </select>
+      </div>
+      <div id="f-angle-wrap" style="display:none;"><label>Angle (° depuis l'axe c)</label><input class="field" id="f-angle" type="number" value="32" min="0.1" max="89.9" step="0.1"></div>
+      <div><label>Matériaux d'amorçage — SAG (optionnel)</label><input class="field" id="f-seed-materials" placeholder="ex : GaN, AlN">
+        <div class="help" style="margin-top:4px;">Noms séparés par des virgules. Vide = croissance non sélective sur toute surface exposée (buffer, template) ; rempli, bloque la nucléation ailleurs — un vrai masque de croissance sélective (SAG).</div>
+      </div>`,
+    wire: () => wireEpitaxialOrientationToggle(),
     buildFromForm: (name) => {
-      const positionRaw = document.getElementById("f-position").value;
-      return {
-        kind: "semipolar_facet",
+      const orientation = document.getElementById("f-orientation").value;
+      const step = {
+        kind: "epitaxial_growth",
         name,
-        orientation: document.getElementById("f-orientation").value,
-        base_half_width: { value: parseFloat(document.getElementById("f-base-half-width").value) || 0, unit: document.getElementById("f-base-half-width-unit").value },
-        tip_half_width: { value: parseFloat(document.getElementById("f-tip-half-width").value) || 0, unit: document.getElementById("f-tip-half-width-unit").value },
-        facet_angle_deg: parseFloat(document.getElementById("f-facet-angle").value) || 60,
-        position: positionRaw ? { value: parseFloat(positionRaw) || 0, unit: "nm" } : null,
+        material: document.getElementById("f-material").value,
+        thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
+        orientation,
+        seed_materials: parseCommaList(document.getElementById("f-seed-materials").value),
       };
+      if (orientation === "semi_polar") step.angle_deg = parseFloat(document.getElementById("f-angle").value) || 0;
+      return step;
     },
     fillFields: (step) => {
+      document.getElementById("f-material").value = step.material;
+      document.getElementById("f-thickness").value = step.thickness.value;
+      document.getElementById("f-thickness-unit").value = step.thickness.unit;
       document.getElementById("f-orientation").value = step.orientation;
-      document.getElementById("f-base-half-width").value = step.base_half_width.value;
-      document.getElementById("f-base-half-width-unit").value = step.base_half_width.unit;
-      document.getElementById("f-tip-half-width").value = step.tip_half_width.value;
-      document.getElementById("f-tip-half-width-unit").value = step.tip_half_width.unit;
-      document.getElementById("f-facet-angle").value = step.facet_angle_deg;
-      document.getElementById("f-position").value = step.position != null ? step.position.value : "";
+      document.getElementById("f-angle-wrap").style.display = step.orientation === "semi_polar" ? "" : "none";
+      document.getElementById("f-angle").value = step.angle_deg || 32;
+      document.getElementById("f-seed-materials").value = (step.seed_materials || []).join(", ");
     },
     summary: (step) => {
-      const orientationLabel = step.orientation === "notch" ? "creux (V-pit)" : "pointe (anti-V-pit)";
-      return `${orientationLabel} · ${step.facet_angle_deg}° · base ${step.base_half_width.value} ${step.base_half_width.unit}`;
+      const orientationLabel = { c_plane: "plan C", m_plane: "plan M", semi_polar: `semi-polaire ${step.angle_deg}°` }[step.orientation];
+      return (
+        `${step.material} · +${step.thickness.value} ${step.thickness.unit} · ${orientationLabel}` +
+        (step.seed_materials && step.seed_materials.length ? ` · SAG sur ${step.seed_materials.join("/")}` : "")
+      );
     },
     pyCode: (step) => {
       const parts = [
         `name=${pyStr(step.name)}`,
-        `orientation=${pyStr(step.orientation)}`,
-        `base_half_width=${pyLength(step.base_half_width)}`,
-        `tip_half_width=${pyLength(step.tip_half_width)}`,
-        `facet_angle_deg=${step.facet_angle_deg}`,
+        `material=${pyStr(step.material)}`,
+        `thickness=${pyLength(step.thickness)}`,
+        `orientation=GrowthOrientation.${step.orientation}`,
       ];
-      if (step.position) parts.push(`position=${pyLength(step.position)}`);
-      return `SemipolarFacet(${parts.join(", ")})`;
+      if (step.orientation === "semi_polar") parts.push(`angle_deg=${step.angle_deg}`);
+      if (step.seed_materials && step.seed_materials.length) parts.push(`seed_materials=${pyList(step.seed_materials)}`);
+      return `EpitaxialGrowth(${parts.join(", ")})`;
     },
-  },
-
-  selective_growth: {
-    label: "Croissance sélective",
-    color: "#2e8b57",
-    tint: "#e6f4ec",
-    iconPath: '<path d="M12 20V4M12 4l-5 5M12 4l5 5M6 14l6-4 6 4"/>',
-    campaignFields: [],
-    pyClass: "SelectiveGrowth",
-    renderFields: () => `
-      <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Croissance sélective"></div>
-      <div><label>Matériau</label><select class="field" id="f-material">${materialOptions()}</select>
-        <div class="help" style="margin-top:4px;">La croissance ne reprend que sur ce matériau — ailleurs (substrat, masque...) rien ne pousse, comme un masque de croissance réel. Sans dépôt existant de ce matériau, la toute première couche pousse sur toute la surface exposée (à amorcer avec un dépôt classique avant, comme dans l'exemple de préset nanofil), sauf si un matériau d'amorçage est choisi ci-dessous.</div>
-      </div>
-      <div><label>Matériau d'amorçage (optionnel — hétéroépitaxie)</label><select class="field" id="f-seed-material"><option value="">— même matériau —</option>${materialOptions()}</select>
-        <div class="help" style="margin-top:4px;">Pour faire pousser un matériau B uniquement là où un matériau A existe déjà (ex : coquille AlGaN sur un cœur GaN) — sinon laissez sur « même matériau ».</div>
-      </div>
-      <div class="field-row"><div><label>Épaisseur (plan C, le plus rapide)</label><input class="field" id="f-thickness" type="number" value="10"></div>
-      <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
-      <div><label>Vitesse relative — plan M (flancs verticaux)</label><input class="field" id="f-rate-m" type="number" value="0.4" step="0.01" min="0" max="1"></div>
-      <div><label>Vitesse relative — facette semipolaire</label><input class="field" id="f-rate-sp" type="number" value="0.15" step="0.01" min="0" max="1"></div>
-      <div class="help" id="f-rate-order-hint" style="margin-top:-6px;">Doit vérifier C (1.0) &gt;= plan M &gt;= semipolaire, sinon la facette la plus lente ne l'emporte jamais — c'est ce qui referme la pointe au fil des étapes. Les valeurs limites sont valides : 0/0 pour une croissance purement axiale (rien ne pousse latéralement), 1.0/1.0 pour une croissance conforme/isotrope (tout pousse à la même vitesse).</div>`,
-    wire: () => wireSelectiveGrowthRateCheck(),
-    buildFromForm: (name) => ({
-      kind: "selective_growth",
-      name,
-      material: document.getElementById("f-material").value,
-      seed_material: document.getElementById("f-seed-material").value || null,
-      thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
-      rate_m: parseFloat(document.getElementById("f-rate-m").value),
-      rate_sp: parseFloat(document.getElementById("f-rate-sp").value),
-    }),
-    fillFields: (step) => {
-      document.getElementById("f-material").value = step.material;
-      document.getElementById("f-seed-material").value = step.seed_material || "";
-      document.getElementById("f-thickness").value = step.thickness.value;
-      document.getElementById("f-thickness-unit").value = step.thickness.unit;
-      document.getElementById("f-rate-m").value = step.rate_m;
-      document.getElementById("f-rate-sp").value = step.rate_sp;
-    },
-    summary: (step) => `${step.material}${step.seed_material ? ` (sur ${step.seed_material})` : ""} · +${step.thickness.value} ${step.thickness.unit} (C) · M×${step.rate_m} · SP×${step.rate_sp}`,
-    pyCode: (step) =>
-      `SelectiveGrowth(name=${pyStr(step.name)}, material=${pyStr(step.material)}${step.seed_material ? `, seed_material=${pyStr(step.seed_material)}` : ""}, thickness=${pyLength(step.thickness)}, rate_m=${step.rate_m}, rate_sp=${step.rate_sp})`,
   },
 
   flip: {

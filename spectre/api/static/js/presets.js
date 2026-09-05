@@ -1,26 +1,16 @@
 /* Page dédiée aux présets d'étape : liste (présets intégrés / partagés / projet) + formulaire de
-   création/édition. Un préset ne fait que préremplir mode/angle/sélectivité dans le formulaire
-   d'étape du constructeur (js/structure-builder/) - il n'est jamais référencé par nom ensuite. */
+   création/édition. Un préset ne fait que préremplir une recette (voir structureforge.core.
+   recipes) dans le formulaire d'étape du constructeur (js/structure-builder/) - il n'est jamais
+   référencé par nom au moment de la simulation. */
 
 const pathParts = window.location.pathname.split("/").filter(Boolean);
 const slug = pathParts[1];
-
-const MODE_OPTIONS = {
-  deposition: [
-    { value: "conformal", label: "Conforme" },
-    { value: "directional", label: "Directionnel" },
-  ],
-  etch: [
-    { value: "isotropic", label: "Isotrope" },
-    { value: "directional", label: "Directionnel" },
-  ],
-};
 
 const MODE_LABELS = { conformal: "conforme", directional: "directionnel", isotropic: "isotrope" };
 
 const state = {
   presets: { presets: [], partagees: [], projet: [] },
-  materials: [],
+  recipes: { deposition: [], etch: [] },
   editing: null, // { name, partagee } of the preset currently being edited, or null = creating
 };
 
@@ -41,53 +31,35 @@ function showFlash(message) {
   errorBox.style.display = "none";
 }
 
-function materialOptions() {
-  return state.materials.map((m) => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join("");
+function recipeHint(kind, name) {
+  const recipe = (state.recipes[kind] || []).find((r) => r.name === name);
+  if (!recipe) return "";
+  const mode = MODE_LABELS[recipe.mode] || recipe.mode;
+  const angle = recipe.angle_deg ? ` (${recipe.angle_deg}°)` : "";
+  return recipe.notes ? `${mode}${angle} — ${recipe.notes}` : `${mode}${angle}`;
 }
 
-function addSelectivityRow(material, factor) {
-  const row = document.createElement("div");
-  row.className = "field-row js-selectivity-row";
-  row.style.gridTemplateColumns = "1fr 100px auto";
-  row.innerHTML = `
-    <select class="field js-sel-material">${materialOptions()}</select>
-    <input class="field js-sel-factor" type="number" step="0.01" min="0" placeholder="facteur" value="${factor != null ? factor : ""}">
-    <button class="js-sel-remove" type="button" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:14px;">&times;</button>`;
-  document.getElementById("f-selectivity-rows").appendChild(row);
-  row.querySelector(".js-sel-remove").addEventListener("click", () => row.remove());
-  if (material) row.querySelector(".js-sel-material").value = material;
-}
-
-function currentSelectivityByMaterial() {
-  const out = {};
-  document.querySelectorAll("#f-selectivity-rows .js-selectivity-row").forEach((row) => {
-    const material = row.querySelector(".js-sel-material").value;
-    const factor = parseFloat(row.querySelector(".js-sel-factor").value);
-    if (material && !Number.isNaN(factor)) out[material] = factor;
-  });
-  return out;
-}
-
-function renderModeOptions() {
+function renderRecipeOptions() {
   const kind = document.getElementById("f-kind").value;
-  document.getElementById("f-mode").innerHTML = MODE_OPTIONS[kind].map((o) => `<option value="${o.value}">${o.label}</option>`).join("");
-  document.getElementById("f-etch-fields").style.display = kind === "etch" ? "" : "none";
-  updateAngleVisibility();
+  const recipeSelect = document.getElementById("f-recipe");
+  recipeSelect.innerHTML = (state.recipes[kind] || [])
+    .map((r) => `<option value="${escapeHtml(r.name)}">${escapeHtml(r.name)}</option>`)
+    .join("");
+  updateRecipeHint();
 }
 
-function updateAngleVisibility() {
-  document.getElementById("f-angle-wrap").style.display = document.getElementById("f-mode").value === "directional" ? "" : "none";
+function updateRecipeHint() {
+  const kind = document.getElementById("f-kind").value;
+  document.getElementById("f-recipe-hint").textContent = recipeHint(kind, document.getElementById("f-recipe").value);
 }
 
-document.getElementById("f-kind").addEventListener("change", renderModeOptions);
-document.getElementById("f-mode").addEventListener("change", updateAngleVisibility);
-document.getElementById("f-add-selectivity-btn").addEventListener("click", () => addSelectivityRow());
+document.getElementById("f-kind").addEventListener("change", renderRecipeOptions);
+document.getElementById("f-recipe").addEventListener("change", updateRecipeHint);
 
 function resetForm() {
   state.editing = null;
   document.getElementById("preset-form").reset();
-  document.getElementById("f-selectivity-rows").innerHTML = "";
-  renderModeOptions();
+  renderRecipeOptions();
   document.getElementById("form-title").textContent = "Nouveau préset";
   document.getElementById("submit-btn").textContent = "Créer le préset";
   document.getElementById("cancel-edit-btn").style.display = "none";
@@ -101,11 +73,9 @@ function scopeSuffix(scope) {
   return "";
 }
 
-function modeSummary(payload) {
-  const label = MODE_LABELS[payload.mode] || payload.mode;
-  const angle = payload.angle_deg ? ` (${payload.angle_deg}°)` : "";
+function recipeSummary(payload) {
   const kindLabel = payload.kind === "etch" ? "Gravure" : "Dépôt";
-  return `${kindLabel} · ${label}${angle}`;
+  return `${kindLabel} · ${payload.recipe}`;
 }
 
 function presetRow(preset) {
@@ -115,7 +85,7 @@ function presetRow(preset) {
     <div class="step-row" style="align-items:flex-start;">
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:600;">${escapeHtml(preset.name)} ${scopeSuffix(preset.scope)}</div>
-        <div style="font-size:12px;color:var(--text-faint);">${modeSummary(preset.payload)}</div>
+        <div style="font-size:12px;color:var(--text-faint);">${recipeSummary(preset.payload)}</div>
         ${preset.notes ? `<div style="font-size:12px;color:var(--text-soft);margin-top:3px;max-width:56ch;">${escapeHtml(preset.notes)}</div>` : ""}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
@@ -142,15 +112,9 @@ function findPreset(scope, name) {
 function fillFormFrom(preset, { asDuplicate } = {}) {
   document.getElementById("f-name").value = asDuplicate ? `${preset.name} (copie)` : preset.name;
   document.getElementById("f-kind").value = preset.payload.kind;
-  renderModeOptions();
-  document.getElementById("f-mode").value = preset.payload.mode;
-  document.getElementById("f-angle").value = preset.payload.angle_deg || 0;
-  updateAngleVisibility();
-  if (preset.payload.kind === "etch") {
-    document.getElementById("f-default-factor").value = preset.payload.default_factor != null ? preset.payload.default_factor : 1.0;
-    document.getElementById("f-selectivity-rows").innerHTML = "";
-    Object.entries(preset.payload.selectivity_by_material || {}).forEach(([material, factor]) => addSelectivityRow(material, factor));
-  }
+  renderRecipeOptions();
+  document.getElementById("f-recipe").value = preset.payload.recipe;
+  updateRecipeHint();
   document.getElementById("f-notes").value = preset.notes || "";
   document.getElementById("f-partagee").value = asDuplicate ? "false" : preset.scope === "partagee" ? "true" : "false";
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -210,19 +174,7 @@ document.getElementById("preset-form").addEventListener("submit", async (event) 
   event.preventDefault();
   clearMessages();
   const kind = document.getElementById("f-kind").value;
-  const mode = document.getElementById("f-mode").value;
-  const angle_deg = parseFloat(document.getElementById("f-angle").value) || 0;
-  const payload =
-    kind === "deposition"
-      ? { kind, mode, angle_deg }
-      : {
-          kind,
-          mode,
-          angle_deg,
-          default_factor: parseFloat(document.getElementById("f-default-factor").value) || 1.0,
-          selectivity_by_material: currentSelectivityByMaterial(),
-          selectivity_by_category: {},
-        };
+  const payload = { kind, recipe: document.getElementById("f-recipe").value };
   const body = {
     name: document.getElementById("f-name").value.trim(),
     payload,
@@ -261,11 +213,11 @@ async function init() {
     return;
   }
   try {
-    state.materials = await api.get(`/api/projects/${encodeURIComponent(slug)}/materials`);
+    state.recipes = await api.get(`/api/projects/${encodeURIComponent(slug)}/recettes`);
   } catch (err) {
-    state.materials = [];
+    state.recipes = { deposition: [], etch: [] };
   }
-  renderModeOptions();
+  renderRecipeOptions();
   loadPresets();
 }
 

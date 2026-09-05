@@ -10,7 +10,7 @@ dependencies = [
     "uvicorn[standard]>=0.29",
     "pydantic>=2.7",
     "python-multipart>=0.0.9",
-    "structureforge[follow] @ git+https://github.com/dmholy/structureforge.git@claude/spectre-integration-metier-d1qjdw",
+    "structureforge[follow] @ git+https://github.com/dmholy/structureforge.git@claude/spectrum-structure-generator-4sdiv2",
 ]
 
 [project.optional-dependencies]
