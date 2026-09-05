@@ -21,6 +21,7 @@ from . import auth as auth_router
 from . import experiments as experiments_router
 from . import links as links_router
 from . import projects as projects_router
+from . import refs as refs_router
 from . import structures as structures_router
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router.router)
     app.include_router(structures_router.router)
     app.include_router(experiments_router.router)
+    app.include_router(refs_router.router)
     app.include_router(atlas_router.router)
     app.include_router(links_router.router)
 
@@ -68,6 +70,7 @@ def create_app() -> FastAPI:
     app.get("/projets/{slug}/experiences/{experience_id}/evoluer")(_page("structure-builder.html"))
     app.get("/projets/{slug}/experiences/{experience_id}")(_page("experience.html"))
     app.get("/projets/{slug}/graphe")(_page("graphe.html"))
+    app.get("/projets/{slug}/refs")(_page("refs.html"))
 
     return app
 

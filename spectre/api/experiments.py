@@ -11,9 +11,9 @@ responses.
 Route order matters: ``{ref:path}`` is greedy (it matches slashes too - see
 ``follow/api/app.py``'s own note on the same trick), so every route with a literal suffix after
 ``{ref:path}`` (``/process``, ``/timeline``, ``/diff``, ``/evoluer``, ``/conclure``, ``/preuves``,
-``/combiner``, ``/etiquettes``, ``/entites``, ``/pieces-jointes``, ``/diff-externe``, ``/matrice``)
-is registered before the bare "get one experience" route below it - otherwise that catch-all
-would swallow them.
+``/combiner``, ``/etiquettes``, ``/entites``, ``/pieces-jointes``, ``/diff-externe``, ``/matrice``,
+``/ref``) is registered before the bare "get one experience" route below it - otherwise that
+catch-all would swallow them.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
 
-from ..core import projects, structures, versioning
+from ..core import projects, refs, structures, versioning
 from ..core.accounts import User
 from ..core.permissions import get_project as resolve_project
 from ..core.permissions import require_role
@@ -125,6 +125,10 @@ class TagsRequest(BaseModel):
     tags: list[str]
 
 
+class CreateRefRequest(BaseModel):
+    name: str | None = None
+
+
 class PhysicalTrackingRequest(BaseModel):
     entities: list[EntityTrackingInput]
 
@@ -175,6 +179,7 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
         "conclusion": experiment.conclusion.model_dump(mode="json"),
         "references": [r.model_dump(mode="json") for r in experiment.references],
         "tags": list(experiment.tags),
+        "ref_names": refs.ref_names_for(repo, experiment.id) if repo is not None else [],
         "structure_svg": structures.render_structure_svg(experiment.structure_type, experiment.structure),
         "is_batch": experiment.structure_type == structures.ProcessLot.registry_key(),
         "has_editable_process": "structureforge_process" in experiment.metadata,
@@ -917,6 +922,26 @@ def experience_batch(ref: str, project: Project = Depends(require_role("viewer")
     payload["labels"] = experiment.metadata.get("campaign_labels") or [f"#{i + 1}" for i in range(variation.entity_count)]
     payload["physical_tracking"] = experiment.metadata.get("physical_tracking", [])
     return payload
+
+
+@router.post("/{slug}/experiences/{ref:path}/ref", status_code=201)
+def create_ref(
+    ref: str,
+    body: CreateRefRequest,
+    project: Project = Depends(require_role("editor")),
+) -> dict:
+    """Tag this experience as a ref: a named, reusable starting point future experiences can fork
+    off from over and over (see :mod:`spectre.core.refs`), rather than being just one more version
+    among many. ``body.name`` is a nickname ("omega", "banane"...) - left blank, it defaults to
+    "ref vX.Y.Z" using the version :mod:`spectre.core.versioning` already computes for it.
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        return refs.create_ref(repo, ref, name=body.name)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+    except refs.RefNameTakenError as exc:
+        raise HTTPException(status_code=409, detail=f"Le nom « {exc.name} » est déjà pris par une autre version ou branche.") from exc
 
 
 @router.get("/{slug}/experiences/{ref:path}")

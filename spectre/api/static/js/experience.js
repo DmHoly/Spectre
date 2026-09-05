@@ -1149,6 +1149,49 @@ async function updateTags(tags) {
   }
 }
 
+function renderRefs(detail) {
+  const row = document.getElementById("refs-row");
+  const canEdit = isEditorRole();
+  const chips = detail.ref_names
+    .map((name) => `<span class="badge badge-role" title="Ref">🏷 ${escapeHtml(name)}</span>`)
+    .join("");
+  row.innerHTML =
+    chips +
+    (canEdit
+      ? `<button id="make-ref-btn" data-report-hide type="button" class="btn btn-line" style="padding:2px 10px;font-size:11.5px;">+ ref</button>
+         <input id="new-ref-input" data-report-hide placeholder="surnom (optionnel)" style="display:none;border:1px dashed var(--border-soft);border-radius:999px;padding:4px 10px;font-size:12px;width:150px;background:transparent;">`
+      : "");
+
+  const makeBtn = document.getElementById("make-ref-btn");
+  const input = document.getElementById("new-ref-input");
+  if (makeBtn) {
+    makeBtn.addEventListener("click", () => {
+      makeBtn.style.display = "none";
+      input.style.display = "";
+      input.focus();
+    });
+  }
+  if (input) {
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        createRef(input.value.trim());
+      }
+    });
+  }
+}
+
+async function createRef(name) {
+  clearError();
+  try {
+    await api.post(`/api/projects/${slug}/experiences/${experienceId}/ref`, { name: name || null });
+    currentDetail = await api.get(`/api/projects/${slug}/experiences/${experienceId}`);
+    renderRefs(currentDetail);
+  } catch (err) {
+    showError(err);
+  }
+}
+
 async function populateCombineSelect() {
   try {
     const data = await api.get(`/api/projects/${slug}/experiences?status=all&limit=200`);
@@ -1325,6 +1368,7 @@ async function init() {
 
     renderHeader(currentDetail);
     renderTags(currentDetail);
+    renderRefs(currentDetail);
     renderObjectives(currentDetail);
     renderForksNote(currentDetail);
     renderReferences(currentDetail);
