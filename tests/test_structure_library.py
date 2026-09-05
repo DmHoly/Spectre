@@ -11,7 +11,7 @@ def _steps():
             "kind": "deposition",
             "name": "PGaN",
             "material": "GaN",
-            "mode": "conformal",
+            "recipe": "CVD Conformal",
             "thickness": {"value": 50, "unit": "nm"},
         }
     ]
@@ -56,7 +56,7 @@ def test_derive_a_structure_keeps_a_derived_from_link(client):
     )
 
     derived_steps = _steps() + [
-        {"kind": "deposition", "name": "Contact", "material": "Au", "mode": "directional", "angle_deg": 0, "thickness": {"value": 80, "unit": "nm"}}
+        {"kind": "deposition", "name": "Contact", "material": "Au", "recipe": "Evaporation (normal)", "thickness": {"value": 80, "unit": "nm"}}
     ]
     derived = client.post(
         f"/api/projects/{slug}/structures-sauvegardees",
@@ -118,7 +118,7 @@ def test_builtin_presets_are_listed_and_can_be_duplicated_into_a_real_structure(
     assert any(s["name"] == "Nanofil pointe semipolaire (V-pit inversé)" for s in presets)
     preset = next(s for s in presets if s["name"] == "Nanofil pointe semipolaire (V-pit inversé)")
     assert preset["scope"] == "preset"
-    assert any(step["kind"] == "semipolar_facet" for step in preset["steps"])
+    assert any(step["kind"] == "faceted_growth" for step in preset["steps"])
 
     # duplicating a preset creates a real, editable structure (presets themselves aren't stored)
     derived = client.post(

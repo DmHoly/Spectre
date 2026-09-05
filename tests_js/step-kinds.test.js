@@ -63,13 +63,13 @@ test("STEP_KIND_DEFS registers exactly the nine known step kinds", () => {
   assert.deepEqual(kinds, [
     "chemical",
     "deposition",
+    "epitaxial_growth",
     "etch",
+    "faceted_growth",
     "flip",
     "lithography",
     "planarization",
     "resist_strip",
-    "selective_growth",
-    "semipolar_facet",
   ]);
 });
 
@@ -102,16 +102,8 @@ test("STEP_KINDS/CAMPAIGN_FIELD_OPTIONS/PY_STEP_CLASS are derived for every kind
 // One representative step per kind, in exactly the shape buildStepFromForm() produces - used to
 // lock in both stepSummary() and pyStepCode() for every kind in one place.
 const SAMPLE_STEPS = {
-  deposition: { kind: "deposition", name: "Dépôt", material: "Si", mode: "conformal", angle_deg: 0, thickness: { value: 20, unit: "nm" } },
-  etch: {
-    kind: "etch",
-    name: "Gravure",
-    mode: "directional",
-    angle_deg: 0,
-    default_factor: 1.0,
-    selectivity_by_material: { Si: 0.1 },
-    depth: { value: 10, unit: "nm" },
-  },
+  deposition: { kind: "deposition", name: "Dépôt", material: "Si", recipe: "ALD Conformal", thickness: { value: 20, unit: "nm" } },
+  etch: { kind: "etch", name: "Gravure", recipe: "Anisotropic RIE", depth: { value: 10, unit: "nm" } },
   planarization: { kind: "planarization", name: "Planarisation", target_level: { value: 0, unit: "nm" } },
   lithography: {
     kind: "lithography",
@@ -122,37 +114,41 @@ const SAMPLE_STEPS = {
   },
   chemical: { kind: "chemical", name: "Nettoyage", description: null },
   resist_strip: { kind: "resist_strip", name: "Retrait de résine", material: "Photoresist" },
-  semipolar_facet: {
-    kind: "semipolar_facet",
-    name: "Facette semipolaire",
-    orientation: "tip",
-    base_half_width: { value: 30, unit: "nm" },
-    tip_half_width: { value: 0, unit: "nm" },
-    facet_angle_deg: 60,
-    position: null,
-  },
-  selective_growth: {
-    kind: "selective_growth",
-    name: "Croissance sélective",
-    material: "Si",
+  faceted_growth: {
+    kind: "faceted_growth",
+    name: "Croissance facettée",
+    material: "GaN",
     thickness: { value: 10, unit: "nm" },
+    rate_c: 1,
     rate_m: 0.4,
     rate_sp: 0.15,
+    semi_polar_angle_deg: 30,
+    seed_materials: ["GaN"],
+  },
+  epitaxial_growth: {
+    kind: "epitaxial_growth",
+    name: "Croissance épitaxiale",
+    material: "GaN",
+    thickness: { value: 20, unit: "nm" },
+    orientation: "semi_polar",
+    angle_deg: 32,
+    seed_materials: [],
   },
   flip: { kind: "flip", name: "Retournement" },
 };
 
 const EXPECTED_PY_CODE = {
-  deposition: 'Deposition(name="Dépôt", material="Si", mode=DepositionMode.conformal, thickness=Length(value=20, unit="nm"))',
-  etch: 'Etch(name="Gravure", mode=EtchMode.directional, selectivity_by_material={"Si": 0.1}, depth=Length(value=10, unit="nm"))',
+  deposition: 'Deposition(name="Dépôt", material="Si", recipe="ALD Conformal", thickness=Length(value=20, unit="nm"))',
+  etch: 'Etch(name="Gravure", recipe="Anisotropic RIE", depth=Length(value=10, unit="nm"))',
   planarization: 'Planarization(name="Planarisation", target_level=Length(value=0, unit="nm"))',
   lithography:
     'Lithography(name="Lithographie", resist_material="Photoresist", thickness=Length(value=500, unit="nm"), openings=[(20, 40)])',
   chemical: 'ChemicalStep(name="Nettoyage")',
   resist_strip: 'ResistStrip(name="Retrait de résine", material="Photoresist")',
-  semipolar_facet:
-    'SemipolarFacet(name="Facette semipolaire", orientation="tip", base_half_width=Length(value=30, unit="nm"), tip_half_width=Length(value=0, unit="nm"), facet_angle_deg=60)',
-  selective_growth: 'SelectiveGrowth(name="Croissance sélective", material="Si", thickness=Length(value=10, unit="nm"), rate_m=0.4, rate_sp=0.15)',
+  faceted_growth:
+    'FacetedGrowth(name="Croissance facettée", material="GaN", thickness=Length(value=10, unit="nm"), rate_c=1, rate_m=0.4, rate_sp=0.15, semi_polar_angle_deg=30, seed_materials=["GaN"])',
+  epitaxial_growth:
+    'EpitaxialGrowth(name="Croissance épitaxiale", material="GaN", thickness=Length(value=20, unit="nm"), orientation=GrowthOrientation.semi_polar, angle_deg=32)',
   flip: 'Flip(name="Retournement")',
 };
 
@@ -163,16 +159,15 @@ test("pyStepCode renders the exact StructureForge constructor call for every ste
 });
 
 test("stepSummary renders a human-readable one-liner for every step kind", () => {
-  assert.equal(stepSummary(SAMPLE_STEPS.deposition), "Si · 20 nm · conforme");
-  assert.equal(stepSummary(SAMPLE_STEPS.etch), "directionnel · 10 nm");
+  assert.equal(stepSummary(SAMPLE_STEPS.deposition), "Si · 20 nm · ALD Conformal");
+  assert.equal(stepSummary(SAMPLE_STEPS.etch), "Anisotropic RIE · 10 nm");
   assert.equal(stepSummary(SAMPLE_STEPS.planarization), "jusqu'à 0 nm");
   assert.equal(stepSummary({ kind: "planarization", stop_material: "SiO2" }), "jusqu'au SiO2");
   assert.equal(stepSummary(SAMPLE_STEPS.lithography), "Photoresist · 1 ouverture(s)");
   assert.equal(stepSummary(SAMPLE_STEPS.chemical), "sans effet géométrique");
   assert.equal(stepSummary({ kind: "chemical", description: "bain HF" }), "bain HF");
   assert.equal(stepSummary(SAMPLE_STEPS.resist_strip), "Photoresist");
-  assert.equal(stepSummary(SAMPLE_STEPS.semipolar_facet), "pointe (anti-V-pit) · 60° · base 30 nm");
-  assert.equal(stepSummary({ ...SAMPLE_STEPS.semipolar_facet, orientation: "notch" }), "creux (V-pit) · 60° · base 30 nm");
-  assert.equal(stepSummary(SAMPLE_STEPS.selective_growth), "Si · +10 nm (C) · M×0.4 · SP×0.15");
+  assert.equal(stepSummary(SAMPLE_STEPS.faceted_growth), "GaN · +10 nm (C) · M×0.4 · SP×0.15 · SAG sur GaN");
+  assert.equal(stepSummary(SAMPLE_STEPS.epitaxial_growth), "GaN · +20 nm · semi-polaire 32°");
   assert.equal(stepSummary(SAMPLE_STEPS.flip), "face avant ↔ face arrière");
 });

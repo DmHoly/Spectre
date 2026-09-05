@@ -2,18 +2,11 @@ from __future__ import annotations
 
 
 def _deposition_payload():
-    return {"kind": "deposition", "mode": "conformal", "angle_deg": 0.0}
+    return {"kind": "deposition", "recipe": "CVD Conformal"}
 
 
 def _etch_payload():
-    return {
-        "kind": "etch",
-        "mode": "isotropic",
-        "angle_deg": 0.0,
-        "selectivity_by_material": {"SiO2": 3.5},
-        "selectivity_by_category": {},
-        "default_factor": 1.0,
-    }
+    return {"kind": "etch", "recipe": "Dry Oxide Etch"}
 
 
 def _register_and_project(client, email, project_name="Projet"):
@@ -34,7 +27,7 @@ def test_create_a_project_scoped_deposition_preset(client):
     assert body["partagees"] == []
 
 
-def test_create_an_etch_preset_with_selectivity(client):
+def test_create_an_etch_preset(client):
     slug = _register_and_project(client, "presetB@example.com")
 
     created = client.post(
@@ -43,7 +36,7 @@ def test_create_an_etch_preset_with_selectivity(client):
     )
     assert created.status_code == 201
     preset = next(p for p in created.json()["projet"] if p["name"] == "Gravure selective")
-    assert preset["payload"]["selectivity_by_material"]["SiO2"] == 3.5
+    assert preset["payload"]["recipe"] == "Dry Oxide Etch"
 
 
 def test_shared_preset_is_visible_from_a_different_project(client):
@@ -103,7 +96,7 @@ def test_builtin_presets_are_listed_and_usable_in_a_step(client):
     assert any(p["name"] == "Cl2 ICP-RIE (III-N)" for p in presets)
     mocvd = next(p for p in presets if p["name"] == "MOCVD Epitaxial")
     assert mocvd["scope"] == "preset"
-    assert mocvd["payload"]["mode"] == "conformal"
+    assert mocvd["payload"]["recipe"] == "MOCVD Epitaxial"
 
     # a preset only pre-fills a step's own fields - it's never referenced by name at simulate time
     sim = client.post(
@@ -115,8 +108,7 @@ def test_builtin_presets_are_listed_and_usable_in_a_step(client):
                     "kind": "deposition",
                     "name": "GaN",
                     "material": "GaN",
-                    "mode": mocvd["payload"]["mode"],
-                    "angle_deg": mocvd["payload"]["angle_deg"],
+                    "recipe": mocvd["payload"]["recipe"],
                     "thickness": {"value": 10, "unit": "nm"},
                 }
             ],

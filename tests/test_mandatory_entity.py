@@ -15,7 +15,7 @@ def _substrate():
 
 def _steps(thickness=20):
     return [
-        {"kind": "deposition", "name": "Oxyde", "material": "SiO2", "mode": "conformal", "thickness": {"value": thickness, "unit": "nm"}}
+        {"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": thickness, "unit": "nm"}}
     ]
 
 

@@ -22,19 +22,23 @@ function pyDict(obj) {
   return `{${entries.map(([k, v]) => `${pyStr(k)}: ${v}`).join(", ")}}`;
 }
 
+function pyList(values) {
+  return `[${(values || []).map((v) => pyStr(v)).join(", ")}]`;
+}
+
 function generateStructureForgeCode() {
   const substrate = substrateSpec();
   const usedKinds = [...new Set(state.steps.map((s) => s.kind))];
-  const importNames = new Set(["Geometry", "Length", "default_library", "save_svg", "simulate"]);
+  const importNames = new Set(["Geometry", "Length", "default_library", "default_recipes", "save_svg", "simulate"]);
   usedKinds.forEach((k) => importNames.add(PY_STEP_CLASS[k] || k));
-  if (usedKinds.includes("deposition")) importNames.add("DepositionMode");
-  if (usedKinds.includes("etch")) importNames.add("EtchMode");
+  if (usedKinds.includes("epitaxial_growth")) importNames.add("GrowthOrientation");
   const stepsLines = state.steps.length ? state.steps.map((s) => `    ${pyStepCode(s)},`).join("\n") : "    # aucune étape pour l'instant";
   return `from structureforge import (
     ${[...importNames].sort().join(",\n    ")},
 )
 
 materials = default_library()
+recipes = default_recipes()
 geometry = Geometry.substrate(
     ${pyStr(substrate.material)},
     domain_width_nm=${toNm(substrate.domain_width)},
@@ -45,7 +49,7 @@ steps = [
 ${stepsLines}
 ]
 
-frames = simulate(geometry, steps, materials)
+frames = simulate(geometry, steps, materials, recipes)
 material_colors = {m.name: m.color for m in materials}
 save_svg("structure.svg", frames[-1], material_colors)
 `;

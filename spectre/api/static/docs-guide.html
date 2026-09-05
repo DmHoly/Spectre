@@ -42,7 +42,6 @@
         <a href="#substrat">Le substrat</a>
         <a href="#etapes">Ajouter des étapes</a>
         <a href="#vues">Vue par couches / par étapes</a>
-        <a href="#parametres-avances">Paramètres avancés et estimations</a>
         <a href="#simuler">Simuler</a>
 
         <div class="docs-nav__group">Suivre une expérience</div>
@@ -117,14 +116,14 @@
           <h2>Ajouter des étapes</h2>
           <p>Une structure se construit étape par étape. Neuf types d'étapes sont disponibles :</p>
           <ul>
-            <li><strong>Dépôt</strong> — ajoute une couche d'un matériau, avec un mode (conforme ou directionnel, avec un angle) et une épaisseur. Un préset d'étape (voir <a href="#presets-etapes">Gérer les présets d'étapes</a>) préremplit le mode et l'angle en un clic.</li>
-            <li><strong>Gravure</strong> — retire de la matière selon un mode (isotrope ou directionnel), une sélectivité par matériau optionnelle, et une profondeur.</li>
+            <li><strong>Dépôt</strong> — ajoute une couche d'un matériau, avec une recette (mode conforme ou directionnel, angle) et une épaisseur. Un préset d'étape (voir <a href="#presets-etapes">Gérer les présets d'étapes</a>) préremplit la recette en un clic.</li>
+            <li><strong>Gravure</strong> — retire de la matière selon une recette (mode isotrope ou directionnel, sélectivité par matériau), et une profondeur.</li>
             <li><strong>Planarisation</strong> — aplanit jusqu'à un niveau précis ou jusqu'à atteindre un matériau donné.</li>
             <li><strong>Lithographie</strong> — dépose une résine avec des ouvertures (zones non couvertes).</li>
             <li><strong>Étape chimique</strong> — un nettoyage, un recuit... sans effet visible sur la coupe, gardé pour la traçabilité.</li>
             <li><strong>Retrait de résine</strong> — retire la résine posée par une lithographie.</li>
-            <li><strong>Facette semipolaire</strong> — pose une facette symétrique à un angle choisi à la main (pointe ou creux en V), pour reproduire un angle déjà connu en une seule étape.</li>
-            <li><strong>Croissance sélective</strong> — simule une croissance épitaxiale bas en haut, avec une vitesse relative par plan cristallin (C &gt; M &gt; semipolaire) : c'est ce qui fait émerger une pointe de nanofil naturellement, au fil de plusieurs étapes.</li>
+            <li><strong>Croissance facettée</strong> — construction de Wulff cinétique : trois familles de plans cristallins (C, M, semipolaire) avancent chacune à leur propre vitesse relative, ce qui fait émerger une pointe de nanofil en crayon ou une facette de LED III-N naturellement, au fil de plusieurs étapes.</li>
+            <li><strong>Croissance épitaxiale</strong> — croissance sélective (SAG) ou non selon un matériau d'amorçage, dans une orientation cristalline donnée (plan C vertical, plan M latéral, ou semipolaire à un angle choisi).</li>
             <li><strong>Retournement</strong> — retourne physiquement la structure pour travailler sa face arrière (amincissement, via traversant, contact) ; la face avant n'est plus directement exposée, mais reste atteignable — un amincissement ou une gravure de face arrière suffisamment profond la traverse (un via qui vient contacter un plot enterré, par exemple). Nécessite une face avant plane sur toute la largeur (une planarisation juste avant), comme un vrai collage sur support temporaire. Voir <a href="/docs/exemples#retournement">Exemples : retournement et via de face arrière</a>.</li>
           </ul>
           <p>Cliquer une étape déjà ajoutée l'ouvre en édition ; les flèches ▲▼ la déplacent dans l'ordre du procédé.</p>
@@ -141,27 +140,6 @@
           <img class="docs-shot" src="/static/docs/img/07-vue-etapes.png" alt="Bascule manuelle sur la vue par étapes">
           <p class="docs-shot-caption">Bascule manuelle : ici on repasse en « Par étapes » même si la structure ne contient encore que des dépôts.</p>
           <div class="docs-callout">Pourquoi deux vues ? Une épitaxie se pense couche par couche (« la couche de PGaN », « le canal ») — cliquer directement dans le dessin colle à cette façon de voir. Une intégration (contacts, gravures, nettoyages) se pense comme une suite d'opérations dans l'ordre — la liste d'étapes colle mieux à ce déroulé. Dès qu'une étape non-dépôt existe, la vue par couches n'a plus de sens (une couche ne correspond plus forcément à une étape) et se désactive automatiquement.</div>
-        </section>
-
-        <section id="parametres-avances">
-          <h2>Paramètres avancés et estimations</h2>
-          <p>Sur une étape de dépôt, la section repliée « Plus de détails (paramètres process) » permet d'aller plus loin :</p>
-          <ul>
-            <li><strong>Paramètres process</strong> — une grandeur du procédé que vous voulez suivre ou faire varier (par exemple un flux).</li>
-            <li><strong>Grandeurs physiques estimées</strong> — une estimation que vous définissez vous-même à partir d'un paramètre process, par une relation simple : <code>estimation = décalage + coefficient &times; paramètre</code>. Par exemple <code>dopage = flux &times; 2</code>. L'aperçu se calcule en direct pendant la saisie.</li>
-          </ul>
-          <img class="docs-shot" src="/static/docs/img/08-parametres-avances.png" alt="Paramètres process et grandeur estimée sur une étape de dépôt">
-          <p class="docs-shot-caption">Un paramètre process « flux » à 12, une estimation « Dopage » = flux &times; 2 : l'aperçu affiche déjà « ≈ 24 cm-3 » pendant la saisie.</p>
-
-          <h3>À quoi ça sert concrètement</h3>
-          <p>La coupe transversale ne connaît que la géométrie : matériaux, épaisseurs, formes. Le dopage, la résistivité, la composition ne s'y voient pas — ils ne sont pas simulés. Ces deux champs servent à les garder attachés à l'étape sans les inventer :</p>
-          <ol>
-            <li>Vous entrez un <strong>paramètre process</strong> : une valeur que le dépôt utilise vraiment (un flux, une puissance, une température...).</li>
-            <li>Vous posez une <strong>estimation</strong> : la relation, telle que vous la connaissez de votre procédé, entre ce paramètre et une grandeur physique qui vous intéresse.</li>
-            <li>Spectre calcule l'estimation à l'affichage, et peut aussi faire l'inverse : si vous demandez une campagne « dopage = 20, 40, 60 », il résout le flux nécessaire pour chaque valeur cible et lance la simulation avec ce flux (voir la section Campagnes plus bas).</li>
-          </ol>
-          <div class="docs-callout">C'est une estimation que vous posez, pas une valeur simulée : Spectre ne connaît pas la physique du dopage, seulement la relation linéaire que vous lui donnez. Si votre procédé n'est pas linéaire sur la plage qui vous intéresse, l'estimation ne sera fiable que localement — à vous de le garder en tête.</div>
-          <p>Ces grandeurs deviennent ensuite disponibles comme paramètre à faire varier dans une campagne (voir plus bas).</p>
         </section>
 
         <section id="simuler">
@@ -217,29 +195,20 @@
 
         <section id="campagnes">
           <h2>Plusieurs échantillons (campagne)</h2>
-          <p>La section « Créer plusieurs variantes » du constructeur permet de lancer une seule expérience qui suit plusieurs échantillons à la fois. Pour chaque paramètre à faire varier : une étape, un paramètre (une grandeur numérique de l'étape, ou une estimation si l'étape en a une) et une liste de valeurs.</p>
-          <img class="docs-shot" src="/static/docs/img/15-campagne-facteurs.png" alt="Section campagne, facteur splitté sur une grandeur estimée">
-          <p class="docs-shot-caption">Ici la campagne varie « Dopage (estimée) » sur 20, 40 et 60 cm-3 — pas directement le flux, la grandeur qui intéresse vraiment.</p>
+          <p>La section « Créer plusieurs variantes » du constructeur permet de lancer une seule expérience qui suit plusieurs échantillons à la fois. Pour chaque paramètre à faire varier : une étape, une grandeur numérique de l'étape (une épaisseur, une profondeur, un niveau cible...) et une liste de valeurs.</p>
+          <img class="docs-shot" src="/static/docs/img/15-campagne-facteurs.png" alt="Section campagne, facteur splitté sur une épaisseur">
 
           <h3>Pourquoi croiser plusieurs paramètres</h3>
           <p>Une variation à la fois (une épaisseur, puis à part un angle) ne dit rien sur les combinaisons : peut-être que l'effet de l'épaisseur change selon l'angle. Ajouter un deuxième facteur à la campagne ne remplace pas le premier, il se croise avec : toutes les combinaisons sont générées automatiquement (3 épaisseurs &times; 3 angles = 9 échantillons), pas seulement une diagonale. C'est ce qui distingue une campagne d'une suite de tests isolés — chaque échantillon de la grille documente une combinaison précise, et rien n'est laissé au hasard sur qui a reçu quoi.</p>
           <p>« Prévisualiser » calcule toutes les combinaisons et montre le résultat avant de lancer quoi que ce soit ; « Lancer » enregistre la campagne et fige les échantillons.</p>
-
-          <h3>Paramètre process ou grandeur estimée : lequel choisir ?</h3>
-          <p>Le sélecteur de paramètre d'un facteur liste les deux quand l'étape en a :</p>
-          <ul>
-            <li>Splitter sur un <strong>paramètre process</strong> (ex. un flux, une puissance) fait varier directement cette valeur d'un échantillon à l'autre.</li>
-            <li>Splitter sur une <strong>grandeur estimée</strong> (ex. « Dopage (estimée) ») laisse entrer les valeurs cibles qui vous intéressent réellement ; Spectre résout tout seul, pour chacune, le paramètre process nécessaire (en inversant la relation posée dans « Paramètres avancés »), et lance la simulation avec cette valeur résolue.</li>
-          </ul>
-          <p>Le deuxième mode est presque toujours le bon quand vous raisonnez « je veux ces dopages-là » plutôt que « je veux tester ces flux-là ».</p>
         </section>
 
         <section id="cartographie">
           <h2>Cartographie et feuille de split</h2>
           <p>Sur la fiche d'une campagne : la <strong>cartographie des variantes</strong> montre un dessin par échantillon, et la <strong>feuille de split</strong> liste, en tableau, la valeur de chaque paramètre varié pour chaque échantillon — la référence à consulter avant de traiter les échantillons physiques.</p>
-          <img class="docs-shot" src="/static/docs/img/16-cartographie-split.png" alt="Cartographie des variantes et feuille de split d'une campagne dopage">
-          <p class="docs-shot-caption">La feuille de split affiche « Dopage (cm-3) — PGaN » pour chaque échantillon, même si le dopage lui-même ne change rien à la coupe transversale dessinée.</p>
-          <div class="docs-callout">Un paramètre process ou une estimation ne change pas la géométrie simulée (les trois dessins ci-dessus sont identiques) — seule la feuille de split le montre. Le résumé « Détails techniques », lui, ne liste que ce qui a réellement changé dans la coupe (une épaisseur, une profondeur...) ; pour un split purement process/estimé, il reste vide et l'indique.</div>
+          <img class="docs-shot" src="/static/docs/img/16-cartographie-split.png" alt="Cartographie des variantes et feuille de split d'une campagne d'épaisseurs">
+          <p class="docs-shot-caption">La feuille de split affiche « Épaisseur — PGaN » pour chaque échantillon, à côté du dessin correspondant.</p>
+          <div class="docs-callout">Le résumé « Détails techniques » d'une expérience issue d'une campagne ne liste que ce qui a réellement changé dans la coupe (une épaisseur, une profondeur...) - c'est la feuille de split, elle, qui reste la référence pour la valeur exacte de chaque échantillon.</div>
         </section>
 
         <section id="suivi-physique">
@@ -274,7 +243,7 @@
 
         <section id="presets-etapes">
           <h2>Gérer les présets d'étapes</h2>
-          <p>Un préset d'étape est un dépôt ou une gravure préconfiguré (nom, mode, angle, et pour une gravure, la sélectivité par matériau) — le sélectionner dans le formulaire d'une étape en préremplit les champs, sans créer de lien permanent avec le préset : l'étape ajoutée reste ensuite librement modifiable, exactement comme une structure dupliquée depuis la bibliothèque. L'onglet « Structures » d'un projet propose un lien « Gérer les présets d'étapes » vers une page dédiée qui liste les présets intégrés (non modifiables, seulement duplicables), ceux partagés entre tous les projets, et ceux propres au projet — avec la possibilité d'en créer, modifier ou supprimer un.</p>
+          <p>Un préset d'étape est un raccourci nommé vers une recette de dépôt ou de gravure de StructureForge — le sélectionner dans le formulaire d'une étape en préremplit la recette, sans créer de lien permanent avec le préset : l'étape ajoutée reste ensuite librement modifiable, exactement comme une structure dupliquée depuis la bibliothèque. L'onglet « Structures » d'un projet propose un lien « Gérer les présets d'étapes » vers une page dédiée qui liste les présets intégrés (non modifiables, seulement duplicables), ceux partagés entre tous les projets, et ceux propres au projet — avec la possibilité d'en créer, modifier ou supprimer un.</p>
           <p class="docs-shot-caption">(Capture d'écran à refaire pour cette page.)</p>
         </section>
 

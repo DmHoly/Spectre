@@ -22,6 +22,7 @@ const returnTo = queryParams.get("retour"); // where "Enregistrer" in library/br
 
 const state = {
   materials: [],
+  recipes: { deposition: [], etch: [] },
   stepPresets: { presets: [], partagees: [], projet: [] },
   techBricks: { presets: [], partagees: [], projet: [] },
   steps: [],

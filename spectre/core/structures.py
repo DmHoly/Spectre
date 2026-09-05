@@ -1,9 +1,9 @@
-"""Bridges the structure-builder page to StructureForge: which materials a project can draw on,
-and turning a substrate + step list into simulated frames the page can show. All the physics
-stays in ``structureforge`` - each ``Deposition``/``Etch`` step now carries its own mode/angle/
-selectivity directly (no recipe library to resolve), so this module only turns each ``Frame`` into
-ready-to-embed SVG via ``structureforge.presentation.svg.frame_to_svg``, so Spectre never draws a
-cross-section itself.
+"""Bridges the structure-builder page to StructureForge: which materials and recipes a project can
+draw on, and turning a substrate + step list into simulated frames the page can show. All the
+physics stays in ``structureforge`` - a ``Deposition``/``Etch`` step names a recipe from the
+recipe library by string key (mode/angle/selectivity live on the recipe, not the step), resolved
+here at simulation time. This module only turns each ``Frame`` into ready-to-embed SVG via
+``structureforge.presentation.svg.frame_to_svg``, so Spectre never draws a cross-section itself.
 """
 
 from __future__ import annotations
@@ -16,11 +16,12 @@ from follow.doe.batch import BatchVariation, analyze_batch
 from pydantic import BaseModel
 from structureforge.adapters.follow_adapter import ProcessStructure, to_structure
 from structureforge.core.materials import MaterialLibrary, default_library
+from structureforge.core.recipes import RecipeLibrary, default_recipes
 from structureforge.core.units import Length
 from structureforge.geometry.engine import Geometry
 from structureforge.presentation.svg import frame_to_svg
 from structureforge.process.simulate import Frame, SimulationError, simulate
-from structureforge.process.steps import ProcessStep, solve_parameter_for_estimate
+from structureforge.process.steps import ProcessStep
 
 
 class ProcessLot(follow.Structure):
@@ -48,15 +49,20 @@ def materials_library() -> MaterialLibrary:
     return default_library()
 
 
+def recipes_library() -> RecipeLibrary:
+    return default_recipes()
+
+
 def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]) -> tuple[Geometry, list[Frame], MaterialLibrary]:
     """Build the starting geometry and apply ``steps`` to it, the same way
     ``structureforge.api.app`` does for its own ``/api/simulate`` - returns the live objects
     (geometry, one frame per step, the material library used) for a caller that needs them for
     more than just a preview (e.g. to commit the result as a Follow experiment). ``slug`` is kept
-    in the signature even though every project shares the same material/step physics now - callers
-    already pass it, and a project-specific material library is a plausible future need.
+    in the signature even though every project shares the same material/step/recipe physics now -
+    callers already pass it, and a project-specific material library is a plausible future need.
     """
     materials = materials_library()
+    recipes = recipes_library()
     try:
         materials.get(substrate.material)
     except KeyError as exc:
@@ -64,7 +70,7 @@ def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]
 
     geometry = Geometry.substrate(substrate.material, substrate.domain_width.to_nm(), substrate.thickness.to_nm())
     try:
-        frames = simulate(geometry, steps, materials)
+        frames = simulate(geometry, steps, materials, recipes)
     except SimulationError as exc:
         raise SimulationFailedError(str(exc)) from exc
     return geometry, frames, materials
@@ -93,18 +99,13 @@ CAMPAIGN_FIELD_LABELS = {"thickness": "Épaisseur", "depth": "Profondeur", "targ
 
 
 class VariantFactor(BaseModel):
-    """One parameter to vary, at the step ``step_index``, across ``values``. Either a numeric
-    field (``thickness``, ``depth``, ``target_level`` - whatever the step carries as a ``Length``,
-    named by ``field``, in that field's own unit) or, when ``via_estimate`` is set, a named
-    ``structureforge.process.steps.DerivedEstimate`` already defined on that step (a deposition's
-    ``derived_estimates``) - in which case ``values`` are target estimate values (e.g. a target
-    doping) rather than raw field values, and the step's process parameter is solved for by
-    inverting the estimate's linear formula (see ``_step_with_estimate_value``)."""
+    """One parameter to vary, at the step ``step_index``, across ``values`` - a numeric field
+    (``thickness``, ``depth``, ``target_level`` - whatever the step carries as a ``Length``, named
+    by ``field``, in that field's own unit)."""
 
     step_index: int
-    field: str | None = None
+    field: str
     values: list[float]
-    via_estimate: str | None = None
 
 
 class VariantPlan(BaseModel):
@@ -149,29 +150,6 @@ def _step_with_value(step: ProcessStep, field: str, value: float) -> ProcessStep
     return step.model_copy(update={field: Length(value=value, unit=current.unit)})
 
 
-def _find_estimate(step: ProcessStep, estimate_name: str):
-    for estimate in getattr(step, "derived_estimates", None) or []:
-        if estimate.name == estimate_name:
-            return estimate
-    return None
-
-
-def _step_with_estimate_value(step: ProcessStep, estimate_name: str, target_value: float) -> ProcessStep:
-    """Solve which process parameter value would make the named estimate equal ``target_value``
-    (inverting its linear formula) and apply that to the step - the DOE-campaign counterpart of
-    ``_step_with_value``, for varying a derived estimate (e.g. a target doping) instead of the
-    raw process parameter (e.g. flux) it comes from.
-    """
-    estimate = _find_estimate(step, estimate_name)
-    if estimate is None:
-        raise SimulationFailedError(f"cette étape n'a pas d'estimation nommée {estimate_name!r}")
-    try:
-        solved = solve_parameter_for_estimate(estimate, target_value)
-    except ValueError as exc:
-        raise SimulationFailedError(str(exc)) from exc
-    return step.model_copy(update={"process_parameters": {**step.process_parameters, estimate.parameter: solved}})
-
-
 def generate_campaign_variants(
     slug: str, substrate: SubstrateSpec, steps: list[ProcessStep], plan: VariantPlan
 ) -> CampaignVariants:
@@ -189,15 +167,11 @@ def generate_campaign_variants(
             raise SimulationFailedError("il faut au moins une valeur pour chaque paramètre")
         if not (0 <= factor.step_index < len(steps)):
             raise SimulationFailedError("étape sélectionnée invalide")
-        if not factor.via_estimate and not factor.field:
-            raise SimulationFailedError("il faut choisir un paramètre ou une grandeur estimée à faire varier")
+        if not factor.field:
+            raise SimulationFailedError("il faut choisir un paramètre à faire varier")
 
     def _factor_label(factor: "VariantFactor") -> str:
         step_name = steps[factor.step_index].name
-        if factor.via_estimate:
-            estimate = _find_estimate(steps[factor.step_index], factor.via_estimate)
-            unit_suffix = f" ({estimate.unit})" if estimate and estimate.unit else ""
-            return f"{factor.via_estimate}{unit_suffix} — {step_name}"
         return f"{CAMPAIGN_FIELD_LABELS.get(factor.field, factor.field)} — {step_name}"
 
     factor_labels = [_factor_label(factor) for factor in plan.factors]
@@ -209,12 +183,7 @@ def generate_campaign_variants(
     for combo in itertools.product(*(factor.values for factor in plan.factors)):
         varied_steps = list(steps)
         for factor, value in zip(plan.factors, combo):
-            if factor.via_estimate:
-                varied_steps[factor.step_index] = _step_with_estimate_value(
-                    varied_steps[factor.step_index], factor.via_estimate, value
-                )
-            else:
-                varied_steps[factor.step_index] = _step_with_value(varied_steps[factor.step_index], factor.field, value)
+            varied_steps[factor.step_index] = _step_with_value(varied_steps[factor.step_index], factor.field, value)
         geometry, frames, materials = run_simulation(slug, substrate, varied_steps)
         entries.append(to_structure(geometry))
         material_colors = {m.name: m.color for m in materials}

@@ -42,7 +42,7 @@ def _substrate():
 
 
 def _steps():
-    return [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "mode": "conformal", "thickness": {"value": 20, "unit": "nm"}}]
+    return [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
 
 
 def test_entity_history_is_empty_for_a_project_with_no_tracked_entities(client):

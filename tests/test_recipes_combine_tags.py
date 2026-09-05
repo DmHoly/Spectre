@@ -11,7 +11,7 @@ def _steps(thickness=20):
             "kind": "deposition",
             "name": "Oxyde",
             "material": "SiO2",
-            "mode": "conformal",
+            "recipe": "CVD Conformal",
             "thickness": {"value": thickness, "unit": "nm"},
         }
     ]

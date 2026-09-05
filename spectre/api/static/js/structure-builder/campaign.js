@@ -11,15 +11,8 @@ function campaignStepOptionsHtml() {
 function campaignFieldOptionsHtml(stepIndex) {
   const step = state.steps[stepIndex];
   const options = step ? CAMPAIGN_FIELD_OPTIONS[step.kind] || [] : [];
-  const estimateOptions = step && step.derived_estimates ? step.derived_estimates : [];
   const optionsHtml = options.map(([value, label]) => `<option value="${value}">${label}</option>`);
-  // a derived estimate (ex : dopage) is split by choosing target estimate values directly - the
-  // step's process parameter is solved from them server-side (see _step_with_estimate_value).
-  const estimateOptionsHtml = estimateOptions.map(
-    (e) => `<option value="estimate:${escapeHtml(e.name)}">${escapeHtml(e.name)} (estimée)</option>`
-  );
-  const all = [...optionsHtml, ...estimateOptionsHtml];
-  return all.length ? all.join("") : `<option value="">Aucun paramètre modifiable sur cette étape</option>`;
+  return optionsHtml.length ? optionsHtml.join("") : `<option value="">Aucun paramètre modifiable sur cette étape</option>`;
 }
 
 function addCampaignFactorRow() {
@@ -72,11 +65,7 @@ function campaignPlan() {
       .map((v) => parseFloat(v.trim()))
       .filter((v) => !Number.isNaN(v));
     if (Number.isNaN(stepIndex) || !fieldValue || values.length === 0) return null;
-    if (fieldValue.startsWith("estimate:")) {
-      factors.push({ step_index: stepIndex, via_estimate: fieldValue.slice("estimate:".length), values });
-    } else {
-      factors.push({ step_index: stepIndex, field: fieldValue, values });
-    }
+    factors.push({ step_index: stepIndex, field: fieldValue, values });
   }
   return { factors };
 }

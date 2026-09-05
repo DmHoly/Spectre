@@ -67,29 +67,12 @@ def length(value: float, unit: str = "nm") -> dict:
     return {"value": value, "unit": unit}
 
 
-def deposition(name, material, *, mode="conformal", angle_deg=0.0, thickness_nm, params=None, estimates=None):
-    return {
-        "kind": "deposition",
-        "name": name,
-        "material": material,
-        "mode": mode,
-        "angle_deg": angle_deg,
-        "thickness": length(thickness_nm),
-        "process_parameters": params or {},
-        "derived_estimates": estimates or [],
-    }
+def deposition(name, material, *, recipe="CVD Conformal", thickness_nm):
+    return {"kind": "deposition", "name": name, "material": material, "recipe": recipe, "thickness": length(thickness_nm)}
 
 
-def etch(name, *, mode="directional", angle_deg=0.0, default_factor=1.0, selectivity=None, depth_nm):
-    return {
-        "kind": "etch",
-        "name": name,
-        "mode": mode,
-        "angle_deg": angle_deg,
-        "default_factor": default_factor,
-        "selectivity_by_material": selectivity or {},
-        "depth": length(depth_nm),
-    }
+def etch(name, *, recipe="Anisotropic RIE", depth_nm):
+    return {"kind": "etch", "name": name, "recipe": recipe, "depth": length(depth_nm)}
 
 
 def lithography(name, resist, *, thickness_nm, openings):
@@ -104,8 +87,18 @@ def planarization_level(name, level_nm):
     return {"kind": "planarization", "name": name, "target_level": length(level_nm)}
 
 
-def selective_growth(name, material, *, thickness_nm, rate_m, rate_sp):
-    return {"kind": "selective_growth", "name": name, "material": material, "thickness": length(thickness_nm), "rate_m": rate_m, "rate_sp": rate_sp}
+def faceted_growth(name, material, *, thickness_nm, rate_m, rate_sp, rate_c=1.0, semi_polar_angle_deg=30.0, seed_materials=None):
+    return {
+        "kind": "faceted_growth",
+        "name": name,
+        "material": material,
+        "thickness": length(thickness_nm),
+        "rate_c": rate_c,
+        "rate_m": rate_m,
+        "rate_sp": rate_sp,
+        "semi_polar_angle_deg": semi_polar_angle_deg,
+        "seed_materials": seed_materials or [],
+    }
 
 
 def flip(name="Retournement"):
@@ -114,10 +107,6 @@ def flip(name="Retournement"):
 
 def substrate(material, *, width_nm, thickness_nm):
     return {"material": material, "domain_width": length(width_nm), "thickness": length(thickness_nm)}
-
-
-def estimate(name, parameter, *, coefficient=1.0, offset=0.0, unit=None):
-    return {"name": name, "parameter": parameter, "coefficient": coefficient, "offset": offset, "unit": unit}
 
 
 def objective(name, metric, direction, *, target=None, rationale=None, verification_method=None):
@@ -283,19 +272,13 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
     ]
 
     def pate(temp, oeufs, farine_g, sucre_g, beurre_g, cuisson_min, temps_total, thickness_nm=220, extra_params=None):
-        params = {"temperature_four_c": temp, "oeufs": oeufs, "farine_g": farine_g, "sucre_g": sucre_g, "beurre_g": beurre_g, "temps_cuisson_min": cuisson_min, "temps_total_min": temps_total}
-        if extra_params:
-            params.update(extra_params)
-        return deposition(
-            "Versement de la pâte", "Polyimide", thickness_nm=thickness_nm, params=params,
-            estimates=[estimate("moelleux", "temperature_four_c", coefficient=-0.45, offset=149, unit="%")],
-        )
+        # temp/oeufs/farine_g/... ne sont plus portés par l'étape simulée (StructureForge n'a pas
+        # de notion de paramètre process libre) - gardés en argument pour documenter chaque essai
+        # dans le script, la vraie histoire vit dans les hypothèses/preuves de chaque version.
+        return deposition("Versement de la pâte", "Polyimide", thickness_nm=thickness_nm)
 
     def glacage(cacao_pourcent, thickness_nm=25):
-        return deposition(
-            "Glaçage au chocolat noir", "BCB", thickness_nm=thickness_nm, params={"cacao_pourcent": cacao_pourcent},
-            estimates=[estimate("intensite_gout", "cacao_pourcent", coefficient=0.07, offset=2, unit="/10")],
-        )
+        return deposition("Glaçage au chocolat noir", "BCB", thickness_nm=thickness_nm)
 
     # 1. Recette de référence
     b1 = proj.launch(
@@ -399,8 +382,8 @@ def build_cake_project(demo: Session, lea: Session, marc: Session) -> str:
         substrate=cake_substrate,
         steps=campaign_steps,
         plan={"factors": [
-            {"step_index": 0, "via_estimate": "moelleux", "values": [70, 80, 90]},
-            {"step_index": 1, "via_estimate": "intensite_gout", "values": [6, 8]},
+            {"step_index": 0, "field": "thickness", "values": [200, 220, 240]},
+            {"step_index": 1, "field": "thickness", "values": [20, 30]},
         ]},
         sample_id="Gâteau-Campagne1",
         days_ago=280,
@@ -584,32 +567,32 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
 
     def epi_stack(aln_nm):
         return [
-            deposition("Tampon AlN", "AlN", thickness_nm=aln_nm),
-            deposition("Croissance GaN", "GaN", thickness_nm=60, params={"temperature_croissance_c": 1050, "pression_torr": 100}),
+            deposition("Tampon AlN", "AlN", recipe="MOCVD Epitaxial", thickness_nm=aln_nm),
+            deposition("Croissance GaN", "GaN", recipe="MOCVD Epitaxial", thickness_nm=60),
         ]
 
     litho_etch = [
         lithography("Masque des piliers", "Photoresist", thickness_nm=80, openings=[(0.0, cx - pillar_half_width), (cx + pillar_half_width, domain_width)]),
-        etch("Gravure ICP Cl2 des piliers", mode="directional", angle_deg=0.0, selectivity={"GaN": 1.0, "AlGaN": 1.0, "InGaN": 1.0, "AlN": 1.0}, default_factor=0.05, depth_nm=60),
+        etch("Gravure ICP Cl2 des piliers", recipe="Cl2 ICP-RIE (III-N)", depth_nm=60),
         resist_strip("Retrait du masque"),
     ]
 
     growth_taper = [
-        selective_growth("Croissance sélective 1", "GaN", thickness_nm=10, rate_m=0.4, rate_sp=0.15),
-        selective_growth("Croissance sélective 2", "GaN", thickness_nm=10, rate_m=0.4, rate_sp=0.15),
-        selective_growth("Croissance sélective 3", "GaN", thickness_nm=8, rate_m=0.35, rate_sp=0.12),
+        faceted_growth("Croissance facettée 1", "GaN", thickness_nm=10, rate_m=0.4, rate_sp=0.15, seed_materials=["GaN"]),
+        faceted_growth("Croissance facettée 2", "GaN", thickness_nm=10, rate_m=0.4, rate_sp=0.15, seed_materials=["GaN"]),
+        faceted_growth("Croissance facettée 3", "GaN", thickness_nm=8, rate_m=0.35, rate_sp=0.12, seed_materials=["GaN"]),
     ]
 
     def active_region(indium_pourcent):
+        # indium_pourcent ne pilote plus directement l'étape simulée (pas de champ de composition
+        # sur Deposition) - gardé en argument pour documenter chaque essai, la longueur d'onde
+        # visée reste suivie comme objectif/preuve de l'expérience, pas comme grandeur calculée.
         return [
-            deposition(
-                "Puits quantique InGaN", "InGaN", thickness_nm=3, params={"indium_pourcent": indium_pourcent},
-                estimates=[estimate("longueur_onde_nm", "indium_pourcent", coefficient=9.5, offset=280, unit="nm")],
-            ),
-            deposition("Capot GaN", "GaN", thickness_nm=8),
+            deposition("Puits quantique InGaN", "InGaN", recipe="MOCVD Epitaxial", thickness_nm=3),
+            deposition("Capot GaN", "GaN", recipe="MOCVD Epitaxial", thickness_nm=8),
         ]
 
-    ito_contact = [deposition("Contact ITO", "ITO", mode="directional", angle_deg=0.0, thickness_nm=15)]
+    ito_contact = [deposition("Contact ITO", "ITO", recipe="Sputter Metal (normal)", thickness_nm=15)]
 
     # 1. Épitaxie de référence
     b1 = proj.launch(
@@ -762,35 +745,38 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
     )
     b7 = proj.tag(lea, b7, ["contact", "wafer-lot-B"], days_ago=206)
 
-    # 8. Campagne composition du puits quantique
-    campaign_steps = epi_stack(15) + litho_etch + growth_taper + active_region(18) + ito_contact
-    indium_step_index = campaign_steps.index(next(s for s in campaign_steps if s["name"] == "Puits quantique InGaN"))
+    # 8. Campagne épaisseur de croissance GaN (avant gravure/facettage - une campagne sur la
+    # géométrie facettée du nanofil se heurte à la comparaison générique de Follow, qui exige des
+    # entités de même "forme" - une pointe facettée simulée n'a pas le même nombre de sommets
+    # d'un échantillon à l'autre. Balayer un empilement encore plat contourne le problème.)
+    campaign_steps = epi_stack(15)
+    gan_step_index = campaign_steps.index(next(s for s in campaign_steps if s["name"] == "Croissance GaN"))
     b8 = proj.campaign(
         demo,
-        title="Campagne composition du puits quantique - 4 échantillons",
-        intent="Balayer la composition d'indium pour cartographier la longueur d'onde d'émission visée.",
+        title="Campagne épaisseur de croissance GaN - 4 échantillons",
+        intent="Balayer l'épaisseur de croissance GaN avant de graver les piliers, pour cartographier son effet sur la suite du procédé.",
         substrate=epi_substrate(), steps=campaign_steps,
-        plan={"factors": [{"step_index": indium_step_index, "via_estimate": "longueur_onde_nm", "values": [430, 450, 470, 490]}]},
+        plan={"factors": [{"step_index": gan_step_index, "field": "thickness", "values": [50, 55, 60, 65]}]},
         sample_id="Wafer-Campagne1",
         days_ago=190,
     )
-    proj.tag(demo, b8, ["campagne", "zone-active"], days_ago=188)
+    proj.tag(demo, b8, ["campagne", "epitaxie"], days_ago=188)
 
-    # 9. Ajustement composition suite à la campagne
+    # 9. Ajustement épaisseur de croissance + composition suite à la campagne
     b9 = proj.evolve(
         demo, b7,
-        title="Ajustement composition suite à la campagne (cible 450nm)",
-        intent="Reprendre la composition d'indium qui vise le plus précisément 450nm d'après la campagne.",
-        hypothesis="Une composition d'indium à 18.5% doit centrer l'émission sur 450nm.",
-        substrate=epi_substrate(), steps=epi_stack(15) + litho_etch + growth_taper + active_region(18.5) + ito_contact, days_ago=160,
+        title="Ajustement épaisseur GaN et composition (cible 450nm)",
+        intent="Reprendre l'épaisseur de croissance GaN qui a donné le meilleur compromis lors de la campagne, avec une composition d'indium visant 450nm.",
+        hypothesis="60nm de GaN puis une composition d'indium à 18.5% doivent centrer l'émission sur 450nm.",
+        substrate=epi_substrate(), steps=epi_stack(60) + litho_etch + growth_taper + active_region(18.5) + ito_contact, days_ago=160,
     )
     b9 = proj.evidence(demo, b9, description="Wafer marqué comme référence pour la suite du projet.", source="Suivi de lot", days_ago=158)
     b9 = proj.conclude(
-        demo, b9, decision="promote", summary="Nouvelle référence de composition.",
+        demo, b9, decision="promote", summary="Nouvelle référence d'épaisseur et de composition.",
         objective_results=[
-            objres("Rugosité de surface", "inconclusive", "Pas de nouvelle mesure AFM, épitaxie inchangée depuis le lot précédent."),
+            objres("Rugosité de surface", "partially_met", "Épaisseur de croissance ajustée à 60nm d'après la campagne, pas de nouvelle mesure AFM à cette valeur."),
             objres("Diamètre de pointe", "inconclusive", "Pas de nouvelle mesure MEB, géométrie de pointe inchangée."),
-            objres("Longueur d'onde d'émission estimée", "partially_met", "Composition ajustée à 18.5% d'après la campagne pour viser 450nm, mesure de confirmation en photoluminescence pas encore réalisée."),
+            objres("Longueur d'onde d'émission estimée", "partially_met", "Composition visée à 18.5% pour viser 450nm, mesure de confirmation en photoluminescence pas encore réalisée."),
             objres("Résistance de contact face arrière", "inconclusive", "Pas encore abordé sur ce wafer."),
         ],
         days_ago=156,
@@ -799,23 +785,21 @@ def build_nanowire_project(demo: Session, lea: Session, marc: Session) -> str:
     proj.track(demo, b9, sample_id="W-C1", location="Boîte à wafers, salle blanche, tiroir 3", days_ago=156)
 
     # 10. Wafer test - validation du retournement pour contact face arrière (procédé
-    # indépendant, validé sur un wafer test Si avant d'être appliqué à la ligne active GaN -
-    # reprend exactement les valeurs de structureforge/examples/flip_backside_via.py, déjà
-    # vérifiées).
+    # indépendant, validé sur un wafer test Si avant d'être appliqué à la ligne active GaN).
     via_cx = 150.0
     flip_steps = [
-        deposition("GaN (dispositif)", "GaN", thickness_nm=40),
+        deposition("GaN (dispositif)", "GaN", recipe="MOCVD Epitaxial", thickness_nm=40),
         lithography("Masque du plot de contact", "Photoresist", thickness_nm=60, openings=[(via_cx - 50.0, via_cx + 50.0)]),
-        deposition("Métal de contact (Au)", "Au", mode="directional", angle_deg=0.0, thickness_nm=30),
+        deposition("Métal de contact (Au)", "Au", recipe="Evaporation (normal)", thickness_nm=30),
         resist_strip("Retrait résine"),
-        deposition("Oxyde de scellement", "SiO2", thickness_nm=80),
+        deposition("Oxyde de scellement", "SiO2", recipe="PECVD Conformal", thickness_nm=80),
         planarization_level("CMP de scellement", 110),
         flip("Retournement pour la face arrière"),
-        etch("Amincissement de la face arrière", mode="isotropic", depth_nm=120),
+        etch("Amincissement de la face arrière", recipe="SF6 Deep RIE (Si)", depth_nm=120),
         lithography("Masque du via", "Photoresist", thickness_nm=40, openings=[(via_cx - 15.0, via_cx + 15.0)]),
-        etch("Gravure du via (traverse jusqu'au plot)", mode="directional", angle_deg=0.0, selectivity={"Photoresist": 0.1, "Au": 0.05}, depth_nm=75),
+        etch("Gravure du via (traverse jusqu'au plot)", recipe="Anisotropic RIE", depth_nm=75),
         resist_strip("Retrait résine"),
-        deposition("Métal de la face arrière (Cu)", "Cu", mode="directional", angle_deg=0.0, thickness_nm=15),
+        deposition("Métal de la face arrière (Cu)", "Cu", recipe="Evaporation (normal)", thickness_nm=15),
     ]
     b10 = proj.launch(
         demo,
