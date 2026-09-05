@@ -44,7 +44,7 @@ if errorlevel 1 (
 echo.
 echo Recuperation des dernieres versions de StructureForge et Follow depuis GitHub ...
 echo ^(pip garde sinon la version deja installee meme si le depot a change^)
-pip install --upgrade --force-reinstall --no-deps "structureforge[follow] @ git+https://github.com/dmholy/structureforge.git@claude/spectrum-structure-generator-4sdiv2"
+pip install --upgrade --force-reinstall --no-deps "structureforge[follow] @ git+https://github.com/dmholy/structureforge.git@main"
 if errorlevel 1 (
     echo [ERREUR] La mise a jour de StructureForge a echoue - voir le message ci-dessus.
     pause
