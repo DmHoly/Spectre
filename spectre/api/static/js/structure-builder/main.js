@@ -26,6 +26,7 @@ async function init() {
   } else if (isBrickMode) {
     await initBrickMode();
   } else {
+    await loadIntentForm();
     await loadExistingProcess();
     await loadTemplateProcess();
     await loadChosenStructureForExperience();

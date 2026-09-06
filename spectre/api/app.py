@@ -19,6 +19,7 @@ from ..core.db import init_db
 from . import atlas as atlas_router
 from . import auth as auth_router
 from . import experiments as experiments_router
+from . import intent_forms as intent_forms_router
 from . import links as links_router
 from . import projects as projects_router
 from . import refs as refs_router
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(structures_router.router)
     app.include_router(experiments_router.router)
     app.include_router(refs_router.router)
+    app.include_router(intent_forms_router.router)
     app.include_router(atlas_router.router)
     app.include_router(links_router.router)
 
@@ -71,6 +73,7 @@ def create_app() -> FastAPI:
     app.get("/projets/{slug}/experiences/{experience_id}")(_page("experience.html"))
     app.get("/projets/{slug}/graphe")(_page("graphe.html"))
     app.get("/projets/{slug}/refs")(_page("refs.html"))
+    app.get("/projets/{slug}/formulaire-intention")(_page("formulaire-intention.html"))
 
     return app
 

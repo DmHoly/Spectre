@@ -36,7 +36,7 @@ from ..core.permissions import get_project as resolve_project
 from ..core.permissions import require_role
 from ..core.projects import Project
 from .deps import get_current_user
-from .structures import EntityTrackingInput, LaunchExperienceRequest, _unique_branch, split_objectives
+from .structures import EntityTrackingInput, LaunchExperienceRequest, _form_validation_error, _unique_branch, split_objectives
 
 router = APIRouter(prefix="/api/projects", tags=["experiments"])
 
@@ -186,6 +186,7 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
         "evidence": [e.model_dump(mode="json") for e in experiment.evidence],
         "physical_tracking": experiment.metadata.get("physical_tracking", []),
         "attachments": experiment.metadata.get("attachments", []),
+        "form_answers": dict(experiment.form_answers),
     }
 
 
@@ -377,9 +378,12 @@ def evolve_experience(
             status_code=422,
             detail="Une entité physique (l'échantillon réel suivi) est obligatoire - ajoutez-en une sur la version actuelle avant de continuer.",
         )
+    builder.form_answers = dict(body.form_answers)
 
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer cette évolution - rechargez la page et réessayez."
@@ -420,6 +424,7 @@ def conclude_experience(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.tags = list(parent.tags)
     builder.evidence = list(parent.evidence)
     builder.conclude(
@@ -431,6 +436,8 @@ def conclude_experience(
     )
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer cette conclusion - rechargez la page et réessayez."
@@ -479,6 +486,7 @@ def add_evidence(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = list(parent.evidence)
     builder.tags = list(parent.tags)
     builder.conclusion = parent.conclusion
@@ -496,6 +504,8 @@ def add_evidence(
     )
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer cette preuve - rechargez la page et réessayez."
@@ -544,8 +554,11 @@ def combine_experiences(
         raise HTTPException(status_code=422, detail="Ces deux expériences ne peuvent pas être combinées.") from exc
     builder.metadata = dict(a.metadata)
     builder.tags = list(a.tags)
+    builder.form_answers = dict(a.form_answers)
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible de combiner ces expériences - rechargez la page et réessayez."
@@ -580,11 +593,14 @@ def set_tags(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = list(parent.evidence)
     builder.conclusion = parent.conclusion
     builder.tags = cleaned
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer les étiquettes - rechargez la page et réessayez."
@@ -628,12 +644,15 @@ def set_physical_tracking(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = list(parent.evidence)
     builder.conclusion = parent.conclusion
     builder.tags = list(parent.tags)
     builder.metadata["physical_tracking"] = entities
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer le suivi physique - rechargez la page et réessayez."
@@ -726,12 +745,17 @@ async def upload_attachment(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = list(parent.evidence)
     builder.conclusion = parent.conclusion
     builder.tags = list(parent.tags)
     builder.metadata["attachments"] = attachments
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        (directory / attachment_id).unlink(missing_ok=True)
+        (directory / f"{attachment_id}.json").unlink(missing_ok=True)
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         (directory / attachment_id).unlink(missing_ok=True)
         (directory / f"{attachment_id}.json").unlink(missing_ok=True)
@@ -768,12 +792,15 @@ def remove_attachment(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = list(parent.evidence)
     builder.conclusion = parent.conclusion
     builder.tags = list(parent.tags)
     builder.metadata["attachments"] = attachments
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible de retirer la pièce jointe - rechargez la page et réessayez."
@@ -819,11 +846,14 @@ def update_evidence_annotations(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = updated_evidence
     builder.tags = list(parent.tags)
     builder.conclusion = parent.conclusion
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer les annotations - rechargez la page et réessayez."

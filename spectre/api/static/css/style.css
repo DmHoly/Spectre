@@ -492,6 +492,7 @@ textarea:focus {
   background: var(--danger-tint);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
+  white-space: pre-line;
 }
 
 /* -- petits titres de section ---------------------------------------------------------- */
