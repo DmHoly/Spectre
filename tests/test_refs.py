@@ -89,6 +89,50 @@ def test_evolving_from_a_ref_name_works_like_any_other_ref(client):
     assert response.json()["id"] != launched["id"]
 
 
+def test_the_projects_first_experience_becomes_a_ref_automatically(client):
+    slug = _register_and_project(client, "refs-auto-first@example.com")
+    launched = _launch(client, slug)
+
+    items = client.get(f"/api/projects/{slug}/refs").json()["items"]
+    assert len(items) == 1
+    assert items[0]["experiment_id"] == launched["id"]
+    assert items[0]["names"] == ["ref v1.0.0"]
+
+    # a later experience in the same project does *not* also get auto-tagged
+    second = client.post(
+        f"/api/projects/{slug}/experiences",
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(30),
+            "title": "Autre depart",
+            "intent": "Depart 2",
+            "entities": [{"sample_id": "W2"}],
+        },
+    ).json()
+    items = client.get(f"/api/projects/{slug}/refs").json()["items"]
+    assert {i["experiment_id"] for i in items} == {launched["id"]}
+    assert second["id"] != launched["id"]
+
+
+def test_the_projects_first_campaign_becomes_a_ref_automatically(client):
+    slug = _register_and_project(client, "refs-auto-first-campaign@example.com")
+    campaign = client.post(
+        f"/api/projects/{slug}/experiences/campagne",
+        json={
+            "substrate": _substrate(),
+            "steps": _steps(),
+            "plan": {"factors": [{"step_index": 0, "field": "thickness", "values": [10, 20]}]},
+            "title": "Campagne",
+            "intent": "Balayer l'épaisseur",
+            "entities": [{"sample_id": "V0"}],
+        },
+    ).json()
+
+    items = client.get(f"/api/projects/{slug}/refs").json()["items"]
+    assert len(items) == 1
+    assert items[0]["experiment_id"] == campaign["id"]
+
+
 def test_refs_list_and_graph_condense_intermediate_versions(client):
     slug = _register_and_project(client, "refs-graph@example.com")
     root = _launch(client, slug, thickness=10)

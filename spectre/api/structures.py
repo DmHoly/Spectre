@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
 from structureforge.process.steps import ProcessStep
 
-from ..core import projects, structures
+from ..core import projects, refs, structures
 from ..core.accounts import User
 from ..core.permissions import require_role
 from ..core.projects import Project
@@ -89,6 +89,15 @@ def _unique_branch(repo: "follow.Repository", title: str) -> str:
         branch = f"{base}-{suffix}"
         suffix += 1
     return branch
+
+
+def _ref_the_first_experience(repo: "follow.Repository", experiment: "follow.Experiment") -> None:
+    """A brand-new project has no ref yet to start from - so its very first experience becomes
+    one automatically (the default "ref vX.Y.Z" name), rather than leaving every project stuck
+    with nothing to feature in "Partir d'une ref" until someone remembers to tag one by hand.
+    """
+    if len(repo) == 1:
+        refs.create_ref(repo, experiment.id)
 
 
 def split_objectives(inputs: list[ObjectiveInput]) -> tuple[list["follow.Objective"], dict[str, str]]:
@@ -345,6 +354,7 @@ def launch_experience(
         experiment = builder.commit()
     except follow.FollowError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _ref_the_first_experience(repo, experiment)
 
     return {"id": experiment.id, "branch": experiment.branch}
 
@@ -422,5 +432,6 @@ def launch_campaign(
         experiment = builder.commit()
     except follow.FollowError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _ref_the_first_experience(repo, experiment)
 
     return {"id": experiment.id, "branch": experiment.branch}
