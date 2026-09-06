@@ -60,19 +60,22 @@ python scripts/seed_demo.py
 ```
 
 Crée un compte (`demo@spectre.local` / `demo1234`) avec deux projets déjà remplis, comme si
-l'équipe utilisait Spectre depuis un an : **Gâteau au chocolat** (une recette optimisée au fil de
-dizaines d'essais - température, dosages, glaçage - pour montrer que le suivi d'expérience marche
-sur n'importe quel procédé, pas seulement en salle blanche) et **Nanofils GaN** (épitaxie,
-gravure, croissance sélective, campagnes DOE, retournement pour contact face arrière - plus
-proche du métier réel). Les deux montrent l'éventail complet des flux de filiation, pas seulement
-des évolutions linéaires : embranchements (une piste vegan et une piste sans-gluten pour le
-gâteau, un essai sur substrat SiC pour les nanofils) puis fusion de deux pistes indépendantes en
-une seule expérience (`/combiner`, visible dans le graphe du projet comme un losange). Tout passe
-par les vraies routes HTTP, donc les données sont garanties valides ; seules les dates de création
-sont recalées après coup pour étaler l'historique sur
-l'année (voir le script pour le détail). Lancer sur un répertoire de données neuf (`--data-dir`
-sinon `SPECTRE_DATA_DIR`/`./data`) - relancer sur un répertoire déjà semé recréerait les mêmes
-comptes et échouerait sur l'inscription.
+l'équipe utilisait Spectre depuis un an - tous les deux sur des nanofils GaN épitaxiés pour LED,
+pour rester dans un seul domaine métier : **Nanofils GaN - puits quantique simple** (épitaxie de
+référence, gravure, croissance sélective, un seul puits quantique InGaN visant le bleu, un
+changement de substrat de base saphir/SiC, et une déclinaison rouge/vert/bleu du taux d'indium de
+la zone active) et **Nanofils GaN - puits quantiques multiples (MQW)** - un projet séparé - qui
+reprend la même base épitaxiale mais compare plusieurs puits quantiques avec et sans couche
+bloqueuse d'électrons (EBL), puis affine le dopage P en aval. Les deux montrent l'éventail complet
+des flux de filiation, pas seulement des évolutions linéaires : embranchements (déclinaisons de
+couleur, substrat SiC, avec/sans EBL), fusion de deux pistes indépendantes en une seule expérience
+(`/combiner`, visible dans le graphe du projet comme un losange), et des refs
+(`spectre.core.refs`) posées sur les points de départ vraiment réutilisés (l'épitaxie standard, la
+structure de référence...) plutôt que sur chaque version. Tout passe par les vraies routes HTTP,
+donc les données sont garanties valides ; seules les dates de création sont recalées après coup
+pour étaler l'historique sur l'année (voir le script pour le détail). Lancer sur un répertoire de
+données neuf (`--data-dir` sinon `SPECTRE_DATA_DIR`/`./data`) - relancer sur un répertoire déjà
+semé recréerait les mêmes comptes et échouerait sur l'inscription.
 
 ## Déploiement
 
