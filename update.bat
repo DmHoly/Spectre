@@ -22,7 +22,13 @@ if not exist ".venv\Scripts\activate.bat" (
 )
 
 echo Recuperation des dernieres modifications de Spectre ...
-git pull --ff-only
+git checkout main
+if errorlevel 1 (
+    echo [ERREUR] Impossible de se placer sur la branche "main".
+    pause
+    exit /b 1
+)
+git pull origin main --ff-only
 if errorlevel 1 (
     echo [ERREUR] "git pull" a echoue - probablement des modifications locales non enregistrees.
     echo Mettez-les de cote ^(git stash^) ou annulez-les, puis relancez ce script.
