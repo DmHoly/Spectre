@@ -64,7 +64,9 @@
         <a href="#combiner">Combiner deux expériences</a>
         <a href="#etiquettes">Étiquettes</a>
         <a href="#vue-ensemble">Vue d'ensemble du projet</a>
+        <a href="#refs">Refs</a>
         <a href="#presets-etapes">Gérer les présets d'étapes</a>
+        <a href="#formulaire-intention">Formulaire d'intention</a>
 
         <div class="docs-nav__group">Compte et projet</div>
         <a href="#compte-gestion">Profil et mot de passe</a>
@@ -241,10 +243,24 @@
           <img class="docs-shot" src="/static/docs/img/21-vue-ensemble.png" alt="Vue d'ensemble d'un projet, filiation entre versions">
         </section>
 
+        <section id="refs">
+          <h2>Refs</h2>
+          <p>Une ref est un point de départ réutilisable : une version qu'on prévoit de reprendre encore et encore comme base de nouvelles pistes, plutôt que de repartir de zéro à chaque fois. Sur la fiche d'une version, à côté des étiquettes, « + ref » lui donne un petit nom (« omega », « banane »... librement choisi) - laissé vide, elle reçoit automatiquement le nom « ref vX.Y.Z » (le numéro de version affiché plus haut sur la fiche). Une même version peut porter plusieurs noms de ref à la fois.</p>
+          <p>Une fois nommée, une ref se retrouve exactement comme une version normale - « Enregistrer une évolution » depuis sa fiche, ou en tapant directement son nom (par ex. <code>omega</code>) à la place d'un identifiant technique partout où Spectre en demande un.</p>
+          <p>Le lien « Refs » d'un projet liste toutes ses refs et comment elles s'enchaînent : chaque ref n'affiche que la ref suivante dont elle est l'ancêtre la plus proche, sans les versions ordinaires entre les deux - une vue condensée des points de repère du projet, complémentaire à la « Vue d'ensemble » qui montre elle chaque version.</p>
+          <img class="docs-shot" src="/static/docs/img/22-refs.png" alt="Page Refs d'un projet, montrant deux refs et leur enchaînement">
+        </section>
+
         <section id="presets-etapes">
           <h2>Gérer les présets d'étapes</h2>
           <p>Un préset d'étape est un raccourci nommé vers une recette de dépôt ou de gravure de StructureForge — le sélectionner dans le formulaire d'une étape en préremplit la recette, sans créer de lien permanent avec le préset : l'étape ajoutée reste ensuite librement modifiable, exactement comme une structure dupliquée depuis la bibliothèque. L'onglet « Structures » d'un projet propose un lien « Gérer les présets d'étapes » vers une page dédiée qui liste les présets intégrés (non modifiables, seulement duplicables), ceux partagés entre tous les projets, et ceux propres au projet — avec la possibilité d'en créer, modifier ou supprimer un.</p>
           <p class="docs-shot-caption">(Capture d'écran à refaire pour cette page.)</p>
+        </section>
+
+        <section id="formulaire-intention">
+          <h2>Formulaire d'intention</h2>
+          <p>En plus du titre et de l'intention libres, un projet peut exiger des réponses à quelques questions supplémentaires à chaque nouvelle expérience ou évolution - qui a lancé le run, sur quel équipement, un risque à vérifier... La page « Formulaire d'intention » d'un projet permet d'ajouter un formulaire depuis un fichier <code>.yml</code> (une bibliothèque, partagée entre projets ou propre à celui-ci) et de choisir lequel est actif. Une fois activé, ses questions apparaissent automatiquement sous « Objectifs et intention » au lancement ou à l'évolution d'une expérience, et les réponses se retrouvent dans une petite boîte d'infos sur la fiche. Les actions plus légères (étiquettes, preuves, conclure...) reprennent les réponses déjà données sans les redemander - seul un vrai lancement ou une vraie évolution repose la question.</p>
+          <img class="docs-shot" src="/static/docs/img/28-formulaire-intention.png" alt="Page Formulaire d'intention d'un projet, avec un formulaire actif">
         </section>
 
         <section id="compte-gestion">

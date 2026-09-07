@@ -11,9 +11,9 @@ responses.
 Route order matters: ``{ref:path}`` is greedy (it matches slashes too - see
 ``follow/api/app.py``'s own note on the same trick), so every route with a literal suffix after
 ``{ref:path}`` (``/process``, ``/timeline``, ``/diff``, ``/evoluer``, ``/conclure``, ``/preuves``,
-``/combiner``, ``/etiquettes``, ``/entites``, ``/pieces-jointes``, ``/diff-externe``, ``/matrice``)
-is registered before the bare "get one experience" route below it - otherwise that catch-all
-would swallow them.
+``/combiner``, ``/etiquettes``, ``/entites``, ``/pieces-jointes``, ``/diff-externe``, ``/matrice``,
+``/ref``) is registered before the bare "get one experience" route below it - otherwise that
+catch-all would swallow them.
 """
 
 from __future__ import annotations
@@ -30,13 +30,13 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
 
-from ..core import projects, structures, versioning
+from ..core import projects, refs, structures, versioning
 from ..core.accounts import User
 from ..core.permissions import get_project as resolve_project
 from ..core.permissions import require_role
 from ..core.projects import Project
 from .deps import get_current_user
-from .structures import EntityTrackingInput, LaunchExperienceRequest, _unique_branch, split_objectives
+from .structures import EntityTrackingInput, LaunchExperienceRequest, _form_validation_error, _unique_branch, split_objectives
 
 router = APIRouter(prefix="/api/projects", tags=["experiments"])
 
@@ -125,6 +125,10 @@ class TagsRequest(BaseModel):
     tags: list[str]
 
 
+class CreateRefRequest(BaseModel):
+    name: str | None = None
+
+
 class PhysicalTrackingRequest(BaseModel):
     entities: list[EntityTrackingInput]
 
@@ -175,12 +179,14 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
         "conclusion": experiment.conclusion.model_dump(mode="json"),
         "references": [r.model_dump(mode="json") for r in experiment.references],
         "tags": list(experiment.tags),
+        "ref_names": refs.ref_names_for(repo, experiment.id) if repo is not None else [],
         "structure_svg": structures.render_structure_svg(experiment.structure_type, experiment.structure),
         "is_batch": experiment.structure_type == structures.ProcessLot.registry_key(),
         "has_editable_process": "structureforge_process" in experiment.metadata,
         "evidence": [e.model_dump(mode="json") for e in experiment.evidence],
         "physical_tracking": experiment.metadata.get("physical_tracking", []),
         "attachments": experiment.metadata.get("attachments", []),
+        "form_answers": dict(experiment.form_answers),
     }
 
 
@@ -372,9 +378,12 @@ def evolve_experience(
             status_code=422,
             detail="Une entité physique (l'échantillon réel suivi) est obligatoire - ajoutez-en une sur la version actuelle avant de continuer.",
         )
+    builder.form_answers = dict(body.form_answers)
 
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer cette évolution - rechargez la page et réessayez."
@@ -415,6 +424,7 @@ def conclude_experience(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.tags = list(parent.tags)
     builder.evidence = list(parent.evidence)
     builder.conclude(
@@ -426,6 +436,8 @@ def conclude_experience(
     )
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer cette conclusion - rechargez la page et réessayez."
@@ -474,6 +486,7 @@ def add_evidence(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = list(parent.evidence)
     builder.tags = list(parent.tags)
     builder.conclusion = parent.conclusion
@@ -491,6 +504,8 @@ def add_evidence(
     )
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer cette preuve - rechargez la page et réessayez."
@@ -539,8 +554,11 @@ def combine_experiences(
         raise HTTPException(status_code=422, detail="Ces deux expériences ne peuvent pas être combinées.") from exc
     builder.metadata = dict(a.metadata)
     builder.tags = list(a.tags)
+    builder.form_answers = dict(a.form_answers)
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible de combiner ces expériences - rechargez la page et réessayez."
@@ -575,11 +593,14 @@ def set_tags(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = list(parent.evidence)
     builder.conclusion = parent.conclusion
     builder.tags = cleaned
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer les étiquettes - rechargez la page et réessayez."
@@ -623,12 +644,15 @@ def set_physical_tracking(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = list(parent.evidence)
     builder.conclusion = parent.conclusion
     builder.tags = list(parent.tags)
     builder.metadata["physical_tracking"] = entities
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer le suivi physique - rechargez la page et réessayez."
@@ -721,12 +745,17 @@ async def upload_attachment(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = list(parent.evidence)
     builder.conclusion = parent.conclusion
     builder.tags = list(parent.tags)
     builder.metadata["attachments"] = attachments
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        (directory / attachment_id).unlink(missing_ok=True)
+        (directory / f"{attachment_id}.json").unlink(missing_ok=True)
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         (directory / attachment_id).unlink(missing_ok=True)
         (directory / f"{attachment_id}.json").unlink(missing_ok=True)
@@ -763,12 +792,15 @@ def remove_attachment(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = list(parent.evidence)
     builder.conclusion = parent.conclusion
     builder.tags = list(parent.tags)
     builder.metadata["attachments"] = attachments
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible de retirer la pièce jointe - rechargez la page et réessayez."
@@ -814,11 +846,14 @@ def update_evidence_annotations(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
     builder.evidence = updated_evidence
     builder.tags = list(parent.tags)
     builder.conclusion = parent.conclusion
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(
             status_code=400, detail="Impossible d'enregistrer les annotations - rechargez la page et réessayez."
@@ -917,6 +952,26 @@ def experience_batch(ref: str, project: Project = Depends(require_role("viewer")
     payload["labels"] = experiment.metadata.get("campaign_labels") or [f"#{i + 1}" for i in range(variation.entity_count)]
     payload["physical_tracking"] = experiment.metadata.get("physical_tracking", [])
     return payload
+
+
+@router.post("/{slug}/experiences/{ref:path}/ref", status_code=201)
+def create_ref(
+    ref: str,
+    body: CreateRefRequest,
+    project: Project = Depends(require_role("editor")),
+) -> dict:
+    """Tag this experience as a ref: a named, reusable starting point future experiences can fork
+    off from over and over (see :mod:`spectre.core.refs`), rather than being just one more version
+    among many. ``body.name`` is a nickname ("omega", "banane"...) - left blank, it defaults to
+    "ref vX.Y.Z" using the version :mod:`spectre.core.versioning` already computes for it.
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        return refs.create_ref(repo, ref, name=body.name)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+    except refs.RefNameTakenError as exc:
+        raise HTTPException(status_code=409, detail=f"Le nom « {exc.name} » est déjà pris par une autre version ou branche.") from exc
 
 
 @router.get("/{slug}/experiences/{ref:path}")

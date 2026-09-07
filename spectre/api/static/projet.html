@@ -42,6 +42,8 @@
         <p id="project-description" style="color:var(--text-soft);font-size:14px;margin-top:4px;"></p>
       </div>
       <div style="display:flex;gap:10px;">
+        <a id="refs-link" href="#" class="btn btn-line">Refs</a>
+        <a id="intent-form-link" href="#" class="btn btn-line">Formulaire d'intention</a>
         <a id="graph-link" href="#" class="btn btn-line">Vue d'ensemble</a>
         <button id="new-structure-btn" class="btn btn-primary" style="display:none;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
@@ -143,6 +145,13 @@
       <div style="display:flex;flex-direction:column;gap:16px;">
         <div>
           <button class="btn btn-line btn-block" id="option-scratch" type="button">Partir de zéro</button>
+        </div>
+
+        <div id="ref-option-block" style="padding-top:14px;border-top:1px solid var(--border-soft);display:none;">
+          <label>Partir d'une ref</label>
+          <div class="help" style="margin-bottom:8px;">Un point de départ réutilisable de ce projet - garde le lien avec la ref, comme « Continuer une expérience existante ». Voir la page <a id="ref-option-link" href="#" target="_blank">Refs</a>.</div>
+          <select class="field" id="ref-select" style="margin-bottom:8px;"></select>
+          <button class="btn btn-line btn-block" id="option-ref" type="button">Partir de cette ref</button>
         </div>
 
         <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
@@ -294,15 +303,23 @@
     async function openNewExperienceDialog() {
       clearErrorFlash();
       try {
-        const [experiences, library] = await Promise.all([
+        const [experiences, library, refs] = await Promise.all([
           api.get(`/api/projects/${encodeURIComponent(slug)}/experiences?status=all&limit=200`),
           fetchSavedStructures(),
+          api.get(`/api/projects/${encodeURIComponent(slug)}/refs`),
         ]);
         const expOptions = experiences.items.map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`).join("");
         document.getElementById("continue-select").innerHTML = experiences.items.length
           ? expOptions
           : `<option value="">Aucune expérience pour l'instant</option>`;
         document.getElementById("template-select").innerHTML = savedStructureOptionsHtml(library).html;
+
+        document.getElementById("ref-option-link").href = `/projets/${encodeURIComponent(slug)}/refs`;
+        document.getElementById("ref-option-block").style.display = refs.items.length ? "" : "none";
+        document.getElementById("ref-select").innerHTML = refs.items
+          .map((r) => `<option value="${r.experiment_id}">${escapeHtml(r.names.join(", "))} — ${escapeHtml(r.title)} (v${escapeHtml(r.version)})</option>`)
+          .join("");
+
         newExperienceDialog.showModal();
       } catch (err) {
         showError(err);
@@ -311,6 +328,15 @@
 
     document.getElementById("option-scratch").addEventListener("click", () => {
       window.location.href = `/projets/${encodeURIComponent(slug)}/structures/nouvelle`;
+    });
+
+    document.getElementById("option-ref").addEventListener("click", () => {
+      const source = document.getElementById("ref-select").value;
+      if (!source) return;
+      // like "Continuer cette expérience" (option-continue) - garde le lien de filiation, ce qui
+      // est le but même d'une ref : que les futures pistes s'y rattachent vraiment, pour que la
+      // page Refs puisse ensuite les relier (spectre.core.refs.ref_graph).
+      window.location.href = `/projets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
     });
 
     document.getElementById("option-template").addEventListener("click", () => {
@@ -477,6 +503,8 @@
         document.getElementById("project-description").textContent = project.description;
         document.getElementById("crumb").textContent = "/ " + project.name;
         document.getElementById("graph-link").href = `/projets/${encodeURIComponent(slug)}/graphe`;
+        document.getElementById("refs-link").href = `/projets/${encodeURIComponent(slug)}/refs`;
+        document.getElementById("intent-form-link").href = `/projets/${encodeURIComponent(slug)}/formulaire-intention`;
 
         if (currentRole === "editor" || currentRole === "owner") {
           document.getElementById("new-structure-btn").style.display = "";

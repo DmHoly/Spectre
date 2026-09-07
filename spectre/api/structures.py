@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from typing import Any
 
 import follow
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,7 +17,7 @@ from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
 from structureforge.process.steps import ProcessStep
 
-from ..core import projects, structures
+from ..core import projects, refs, structures
 from ..core.accounts import User
 from ..core.permissions import require_role
 from ..core.projects import Project
@@ -60,6 +61,10 @@ class LaunchExperienceRequest(BaseModel):
     # it's only needed to fix forward an experience whose lineage never got one (see evolve_experience).
     entities: list[EntityTrackingInput] = []
     new_branch: str | None = None  # only meaningful when evolving: fork instead of continuing
+    # answers to the project's active commit form (spectre.core.intent_forms), if one is
+    # configured - re-asked on every real launch/evolution, unlike metadata/tags/evidence which
+    # lightweight evolutions (conclure/preuves/etiquettes...) simply carry forward unchanged.
+    form_answers: dict[str, Any] = {}
 
 
 class CampaignPreviewRequest(BaseModel):
@@ -74,6 +79,7 @@ class LaunchCampaignRequest(CampaignPreviewRequest):
     hypothesis: str | None = None
     objectives: list[ObjectiveInput] = []
     entities: list[EntityTrackingInput] = []  # at least one (the reference sample) is required
+    form_answers: dict[str, Any] = {}
 
 
 def _slugify_branch(title: str) -> str:
@@ -89,6 +95,24 @@ def _unique_branch(repo: "follow.Repository", title: str) -> str:
         branch = f"{base}-{suffix}"
         suffix += 1
     return branch
+
+
+def _form_validation_error(exc: "follow.FormValidationError") -> HTTPException:
+    """A commit form's own errors are already a list of specific, user-facing messages ("operator
+    (Opérateur) est obligatoire") - meant, per its own docstring, to eventually drive a form UI
+    that shows every invalid field at once rather than one at a time. Surfaced as a structured
+    422 rather than folded into the generic FollowError->400 translation below.
+    """
+    return HTTPException(status_code=422, detail={"message": "Réponses au formulaire d'intention invalides.", "errors": exc.errors})
+
+
+def _ref_the_first_experience(repo: "follow.Repository", experiment: "follow.Experiment") -> None:
+    """A brand-new project has no ref yet to start from - so its very first experience becomes
+    one automatically (the default "ref vX.Y.Z" name), rather than leaving every project stuck
+    with nothing to feature in "Partir d'une ref" until someone remembers to tag one by hand.
+    """
+    if len(repo) == 1:
+        refs.create_ref(repo, experiment.id)
 
 
 def split_objectives(inputs: list[ObjectiveInput]) -> tuple[list["follow.Objective"], dict[str, str]]:
@@ -341,10 +365,14 @@ def launch_experience(
     builder.metadata["physical_tracking"] = entities
     if verification:
         builder.metadata["objective_verification"] = verification
+    builder.form_answers = dict(body.form_answers)
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _ref_the_first_experience(repo, experiment)
 
     return {"id": experiment.id, "branch": experiment.branch}
 
@@ -418,9 +446,13 @@ def launch_campaign(
     builder.metadata["campaign_factor_values"] = result.factor_values
     if verification:
         builder.metadata["objective_verification"] = verification
+    builder.form_answers = dict(body.form_answers)
     try:
         experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
     except follow.FollowError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _ref_the_first_experience(repo, experiment)
 
     return {"id": experiment.id, "branch": experiment.branch}

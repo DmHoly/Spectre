@@ -6,6 +6,7 @@ to the paths they're given.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -262,6 +263,53 @@ def _structure_library_store(path: Path):
 get_structure_store, get_shared_structure_store = _scoped_store_getters(
     "structures.json", "structures_partagees.json", _structure_library_store
 )
+
+
+def _intent_form_store(path: Path):
+    from .intent_forms import IntentFormStore
+
+    return IntentFormStore(path)
+
+
+get_intent_form_store, get_shared_intent_form_store = _scoped_store_getters(
+    "formulaires_intention.json", "formulaires_intention_partagees.json", _intent_form_store
+)
+
+
+def active_intent_form_path(slug: str) -> Path:
+    return project_dir(slug) / "formulaire_intention_actif.json"
+
+
+def get_active_intent_form(slug: str) -> dict | None:
+    """Which library entry (``{"name": ..., "partagee": bool}``) this project currently uses as
+    its Follow commit form, if any - just a pointer to the library entry (so the settings page can
+    show "formulaire actif : X" and offer to deactivate it) alongside the real materialized copy,
+    ``<repo>/commit_form.yml``, which is the only file Follow itself ever reads.
+    """
+    path = active_intent_form_path(slug)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def activate_intent_form(slug: str, *, name: str, partagee: bool, form) -> None:
+    """Materialize ``form`` (a :class:`follow.storage.commit_form.CommitForm`) as this project's
+    active commit form - written to ``<repo>/commit_form.yml``, which
+    ``follow.storage.repository.Repository`` picks up automatically the next time this project's
+    repository is opened (every :func:`get_repository` call - nothing is cached), and remember
+    which library entry it came from.
+    """
+    from .intent_forms import dump_yaml_form
+
+    repo_path = follow_repo_path(slug)
+    repo_path.mkdir(parents=True, exist_ok=True)
+    (repo_path / "commit_form.yml").write_text(dump_yaml_form(form), encoding="utf-8")
+    active_intent_form_path(slug).write_text(json.dumps({"name": name, "partagee": partagee}), encoding="utf-8")
+
+
+def deactivate_intent_form(slug: str) -> None:
+    (follow_repo_path(slug) / "commit_form.yml").unlink(missing_ok=True)
+    active_intent_form_path(slug).unlink(missing_ok=True)
 
 
 def get_repository(slug: str):

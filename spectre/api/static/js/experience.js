@@ -1149,6 +1149,87 @@ async function updateTags(tags) {
   }
 }
 
+function renderRefs(detail) {
+  const row = document.getElementById("refs-row");
+  const canEdit = isEditorRole();
+  const chips = detail.ref_names
+    .map((name) => `<span class="badge badge-role" title="Ref">🏷 ${escapeHtml(name)}</span>`)
+    .join("");
+  row.innerHTML =
+    chips +
+    (canEdit
+      ? `<button id="make-ref-btn" data-report-hide type="button" class="btn btn-line" style="padding:2px 10px;font-size:11.5px;">+ ref</button>
+         <input id="new-ref-input" data-report-hide placeholder="surnom (optionnel)" style="display:none;border:1px dashed var(--border-soft);border-radius:999px;padding:4px 10px;font-size:12px;width:150px;background:transparent;">`
+      : "");
+
+  const makeBtn = document.getElementById("make-ref-btn");
+  const input = document.getElementById("new-ref-input");
+  if (makeBtn) {
+    makeBtn.addEventListener("click", () => {
+      makeBtn.style.display = "none";
+      input.style.display = "";
+      input.focus();
+    });
+  }
+  if (input) {
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        createRef(input.value.trim());
+      }
+    });
+  }
+}
+
+async function createRef(name) {
+  clearError();
+  try {
+    await api.post(`/api/projects/${slug}/experiences/${experienceId}/ref`, { name: name || null });
+    currentDetail = await api.get(`/api/projects/${slug}/experiences/${experienceId}`);
+    renderRefs(currentDetail);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+function formatIntentFormAnswer(field, value) {
+  if (field && field.type === "boolean") return value ? "Oui" : "Non";
+  return String(value);
+}
+
+// Petite boîte d'infos : les réponses au formulaire d'intention du projet (spectre.core.
+// intent_forms), avec les libellés du formulaire actuellement actif quand on les retrouve - une
+// expérience plus ancienne peut avoir été répondue à un formulaire depuis modifié, auquel cas le
+// nom brut du champ sert de repli plutôt que de cacher la réponse.
+async function renderIntentFormInfo(detail) {
+  const box = document.getElementById("intent-form-info-box");
+  const answers = detail.form_answers || {};
+  if (Object.keys(answers).length === 0) {
+    box.style.display = "none";
+    return;
+  }
+  let activeForm = null;
+  try {
+    const active = await api.get(`/api/projects/${slug}/formulaire-actif`);
+    activeForm = active ? active.form : null;
+  } catch (err) {
+    // pas bloquant : on retombe sur les noms de champs bruts
+  }
+  const fieldByName = new Map((activeForm ? activeForm.fields : []).map((f) => [f.name, f]));
+  const rows = Object.entries(answers)
+    .map(([name, value]) => {
+      const field = fieldByName.get(name);
+      const label = field ? field.label : name;
+      return `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:3px 0;">
+        <span style="color:var(--text-faint);">${escapeHtml(label)}</span>
+        <span style="font-weight:600;text-align:right;">${escapeHtml(formatIntentFormAnswer(field, value))}</span>
+      </div>`;
+    })
+    .join("");
+  box.innerHTML = `<div class="section-title" style="margin-bottom:6px;">${escapeHtml(activeForm ? activeForm.title : "Formulaire d'intention")}</div>${rows}`;
+  box.style.display = "block";
+}
+
 async function populateCombineSelect() {
   try {
     const data = await api.get(`/api/projects/${slug}/experiences?status=all&limit=200`);
@@ -1325,6 +1406,8 @@ async function init() {
 
     renderHeader(currentDetail);
     renderTags(currentDetail);
+    renderRefs(currentDetail);
+    renderIntentFormInfo(currentDetail);
     renderObjectives(currentDetail);
     renderForksNote(currentDetail);
     renderReferences(currentDetail);

@@ -18,6 +18,7 @@ async function loadExistingProcess() {
     const verification = detail.objective_verification || {};
     state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
     renderObjectives();
+    fillIntentFormAnswers(detail.form_answers);
 
     // en évolution, l'entité physique se transmet automatiquement de la version précédente
     // (voir experiments.py::evolve_experience) - le champ reste modifiable pour la corriger,
@@ -60,6 +61,7 @@ document.getElementById("launch-btn").addEventListener("click", async () => {
     hypothesis: document.getElementById("exp-hypothesis").value || null,
     objectives: state.objectives,
     entities: entitySampleId ? [{ sample_id: entitySampleId, location: entityLocation || null }] : [],
+    form_answers: collectIntentFormAnswers(),
   };
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
     const branchName = document.getElementById("new-branch-name").value.trim();
@@ -82,7 +84,8 @@ document.getElementById("launch-btn").addEventListener("click", async () => {
     const result = await api.post(endpoint, payload);
     window.location.href = `/projets/${slug}/experiences/${result.id}`;
   } catch (err) {
-    showError(err);
+    const formMessage = intentFormErrorMessage(err);
+    showError(formMessage ? new Error(formMessage) : err);
   }
 });
 
