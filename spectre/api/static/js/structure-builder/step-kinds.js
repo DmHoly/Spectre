@@ -4,7 +4,7 @@
    modifier un type d'étape demandait de toucher neuf fonctions différentes (une par
    responsabilité) ; chaque type vit maintenant dans une seule entrée de STEP_KIND_DEFS.
    STEP_KINDS/CAMPAIGN_FIELD_OPTIONS/PY_STEP_CLASS restent exposés sous leur ancienne forme
-   (dérivés du registre) car step-list.js, campaign.js et code-export.js les lisent directement. */
+   (dérivés du registre) car step-list.js, variations.js et code-export.js les lisent directement. */
 
 const STEP_KIND_DEFS = {
   deposition: {

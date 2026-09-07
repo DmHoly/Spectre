@@ -31,6 +31,9 @@ const state = {
   materialColors: {},
   currentFrame: 0,
   campaignPlan: null,
+  variationFactors: [], // [{step_index, field, field_label, values}] - the DOE plan being built on écran 2
+  variationEntities: [], // [{sample_id, location}] - one per row of the écran 2 table, positional
+  wizardScreen: "intention", // "intention" (écran 1) or "variations" (écran 2) - new-launch mode only
   editingIndex: null,
   selectedStepIndices: new Set(), // indices currently checked for "grouper en brique" - cleared on any structural change (add/remove/move/insert)
   viewMode: "couches", // "couches" (click a layer, epitaxy-style) or "etapes" (full step list)

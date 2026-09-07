@@ -712,6 +712,16 @@ textarea:focus {
   transform-origin: center top;
 }
 
+.variation-thumb {
+  width: 90px;
+}
+
+.variation-thumb svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
 #context-panel {
   min-height: 340px;
 }

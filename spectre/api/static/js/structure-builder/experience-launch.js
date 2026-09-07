@@ -1,5 +1,9 @@
 /* Mode expérience : reprise d'un procédé existant (évolution d'une expérience, ou nouvelle
-   expérience à partir d'un modèle), et lancement (création, évolution, ou campagne DOE). */
+   expérience à partir d'un modèle), et lancement (création, évolution, ou campagne DOE).
+   Une évolution reste un seul écran (#launch-btn, comme avant) ; un nouveau lancement passe par
+   les deux écrans du magicien (#continue-btn -> écran variations -> #launch-btn-variations), tous
+   deux aboutissant à commitExperience() ci-dessous - seule la provenance des `entities` diffère
+   (les deux champs d'entité en évolution, le tableau de variations.js en nouveau lancement). */
 
 async function loadExistingProcess() {
   if (!evolveExperienceId) return;
@@ -35,22 +39,14 @@ async function loadExistingProcess() {
   }
 }
 
-document.getElementById("launch-btn").addEventListener("click", async () => {
-  clearError();
+// Titre/intention/objectifs/formulaire sont toujours lus depuis l'écran 1 (#wizard-step-intention,
+// jamais quitté en évolution) ; seules les `entities` varient selon l'appelant. `state.campaignPlan`
+// (maintenu par variations.js) décide de l'endpoint exactement comme avant.
+async function commitExperience(entities) {
   const title = document.getElementById("exp-title").value.trim();
   const intent = document.getElementById("exp-intent").value.trim();
   if (!title || !intent) {
     showError(new Error("Le titre et l'intention sont obligatoires."));
-    return;
-  }
-  const entitySampleId = document.getElementById("exp-entity-sample-id").value.trim();
-  const entityLocation = document.getElementById("exp-entity-location").value.trim();
-  // une nouvelle expérience (ou campagne) doit toujours pouvoir être reliée à un échantillon réel ;
-  // en évolution c'est optionnel côté formulaire puisque le serveur reprend celui de la version
-  // précédente automatiquement (voir loadExistingProcess ci-dessus) - il ne redevient obligatoire
-  // ici que si cette piste n'en a effectivement jamais eu, ce que le serveur détecte lui-même.
-  if (!evolveExperienceId && !entitySampleId) {
-    showError(new Error("L'entité physique (l'échantillon réel suivi) est obligatoire."));
     return;
   }
   const payload = {
@@ -60,7 +56,7 @@ document.getElementById("launch-btn").addEventListener("click", async () => {
     intent,
     hypothesis: document.getElementById("exp-hypothesis").value || null,
     objectives: state.objectives,
-    entities: entitySampleId ? [{ sample_id: entitySampleId, location: entityLocation || null }] : [],
+    entities,
     form_answers: collectIntentFormAnswers(),
   };
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
@@ -87,6 +83,42 @@ document.getElementById("launch-btn").addEventListener("click", async () => {
     const formMessage = intentFormErrorMessage(err);
     showError(formMessage ? new Error(formMessage) : err);
   }
+}
+
+// Évolution : un seul écran, comportement inchangé - l'entité physique reste optionnelle ici
+// (le serveur la reprend automatiquement de la version précédente, voir loadExistingProcess).
+document.getElementById("launch-btn").addEventListener("click", () => {
+  clearError();
+  const entitySampleId = document.getElementById("exp-entity-sample-id").value.trim();
+  const entityLocation = document.getElementById("exp-entity-location").value.trim();
+  commitExperience(entitySampleId ? [{ sample_id: entitySampleId, location: entityLocation || null }] : []);
+});
+
+// Nouveau lancement, écran 1 -> écran 2 : la structure et l'intention sont déjà en mémoire dans
+// `state`, seule la validation minimale (titre/intention) garde le même garde-fou qu'avant de
+// basculer d'écran plutôt que de le reporter jusqu'au clic sur "Lancer".
+document.getElementById("continue-btn").addEventListener("click", () => {
+  clearError();
+  const title = document.getElementById("exp-title").value.trim();
+  const intent = document.getElementById("exp-intent").value.trim();
+  if (!title || !intent) {
+    showError(new Error("Le titre et l'intention sont obligatoires."));
+    return;
+  }
+  showWizardStepVariations();
+});
+
+// Nouveau lancement, écran 2 : les entités viennent du tableau de variations plutôt que d'un
+// unique champ - au moins un échantillon doit être nommé pour lancer le suivi (même garde-fou
+// qu'avant, appliqué à la colonne "Nom du wafer" du tableau plutôt qu'à un champ unique).
+document.getElementById("launch-btn-variations").addEventListener("click", () => {
+  clearError();
+  const entities = variationTableEntities();
+  if (!entities.some((e) => e.sample_id)) {
+    showError(new Error("L'entité physique (l'échantillon réel suivi) est obligatoire - nommez au moins un wafer dans le tableau."));
+    return;
+  }
+  commitExperience(entities);
 });
 
 document.getElementById("branch-continue").addEventListener("change", () => {

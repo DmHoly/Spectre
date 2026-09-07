@@ -14,8 +14,13 @@ async function loadPickers() {
 async function init() {
   document.getElementById("crumb").textContent = "/ " + slug;
   if (evolveExperienceId) {
-    document.getElementById("campaign-section").style.display = "none";
+    // Une évolution reste un seul écran : l'entité physique (optionnelle ici, voir
+    // loadExistingProcess) et le choix de piste réapparaissent, "Continuer" cède la place à
+    // "Enregistrer cette évolution" - jamais d'écran 2 (une évolution ne lance jamais de campagne).
+    document.getElementById("entity-fields-wrap").style.display = "";
     document.getElementById("branch-choice-wrap").style.display = "block";
+    document.getElementById("continue-btn").style.display = "none";
+    document.getElementById("launch-btn").style.display = "";
   }
   await loadPickers();
   renderSteps();
@@ -31,7 +36,6 @@ async function init() {
     await loadTemplateProcess();
     await loadChosenStructureForExperience();
   }
-  addCampaignFactorRow();
 }
 
 init();
