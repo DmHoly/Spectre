@@ -52,6 +52,7 @@ function objectiveResultFor(detail, objectiveName) {
 
 function renderHeader(detail) {
   document.getElementById("status-badge").innerHTML = statusBadgeHtml(detail.status);
+  renderStatusActions(detail);
   document.getElementById("exp-title").textContent = detail.title;
   document.getElementById("exp-intent").textContent = detail.intent;
   document.getElementById("exp-meta").innerHTML = `
@@ -60,6 +61,38 @@ function renderHeader(detail) {
     ${detail.hypothesis ? `<br>Hypothèse&nbsp;: ${escapeHtml(detail.hypothesis)}` : ""}
   `;
   document.getElementById("crumb").textContent = "/ " + detail.title;
+}
+
+// Transitions de statut « en cours » (voir POST .../statut) : une étude nouvellement lancée est
+// « brouillon » ; ce bouton la passe « en cours ». Une étude conclue peut être rouverte pour
+// revoir sa conclusion. Chaque changement enregistre une nouvelle version (études immuables).
+function renderStatusActions(detail) {
+  const host = document.getElementById("status-actions");
+  host.innerHTML = "";
+  if (!isEditorRole()) return;
+  const addBtn = (label, targetStatus, cls) => {
+    const b = document.createElement("button");
+    b.className = `btn ${cls}`;
+    b.style.cssText = "padding:4px 11px;font-size:12px;";
+    b.textContent = label;
+    b.addEventListener("click", () => changeStatus(targetStatus, b));
+    host.appendChild(b);
+  };
+  if (detail.status === "draft") addBtn("Marquer « en cours »", "running", "btn-primary");
+  else if (detail.status === "running") addBtn("Repasser en brouillon", "draft", "btn-line");
+  else addBtn("Rouvrir pour revoir la conclusion", "running", "btn-line");
+}
+
+async function changeStatus(targetStatus, btn) {
+  clearError();
+  if (btn) btn.disabled = true;
+  try {
+    const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/statut`, { status: targetStatus });
+    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+  } catch (err) {
+    showError(err);
+    if (btn) btn.disabled = false;
+  }
 }
 
 function renderObjectives(detail) {
@@ -442,37 +475,62 @@ async function renderBatchMatrix(detail) {
   }
 }
 
+function concludedViewHtml(detail) {
+  const c = detail.conclusion;
+  const answers = c.objective_results
+    .map((r) => {
+      const objective = detail.objectives.find((o) => o.name === r.objective);
+      return `
+        <div style="padding:8px 0;border-top:1px solid var(--border-soft);">
+          <div style="font-size:13px;font-weight:600;">${escapeHtml(r.objective)}</div>
+          ${objective && objective.rationale ? `<div style="font-size:11.5px;color:var(--text-faint);margin-top:1px;">${escapeHtml(objective.rationale)}</div>` : ""}
+          <div style="font-size:12.5px;color:var(--text-soft);margin-top:4px;">${escapeHtml(OBJECTIVE_STATUS_LABELS[r.status] || r.status)}${r.reasoning ? " — " + escapeHtml(r.reasoning) : ""}</div>
+        </div>`;
+    })
+    .join("");
+  return `
+    <div class="section-title" style="margin-bottom:14px;">Conclusion</div>
+    ${c.summary ? `<p style="font-size:13.5px;line-height:1.6;margin-bottom:10px;">${escapeHtml(c.summary)}</p>` : ""}
+    ${c.decision ? `<div style="font-size:12.5px;color:var(--text-soft);">Décision&nbsp;: <strong>${escapeHtml(c.decision)}</strong></div>` : ""}
+    ${c.next_steps ? `<div style="font-size:12.5px;color:var(--text-soft);margin-top:4px;">Suite&nbsp;: ${escapeHtml(c.next_steps)}</div>` : ""}
+    ${answers ? `<div style="margin-top:14px;">${answers}</div>` : ""}
+  `;
+}
+
 function renderConclusion(detail) {
   const container = document.getElementById("conclusion-section");
   const isConcluded = detail.status === "concluded" || detail.status === "abandoned";
   if (isConcluded) {
-    const c = detail.conclusion;
-    const answers = c.objective_results
-      .map((r) => {
-        const objective = detail.objectives.find((o) => o.name === r.objective);
-        return `
-          <div style="padding:8px 0;border-top:1px solid var(--border-soft);">
-            <div style="font-size:13px;font-weight:600;">${escapeHtml(r.objective)}</div>
-            ${objective && objective.rationale ? `<div style="font-size:11.5px;color:var(--text-faint);margin-top:1px;">${escapeHtml(objective.rationale)}</div>` : ""}
-            <div style="font-size:12.5px;color:var(--text-soft);margin-top:4px;">${escapeHtml(OBJECTIVE_STATUS_LABELS[r.status] || r.status)}${r.reasoning ? " — " + escapeHtml(r.reasoning) : ""}</div>
-          </div>`;
-      })
-      .join("");
-    container.innerHTML = `
-      <div class="section-title" style="margin-bottom:14px;">Conclusion</div>
-      ${c.summary ? `<p style="font-size:13.5px;line-height:1.6;margin-bottom:10px;">${escapeHtml(c.summary)}</p>` : ""}
-      ${c.decision ? `<div style="font-size:12.5px;color:var(--text-soft);">Décision&nbsp;: <strong>${escapeHtml(c.decision)}</strong></div>` : ""}
-      ${c.next_steps ? `<div style="font-size:12.5px;color:var(--text-soft);margin-top:4px;">Suite&nbsp;: ${escapeHtml(c.next_steps)}</div>` : ""}
-      ${answers ? `<div style="margin-top:14px;">${answers}</div>` : ""}
-    `;
+    container.innerHTML =
+      concludedViewHtml(detail) +
+      (isEditorRole()
+        ? `<button class="btn btn-line" id="edit-conclusion-btn" data-report-hide style="margin-top:16px;padding:5px 12px;font-size:12px;">Modifier la conclusion</button>`
+        : "");
+    const editBtn = document.getElementById("edit-conclusion-btn");
+    if (editBtn) editBtn.addEventListener("click", () => renderConcludeForm(detail, detail.conclusion));
     return;
   }
   if (!isEditorRole()) {
     container.innerHTML = `<div class="section-title" style="margin-bottom:14px;">Conclusion</div><div class="help" style="font-style:italic;">Pas encore conclue — expérience en cours.</div>`;
     return;
   }
+  // Une étude rouverte (concluded -> running via .../statut) garde ses réponses d'objectifs et son
+  // résumé : on repré-remplit le formulaire avec, plutôt que de repartir de zéro.
+  const c = detail.conclusion || {};
+  const hasPrior = (c.objective_results || []).length > 0 || c.summary || c.decision || c.next_steps;
+  renderConcludeForm(detail, hasPrior ? c : null);
+}
+
+// `prefill` = detail.conclusion quand on modifie une conclusion existante, null pour une première
+// conclusion. Dans les deux cas le formulaire poste sur /conclure, qui enregistre une nouvelle
+// version (études immuables) - on la suit ensuite.
+function renderConcludeForm(detail, prefill) {
+  const container = document.getElementById("conclusion-section");
+  const editing = Boolean(prefill);
+  // "Annuler" ne fait sens que si une vue lecture seule existe pour y revenir (étude déjà conclue).
+  const canCancel = detail.status === "concluded" || detail.status === "abandoned";
   container.innerHTML = `
-    <div class="section-title" style="margin-bottom:14px;">Conclure l'expérience</div>
+    <div class="section-title" style="margin-bottom:14px;">${editing ? "Modifier la conclusion" : "Conclure l'expérience"}</div>
     <span class="report-only help" style="font-style:italic;">Pas encore conclue — expérience en cours.</span>
     <form id="conclude-form" class="field-group" data-report-hide>
       <div id="objective-results"></div>
@@ -496,9 +554,15 @@ function renderConclusion(detail) {
         </div>
       </div>
       <div><label>Prochaine étape (optionnelle)</label><input class="field" id="conclude-next-steps"></div>
-      <button class="btn btn-primary btn-block" type="submit">Enregistrer la conclusion</button>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary" style="flex:1;" type="submit">${editing ? "Enregistrer les modifications" : "Enregistrer la conclusion"}</button>
+        ${canCancel ? `<button class="btn btn-line" id="conclude-cancel-btn" type="button">Annuler</button>` : ""}
+      </div>
     </form>
   `;
+  if (canCancel) {
+    document.getElementById("conclude-cancel-btn").addEventListener("click", () => renderConclusion(detail));
+  }
   const verification = currentDetail.objective_verification || {};
   document.getElementById("objective-results").innerHTML = currentDetail.objectives
     .map(
@@ -517,6 +581,19 @@ function renderConclusion(detail) {
       </div>`
     )
     .join("");
+
+  if (prefill) {
+    document.getElementById("conclude-summary").value = prefill.summary || "";
+    document.getElementById("conclude-decision").value = prefill.decision || "";
+    document.getElementById("conclude-status").value = prefill.status === "abandoned" ? "abandoned" : "concluded";
+    document.getElementById("conclude-next-steps").value = prefill.next_steps || "";
+    (prefill.objective_results || []).forEach((r) => {
+      const i = currentDetail.objectives.findIndex((o) => o.name === r.objective);
+      if (i < 0) return;
+      document.getElementById(`obj-result-${i}`).value = r.status;
+      document.getElementById(`obj-reasoning-${i}`).value = r.reasoning || "";
+    });
+  }
 
   document.getElementById("conclude-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1381,6 +1458,33 @@ function goToEvolve() {
   window.location.href = `/projets/${slug}/experiences/${experienceId}/evoluer`;
 }
 
+function wireDeleteExperience() {
+  const btn = document.getElementById("delete-experience-btn");
+  const hint = document.getElementById("delete-experience-hint");
+  btn.addEventListener("click", async () => {
+    const children = currentDetail.children || [];
+    const title = currentDetail.title || "cette étude";
+    if (children.length) {
+      const sameBranch = children.some((c) => c.branch === currentDetail.branch);
+      hint.textContent = sameBranch
+        ? "Vous consultez une version ancienne — ouvrez la version courante de cette piste pour la supprimer."
+        : `Impossible : ${children.length} piste(s) découlent de cette version. Supprimez-les d'abord.`;
+      return;
+    }
+    if (!window.confirm(`Supprimer définitivement « ${title} » (cette version et les précédentes de cette piste) ? Cette action est irréversible.`)) return;
+    btn.disabled = true;
+    clearError();
+    try {
+      const result = await api.del(`/api/projects/${slug}/experiences/${experienceId}`);
+      hint.textContent = `${result.count} version(s) supprimée(s).`;
+      window.location.href = `/projets/${slug}`;
+    } catch (err) {
+      showError(err);
+      btn.disabled = false;
+    }
+  });
+}
+
 function applyModeVisibility() {
   const editing = isEditorRole();
   document.getElementById("evolve-btn").style.display = editing ? "" : "none";
@@ -1419,6 +1523,7 @@ async function init() {
       document.getElementById("evolve-btn").addEventListener("click", goToEvolve);
       document.getElementById("structure-evolve-link").addEventListener("click", goToEvolve);
       populateCombineSelect();
+      wireDeleteExperience();
     }
     document.getElementById("export-report-btn").addEventListener("click", downloadReport);
     applyModeVisibility();

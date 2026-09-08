@@ -1,0 +1,33 @@
+# Briques technologiques Spectre — une séquence d'étapes nommée, réutilisable, insérée d'un bloc
+# dans une structure (« Insérer une brique »). Pas de substrat propre : une brique s'applique sur
+# ce qui existe déjà.
+#
+# Rechargé automatiquement quand le fichier change. Vide/invalide → aucune brique intégrée
+# (spectre/core/tech_bricks.py, _builtin_tech_bricks). Les briques créées depuis l'app vivent, elles,
+# dans les stores par projet / partagé — ce fichier ne sert qu'aux briques « standard » de l'instance.
+#
+# Champs par entrée : name (obligatoire), notes (optionnel), steps (liste d'étapes au même format
+# JSON que celui envoyé par le constructeur — kind + champs propres au type).
+#
+# Types d'étape : deposition, etch, planarization, lithography, chemical, resist_strip,
+#   faceted_growth, epitaxial_growth, flip.
+
+bricks: []
+
+# Exemple (décommentez et adaptez) — masque + gravure III-N + retrait résine :
+#
+# bricks:
+#   - name: Masque + gravure mesa III-N
+#     notes: Litho, gravure Cl2 ICP-RIE de la mesa, retrait de la résine.
+#     steps:
+#       - kind: lithography
+#         name: Masque mesa
+#         resist_material: Photoresist
+#         thickness: { value: 1.2, unit: um }
+#         openings: []
+#       - kind: etch
+#         name: Gravure mesa
+#         recipe: Cl2 ICP-RIE (III-N)
+#         depth: { value: 200, unit: nm }
+#       - kind: resist_strip
+#         name: Retrait résine

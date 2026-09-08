@@ -1,0 +1,97 @@
+# Présets d'étape Spectre — raccourcis nommés vers une recette de dépôt / gravure de
+# StructureForge. Appliquer un préset ne fait que pré-remplir le formulaire d'étape ; une fois
+# l'étape ajoutée elle porte sa propre recette (pas de lien vivant).
+#
+# Rechargé automatiquement quand le fichier change. Vide/invalide → jeu intégré de repli
+# (spectre/core/step_presets.py, _builtin_step_presets).
+#
+# Champs : name (obligatoire), kind (deposition | etch), recipe (nom exact d'une recette —
+# celles de StructureForge ci-dessous, OU une recette maison définie dans library/recettes.yml,
+# par ex. une gravure sélective), notes (optionnel).
+#
+# Recettes de dépôt StructureForge : ALD Conformal, CVD Conformal, PVD Sputter (tilted),
+#   Evaporation (normal), MOCVD Epitaxial, PECVD Conformal, Sputter Metal (normal),
+#   Electroplating (Cu)
+# Recettes de gravure StructureForge : Dry Oxide Etch, Wet HF Dip, Anisotropic RIE, Ion Mill (tilted),
+#   KOH Anisotropic Wet Etch, Cl2 ICP-RIE (III-N), TMAH Anisotropic Wet Etch, SF6 Deep RIE (Si),
+#   Wet Metal Etch
+# + toute recette de library/recettes.yml (ex. « Gravure sélective Al2O3 »).
+
+presets:
+  # -- dépôts -----------------------------------------------------------
+  - name: MOCVD Epitaxial
+    kind: deposition
+    recipe: MOCVD Epitaxial
+    notes: Croissance épitaxiale (semi-conducteurs III-N/III-V) sur une base plane.
+  - name: PECVD Conformal
+    kind: deposition
+    recipe: PECVD Conformal
+    notes: Dépôt assisté par plasma, à plus basse température — bonne couverture des reliefs (SiO2, SiNx de passivation).
+  - name: ALD Conformal
+    kind: deposition
+    recipe: ALD Conformal
+    notes: Dépôt uniforme qui épouse parfaitement tous les reliefs de la surface (Al2O3 de grille/passivation).
+  - name: PVD Sputter (tilted)
+    kind: deposition
+    recipe: PVD Sputter (tilted)
+    notes: Dépôt métallique en visée directe, légèrement incliné — les zones cachées sont moins couvertes.
+  - name: Sputter Metal (normal)
+    kind: deposition
+    recipe: Sputter Metal (normal)
+    notes: Pulvérisation métallique par le dessus — couvre mieux les flancs qu'une évaporation, reste directionnel (ITO, contacts).
+  - name: Evaporation (normal)
+    kind: deposition
+    recipe: Evaporation (normal)
+    notes: Dépôt métallique tout droit par le dessus — ne couvre presque pas les flancs, adapté à un lift-off.
+
+  # -- gravures --------------------------------------------------------
+  - name: Cl2 ICP-RIE (III-N)
+    kind: etch
+    recipe: Cl2 ICP-RIE (III-N)
+    notes: Gravure sèche quasi verticale des semi-conducteurs III-N (GaN, AlGaN...) — sélective vs masques, diélectriques et métaux.
+  - name: Anisotropic RIE
+    kind: etch
+    recipe: Anisotropic RIE
+    notes: Gravure sèche quasi verticale — le masque de résine s'érode lentement, tout le reste au rythme normal.
+  - name: Dry Oxide Etch
+    kind: etch
+    recipe: Dry Oxide Etch
+    notes: Gravure sèche qui attaque surtout les oxydes ; grave presque aussi vite tout le reste.
+  - name: Wet HF Dip
+    kind: etch
+    recipe: Wet HF Dip
+    notes: Bain humide très sélectif de l'oxyde — épargne le nitrure, le silicium et les métaux.
+  - name: Wet Metal Etch
+    kind: etch
+    recipe: Wet Metal Etch
+    notes: Bain humide générique pour graver un métal — sous-grave comme toute gravure isotrope.
+  - name: Gravure sélective Al2O3
+    kind: etch
+    recipe: Gravure sélective Al2O3   # recette maison, voir library/recettes.yml
+    notes: Ne grave que l'Al2O3 — tout le reste (GaN, SiO2, métaux, résine) sert de couche d'arrêt.
+
+  # -- retirés du jeu « nitrures » — décommentez pour les réactiver -------
+  # - name: CVD Conformal
+  #   kind: deposition
+  #   recipe: CVD Conformal
+  #   notes: Dépôt uniforme sur les reliefs, une bonne couverture standard.
+  # - name: Electroplating (Cu)
+  #   kind: deposition
+  #   recipe: Electroplating (Cu)
+  #   notes: Remplissage électrochimique en cuivre — nécessite une couche d'amorce.
+  # - name: Ion Mill (tilted)
+  #   kind: etch
+  #   recipe: Ion Mill (tilted)
+  #   notes: Gravure physique inclinée — attaque presque tous les matériaux au même rythme.
+  # - name: KOH Anisotropic Wet Etch
+  #   kind: etch
+  #   recipe: KOH Anisotropic Wet Etch
+  #   notes: Gravure cristallographique du silicium, angle fixe 54,7°.
+  # - name: TMAH Anisotropic Wet Etch
+  #   kind: etch
+  #   recipe: TMAH Anisotropic Wet Etch
+  #   notes: Alternative au KOH sans contamination alcaline.
+  # - name: SF6 Deep RIE (Si)
+  #   kind: etch
+  #   recipe: SF6 Deep RIE (Si)
+  #   notes: Gravure profonde du silicium (type Bosch).

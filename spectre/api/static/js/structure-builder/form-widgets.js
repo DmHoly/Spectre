@@ -2,9 +2,30 @@
    lignes de sélectivité, paramètres process/estimations dérivées) - voir step-kinds.js pour ce
    qui, à l'inverse, est spécifique à un seul type d'étape. */
 
+// Regroupe le menu déroulant par catégorie de matériau (la liste vient de la bibliothèque racine,
+// library/materiaux.yml - voir spectre.core.registry). L'ordre des <optgroup> est fixe ; à
+// l'intérieur, l'ordre du fichier est conservé. Une catégorie absente de MATERIAL_CATEGORY_LABELS
+// (ou un matériau sans catégorie) retombe dans « Autres ».
+const MATERIAL_CATEGORY_LABELS = {
+  substrate: "Substrats",
+  semiconductor: "Semi-conducteurs",
+  dielectric: "Diélectriques",
+  metal: "Métaux / TCO",
+  resist: "Résines",
+  other: "Autres",
+};
+
 function materialOptions(selectedValue) {
-  return state.materials
-    .map((m) => `<option value="${escapeHtml(m.name)}" ${m.name === selectedValue ? "selected" : ""}>${escapeHtml(m.name)}</option>`)
+  const optionHtml = (m) =>
+    `<option value="${escapeHtml(m.name)}" ${m.name === selectedValue ? "selected" : ""}>${escapeHtml(m.name)}</option>`;
+  const known = new Set(Object.keys(MATERIAL_CATEGORY_LABELS));
+  const bucketOf = (m) => (known.has(m.category) ? m.category : "other");
+  return Object.keys(MATERIAL_CATEGORY_LABELS)
+    .map((category) => {
+      const inGroup = state.materials.filter((m) => bucketOf(m) === category);
+      if (inGroup.length === 0) return "";
+      return `<optgroup label="${escapeHtml(MATERIAL_CATEGORY_LABELS[category])}">${inGroup.map(optionHtml).join("")}</optgroup>`;
+    })
     .join("");
 }
 
@@ -37,11 +58,13 @@ function gradedMaterialFieldHtml(id, label, selectedValue, { allowUnset = false,
       <select class="field" id="${id}-select">
         ${unsetOption}
         ${baseOptions}
-        <option value="__in_gan__" ${sentinel === "__in_gan__" ? "selected" : ""}>InGaN — préciser le taux d'indium…</option>
-        <option value="__al_gan__" ${sentinel === "__al_gan__" ? "selected" : ""}>AlGaN — préciser le taux d'aluminium…</option>
+        <optgroup label="Nitrures à composition (taux %)">
+          <option value="__in_gan__" ${sentinel === "__in_gan__" ? "selected" : ""}>InGaN</option>
+          <option value="__al_gan__" ${sentinel === "__al_gan__" ? "selected" : ""}>AlGaN</option>
+        </optgroup>
       </select>
       <div id="${id}-fraction-wrap" style="margin-top:6px;display:${sentinel ? "" : "none"};">
-        <label>Taux (%)</label>
+        <label id="${id}-fraction-label">Taux (%)</label>
         <input class="field" id="${id}-fraction" type="number" min="0" max="100" step="1" value="${fractionPercent}">
       </div>
     </div>`;
@@ -50,8 +73,11 @@ function gradedMaterialFieldHtml(id, label, selectedValue, { allowUnset = false,
 function wireGradedMaterialField(id) {
   const select = document.getElementById(`${id}-select`);
   const wrap = document.getElementById(`${id}-fraction-wrap`);
+  const label = document.getElementById(`${id}-fraction-label`);
   select.addEventListener("change", () => {
-    wrap.style.display = select.value === "__in_gan__" || select.value === "__al_gan__" ? "" : "none";
+    const graded = select.value === "__in_gan__" || select.value === "__al_gan__";
+    wrap.style.display = graded ? "" : "none";
+    if (label) label.textContent = select.value === "__al_gan__" ? "Taux d'aluminium (%)" : "Taux d'indium (%)";
   });
 }
 
@@ -78,6 +104,8 @@ function fillGradedMaterialField(id, materialName) {
     select.value = match[1] === "In" ? "__in_gan__" : "__al_gan__";
     document.getElementById(`${id}-fraction`).value = Math.round(parseFloat(match[2]) * 100);
     wrap.style.display = "";
+    const label = document.getElementById(`${id}-fraction-label`);
+    if (label) label.textContent = match[1] === "Al" ? "Taux d'aluminium (%)" : "Taux d'indium (%)";
   } else {
     select.value = materialName || "";
     wrap.style.display = "none";

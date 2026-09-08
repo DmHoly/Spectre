@@ -40,12 +40,19 @@ def TechBrickStore(path: str | Path) -> KeyedJsonStore[TechBrickLibrary, TechBri
 
 
 def default_tech_bricks() -> dict[str, TechBrick]:
-    """Built-in bricks, the same "standard, not stored, not deletable" status
-    :func:`spectre.core.step_presets.default_step_presets`/:func:`spectre.core.structure_library.
-    default_structure_presets` give their own built-ins - always available from every project's
-    brick library, under their own ``"preset"`` scope. None shipped yet: unlike a single step's
-    mode/angle (which map cleanly onto real, universal recipe names) or the one reference structure
-    the library ships, there's no single "standard" multi-step brick generic enough to bundle here
-    - left for a project's own or shared library to grow instead.
+    """The brick library's ``"preset"`` scope: the editable root library
+    (``library/briques.yml`` via :mod:`spectre.core.registry`) when it exists, otherwise
+    :func:`_builtin_tech_bricks`. Imported lazily to avoid a core import cycle.
+    """
+    from .registry import registry_tech_bricks
+
+    return registry_tech_bricks()
+
+
+def _builtin_tech_bricks() -> dict[str, TechBrick]:
+    """Fallback brick set when ``library/briques.yml`` is missing - empty: unlike a single step's
+    mode/angle (which map cleanly onto real, universal recipe names), there's no single "standard"
+    multi-step brick generic enough to bundle in code. Add bricks to ``library/briques.yml`` (or a
+    project's / the shared store) instead.
     """
     return {}

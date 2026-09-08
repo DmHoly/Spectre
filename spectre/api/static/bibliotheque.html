@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bibliothèque — Spectre</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <div class="topbar">
+    <a href="/" style="display:flex;align-items:center;">
+      <div class="topbar__brand">
+        <span class="topbar__mark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
+        </span>
+        Spectre
+        <span class="topbar__crumb" id="crumb"></span>
+      </div>
+    </a>
+    <div class="topbar__actions">
+      <a href="/bibliotheque" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Bibliothèque</a>
+      <a href="/docs" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Documentation</a>
+      <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
+        <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
+        <div class="avatar js-user-initials"></div>
+      </a>
+      <a href="#" class="js-logout btn btn-line" style="padding:6px 12px;font-size:12.5px;">Se déconnecter</a>
+    </div>
+  </div>
+
+  <div class="page" style="max-width:900px;">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">&larr; Mes projets</a></p>
+    <h1 style="font-size:24px;margin-bottom:6px;">Bibliothèque</h1>
+    <p style="color:var(--text-soft);font-size:14px;margin-bottom:20px;max-width:64ch;">
+      Tout ce qui se réutilise d'une expérience à l'autre, commun à tous vos projets : structures
+      complètes, présets d'étape, briques technologiques, plus la bibliothèque de matériaux et de
+      recettes de l'installation.
+    </p>
+
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+
+    <div id="work-project-row" class="card card-pad" style="max-width:900px;margin-bottom:22px;display:none;">
+      <label for="work-project" style="font-size:12px;">Projet de travail</label>
+      <select class="field" id="work-project" style="margin-top:4px;max-width:360px;"></select>
+      <p class="help" style="margin:8px 0 0;">Les présets, briques et structures créés en « partagé » sont visibles depuis tous vos projets. Ce choix sert seulement à ouvrir l'éditeur (la simulation a besoin d'un projet).</p>
+    </div>
+    <p id="no-project-msg" class="help" style="display:none;margin-bottom:22px;">Créez d'abord un projet pour ajouter des éléments à la bibliothèque.</p>
+
+    <div class="docs-hub-grid">
+      <div class="card card-pad" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:15.5px;font-weight:700;">Structures sauvegardées</div>
+        <div style="font-size:13px;color:var(--text-soft);line-height:1.55;">
+          Un substrat + une séquence d'étapes complète, nommée — à réutiliser ou dupliquer comme
+          point de départ d'une nouvelle expérience.
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
+          <a id="new-structure-link" href="#" class="js-editor-only" style="color:var(--accent-dark);">+ Nouvelle structure</a>
+          <a id="manage-structures-link" href="#" style="color:var(--accent-dark);">Voir les structures du projet &rarr;</a>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:15.5px;font-weight:700;">Présets d'étape</div>
+        <div style="font-size:13px;color:var(--text-soft);line-height:1.55;">
+          Un raccourci nommé vers une recette de dépôt ou de gravure (mode, angle, sélectivité) pour
+          la retrouver en un clic dans le formulaire d'étape.
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
+          <a id="presets-link" href="#" style="color:var(--accent-dark);">Gérer / créer un préset &rarr;</a>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:15.5px;font-weight:700;">Briques technologiques</div>
+        <div style="font-size:13px;color:var(--text-soft);line-height:1.55;">
+          Une séquence d'étapes réutilisable sans substrat propre (masque + gravure, empilement de
+          croissance…) à insérer d'un bloc dans une structure.
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
+          <a id="new-brick-link" href="#" class="js-editor-only" style="color:var(--accent-dark);">+ Nouvelle brique</a>
+          <a id="manage-bricks-link" href="#" style="color:var(--accent-dark);">Gérer les briques &rarr;</a>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:15.5px;font-weight:700;">Matériaux &amp; recettes</div>
+        <div style="font-size:13px;color:var(--text-soft);line-height:1.55;">
+          La liste des matériaux du sélecteur et les recettes de dépôt/gravure (dont les gravures
+          sélectives) sont définies dans des fichiers à la racine de l'installation :
+          <code>library/materiaux.yml</code>, <code>library/presets.yml</code>,
+          <code>library/recettes.yml</code>, <code>library/briques.yml</code>.
+        </div>
+        <div style="font-size:12.5px;color:var(--text-faint);margin-top:6px;">
+          Édition côté serveur — voir <code>library/README.md</code>. Rechargé automatiquement.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/bibliotheque.js"></script>
+</body>
+</html>

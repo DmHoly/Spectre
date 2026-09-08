@@ -21,6 +21,7 @@
     </div>
     </a>
     <div class="topbar__actions">
+      <a href="/bibliotheque" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Bibliothèque</a>
       <a href="/docs" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Documentation</a>
       <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
         <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
@@ -70,6 +71,7 @@
     </div>
 
     <div id="tab-structures" class="tab-panel" style="display:none;">
+      <p class="help" style="max-width:720px;margin-bottom:16px;">Tous ces éléments sont aussi accessibles depuis la <a id="library-hub-link" href="#">Bibliothèque</a> (lien « Bibliothèque » en haut à droite).</p>
       <div class="card card-pad" style="max-width:720px;margin-bottom:20px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;">
           <div class="section-title" style="margin-bottom:0;">Structures sauvegardées</div>
@@ -515,6 +517,7 @@
           `/projets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle`;
         document.getElementById("presets-etapes-link").href = `/projets/${encodeURIComponent(slug)}/presets-etapes`;
         document.getElementById("briques-link").href = `/projets/${encodeURIComponent(slug)}/briques-technologiques`;
+        document.getElementById("library-hub-link").href = "/bibliotheque";
         if (currentRole === "owner") {
           document.getElementById("add-member-form").style.display = "grid";
           document.getElementById("danger-zone").style.display = "block";

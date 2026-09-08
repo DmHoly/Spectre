@@ -1,0 +1,90 @@
+# Bibliothèque de matériaux Spectre — alimente le sélecteur de matériaux du constructeur de
+# structure ET le rendu de la simulation (couleur / catégorie).
+#
+# Modifiez ce fichier puis rafraîchissez la page : pas besoin de redémarrer le serveur (rechargé
+# automatiquement dès que le fichier change). Un fichier vide ou invalide → jeu intégré de repli
+# (voir spectre/core/registry.py, _builtin_materials) avec un avertissement dans les logs.
+#
+# L'ORDRE des entrées pilote l'ordre du menu déroulant (regroupé par `category`).
+#
+# Champs par entrée :
+#   name              (obligatoire) le nom exact utilisé dans les étapes et le substrat
+#   category          substrate | semiconductor | dielectric | metal | resist | other
+#   color             couleur CSS "#rrggbb" du rendu (défaut gris)
+#   density_g_cm3     optionnel, informatif
+#   refractive_index  optionnel, informatif
+#   notes             optionnel, infobulle
+#
+# NB : les compositions AlGaN / InGaN à taux précis se choisissent via le champ « préciser le
+# taux » du formulaire d'étape — garder GaN (et, si utile, AlGaN / InGaN génériques) suffit ici.
+# La simulation résout de toute façon n'importe quel nom connu de StructureForge, même absent de
+# cette liste — retirer un matériau du sélecteur ne casse pas une structure existante.
+
+materials:
+  # -- substrats (croissance GaN) ----------------------------------------
+  - name: Si
+    category: substrate
+    color: "#5b5f66"
+  - name: Sapphire
+    category: substrate
+    color: "#dbe4ee"
+    notes: Al2O3 monocristallin — substrat de croissance GaN le plus courant.
+  - name: SiC
+    category: substrate
+    color: "#4a5259"
+    notes: Substrat de croissance GaN haute performance (dissipation thermique).
+
+  # -- semi-conducteurs III-N ------------------------------------------------
+  # AlGaN / InGaN ne sont PAS listés ici : ce sont toujours des compositions à taux précis,
+  # choisies via l'option « InGaN » / « AlGaN » du champ matériau (croissance, dépôt), qui ouvre
+  # un champ « Taux (%) ». Le nom stocké est alors In{x}Ga{1-x}N / Al{y}Ga{1-y}N.
+  - name: GaN
+    category: semiconductor
+    color: "#7b6d8d"
+
+  # -- diélectriques -------------------------------------------------------
+  - name: SiO2
+    category: dielectric
+    color: "#8ecae6"
+  - name: Al2O3
+    category: dielectric
+    color: "#a3cef1"
+    notes: Passivation / diélectrique de grille (ALD).
+  - name: TiO2
+    category: dielectric
+    color: "#4f7396"
+    notes: Haut indice — empilements optiques / DBR.
+
+  # -- métaux & oxydes conducteurs transparents ---------------------------
+  - name: ITO
+    category: metal
+    color: "#bcd4d8"
+    refractive_index: 1.9
+    notes: Oxyde d'indium-étain — électrode transparente.
+  - name: GZO
+    category: metal
+    color: "#b8d0c8"
+    refractive_index: 1.9
+    notes: ZnO dopé gallium — électrode transparente sans indium, alternative à l'ITO.
+  - name: Al
+    category: metal
+    color: "#ced4da"
+  - name: AlCu
+    category: metal
+    color: "#c6a892"
+    density_g_cm3: 2.9
+    notes: Alliage Al-Cu (~0,5–4 % Cu) — métallisation résistante à l'électromigration.
+  - name: Ti
+    category: metal
+    color: "#6c757d"
+    notes: Couche d'accroche / barrière sous contact.
+  - name: Ni
+    category: metal
+    color: "#8a8478"
+    notes: Contact Schottky / ohmique courant sur GaN.
+
+  # -- résines ----------------------------------------------------------
+  - name: Photoresist
+    category: resist
+    color: "#f4a261"
+    notes: Résine photosensible standard (masque de lithographie, lift-off).

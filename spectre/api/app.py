@@ -44,6 +44,19 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+    @app.middleware("http")
+    async def _revalidate_pages_and_assets(request, call_next):
+        """The HTML pages and everything under ``/static`` are served straight from files that
+        change on every deploy - tell the browser to revalidate (cheap: the responses already
+        carry an ETag, so an unchanged file comes back 304) instead of serving a stale copy.
+        Without this a JS/CSS/HTML change only shows after a manual hard-refresh.
+        """
+        response = await call_next(request)
+        content_type = response.headers.get("content-type", "")
+        if request.url.path.startswith("/static/") or content_type.startswith("text/html"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     def _page(filename: str):
         def handler() -> FileResponse:
             return FileResponse(STATIC_DIR / filename)
@@ -61,6 +74,7 @@ def create_app() -> FastAPI:
     app.get("/docs/guide")(_page("docs-guide.html"))
     app.get("/docs/exemples")(_page("docs-exemples.html"))
     app.get("/docs/architecture")(_page("docs-architecture.html"))
+    app.get("/bibliotheque")(_page("bibliotheque.html"))
     app.get("/projets/{slug}")(_page("projet.html"))
     app.get("/projets/{slug}/presets-etapes")(_page("presets.html"))
     app.get("/projets/{slug}/briques-technologiques")(_page("briques.html"))

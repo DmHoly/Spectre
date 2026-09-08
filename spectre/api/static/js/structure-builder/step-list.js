@@ -79,12 +79,20 @@ function stepsListHtml(compact) {
       j += 1;
     }
     const groupEnd = j - 1;
+    // Une brique repliée est rendue en une seule ligne de résumé ; on la déplie d'office si l'étape
+    // en cours d'édition est à l'intérieur, sinon on ne verrait pas ce qu'on modifie.
+    const editingInGroup = state.editingIndex !== null && state.editingIndex >= groupStart && state.editingIndex <= groupEnd;
+    const collapsed = state.collapsedBrickGroups.has(groupId) && !editingInGroup;
+    const stepCount = groupEnd - groupStart + 1;
     // Les flèches du bloc déplacent la brique entière d'un cran (voir moveStep) - jamais une
     // étape isolée à l'intérieur, ce qui scinderait le bracket en deux morceaux disjoints.
     parts.push(`
       <div class="step-brick-group" style="border:1.5px dashed var(--accent);border-radius:var(--radius-sm);padding:8px;display:flex;flex-direction:column;gap:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-          <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.02em;">🧱 ${escapeHtml(brickName || "Brique")}</div>
+          <button class="js-toggle-brick" data-group-id="${escapeHtml(groupId)}" type="button" title="${collapsed ? "Déplier" : "Replier"} la brique" style="background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.02em;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform:rotate(${collapsed ? -90 : 0}deg);transition:transform .12s ease;flex:none;"><path d="M6 9l6 6 6-6"/></svg>
+            🧱 ${escapeHtml(brickName || "Brique")}${collapsed ? ` <span style="font-weight:600;color:var(--text-faint);text-transform:none;letter-spacing:0;">(${stepCount} étape${stepCount > 1 ? "s" : ""})</span>` : ""}
+          </button>
           <div style="display:flex;align-items:center;gap:4px;">
             ${
               compact
@@ -99,7 +107,7 @@ function stepsListHtml(compact) {
             <button class="js-ungroup-brick" data-group-id="${escapeHtml(groupId)}" type="button" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:11px;">Dissocier</button>
           </div>
         </div>
-        ${rows.join("")}
+        ${collapsed ? "" : rows.join("")}
       </div>`);
     i = j;
   }
@@ -234,6 +242,14 @@ function renderSteps() {
         toggleStepSelection(parseInt(cb.dataset.index, 10), cb.checked);
       });
     });
+    list.querySelectorAll(".js-toggle-brick").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const groupId = btn.dataset.groupId;
+        if (state.collapsedBrickGroups.has(groupId)) state.collapsedBrickGroups.delete(groupId);
+        else state.collapsedBrickGroups.add(groupId);
+        renderSteps();
+      });
+    });
     list.querySelectorAll(".js-ungroup-brick").forEach((btn) => {
       btn.addEventListener("click", () => {
         const groupId = btn.dataset.groupId;
@@ -248,6 +264,7 @@ function renderSteps() {
   updateStepFormVisibility();
   updateGroupBrickWrapVisibility();
   highlightSelectedLayer();
+  captureHistory();
   scheduleSimulate();
 }
 
@@ -409,6 +426,7 @@ document.getElementById("insert-brick-btn").addEventListener("click", () => {
   const insertAt = state.editingIndex !== null ? brickSpanAt(state.editingIndex)[0] : state.steps.length;
   const groupId = generateBrickGroupId();
   const copiedSteps = JSON.parse(JSON.stringify(brick.steps)).map((s) => ({ ...s, brick_group_id: groupId, brick_name: brick.name }));
+  state.collapsedBrickGroups.add(groupId); // une brique insérée arrive repliée - on déplie au besoin
   state.steps.splice(insertAt, 0, ...copiedSteps);
   if (state.editingIndex !== null) state.editingIndex += copiedSteps.length;
   state.selectedStepIndices.clear();

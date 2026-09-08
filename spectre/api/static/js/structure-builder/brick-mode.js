@@ -38,7 +38,7 @@ async function saveTechBrick(forceNew) {
     } else {
       await api.post(`/api/projects/${slug}/briques-technologiques`, payload);
     }
-    window.location.href = `/projets/${slug}/briques-technologiques`;
+    window.location.href = returnTo === "bibliotheque" ? "/bibliotheque" : `/projets/${slug}/briques-technologiques`;
   } catch (err) {
     showError(err);
   }
@@ -48,6 +48,8 @@ async function initBrickMode() {
   document.getElementById("brick-header").style.display = "";
   document.getElementById("experience-sections").style.display = "none";
   document.getElementById("brick-preview-note").style.display = "";
+  // Arrivée depuis le hub /bibliotheque (?partagee=1) : brique partagée par défaut.
+  if (queryParams.get("partagee") === "1") document.getElementById("brick-shared-checkbox").checked = true;
 
   if (!brickName) {
     document.getElementById("page-title").textContent = "Nouvelle brique technologique";

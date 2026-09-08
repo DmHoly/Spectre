@@ -63,6 +63,8 @@ async function saveLibraryStructure(forceNew) {
     const scope = partagee ? "partagee" : "projet";
     if (returnTo === "nouvelle-experience") {
       window.location.href = `/projets/${slug}/structures/nouvelle?structure=${encodeURIComponent(name)}&scope=${scope}`;
+    } else if (returnTo === "bibliotheque") {
+      window.location.href = "/bibliotheque";
     } else {
       window.location.href = `/projets/${slug}#structures`;
     }
@@ -74,6 +76,9 @@ async function saveLibraryStructure(forceNew) {
 async function initLibraryMode() {
   document.getElementById("library-header").style.display = "";
   document.getElementById("experience-sections").style.display = "none";
+  // Arrivée depuis le hub /bibliotheque (?partagee=1) : la structure sera par défaut "partagée
+  // avec tous les projets", pas propre au projet de travail choisi pour ouvrir l'éditeur.
+  if (queryParams.get("partagee") === "1") document.getElementById("library-shared-checkbox").checked = true;
 
   if (!libraryStructureName) {
     document.getElementById("page-title").textContent = "Nouvelle structure";

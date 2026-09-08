@@ -82,7 +82,7 @@ async function init() {
     const project = await api.get(`/api/projects/${encodeURIComponent(slug)}`);
     state.currentRole = project.role;
     document.getElementById("crumb").textContent = "/ " + project.name;
-    document.getElementById("back-link").href = `/projets/${encodeURIComponent(slug)}`;
+    document.getElementById("back-link").href = "/bibliotheque";
     document.getElementById("new-brick-link").href = `/projets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/nouvelle`;
     if (!(state.currentRole === "editor" || state.currentRole === "owner")) {
       document.getElementById("new-brick-link").style.display = "none";

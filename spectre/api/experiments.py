@@ -125,6 +125,12 @@ class TagsRequest(BaseModel):
     tags: list[str]
 
 
+class StatusRequest(BaseModel):
+    # only the two "in progress" states - moving to concluded/abandoned goes through /conclure,
+    # which also records the per-objective verdicts and the narrative.
+    status: Literal["draft", "running"]
+
+
 class CreateRefRequest(BaseModel):
     name: str | None = None
 
@@ -608,6 +614,47 @@ def set_tags(
     return {"id": experiment.id, "tags": cleaned}
 
 
+@router.post("/{slug}/experiences/{ref:path}/statut", status_code=201)
+def set_status(
+    ref: str,
+    body: StatusRequest,
+    project: Project = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Move a study between « brouillon » (draft) and « en cours » (running), or reopen a
+    concluded one to « en cours » so its conclusion can be revised. Like ``etiquettes``/``preuves``
+    this records a new immutable version carrying everything else unchanged - only
+    ``conclusion.status`` (and, when reopening, the cleared ``decided_at``) differ; the
+    per-objective results are kept as a starting point for the revised conclusion.
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        parent = repo.get(ref)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    if parent.conclusion.status == body.status:
+        return {"id": parent.id, "status": body.status}
+
+    builder = repo.derive(
+        ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
+    )
+    builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
+    builder.tags = list(parent.tags)
+    builder.evidence = list(parent.evidence)
+    builder.conclusion = parent.conclusion.model_copy(update={"status": body.status, "decided_at": None})
+    try:
+        experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
+    except follow.FollowError as exc:
+        raise HTTPException(
+            status_code=400, detail="Impossible d'enregistrer le changement de statut - rechargez la page et réessayez."
+        ) from exc
+    return {"id": experiment.id, "status": body.status}
+
+
 @router.post("/{slug}/experiences/{ref:path}/entites", status_code=201)
 def set_physical_tracking(
     ref: str,
@@ -982,3 +1029,56 @@ def get_experience(ref: str, project: Project = Depends(require_role("viewer")))
     except follow.ExperimentNotFoundError as exc:
         raise _not_found(exc) from exc
     return _detail(experiment, repo)
+
+
+@router.delete("/{slug}/experiences/{ref:path}")
+def delete_experience(ref: str, project: Project = Depends(require_role("editor"))) -> dict:
+    """Delete a whole line of work: this version and its earlier versions, back to the point where
+    the lineage forks or another branch/ref still needs them. Follow has no delete of its own
+    (experiments are immutable, content-addressed), so this rewrites the JSON store directly - and
+    only ever removes versions that nothing *outside* the deleted set still points to (no other
+    branch tip, no experiment derived from them). Refuses if this isn't the current tip of its
+    piste, or if something forks off it.
+    """
+    repo = projects.get_repository(project.slug)
+    try:
+        target = repo.get(ref)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    branch_name = target.branch
+    if repo.branches.get(branch_name) != target.id:
+        raise HTTPException(
+            status_code=422, detail="Ce n'est pas la version courante de cette piste - supprimez d'abord ce qui en découle."
+        )
+
+    to_delete: list[str] = []
+    cur: str | None = target.id
+    while cur is not None:
+        exp = repo.get(cur)
+        derived_elsewhere = [e.id for e in repo if cur in e.parents and e.id not in to_delete]
+        foreign_tips = [b for b, tip in repo.branches.items() if tip == cur and b != branch_name]
+        if derived_elsewhere or foreign_tips:
+            break
+        to_delete.append(cur)
+        cur = exp.parents[0] if exp.parents else None
+
+    if not to_delete:
+        raise HTTPException(status_code=422, detail="Des pistes découlent de cette étude - supprimez-les d'abord.")
+
+    deleted = set(to_delete)
+    for exp_id in to_delete:
+        repo._objects.pop(exp_id, None)
+    for name in [n for n, tip in list(repo._tags.items()) if tip in deleted]:
+        repo._tags.pop(name, None)
+    if cur is not None and repo._objects[cur].branch == branch_name:
+        repo._branches[branch_name] = cur
+    else:
+        repo._branches.pop(branch_name, None)
+
+    repo._store.write_refs(dict(repo._branches), dict(repo._tags))
+    if repo.path is not None:
+        for exp_id in to_delete:
+            (repo.path / "objects" / f"{exp_id}.json").unlink(missing_ok=True)
+
+    return {"deleted": list(to_delete), "count": len(to_delete), "branch_removed": branch_name not in repo.branches}

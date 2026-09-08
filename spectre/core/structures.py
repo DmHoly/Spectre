@@ -46,18 +46,34 @@ class SimulationFailedError(Exception):
     pass
 
 
-def materials_library(*extra_names: str) -> MaterialLibrary:
-    """The static default library, extended with any dynamically-composed III-N material
-    (``In{x:.2f}Ga{1-x:.2f}N`` / ``Al{y:.2f}Ga{1-y:.2f}N`` - see :func:`_graded_nitride_material`)
-    named in ``extra_names``. Spectre has no per-project material CRUD, so a graded composition -
-    picked via the structure-builder's "préciser le taux" field rather than the fixed dropdown -
-    is recreated on the fly from its own self-describing name (:func:`structureforge.core.
-    materials.indium_gan`/``aluminum_gan``) instead of needing to be registered anywhere first.
-    Callers pass every material name a request actually references (substrate, step fields,
-    already-flattened layers...) so an unrecognized *plain* name still fails simulation the same
-    way it always has - only names matching the graded-composition pattern are synthesized.
+def picker_materials() -> list[Material]:
+    """The (deliberately short) list offered in the structure-builder's material dropdown - the
+    editable root library (:func:`spectre.core.registry.registry_materials`,
+    ``library/materiaux.yml``), nitride/semiconductor-oriented, not StructureForge's full ~46. The
+    simulation still resolves *any* name (see :func:`materials_library`), so a structure that
+    references a material later dropped from the picker keeps simulating.
     """
-    library = default_library()
+    from .registry import registry_materials
+
+    return registry_materials()
+
+
+def materials_library(*extra_names: str) -> MaterialLibrary:
+    """StructureForge's full default library, with the editable root library
+    (:func:`spectre.core.registry.registry_materials`) merged on top - so a root entry can add a
+    material StructureForge lacks (GZO, AlCu) or recolor one - plus any dynamically-composed III-N
+    material (``In{x:.2f}Ga{1-x:.2f}N`` / ``Al{y:.2f}Ga{1-y:.2f}N`` - see
+    :func:`_graded_nitride_material`) named in ``extra_names``. A graded composition, picked via the
+    structure-builder's "préciser le taux" field, is recreated on the fly from its own
+    self-describing name (:func:`structureforge.core.materials.indium_gan`/``aluminum_gan``) instead
+    of needing to be registered first. Callers pass every material name a request actually
+    references (substrate, step fields, already-flattened layers...) so an unrecognized *plain* name
+    still fails simulation the same way it always has - only names matching the graded-composition
+    pattern are synthesized.
+    """
+    from .registry import registry_materials
+
+    library = default_library().with_materials(*registry_materials())
     graded = [_graded_nitride_material(name) for name in extra_names if name not in library]
     resolved = [material for material in graded if material is not None]
     return library.with_materials(*resolved) if resolved else library
@@ -102,8 +118,57 @@ def _material_names_in_layers(layers: list[Any]) -> set[str]:
     return {layer.material for layer in layers}
 
 
+_INGAN_RE = re.compile(r"^In\d\.\d{2}Ga\d\.\d{2}N$")
+_ALGAN_RE = re.compile(r"^Al\d\.\d{2}Ga\d\.\d{2}N$")
+
+
+def _expand_seed_material_aliases(steps: list[ProcessStep], substrate_material: str) -> list[ProcessStep]:
+    """A growth step's ``seed_materials`` (SAG selectivity) matches a layer *by exact name*, but
+    InGaN/AlGaN never exist as a plain name - they're always a graded composition (``In0.20Ga0.80N``
+    …). So a user who writes ``InGaN`` as the seed gets *nothing* (the SAG match silently finds no
+    seed and the growth is a no-op). Here, before simulating, the bare tokens ``InGaN`` / ``AlGaN``
+    in any ``seed_materials`` list are expanded to every matching graded composition actually present
+    in this process (substrate + every step's material fields) - so "grow selectively on InGaN"
+    means "on any InGaN composition", which is what people expect. A token with no match anywhere is
+    left as-is (same harmless no-op as before). Steps are copied, never mutated in place.
+    """
+    all_names = {substrate_material} | _material_names_in_steps(steps)
+    alias = {
+        "InGaN": sorted(n for n in all_names if _INGAN_RE.match(n)),
+        "AlGaN": sorted(n for n in all_names if _ALGAN_RE.match(n)),
+    }
+    if not any(alias.values()):
+        return steps
+
+    def _expand(seeds: list[str]) -> list[str]:
+        out: list[str] = []
+        for seed in seeds:
+            for name in alias.get(seed) or [seed]:
+                if name not in out:
+                    out.append(name)
+        return out
+
+    result: list[ProcessStep] = []
+    for step in steps:
+        seeds = getattr(step, "seed_materials", None)
+        if isinstance(seeds, list) and any(s in alias for s in seeds):
+            result.append(step.model_copy(update={"seed_materials": _expand(seeds)}))
+        else:
+            result.append(step)
+    return result
+
+
 def recipes_library() -> RecipeLibrary:
-    return default_recipes()
+    """StructureForge's default recipes plus any extra ones from the editable root library
+    (``library/recettes.yml`` via :func:`spectre.core.registry.registry_recipes`) - where a
+    selective etch (etch only Al2O3, say) is defined, since a recipe carries the whole
+    selectivity table and a step/preset only names one.
+    """
+    from .registry import registry_recipes
+
+    deposition, etch = registry_recipes()
+    base = default_recipes()
+    return base.with_recipes(deposition=deposition, etch=etch) if (deposition or etch) else base
 
 
 def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]) -> tuple[Geometry, list[Frame], MaterialLibrary]:
@@ -114,6 +179,7 @@ def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]
     in the signature even though every project shares the same material/step/recipe physics now -
     callers already pass it, and a project-specific material library is a plausible future need.
     """
+    steps = _expand_seed_material_aliases(steps, substrate.material)
     materials = materials_library(substrate.material, *_material_names_in_steps(steps))
     recipes = recipes_library()
     try:

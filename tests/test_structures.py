@@ -42,6 +42,18 @@ def test_simulate_returns_one_svg_per_frame(client):
     assert "<svg" in body["frames"][-1]["svg"]
 
 
+def test_selective_growth_seed_ingan_matches_any_composition(client):
+    slug = _register_and_create_project(client)
+    substrate = {"material": "GaN", "domain_width": {"value": 400, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
+    steps = [
+        {"kind": "epitaxial_growth", "name": "germe", "material": "In0.20Ga0.80N", "thickness": {"value": 20, "unit": "nm"}, "orientation": "c_plane", "seed_materials": []},
+        # seed écrit "InGaN" en clair — doit être compris comme "n'importe quelle composition InGaN"
+        {"kind": "epitaxial_growth", "name": "reprise selective", "material": "In0.30Ga0.70N", "thickness": {"value": 30, "unit": "nm"}, "orientation": "c_plane", "seed_materials": ["InGaN"]},
+    ]
+    body = client.post(f"/api/projects/{slug}/structures/simulate", json={"substrate": substrate, "steps": steps}).json()
+    assert "In0.30Ga0.70N" in body["frames"][-1]["materials"]  # la reprise sélective a bien eu lieu
+
+
 def test_simulate_accepts_a_flip_step_for_backside_processing(client):
     slug = _register_and_create_project(client)
     steps = [

@@ -252,8 +252,8 @@ const STEP_KIND_DEFS = {
       ${gradedMaterialFieldHtml("f-material-c", "Matériau — plan C", null, { allowUnset: true })}
       ${gradedMaterialFieldHtml("f-material-m", "Matériau — plan M (flancs)", null, { allowUnset: true })}
       ${gradedMaterialFieldHtml("f-material-sp", "Matériau — semipolaire", null, { allowUnset: true })}
-      <div><label>Matériaux d'amorçage — SAG (optionnel)</label><input class="field" id="f-seed-materials" placeholder="ex : GaN, AlN">
-        <div class="help" style="margin-top:4px;">Noms séparés par des virgules. Vide = croissance sur toute surface exposée, sans sélectivité.</div>
+      <div><label>Matériaux d'amorçage — SAG (optionnel)</label><input class="field" id="f-seed-materials" placeholder="ex : GaN, InGaN">
+        <div class="help" style="margin-top:4px;">Noms séparés par des virgules. Vide = croissance sur toute surface exposée, sans sélectivité. « InGaN » / « AlGaN » valent pour n'importe quelle composition (In0.20Ga0.80N…).</div>
       </div>`,
     wire: () => {
       wireGradedMaterialField("f-material");
@@ -338,8 +338,8 @@ const STEP_KIND_DEFS = {
         </select>
       </div>
       <div id="f-angle-wrap" style="display:none;"><label>Angle (° depuis l'axe c)</label><input class="field" id="f-angle" type="number" value="32" min="0.1" max="89.9" step="0.1"></div>
-      <div><label>Matériaux d'amorçage — SAG (optionnel)</label><input class="field" id="f-seed-materials" placeholder="ex : GaN, AlN">
-        <div class="help" style="margin-top:4px;">Noms séparés par des virgules. Vide = croissance non sélective sur toute surface exposée (buffer, template) ; rempli, bloque la nucléation ailleurs — un vrai masque de croissance sélective (SAG).</div>
+      <div><label>Matériaux d'amorçage — SAG (optionnel)</label><input class="field" id="f-seed-materials" placeholder="ex : GaN, InGaN">
+        <div class="help" style="margin-top:4px;">Noms séparés par des virgules. Vide = croissance non sélective sur toute surface exposée (buffer, template) ; rempli, bloque la nucléation ailleurs — un vrai masque de croissance sélective (SAG). « InGaN » / « AlGaN » valent pour n'importe quelle composition (In0.20Ga0.80N…).</div>
       </div>`,
     wire: () => {
       wireGradedMaterialField("f-material");

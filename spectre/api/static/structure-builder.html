@@ -21,6 +21,7 @@
     </div>
     </a>
     <div class="topbar__actions">
+      <a href="/bibliotheque" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Bibliothèque</a>
       <a href="/docs" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Documentation</a>
       <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
         <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
@@ -113,6 +114,12 @@
         <div class="help" id="view-mode-help" style="margin:6px 0 12px;">Cliquez une couche du dessin pour l'éditer. Disponible tant que la structure n'est faite que de dépôts (empilement d'épitaxie).</div>
 
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-bottom:6px;">
+          <button class="btn btn-line" id="undo-edit-btn" type="button" title="Annuler (Ctrl+Z)" disabled style="padding:4px 9px;line-height:1;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10H9"/></svg>
+          </button>
+          <button class="btn btn-line" id="redo-edit-btn" type="button" title="Rétablir (Ctrl+Maj+Z)" disabled style="padding:4px 9px;line-height:1;margin-right:auto;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h6"/></svg>
+          </button>
           <button class="btn btn-line" id="zoom-out-btn" type="button" title="Zoom arrière" style="padding:4px 9px;font-size:13px;line-height:1;">&minus;</button>
           <button class="btn btn-line" id="zoom-reset-btn" type="button" title="Réinitialiser le zoom" style="padding:4px 9px;font-size:11.5px;"><span id="zoom-level-label">100%</span></button>
           <button class="btn btn-line" id="zoom-in-btn" type="button" title="Zoom avant" style="padding:4px 9px;font-size:13px;line-height:1;">&plus;</button>
@@ -295,6 +302,7 @@
   <script src="/static/js/structure-builder/step-list.js"></script>
   <script src="/static/js/structure-builder/objectives.js"></script>
   <script src="/static/js/structure-builder/simulation.js"></script>
+  <script src="/static/js/structure-builder/history.js"></script>
   <script src="/static/js/structure-builder/intent-form.js"></script>
   <script src="/static/js/structure-builder/variations.js"></script>
   <script src="/static/js/structure-builder/experience-launch.js"></script>

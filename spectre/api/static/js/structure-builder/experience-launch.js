@@ -71,6 +71,9 @@ async function commitExperience(entities) {
     let endpoint;
     if (state.campaignPlan) {
       payload.plan = state.campaignPlan;
+      // Campagne partie d'une ref / d'une expérience : on garde le lien de filiation (voir
+      // launch_campaign::from_ref) - `payload.new_branch` est déjà posé plus haut si "fork".
+      if (evolveExperienceId) payload.from_ref = evolveExperienceId;
       endpoint = `/api/projects/${slug}/experiences/campagne`;
     } else if (evolveExperienceId) {
       endpoint = `/api/projects/${slug}/experiences/${evolveExperienceId}/evoluer`;
@@ -113,12 +116,21 @@ document.getElementById("continue-btn").addEventListener("click", () => {
 // qu'avant, appliqué à la colonne "Nom du wafer" du tableau plutôt qu'à un champ unique).
 document.getElementById("launch-btn-variations").addEventListener("click", () => {
   clearError();
-  const entities = variationTableEntities();
-  if (!entities.some((e) => e.sample_id)) {
+  const tableEntities = variationTableEntities();
+  // Une évolution simple (sans variation) peut laisser le tableau vide - le serveur reprend
+  // l'entité de la version précédente. On envoie alors une liste vide plutôt qu'une ligne blanche,
+  // qui écraserait l'entité héritée (voir evolve_experience). Un nouveau lancement / une campagne
+  // exigent au moins un échantillon nommé (positions gardées pour l'alignement des variantes).
+  const evolveNoSplit = evolveExperienceId && !state.campaignPlan;
+  if (evolveNoSplit) {
+    commitExperience(tableEntities.filter((e) => e.sample_id));
+    return;
+  }
+  if (!tableEntities.some((e) => e.sample_id)) {
     showError(new Error("L'entité physique (l'échantillon réel suivi) est obligatoire - nommez au moins un wafer dans le tableau."));
     return;
   }
-  commitExperience(entities);
+  commitExperience(tableEntities);
 });
 
 document.getElementById("branch-continue").addEventListener("change", () => {

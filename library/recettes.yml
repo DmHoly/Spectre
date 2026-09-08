@@ -1,0 +1,48 @@
+# Recettes de dépôt / gravure SUPPLÉMENTAIRES — fusionnées par-dessus celles de StructureForge
+# (un nom déjà pris est redéfini). C'est ICI, pas dans un préset, que se définit une gravure
+# sélective : la recette porte toute la table de sélectivité, un préset / une étape ne fait que
+# nommer une recette.
+#
+# Rechargé automatiquement quand le fichier change. Fichier absent / invalide → seules les
+# recettes intégrées de StructureForge sont disponibles (avec un WARNING dans les logs si invalide).
+#
+# ── Champs d'une recette de gravure (etch) ────────────────────────────────
+#   name                     (obligatoire)
+#   mode                     isotropic (humide, grave dans toutes les directions)
+#                            | directional (RIE / usinage ionique, suit un angle)
+#   angle_deg                pour directional, mesuré depuis la normale (0 = vertical). Défaut 0.
+#   default_factor           vitesse relative sur TOUT matériau non listé ci-dessous.
+#                            1.0 = vitesse nominale ; 0.0 = pas gravé du tout (couche d'arrêt).
+#   selectivity_by_material  overrides par nom de matériau : { Al2O3: 1.0, GaN: 0.1, ... }
+#   selectivity_by_category  overrides par catégorie : { dielectric: 1.0, metal: 0.0, ... }
+#   notes                    infobulle
+#
+#   Résolution : selectivity_by_material > selectivity_by_category > default_factor.
+#
+# ── Champs d'une recette de dépôt (deposition) ────────────────────────────
+#   name, mode (conformal | directional), angle_deg (directional), notes
+
+deposition: []
+
+etch:
+  # Grave UNIQUEMENT l'Al2O3, tout le reste sert de couche d'arrêt.
+  - name: Gravure sélective Al2O3
+    mode: isotropic
+    selectivity_by_material:
+      Al2O3: 1.0
+    default_factor: 0.0
+    notes: >-
+      Ne grave que l'Al2O3 (ex. acide phosphorique chaud) — GaN, SiO2, métaux, résine
+      intacts. default_factor 0 → tout matériau non listé est un stop.
+
+  # Variante « diélectriques » : grave tous les diélectriques, s'arrête sur les semi-conducteurs.
+  # selectivity_by_category attrape aussi les compositions InGaN/AlGaN à taux (In0.20Ga0.80N…),
+  # ce qu'une clé selectivity_by_material: { InGaN: 0 } ne ferait pas (le nom stocké porte le %).
+  # - name: Gravure diélectriques (stop sur semi-conducteur)
+  #   mode: directional
+  #   angle_deg: 0
+  #   selectivity_by_category:
+  #     dielectric: 1.0
+  #     semiconductor: 0.0
+  #   default_factor: 0.1
+  #   notes: RIE fluorée des diélectriques, quasi verticale, s'arrête sur le III-N (GaN, InGaN, AlGaN).

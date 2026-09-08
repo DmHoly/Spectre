@@ -192,11 +192,26 @@ function renderVariationTable(rows, factorLabels) {
 // Régénère le tableau depuis le plan courant - un appel serveur avec le plan complet s'il y a au
 // moins un facteur (même endpoint que l'ancien campaign.js utilisait pour prévisualiser), sinon
 // une seule ligne locale à partir de la dernière simulation (voir simulation.js/state.frames).
+// Le libellé du bouton de lancement de l'écran 2 dépend de ce qu'on s'apprête à faire :
+// campagne (au moins une variation), simple évolution, ou nouveau lancement sans variation.
+function updateLaunchVariationsLabel() {
+  const btn = document.getElementById("launch-btn-variations");
+  if (state.campaignPlan) {
+    const n = state.variationEntities.length || 1;
+    btn.textContent = `Lancer la campagne (${n} échantillon${n > 1 ? "s" : ""})`;
+  } else if (evolveExperienceId) {
+    btn.textContent = "Enregistrer cette évolution";
+  } else {
+    btn.textContent = "Lancer le suivi de cette expérience";
+  }
+}
+
 async function refreshVariationTable() {
   if (state.variationFactors.length === 0) {
     state.campaignPlan = null;
     const frame = state.frames && state.frames.length ? state.frames[state.frames.length - 1] : null;
     renderVariationTable([{ svg: frame ? frame.svg : "", factorValues: [] }], []);
+    updateLaunchVariationsLabel();
     return;
   }
   const plan = { factors: state.variationFactors.map(({ step_index, field, values }) => ({ step_index, field, values })) };
@@ -209,6 +224,7 @@ async function refreshVariationTable() {
     state.campaignPlan = plan;
     const rows = result.svgs.map((svg, i) => ({ svg, factorValues: result.factor_values[i] }));
     renderVariationTable(rows, result.factor_labels);
+    updateLaunchVariationsLabel();
   } catch (err) {
     showError(err);
   }
@@ -245,6 +261,15 @@ function invalidateVariations() {
 function showWizardStepVariations() {
   state.wizardScreen = "variations";
   variationEditingStepIndex = null;
+  // Report l'entité éventuellement saisie sur l'écran 1 (cas évolution) dans la 1re ligne du
+  // tableau, pour ne pas la reperdre en basculant d'écran.
+  const screenOneSampleId = (document.getElementById("exp-entity-sample-id").value || "").trim();
+  if (screenOneSampleId && !(state.variationEntities[0] && state.variationEntities[0].sample_id)) {
+    state.variationEntities[0] = {
+      sample_id: screenOneSampleId,
+      location: (document.getElementById("exp-entity-location").value || "").trim(),
+    };
+  }
   document.getElementById("variation-form-section").style.display = "none";
   document.getElementById("wizard-step-intention").style.display = "none";
   document.getElementById("wizard-step-variations").style.display = "flex";

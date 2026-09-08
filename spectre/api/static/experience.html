@@ -48,6 +48,7 @@
     </div>
     </a>
     <div class="topbar__actions">
+      <a href="/bibliotheque" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Bibliothèque</a>
       <a href="/docs" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Documentation</a>
       <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
         <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
@@ -69,7 +70,10 @@
 
     <!-- Titre de l'étude, seul en pleine largeur. -->
     <div class="card card-pad" id="header-card" style="margin-bottom:20px;">
-      <div id="status-badge" style="margin-bottom:14px;"></div>
+      <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span id="status-badge"></span>
+        <span id="status-actions" data-report-hide style="display:flex;gap:8px;"></span>
+      </div>
       <h1 id="exp-title" style="font-size:24px;line-height:1.3;"></h1>
       <p id="exp-intent" style="color:var(--text-soft);font-size:14.5px;margin-top:10px;line-height:1.55;max-width:70ch;"></p>
       <div id="exp-meta" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);font-size:12.5px;color:var(--text-faint);line-height:1.7;"></div>
@@ -182,6 +186,13 @@
           <input class="field" id="combine-title" placeholder="Titre du résultat" style="margin-bottom:8px;">
           <input class="field" id="combine-intent" placeholder="Pourquoi combiner ces deux pistes ?" style="margin-bottom:8px;">
           <button class="btn btn-line" id="combine-btn" type="button">Combiner</button>
+
+          <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--danger-tint);">
+            <label style="color:var(--danger);">Supprimer cette étude</label>
+            <div class="help" style="margin-bottom:8px;">Efface définitivement cette version et les versions précédentes de cette piste, jusqu'à un point encore utilisé par une autre piste ou une ref. Irréversible.</div>
+            <button class="btn btn-danger" id="delete-experience-btn" type="button">Supprimer</button>
+            <span id="delete-experience-hint" class="help" style="margin-left:10px;"></span>
+          </div>
         </div>
       </details>
 

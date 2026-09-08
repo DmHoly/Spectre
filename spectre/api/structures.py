@@ -80,6 +80,11 @@ class LaunchCampaignRequest(CampaignPreviewRequest):
     objectives: list[ObjectiveInput] = []
     entities: list[EntityTrackingInput] = []  # at least one (the reference sample) is required
     form_answers: dict[str, Any] = {}
+    # when the campaign is built from an existing version (« partir d'une ref » / « continuer ») it
+    # branches off that commit so the lineage/baseline link is kept, exactly like an évolution -
+    # instead of starting a disconnected new branch.
+    from_ref: str | None = None
+    new_branch: str | None = None  # only meaningful with from_ref: name the forked branch
 
 
 def _slugify_branch(title: str) -> str:
@@ -133,7 +138,7 @@ def split_objectives(inputs: list[ObjectiveInput]) -> tuple[list["follow.Objecti
 
 @router.get("/{slug}/materials")
 def list_materials(project: Project = Depends(require_role("viewer"))) -> list[dict]:
-    return [m.model_dump(mode="json") for m in structures.materials_library()]
+    return [m.model_dump(mode="json") for m in structures.picker_materials()]
 
 
 @router.get("/{slug}/recettes")
@@ -420,7 +425,6 @@ def launch_campaign(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     repo = projects.get_repository(project.slug)
-    branch = _unique_branch(repo, body.title)
     objectives, verification = split_objectives(body.objectives)
     lot = structures.ProcessLot(entries=result.entries)
     # exactly one tracking slot per variant (set_physical_tracking's own invariant) - the entities
@@ -429,16 +433,39 @@ def launch_campaign(
     padding = [{"sample_id": None, "location": None}] * max(0, len(result.entries) - len(entities))
     physical_tracking = (entities + padding)[: len(result.entries)]
 
-    builder = repo.new(
-        branch=branch,
-        structure=lot,
-        title=body.title,
-        intent=body.intent,
-        author=user.name,
-        hypothesis=body.hypothesis,
-        objectives=objectives,
-        steps=follow_adapter.to_steps(body.steps),
-    )
+    if body.from_ref:
+        # A campaign started from an existing version keeps the lineage: repo.derive branches off
+        # it and always adds the "baseline" reference, so the fiche's "versus the reference" views
+        # and the graph link work exactly as for an évolution.
+        try:
+            repo.get(body.from_ref)
+        except follow.ExperimentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="expérience de départ introuvable") from exc
+        builder = repo.derive(
+            body.from_ref,
+            title=body.title,
+            intent=body.intent,
+            new_branch=body.new_branch or _unique_branch(repo, body.title),
+            structure=lot,
+            carry_steps=False,
+            carry_objectives=not body.objectives,
+            author=user.name,
+            hypothesis=body.hypothesis,
+        )
+        builder.steps = follow_adapter.to_steps(body.steps)
+        if body.objectives:
+            builder.objectives = objectives
+    else:
+        builder = repo.new(
+            branch=_unique_branch(repo, body.title),
+            structure=lot,
+            title=body.title,
+            intent=body.intent,
+            author=user.name,
+            hypothesis=body.hypothesis,
+            objectives=objectives,
+            steps=follow_adapter.to_steps(body.steps),
+        )
     builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
     builder.metadata["physical_tracking"] = physical_tracking
     builder.metadata["campaign_labels"] = result.labels

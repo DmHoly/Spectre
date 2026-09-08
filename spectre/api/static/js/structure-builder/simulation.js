@@ -75,7 +75,11 @@ function scheduleSimulate(delay = 120) {
 }
 
 ["substrate-material", "substrate-width", "substrate-width-unit", "substrate-thickness", "substrate-thickness-unit"].forEach(
-  (id) => document.getElementById(id).addEventListener("change", () => scheduleSimulate())
+  (id) =>
+    document.getElementById(id).addEventListener("change", () => {
+      captureHistory();
+      scheduleSimulate();
+    })
 );
 
 document.getElementById("zoom-in-btn").addEventListener("click", () => {

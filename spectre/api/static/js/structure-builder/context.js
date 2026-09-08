@@ -36,6 +36,7 @@ const state = {
   wizardScreen: "intention", // "intention" (écran 1) or "variations" (écran 2) - new-launch mode only
   editingIndex: null,
   selectedStepIndices: new Set(), // indices currently checked for "grouper en brique" - cleared on any structural change (add/remove/move/insert)
+  collapsedBrickGroups: new Set(), // brick_group_id des blocs repliés dans la liste d'étapes (purement visuel)
   viewMode: "couches", // "couches" (click a layer, epitaxy-style) or "etapes" (full step list)
   showStepForm: false, // couches mode only: whether the add/edit form is open
   derivedFrom: null, // library mode only: name of the structure this one was derived from, if any

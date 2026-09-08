@@ -63,6 +63,10 @@ function resetForm() {
   document.getElementById("form-title").textContent = "Nouveau préset";
   document.getElementById("submit-btn").textContent = "Créer le préset";
   document.getElementById("cancel-edit-btn").style.display = "none";
+  // Arrivée depuis le hub /bibliotheque (?partagee=1) : préset partagé par défaut.
+  if (new URLSearchParams(window.location.search).get("partagee") === "1") {
+    document.getElementById("f-partagee").value = "true";
+  }
 }
 
 document.getElementById("cancel-edit-btn").addEventListener("click", resetForm);
@@ -204,7 +208,7 @@ async function init() {
     const project = await api.get(`/api/projects/${encodeURIComponent(slug)}`);
     state.currentRole = project.role;
     document.getElementById("crumb").textContent = "/ " + project.name;
-    document.getElementById("back-link").href = `/projets/${encodeURIComponent(slug)}`;
+    document.getElementById("back-link").href = "/bibliotheque";
     if (!(state.currentRole === "editor" || state.currentRole === "owner")) {
       document.querySelector(".card.card-pad").style.display = "none";
     }

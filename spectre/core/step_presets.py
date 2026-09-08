@@ -49,22 +49,27 @@ def StepPresetStore(path: str | Path) -> KeyedJsonStore[StepPresetLibrary, StepP
 
 
 def default_step_presets() -> dict[str, StepPreset]:
-    """Built-in presets, the same "standard, not stored, not deletable" status
-    ``structureforge.core.recipes`` used to give its own standard recipes - always available from
-    every project's preset library, under their own ``"preset"`` scope (see
-    :func:`spectre.api.structures.list_step_presets`), never written to a JSON store.
+    """The preset library's ``"preset"`` scope: the editable root library
+    (``library/presets.yml`` via :mod:`spectre.core.registry`) when it exists, otherwise the
+    built-in set below. Always available from every project, never written to a JSON store (only
+    the shared/project stores are). Imported lazily to avoid a core import cycle
+    (``registry`` imports this module for its models).
+    """
+    from .registry import registry_step_presets
+
+    return registry_step_presets()
+
+
+def _builtin_step_presets() -> dict[str, StepPreset]:
+    """Fallback preset set when ``library/presets.yml`` is missing - a nitride/semiconductor-
+    oriented subset (III-N epitaxy, passivation dielectrics, contact metals, the etches that go
+    with them). The shipped YAML file mirrors this list; edit that file to grow it.
     """
     deposition = [
         StepPreset(
             name="ALD Conformal",
             payload=DepositionPreset(recipe="ALD Conformal"),
             notes="Dépôt uniforme qui épouse parfaitement tous les reliefs de la surface.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="CVD Conformal",
-            payload=DepositionPreset(recipe="CVD Conformal"),
-            notes="Dépôt uniforme sur les reliefs, une bonne couverture standard.",
             created_at="preset",
         ),
         StepPreset(
@@ -97,12 +102,6 @@ def default_step_presets() -> dict[str, StepPreset]:
             notes="Dépôt métallique par pulvérisation, par le dessus — couvre mieux les flancs qu'une évaporation, reste directionnel.",
             created_at="preset",
         ),
-        StepPreset(
-            name="Electroplating (Cu)",
-            payload=DepositionPreset(recipe="Electroplating (Cu)"),
-            notes="Remplissage électrochimique en cuivre — nécessite une couche d'amorce déjà en place.",
-            created_at="preset",
-        ),
     ]
     etch = [
         StepPreset(
@@ -130,27 +129,9 @@ def default_step_presets() -> dict[str, StepPreset]:
             created_at="preset",
         ),
         StepPreset(
-            name="KOH Anisotropic Wet Etch",
-            payload=EtchPreset(recipe="KOH Anisotropic Wet Etch"),
-            notes="Gravure humide cristallographique du silicium, angle fixe à 54,7° — s'arrête presque totalement sur un masque oxyde/nitrure.",
-            created_at="preset",
-        ),
-        StepPreset(
             name="Cl2 ICP-RIE (III-N)",
             payload=EtchPreset(recipe="Cl2 ICP-RIE (III-N)"),
             notes="Gravure sèche quasi verticale des semi-conducteurs III-N (GaN, AlGaN...) — sélective par rapport aux masques, diélectriques et métaux.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="TMAH Anisotropic Wet Etch",
-            payload=EtchPreset(recipe="TMAH Anisotropic Wet Etch"),
-            notes="Alternative au KOH sans contamination alcaline, même angle cristallographique — plus douce sur l'aluminium exposé.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="SF6 Deep RIE (Si)",
-            payload=EtchPreset(recipe="SF6 Deep RIE (Si)"),
-            notes="Gravure profonde du silicium (type Bosch) — quasi verticale et rapide, s'arrête bien sur un masque oxyde/nitrure/résine.",
             created_at="preset",
         ),
         StepPreset(
