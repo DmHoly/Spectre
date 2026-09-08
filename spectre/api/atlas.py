@@ -1,6 +1,6 @@
 """The cross-project atlas: one endpoint aggregating every project a user belongs to into the
 payload the client-side D3 force graph draws (see ``static/js/atlas.js``). Unlike every other
-router in this package, routes here are not scoped under ``/api/projects/{slug}`` - this is
+router in this package, routes here are not scoped under ``/api/microprojets/{slug}`` - this is
 deliberately the one page that looks across projects at once, not into a single one.
 """
 

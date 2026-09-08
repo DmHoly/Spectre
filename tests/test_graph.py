@@ -3,13 +3,13 @@ from __future__ import annotations
 
 def _setup_project(client, email="owner@example.com", name="Owner"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
-    project = client.post("/api/projects", json={"name": "Salle blanche"}).json()
+    project = client.post("/api/microprojets", json={"name": "Salle blanche"}).json()
     return project["slug"]
 
 
 def test_graph_html_on_empty_project(client):
     slug = _setup_project(client)
-    response = client.get(f"/api/projects/{slug}/graphe.html")
+    response = client.get(f"/api/microprojets/{slug}/graphe.html")
     assert response.status_code == 200
     assert "Aucune expérience" in response.text
 
@@ -27,7 +27,7 @@ def test_graph_html_with_experiments(client):
         }
     ]
     client.post(
-        f"/api/projects/{slug}/experiences",
+        f"/api/microprojets/{slug}/experiences",
         json={
             "substrate": substrate,
             "steps": steps,
@@ -36,7 +36,7 @@ def test_graph_html_with_experiments(client):
             "entities": [{"sample_id": "W1"}],
         },
     )
-    response = client.get(f"/api/projects/{slug}/graphe.html")
+    response = client.get(f"/api/microprojets/{slug}/graphe.html")
     assert response.status_code == 200
     assert "plotly" in response.text.lower()
 
@@ -48,12 +48,12 @@ def test_graph_html_still_renders_with_a_tag_only_commit_collapsed_out(client):
     substrate = {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
     steps = [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
     launched = client.post(
-        f"/api/projects/{slug}/experiences",
+        f"/api/microprojets/{slug}/experiences",
         json={"substrate": substrate, "steps": steps, "title": "Essai", "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
     ).json()
-    tagged = client.post(f"/api/projects/{slug}/experiences/{launched['id']}/etiquettes", json={"tags": ["a-suivre"]}).json()
+    tagged = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/etiquettes", json={"tags": ["a-suivre"]}).json()
     client.post(
-        f"/api/projects/{slug}/experiences/{tagged['id']}/evoluer",
+        f"/api/microprojets/{slug}/experiences/{tagged['id']}/evoluer",
         json={
             "substrate": substrate,
             "steps": [{**steps[0], "thickness": {"value": 40, "unit": "nm"}}],
@@ -62,19 +62,19 @@ def test_graph_html_still_renders_with_a_tag_only_commit_collapsed_out(client):
             "objectives": [],
         },
     )
-    response = client.get(f"/api/projects/{slug}/graphe.html")
+    response = client.get(f"/api/microprojets/{slug}/graphe.html")
     assert response.status_code == 200
     assert "plotly" in response.text.lower()
 
 
 def test_graph_page_is_served(client):
     slug = _setup_project(client)
-    assert client.get(f"/projets/{slug}/graphe").status_code == 200
+    assert client.get(f"/microprojets/{slug}/graphe").status_code == 200
 
 
 def test_non_member_cannot_see_graph(client):
     slug = _setup_project(client)
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": "stranger@example.com", "password": "supersecret", "name": "S"})
-    response = client.get(f"/api/projects/{slug}/graphe.html")
+    response = client.get(f"/api/microprojets/{slug}/graphe.html")
     assert response.status_code == 403

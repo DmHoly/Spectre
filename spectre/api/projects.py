@@ -9,13 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..core import atlas as atlas_core
-from ..core import projects
+from ..core import management, projects
 from ..core.accounts import User
-from ..core.permissions import require_role
+from ..core.management import ManagementAreaNotFoundError
+from ..core.permissions import require_admin, require_role
 from ..core.projects import Project
 from .deps import get_current_user
 
-router = APIRouter(prefix="/api/projects", tags=["projects"])
+router = APIRouter(prefix="/api/microprojets", tags=["projects"])
 
 RUNNING_STATUSES = projects.RUNNING_STATUSES
 CONCLUDED_STATUSES = projects.CONCLUDED_STATUSES
@@ -24,6 +25,7 @@ CONCLUDED_STATUSES = projects.CONCLUDED_STATUSES
 class CreateProjectRequest(BaseModel):
     name: str
     description: str = ""
+    management_area_slug: str | None = None  # which grand thème it belongs to (default: « Non classé »)
 
 
 class AddMemberRequest(BaseModel):
@@ -38,6 +40,16 @@ def _experiment_counts(slug: str) -> tuple[int, int]:
     return running, concluded
 
 
+def _area_ref(management_area_id: int | None) -> dict | None:
+    if management_area_id is None:
+        return None
+    try:
+        area = management.get_by_id(management_area_id)
+    except ManagementAreaNotFoundError:
+        return None
+    return {"slug": area.slug, "name": area.name}
+
+
 def _project_payload(project: Project, role: str) -> dict:
     running, concluded = _experiment_counts(project.slug)
     return {
@@ -48,6 +60,7 @@ def _project_payload(project: Project, role: str) -> dict:
         "role": role,
         "running_count": running,
         "concluded_count": concluded,
+        "management_area": _area_ref(project.management_area_id),
     }
 
 
@@ -58,11 +71,27 @@ def list_projects(user: User = Depends(get_current_user)) -> list[dict]:
 
 @router.post("", status_code=201)
 def create_project(body: CreateProjectRequest, user: User = Depends(get_current_user)) -> dict:
+    area_id = None
+    if body.management_area_slug:
+        try:
+            area_id = management.get_by_slug(body.management_area_slug).id
+        except ManagementAreaNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=f"thème {body.management_area_slug!r} introuvable") from exc
     try:
-        project = projects.create(body.name, body.description, owner_id=user.id)
+        project = projects.create(body.name, body.description, owner_id=user.id, management_area_id=area_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _project_payload(project, "owner")
+
+
+@router.get("/tous")
+def list_all_projects(_admin: User = Depends(require_admin)) -> list[dict]:
+    """Every µprojet, whichever theme it sits in - admin only, for the "move a µprojet into this
+    theme" picker on the management-area page."""
+    return [
+        {"slug": p.slug, "name": p.name, "management_area": _area_ref(p.management_area_id)}
+        for p in projects.list_all()
+    ]
 
 
 @router.get("/{slug}")

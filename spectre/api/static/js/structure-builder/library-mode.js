@@ -2,7 +2,7 @@
    enregistrer/dupliquer une structure dans la bibliothèque (projet ou partagée). */
 
 async function fetchSavedStructures() {
-  return api.get(`/api/projects/${slug}/structures-sauvegardees`);
+  return api.get(`/api/microprojets/${slug}/structures-sauvegardees`);
 }
 
 function findSavedStructure(list, name, scope) {
@@ -25,7 +25,7 @@ async function loadChosenStructureForExperience() {
     document.getElementById("based-on-note").style.display = "";
     document.getElementById("based-on-name").textContent = found.name;
     document.getElementById("edit-structure-link").href =
-      `/projets/${slug}/structures/bibliotheque/${encodeURIComponent(found.name)}` +
+      `/microprojets/${slug}/structures/bibliotheque/${encodeURIComponent(found.name)}` +
       `?scope=${chosenStructureScope}&dupliquer=1&retour=nouvelle-experience`;
   } catch (err) {
     showError(err);
@@ -53,20 +53,20 @@ async function saveLibraryStructure(forceNew) {
   try {
     if (!forceNew && state.editingLibraryName) {
       await api.put(
-        `/api/projects/${slug}/structures-sauvegardees/${encodeURIComponent(state.editingLibraryName)}` +
+        `/api/microprojets/${slug}/structures-sauvegardees/${encodeURIComponent(state.editingLibraryName)}` +
           `?partagee=${state.editingLibraryScope === "partagee"}`,
         payload
       );
     } else {
-      await api.post(`/api/projects/${slug}/structures-sauvegardees`, payload);
+      await api.post(`/api/microprojets/${slug}/structures-sauvegardees`, payload);
     }
     const scope = partagee ? "partagee" : "projet";
     if (returnTo === "nouvelle-experience") {
-      window.location.href = `/projets/${slug}/structures/nouvelle?structure=${encodeURIComponent(name)}&scope=${scope}`;
+      window.location.href = `/microprojets/${slug}/structures/nouvelle?structure=${encodeURIComponent(name)}&scope=${scope}`;
     } else if (returnTo === "bibliotheque") {
       window.location.href = "/bibliotheque";
     } else {
-      window.location.href = `/projets/${slug}#structures`;
+      window.location.href = `/microprojets/${slug}#structures`;
     }
   } catch (err) {
     showError(err);
@@ -77,7 +77,7 @@ async function initLibraryMode() {
   document.getElementById("library-header").style.display = "";
   document.getElementById("experience-sections").style.display = "none";
   // Arrivée depuis le hub /bibliotheque (?partagee=1) : la structure sera par défaut "partagée
-  // avec tous les projets", pas propre au projet de travail choisi pour ouvrir l'éditeur.
+  // avec tous les µprojets", pas propre au µprojet de travail choisi pour ouvrir l'éditeur.
   if (queryParams.get("partagee") === "1") document.getElementById("library-shared-checkbox").checked = true;
 
   if (!libraryStructureName) {

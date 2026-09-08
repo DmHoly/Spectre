@@ -3,7 +3,7 @@ from __future__ import annotations
 
 def _setup_project(client, email="owner@example.com", name="Owner"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
-    project = client.post("/api/projects", json={"name": "Salle blanche"}).json()
+    project = client.post("/api/microprojets", json={"name": "Salle blanche"}).json()
     return project["slug"]
 
 
@@ -58,7 +58,7 @@ def _plan_two_factors():
 def test_preview_campaign_returns_svgs_and_variation(client):
     slug = _setup_project(client)
     response = client.post(
-        f"/api/projects/{slug}/structures/variantes",
+        f"/api/microprojets/{slug}/structures/variantes",
         json={"substrate": _substrate(), "steps": _steps(), "plan": _plan()},
     )
     assert response.status_code == 200
@@ -76,7 +76,7 @@ def test_preview_campaign_rejects_non_numeric_field(client):
     slug = _setup_project(client)
     bad_plan = {"factors": [{"step_index": 0, "field": "material", "values": [1, 2]}]}
     response = client.post(
-        f"/api/projects/{slug}/structures/variantes",
+        f"/api/microprojets/{slug}/structures/variantes",
         json={"substrate": _substrate(), "steps": _steps(), "plan": bad_plan},
     )
     assert response.status_code == 422
@@ -85,7 +85,7 @@ def test_preview_campaign_rejects_non_numeric_field(client):
 def test_preview_campaign_with_two_factors_is_fully_crossed(client):
     slug = _setup_project(client)
     response = client.post(
-        f"/api/projects/{slug}/structures/variantes",
+        f"/api/microprojets/{slug}/structures/variantes",
         json={"substrate": _substrate(), "steps": _steps_two(), "plan": _plan_two_factors()},
     )
     assert response.status_code == 200
@@ -110,15 +110,15 @@ def test_launch_campaign_and_read_matrix(client):
         "intent": "Explorer l'effet de l'epaisseur d'oxyde",
         "entities": [{"sample_id": "W1"}],
     }
-    response = client.post(f"/api/projects/{slug}/experiences/campagne", json=body)
+    response = client.post(f"/api/microprojets/{slug}/experiences/campagne", json=body)
     assert response.status_code == 201
     experiment_id = response.json()["id"]
 
-    detail = client.get(f"/api/projects/{slug}/experiences/{experiment_id}").json()
+    detail = client.get(f"/api/microprojets/{slug}/experiences/{experiment_id}").json()
     assert detail["is_batch"] is True
     assert "<svg" in detail["structure_svg"]
 
-    matrix = client.get(f"/api/projects/{slug}/experiences/{experiment_id}/matrice").json()
+    matrix = client.get(f"/api/microprojets/{slug}/experiences/{experiment_id}/matrice").json()
     assert matrix["entity_count"] == 3
     assert len(matrix["varying"]) >= 1
     assert matrix["factor_labels"] == ["Épaisseur — Oxyde"]
@@ -138,11 +138,11 @@ def test_launch_campaign_with_two_factors(client):
         "intent": "Explorer epaisseur et profondeur ensemble",
         "entities": [{"sample_id": "W1"}],
     }
-    response = client.post(f"/api/projects/{slug}/experiences/campagne", json=body)
+    response = client.post(f"/api/microprojets/{slug}/experiences/campagne", json=body)
     assert response.status_code == 201
     experiment_id = response.json()["id"]
 
-    matrix = client.get(f"/api/projects/{slug}/experiences/{experiment_id}/matrice").json()
+    matrix = client.get(f"/api/microprojets/{slug}/experiences/{experiment_id}/matrice").json()
     assert matrix["entity_count"] == 6
     assert matrix["factor_labels"] == ["Épaisseur — Oxyde", "Épaisseur — Nitrure"]
     assert len(matrix["factor_values"]) == 6
@@ -152,7 +152,7 @@ def test_launch_campaign_with_two_factors(client):
 def test_matrice_endpoint_rejects_non_batch_experience(client):
     slug = _setup_project(client)
     single = client.post(
-        f"/api/projects/{slug}/experiences",
+        f"/api/microprojets/{slug}/experiences",
         json={
             "substrate": _substrate(),
             "steps": _steps(),
@@ -161,5 +161,5 @@ def test_matrice_endpoint_rejects_non_batch_experience(client):
             "entities": [{"sample_id": "W1"}],
         },
     ).json()
-    response = client.get(f"/api/projects/{slug}/experiences/{single['id']}/matrice")
+    response = client.get(f"/api/microprojets/{slug}/experiences/{single['id']}/matrice")
     assert response.status_code == 400

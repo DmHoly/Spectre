@@ -15,7 +15,7 @@ from ..core import refs as refs_core
 from ..core.permissions import require_role
 from ..core.projects import Project
 
-router = APIRouter(prefix="/api/projects", tags=["refs"])
+router = APIRouter(prefix="/api/microprojets", tags=["refs"])
 
 
 @router.get("/{slug}/refs")

@@ -49,7 +49,7 @@ function renderFrame() {
 async function simulateNow() {
   clearError();
   try {
-    const result = await api.post(`/api/projects/${slug}/structures/simulate`, {
+    const result = await api.post(`/api/microprojets/${slug}/structures/simulate`, {
       substrate: substrateSpec(),
       steps: state.steps,
     });

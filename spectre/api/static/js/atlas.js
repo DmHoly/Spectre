@@ -4,9 +4,9 @@
    contrôle du zoom (affichage progressif des noms) et du clic (panneau contextuel) - voir la
    conversation de conception pour le pourquoi.
 
-   Liens inter-projets (spectre.core.links) : la seule relation qui traverse deux projets - Follow
+   Liens inter-projets (spectre.core.links) : la seule relation qui traverse deux µprojets - Follow
    refuse une référence pointée hors de son propre dépôt, donc ça ne pouvait pas vivre là. Dessinés
-   en tirets accent par-dessus les clusters, créés/retirés depuis le panneau contextuel d'un projet
+   en tirets accent par-dessus les clusters, créés/retirés depuis le panneau contextuel d'un µprojet
    ou d'une entité.
 
    Pièces jointes (spectre.api.experiments) : contrairement aux liens, ça enregistre une nouvelle
@@ -64,7 +64,7 @@ function clearPanelError() {
 function panelEmptyState() {
   return `
     <div class="section-title" style="margin-bottom:10px;">Atlas</div>
-    <p class="help">Chaque grande étiquette est un projet. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis. Cliquez un élément pour le détail ici ; zoomez pour voir les noms.</p>`;
+    <p class="help">Chaque grande étiquette est un µprojet. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis. Cliquez un élément pour le détail ici ; zoomez pour voir les noms.</p>`;
 }
 
 async function uploadFile(url, formData) {
@@ -95,7 +95,7 @@ function formatFileSize(bytes) {
 }
 
 function attachmentItemHtml(a, projectSlug) {
-  const url = `/api/projects/${encodeURIComponent(projectSlug)}/pieces-jointes/${encodeURIComponent(a.id)}`;
+  const url = `/api/microprojets/${encodeURIComponent(projectSlug)}/pieces-jointes/${encodeURIComponent(a.id)}`;
   const isImage = a.content_type.startsWith("image/");
   return `
     <div class="js-attachment-item" data-id="${a.id}" style="padding:8px 0;border-top:1px solid var(--border-soft);font-size:12.5px;">
@@ -148,7 +148,7 @@ function renderProjectPanel(d) {
     <div style="font-size:12.5px;color:var(--text-faint);margin-bottom:14px;">
       ${escapeHtml(roleLabel(d.role))} &middot; ${experienceCount} étude${experienceCount > 1 ? "s" : ""}${entityCount ? ` &middot; ${entityCount} entité${entityCount > 1 ? "s" : ""} physique${entityCount > 1 ? "s" : ""}` : ""}
     </div>
-    <a class="btn btn-primary btn-block" href="/projets/${encodeURIComponent(d.slug)}">Ouvrir le projet &rarr;</a>
+    <a class="btn btn-primary btn-block" href="/microprojets/${encodeURIComponent(d.slug)}">Ouvrir le µprojet &rarr;</a>
 
     <div class="section-title" style="margin:20px 0 8px;">Projets liés</div>
     ${myLinks.length ? linksHtml : `<div class="help">Aucun lien pour l'instant.</div>`}
@@ -158,10 +158,10 @@ function renderProjectPanel(d) {
             <select class="field" id="project-link-select" style="margin-bottom:6px;">
               ${otherProjects.map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}</option>`).join("")}
             </select>
-            <input class="field" id="project-link-note" placeholder="Pourquoi ces deux projets se rejoignent (optionnel)" style="margin-bottom:8px;">
-            <button class="btn btn-line btn-block" type="submit">Lier à ce projet</button>
+            <input class="field" id="project-link-note" placeholder="Pourquoi ces deux µprojets se rejoignent (optionnel)" style="margin-bottom:8px;">
+            <button class="btn btn-line btn-block" type="submit">Lier à ce µprojet</button>
           </form>`
-        : `<div class="help" style="margin-top:10px;">Aucun autre projet à lier.</div>`
+        : `<div class="help" style="margin-top:10px;">Aucun autre µprojet à lier.</div>`
     }`;
 
   const form = document.getElementById("project-link-form");
@@ -212,7 +212,7 @@ function renderExperiencePanel(d) {
     <p style="font-size:13px;color:var(--text-soft);line-height:1.55;margin-bottom:10px;">${escapeHtml(d.intent)}</p>
     ${d.conclusion_summary ? `<div style="font-size:12.5px;background:var(--bg);border-radius:var(--radius-sm);padding:8px 10px;line-height:1.5;margin-bottom:12px;">${escapeHtml(d.conclusion_summary)}</div>` : ""}
     ${objectives ? `<div style="margin-bottom:14px;">${objectives}</div>` : ""}
-    <a class="btn btn-primary btn-block" href="/projets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}">Ouvrir la fiche &rarr;</a>
+    <a class="btn btn-primary btn-block" href="/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}">Ouvrir la fiche &rarr;</a>
 
     <div class="section-title" style="margin:20px 0 8px;">Pièces jointes</div>
     ${d.attachments.length ? attachmentsHtml : `<div class="help">Aucune pièce jointe.</div>`}
@@ -227,7 +227,7 @@ function renderExperiencePanel(d) {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const result = await uploadFile(`/api/projects/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes`, formData);
+      const result = await uploadFile(`/api/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes`, formData);
       await refresh(result.id);
     } catch (err) {
       showPanelError(err);
@@ -237,7 +237,7 @@ function renderExperiencePanel(d) {
     btn.addEventListener("click", async () => {
       clearPanelError();
       try {
-        const result = await api.del(`/api/projects/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes/${btn.dataset.id}`);
+        const result = await api.del(`/api/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes/${btn.dataset.id}`);
         await refresh(result.id);
       } catch (err) {
         showPanelError(err);
@@ -295,7 +295,7 @@ function renderEntityPanel(d) {
     ${d.location ? `<div style="font-size:13px;color:var(--text-soft);margin-bottom:14px;">Emplacement&nbsp;: ${escapeHtml(d.location)}</div>` : ""}
     <div class="help" style="margin-bottom:10px;">Suivie sur l'étude :</div>
     <div style="font-size:13.5px;font-weight:600;margin-bottom:10px;">${escapeHtml(d.experienceTitle)}</div>
-    <a class="btn btn-line btn-block" href="/projets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}">Ouvrir la fiche &rarr;</a>
+    <a class="btn btn-line btn-block" href="/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}">Ouvrir la fiche &rarr;</a>
 
     <div class="section-title" style="margin:20px 0 8px;">Pièces jointes</div>
     ${d.attachments.length ? attachmentsHtml : `<div class="help">Aucune pièce jointe.</div>`}
@@ -330,7 +330,7 @@ function renderEntityPanel(d) {
     formData.append("file", file);
     formData.append("entity_index", String(d.entityIndex));
     try {
-      const result = await uploadFile(`/api/projects/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes`, formData);
+      const result = await uploadFile(`/api/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes`, formData);
       await refresh(entityKey({ experience_id: result.id, entity_index: d.entityIndex }));
     } catch (err) {
       showPanelError(err);
@@ -340,7 +340,7 @@ function renderEntityPanel(d) {
     btn.addEventListener("click", async () => {
       clearPanelError();
       try {
-        const result = await api.del(`/api/projects/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes/${btn.dataset.id}`);
+        const result = await api.del(`/api/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes/${btn.dataset.id}`);
         await refresh(entityKey({ experience_id: result.id, entity_index: d.entityIndex }));
       } catch (err) {
         showPanelError(err);

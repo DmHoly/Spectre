@@ -1,7 +1,7 @@
 """Cross-project links: the JSON API for :mod:`spectre.core.links` - create/list/delete a link
 between two projects, or between two physical entities tracked on (possibly different) projects'
 experiences. Deliberately top-level like :mod:`spectre.api.atlas` rather than nested under
-``/api/projects/{slug}`` - a link names two sides, neither one more "the" project than the other,
+``/api/microprojets/{slug}`` - a link names two sides, neither one more "the" project than the other,
 and the atlas (the one screen that shows these) already looks across every project at once.
 """
 

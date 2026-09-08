@@ -216,7 +216,7 @@ async function refreshVariationTable() {
   }
   const plan = { factors: state.variationFactors.map(({ step_index, field, values }) => ({ step_index, field, values })) };
   try {
-    const result = await api.post(`/api/projects/${slug}/structures/variantes`, {
+    const result = await api.post(`/api/microprojets/${slug}/structures/variantes`, {
       substrate: substrateSpec(),
       steps: state.steps,
       plan,

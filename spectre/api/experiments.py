@@ -38,7 +38,7 @@ from ..core.projects import Project
 from .deps import get_current_user
 from .structures import EntityTrackingInput, LaunchExperienceRequest, _form_validation_error, _unique_branch, split_objectives
 
-router = APIRouter(prefix="/api/projects", tags=["experiments"])
+router = APIRouter(prefix="/api/microprojets", tags=["experiments"])
 
 RUNNING_STATUSES = projects.RUNNING_STATUSES
 CONCLUDED_STATUSES = projects.CONCLUDED_STATUSES

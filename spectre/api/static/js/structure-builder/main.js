@@ -2,10 +2,10 @@
    (bibliothèque / évolution / modèle / structure choisie) selon ce que context.js a lu dans l'URL. */
 
 async function loadPickers() {
-  state.materials = await api.get(`/api/projects/${slug}/materials`);
-  state.recipes = await api.get(`/api/projects/${slug}/recettes`);
-  state.stepPresets = await api.get(`/api/projects/${slug}/presets-etapes`);
-  state.techBricks = await api.get(`/api/projects/${slug}/briques-technologiques`);
+  state.materials = await api.get(`/api/microprojets/${slug}/materials`);
+  state.recipes = await api.get(`/api/microprojets/${slug}/recettes`);
+  state.stepPresets = await api.get(`/api/microprojets/${slug}/presets-etapes`);
+  state.techBricks = await api.get(`/api/microprojets/${slug}/briques-technologiques`);
   document.getElementById("substrate-material").innerHTML = materialOptions("Si");
   renderKindFields(document.getElementById("kind-select").value);
   populateInsertBrickSelect();

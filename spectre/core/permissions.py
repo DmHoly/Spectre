@@ -20,6 +20,16 @@ def get_project(slug: str) -> Project:
         raise HTTPException(status_code=404, detail=f"projet {slug!r} introuvable") from exc
 
 
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    """A FastAPI dependency: 403s unless the caller is a strategy-layer admin
+    (``users.is_admin``). Used by the management-area write routes - everything else stays
+    project-scoped through :func:`require_role`.
+    """
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="action réservée à un administrateur")
+    return user
+
+
 def require_role(min_role: str):
     """A FastAPI dependency: 403s unless the current user's role in this project is at least
     ``min_role`` (``viewer`` < ``editor`` < ``owner``). Returns the resolved :class:`Project` on

@@ -5,7 +5,7 @@ import pytest
 
 def _register_and_create_project(client, email="owner@example.com", name="Owner", project_name="Salle blanche"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
-    project = client.post("/api/projects", json={"name": project_name}).json()
+    project = client.post("/api/microprojets", json={"name": project_name}).json()
     return project["slug"]
 
 
@@ -27,14 +27,14 @@ def _steps():
 
 def test_list_materials(client):
     slug = _register_and_create_project(client)
-    materials = client.get(f"/api/projects/{slug}/materials").json()
+    materials = client.get(f"/api/microprojets/{slug}/materials").json()
     assert any(m["name"] == "Si" for m in materials)
 
 
 def test_simulate_returns_one_svg_per_frame(client):
     slug = _register_and_create_project(client)
     response = client.post(
-        f"/api/projects/{slug}/structures/simulate", json={"substrate": _substrate(), "steps": _steps()}
+        f"/api/microprojets/{slug}/structures/simulate", json={"substrate": _substrate(), "steps": _steps()}
     )
     assert response.status_code == 200
     body = response.json()
@@ -50,7 +50,7 @@ def test_selective_growth_seed_ingan_matches_any_composition(client):
         # seed écrit "InGaN" en clair — doit être compris comme "n'importe quelle composition InGaN"
         {"kind": "epitaxial_growth", "name": "reprise selective", "material": "In0.30Ga0.70N", "thickness": {"value": 30, "unit": "nm"}, "orientation": "c_plane", "seed_materials": ["InGaN"]},
     ]
-    body = client.post(f"/api/projects/{slug}/structures/simulate", json={"substrate": substrate, "steps": steps}).json()
+    body = client.post(f"/api/microprojets/{slug}/structures/simulate", json={"substrate": substrate, "steps": steps}).json()
     assert "In0.30Ga0.70N" in body["frames"][-1]["materials"]  # la reprise sélective a bien eu lieu
 
 
@@ -62,7 +62,7 @@ def test_simulate_accepts_a_flip_step_for_backside_processing(client):
         {"kind": "deposition", "name": "Metal arriere", "material": "Ti", "recipe": "CVD Conformal", "thickness": {"value": 10, "unit": "nm"}},
     ]
     response = client.post(
-        f"/api/projects/{slug}/structures/simulate", json={"substrate": _substrate(), "steps": steps}
+        f"/api/microprojets/{slug}/structures/simulate", json={"substrate": _substrate(), "steps": steps}
     )
     assert response.status_code == 200
     body = response.json()
@@ -81,7 +81,7 @@ def test_simulate_rejects_a_flip_on_a_non_flat_surface(client):
         {"kind": "flip", "name": "Retournement"},
     ]
     response = client.post(
-        f"/api/projects/{slug}/structures/simulate", json={"substrate": _substrate(), "steps": steps}
+        f"/api/microprojets/{slug}/structures/simulate", json={"substrate": _substrate(), "steps": steps}
     )
     assert response.status_code == 422
 
@@ -90,7 +90,7 @@ def test_simulate_rejects_unknown_material(client):
     slug = _register_and_create_project(client)
     bad_substrate = {**_substrate(), "material": "Vibranium"}
     response = client.post(
-        f"/api/projects/{slug}/structures/simulate", json={"substrate": bad_substrate, "steps": []}
+        f"/api/microprojets/{slug}/structures/simulate", json={"substrate": bad_substrate, "steps": []}
     )
     assert response.status_code == 422
 
@@ -105,12 +105,12 @@ def test_launch_experience_creates_a_tracked_experiment(client):
         "objectives": [{"name": "Epaisseur cible", "metric": "thickness_nm", "direction": "target", "target": 20}],
         "entities": [{"sample_id": "W1"}],
     }
-    response = client.post(f"/api/projects/{slug}/experiences", json=body)
+    response = client.post(f"/api/microprojets/{slug}/experiences", json=body)
     assert response.status_code == 201
     experiment_id = response.json()["id"]
     assert response.json()["branch"] == "ma-premiere-experience"
 
-    listed = client.get(f"/api/projects/{slug}/experiences?status=running").json()
+    listed = client.get(f"/api/microprojets/{slug}/experiences?status=running").json()
     assert any(item["id"] == experiment_id for item in listed["items"])
 
 
@@ -120,12 +120,12 @@ def test_viewer_cannot_launch_experience(client):
     client.post("/api/auth/register", json={"email": "viewer2@example.com", "password": "supersecret", "name": "Viewer2"})
     client.post("/api/auth/logout")
     client.post("/api/auth/login", json={"email": "owner2@example.com", "password": "supersecret"})
-    client.post(f"/api/projects/{slug}/members", json={"email": "viewer2@example.com", "role": "viewer"})
+    client.post(f"/api/microprojets/{slug}/members", json={"email": "viewer2@example.com", "role": "viewer"})
 
     client.post("/api/auth/logout")
     client.post("/api/auth/login", json={"email": "viewer2@example.com", "password": "supersecret"})
     response = client.post(
-        f"/api/projects/{slug}/experiences",
+        f"/api/microprojets/{slug}/experiences",
         json={"substrate": _substrate(), "steps": _steps(), "title": "X", "intent": "Y"},
     )
     assert response.status_code == 403

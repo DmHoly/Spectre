@@ -1,4 +1,4 @@
-/* Refs d'un projet : la liste, et comment elles s'enchaînent (spectre.core.refs.ref_graph) -
+/* Refs d'un µprojet : la liste, et comment elles s'enchaînent (spectre.core.refs.ref_graph) -
    rendue comme un arbre indenté plutôt qu'un graphe dessiné : chaque ref n'a jamais qu'un petit
    nombre de refs "suivantes" (voir spectre.core.atlas.condensed_edges, dont ref_graph réutilise
    l'algorithme), donc un arbre texte navigue aussi bien et reste lisible sans bibliothèque de
@@ -6,7 +6,7 @@
 
 const slug = window.location.pathname.split("/").filter(Boolean)[1];
 document.getElementById("crumb").textContent = "/ " + slug;
-document.getElementById("project-link").href = `/projets/${slug}`;
+document.getElementById("project-link").href = `/microprojets/${slug}`;
 
 function refCardHtml(node) {
   const names = node.names
@@ -15,7 +15,7 @@ function refCardHtml(node) {
   return `
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;">
       <div>
-        <a href="/projets/${slug}/experiences/${node.experiment_id}" style="font-weight:600;font-size:14px;">${escapeHtml(node.title)}</a>
+        <a href="/microprojets/${slug}/experiences/${node.experiment_id}" style="font-weight:600;font-size:14px;">${escapeHtml(node.title)}</a>
         <span style="color:var(--text-faint);font-size:12px;margin-left:6px;">v${escapeHtml(node.version)} · ${escapeHtml(node.branch)}</span>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -43,7 +43,7 @@ function renderTree(nodesById, childrenOf, roots, depth = 0) {
 
 async function init() {
   try {
-    const graph = await api.get(`/api/projects/${slug}/refs/graphe`);
+    const graph = await api.get(`/api/microprojets/${slug}/refs/graphe`);
     if (graph.nodes.length === 0) {
       document.getElementById("empty-note").style.display = "block";
       return;

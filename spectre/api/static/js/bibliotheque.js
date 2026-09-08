@@ -1,7 +1,7 @@
-/* Page /bibliotheque : hub global (commun à tous les projets) vers les éditeurs de structures /
+/* Page /bibliotheque : hub global (commun à tous les µprojets) vers les éditeurs de structures /
    présets / briques. Le contenu réutilisable vit dans les portées "intégré" (library/*.yml) et
    "partagé" (data/*_partages.json) - indépendantes de tout projet. Mais créer/éditer un élément
-   passe par le constructeur ou les pages de gestion, qui ont besoin d'un projet (permissions +
+   passe par le constructeur ou les pages de gestion, qui ont besoin d'un µprojet (permissions +
    simulation) : d'où le sélecteur "projet de travail", mémorisé en local. */
 
 const WORK_PROJECT_KEY = "spectre.libWorkProject";
@@ -37,11 +37,11 @@ function applyProject(project) {
     const el = document.getElementById(id);
     if (el) el.href = href;
   };
-  set("new-structure-link", `/projets/${s}/structures/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
-  set("manage-structures-link", `/projets/${s}#structures`);
-  set("presets-link", `/projets/${s}/presets-etapes?partagee=1`);
-  set("new-brick-link", `/projets/${s}/briques-technologiques/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
-  set("manage-bricks-link", `/projets/${s}/briques-technologiques`);
+  set("new-structure-link", `/microprojets/${s}/structures/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
+  set("manage-structures-link", `/microprojets/${s}#structures`);
+  set("presets-link", `/microprojets/${s}/presets-etapes?partagee=1`);
+  set("new-brick-link", `/microprojets/${s}/briques-technologiques/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
+  set("manage-bricks-link", `/microprojets/${s}/briques-technologiques`);
 
   const canEdit = project.role === "editor" || project.role === "owner";
   editorOnly.forEach((el) => (el.style.display = canEdit ? "" : "none"));
@@ -50,7 +50,7 @@ function applyProject(project) {
 async function init() {
   let projects;
   try {
-    projects = await api.get("/api/projects");
+    projects = await api.get("/api/microprojets");
   } catch (err) {
     showError(err);
     return;

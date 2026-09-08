@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..core.db import init_db
@@ -21,6 +21,7 @@ from . import auth as auth_router
 from . import experiments as experiments_router
 from . import intent_forms as intent_forms_router
 from . import links as links_router
+from . import management as management_router
 from . import projects as projects_router
 from . import refs as refs_router
 from . import structures as structures_router
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Spectre", docs_url=None, redoc_url=None)
 
     app.include_router(auth_router.router)
+    app.include_router(management_router.router)
     app.include_router(projects_router.router)
     app.include_router(structures_router.router)
     app.include_router(experiments_router.router)
@@ -75,19 +77,26 @@ def create_app() -> FastAPI:
     app.get("/docs/exemples")(_page("docs-exemples.html"))
     app.get("/docs/architecture")(_page("docs-architecture.html"))
     app.get("/bibliotheque")(_page("bibliotheque.html"))
-    app.get("/projets/{slug}")(_page("projet.html"))
-    app.get("/projets/{slug}/presets-etapes")(_page("presets.html"))
-    app.get("/projets/{slug}/briques-technologiques")(_page("briques.html"))
-    app.get("/projets/{slug}/briques-technologiques/bibliotheque/nouvelle")(_page("structure-builder.html"))
-    app.get("/projets/{slug}/briques-technologiques/bibliotheque/{name}")(_page("structure-builder.html"))
-    app.get("/projets/{slug}/structures/bibliotheque/nouvelle")(_page("structure-builder.html"))
-    app.get("/projets/{slug}/structures/bibliotheque/{name}")(_page("structure-builder.html"))
-    app.get("/projets/{slug}/structures/nouvelle")(_page("structure-builder.html"))
-    app.get("/projets/{slug}/experiences/{experience_id}/evoluer")(_page("structure-builder.html"))
-    app.get("/projets/{slug}/experiences/{experience_id}")(_page("experience.html"))
-    app.get("/projets/{slug}/graphe")(_page("graphe.html"))
-    app.get("/projets/{slug}/refs")(_page("refs.html"))
-    app.get("/projets/{slug}/formulaire-intention")(_page("formulaire-intention.html"))
+    app.get("/pilotage")(_page("pilotage.html"))
+    app.get("/management/{slug}")(_page("management.html"))
+    app.get("/microprojets/{slug}")(_page("projet.html"))
+    app.get("/microprojets/{slug}/presets-etapes")(_page("presets.html"))
+    app.get("/microprojets/{slug}/briques-technologiques")(_page("briques.html"))
+    app.get("/microprojets/{slug}/briques-technologiques/bibliotheque/nouvelle")(_page("structure-builder.html"))
+    app.get("/microprojets/{slug}/briques-technologiques/bibliotheque/{name}")(_page("structure-builder.html"))
+    app.get("/microprojets/{slug}/structures/bibliotheque/nouvelle")(_page("structure-builder.html"))
+    app.get("/microprojets/{slug}/structures/bibliotheque/{name}")(_page("structure-builder.html"))
+    app.get("/microprojets/{slug}/structures/nouvelle")(_page("structure-builder.html"))
+    app.get("/microprojets/{slug}/experiences/{experience_id}/evoluer")(_page("structure-builder.html"))
+    app.get("/microprojets/{slug}/experiences/{experience_id}")(_page("experience.html"))
+    app.get("/microprojets/{slug}/graphe")(_page("graphe.html"))
+    app.get("/microprojets/{slug}/refs")(_page("refs.html"))
+    app.get("/microprojets/{slug}/formulaire-intention")(_page("formulaire-intention.html"))
+
+    # "projet" was renamed to "µprojet" (URL: /microprojets) - keep old bookmarks working.
+    @app.get("/projets/{rest:path}")
+    def _legacy_projet_redirect(rest: str):
+        return RedirectResponse(f"/microprojets/{rest}", status_code=308)
 
     return app
 

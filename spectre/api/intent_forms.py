@@ -21,7 +21,7 @@ from ..core.permissions import require_role
 from ..core.projects import Project
 from .keyed_resource import list_three_buckets, reject_duplicate, require_existing
 
-router = APIRouter(prefix="/api/projects", tags=["intent-forms"])
+router = APIRouter(prefix="/api/microprojets", tags=["intent-forms"])
 
 
 class IntentFormInput(BaseModel):

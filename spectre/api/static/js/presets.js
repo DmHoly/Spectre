@@ -72,8 +72,8 @@ function resetForm() {
 document.getElementById("cancel-edit-btn").addEventListener("click", resetForm);
 
 function scopeSuffix(scope) {
-  if (scope === "preset") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· préset, disponible dans tous les projets</span>`;
-  if (scope === "partagee") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les projets</span>`;
+  if (scope === "preset") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· préset, disponible dans tous les µprojets</span>`;
+  if (scope === "partagee") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les µprojets</span>`;
   return "";
 }
 
@@ -157,7 +157,7 @@ function renderList() {
     btn.addEventListener("click", async () => {
       try {
         state.presets = await api.del(
-          `/api/projects/${encodeURIComponent(slug)}/presets-etapes/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.scope === "partagee"}`
+          `/api/microprojets/${encodeURIComponent(slug)}/presets-etapes/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.scope === "partagee"}`
         );
         if (state.editing && state.editing.name === btn.dataset.name) resetForm();
         renderList();
@@ -170,7 +170,7 @@ function renderList() {
 }
 
 async function loadPresets() {
-  state.presets = await api.get(`/api/projects/${encodeURIComponent(slug)}/presets-etapes`);
+  state.presets = await api.get(`/api/microprojets/${encodeURIComponent(slug)}/presets-etapes`);
   renderList();
 }
 
@@ -188,12 +188,12 @@ document.getElementById("preset-form").addEventListener("submit", async (event) 
   try {
     if (state.editing) {
       state.presets = await api.put(
-        `/api/projects/${encodeURIComponent(slug)}/presets-etapes/${encodeURIComponent(state.editing.name)}?partagee=${state.editing.partagee}`,
+        `/api/microprojets/${encodeURIComponent(slug)}/presets-etapes/${encodeURIComponent(state.editing.name)}?partagee=${state.editing.partagee}`,
         body
       );
       showFlash("Préset mis à jour.");
     } else {
-      state.presets = await api.post(`/api/projects/${encodeURIComponent(slug)}/presets-etapes`, body);
+      state.presets = await api.post(`/api/microprojets/${encodeURIComponent(slug)}/presets-etapes`, body);
       showFlash("Préset créé.");
     }
     resetForm();
@@ -205,7 +205,7 @@ document.getElementById("preset-form").addEventListener("submit", async (event) 
 
 async function init() {
   try {
-    const project = await api.get(`/api/projects/${encodeURIComponent(slug)}`);
+    const project = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
     state.currentRole = project.role;
     document.getElementById("crumb").textContent = "/ " + project.name;
     document.getElementById("back-link").href = "/bibliotheque";
@@ -217,7 +217,7 @@ async function init() {
     return;
   }
   try {
-    state.recipes = await api.get(`/api/projects/${encodeURIComponent(slug)}/recettes`);
+    state.recipes = await api.get(`/api/microprojets/${encodeURIComponent(slug)}/recettes`);
   } catch (err) {
     state.recipes = { deposition: [], etch: [] };
   }

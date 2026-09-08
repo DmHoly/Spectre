@@ -21,7 +21,7 @@
 
       <div class="card card-pad">
         <h1 style="font-size:20px;margin-bottom:4px;">Créer un compte</h1>
-        <p id="subtitle" style="color:var(--text-soft);font-size:13.5px;margin-bottom:20px;">Pour rejoindre un projet, demandez d'abord une invitation à son responsable.</p>
+        <p id="subtitle" style="color:var(--text-soft);font-size:13.5px;margin-bottom:20px;">Pour rejoindre un µprojet, demandez d'abord une invitation à son responsable.</p>
 
         <div id="error" class="error" style="display:none;margin-bottom:14px;"></div>
         <div id="invitation-note" class="flash flash-ok" style="display:none;margin-bottom:14px;"></div>
@@ -58,7 +58,7 @@
       if (!invitationToken) return;
       try {
         const invitation = await api.get(`/api/auth/invitation/${invitationToken}`, { redirectOn401: false });
-        document.getElementById("subtitle").textContent = `Vous rejoignez le projet « ${invitation.project_name} ».`;
+        document.getElementById("subtitle").textContent = `Vous rejoignez le µprojet « ${invitation.project_name} ».`;
         const emailField = document.getElementById("email");
         emailField.value = invitation.email;
         emailField.readOnly = true;

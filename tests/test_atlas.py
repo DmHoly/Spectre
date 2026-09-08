@@ -20,19 +20,19 @@ def _steps(thickness=20):
 def _register_and_project(client, email, project_name="Projet"):
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/projects", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
 
 
 def test_atlas_lists_only_the_current_user_own_projects(client):
     slug_a = _register_and_project(client, "atlas-a@example.com", "Projet A")
     client.post(
-        f"/api/projects/{slug_a}/experiences",
+        f"/api/microprojets/{slug_a}/experiences",
         json={"substrate": _substrate(), "steps": _steps(), "title": "Etude A", "intent": "Depart"},
     )
 
     slug_b = _register_and_project(client, "atlas-b@example.com", "Projet B")
     client.post(
-        f"/api/projects/{slug_b}/experiences",
+        f"/api/microprojets/{slug_b}/experiences",
         json={"substrate": _substrate(), "steps": _steps(), "title": "Etude B", "intent": "Depart"},
     )
 
@@ -46,7 +46,7 @@ def test_atlas_lists_only_the_current_user_own_projects(client):
 def test_atlas_shows_one_experience_node_per_branch_tip_with_entities_and_objectives(client):
     slug = _register_and_project(client, "atlas-tips@example.com")
     launched = client.post(
-        f"/api/projects/{slug}/experiences",
+        f"/api/microprojets/{slug}/experiences",
         json={
             "substrate": _substrate(),
             "steps": _steps(),
@@ -57,11 +57,11 @@ def test_atlas_shows_one_experience_node_per_branch_tip_with_entities_and_object
         },
     ).json()
     with_entity = client.post(
-        f"/api/projects/{slug}/experiences/{launched['id']}/entites",
+        f"/api/microprojets/{slug}/experiences/{launched['id']}/entites",
         json={"entities": [{"sample_id": "W1-A1", "location": "congélateur B"}]},
     ).json()
     concluded = client.post(
-        f"/api/projects/{slug}/experiences/{with_entity['id']}/conclure",
+        f"/api/microprojets/{slug}/experiences/{with_entity['id']}/conclure",
         json={
             "status": "concluded",
             "objective_results": [{"objective": "Rugosité", "status": "met", "reasoning": "0.5nm mesuré."}],
@@ -81,7 +81,7 @@ def test_atlas_shows_one_experience_node_per_branch_tip_with_entities_and_object
 def test_atlas_skips_physical_tracking_entries_with_no_sample_id_or_location(client):
     slug = _register_and_project(client, "atlas-empty-entity@example.com")
     launched = client.post(
-        f"/api/projects/{slug}/experiences",
+        f"/api/microprojets/{slug}/experiences",
         json={
             "substrate": _substrate(),
             "steps": _steps(),
@@ -90,7 +90,7 @@ def test_atlas_skips_physical_tracking_entries_with_no_sample_id_or_location(cli
             "entities": [{"sample_id": "placeholder"}],
         },
     ).json()
-    client.post(f"/api/projects/{slug}/experiences/{launched['id']}/entites", json={"entities": [{}]})
+    client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/entites", json={"entities": [{}]})
 
     atlas = client.get("/api/atlas").json()
     project = next(p for p in atlas["projects"] if p["slug"] == slug)
@@ -105,7 +105,7 @@ def test_atlas_entity_index_survives_a_partially_tracked_campaign(client):
     """
     slug = _register_and_project(client, "atlas-partial-tracking@example.com")
     campaign = client.post(
-        f"/api/projects/{slug}/experiences/campagne",
+        f"/api/microprojets/{slug}/experiences/campagne",
         json={
             "substrate": _substrate(),
             "steps": _steps(),
@@ -118,7 +118,7 @@ def test_atlas_entity_index_survives_a_partially_tracked_campaign(client):
     ).json()
     # 3 variants, only the first and last tracked - the middle one stays blank.
     client.post(
-        f"/api/projects/{slug}/experiences/{campaign['id']}/entites",
+        f"/api/microprojets/{slug}/experiences/{campaign['id']}/entites",
         json={"entities": [{"sample_id": "V0"}, {}, {"sample_id": "V2"}]},
     )
 
@@ -131,7 +131,7 @@ def test_atlas_entity_index_survives_a_partially_tracked_campaign(client):
 def test_atlas_condenses_a_fork_and_merge_into_tip_to_tip_edges(client):
     slug = _register_and_project(client, "atlas-merge@example.com")
     root = client.post(
-        f"/api/projects/{slug}/experiences",
+        f"/api/microprojets/{slug}/experiences",
         json={
             "substrate": _substrate(),
             "steps": _steps(10),
@@ -144,11 +144,11 @@ def test_atlas_condenses_a_fork_and_merge_into_tip_to_tip_edges(client):
     # always advances `ref`'s own branch, see experiments.py::combine_experiences) supersedes
     # branch_a but leaves branch_b's branch as its own still-current tip.
     branch_a = client.post(
-        f"/api/projects/{slug}/experiences/{root['id']}/evoluer",
+        f"/api/microprojets/{slug}/experiences/{root['id']}/evoluer",
         json={"substrate": _substrate(), "steps": _steps(15), "title": "Piste A", "intent": "Suite A"},
     ).json()
     branch_b = client.post(
-        f"/api/projects/{slug}/experiences/{root['id']}/evoluer",
+        f"/api/microprojets/{slug}/experiences/{root['id']}/evoluer",
         json={
             "substrate": _substrate(),
             "steps": _steps(30),
@@ -158,7 +158,7 @@ def test_atlas_condenses_a_fork_and_merge_into_tip_to_tip_edges(client):
         },
     ).json()
     merged = client.post(
-        f"/api/projects/{slug}/experiences/{branch_a['id']}/combiner",
+        f"/api/microprojets/{slug}/experiences/{branch_a['id']}/combiner",
         json={"other_id": branch_b["id"], "title": "Fusion", "intent": "Reunir A et B"},
     ).json()
 

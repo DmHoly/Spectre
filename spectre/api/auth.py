@@ -46,7 +46,7 @@ class ChangePasswordRequest(BaseModel):
 
 
 def _user_payload(user: accounts.User) -> dict:
-    return {"id": user.id, "email": user.email, "name": user.name}
+    return {"id": user.id, "email": user.email, "name": user.name, "is_admin": user.is_admin}
 
 
 def _set_session_cookie(response: Response, token: str) -> None:

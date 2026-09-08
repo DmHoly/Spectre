@@ -1,10 +1,10 @@
-/* Bibliothèque de formulaires d'intention d'un projet (spectre.core.intent_forms) : lesquels sont
-   disponibles (partagés entre projets, propres à ce projet), lequel est actif, et l'ajout d'un
+/* Bibliothèque de formulaires d'intention d'un µprojet (spectre.core.intent_forms) : lesquels sont
+   disponibles (partagés entre projets, propres à ce µprojet), lequel est actif, et l'ajout d'un
    nouveau depuis un fichier YAML. */
 
 const slug = window.location.pathname.split("/").filter(Boolean)[1];
 document.getElementById("crumb").textContent = "/ " + slug;
-document.getElementById("project-link").href = `/projets/${slug}`;
+document.getElementById("project-link").href = `/microprojets/${slug}`;
 
 let currentRole = null;
 let activeForm = null; // {name, scope, form} | null
@@ -43,7 +43,7 @@ function renderActiveForm() {
   if (deactivateBtn) {
     deactivateBtn.addEventListener("click", async () => {
       try {
-        await api.post(`/api/projects/${slug}/formulaire-actif`, { name: null });
+        await api.post(`/api/microprojets/${slug}/formulaire-actif`, { name: null });
         await loadAll();
       } catch (err) {
         showError(err);
@@ -84,7 +84,7 @@ function renderLibrary(library) {
   box.querySelectorAll(".js-activate").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
-        await api.post(`/api/projects/${slug}/formulaire-actif`, { name: btn.dataset.name, partagee: btn.dataset.partagee === "true" });
+        await api.post(`/api/microprojets/${slug}/formulaire-actif`, { name: btn.dataset.name, partagee: btn.dataset.partagee === "true" });
         await loadAll();
       } catch (err) {
         showError(err);
@@ -94,7 +94,7 @@ function renderLibrary(library) {
   box.querySelectorAll(".js-delete-form").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
-        await api.del(`/api/projects/${slug}/formulaires-intention/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.partagee}`);
+        await api.del(`/api/microprojets/${slug}/formulaires-intention/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.partagee}`);
         await loadAll();
       } catch (err) {
         showError(err);
@@ -107,8 +107,8 @@ async function loadAll() {
   clearError();
   try {
     const [library, active] = await Promise.all([
-      api.get(`/api/projects/${slug}/formulaires-intention`),
-      api.get(`/api/projects/${slug}/formulaire-actif`),
+      api.get(`/api/microprojets/${slug}/formulaires-intention`),
+      api.get(`/api/microprojets/${slug}/formulaire-actif`),
     ]);
     activeForm = active;
     renderActiveForm();
@@ -140,7 +140,7 @@ document.getElementById("upload-form-btn").addEventListener("click", () => {
   const reader = new FileReader();
   reader.onload = async () => {
     try {
-      await api.post(`/api/projects/${slug}/formulaires-intention`, { name, yaml: reader.result, partagee });
+      await api.post(`/api/microprojets/${slug}/formulaires-intention`, { name, yaml: reader.result, partagee });
       document.getElementById("new-form-name").value = "";
       fileInput.value = "";
       document.getElementById("new-form-shared").checked = false;
@@ -154,7 +154,7 @@ document.getElementById("upload-form-btn").addEventListener("click", () => {
 
 async function init() {
   try {
-    const project = await api.get(`/api/projects/${slug}`);
+    const project = await api.get(`/api/microprojets/${slug}`);
     currentRole = project.role;
   } catch (err) {
     showError(err);

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Projet — Spectre</title>
+  <title>µProjet — Spectre</title>
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,7 +32,7 @@
   </div>
 
   <div class="page">
-    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">&larr; Mes projets</a></p>
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">Thèmes</a> / <a id="area-crumb" href="/">…</a></p>
 
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
     <div id="flash" class="flash flash-ok" style="display:none;margin-bottom:16px;"></div>
@@ -77,7 +77,7 @@
           <div class="section-title" style="margin-bottom:0;">Structures sauvegardées</div>
           <a class="btn btn-line" id="new-library-structure-link" href="#" style="padding:6px 12px;font-size:12.5px;display:none;">+ Nouvelle structure</a>
         </div>
-        <p class="help" style="margin-bottom:12px;">Réutilisables et dérivables (« dupliquer ») depuis n'importe quelle nouvelle expérience, sans avoir à tout reconstruire. Les structures partagées sont visibles dans tous les projets.</p>
+        <p class="help" style="margin-bottom:12px;">Réutilisables et dérivables (« dupliquer ») depuis n'importe quelle nouvelle expérience, sans avoir à tout reconstruire. Les structures partagées sont visibles dans tous les µprojets.</p>
         <div id="saved-structures-list" style="display:flex;flex-direction:column;gap:8px;"></div>
       </div>
 
@@ -130,10 +130,10 @@
 
       <div class="card card-pad" id="danger-zone" style="display:none;max-width:640px;margin-top:20px;border-color:var(--danger-tint);">
         <div class="section-title" style="margin-bottom:10px;color:var(--danger);">Zone dangereuse</div>
-        <p style="font-size:13px;color:var(--text-soft);margin-bottom:12px;">Supprimer ce projet efface définitivement toutes ses expériences et structures. Cette action est irréversible.</p>
+        <p style="font-size:13px;color:var(--text-soft);margin-bottom:12px;">Supprimer ce µprojet efface définitivement toutes ses expériences et structures. Cette action est irréversible.</p>
         <div class="field-row" style="grid-template-columns:1fr auto;">
-          <input class="field" id="delete-confirm-name" placeholder="Tapez le nom du projet pour confirmer">
-          <button class="btn btn-danger" id="delete-project-btn" type="button">Supprimer le projet</button>
+          <input class="field" id="delete-confirm-name" placeholder="Tapez le nom du µprojet pour confirmer">
+          <button class="btn btn-danger" id="delete-project-btn" type="button">Supprimer le µprojet</button>
         </div>
       </div>
     </div>
@@ -151,14 +151,14 @@
 
         <div id="ref-option-block" style="padding-top:14px;border-top:1px solid var(--border-soft);display:none;">
           <label>Partir d'une ref</label>
-          <div class="help" style="margin-bottom:8px;">Un point de départ réutilisable de ce projet - garde le lien avec la ref, comme « Continuer une expérience existante ». Voir la page <a id="ref-option-link" href="#" target="_blank">Refs</a>.</div>
+          <div class="help" style="margin-bottom:8px;">Un point de départ réutilisable de ce µprojet - garde le lien avec la ref, comme « Continuer une expérience existante ». Voir la page <a id="ref-option-link" href="#" target="_blank">Refs</a>.</div>
           <select class="field" id="ref-select" style="margin-bottom:8px;"></select>
           <button class="btn btn-line btn-block" id="option-ref" type="button">Partir de cette ref</button>
         </div>
 
         <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
           <label>Repartir d'une structure de la bibliothèque</label>
-          <div class="help" style="margin-bottom:8px;">Structures enregistrées (partagées ou propres à ce projet), réutilisables tel quel.</div>
+          <div class="help" style="margin-bottom:8px;">Structures enregistrées (partagées ou propres à ce µprojet), réutilisables tel quel.</div>
           <select class="field" id="template-select" style="margin-bottom:8px;"></select>
           <button class="btn btn-line btn-block" id="option-template" type="button">Utiliser cette structure</button>
           <a class="btn btn-line btn-block" id="option-new-library-structure" href="#" style="margin-top:8px;">+ Créer une nouvelle structure</a>
@@ -203,7 +203,7 @@
 
     function experienceCard(exp) {
       return `
-        <a href="/projets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(exp.id)}" class="card card-pad" style="display:flex;flex-direction:column;gap:12px;color:inherit;">
+        <a href="/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(exp.id)}" class="card card-pad" style="display:flex;flex-direction:column;gap:12px;color:inherit;">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;">
             ${statusBadgeHtml(exp.status)}
             <span class="mono" style="font-size:11px;color:var(--text-faint);">${escapeHtml(exp.id.slice(0, 10))}</span>
@@ -232,7 +232,7 @@
     async function loadExperiences(status, targetEl, emptyMessage, loadMoreBtn, offset = 0) {
       try {
         const data = await api.get(
-          `/api/projects/${encodeURIComponent(slug)}/experiences?status=${status}&offset=${offset}&limit=${PAGE_SIZE}`
+          `/api/microprojets/${encodeURIComponent(slug)}/experiences?status=${status}&offset=${offset}&limit=${PAGE_SIZE}`
         );
         const html = data.items.map(experienceCard).join("");
         if (offset === 0) {
@@ -265,12 +265,12 @@
 
     async function loadMembers() {
       try {
-        const members = await api.get(`/api/projects/${encodeURIComponent(slug)}/members`);
+        const members = await api.get(`/api/microprojets/${encodeURIComponent(slug)}/members`);
         document.getElementById("members-body").innerHTML = members.map(memberRow).join("");
         document.querySelectorAll(".js-remove-member").forEach((btn) => {
           btn.addEventListener("click", async () => {
             try {
-              await api.del(`/api/projects/${encodeURIComponent(slug)}/members/${btn.dataset.userId}`);
+              await api.del(`/api/microprojets/${encodeURIComponent(slug)}/members/${btn.dataset.userId}`);
               loadMembers();
             } catch (err) {
               showError(err);
@@ -285,7 +285,7 @@
     const newExperienceDialog = document.getElementById("new-experience-dialog");
 
     async function fetchSavedStructures() {
-      return api.get(`/api/projects/${encodeURIComponent(slug)}/structures-sauvegardees`);
+      return api.get(`/api/microprojets/${encodeURIComponent(slug)}/structures-sauvegardees`);
     }
 
     function savedStructureOptionsHtml(library) {
@@ -306,9 +306,9 @@
       clearErrorFlash();
       try {
         const [experiences, library, refs] = await Promise.all([
-          api.get(`/api/projects/${encodeURIComponent(slug)}/experiences?status=all&limit=200`),
+          api.get(`/api/microprojets/${encodeURIComponent(slug)}/experiences?status=all&limit=200`),
           fetchSavedStructures(),
-          api.get(`/api/projects/${encodeURIComponent(slug)}/refs`),
+          api.get(`/api/microprojets/${encodeURIComponent(slug)}/refs`),
         ]);
         const expOptions = experiences.items.map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`).join("");
         document.getElementById("continue-select").innerHTML = experiences.items.length
@@ -316,7 +316,7 @@
           : `<option value="">Aucune expérience pour l'instant</option>`;
         document.getElementById("template-select").innerHTML = savedStructureOptionsHtml(library).html;
 
-        document.getElementById("ref-option-link").href = `/projets/${encodeURIComponent(slug)}/refs`;
+        document.getElementById("ref-option-link").href = `/microprojets/${encodeURIComponent(slug)}/refs`;
         document.getElementById("ref-option-block").style.display = refs.items.length ? "" : "none";
         document.getElementById("ref-select").innerHTML = refs.items
           .map((r) => `<option value="${r.experiment_id}">${escapeHtml(r.names.join(", "))} — ${escapeHtml(r.title)} (v${escapeHtml(r.version)})</option>`)
@@ -329,7 +329,7 @@
     }
 
     document.getElementById("option-scratch").addEventListener("click", () => {
-      window.location.href = `/projets/${encodeURIComponent(slug)}/structures/nouvelle`;
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle`;
     });
 
     document.getElementById("option-ref").addEventListener("click", () => {
@@ -338,25 +338,25 @@
       // like "Continuer cette expérience" (option-continue) - garde le lien de filiation, ce qui
       // est le but même d'une ref : que les futures pistes s'y rattachent vraiment, pour que la
       // page Refs puisse ensuite les relier (spectre.core.refs.ref_graph).
-      window.location.href = `/projets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
     });
 
     document.getElementById("option-template").addEventListener("click", () => {
       const source = document.getElementById("template-select").value;
       if (!source) return;
       const [scope, name] = source.split("::");
-      window.location.href = `/projets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${name}&scope=${scope}`;
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${name}&scope=${scope}`;
     });
 
     document.getElementById("option-new-library-structure").addEventListener("click", (event) => {
       event.preventDefault();
-      window.location.href = `/projets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle?retour=nouvelle-experience`;
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle?retour=nouvelle-experience`;
     });
 
     document.getElementById("option-continue").addEventListener("click", () => {
       const source = document.getElementById("continue-select").value;
       if (!source) return;
-      window.location.href = `/projets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
     });
 
     document.getElementById("cancel-new-experience").addEventListener("click", () => newExperienceDialog.close());
@@ -379,14 +379,14 @@
         return;
       }
       try {
-        const invitations = await api.get(`/api/projects/${encodeURIComponent(slug)}/invitations`);
+        const invitations = await api.get(`/api/microprojets/${encodeURIComponent(slug)}/invitations`);
         wrap.innerHTML = invitations.length
           ? `<div style="margin-top:14px;"><div class="section-title" style="margin-bottom:4px;">Invitations en attente</div>${invitations.map(invitationRow).join("")}</div>`
           : "";
         document.querySelectorAll(".js-cancel-invitation").forEach((btn) => {
           btn.addEventListener("click", async () => {
             try {
-              await api.del(`/api/projects/${encodeURIComponent(slug)}/invitations/${btn.dataset.token}`);
+              await api.del(`/api/microprojets/${encodeURIComponent(slug)}/invitations/${btn.dataset.token}`);
               loadInvitations();
             } catch (err) {
               showError(err);
@@ -399,16 +399,16 @@
     }
 
     const SCOPE_NOTE = {
-      preset: `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· préset, disponible dans tous les projets</span>`,
-      partagee: `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les projets</span>`,
+      preset: `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· préset, disponible dans tous les µprojets</span>`,
+      partagee: `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les µprojets</span>`,
       projet: "",
     };
 
     function savedStructureRow(structure) {
       const canManage = currentRole === "editor" || currentRole === "owner";
       const isPreset = structure.scope === "preset";
-      const useHref = `/projets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${encodeURIComponent(structure.name)}&scope=${structure.scope}`;
-      const editHref = `/projets/${encodeURIComponent(slug)}/structures/bibliotheque/${encodeURIComponent(structure.name)}?scope=${structure.scope}`;
+      const useHref = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${encodeURIComponent(structure.name)}&scope=${structure.scope}`;
+      const editHref = `/microprojets/${encodeURIComponent(slug)}/structures/bibliotheque/${encodeURIComponent(structure.name)}?scope=${structure.scope}`;
       const duplicateHref = `${editHref}&dupliquer=1`;
       return `
         <div class="step-row" style="align-items:flex-start;">
@@ -444,7 +444,7 @@
           btn.addEventListener("click", async () => {
             try {
               await api.del(
-                `/api/projects/${encodeURIComponent(slug)}/structures-sauvegardees/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.scope === "partagee"}`
+                `/api/microprojets/${encodeURIComponent(slug)}/structures-sauvegardees/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.scope === "partagee"}`
               );
               loadSavedStructuresList();
             } catch (err) {
@@ -469,11 +469,11 @@
     document.getElementById("delete-project-btn").addEventListener("click", async () => {
       const typed = document.getElementById("delete-confirm-name").value.trim();
       if (typed !== currentProjectName) {
-        showError(new Error("Le nom saisi ne correspond pas au nom du projet."));
+        showError(new Error("Le nom saisi ne correspond pas au nom du µprojet."));
         return;
       }
       try {
-        await api.del(`/api/projects/${encodeURIComponent(slug)}?confirm_name=${encodeURIComponent(typed)}`);
+        await api.del(`/api/microprojets/${encodeURIComponent(slug)}?confirm_name=${encodeURIComponent(typed)}`);
         window.location.href = "/";
       } catch (err) {
         showError(err);
@@ -486,9 +486,9 @@
       const email = document.getElementById("member-email").value;
       const role = document.getElementById("member-role").value;
       try {
-        const result = await api.post(`/api/projects/${encodeURIComponent(slug)}/members`, { email, role });
+        const result = await api.post(`/api/microprojets/${encodeURIComponent(slug)}/members`, { email, role });
         document.getElementById("member-email").value = "";
-        showFlash(result.status === "invited" ? "Invitation envoyée par e-mail." : "Personne ajoutée au projet.");
+        showFlash(result.status === "invited" ? "Invitation envoyée par e-mail." : "Personne ajoutée au µprojet.");
         loadMembers();
         loadInvitations();
       } catch (err) {
@@ -498,15 +498,24 @@
 
     async function init() {
       try {
-        const project = await api.get(`/api/projects/${encodeURIComponent(slug)}`);
+        const project = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
         currentRole = project.role;
         currentProjectName = project.name;
         document.getElementById("project-name").textContent = project.name;
         document.getElementById("project-description").textContent = project.description;
-        document.getElementById("crumb").textContent = "/ " + project.name;
-        document.getElementById("graph-link").href = `/projets/${encodeURIComponent(slug)}/graphe`;
-        document.getElementById("refs-link").href = `/projets/${encodeURIComponent(slug)}/refs`;
-        document.getElementById("intent-form-link").href = `/projets/${encodeURIComponent(slug)}/formulaire-intention`;
+        const area = project.management_area;
+        const areaCrumb = document.getElementById("area-crumb");
+        if (area) {
+          areaCrumb.textContent = area.name;
+          areaCrumb.href = `/management/${encodeURIComponent(area.slug)}`;
+        } else {
+          areaCrumb.textContent = "Non classé";
+        }
+        document.getElementById("crumb").textContent =
+          "/ " + (area ? area.name + " / " : "") + project.name;
+        document.getElementById("graph-link").href = `/microprojets/${encodeURIComponent(slug)}/graphe`;
+        document.getElementById("refs-link").href = `/microprojets/${encodeURIComponent(slug)}/refs`;
+        document.getElementById("intent-form-link").href = `/microprojets/${encodeURIComponent(slug)}/formulaire-intention`;
 
         if (currentRole === "editor" || currentRole === "owner") {
           document.getElementById("new-structure-btn").style.display = "";
@@ -514,9 +523,9 @@
           document.getElementById("new-library-structure-link").style.display = "";
         }
         document.getElementById("new-library-structure-link").href =
-          `/projets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle`;
-        document.getElementById("presets-etapes-link").href = `/projets/${encodeURIComponent(slug)}/presets-etapes`;
-        document.getElementById("briques-link").href = `/projets/${encodeURIComponent(slug)}/briques-technologiques`;
+          `/microprojets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle`;
+        document.getElementById("presets-etapes-link").href = `/microprojets/${encodeURIComponent(slug)}/presets-etapes`;
+        document.getElementById("briques-link").href = `/microprojets/${encodeURIComponent(slug)}/briques-technologiques`;
         document.getElementById("library-hub-link").href = "/bibliotheque";
         if (currentRole === "owner") {
           document.getElementById("add-member-form").style.display = "grid";

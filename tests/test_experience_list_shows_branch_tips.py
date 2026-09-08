@@ -19,13 +19,13 @@ def _steps(thickness=20):
 
 def _register_and_project(client, email, project_name="Projet"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/projects", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
 
 
 def test_evidence_then_conclusion_only_shows_the_final_version_once(client):
     slug = _register_and_project(client, "tips-a@example.com")
     launched = client.post(
-        f"/api/projects/{slug}/experiences",
+        f"/api/microprojets/{slug}/experiences",
         json={
             "substrate": _substrate(),
             "steps": _steps(),
@@ -36,21 +36,21 @@ def test_evidence_then_conclusion_only_shows_the_final_version_once(client):
     ).json()
 
     with_evidence = client.post(
-        f"/api/projects/{slug}/experiences/{launched['id']}/preuves",
+        f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
         json={"description": "Mesure", "source": "labo"},
     ).json()
     concluded = client.post(
-        f"/api/projects/{slug}/experiences/{with_evidence['id']}/conclure", json={"status": "concluded"}
+        f"/api/microprojets/{slug}/experiences/{with_evidence['id']}/conclure", json={"status": "concluded"}
     ).json()
 
-    listed = client.get(f"/api/projects/{slug}/experiences?status=all&limit=50").json()
+    listed = client.get(f"/api/microprojets/{slug}/experiences?status=all&limit=50").json()
     matching = [item for item in listed["items"] if item["title"] == "Etude"]
     assert len(matching) == 1
     assert matching[0]["id"] == concluded["id"]
     assert matching[0]["status"] == "concluded"
 
     # and it must not also appear under "running" - only its (now superseded) drafts were ever running
-    running = client.get(f"/api/projects/{slug}/experiences?status=running&limit=50").json()
+    running = client.get(f"/api/microprojets/{slug}/experiences?status=running&limit=50").json()
     assert launched["id"] not in [item["id"] for item in running["items"]]
     assert with_evidence["id"] not in [item["id"] for item in running["items"]]
 
@@ -58,7 +58,7 @@ def test_evidence_then_conclusion_only_shows_the_final_version_once(client):
 def test_project_counts_reflect_one_status_per_branch(client):
     slug = _register_and_project(client, "tips-b@example.com")
     launched = client.post(
-        f"/api/projects/{slug}/experiences",
+        f"/api/microprojets/{slug}/experiences",
         json={
             "substrate": _substrate(),
             "steps": _steps(),
@@ -68,11 +68,11 @@ def test_project_counts_reflect_one_status_per_branch(client):
         },
     ).json()
     with_evidence = client.post(
-        f"/api/projects/{slug}/experiences/{launched['id']}/preuves", json={"description": "Mesure", "source": "labo"}
+        f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves", json={"description": "Mesure", "source": "labo"}
     ).json()
-    client.post(f"/api/projects/{slug}/experiences/{with_evidence['id']}/conclure", json={"status": "concluded"})
+    client.post(f"/api/microprojets/{slug}/experiences/{with_evidence['id']}/conclure", json={"status": "concluded"})
 
-    payload = client.get(f"/api/projects/{slug}").json()
+    payload = client.get(f"/api/microprojets/{slug}").json()
     assert payload["running_count"] == 0
     assert payload["concluded_count"] == 1
 
@@ -80,7 +80,7 @@ def test_project_counts_reflect_one_status_per_branch(client):
 def test_a_fork_still_shows_both_branches_once_each(client):
     slug = _register_and_project(client, "tips-c@example.com")
     launched = client.post(
-        f"/api/projects/{slug}/experiences",
+        f"/api/microprojets/{slug}/experiences",
         json={
             "substrate": _substrate(),
             "steps": _steps(20),
@@ -90,11 +90,11 @@ def test_a_fork_still_shows_both_branches_once_each(client):
         },
     ).json()
     continued = client.post(
-        f"/api/projects/{slug}/experiences/{launched['id']}/evoluer",
+        f"/api/microprojets/{slug}/experiences/{launched['id']}/evoluer",
         json={"substrate": _substrate(), "steps": _steps(15), "title": "Reference", "intent": "Suite"},
     ).json()
     forked = client.post(
-        f"/api/projects/{slug}/experiences/{launched['id']}/evoluer",
+        f"/api/microprojets/{slug}/experiences/{launched['id']}/evoluer",
         json={
             "substrate": _substrate(),
             "steps": _steps(30),
@@ -104,7 +104,7 @@ def test_a_fork_still_shows_both_branches_once_each(client):
         },
     ).json()
 
-    listed = client.get(f"/api/projects/{slug}/experiences?status=all&limit=50").json()
+    listed = client.get(f"/api/microprojets/{slug}/experiences?status=all&limit=50").json()
     ids = {item["id"] for item in listed["items"]}
     assert continued["id"] in ids
     assert forked["id"] in ids

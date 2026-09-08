@@ -21,7 +21,23 @@ CREATE TABLE IF NOT EXISTS users (
     name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     salt TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Corporate strategy layer above the µprojets: the "grands thèmes" leadership steers by. A µproject
+-- (the ``projects`` table below - Spectre's URLs/labels call it "µprojet") belongs to exactly one
+-- area; the seeded "non-classe" area holds anything not yet sorted. Visible to every signed-in
+-- user (company-wide overview); only an admin (users.is_admin) creates/renames one or moves a
+-- µproject between areas.
+CREATE TABLE IF NOT EXISTS management_areas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    strategy TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by INTEGER REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -31,11 +47,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at TEXT NOT NULL
 );
 
+-- A "µprojet" in Spectre's vocabulary: one topic a management area addresses. Table/dir/API keep
+-- the shorter historical name ``project``.
 CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     slug TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
+    management_area_id INTEGER REFERENCES management_areas(id),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     created_by INTEGER NOT NULL REFERENCES users(id)
 );
@@ -131,9 +150,51 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+UNCLASSIFIED_AREA_SLUG = "non-classe"
+
+
+def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring a pre-existing database up to the current schema. ``_SCHEMA`` above only ever
+    ``CREATE ... IF NOT EXISTS``, so a table that already exists never picks up a new column - that
+    is what this does, plus the one-time data backfill the management layer needs (a catch-all
+    area, every µprojet attached to one, the first account made admin).
+    """
+    if "is_admin" not in _column_names(conn, "users"):
+        conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+    if "management_area_id" not in _column_names(conn, "projects"):
+        conn.execute("ALTER TABLE projects ADD COLUMN management_area_id INTEGER REFERENCES management_areas(id)")
+
+    if conn.execute("SELECT 1 FROM management_areas WHERE slug = ?", (UNCLASSIFIED_AREA_SLUG,)).fetchone() is None:
+        conn.execute(
+            "INSERT INTO management_areas (slug, name, description) VALUES (?, 'Non classé', ?)",
+            (UNCLASSIFIED_AREA_SLUG, "µprojets pas encore rattachés à un grand thème."),
+        )
+    area_id = conn.execute("SELECT id FROM management_areas WHERE slug = ?", (UNCLASSIFIED_AREA_SLUG,)).fetchone()["id"]
+    conn.execute("UPDATE projects SET management_area_id = ? WHERE management_area_id IS NULL", (area_id,))
+
+    # Seed the three flagship themes on a fresh instance - only when no real theme exists yet
+    # (never re-added once someone has created / renamed / removed one).
+    real_themes = conn.execute(
+        "SELECT COUNT(*) AS n FROM management_areas WHERE slug != ?", (UNCLASSIFIED_AREA_SLUG,)
+    ).fetchone()["n"]
+    if real_themes == 0:
+        for slug, name in (("datacom-vlc", "Datacom (VLC)"), ("nova-pt1", "Nova (PT1)"), ("native-pt2", "Native (PT2)")):
+            conn.execute("INSERT INTO management_areas (slug, name) VALUES (?, ?)", (slug, name))
+
+    has_users = conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
+    has_admin = conn.execute("SELECT 1 FROM users WHERE is_admin = 1 LIMIT 1").fetchone() is not None
+    if has_users and not has_admin:
+        conn.execute("UPDATE users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM users)")
+
+
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(_SCHEMA)
+        _migrate(conn)
 
 
 @contextmanager

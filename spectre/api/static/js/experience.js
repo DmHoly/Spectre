@@ -87,8 +87,8 @@ async function changeStatus(targetStatus, btn) {
   clearError();
   if (btn) btn.disabled = true;
   try {
-    const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/statut`, { status: targetStatus });
-    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/statut`, { status: targetStatus });
+    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
   } catch (err) {
     showError(err);
     if (btn) btn.disabled = false;
@@ -383,7 +383,7 @@ async function renderBatchMatrix(detail) {
   }
   card.style.display = "";
   try {
-    const variation = await api.get(`/api/projects/${slug}/experiences/${experienceId}/matrice`);
+    const variation = await api.get(`/api/microprojets/${slug}/experiences/${experienceId}/matrice`);
     const labels = variation.labels || variation.svgs.map((_, i) => `#${i + 1}`);
     const canEdit = isEditorRole();
     const tracking = variation.physical_tracking || [];
@@ -604,7 +604,7 @@ function renderConcludeForm(detail, prefill) {
       reasoning: document.getElementById(`obj-reasoning-${i}`).value.trim() || null,
     }));
     try {
-      const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/conclure`, {
+      const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/conclure`, {
         status: document.getElementById("conclude-status").value,
         decision: document.getElementById("conclude-decision").value || null,
         summary: document.getElementById("conclude-summary").value || null,
@@ -613,7 +613,7 @@ function renderConcludeForm(detail, prefill) {
       });
       // conclure records a new version carrying the conclusion (experiences are immutable) -
       // go to it, not back to this now-superseded draft.
-      window.location.href = `/projets/${slug}/experiences/${result.id}`;
+      window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
     } catch (err) {
       showError(err);
     }
@@ -623,9 +623,9 @@ function renderConcludeForm(detail, prefill) {
 async function populateCompareProjectSelect() {
   const projectSelect = document.getElementById("compare-project-select");
   try {
-    const myProjects = await api.get("/api/projects");
+    const myProjects = await api.get("/api/microprojets");
     projectSelect.innerHTML = myProjects
-      .map((p) => `<option value="${p.slug}">${escapeHtml(p.name)}${p.slug === slug ? " (ce projet)" : ""}</option>`)
+      .map((p) => `<option value="${p.slug}">${escapeHtml(p.name)}${p.slug === slug ? " (ce µprojet)" : ""}</option>`)
       .join("");
     projectSelect.value = slug;
   } catch (err) {
@@ -637,7 +637,7 @@ async function populateCompareProjectSelect() {
 async function populateCompareExperienceSelect(targetSlug) {
   const select = document.getElementById("compare-select");
   try {
-    const data = await api.get(`/api/projects/${targetSlug}/experiences?status=all&limit=200`);
+    const data = await api.get(`/api/microprojets/${targetSlug}/experiences?status=all&limit=200`);
     const others = data.items.filter((item) => !(targetSlug === slug && item.id === experienceId));
     select.innerHTML = others.length
       ? others.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join("")
@@ -659,8 +659,8 @@ document.getElementById("compare-btn").addEventListener("click", async () => {
   try {
     const endpoint =
       targetProject === slug
-        ? `/api/projects/${slug}/experiences/${experienceId}/diff?against=${target}`
-        : `/api/projects/${slug}/experiences/${experienceId}/diff-externe?autre_projet=${targetProject}&autre_experience=${target}`;
+        ? `/api/microprojets/${slug}/experiences/${experienceId}/diff?against=${target}`
+        : `/api/microprojets/${slug}/experiences/${experienceId}/diff-externe?autre_projet=${targetProject}&autre_experience=${target}`;
     const diff = await api.get(endpoint);
     if (diff.entries.length === 0) {
       box.innerHTML = `<div class="help">Aucune différence de structure.</div>`;
@@ -700,10 +700,10 @@ async function uploadFile(url, formData) {
 async function saveAnnotations(evidenceId, annotations) {
   clearError();
   try {
-    const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/preuves/${evidenceId}/annotations`, {
+    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/preuves/${evidenceId}/annotations`, {
       annotations,
     });
-    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
   } catch (err) {
     showError(err);
   }
@@ -741,7 +741,7 @@ function imageEvidenceHtml(detail, e) {
   if (!attachment) {
     return `<div class="help" style="margin-top:8px;">Image en cours d'envoi ou absente.</div>`;
   }
-  const url = `/api/projects/${encodeURIComponent(slug)}/pieces-jointes/${encodeURIComponent(attachment.id)}`;
+  const url = `/api/microprojets/${encodeURIComponent(slug)}/pieces-jointes/${encodeURIComponent(attachment.id)}`;
   const canEdit = isEditorRole();
   const annotations = e.image_annotations || [];
   const annotationsListHtml = annotations
@@ -1054,7 +1054,7 @@ function renderEvidence(detail) {
       const metricNameEl = document.getElementById("evidence-metric-name");
       const metricValueEl = document.getElementById("evidence-metric-value");
       const stepSelect = document.getElementById("evidence-step-select");
-      const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/preuves`, {
+      const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/preuves`, {
         description: document.getElementById("evidence-description").value,
         source,
         kind,
@@ -1073,10 +1073,10 @@ function renderEvidence(detail) {
         const formData = new FormData();
         formData.append("file", imageFile);
         formData.append("evidence_id", result.evidence_id);
-        const uploadResult = await uploadFile(`/api/projects/${slug}/experiences/${result.id}/pieces-jointes`, formData);
+        const uploadResult = await uploadFile(`/api/microprojets/${slug}/experiences/${result.id}/pieces-jointes`, formData);
         finalId = uploadResult.id;
       }
-      window.location.href = `/projets/${slug}/experiences/${finalId}`;
+      window.location.href = `/microprojets/${slug}/experiences/${finalId}`;
     } catch (err) {
       showError(err);
     }
@@ -1170,9 +1170,9 @@ function renderForksNote(detail) {
   box.innerHTML = `
     <div style="font-size:12px;color:var(--text-faint);margin-bottom:6px;">Cette version a donné plusieurs pistes :</div>
     ${detail.children
-      .map((c) => `<div style="font-size:13px;margin-bottom:4px;"><a href="/projets/${slug}/experiences/${c.id}">${escapeHtml(c.title)}</a></div>`)
+      .map((c) => `<div style="font-size:13px;margin-bottom:4px;"><a href="/microprojets/${slug}/experiences/${c.id}">${escapeHtml(c.title)}</a></div>`)
       .join("")}
-    <a href="/projets/${slug}/graphe" style="font-size:12px;">Voir la vue d'ensemble &rarr;</a>`;
+    <a href="/microprojets/${slug}/graphe" style="font-size:12px;">Voir la vue d'ensemble &rarr;</a>`;
 }
 
 function renderTags(detail) {
@@ -1218,9 +1218,9 @@ function renderTags(detail) {
 async function updateTags(tags) {
   clearError();
   try {
-    const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/etiquettes`, { tags });
+    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/etiquettes`, { tags });
     // like conclure/preuves, tagging records a new version - follow it there.
-    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
   } catch (err) {
     showError(err);
   }
@@ -1261,8 +1261,8 @@ function renderRefs(detail) {
 async function createRef(name) {
   clearError();
   try {
-    await api.post(`/api/projects/${slug}/experiences/${experienceId}/ref`, { name: name || null });
-    currentDetail = await api.get(`/api/projects/${slug}/experiences/${experienceId}`);
+    await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/ref`, { name: name || null });
+    currentDetail = await api.get(`/api/microprojets/${slug}/experiences/${experienceId}`);
     renderRefs(currentDetail);
   } catch (err) {
     showError(err);
@@ -1274,7 +1274,7 @@ function formatIntentFormAnswer(field, value) {
   return String(value);
 }
 
-// Petite boîte d'infos : les réponses au formulaire d'intention du projet (spectre.core.
+// Petite boîte d'infos : les réponses au formulaire d'intention du µprojet (spectre.core.
 // intent_forms), avec les libellés du formulaire actuellement actif quand on les retrouve - une
 // expérience plus ancienne peut avoir été répondue à un formulaire depuis modifié, auquel cas le
 // nom brut du champ sert de repli plutôt que de cacher la réponse.
@@ -1287,7 +1287,7 @@ async function renderIntentFormInfo(detail) {
   }
   let activeForm = null;
   try {
-    const active = await api.get(`/api/projects/${slug}/formulaire-actif`);
+    const active = await api.get(`/api/microprojets/${slug}/formulaire-actif`);
     activeForm = active ? active.form : null;
   } catch (err) {
     // pas bloquant : on retombe sur les noms de champs bruts
@@ -1309,7 +1309,7 @@ async function renderIntentFormInfo(detail) {
 
 async function populateCombineSelect() {
   try {
-    const data = await api.get(`/api/projects/${slug}/experiences?status=all&limit=200`);
+    const data = await api.get(`/api/microprojets/${slug}/experiences?status=all&limit=200`);
     const options = data.items
       .filter((exp) => exp.id !== experienceId)
       .map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`)
@@ -1330,12 +1330,12 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
     return;
   }
   try {
-    const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/combiner`, {
+    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/combiner`, {
       other_id: otherId,
       title,
       intent,
     });
-    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
   } catch (err) {
     showError(err);
   }
@@ -1344,9 +1344,9 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
 async function savePhysicalTracking(entities) {
   clearError();
   try {
-    const result = await api.post(`/api/projects/${slug}/experiences/${experienceId}/entites`, { entities });
+    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/entites`, { entities });
     // like tags/preuves, this records a new version - follow it there.
-    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
   } catch (err) {
     showError(err);
   }
@@ -1382,7 +1382,7 @@ function renderReferences(detail) {
     .map((r) => {
       const label = REFERENCE_ROLE_LABELS[r.role] || r.role;
       const target = r.experiment_id
-        ? `<a href="/projets/${slug}/experiences/${r.experiment_id}">${escapeHtml(r.label)}</a>`
+        ? `<a href="/microprojets/${slug}/experiences/${r.experiment_id}">${escapeHtml(r.label)}</a>`
         : escapeHtml(r.label);
       return `<div style="font-size:13px;margin-bottom:8px;"><span style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(label)}</span><br>${target}</div>`;
     })
@@ -1429,7 +1429,7 @@ async function generateReportHtml() {
 </head>
 <body>
   <div class="report-page">
-    <div class="report-banner">Rapport d'expérience — extrait de Spectre (projet « ${escapeHtml(currentProjectName || "")} ») le ${generatedAt}. Document autonome : une photographie de cette fiche à cet instant, sans lien avec les données vivantes du projet.</div>
+    <div class="report-banner">Rapport d'expérience — extrait de Spectre (projet « ${escapeHtml(currentProjectName || "")} ») le ${generatedAt}. Document autonome : une photographie de cette fiche à cet instant, sans lien avec les données vivantes du µprojet.</div>
     ${sections}
   </div>
 </body>
@@ -1455,7 +1455,7 @@ async function downloadReport() {
 }
 
 function goToEvolve() {
-  window.location.href = `/projets/${slug}/experiences/${experienceId}/evoluer`;
+  window.location.href = `/microprojets/${slug}/experiences/${experienceId}/evoluer`;
 }
 
 function wireDeleteExperience() {
@@ -1475,9 +1475,9 @@ function wireDeleteExperience() {
     btn.disabled = true;
     clearError();
     try {
-      const result = await api.del(`/api/projects/${slug}/experiences/${experienceId}`);
+      const result = await api.del(`/api/microprojets/${slug}/experiences/${experienceId}`);
       hint.textContent = `${result.count} version(s) supprimée(s).`;
-      window.location.href = `/projets/${slug}`;
+      window.location.href = `/microprojets/${slug}`;
     } catch (err) {
       showError(err);
       btn.disabled = false;
@@ -1501,12 +1501,19 @@ function applyModeVisibility() {
 
 async function init() {
   try {
-    currentDetail = await api.get(`/api/projects/${slug}/experiences/${experienceId}`);
-    const project = await api.get(`/api/projects/${slug}`);
+    currentDetail = await api.get(`/api/microprojets/${slug}/experiences/${experienceId}`);
+    const project = await api.get(`/api/microprojets/${slug}`);
     currentRole = project.role;
     currentProjectName = project.name;
     document.getElementById("project-crumb").textContent = project.name;
-    document.getElementById("project-crumb").href = `/projets/${slug}`;
+    document.getElementById("project-crumb").href = `/microprojets/${slug}`;
+    const areaCrumb = document.getElementById("area-crumb");
+    if (project.management_area) {
+      areaCrumb.textContent = project.management_area.name;
+      areaCrumb.href = `/management/${encodeURIComponent(project.management_area.slug)}`;
+    } else {
+      areaCrumb.textContent = "Non classé";
+    }
 
     renderHeader(currentDetail);
     renderTags(currentDetail);
@@ -1529,10 +1536,10 @@ async function init() {
     applyModeVisibility();
 
     const [timeline, diff, process, entityHistory] = await Promise.all([
-      api.get(`/api/projects/${slug}/experiences/${experienceId}/timeline`),
-      api.get(`/api/projects/${slug}/experiences/${experienceId}/diff`),
-      api.get(`/api/projects/${slug}/experiences/${experienceId}/process`).catch(() => null),
-      api.get(`/api/projects/${slug}/entites/historique`).catch(() => ({ sample_ids: [], locations: [] })),
+      api.get(`/api/microprojets/${slug}/experiences/${experienceId}/timeline`),
+      api.get(`/api/microprojets/${slug}/experiences/${experienceId}/diff`),
+      api.get(`/api/microprojets/${slug}/experiences/${experienceId}/process`).catch(() => null),
+      api.get(`/api/microprojets/${slug}/entites/historique`).catch(() => ({ sample_ids: [], locations: [] })),
     ]);
     currentProcess = process;
     document.getElementById("entity-sample-id-history").innerHTML = entityHistory.sample_ids.map((v) => `<option value="${escapeHtml(v)}">`).join("");

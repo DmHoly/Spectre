@@ -25,10 +25,17 @@ class User:
     id: int
     email: str
     name: str
+    is_admin: bool = False
 
 
 def _user_from_row(row: sqlite3.Row) -> User:
-    return User(id=row["id"], email=row["email"], name=row["name"])
+    keys = row.keys()
+    return User(
+        id=row["id"],
+        email=row["email"],
+        name=row["name"],
+        is_admin=bool(row["is_admin"]) if "is_admin" in keys else False,
+    )
 
 
 def register(email: str, password: str, name: str) -> User:
@@ -40,14 +47,27 @@ def register(email: str, password: str, name: str) -> User:
     name = name.strip() or email.split("@")[0]
     password_hash, salt = security.hash_password(password)
     with get_conn() as conn:
+        # the very first account is the admin (manages the strategy layer) - there is otherwise no
+        # way to bootstrap one; `spectre admin <email>` promotes others later.
+        first_account = conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None
         try:
             cursor = conn.execute(
-                "INSERT INTO users (email, name, password_hash, salt) VALUES (?, ?, ?, ?)",
-                (email, name, password_hash, salt),
+                "INSERT INTO users (email, name, password_hash, salt, is_admin) VALUES (?, ?, ?, ?, ?)",
+                (email, name, password_hash, salt, 1 if first_account else 0),
             )
         except sqlite3.IntegrityError as exc:
             raise EmailAlreadyUsedError(f"un compte existe déjà avec l'adresse {email!r}") from exc
-        return User(id=cursor.lastrowid, email=email, name=name)
+        return User(id=cursor.lastrowid, email=email, name=name, is_admin=first_account)
+
+
+def set_admin(email: str, is_admin: bool) -> User:
+    """Promote/demote an account to the strategy-layer admin role (see ``management_areas``)."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+        if row is None:
+            raise ValueError(f"aucun compte avec l'adresse {email!r}")
+        conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (1 if is_admin else 0, row["id"]))
+        return User(id=row["id"], email=row["email"], name=row["name"], is_admin=is_admin)
 
 
 def authenticate(email: str, password: str) -> User:

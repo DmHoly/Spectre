@@ -454,7 +454,7 @@ document.getElementById("group-brick-btn").addEventListener("click", async () =>
   }
   try {
     const selectedSteps = indices.map((idx) => stripBrickTag(state.steps[idx]));
-    state.techBricks = await api.post(`/api/projects/${slug}/briques-technologiques`, { name, steps: selectedSteps, partagee: false });
+    state.techBricks = await api.post(`/api/microprojets/${slug}/briques-technologiques`, { name, steps: selectedSteps, partagee: false });
     const groupId = generateBrickGroupId();
     indices.forEach((idx) => {
       state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name };

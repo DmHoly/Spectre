@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,22 +24,40 @@ class ProjectNotFoundError(Exception):
 
 @dataclass(frozen=True)
 class Project:
+    """A "µprojet": one topic addressed under a management area (:mod:`spectre.core.management`).
+    Table/dir/API keep the historical name ``project``.
+    """
+
     id: int
     slug: str
     name: str
     description: str
     created_by: int
+    management_area_id: int | None = None
 
 
 def _project_from_row(row: sqlite3.Row) -> Project:
+    keys = row.keys()
     return Project(
-        id=row["id"], slug=row["slug"], name=row["name"], description=row["description"], created_by=row["created_by"]
+        id=row["id"],
+        slug=row["slug"],
+        name=row["name"],
+        description=row["description"],
+        created_by=row["created_by"],
+        management_area_id=row["management_area_id"] if "management_area_id" in keys else None,
     )
 
 
+def slugify(name: str) -> str:
+    """A URL-safe slug from a display name: strip diacritics ("Fiabilité" -> "fiabilite"), then
+    collapse anything non-alphanumeric to single dashes. Shared with :mod:`spectre.core.management`.
+    """
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "-", ascii_name.strip().lower()).strip("-")
+
+
 def _slugify(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
-    return slug or "projet"
+    return slugify(name) or "projet"
 
 
 def _unique_slug(conn: sqlite3.Connection, base: str) -> str:
@@ -50,15 +69,19 @@ def _unique_slug(conn: sqlite3.Connection, base: str) -> str:
     return slug
 
 
-def create(name: str, description: str, *, owner_id: int) -> Project:
+def create(name: str, description: str, *, owner_id: int, management_area_id: int | None = None) -> Project:
     name = name.strip()
     if not name:
-        raise ValueError("le nom du projet est obligatoire")
+        raise ValueError("le nom du µprojet est obligatoire")
     with get_conn() as conn:
+        if management_area_id is None:
+            management_area_id = conn.execute(
+                "SELECT id FROM management_areas WHERE slug = ?", ("non-classe",)
+            ).fetchone()["id"]
         slug = _unique_slug(conn, _slugify(name))
         cursor = conn.execute(
-            "INSERT INTO projects (slug, name, description, created_by) VALUES (?, ?, ?, ?)",
-            (slug, name, description.strip(), owner_id),
+            "INSERT INTO projects (slug, name, description, management_area_id, created_by) VALUES (?, ?, ?, ?, ?)",
+            (slug, name, description.strip(), management_area_id, owner_id),
         )
         project_id = cursor.lastrowid
         conn.execute(
@@ -66,7 +89,33 @@ def create(name: str, description: str, *, owner_id: int) -> Project:
             (project_id, owner_id),
         )
     project_dir(slug)  # create the on-disk home for this project's Follow repo/structures upfront
-    return Project(id=project_id, slug=slug, name=name, description=description.strip(), created_by=owner_id)
+    return Project(
+        id=project_id,
+        slug=slug,
+        name=name,
+        description=description.strip(),
+        created_by=owner_id,
+        management_area_id=management_area_id,
+    )
+
+
+def set_management_area(project_id: int, management_area_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("UPDATE projects SET management_area_id = ? WHERE id = ?", (management_area_id, project_id))
+
+
+def list_by_management_area(management_area_id: int) -> list[Project]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM projects WHERE management_area_id = ? ORDER BY created_at DESC", (management_area_id,)
+        ).fetchall()
+    return [_project_from_row(row) for row in rows]
+
+
+def list_all() -> list[Project]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
+    return [_project_from_row(row) for row in rows]
 
 
 def get_by_slug(slug: str) -> Project:

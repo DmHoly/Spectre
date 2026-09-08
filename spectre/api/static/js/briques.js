@@ -24,15 +24,15 @@ function showFlash(message) {
 }
 
 function scopeSuffix(scope) {
-  if (scope === "preset") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· préset, disponible dans tous les projets</span>`;
-  if (scope === "partagee") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les projets</span>`;
+  if (scope === "preset") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· préset, disponible dans tous les µprojets</span>`;
+  if (scope === "partagee") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les µprojets</span>`;
   return "";
 }
 
 function brickRow(brick) {
   const canManage = state.currentRole === "editor" || state.currentRole === "owner";
   const isPreset = brick.scope === "preset";
-  const editHref = `/projets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/${encodeURIComponent(brick.name)}?scope=${brick.scope}`;
+  const editHref = `/microprojets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/${encodeURIComponent(brick.name)}?scope=${brick.scope}`;
   return `
     <div class="step-row" style="align-items:flex-start;">
       <div style="flex:1;min-width:0;">
@@ -66,7 +66,7 @@ function renderList() {
     btn.addEventListener("click", async () => {
       try {
         state.bricks = await api.del(
-          `/api/projects/${encodeURIComponent(slug)}/briques-technologiques/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.scope === "partagee"}`
+          `/api/microprojets/${encodeURIComponent(slug)}/briques-technologiques/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.scope === "partagee"}`
         );
         renderList();
         showFlash("Brique supprimée.");
@@ -79,11 +79,11 @@ function renderList() {
 
 async function init() {
   try {
-    const project = await api.get(`/api/projects/${encodeURIComponent(slug)}`);
+    const project = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
     state.currentRole = project.role;
     document.getElementById("crumb").textContent = "/ " + project.name;
     document.getElementById("back-link").href = "/bibliotheque";
-    document.getElementById("new-brick-link").href = `/projets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/nouvelle`;
+    document.getElementById("new-brick-link").href = `/microprojets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/nouvelle`;
     if (!(state.currentRole === "editor" || state.currentRole === "owner")) {
       document.getElementById("new-brick-link").style.display = "none";
     }
@@ -92,7 +92,7 @@ async function init() {
     return;
   }
   try {
-    state.bricks = await api.get(`/api/projects/${encodeURIComponent(slug)}/briques-technologiques`);
+    state.bricks = await api.get(`/api/microprojets/${encodeURIComponent(slug)}/briques-technologiques`);
     renderList();
   } catch (err) {
     showError(err);

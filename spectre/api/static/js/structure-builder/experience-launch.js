@@ -8,14 +8,14 @@
 async function loadExistingProcess() {
   if (!evolveExperienceId) return;
   try {
-    const data = await api.get(`/api/projects/${slug}/experiences/${evolveExperienceId}/process`);
+    const data = await api.get(`/api/microprojets/${slug}/experiences/${evolveExperienceId}/process`);
     setSubstrateFields(data.substrate);
     state.steps = data.steps;
     renderSteps();
     document.getElementById("page-title").textContent = "Enregistrer une évolution";
     document.getElementById("launch-btn").textContent = "Enregistrer cette évolution";
 
-    const detail = await api.get(`/api/projects/${slug}/experiences/${evolveExperienceId}`);
+    const detail = await api.get(`/api/microprojets/${slug}/experiences/${evolveExperienceId}`);
     document.getElementById("exp-title").value = detail.title;
     document.getElementById("exp-intent").value = detail.intent;
     document.getElementById("exp-hypothesis").value = detail.hypothesis || "";
@@ -74,14 +74,14 @@ async function commitExperience(entities) {
       // Campagne partie d'une ref / d'une expérience : on garde le lien de filiation (voir
       // launch_campaign::from_ref) - `payload.new_branch` est déjà posé plus haut si "fork".
       if (evolveExperienceId) payload.from_ref = evolveExperienceId;
-      endpoint = `/api/projects/${slug}/experiences/campagne`;
+      endpoint = `/api/microprojets/${slug}/experiences/campagne`;
     } else if (evolveExperienceId) {
-      endpoint = `/api/projects/${slug}/experiences/${evolveExperienceId}/evoluer`;
+      endpoint = `/api/microprojets/${slug}/experiences/${evolveExperienceId}/evoluer`;
     } else {
-      endpoint = `/api/projects/${slug}/experiences`;
+      endpoint = `/api/microprojets/${slug}/experiences`;
     }
     const result = await api.post(endpoint, payload);
-    window.location.href = `/projets/${slug}/experiences/${result.id}`;
+    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
   } catch (err) {
     const formMessage = intentFormErrorMessage(err);
     showError(formMessage ? new Error(formMessage) : err);
@@ -144,7 +144,7 @@ async function loadTemplateProcess() {
   if (!templateExperienceId) return;
   document.getElementById("page-title").textContent = "Nouvelle expérience (structure reprise)";
   try {
-    const data = await api.get(`/api/projects/${slug}/experiences/${templateExperienceId}/process`);
+    const data = await api.get(`/api/microprojets/${slug}/experiences/${templateExperienceId}/process`);
     setSubstrateFields(data.substrate);
     state.steps = data.steps;
     renderSteps();

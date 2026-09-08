@@ -21,12 +21,12 @@ def _steps(thickness=20):
 def _register_and_project(client, email, project_name="Projet"):
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/projects", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
 
 
 def test_editor_on_both_projects_can_link_them(client):
     slug_a = _register_and_project(client, "linker@example.com", "Projet A")
-    slug_b = client.post("/api/projects", json={"name": "Projet B"}).json()["slug"]
+    slug_b = client.post("/api/microprojets", json={"name": "Projet B"}).json()["slug"]
 
     created = client.post("/api/liens-projets", json={"project_a": slug_a, "project_b": slug_b, "note": "Même famille de matériaux"})
     assert created.status_code == 201
@@ -46,7 +46,7 @@ def test_cannot_link_a_project_to_itself(client):
 
 def test_cannot_link_two_projects_twice(client):
     slug_a = _register_and_project(client, "twice@example.com", "Projet A")
-    slug_b = client.post("/api/projects", json={"name": "Projet B"}).json()["slug"]
+    slug_b = client.post("/api/microprojets", json={"name": "Projet B"}).json()["slug"]
     client.post("/api/liens-projets", json={"project_a": slug_a, "project_b": slug_b})
     duplicate = client.post("/api/liens-projets", json={"project_a": slug_b, "project_b": slug_a})
     assert duplicate.status_code == 422
@@ -54,11 +54,11 @@ def test_cannot_link_two_projects_twice(client):
 
 def test_viewer_cannot_link_a_project_they_only_view(client):
     owner_slug = _register_and_project(client, "owner-links@example.com", "Chez le propriétaire")
-    client.post("/api/projects/{}/members".format(owner_slug), json={"email": "viewer-links@example.com", "role": "viewer"})
+    client.post("/api/microprojets/{}/members".format(owner_slug), json={"email": "viewer-links@example.com", "role": "viewer"})
 
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": "viewer-links@example.com", "password": "supersecret", "name": "V"})
-    own_slug = client.post("/api/projects", json={"name": "Chez le viewer"}).json()["slug"]
+    own_slug = client.post("/api/microprojets", json={"name": "Chez le viewer"}).json()["slug"]
 
     response = client.post("/api/liens-projets", json={"project_a": own_slug, "project_b": owner_slug})
     assert response.status_code == 403
@@ -66,7 +66,7 @@ def test_viewer_cannot_link_a_project_they_only_view(client):
 
 def test_project_link_only_appears_in_atlas_for_members_of_both_sides(client):
     slug_a = _register_and_project(client, "visibility-a@example.com", "Projet A")
-    slug_b = client.post("/api/projects", json={"name": "Projet B"}).json()["slug"]
+    slug_b = client.post("/api/microprojets", json={"name": "Projet B"}).json()["slug"]
     client.post("/api/liens-projets", json={"project_a": slug_a, "project_b": slug_b})
 
     # a third user, unrelated to either project, sees neither the projects nor the link
@@ -78,7 +78,7 @@ def test_project_link_only_appears_in_atlas_for_members_of_both_sides(client):
 def test_editor_on_both_projects_can_link_two_physical_entities(client):
     slug_a = _register_and_project(client, "entity-link-a@example.com", "Projet A")
     exp_a = client.post(
-        f"/api/projects/{slug_a}/experiences",
+        f"/api/microprojets/{slug_a}/experiences",
         json={
             "substrate": _substrate(),
             "steps": _steps(),
@@ -87,11 +87,11 @@ def test_editor_on_both_projects_can_link_two_physical_entities(client):
             "entities": [{"sample_id": "placeholder"}],
         },
     ).json()
-    client.post(f"/api/projects/{slug_a}/experiences/{exp_a['id']}/entites", json={"entities": [{"sample_id": "W-A1", "location": "Salle blanche"}]})
+    client.post(f"/api/microprojets/{slug_a}/experiences/{exp_a['id']}/entites", json={"entities": [{"sample_id": "W-A1", "location": "Salle blanche"}]})
 
-    slug_b = client.post("/api/projects", json={"name": "Projet B"}).json()["slug"]
+    slug_b = client.post("/api/microprojets", json={"name": "Projet B"}).json()["slug"]
     exp_b = client.post(
-        f"/api/projects/{slug_b}/experiences",
+        f"/api/microprojets/{slug_b}/experiences",
         json={
             "substrate": _substrate(),
             "steps": _steps(),
@@ -100,7 +100,7 @@ def test_editor_on_both_projects_can_link_two_physical_entities(client):
             "entities": [{"sample_id": "placeholder"}],
         },
     ).json()
-    client.post(f"/api/projects/{slug_b}/experiences/{exp_b['id']}/entites", json={"entities": [{"sample_id": "W-B1", "location": "Salle blanche"}]})
+    client.post(f"/api/microprojets/{slug_b}/experiences/{exp_b['id']}/entites", json={"entities": [{"sample_id": "W-B1", "location": "Salle blanche"}]})
 
     created = client.post(
         "/api/liens-entites",
@@ -122,7 +122,7 @@ def test_editor_on_both_projects_can_link_two_physical_entities(client):
 
 def test_delete_project_link_requires_editor_on_at_least_one_side(client):
     slug_a = _register_and_project(client, "delete-links-a@example.com", "Projet A")
-    slug_b = client.post("/api/projects", json={"name": "Projet B"}).json()["slug"]
+    slug_b = client.post("/api/microprojets", json={"name": "Projet B"}).json()["slug"]
     link_id = client.post("/api/liens-projets", json={"project_a": slug_a, "project_b": slug_b}).json()["id"]
 
     # an unrelated user cannot delete it

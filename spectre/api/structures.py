@@ -27,7 +27,7 @@ from ..core.tech_bricks import TechBrick, default_tech_bricks
 from .deps import get_current_user
 from .keyed_resource import list_three_buckets, reject_duplicate, require_existing
 
-router = APIRouter(prefix="/api/projects", tags=["structures"])
+router = APIRouter(prefix="/api/microprojets", tags=["structures"])
 
 
 class NewStructureRequest(BaseModel):

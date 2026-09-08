@@ -5,7 +5,7 @@ import logging
 
 def _create_project(client, email="owner@example.com", name="Owner", project_name="Projet"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
-    return client.post("/api/projects", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
 
 
 def _extract_invitation_token(caplog) -> str:
@@ -17,7 +17,7 @@ def _extract_invitation_token(caplog) -> str:
 def test_invite_unknown_email_creates_invitation(client, caplog):
     slug = _create_project(client)
     with caplog.at_level(logging.WARNING, logger="spectre.email"):
-        response = client.post(f"/api/projects/{slug}/members", json={"email": "nouveau@example.com", "role": "editor"})
+        response = client.post(f"/api/microprojets/{slug}/members", json={"email": "nouveau@example.com", "role": "editor"})
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "invited"
@@ -32,7 +32,7 @@ def test_invite_existing_account_adds_directly(client):
     client.post("/api/auth/logout")
     client.post("/api/auth/login", json={"email": "owner@example.com", "password": "supersecret"})
 
-    response = client.post(f"/api/projects/{slug}/members", json={"email": "existe@example.com", "role": "viewer"})
+    response = client.post(f"/api/microprojets/{slug}/members", json={"email": "existe@example.com", "role": "viewer"})
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "added"
@@ -43,7 +43,7 @@ def test_invite_existing_account_adds_directly(client):
 def test_registering_with_matching_invitation_joins_project(client, caplog):
     slug = _create_project(client, project_name="Salle blanche")
     with caplog.at_level(logging.WARNING, logger="spectre.email"):
-        client.post(f"/api/projects/{slug}/members", json={"email": "invite@example.com", "role": "editor"})
+        client.post(f"/api/microprojets/{slug}/members", json={"email": "invite@example.com", "role": "editor"})
     token = _extract_invitation_token(caplog)
 
     info = client.get(f"/api/auth/invitation/{token}")
@@ -58,14 +58,14 @@ def test_registering_with_matching_invitation_joins_project(client, caplog):
     assert response.status_code == 201
     assert response.json()["joined_project"] == "Salle blanche"
 
-    project = client.get(f"/api/projects/{slug}").json()
+    project = client.get(f"/api/microprojets/{slug}").json()
     assert project["role"] == "editor"
 
 
 def test_registering_with_wrong_email_does_not_consume_invitation(client, caplog):
     slug = _create_project(client)
     with caplog.at_level(logging.WARNING, logger="spectre.email"):
-        client.post(f"/api/projects/{slug}/members", json={"email": "correct@example.com", "role": "viewer"})
+        client.post(f"/api/microprojets/{slug}/members", json={"email": "correct@example.com", "role": "viewer"})
     token = _extract_invitation_token(caplog)
 
     client.post("/api/auth/logout")
@@ -84,10 +84,10 @@ def test_registering_with_wrong_email_does_not_consume_invitation(client, caplog
 def test_owner_can_cancel_invitation(client, caplog):
     slug = _create_project(client)
     with caplog.at_level(logging.WARNING, logger="spectre.email"):
-        client.post(f"/api/projects/{slug}/members", json={"email": "annuler@example.com", "role": "viewer"})
+        client.post(f"/api/microprojets/{slug}/members", json={"email": "annuler@example.com", "role": "viewer"})
     token = _extract_invitation_token(caplog)
 
-    response = client.delete(f"/api/projects/{slug}/invitations/{token}")
+    response = client.delete(f"/api/microprojets/{slug}/invitations/{token}")
     assert response.status_code == 200
     assert response.json() == []
     assert client.get(f"/api/auth/invitation/{token}").status_code == 404

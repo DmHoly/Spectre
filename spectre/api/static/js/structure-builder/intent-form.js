@@ -2,7 +2,7 @@
    projet (spectre.core.intent_forms / follow.storage.commit_form.CommitForm) sous les champs
    titre/intention/hypothèse, et les recueille dans le payload de lancement/évolution - la même
    relation "schéma -> champs -> collecte" qu'objectives.js, mais pilotée par un formulaire
-   configurable (YAML) plutôt qu'un schéma fixe. Aucun projet n'en a par défaut : la boîte reste
+   configurable (YAML) plutôt qu'un schéma fixe. Aucun µprojet n'en a par défaut : la boîte reste
    masquée tant qu'aucun formulaire n'est actif (voir /projets/{slug}/formulaire-intention). */
 
 let activeIntentForm = null; // {name, scope, form: {title, description, fields}} | null
@@ -88,7 +88,7 @@ function intentFormErrorMessage(err) {
 
 async function loadIntentForm() {
   try {
-    activeIntentForm = await api.get(`/api/projects/${slug}/formulaire-actif`);
+    activeIntentForm = await api.get(`/api/microprojets/${slug}/formulaire-actif`);
   } catch (err) {
     activeIntentForm = null;
   }
