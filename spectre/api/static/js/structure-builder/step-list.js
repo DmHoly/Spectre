@@ -161,6 +161,9 @@ function updateViewModeAvailability() {
 }
 
 function updateStepFormVisibility() {
+  // À l'écran 2 (variations), c'est variations.js qui décide de ce qui s'affiche dans
+  // #context-panel (formulaire de variation ou son état vide) - rien à faire ici.
+  if (state.wizardScreen === "variations") return;
   const formVisible = state.viewMode === "etapes" || state.editingIndex !== null || state.showStepForm;
   document.getElementById("step-form-section").style.display = formVisible ? "" : "none";
   document.getElementById("context-panel-empty").style.display = formVisible ? "none" : "";
@@ -171,6 +174,10 @@ function updateStepFormVisibility() {
 }
 
 function highlightSelectedLayer() {
+  if (state.wizardScreen === "variations") {
+    highlightVariationLayer();
+    return;
+  }
   const container = document.getElementById("svg-container");
   container.querySelectorAll("[data-layer-index]").forEach((path) => {
     const stepIndex = parseInt(path.dataset.layerIndex, 10) - 1; // layer 0 is always the substrate
@@ -192,7 +199,12 @@ function renderSteps() {
     list.querySelectorAll(".js-step-row").forEach((row) => {
       row.addEventListener("click", (event) => {
         if (event.target.closest("button") || event.target.closest("input")) return;
-        startEditingStep(parseInt(row.dataset.index, 10));
+        const index = parseInt(row.dataset.index, 10);
+        if (state.wizardScreen === "variations") {
+          startVaryingLayer(index);
+          return;
+        }
+        startEditingStep(index);
       });
     });
     list.querySelectorAll(".js-step-remove").forEach((btn) => {
@@ -232,9 +244,7 @@ function renderSteps() {
       });
     });
   }
-  refreshCampaignFactorSteps();
-  state.campaignPlan = null;
-  document.getElementById("campaign-result").innerHTML = "";
+  invalidateVariations();
   updateStepFormVisibility();
   updateGroupBrickWrapVisibility();
   highlightSelectedLayer();
@@ -300,10 +310,16 @@ document.getElementById("view-mode-etapes").addEventListener("click", () => setV
 document.getElementById("add-step-shortcut-btn").addEventListener("click", startAddingStep);
 
 document.getElementById("svg-container").addEventListener("click", (event) => {
-  if (state.viewMode !== "couches") return;
   const path = event.target.closest("[data-layer-index]");
   if (!path) return;
   const layerIndex = parseInt(path.dataset.layerIndex, 10);
+  if (state.wizardScreen === "variations") {
+    if (layerIndex === 0) return; // le substrat n'est pas une grandeur qu'on fait varier ici
+    const stepIndex = layerIndex - 1;
+    if (stepIndex >= 0 && stepIndex < state.steps.length) startVaryingLayer(stepIndex);
+    return;
+  }
+  if (state.viewMode !== "couches") return;
   if (layerIndex === 0) {
     document.getElementById("substrate-section").scrollIntoView({ behavior: "smooth", block: "center" });
     return;

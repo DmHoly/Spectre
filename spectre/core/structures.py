@@ -9,13 +9,14 @@ here at simulation time. This module only turns each ``Frame`` into ready-to-emb
 from __future__ import annotations
 
 import itertools
+import re
 from typing import Any
 
 import follow
 from follow.doe.batch import BatchVariation, analyze_batch
 from pydantic import BaseModel
 from structureforge.adapters.follow_adapter import ProcessStructure, to_structure
-from structureforge.core.materials import MaterialLibrary, default_library
+from structureforge.core.materials import Material, MaterialLibrary, aluminum_gan, default_library, indium_gan
 from structureforge.core.recipes import RecipeLibrary, default_recipes
 from structureforge.core.units import Length
 from structureforge.geometry.engine import Geometry
@@ -45,8 +46,60 @@ class SimulationFailedError(Exception):
     pass
 
 
-def materials_library() -> MaterialLibrary:
-    return default_library()
+def materials_library(*extra_names: str) -> MaterialLibrary:
+    """The static default library, extended with any dynamically-composed III-N material
+    (``In{x:.2f}Ga{1-x:.2f}N`` / ``Al{y:.2f}Ga{1-y:.2f}N`` - see :func:`_graded_nitride_material`)
+    named in ``extra_names``. Spectre has no per-project material CRUD, so a graded composition -
+    picked via the structure-builder's "préciser le taux" field rather than the fixed dropdown -
+    is recreated on the fly from its own self-describing name (:func:`structureforge.core.
+    materials.indium_gan`/``aluminum_gan``) instead of needing to be registered anywhere first.
+    Callers pass every material name a request actually references (substrate, step fields,
+    already-flattened layers...) so an unrecognized *plain* name still fails simulation the same
+    way it always has - only names matching the graded-composition pattern are synthesized.
+    """
+    library = default_library()
+    graded = [_graded_nitride_material(name) for name in extra_names if name not in library]
+    resolved = [material for material in graded if material is not None]
+    return library.with_materials(*resolved) if resolved else library
+
+
+_GRADED_NITRIDE_RE = re.compile(r"^(In|Al)(\d\.\d{2})Ga\d\.\d{2}N$")
+
+
+def _graded_nitride_material(name: str) -> Material | None:
+    """Recompose the :class:`Material` a graded name like ``"In0.20Ga0.80N"`` encodes, by calling
+    the same factory (:func:`structureforge.core.materials.indium_gan`/``aluminum_gan``) that
+    produces that exact name - or ``None`` if ``name`` doesn't match the pattern at all, so callers
+    can pass through arbitrary step field values (step names, recipe names...) unfiltered.
+    """
+    match = _GRADED_NITRIDE_RE.match(name)
+    if not match:
+        return None
+    symbol, fraction_str = match.group(1), match.group(2)
+    factory = indium_gan if symbol == "In" else aluminum_gan
+    material = factory(float(fraction_str))
+    return material if material.name == name else None
+
+
+def _material_names_in_steps(steps: list[ProcessStep]) -> set[str]:
+    """Every material name any step references - ``material``/``material_c``/``material_m``/
+    ``material_sp``/``seed_materials``, whatever fields the step's own kind happens to expose -
+    collected generically from each step's fields rather than a hardcoded per-kind list, so a
+    future material-bearing field on any step kind is picked up without needing a change here.
+    """
+    names: set[str] = set()
+    for step in steps:
+        for field_name in type(step).model_fields:
+            value = getattr(step, field_name, None)
+            if isinstance(value, str):
+                names.add(value)
+            elif isinstance(value, list):
+                names.update(v for v in value if isinstance(v, str))
+    return names
+
+
+def _material_names_in_layers(layers: list[Any]) -> set[str]:
+    return {layer.material for layer in layers}
 
 
 def recipes_library() -> RecipeLibrary:
@@ -61,7 +114,7 @@ def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]
     in the signature even though every project shares the same material/step/recipe physics now -
     callers already pass it, and a project-specific material library is a plausible future need.
     """
-    materials = materials_library()
+    materials = materials_library(substrate.material, *_material_names_in_steps(steps))
     recipes = recipes_library()
     try:
         materials.get(substrate.material)
@@ -232,7 +285,8 @@ def render_structure_svg(structure_type: str, structure_data: dict[str, Any]) ->
     else:
         return None
 
-    return _svg_for_process_structure(process_structure, {m.name: m.color for m in materials_library()})
+    materials = materials_library(*_material_names_in_layers(process_structure.layers))
+    return _svg_for_process_structure(process_structure, {m.name: m.color for m in materials})
 
 
 def _svg_for_process_structure(process_structure: ProcessStructure, material_colors: dict[str, str]) -> str:
@@ -250,7 +304,8 @@ def render_lot_svgs(lot: ProcessLot) -> list[str]:
     """One SVG per entity in a committed campaign - the "atlas": every variant drawn side by
     side, not just the reference one ``render_structure_svg`` shows on its own.
     """
-    material_colors = {m.name: m.color for m in materials_library()}
+    names = {name for entry in lot.entries for name in _material_names_in_layers(entry.layers)}
+    material_colors = {m.name: m.color for m in materials_library(*names)}
     return [_svg_for_process_structure(entry, material_colors) for entry in lot.entries]
 
 

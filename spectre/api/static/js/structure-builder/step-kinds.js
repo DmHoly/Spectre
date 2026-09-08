@@ -4,7 +4,7 @@
    modifier un type d'étape demandait de toucher neuf fonctions différentes (une par
    responsabilité) ; chaque type vit maintenant dans une seule entrée de STEP_KIND_DEFS.
    STEP_KINDS/CAMPAIGN_FIELD_OPTIONS/PY_STEP_CLASS restent exposés sous leur ancienne forme
-   (dérivés du registre) car step-list.js, campaign.js et code-export.js les lisent directement. */
+   (dérivés du registre) car step-list.js, variations.js et code-export.js les lisent directement. */
 
 const STEP_KIND_DEFS = {
   deposition: {
@@ -16,7 +16,7 @@ const STEP_KIND_DEFS = {
     pyClass: "Deposition",
     renderFields: () => `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Dépôt"></div>
-      <div><label>Matériau</label><select class="field" id="f-material">${materialOptions()}</select></div>
+      ${gradedMaterialFieldHtml("f-material", "Matériau", null)}
       <div><label>Préset (optionnel)</label><select class="field" id="f-preset"><option value="">Personnalisé</option>${presetOptionsHtml("deposition")}</select>
         <div class="help" style="margin-top:4px;">Choisit la recette ci-dessous — reste ensuite librement modifiable.</div>
       </div>
@@ -25,16 +25,19 @@ const STEP_KIND_DEFS = {
       </div>
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="20"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>`,
-    wire: () => wireRecipeField("deposition"),
+    wire: () => {
+      wireGradedMaterialField("f-material");
+      wireRecipeField("deposition");
+    },
     buildFromForm: (name) => ({
       kind: "deposition",
       name,
-      material: document.getElementById("f-material").value,
+      material: gradedMaterialValue("f-material"),
       recipe: document.getElementById("f-recipe").value,
       thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
     }),
     fillFields: (step) => {
-      document.getElementById("f-material").value = step.material;
+      fillGradedMaterialField("f-material", step.material);
       document.getElementById("f-recipe").value = step.recipe;
       document.getElementById("f-thickness").value = step.thickness.value;
       document.getElementById("f-thickness-unit").value = step.thickness.unit;
@@ -236,7 +239,7 @@ const STEP_KIND_DEFS = {
     pyClass: "FacetedGrowth",
     renderFields: () => `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Croissance facettée"></div>
-      <div><label>Matériau</label><select class="field" id="f-material">${materialOptions("GaN")}</select></div>
+      ${gradedMaterialFieldHtml("f-material", "Matériau", "GaN")}
       <div class="field-row"><div><label>Épaisseur nominale (plan C)</label><input class="field" id="f-thickness" type="number" value="10" min="0.1" step="0.1"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
       <div class="help">Vitesses relatives par plan cristallin (plan C = référence 1.0). L'épaisseur nominale ci-dessus est celle déposée sur le plan C ; les plans M et semipolaire avancent chacun à leur propre vitesse relative — construction de Wulff cinétique, la même géométrie qu'un nanofil en crayon ou une pointe de LED III-N.</div>
@@ -245,34 +248,58 @@ const STEP_KIND_DEFS = {
       <div class="field-row"><div><label>Vitesse semipolaire</label><input class="field" id="f-rate-sp" type="number" value="0.5" min="0" step="0.05"></div>
       <div><label>Angle semipolaire (° depuis l'axe c)</label><input class="field" id="f-angle-sp" type="number" value="30" min="1" max="89" step="1"></div></div>
       <div class="help" id="f-tip-hint" style="margin-top:-6px;"></div>
+      <div class="help">Incorporation dépendante de la facette (optionnel) : un plan cristallin peut incorporer plus ou moins d'indium/aluminium qu'un autre (ex : plus d'indium sur le plan C que sur les flancs semipolaires) — laissé vide, une facette reprend le matériau principal ci-dessus.</div>
+      ${gradedMaterialFieldHtml("f-material-c", "Matériau — plan C", null, { allowUnset: true })}
+      ${gradedMaterialFieldHtml("f-material-m", "Matériau — plan M (flancs)", null, { allowUnset: true })}
+      ${gradedMaterialFieldHtml("f-material-sp", "Matériau — semipolaire", null, { allowUnset: true })}
       <div><label>Matériaux d'amorçage — SAG (optionnel)</label><input class="field" id="f-seed-materials" placeholder="ex : GaN, AlN">
         <div class="help" style="margin-top:4px;">Noms séparés par des virgules. Vide = croissance sur toute surface exposée, sans sélectivité.</div>
       </div>`,
-    wire: () => wireFacetedGrowthTipHint(),
+    wire: () => {
+      wireGradedMaterialField("f-material");
+      wireGradedMaterialField("f-material-c");
+      wireGradedMaterialField("f-material-m");
+      wireGradedMaterialField("f-material-sp");
+      wireFacetedGrowthTipHint();
+    },
     buildFromForm: (name) => ({
       kind: "faceted_growth",
       name,
-      material: document.getElementById("f-material").value,
+      material: gradedMaterialValue("f-material"),
       thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
       rate_c: parseFloat(document.getElementById("f-rate-c").value) || 0,
       rate_m: parseFloat(document.getElementById("f-rate-m").value) || 0,
       rate_sp: parseFloat(document.getElementById("f-rate-sp").value) || 0,
       semi_polar_angle_deg: parseFloat(document.getElementById("f-angle-sp").value) || 30,
       seed_materials: parseCommaList(document.getElementById("f-seed-materials").value),
+      material_c: gradedMaterialValue("f-material-c") || null,
+      material_m: gradedMaterialValue("f-material-m") || null,
+      material_sp: gradedMaterialValue("f-material-sp") || null,
     }),
     fillFields: (step) => {
-      document.getElementById("f-material").value = step.material;
+      fillGradedMaterialField("f-material", step.material);
       document.getElementById("f-thickness").value = step.thickness.value;
       document.getElementById("f-thickness-unit").value = step.thickness.unit;
       document.getElementById("f-rate-c").value = step.rate_c;
       document.getElementById("f-rate-m").value = step.rate_m;
       document.getElementById("f-rate-sp").value = step.rate_sp;
       document.getElementById("f-angle-sp").value = step.semi_polar_angle_deg;
+      fillGradedMaterialField("f-material-c", step.material_c);
+      fillGradedMaterialField("f-material-m", step.material_m);
+      fillGradedMaterialField("f-material-sp", step.material_sp);
       document.getElementById("f-seed-materials").value = (step.seed_materials || []).join(", ");
     },
-    summary: (step) =>
-      `${step.material} · +${step.thickness.value} ${step.thickness.unit} (C) · M×${step.rate_m} · SP×${step.rate_sp}` +
-      (step.seed_materials && step.seed_materials.length ? ` · SAG sur ${step.seed_materials.join("/")}` : ""),
+    summary: (step) => {
+      const facets = [];
+      if (step.material_c) facets.push(`C=${step.material_c}`);
+      if (step.material_m) facets.push(`M=${step.material_m}`);
+      if (step.material_sp) facets.push(`SP=${step.material_sp}`);
+      return (
+        `${step.material} · +${step.thickness.value} ${step.thickness.unit} (C) · M×${step.rate_m} · SP×${step.rate_sp}` +
+        (facets.length ? ` · ${facets.join(", ")}` : "") +
+        (step.seed_materials && step.seed_materials.length ? ` · SAG sur ${step.seed_materials.join("/")}` : "")
+      );
+    },
     pyCode: (step) => {
       const parts = [
         `name=${pyStr(step.name)}`,
@@ -283,6 +310,9 @@ const STEP_KIND_DEFS = {
         `rate_sp=${step.rate_sp}`,
         `semi_polar_angle_deg=${step.semi_polar_angle_deg}`,
       ];
+      if (step.material_c) parts.push(`material_c=${pyStr(step.material_c)}`);
+      if (step.material_m) parts.push(`material_m=${pyStr(step.material_m)}`);
+      if (step.material_sp) parts.push(`material_sp=${pyStr(step.material_sp)}`);
       if (step.seed_materials && step.seed_materials.length) parts.push(`seed_materials=${pyList(step.seed_materials)}`);
       return `FacetedGrowth(${parts.join(", ")})`;
     },
@@ -297,7 +327,7 @@ const STEP_KIND_DEFS = {
     pyClass: "EpitaxialGrowth",
     renderFields: () => `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Croissance épitaxiale"></div>
-      <div><label>Matériau</label><select class="field" id="f-material">${materialOptions("GaN")}</select></div>
+      ${gradedMaterialFieldHtml("f-material", "Matériau", "GaN")}
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="20"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
       <div><label>Orientation cristalline</label>
@@ -311,13 +341,16 @@ const STEP_KIND_DEFS = {
       <div><label>Matériaux d'amorçage — SAG (optionnel)</label><input class="field" id="f-seed-materials" placeholder="ex : GaN, AlN">
         <div class="help" style="margin-top:4px;">Noms séparés par des virgules. Vide = croissance non sélective sur toute surface exposée (buffer, template) ; rempli, bloque la nucléation ailleurs — un vrai masque de croissance sélective (SAG).</div>
       </div>`,
-    wire: () => wireEpitaxialOrientationToggle(),
+    wire: () => {
+      wireGradedMaterialField("f-material");
+      wireEpitaxialOrientationToggle();
+    },
     buildFromForm: (name) => {
       const orientation = document.getElementById("f-orientation").value;
       const step = {
         kind: "epitaxial_growth",
         name,
-        material: document.getElementById("f-material").value,
+        material: gradedMaterialValue("f-material"),
         thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
         orientation,
         seed_materials: parseCommaList(document.getElementById("f-seed-materials").value),
@@ -326,7 +359,7 @@ const STEP_KIND_DEFS = {
       return step;
     },
     fillFields: (step) => {
-      document.getElementById("f-material").value = step.material;
+      fillGradedMaterialField("f-material", step.material);
       document.getElementById("f-thickness").value = step.thickness.value;
       document.getElementById("f-thickness-unit").value = step.thickness.unit;
       document.getElementById("f-orientation").value = step.orientation;

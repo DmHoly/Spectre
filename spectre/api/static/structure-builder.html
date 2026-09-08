@@ -154,6 +154,32 @@
             <button class="btn btn-line btn-block" id="cancel-edit-btn" type="button" style="display:none;">Annuler la modification</button>
           </div>
         </div>
+
+        <div id="variation-form-section" class="builder-col__scroll" style="display:none;">
+          <div class="section-title" style="margin-bottom:14px;" id="variation-form-title">Variation</div>
+          <div class="field-group">
+            <div>
+              <label>Paramètre</label>
+              <select class="field" id="variation-field-select"></select>
+            </div>
+            <div class="view-toggle">
+              <button class="view-toggle__btn active" id="variation-mode-linear" type="button">Linéaire</button>
+              <button class="view-toggle__btn" id="variation-mode-explicit" type="button">Valeurs précises</button>
+            </div>
+            <div id="variation-linear-fields" class="field-group">
+              <div class="field-row" style="grid-template-columns:1fr 1fr 1fr;">
+                <div><label>Min</label><input class="field" id="variation-min" type="number"></div>
+                <div><label>Max</label><input class="field" id="variation-max" type="number"></div>
+                <div><label>Points</label><input class="field" id="variation-count" type="number" value="3" min="2"></div>
+              </div>
+            </div>
+            <div id="variation-explicit-fields" class="field-group" style="display:none;">
+              <div><label>Valeurs</label><input class="field" id="variation-values" placeholder="ex : 10, 20, 30"></div>
+            </div>
+            <button class="btn btn-tint btn-block" id="add-variation-btn" type="button">Ajouter cette variation</button>
+            <button class="btn btn-line btn-block" id="cancel-variation-btn" type="button">Annuler</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -169,90 +195,93 @@
       </div>
     </dialog>
 
-    <!-- Mode expérience uniquement, dans cet ordre : structure (ci-dessus) > paramètres/campagne >
-         objectifs et intention > lancer. -->
+    <!-- Mode expérience uniquement, en deux écrans internes (un seul chargement de page) :
+         écran 1 structure (ci-dessus) + intention, écran 2 variations + échantillons. -->
     <div id="experience-sections" style="display:flex;flex-direction:column;gap:12px;margin:20px 0;">
-      <details id="campaign-section" class="card" style="padding:0;background:var(--bg);overflow:hidden;">
-        <summary class="disclosure-btn disclosure-btn--tint">
-          <span>
-            Campagne DOE — plusieurs échantillons (split)
-            <span class="disclosure-btn__sub">Faire varier un ou plusieurs paramètres (ex : dopage) et lancer tous les échantillons en une fois.</span>
-          </span>
-          <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
-        </summary>
-        <div style="padding:14px 16px 16px;">
-          <div class="help" style="margin-bottom:10px;">Avec plusieurs paramètres, toutes les combinaisons sont générées (ex : 3 épaisseurs &times; 3 angles = 9 échantillons). La feuille de split (qui a reçu quelle valeur) apparaîtra sur la fiche de l'expérience une fois lancée.</div>
-          <div id="campaign-factors" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
-          <button class="btn btn-line btn-block" id="campaign-add-factor-btn" type="button" style="margin-bottom:10px;">+ Ajouter un paramètre</button>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-line" id="campaign-preview-btn" type="button" style="flex:1;">Prévisualiser</button>
-            <button class="btn btn-line" id="campaign-clear-btn" type="button">Annuler</button>
-          </div>
-          <div id="campaign-result"></div>
-        </div>
-      </details>
-
-      <details id="objectives-section" class="card" style="padding:0;overflow:hidden;" open>
-        <summary class="disclosure-btn disclosure-btn--line">
-          <span>
-            Objectifs et intention
-            <span class="disclosure-btn__sub">Pourquoi cette expérience, ce qu'on cherche à savoir, et comment on saura si c'est atteint.</span>
-          </span>
-          <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
-        </summary>
-        <div style="padding:0 16px 16px;">
-          <div class="field-group" style="margin-bottom:16px;">
-            <div><label>Titre de l'expérience</label><input class="field" id="exp-title" placeholder="ex : Contact ohmique PGaN, dopage cible"></div>
-            <div class="field-row">
-              <div><label>Intention (pourquoi fait-on cette expérience ?)</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier, et pourquoi maintenant ?"></textarea></div>
-              <div><label>Hypothèse (optionnelle)</label><textarea class="field" id="exp-hypothesis" rows="2" placeholder="Ce qu'on pense observer"></textarea></div>
-            </div>
-            <div class="field-row">
-              <div><label id="entity-field-label">Entité physique (obligatoire)</label><input class="field" id="exp-entity-sample-id" placeholder="ex : W12-A3"></div>
-              <div><label>Emplacement (optionnel)</label><input class="field" id="exp-entity-location" placeholder="ex : congélateur B, tiroir 2"></div>
-            </div>
-            <div class="help" id="entity-field-hint" style="margin-top:-4px;">Chaque expérience doit être reliée à un échantillon réel - c'est cet identifiant qui permet de la retrouver.</div>
-          </div>
-          <div class="section-title" style="margin-bottom:6px;">Objectifs</div>
-          <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
-          <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
-            <div><label>Objectif</label><input class="field" id="obj-name" placeholder="ex : isolation électrique" required></div>
-            <div><label>Pourquoi cet objectif</label><textarea class="field" id="obj-rationale" rows="2" placeholder="ex : condition pour passer en production"></textarea></div>
-            <div class="field-row">
-              <div><label>Mesure</label><input class="field" id="obj-metric" placeholder="ex : resistivity_ohm_cm" required></div>
-              <div><label>Sens</label>
-                <select class="field" id="obj-direction">
-                  <option value="observe">Observer</option>
-                  <option value="maximize">Maximiser</option>
-                  <option value="minimize">Minimiser</option>
-                  <option value="target">Cible précise</option>
-                </select>
+      <div id="wizard-step-intention" style="display:flex;flex-direction:column;gap:12px;">
+        <details id="objectives-section" class="card" style="padding:0;overflow:hidden;" open>
+          <summary class="disclosure-btn disclosure-btn--line">
+            <span>
+              Objectifs et intention
+              <span class="disclosure-btn__sub">Pourquoi cette expérience, ce qu'on cherche à savoir, et comment on saura si c'est atteint.</span>
+            </span>
+            <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <div style="padding:0 16px 16px;">
+            <div class="field-group" style="margin-bottom:16px;">
+              <div><label>Titre de l'expérience</label><input class="field" id="exp-title" placeholder="ex : Contact ohmique PGaN, dopage cible"></div>
+              <div class="field-row">
+                <div><label>Intention (pourquoi fait-on cette expérience ?)</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier, et pourquoi maintenant ?"></textarea></div>
+                <div><label>Hypothèse (optionnelle)</label><textarea class="field" id="exp-hypothesis" rows="2" placeholder="Ce qu'on pense observer"></textarea></div>
+              </div>
+              <div id="entity-fields-wrap" style="display:none;">
+                <div class="field-row">
+                  <div><label id="entity-field-label">Entité physique (obligatoire)</label><input class="field" id="exp-entity-sample-id" placeholder="ex : W12-A3"></div>
+                  <div><label>Emplacement (optionnel)</label><input class="field" id="exp-entity-location" placeholder="ex : congélateur B, tiroir 2"></div>
+                </div>
+                <div class="help" id="entity-field-hint" style="margin-top:-4px;">Chaque expérience doit être reliée à un échantillon réel - c'est cet identifiant qui permet de la retrouver.</div>
               </div>
             </div>
-            <div><label>Valeur cible (optionnelle)</label><input class="field" id="obj-target" type="number"></div>
-            <div><label>Comment on compte le vérifier</label><textarea class="field" id="obj-verification" rows="2" placeholder="ex : mesure au profilomètre après dépôt"></textarea></div>
-            <button class="btn btn-line btn-block" type="submit">Ajouter l'objectif</button>
-          </form>
-        </div>
-      </details>
+            <div class="section-title" style="margin-bottom:6px;">Objectifs</div>
+            <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
+            <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
+              <div><label>Objectif</label><input class="field" id="obj-name" placeholder="ex : isolation électrique" required></div>
+              <div><label>Pourquoi cet objectif</label><textarea class="field" id="obj-rationale" rows="2" placeholder="ex : condition pour passer en production"></textarea></div>
+              <div class="field-row">
+                <div><label>Mesure</label><input class="field" id="obj-metric" placeholder="ex : resistivity_ohm_cm" required></div>
+                <div><label>Sens</label>
+                  <select class="field" id="obj-direction">
+                    <option value="observe">Observer</option>
+                    <option value="maximize">Maximiser</option>
+                    <option value="minimize">Minimiser</option>
+                    <option value="target">Cible précise</option>
+                  </select>
+                </div>
+              </div>
+              <div><label>Valeur cible (optionnelle)</label><input class="field" id="obj-target" type="number"></div>
+              <div><label>Comment on compte le vérifier</label><textarea class="field" id="obj-verification" rows="2" placeholder="ex : mesure au profilomètre après dépôt"></textarea></div>
+              <button class="btn btn-line btn-block" type="submit">Ajouter l'objectif</button>
+            </form>
+          </div>
+        </details>
 
-      <div class="card card-pad" id="intent-form-box" style="display:none;"></div>
+        <div class="card card-pad" id="intent-form-box" style="display:none;"></div>
 
-      <div class="card card-pad" id="branch-choice-wrap" style="display:none;">
-        <div class="section-title" style="margin-bottom:10px;">Piste</div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px;color:var(--text);">
-            <input type="radio" name="branch-choice" id="branch-continue" value="continue" checked> Continuer cette piste
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px;color:var(--text);">
-            <input type="radio" name="branch-choice" id="branch-fork" value="fork"> Explorer une nouvelle piste à partir d'ici
-          </label>
-          <input class="field" id="new-branch-name" placeholder="nom de la nouvelle piste" style="display:none;">
-          <div class="help">Une nouvelle piste garde le lien avec la version de départ, mais évolue séparément — pratique pour comparer deux directions.</div>
+        <div class="card card-pad" id="branch-choice-wrap" style="display:none;">
+          <div class="section-title" style="margin-bottom:10px;">Piste</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px;color:var(--text);">
+              <input type="radio" name="branch-choice" id="branch-continue" value="continue" checked> Continuer cette piste
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px;color:var(--text);">
+              <input type="radio" name="branch-choice" id="branch-fork" value="fork"> Explorer une nouvelle piste à partir d'ici
+            </label>
+            <input class="field" id="new-branch-name" placeholder="nom de la nouvelle piste" style="display:none;">
+            <div class="help">Une nouvelle piste garde le lien avec la version de départ, mais évolue séparément — pratique pour comparer deux directions.</div>
+          </div>
         </div>
+
+        <button class="btn btn-primary btn-block" id="continue-btn" type="button" style="font-size:15px;padding:14px;">Continuer &rarr;</button>
+        <button class="btn btn-primary btn-block" id="launch-btn" style="font-size:15px;padding:14px;display:none;">Enregistrer cette évolution</button>
       </div>
 
-      <button class="btn btn-primary btn-block" id="launch-btn" style="font-size:15px;padding:14px;">Lancer le suivi de cette expérience</button>
+      <div id="wizard-step-variations" style="display:none;flex-direction:column;gap:12px;">
+        <div class="card card-pad" style="background:var(--bg);">
+          <div class="section-title" style="margin-bottom:6px;">Variations</div>
+          <div class="help" style="margin-bottom:10px;">Cliquez une couche du dessin ci-dessus pour faire varier un de ses paramètres (ex : épaisseur). Avec plusieurs paramètres, toutes les combinaisons sont générées (ex : 3 épaisseurs &times; 3 angles = 9 échantillons). Sans variation, un seul échantillon sera lancé.</div>
+          <div id="variation-factors-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        </div>
+
+        <div class="card card-pad" style="overflow-x:auto;">
+          <div class="section-title" style="margin-bottom:10px;">Échantillons à lancer</div>
+          <div id="variation-table-wrap"></div>
+        </div>
+
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-line" id="back-to-intention-btn" type="button" style="flex:none;">&larr; Retour</button>
+          <button class="btn btn-primary" id="launch-btn-variations" type="button" style="flex:1;font-size:15px;padding:14px;">Lancer le suivi de cette expérience</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -265,9 +294,9 @@
   <script src="/static/js/structure-builder/step-kinds.js"></script>
   <script src="/static/js/structure-builder/step-list.js"></script>
   <script src="/static/js/structure-builder/objectives.js"></script>
-  <script src="/static/js/structure-builder/campaign.js"></script>
   <script src="/static/js/structure-builder/simulation.js"></script>
   <script src="/static/js/structure-builder/intent-form.js"></script>
+  <script src="/static/js/structure-builder/variations.js"></script>
   <script src="/static/js/structure-builder/experience-launch.js"></script>
   <script src="/static/js/structure-builder/library-mode.js"></script>
   <script src="/static/js/structure-builder/brick-mode.js"></script>

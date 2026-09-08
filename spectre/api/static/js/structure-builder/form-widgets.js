@@ -8,6 +8,82 @@ function materialOptions(selectedValue) {
     .join("");
 }
 
+// Composition InGaN/AlGaN à un taux précis, plutôt qu'un nom fixe de la bibliothèque - voir
+// structureforge.core.materials.indium_gan/aluminum_gan côté serveur : la composition détermine
+// elle-même le nom (In{x:.2f}Ga{1-x:.2f}N / Al{y:.2f}Ga{1-y:.2f}N), que run_simulation reconnaît
+// et recompose (couleur/densité/indice) sans qu'aucun matériau n'ait besoin d'être enregistré
+// nulle part au préalable - voir spectre.core.structures._graded_nitride_material.
+const GRADED_NITRIDE_RE = /^(In|Al)(\d\.\d{2})Ga\d\.\d{2}N$/;
+
+function gradedMaterialName(symbol, fractionPercent) {
+  const x = Math.max(0, Math.min(100, fractionPercent)) / 100;
+  return `${symbol}${x.toFixed(2)}Ga${(1 - x).toFixed(2)}N`;
+}
+
+// Un champ matériau qui, en plus des matériaux de la bibliothèque, propose de composer un
+// InGaN/AlGaN à un taux précis. `id` nomme tout le groupe : le <select> est `${id}-select`, le
+// mini-champ pourcentage `${id}-fraction`. `allowUnset` ajoute une option vide en tête (pour
+// material_c/m/sp d'une croissance facettée, où vide retombe sur le matériau principal de
+// l'étape - voir structureforge.process.steps.FacetedGrowth).
+function gradedMaterialFieldHtml(id, label, selectedValue, { allowUnset = false, unsetLabel = "(même que le matériau principal)" } = {}) {
+  const gradedMatch = GRADED_NITRIDE_RE.exec(selectedValue || "");
+  const sentinel = gradedMatch ? (gradedMatch[1] === "In" ? "__in_gan__" : "__al_gan__") : null;
+  const unsetOption = allowUnset ? `<option value="" ${!selectedValue ? "selected" : ""}>${unsetLabel}</option>` : "";
+  const baseOptions = materialOptions(sentinel ? "" : selectedValue);
+  const fractionPercent = gradedMatch ? Math.round(parseFloat(gradedMatch[2]) * 100) : 20;
+  return `
+    <div>
+      <label>${label}</label>
+      <select class="field" id="${id}-select">
+        ${unsetOption}
+        ${baseOptions}
+        <option value="__in_gan__" ${sentinel === "__in_gan__" ? "selected" : ""}>InGaN — préciser le taux d'indium…</option>
+        <option value="__al_gan__" ${sentinel === "__al_gan__" ? "selected" : ""}>AlGaN — préciser le taux d'aluminium…</option>
+      </select>
+      <div id="${id}-fraction-wrap" style="margin-top:6px;display:${sentinel ? "" : "none"};">
+        <label>Taux (%)</label>
+        <input class="field" id="${id}-fraction" type="number" min="0" max="100" step="1" value="${fractionPercent}">
+      </div>
+    </div>`;
+}
+
+function wireGradedMaterialField(id) {
+  const select = document.getElementById(`${id}-select`);
+  const wrap = document.getElementById(`${id}-fraction-wrap`);
+  select.addEventListener("change", () => {
+    wrap.style.display = select.value === "__in_gan__" || select.value === "__al_gan__" ? "" : "none";
+  });
+}
+
+// La valeur effective à écrire dans le champ de l'étape (material/material_c/...) - le nom gradé
+// composé si l'option spéciale est choisie, sinon directement la valeur du <select> (chaîne vide
+// pour l'option "même que le matériau principal", à l'appelant de la traduire en null si besoin).
+function gradedMaterialValue(id) {
+  const select = document.getElementById(`${id}-select`);
+  if (select.value === "__in_gan__" || select.value === "__al_gan__") {
+    const symbol = select.value === "__in_gan__" ? "In" : "Al";
+    return gradedMaterialName(symbol, parseFloat(document.getElementById(`${id}-fraction`).value) || 0);
+  }
+  return select.value;
+}
+
+// Pré-remplissage à l'édition : reconstruit l'état du groupe (option choisie + taux) depuis le
+// nom de matériau déjà stocké sur l'étape - `materialName` peut être null/undefined (material_c
+// etc. non renseigné sur cette étape).
+function fillGradedMaterialField(id, materialName) {
+  const select = document.getElementById(`${id}-select`);
+  const wrap = document.getElementById(`${id}-fraction-wrap`);
+  const match = GRADED_NITRIDE_RE.exec(materialName || "");
+  if (match) {
+    select.value = match[1] === "In" ? "__in_gan__" : "__al_gan__";
+    document.getElementById(`${id}-fraction`).value = Math.round(parseFloat(match[2]) * 100);
+    wrap.style.display = "";
+  } else {
+    select.value = materialName || "";
+    wrap.style.display = "none";
+  }
+}
+
 function presetOptionsHtml(kind) {
   const entries = [
     ...state.stepPresets.presets.map((p) => ({ ...p, scope: "preset" })),
