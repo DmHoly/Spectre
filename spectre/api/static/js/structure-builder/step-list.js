@@ -220,8 +220,13 @@ function renderSteps() {
         const index = parseInt(btn.dataset.index, 10);
         state.steps.splice(index, 1);
         state.selectedStepIndices.clear();
-        if (state.editingIndex === index) cancelEditingStep();
-        else renderSteps();
+        // L'étape éditée disparaît avec la suppression - fermer le formulaire sans tenter de la
+        // restaurer (cancelEditingStep() la ferait réapparaître à sa position d'avant l'édition).
+        if (state.editingIndex === index) {
+          state.editingIndex = null;
+          state.editingOriginalStep = null;
+          closeStepForm();
+        } else renderSteps();
       });
     });
     list.querySelectorAll(".js-step-up").forEach((btn) => {
@@ -287,14 +292,18 @@ function updateGroupBrickWrapVisibility() {
 
 function startEditingStep(index) {
   state.editingIndex = index;
+  // Snapshot restauré par cancelEditingStep() - l'aperçu en temps réel (voir livePreviewFromForm)
+  // mute state.steps[index] à chaque frappe, avant tout clic sur "Enregistrer".
+  state.editingOriginalStep = state.steps[index];
   fillKindFields(state.steps[index]);
   document.getElementById("step-form-title").textContent = `Modifier l'étape ${index + 1}`;
   document.getElementById("add-step-btn-label").textContent = "Enregistrer les modifications";
   renderSteps();
 }
 
-function cancelEditingStep() {
-  state.editingIndex = null;
+// Ferme le formulaire sans toucher à state.steps - après un commit délibéré (Ajouter/Enregistrer)
+// ou à l'ouverture du mode ajout. cancelEditingStep() ci-dessous gère en plus la restauration.
+function closeStepForm() {
   if (state.viewMode === "couches") state.showStepForm = false;
   document.getElementById("step-form-title").textContent = "Ajouter une étape";
   document.getElementById("add-step-btn-label").textContent = "Ajouter cette étape";
@@ -302,8 +311,20 @@ function cancelEditingStep() {
   renderSteps();
 }
 
+// "Annuler la modification" : restaure l'étape éditée à sa valeur d'avant l'aperçu en temps réel
+// (l'aperçu a pu la muter à chaque frappe sans qu'on ait jamais cliqué "Enregistrer").
+function cancelEditingStep() {
+  if (state.editingIndex !== null && state.editingOriginalStep) {
+    state.steps[state.editingIndex] = state.editingOriginalStep;
+  }
+  state.editingIndex = null;
+  state.editingOriginalStep = null;
+  closeStepForm();
+}
+
 function startAddingStep() {
   state.editingIndex = null;
+  state.editingOriginalStep = null;
   state.showStepForm = true;
   document.getElementById("step-form-title").textContent = "Ajouter une étape";
   document.getElementById("add-step-btn-label").textContent = "Ajouter cette étape";
@@ -383,7 +404,11 @@ document.getElementById("add-step-btn").addEventListener("click", () => {
     } else {
       state.steps.push(step);
     }
-    cancelEditingStep();
+    // Commit délibéré : fermer sans restaurer (cancelEditingStep() écraserait ce qu'on vient
+    // d'enregistrer avec le snapshot d'avant édition).
+    state.editingIndex = null;
+    state.editingOriginalStep = null;
+    closeStepForm();
   } catch (err) {
     showError(err);
   }
@@ -393,6 +418,32 @@ document.getElementById("cancel-edit-btn").addEventListener("click", () => {
   clearError();
   cancelEditingStep();
 });
+
+// Aperçu en temps réel : à chaque frappe/sélection dans le formulaire d'étape (délégué sur son
+// conteneur stable, puisque #kind-fields est reconstruit à chaque changement de type), on
+// resimule sans attendre "Ajouter"/"Enregistrer" - state.steps n'est muté que si une étape est
+// déjà en cours d'édition (avec rollback possible, voir cancelEditingStep) ; en mode ajout, on
+// simule une liste temporaire sans jamais toucher state.steps tant que rien n'est confirmé.
+function livePreviewFromForm() {
+  if (state.editingIndex === null && !state.showStepForm) return;
+  let step;
+  try {
+    step = buildStepFromForm();
+  } catch (err) {
+    return; // valeur transitoire pas encore exploitable (champ vide, plage mal formée...) - on attend la suite de la frappe
+  }
+  if (state.editingIndex !== null) {
+    const previous = state.steps[state.editingIndex];
+    state.steps[state.editingIndex] = { ...step, brick_group_id: previous.brick_group_id, brick_name: previous.brick_name };
+    scheduleSimulate(120, undefined, { silent: true });
+  } else {
+    scheduleSimulate(120, [...state.steps, step], { silent: true });
+  }
+}
+
+const stepFormSection = document.getElementById("step-form-section");
+stepFormSection.addEventListener("input", livePreviewFromForm);
+stepFormSection.addEventListener("change", livePreviewFromForm);
 
 // Une brique technologique est une séquence d'étapes préenregistrée (voir brick-mode.js /
 // spectre.core.tech_bricks) - l'insérer copie ses étapes dans la structure courante une bonne

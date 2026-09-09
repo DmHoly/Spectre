@@ -46,41 +46,55 @@ function renderFrame() {
   applyZoom();
 }
 
-async function simulateNow() {
+// `overrideSteps` simule une liste d'étapes différente de `state.steps` sans la commiter (aperçu
+// d'une étape en cours d'ajout, pas encore validée). `silent` avale l'erreur au lieu de l'afficher
+// - une valeur transitoire pendant la frappe (un champ encore vide, une plage mal formée) ne doit
+// pas clignoter un message d'erreur à chaque caractère ; seul un clic délibéré sur "Ajouter"/
+// "Enregistrer" doit remonter un vrai échec de validation.
+async function simulateNow(overrideSteps, { silent = false } = {}) {
   clearError();
   try {
     const result = await api.post(`/api/microprojets/${slug}/structures/simulate`, {
       substrate: substrateSpec(),
-      steps: state.steps,
+      steps: overrideSteps || state.steps,
     });
     state.frames = result.frames;
     state.materialColors = result.material_colors;
     state.currentFrame = state.frames.length - 1;
     renderFrame();
   } catch (err) {
-    showError(err);
+    if (!silent) showError(err);
   }
 }
 
-// Coalesces the several renderSteps()/substrate-change calls that can happen in the same tick
-// (e.g. moving a step touches editingIndex then re-renders) into a single simulate call, without
-// making the auto-preview feel like a deliberate delay - not a debounce for its own sake.
+// Coalesces the several renderSteps()/substrate-change/keystroke calls that can happen in the
+// same tick into a single simulate call, without making the auto-preview feel like a deliberate
+// delay - not a debounce for its own sake.
 let simulateTimer = null;
-function scheduleSimulate(delay = 120) {
+let simulatePending = null;
+function scheduleSimulate(delay = 120, overrideSteps, opts) {
   if (simulateTimer) clearTimeout(simulateTimer);
+  simulatePending = { overrideSteps, opts };
   simulateTimer = setTimeout(() => {
     simulateTimer = null;
-    simulateNow();
+    const { overrideSteps: steps, opts: pendingOpts } = simulatePending;
+    simulatePending = null;
+    simulateNow(steps, pendingOpts);
   }, delay);
 }
 
-["substrate-material", "substrate-width", "substrate-width-unit", "substrate-thickness", "substrate-thickness-unit"].forEach(
-  (id) =>
-    document.getElementById(id).addEventListener("change", () => {
-      captureHistory();
-      scheduleSimulate();
-    })
-);
+["substrate-material", "substrate-width", "substrate-width-unit", "substrate-thickness", "substrate-thickness-unit"].forEach((id) => {
+  const el = document.getElementById(id);
+  // "input" : aperçu instantané à chaque frappe/sélection, sans capturer d'historique (un Ctrl+Z
+  // par caractère tapé serait inutilisable). "change" (au blur, ou déjà déclenché par "input" pour
+  // un <select>) capture l'historique une fois la valeur retenue - la double simulation que ça
+  // provoque pour un <select> est absorbée par le debounce ci-dessus.
+  el.addEventListener("input", () => scheduleSimulate());
+  el.addEventListener("change", () => {
+    captureHistory();
+    scheduleSimulate();
+  });
+});
 
 document.getElementById("zoom-in-btn").addEventListener("click", () => {
   state.zoom = Math.min(4, +(state.zoom + 0.25).toFixed(2));

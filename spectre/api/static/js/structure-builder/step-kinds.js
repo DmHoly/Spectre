@@ -172,6 +172,7 @@ const STEP_KIND_DEFS = {
           offsetRaw ? parseFloat(offsetRaw) : null
         );
         document.getElementById("f-openings").value = openings.map((pair) => pair.join("-")).join(", ");
+        livePreviewFromForm(); // valeur posée par script, ne déclenche ni "input" ni "change" toute seule
       });
     },
     buildFromForm: (name) => ({
