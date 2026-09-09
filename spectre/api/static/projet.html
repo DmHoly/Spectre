@@ -39,8 +39,8 @@
 
     <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;">
       <div>
-        <h1 id="project-name" style="font-size:22px;"></h1>
-        <p id="project-description" style="color:var(--text-soft);font-size:14px;margin-top:4px;"></p>
+        <h1 id="microproject-name" style="font-size:22px;"></h1>
+        <p id="microproject-description" style="color:var(--text-soft);font-size:14px;margin-top:4px;"></p>
       </div>
       <div style="display:flex;gap:10px;">
         <a id="refs-link" href="#" class="btn btn-line">Refs</a>
@@ -133,7 +133,7 @@
         <p style="font-size:13px;color:var(--text-soft);margin-bottom:12px;">Supprimer ce µprojet efface définitivement toutes ses expériences et structures. Cette action est irréversible.</p>
         <div class="field-row" style="grid-template-columns:1fr auto;">
           <input class="field" id="delete-confirm-name" placeholder="Tapez le nom du µprojet pour confirmer">
-          <button class="btn btn-danger" id="delete-project-btn" type="button">Supprimer le µprojet</button>
+          <button class="btn btn-danger" id="delete-microproject-btn" type="button">Supprimer le µprojet</button>
         </div>
       </div>
     </div>
@@ -183,7 +183,7 @@
     const errorBox = document.getElementById("error");
     let currentUser = null;
     let currentRole = null;
-    let currentProjectName = null;
+    let currentMicroprojectName = null;
 
     function showError(err) {
       errorBox.textContent = err.message || String(err);
@@ -292,7 +292,7 @@
       const entries = [
         ...(library.presets || []).map((s) => ({ ...s, scope: "preset" })),
         ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
-        ...library.projet.map((s) => ({ ...s, scope: "projet" })),
+        ...library.microprojet.map((s) => ({ ...s, scope: "microprojet" })),
       ];
       if (!entries.length) return { html: `<option value="">Aucune structure enregistrée</option>`, empty: true };
       const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", projet: "" };
@@ -435,7 +435,7 @@
         const entries = [
           ...(library.presets || []).map((s) => ({ ...s, scope: "preset" })),
           ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
-          ...library.projet.map((s) => ({ ...s, scope: "projet" })),
+          ...library.microprojet.map((s) => ({ ...s, scope: "microprojet" })),
         ];
         document.getElementById("saved-structures-list").innerHTML = entries.length
           ? entries.map(savedStructureRow).join("")
@@ -466,9 +466,9 @@
       });
     });
 
-    document.getElementById("delete-project-btn").addEventListener("click", async () => {
+    document.getElementById("delete-microproject-btn").addEventListener("click", async () => {
       const typed = document.getElementById("delete-confirm-name").value.trim();
-      if (typed !== currentProjectName) {
+      if (typed !== currentMicroprojectName) {
         showError(new Error("Le nom saisi ne correspond pas au nom du µprojet."));
         return;
       }
@@ -498,12 +498,12 @@
 
     async function init() {
       try {
-        const project = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
-        currentRole = project.role;
-        currentProjectName = project.name;
-        document.getElementById("project-name").textContent = project.name;
-        document.getElementById("project-description").textContent = project.description;
-        const area = project.management_area;
+        const microproject = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
+        currentRole = microproject.role;
+        currentMicroprojectName = microproject.name;
+        document.getElementById("microproject-name").textContent = microproject.name;
+        document.getElementById("microproject-description").textContent = microproject.description;
+        const area = microproject.management_area;
         const areaCrumb = document.getElementById("area-crumb");
         if (area) {
           areaCrumb.textContent = area.name;
@@ -512,7 +512,7 @@
           areaCrumb.textContent = "Non classé";
         }
         document.getElementById("crumb").textContent =
-          "/ " + (area ? area.name + " / " : "") + project.name;
+          "/ " + (area ? area.name + " / " : "") + microproject.name;
         document.getElementById("graph-link").href = `/microprojets/${encodeURIComponent(slug)}/graphe`;
         document.getElementById("refs-link").href = `/microprojets/${encodeURIComponent(slug)}/refs`;
         document.getElementById("intent-form-link").href = `/microprojets/${encodeURIComponent(slug)}/formulaire-intention`;

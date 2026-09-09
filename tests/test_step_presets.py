@@ -9,13 +9,13 @@ def _etch_payload():
     return {"kind": "etch", "recipe": "Dry Oxide Etch"}
 
 
-def _register_and_project(client, email, project_name="Projet"):
+def _register_and_microproject(client, email, microproject_name="Projet"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": microproject_name}).json()["slug"]
 
 
-def test_create_a_project_scoped_deposition_preset(client):
-    slug = _register_and_project(client, "presetA@example.com")
+def test_create_a_microproject_scoped_deposition_preset(client):
+    slug = _register_and_microproject(client, "presetA@example.com")
 
     created = client.post(
         f"/api/microprojets/{slug}/presets-etapes",
@@ -23,24 +23,24 @@ def test_create_a_project_scoped_deposition_preset(client):
     )
     assert created.status_code == 201
     body = created.json()
-    assert [p["name"] for p in body["projet"]] == ["Nitrure maison"]
+    assert [p["name"] for p in body["microprojet"]] == ["Nitrure maison"]
     assert body["partagees"] == []
 
 
 def test_create_an_etch_preset(client):
-    slug = _register_and_project(client, "presetB@example.com")
+    slug = _register_and_microproject(client, "presetB@example.com")
 
     created = client.post(
         f"/api/microprojets/{slug}/presets-etapes",
         json={"name": "Gravure selective", "payload": _etch_payload(), "partagee": False},
     )
     assert created.status_code == 201
-    preset = next(p for p in created.json()["projet"] if p["name"] == "Gravure selective")
+    preset = next(p for p in created.json()["microprojet"] if p["name"] == "Gravure selective")
     assert preset["payload"]["recipe"] == "Dry Oxide Etch"
 
 
-def test_shared_preset_is_visible_from_a_different_project(client):
-    slug_a = _register_and_project(client, "presetC@example.com")
+def test_shared_preset_is_visible_from_a_different_microproject(client):
+    slug_a = _register_and_microproject(client, "presetC@example.com")
     client.post(
         f"/api/microprojets/{slug_a}/presets-etapes",
         json={"name": "Base commune", "payload": _deposition_payload(), "partagee": True},
@@ -49,11 +49,11 @@ def test_shared_preset_is_visible_from_a_different_project(client):
     slug_b = client.post("/api/microprojets", json={"name": "Autre projet"}).json()["slug"]
     listed = client.get(f"/api/microprojets/{slug_b}/presets-etapes").json()
     assert [p["name"] for p in listed["partagees"]] == ["Base commune"]
-    assert listed["projet"] == []
+    assert listed["microprojet"] == []
 
 
 def test_duplicate_name_in_the_same_library_is_rejected(client):
-    slug = _register_and_project(client, "presetD@example.com")
+    slug = _register_and_microproject(client, "presetD@example.com")
     payload = {"name": "Preset X", "payload": _deposition_payload(), "partagee": False}
     first = client.post(f"/api/microprojets/{slug}/presets-etapes", json=payload)
     assert first.status_code == 201
@@ -62,7 +62,7 @@ def test_duplicate_name_in_the_same_library_is_rejected(client):
 
 
 def test_rename_a_preset_in_place(client):
-    slug = _register_and_project(client, "presetE@example.com")
+    slug = _register_and_microproject(client, "presetE@example.com")
     client.post(
         f"/api/microprojets/{slug}/presets-etapes",
         json={"name": "Nom initial", "payload": _deposition_payload(), "partagee": False},
@@ -73,22 +73,22 @@ def test_rename_a_preset_in_place(client):
         json={"name": "Nom corrige", "payload": _deposition_payload()},
     )
     assert renamed.status_code == 200
-    assert [p["name"] for p in renamed.json()["projet"]] == ["Nom corrige"]
+    assert [p["name"] for p in renamed.json()["microprojet"]] == ["Nom corrige"]
 
 
 def test_delete_a_preset(client):
-    slug = _register_and_project(client, "presetF@example.com")
+    slug = _register_and_microproject(client, "presetF@example.com")
     client.post(
         f"/api/microprojets/{slug}/presets-etapes",
         json={"name": "A retirer", "payload": _deposition_payload(), "partagee": False},
     )
     deleted = client.delete(f"/api/microprojets/{slug}/presets-etapes/A retirer", params={"partagee": False})
     assert deleted.status_code == 200
-    assert deleted.json()["projet"] == []
+    assert deleted.json()["microprojet"] == []
 
 
 def test_builtin_presets_are_listed_and_usable_in_a_step(client):
-    slug = _register_and_project(client, "presetG@example.com")
+    slug = _register_and_microproject(client, "presetG@example.com")
 
     listed = client.get(f"/api/microprojets/{slug}/presets-etapes").json()
     presets = listed["presets"]
@@ -118,7 +118,7 @@ def test_builtin_presets_are_listed_and_usable_in_a_step(client):
 
 
 def test_viewer_cannot_create_a_preset(client):
-    slug = _register_and_project(client, "presetH-owner@example.com")
+    slug = _register_and_microproject(client, "presetH-owner@example.com")
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": "presetH-viewer@example.com", "password": "supersecret", "name": "V"})
     client.post("/api/auth/logout")

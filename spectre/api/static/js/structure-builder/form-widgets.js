@@ -116,7 +116,7 @@ function presetOptionsHtml(kind) {
   const entries = [
     ...state.stepPresets.presets.map((p) => ({ ...p, scope: "preset" })),
     ...state.stepPresets.partagees.map((p) => ({ ...p, scope: "partagee" })),
-    ...state.stepPresets.projet.map((p) => ({ ...p, scope: "projet" })),
+    ...state.stepPresets.microprojet.map((p) => ({ ...p, scope: "microprojet" })),
   ].filter((p) => p.payload.kind === kind);
   const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", projet: "" };
   return entries
@@ -125,7 +125,7 @@ function presetOptionsHtml(kind) {
 }
 
 function findStepPreset(scope, name) {
-  const bucket = scope === "preset" ? state.stepPresets.presets : scope === "partagee" ? state.stepPresets.partagees : state.stepPresets.projet;
+  const bucket = scope === "preset" ? state.stepPresets.presets : scope === "partagee" ? state.stepPresets.partagees : state.stepPresets.microprojet;
   return (bucket || []).find((p) => p.name === name) || null;
 }
 

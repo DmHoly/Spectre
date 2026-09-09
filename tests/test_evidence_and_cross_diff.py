@@ -172,7 +172,7 @@ def test_evolving_an_experience_preserves_its_evidence_and_tags(client):
     assert detail["tags"] == ["important"]
 
 
-def test_cross_project_diff(client):
+def test_cross_microproject_diff(client):
     client.post("/api/auth/register", json={"email": "cross@example.com", "password": "supersecret", "name": "Cross"})
     slug_a = client.post("/api/microprojets", json={"name": "Projet A"}).json()["slug"]
     slug_b = client.post("/api/microprojets", json={"name": "Projet B"}).json()["slug"]
@@ -194,11 +194,11 @@ def test_cross_project_diff(client):
     assert response.status_code == 200
     body = response.json()
     assert body["target"] == exp_b["id"]
-    assert body["target_project"] == "Projet B"
+    assert body["target_microproject"] == "Projet B"
     assert len(body["entries"]) >= 1
 
 
-def test_cross_project_diff_requires_access_to_other_project(client):
+def test_cross_microproject_diff_requires_access_to_other_microproject(client):
     client.post("/api/auth/register", json={"email": "ownerC@example.com", "password": "supersecret", "name": "C"})
     slug_c = client.post("/api/microprojets", json={"name": "Projet C"}).json()["slug"]
     exp_c = _launch(client, slug_c, title="Essai C")

@@ -11,8 +11,32 @@ Spectre est l'application métier qui relie deux bibliothèques :
   vocabulaire technique.
 
 Spectre lui-même n'ajoute que ce qui manque aux deux bibliothèques pour devenir une application
-d'équipe : des comptes utilisateurs, plusieurs projets avec des droits de modification, et une
-interface unique et simple - une **fiche d'identité** par expérience.
+d'équipe : des comptes utilisateurs, plusieurs µprojets avec des droits de modification, une couche
+de pilotage stratégique par-dessus, et une interface unique et simple - une **fiche d'identité**
+par expérience.
+
+## Hiérarchie
+
+```
+Thème (Management)         grand thème piloté par la société - Datacom (VLC), Nova (PT1), Native (PT2)...
+  └─ µprojet                 un sujet adressé sous ce thème (ex-« projet »)
+       └─ expérience          une étude versionnée (Follow) : brouillon → en cours → conclue
+            └─ entité physique   un wafer réel suivi (identifiant + emplacement)
+                 └─ structure       le procédé simulé (StructureForge) porté par ce wafer
+                      └─ étape          une opération du procédé (dépôt, gravure...), regroupable en
+                                        brique technologique réutilisable ; ses paramètres process
+                                        se sauvegardent en préset d'étape
+```
+
+- **Thèmes** (`spectre.core.management`) : visibles par tout utilisateur connecté (vue société
+  transverse) ; seul un compte **administrateur** (`users.is_admin`) crée/renomme/supprime un thème
+  ou y rattache un µprojet - voir `spectre admin` plus bas. Page d'accueil (`/`), un thème
+  (`/management/{slug}`), vue globale chiffrée (`/pilotage`).
+- **µprojets** gardent leurs droits par membre (`viewer`/`editor`/`owner`) exactement comme avant -
+  la couche Management n'y change rien, elle ne fait que les regrouper.
+- **Bibliothèque** (`/bibliotheque`) : structures/présets/briques réutilisables entre µprojets, plus
+  la bibliothèque de matériaux/recettes de l'installation, éditable dans `library/*.yml` à la racine
+  du dépôt (voir `library/README.md`) - inutile de redémarrer, rechargée à chaud.
 
 ## Démarrer en local
 
@@ -52,6 +76,17 @@ spectre --port 8000
 
 Les données (comptes, projets, dépôts d'expériences, présets d'étape) sont écrites sous `./data`
 par défaut - voir `SPECTRE_DATA_DIR` pour changer cet emplacement.
+
+### Administrateur (couche Management)
+
+Le tout premier compte inscrit devient automatiquement administrateur - seul rôle habilité à
+créer/renommer/supprimer un thème ou y rattacher un µprojet (tout le monde peut les consulter).
+Pour en promouvoir un autre :
+
+```bash
+spectre admin quelquun@exemple.com          # promouvoir
+spectre admin quelquun@exemple.com --revoke # rétrograder
+```
 
 ### Compte de démonstration
 
@@ -110,11 +145,23 @@ déployer reste une étape manuelle.
 
 ## Organisation
 
-- `spectre/core/` - accès aux données (comptes, sessions, projets, droits) et le pont vers
-  StructureForge/Follow. Aucune logique de simulation, de diff ou de versioning n'est réécrite
-  ici : elle est importée depuis les deux bibliothèques.
+- `spectre/core/` - accès aux données (comptes, sessions, µprojets, droits, thèmes de management)
+  et le pont vers StructureForge/Follow. Aucune logique de simulation, de diff ou de versioning
+  n'est réécrite ici : elle est importée depuis les deux bibliothèques.
+  - `management.py` : les thèmes de pilotage stratégique (au-dessus des µprojets).
+  - `registry.py` : la bibliothèque racine éditable (`library/*.yml` - matériaux, présets,
+    briques, recettes), rechargée à chaud.
 - `spectre/api/` - l'application FastAPI (routes JSON + pages HTML/CSS/JS vanilla, une page par
-  écran).
+  écran). Un µprojet s'appelle `microproject` partout en interne (table SQLite `microprojects`,
+  dossier `data/microprojects/<slug>`, modules `spectre/core/microprojects.py` et
+  `spectre/api/microprojects.py`) ; le français « µprojet » est réservé à ce que voit
+  l'utilisateur - les URLs (`/microprojets/...`, `/api/microprojets/...`), les libellés, et la clé
+  de scope `"microprojet"` des payloads à trois niveaux. Les anciennes URLs `/projets/...`
+  redirigent (308) vers `/microprojets/...`, et une installation antérieure au renommage se migre
+  toute seule au démarrage - tables, colonnes et dossier `data/projects/` compris (voir
+  `_rename_legacy_project_tables` dans `spectre/core/db.py`).
+- `library/` - la bibliothèque racine (matériaux/présets/briques/recettes), voir son propre
+  `README.md`.
 
 ## Tests
 
@@ -148,7 +195,7 @@ Python, par module (`spectre/`, 109 tests, 91 % au total à la dernière mesure)
 | `spectre/api/deps.py` | 86 % |
 | `spectre/api/experiments.py` | 83 % |
 | `spectre/api/keyed_resource.py` | 100 % |
-| `spectre/api/projects.py` | 87 % |
+| `spectre/api/microprojects.py` | 87 % |
 | `spectre/api/structures.py` | 95 % |
 | `spectre/cli.py` | 0 % *(point d'entrée `spectre --port`, non exercé par les tests HTTP)* |
 | `spectre/core/accounts.py` | 97 % |
@@ -156,7 +203,7 @@ Python, par module (`spectre/`, 109 tests, 91 % au total à la dernière mesure)
 | `spectre/core/email.py` | 48 % *(l'envoi SMTP réel n'est pas simulé en test)* |
 | `spectre/core/keyed_store.py` | 100 % |
 | `spectre/core/permissions.py` | 100 % |
-| `spectre/core/projects.py` | 97 % |
+| `spectre/core/microprojects.py` | 97 % |
 | `spectre/core/security.py` | 100 % |
 | `spectre/core/step_presets.py` | 100 % |
 | `spectre/core/structure_library.py` | 100 % |

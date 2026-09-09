@@ -8,7 +8,7 @@ async function fetchTechBricks() {
 }
 
 function findTechBrick(list, name, scope) {
-  const bucket = scope === "preset" ? list.presets : scope === "partagee" ? list.partagees : list.projet;
+  const bucket = scope === "preset" ? list.presets : scope === "partagee" ? list.partagees : list.microprojet;
   return (bucket || []).find((b) => b.name === name) || null;
 }
 

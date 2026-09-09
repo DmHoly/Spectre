@@ -3,7 +3,7 @@ URL, not a client-routed single shell - see ``static/*.html``) plus the JSON API
 
 Deep domain logic never lives here: structure simulation comes from ``structureforge``, experiment
 versioning/DOE/diffing/graphing come from ``follow``. This module (and the routers it wires
-together) only adds what neither of those has: accounts, projects, permissions, and the pages that
+together) only adds what neither of those has: accounts, microprojects, permissions, and the pages that
 tie them into one workflow.
 """
 
@@ -22,7 +22,7 @@ from . import experiments as experiments_router
 from . import intent_forms as intent_forms_router
 from . import links as links_router
 from . import management as management_router
-from . import projects as projects_router
+from . import microprojects as microprojects_router
 from . import refs as refs_router
 from . import structures as structures_router
 
@@ -36,7 +36,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router.router)
     app.include_router(management_router.router)
-    app.include_router(projects_router.router)
+    app.include_router(microprojects_router.router)
     app.include_router(structures_router.router)
     app.include_router(experiments_router.router)
     app.include_router(refs_router.router)

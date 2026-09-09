@@ -26,17 +26,17 @@ function themeCard(area) {
     </a>`;
 }
 
-function projectCard(project) {
-  const area = project.management_area;
+function microprojectCard(microproject) {
+  const area = microproject.management_area;
   return `
-    <a href="/microprojets/${encodeURIComponent(project.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:6px;color:inherit;">
+    <a href="/microprojets/${encodeURIComponent(microproject.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:6px;color:inherit;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <div style="font-size:14px;font-weight:700;">${escapeHtml(project.name)}</div>
-        <span class="badge badge-role">${escapeHtml(roleLabel(project.role))}</span>
+        <div style="font-size:14px;font-weight:700;">${escapeHtml(microproject.name)}</div>
+        <span class="badge badge-role">${escapeHtml(roleLabel(microproject.role))}</span>
       </div>
       ${area ? `<div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(area.name)}</div>` : ""}
       <div style="font-size:12px;color:var(--text-faint);padding-top:6px;border-top:1px solid var(--border-soft);">
-        ${project.running_count} en cours &middot; ${project.concluded_count} terminées
+        ${microproject.running_count} en cours &middot; ${microproject.concluded_count} terminées
       </div>
     </a>`;
 }
@@ -50,11 +50,11 @@ async function load() {
     document.getElementById("themes").innerHTML = themes.map(themeCard).join("");
     if (mgmt.is_admin) document.getElementById("new-theme-btn").style.display = "";
 
-    document.getElementById("my-projects-count").textContent = `(${mine.length})`;
-    document.getElementById("my-projects").innerHTML = mine.length
-      ? mine.map(projectCard).join("")
+    document.getElementById("my-microprojects-count").textContent = `(${mine.length})`;
+    document.getElementById("my-microprojects").innerHTML = mine.length
+      ? mine.map(microprojectCard).join("")
       : `<div style="grid-column:1/-1;font-size:13px;color:var(--text-faint);">Vous n'êtes membre d'aucun µprojet. Ouvrez un thème pour en créer un.</div>`;
-    if (mine.length) document.getElementById("my-projects-details").open = false;
+    if (mine.length) document.getElementById("my-microprojects-details").open = false;
   } catch (err) {
     showError(err);
   }

@@ -19,7 +19,7 @@ def _steps(thickness=20):
     ]
 
 
-def _register_and_project(client, email):
+def _register_and_microproject(client, email):
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
     return client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
@@ -38,19 +38,19 @@ def _launch_body(entities=None, **overrides):
 
 
 def test_launching_without_an_entity_is_rejected(client):
-    slug = _register_and_project(client, "mandatory-launch@example.com")
+    slug = _register_and_microproject(client, "mandatory-launch@example.com")
     response = client.post(f"/api/microprojets/{slug}/experiences", json=_launch_body(entities=[]))
     assert response.status_code == 422
 
 
 def test_launching_with_only_a_blank_entity_is_rejected(client):
-    slug = _register_and_project(client, "mandatory-blank@example.com")
+    slug = _register_and_microproject(client, "mandatory-blank@example.com")
     response = client.post(f"/api/microprojets/{slug}/experiences", json=_launch_body(entities=[{"sample_id": "  "}]))
     assert response.status_code == 422
 
 
 def test_launching_with_an_entity_stores_it_on_the_new_experiment(client):
-    slug = _register_and_project(client, "mandatory-ok@example.com")
+    slug = _register_and_microproject(client, "mandatory-ok@example.com")
     response = client.post(f"/api/microprojets/{slug}/experiences", json=_launch_body(entities=[{"sample_id": "W1", "location": "Tiroir 2"}]))
     assert response.status_code == 201
     detail = client.get(f"/api/microprojets/{slug}/experiences/{response.json()['id']}").json()
@@ -58,7 +58,7 @@ def test_launching_with_an_entity_stores_it_on_the_new_experiment(client):
 
 
 def test_launching_a_campaign_without_an_entity_is_rejected(client):
-    slug = _register_and_project(client, "mandatory-campaign@example.com")
+    slug = _register_and_microproject(client, "mandatory-campaign@example.com")
     body = {
         "substrate": _substrate(),
         "steps": _steps(),
@@ -72,7 +72,7 @@ def test_launching_a_campaign_without_an_entity_is_rejected(client):
 
 
 def test_launching_a_campaign_pads_the_remaining_variants_blank(client):
-    slug = _register_and_project(client, "mandatory-campaign-ok@example.com")
+    slug = _register_and_microproject(client, "mandatory-campaign-ok@example.com")
     body = {
         "substrate": _substrate(),
         "steps": _steps(),
@@ -88,7 +88,7 @@ def test_launching_a_campaign_pads_the_remaining_variants_blank(client):
 
 
 def test_evolving_inherits_the_parent_entity_without_needing_to_resupply_it(client):
-    slug = _register_and_project(client, "mandatory-evolve-inherit@example.com")
+    slug = _register_and_microproject(client, "mandatory-evolve-inherit@example.com")
     launched = client.post(f"/api/microprojets/{slug}/experiences", json=_launch_body(entities=[{"sample_id": "W1"}])).json()
     evolved = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/evoluer",
@@ -100,7 +100,7 @@ def test_evolving_inherits_the_parent_entity_without_needing_to_resupply_it(clie
 
 
 def test_evolving_can_override_the_inherited_entity(client):
-    slug = _register_and_project(client, "mandatory-evolve-override@example.com")
+    slug = _register_and_microproject(client, "mandatory-evolve-override@example.com")
     launched = client.post(f"/api/microprojets/{slug}/experiences", json=_launch_body(entities=[{"sample_id": "W1"}])).json()
     evolved = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/evoluer",
@@ -118,7 +118,7 @@ def test_evolving_can_override_the_inherited_entity(client):
 
 
 def test_evolving_a_version_whose_entity_was_cleared_requires_a_new_one(client):
-    slug = _register_and_project(client, "mandatory-evolve-blocked@example.com")
+    slug = _register_and_microproject(client, "mandatory-evolve-blocked@example.com")
     launched = client.post(f"/api/microprojets/{slug}/experiences", json=_launch_body(entities=[{"sample_id": "W1"}])).json()
     # /entites accepts a blank entry (e.g. a sample lost or discarded) - this is the only way to
     # legitimately land back in the "no tracked entity" state once the rule is otherwise enforced
@@ -145,7 +145,7 @@ def test_evolving_a_version_whose_entity_was_cleared_requires_a_new_one(client):
 
 
 def test_concluding_without_a_tracked_entity_is_rejected(client):
-    slug = _register_and_project(client, "mandatory-conclude-blocked@example.com")
+    slug = _register_and_microproject(client, "mandatory-conclude-blocked@example.com")
     launched = client.post(f"/api/microprojets/{slug}/experiences", json=_launch_body(entities=[{"sample_id": "W1"}])).json()
     cleared = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/entites", json={"entities": [{}]}).json()
 
@@ -157,7 +157,7 @@ def test_concluding_without_a_tracked_entity_is_rejected(client):
 
 
 def test_concluding_a_tracked_experience_still_works(client):
-    slug = _register_and_project(client, "mandatory-conclude-ok@example.com")
+    slug = _register_and_microproject(client, "mandatory-conclude-ok@example.com")
     launched = client.post(f"/api/microprojets/{slug}/experiences", json=_launch_body(entities=[{"sample_id": "W1"}])).json()
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/conclure",

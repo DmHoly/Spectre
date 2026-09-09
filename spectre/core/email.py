@@ -1,4 +1,4 @@
-"""Transactional e-mail (password reset links, project invitations) - stdlib ``smtplib``, no new
+"""Transactional e-mail (password reset links, microproject invitations) - stdlib ``smtplib``, no new
 dependency. Sends for real only when ``SPECTRE_SMTP_HOST`` is set; otherwise logs the message
 (subject + body, which always includes the link) so the app stays usable in a local/dev
 environment with no mail server rather than failing the whole request outright. An operator wires

@@ -1,4 +1,4 @@
-"""list_experiences()/project counts show one card per branch (its current tip), not every
+"""list_experiences()/microproject counts show one card per branch (its current tip), not every
 version ever committed to it - conclure/preuves/etiquettes each record a new version (experiments
 are immutable), so without this a single study kept showing up multiple times, drafts included,
 even once concluded.
@@ -17,13 +17,13 @@ def _steps(thickness=20):
     ]
 
 
-def _register_and_project(client, email, project_name="Projet"):
+def _register_and_microproject(client, email, microproject_name="Projet"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": microproject_name}).json()["slug"]
 
 
 def test_evidence_then_conclusion_only_shows_the_final_version_once(client):
-    slug = _register_and_project(client, "tips-a@example.com")
+    slug = _register_and_microproject(client, "tips-a@example.com")
     launched = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={
@@ -55,8 +55,8 @@ def test_evidence_then_conclusion_only_shows_the_final_version_once(client):
     assert with_evidence["id"] not in [item["id"] for item in running["items"]]
 
 
-def test_project_counts_reflect_one_status_per_branch(client):
-    slug = _register_and_project(client, "tips-b@example.com")
+def test_microproject_counts_reflect_one_status_per_branch(client):
+    slug = _register_and_microproject(client, "tips-b@example.com")
     launched = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={
@@ -78,7 +78,7 @@ def test_project_counts_reflect_one_status_per_branch(client):
 
 
 def test_a_fork_still_shows_both_branches_once_each(client):
-    slug = _register_and_project(client, "tips-c@example.com")
+    slug = _register_and_microproject(client, "tips-c@example.com")
     launched = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={

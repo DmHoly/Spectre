@@ -1,7 +1,7 @@
 """The shared body of the four route handlers (list/create/update/delete) that both the step
 preset routes and the saved structure routes (:mod:`spectre.api.structures`) implement over a
 :class:`~spectre.core.keyed_store.KeyedJsonStore`: a three-bucket listing (built-in / shared /
-project's own), a duplicate-name guard on create, and a not-found guard on update. Route
+microproject's own), a duplicate-name guard on create, and a not-found guard on update. Route
 declarations themselves stay explicit per resource (distinct request/response models, distinct
 permissions) - only this common body is factored out.
 """
@@ -21,13 +21,13 @@ def list_three_buckets(
     own_store: KeyedJsonStore, shared_store: KeyedJsonStore, defaults: dict[str, ItemT], payload_of: Callable[[ItemT, str], dict]
 ) -> dict:
     """Built-in presets (scope ``"preset"``), then the shared store (``"partagee"``), then the
-    project's own (``"projet"``) - the response shape both resources return from their ``GET``
+    microproject's own (``"microprojet"``) - the response shape both resources return from their ``GET``
     and, to reflect the change made, from every mutating route too.
     """
     return {
         "presets": [payload_of(item, "preset") for item in defaults.values()],
         "partagees": [payload_of(item, "partagee") for item in shared_store.load_items().values()],
-        "projet": [payload_of(item, "projet") for item in own_store.load_items().values()],
+        "microprojet": [payload_of(item, "microprojet") for item in own_store.load_items().values()],
     }
 
 

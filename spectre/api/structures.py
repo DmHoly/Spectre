@@ -17,10 +17,10 @@ from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
 from structureforge.process.steps import ProcessStep
 
-from ..core import projects, refs, structures
+from ..core import microprojects, refs, structures
 from ..core.accounts import User
 from ..core.permissions import require_role
-from ..core.projects import Project
+from ..core.microprojects import Microproject
 from ..core.step_presets import StepPreset, StepPresetPayload, default_step_presets
 from ..core.structure_library import SavedStructure, default_structure_presets
 from ..core.tech_bricks import TechBrick, default_tech_bricks
@@ -61,7 +61,7 @@ class LaunchExperienceRequest(BaseModel):
     # it's only needed to fix forward an experience whose lineage never got one (see evolve_experience).
     entities: list[EntityTrackingInput] = []
     new_branch: str | None = None  # only meaningful when evolving: fork instead of continuing
-    # answers to the project's active commit form (spectre.core.intent_forms), if one is
+    # answers to the microproject's active commit form (spectre.core.intent_forms), if one is
     # configured - re-asked on every real launch/evolution, unlike metadata/tags/evidence which
     # lightweight evolutions (conclure/preuves/etiquettes...) simply carry forward unchanged.
     form_answers: dict[str, Any] = {}
@@ -112,8 +112,8 @@ def _form_validation_error(exc: "follow.FormValidationError") -> HTTPException:
 
 
 def _ref_the_first_experience(repo: "follow.Repository", experiment: "follow.Experiment") -> None:
-    """A brand-new project has no ref yet to start from - so its very first experience becomes
-    one automatically (the default "ref vX.Y.Z" name), rather than leaving every project stuck
+    """A brand-new microproject has no ref yet to start from - so its very first experience becomes
+    one automatically (the default "ref vX.Y.Z" name), rather than leaving every microproject stuck
     with nothing to feature in "Partir d'une ref" until someone remembers to tag one by hand.
     """
     if len(repo) == 1:
@@ -137,12 +137,12 @@ def split_objectives(inputs: list[ObjectiveInput]) -> tuple[list["follow.Objecti
 
 
 @router.get("/{slug}/materials")
-def list_materials(project: Project = Depends(require_role("viewer"))) -> list[dict]:
+def list_materials(microproject: Microproject = Depends(require_role("viewer"))) -> list[dict]:
     return [m.model_dump(mode="json") for m in structures.picker_materials()]
 
 
 @router.get("/{slug}/recettes")
-def list_recipes(project: Project = Depends(require_role("viewer"))) -> dict:
+def list_recipes(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """The named deposition/etch recipes a step can pick from - mode/angle/selectivity live on
     the recipe (see :mod:`structureforge.core.recipes`), not on the step itself.
     """
@@ -160,8 +160,8 @@ class StepPresetInput(BaseModel):
     partagee: bool = False
 
 
-def _step_preset_store(project: Project, partagee: bool):
-    return projects.get_shared_step_preset_store() if partagee else projects.get_step_preset_store(project.slug)
+def _step_preset_store(microproject: Microproject, partagee: bool):
+    return microprojects.get_shared_step_preset_store() if partagee else microprojects.get_step_preset_store(microproject.slug)
 
 
 def _step_preset_payload(preset: StepPreset, scope: str) -> dict:
@@ -169,18 +169,18 @@ def _step_preset_payload(preset: StepPreset, scope: str) -> dict:
 
 
 @router.get("/{slug}/presets-etapes")
-def list_step_presets(project: Project = Depends(require_role("viewer"))) -> dict:
+def list_step_presets(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     return list_three_buckets(
-        projects.get_step_preset_store(project.slug),
-        projects.get_shared_step_preset_store(),
+        microprojects.get_step_preset_store(microproject.slug),
+        microprojects.get_shared_step_preset_store(),
         default_step_presets(),
         _step_preset_payload,
     )
 
 
 @router.post("/{slug}/presets-etapes", status_code=201)
-def create_step_preset(body: StepPresetInput, project: Project = Depends(require_role("editor"))) -> dict:
-    store = _step_preset_store(project, body.partagee)
+def create_step_preset(body: StepPresetInput, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+    store = _step_preset_store(microproject, body.partagee)
     reject_duplicate(store, body.name, message=f"Un préset nommé {body.name!r} existe déjà dans cette bibliothèque.")
     preset = StepPreset(
         name=body.name,
@@ -189,24 +189,24 @@ def create_step_preset(body: StepPresetInput, project: Project = Depends(require
         created_at=datetime.now(timezone.utc).isoformat(),
     )
     store.upsert(preset)
-    return list_step_presets(project)
+    return list_step_presets(microproject)
 
 
 @router.put("/{slug}/presets-etapes/{name}")
 def update_step_preset(
-    name: str, body: StepPresetInput, partagee: bool = False, project: Project = Depends(require_role("editor"))
+    name: str, body: StepPresetInput, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))
 ) -> dict:
-    store = _step_preset_store(project, partagee)
+    store = _step_preset_store(microproject, partagee)
     existing = require_existing(store, name, message=f"Préset {name!r} introuvable.")
     preset = StepPreset(name=body.name, payload=body.payload, notes=body.notes, created_at=existing.created_at)
     store.rename(name, preset)
-    return list_step_presets(project)
+    return list_step_presets(microproject)
 
 
 @router.delete("/{slug}/presets-etapes/{name}")
-def delete_step_preset(name: str, partagee: bool = False, project: Project = Depends(require_role("editor"))) -> dict:
-    _step_preset_store(project, partagee).remove(name)
-    return list_step_presets(project)
+def delete_step_preset(name: str, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+    _step_preset_store(microproject, partagee).remove(name)
+    return list_step_presets(microproject)
 
 
 class SavedStructureInput(BaseModel):
@@ -217,8 +217,8 @@ class SavedStructureInput(BaseModel):
     partagee: bool = False
 
 
-def _saved_structure_store(project: Project, partagee: bool):
-    return projects.get_shared_structure_store() if partagee else projects.get_structure_store(project.slug)
+def _saved_structure_store(microproject: Microproject, partagee: bool):
+    return microprojects.get_shared_structure_store() if partagee else microprojects.get_structure_store(microproject.slug)
 
 
 def _saved_structure_payload(structure: SavedStructure, scope: str) -> dict:
@@ -226,18 +226,18 @@ def _saved_structure_payload(structure: SavedStructure, scope: str) -> dict:
 
 
 @router.get("/{slug}/structures-sauvegardees")
-def list_saved_structures(project: Project = Depends(require_role("viewer"))) -> dict:
+def list_saved_structures(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     return list_three_buckets(
-        projects.get_structure_store(project.slug),
-        projects.get_shared_structure_store(),
+        microprojects.get_structure_store(microproject.slug),
+        microprojects.get_shared_structure_store(),
         default_structure_presets(),
         _saved_structure_payload,
     )
 
 
 @router.post("/{slug}/structures-sauvegardees", status_code=201)
-def create_saved_structure(body: SavedStructureInput, project: Project = Depends(require_role("editor"))) -> dict:
-    store = _saved_structure_store(project, body.partagee)
+def create_saved_structure(body: SavedStructureInput, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+    store = _saved_structure_store(microproject, body.partagee)
     reject_duplicate(store, body.name, message=f"Une structure nommée {body.name!r} existe déjà dans cette bibliothèque.")
     saved = SavedStructure(
         name=body.name,
@@ -247,14 +247,14 @@ def create_saved_structure(body: SavedStructureInput, project: Project = Depends
         created_at=datetime.now(timezone.utc).isoformat(),
     )
     store.upsert(saved)
-    return list_saved_structures(project)
+    return list_saved_structures(microproject)
 
 
 @router.put("/{slug}/structures-sauvegardees/{name}")
 def update_saved_structure(
-    name: str, body: SavedStructureInput, partagee: bool = False, project: Project = Depends(require_role("editor"))
+    name: str, body: SavedStructureInput, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))
 ) -> dict:
-    store = _saved_structure_store(project, partagee)
+    store = _saved_structure_store(microproject, partagee)
     existing = require_existing(store, name, message=f"Structure {name!r} introuvable.")
     saved = SavedStructure(
         name=body.name,
@@ -264,13 +264,13 @@ def update_saved_structure(
         created_at=existing.created_at,
     )
     store.rename(name, saved)
-    return list_saved_structures(project)
+    return list_saved_structures(microproject)
 
 
 @router.delete("/{slug}/structures-sauvegardees/{name}")
-def delete_saved_structure(name: str, partagee: bool = False, project: Project = Depends(require_role("editor"))) -> dict:
-    _saved_structure_store(project, partagee).remove(name)
-    return list_saved_structures(project)
+def delete_saved_structure(name: str, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+    _saved_structure_store(microproject, partagee).remove(name)
+    return list_saved_structures(microproject)
 
 
 class TechBrickInput(BaseModel):
@@ -280,8 +280,8 @@ class TechBrickInput(BaseModel):
     partagee: bool = False
 
 
-def _tech_brick_store(project: Project, partagee: bool):
-    return projects.get_shared_tech_brick_store() if partagee else projects.get_tech_brick_store(project.slug)
+def _tech_brick_store(microproject: Microproject, partagee: bool):
+    return microprojects.get_shared_tech_brick_store() if partagee else microprojects.get_tech_brick_store(microproject.slug)
 
 
 def _tech_brick_payload(brick: TechBrick, scope: str) -> dict:
@@ -289,45 +289,45 @@ def _tech_brick_payload(brick: TechBrick, scope: str) -> dict:
 
 
 @router.get("/{slug}/briques-technologiques")
-def list_tech_bricks(project: Project = Depends(require_role("viewer"))) -> dict:
+def list_tech_bricks(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     return list_three_buckets(
-        projects.get_tech_brick_store(project.slug),
-        projects.get_shared_tech_brick_store(),
+        microprojects.get_tech_brick_store(microproject.slug),
+        microprojects.get_shared_tech_brick_store(),
         default_tech_bricks(),
         _tech_brick_payload,
     )
 
 
 @router.post("/{slug}/briques-technologiques", status_code=201)
-def create_tech_brick(body: TechBrickInput, project: Project = Depends(require_role("editor"))) -> dict:
-    store = _tech_brick_store(project, body.partagee)
+def create_tech_brick(body: TechBrickInput, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+    store = _tech_brick_store(microproject, body.partagee)
     reject_duplicate(store, body.name, message=f"Une brique nommée {body.name!r} existe déjà dans cette bibliothèque.")
     brick = TechBrick(name=body.name, steps=body.steps, notes=body.notes, created_at=datetime.now(timezone.utc).isoformat())
     store.upsert(brick)
-    return list_tech_bricks(project)
+    return list_tech_bricks(microproject)
 
 
 @router.put("/{slug}/briques-technologiques/{name}")
 def update_tech_brick(
-    name: str, body: TechBrickInput, partagee: bool = False, project: Project = Depends(require_role("editor"))
+    name: str, body: TechBrickInput, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))
 ) -> dict:
-    store = _tech_brick_store(project, partagee)
+    store = _tech_brick_store(microproject, partagee)
     existing = require_existing(store, name, message=f"Brique {name!r} introuvable.")
     brick = TechBrick(name=body.name, steps=body.steps, notes=body.notes, created_at=existing.created_at)
     store.rename(name, brick)
-    return list_tech_bricks(project)
+    return list_tech_bricks(microproject)
 
 
 @router.delete("/{slug}/briques-technologiques/{name}")
-def delete_tech_brick(name: str, partagee: bool = False, project: Project = Depends(require_role("editor"))) -> dict:
-    _tech_brick_store(project, partagee).remove(name)
-    return list_tech_bricks(project)
+def delete_tech_brick(name: str, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+    _tech_brick_store(microproject, partagee).remove(name)
+    return list_tech_bricks(microproject)
 
 
 @router.post("/{slug}/structures/simulate")
-def simulate_structure(body: NewStructureRequest, project: Project = Depends(require_role("editor"))) -> dict:
+def simulate_structure(body: NewStructureRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
     try:
-        _geometry, frames, materials = structures.run_simulation(project.slug, body.substrate, body.steps)
+        _geometry, frames, materials = structures.run_simulation(microproject.slug, body.substrate, body.steps)
     except structures.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return structures.frames_payload(frames, materials)
@@ -336,7 +336,7 @@ def simulate_structure(body: NewStructureRequest, project: Project = Depends(req
 @router.post("/{slug}/experiences", status_code=201)
 def launch_experience(
     body: LaunchExperienceRequest,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     entities = structures.clean_entity_entries(body.entities)
@@ -347,11 +347,11 @@ def launch_experience(
         )
 
     try:
-        geometry, _frames, _materials = structures.run_simulation(project.slug, body.substrate, body.steps)
+        geometry, _frames, _materials = structures.run_simulation(microproject.slug, body.substrate, body.steps)
     except structures.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     branch = _unique_branch(repo, body.title)
     objectives, verification = split_objectives(body.objectives)
 
@@ -383,13 +383,13 @@ def launch_experience(
 
 
 @router.post("/{slug}/structures/variantes")
-def preview_campaign(body: CampaignPreviewRequest, project: Project = Depends(require_role("editor"))) -> dict:
+def preview_campaign(body: CampaignPreviewRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
     """A preview of a DOE campaign: one simulated variant per combination of ``body.plan.factors``
     (fully crossed), plus the constant/varying split (``follow.doe.batch.analyze_batch``) - the
     "matrice de split", available before anyone commits to the campaign.
     """
     try:
-        result = structures.generate_campaign_variants(project.slug, body.substrate, body.steps, body.plan)
+        result = structures.generate_campaign_variants(microproject.slug, body.substrate, body.steps, body.plan)
     except structures.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
@@ -404,7 +404,7 @@ def preview_campaign(body: CampaignPreviewRequest, project: Project = Depends(re
 @router.post("/{slug}/experiences/campagne", status_code=201)
 def launch_campaign(
     body: LaunchCampaignRequest,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     """Commit a whole DOE campaign as one experience: a ``ProcessLot`` holding one flattened
@@ -420,11 +420,11 @@ def launch_campaign(
         )
 
     try:
-        result = structures.generate_campaign_variants(project.slug, body.substrate, body.steps, body.plan)
+        result = structures.generate_campaign_variants(microproject.slug, body.substrate, body.steps, body.plan)
     except structures.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     objectives, verification = split_objectives(body.objectives)
     lot = structures.ProcessLot(entries=result.entries)
     # exactly one tracking slot per variant (set_physical_tracking's own invariant) - the entities

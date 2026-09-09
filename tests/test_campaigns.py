@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 
-def _setup_project(client, email="owner@example.com", name="Owner"):
+def _setup_microproject(client, email="owner@example.com", name="Owner"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
-    project = client.post("/api/microprojets", json={"name": "Salle blanche"}).json()
-    return project["slug"]
+    microproject = client.post("/api/microprojets", json={"name": "Salle blanche"}).json()
+    return microproject["slug"]
 
 
 def _substrate():
@@ -56,7 +56,7 @@ def _plan_two_factors():
 
 
 def test_preview_campaign_returns_svgs_and_variation(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     response = client.post(
         f"/api/microprojets/{slug}/structures/variantes",
         json={"substrate": _substrate(), "steps": _steps(), "plan": _plan()},
@@ -73,7 +73,7 @@ def test_preview_campaign_returns_svgs_and_variation(client):
 
 
 def test_preview_campaign_rejects_non_numeric_field(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     bad_plan = {"factors": [{"step_index": 0, "field": "material", "values": [1, 2]}]}
     response = client.post(
         f"/api/microprojets/{slug}/structures/variantes",
@@ -83,7 +83,7 @@ def test_preview_campaign_rejects_non_numeric_field(client):
 
 
 def test_preview_campaign_with_two_factors_is_fully_crossed(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     response = client.post(
         f"/api/microprojets/{slug}/structures/variantes",
         json={"substrate": _substrate(), "steps": _steps_two(), "plan": _plan_two_factors()},
@@ -101,7 +101,7 @@ def test_preview_campaign_with_two_factors_is_fully_crossed(client):
 
 
 def test_launch_campaign_and_read_matrix(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     body = {
         "substrate": _substrate(),
         "steps": _steps(),
@@ -129,7 +129,7 @@ def test_launch_campaign_and_read_matrix(client):
 
 
 def test_launch_campaign_with_two_factors(client):
-    slug = _setup_project(client, email="two-factors@example.com")
+    slug = _setup_microproject(client, email="two-factors@example.com")
     body = {
         "substrate": _substrate(),
         "steps": _steps_two(),
@@ -150,7 +150,7 @@ def test_launch_campaign_with_two_factors(client):
 
 
 def test_matrice_endpoint_rejects_non_batch_experience(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     single = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={

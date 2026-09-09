@@ -12,12 +12,12 @@ const libraryStructureName = isLibraryMode && pathParts[4] !== "nouvelle" ? deco
 const isBrickMode = pathParts[2] === "briques-technologiques" && pathParts[3] === "bibliotheque";
 const brickName = isBrickMode && pathParts[4] !== "nouvelle" ? decodeURIComponent(pathParts[4]) : null;
 const queryParams = new URLSearchParams(window.location.search);
-const librarySourceScope = queryParams.get("scope") || "projet";
+const librarySourceScope = queryParams.get("scope") || "microprojet";
 const libraryDuplicateMode = queryParams.get("dupliquer") === "1";
 const evolveExperienceId = !isLibraryMode && !isBrickMode && pathParts[2] === "experiences" ? pathParts[3] : null;
 const templateExperienceId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("depuis") : null;
 const chosenStructureName = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("structure") : null;
-const chosenStructureScope = queryParams.get("scope") || "projet";
+const chosenStructureScope = queryParams.get("scope") || "microprojet";
 const returnTo = queryParams.get("retour"); // where "Enregistrer" in library/brick mode sends you back to
 
 const state = {
@@ -41,9 +41,9 @@ const state = {
   showStepForm: false, // couches mode only: whether the add/edit form is open
   derivedFrom: null, // library mode only: name of the structure this one was derived from, if any
   editingLibraryName: null, // library mode only: name of the saved structure being edited in place (null = new)
-  editingLibraryScope: null, // library mode only: "projet" or "partagee", matching editingLibraryName
+  editingLibraryScope: null, // library mode only: "microprojet" or "partagee", matching editingLibraryName
   editingBrickName: null, // brick mode only: name of the tech brick being edited in place (null = new)
-  editingBrickScope: null, // brick mode only: "projet" or "partagee", matching editingBrickName
+  editingBrickScope: null, // brick mode only: "microprojet" or "partagee", matching editingBrickName
   zoom: 1,
 };
 

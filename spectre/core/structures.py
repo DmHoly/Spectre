@@ -1,4 +1,4 @@
-"""Bridges the structure-builder page to StructureForge: which materials and recipes a project can
+"""Bridges the structure-builder page to StructureForge: which materials and recipes a microproject can
 draw on, and turning a substrate + step list into simulated frames the page can show. All the
 physics stays in ``structureforge`` - a ``Deposition``/``Etch`` step names a recipe from the
 recipe library by string key (mode/angle/selectivity live on the recipe, not the step), resolved
@@ -176,8 +176,8 @@ def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]
     ``structureforge.api.app`` does for its own ``/api/simulate`` - returns the live objects
     (geometry, one frame per step, the material library used) for a caller that needs them for
     more than just a preview (e.g. to commit the result as a Follow experiment). ``slug`` is kept
-    in the signature even though every project shares the same material/step/recipe physics now -
-    callers already pass it, and a project-specific material library is a plausible future need.
+    in the signature even though every microproject shares the same material/step/recipe physics now -
+    callers already pass it, and a microproject-specific material library is a plausible future need.
     """
     steps = _expand_seed_material_aliases(steps, substrate.material)
     materials = materials_library(substrate.material, *_material_names_in_steps(steps))

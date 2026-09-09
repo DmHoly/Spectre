@@ -2,7 +2,7 @@
 experiment - so a structure can be built once (e.g. an epitaxial stack) and reused, or derived
 into a new one (e.g. the same stack with contacts added on top, saved under a new name), without
 that being tied to launching a particular experience. Two stores per Spectre instance: one shared
-across every project, one private to a single project - see :func:`spectre.core.projects.
+across every microproject, one private to a single microproject - see :func:`spectre.core.microprojects.
 get_shared_structure_store`/``get_structure_store``. Deliberately not a Follow repository: saved
 structures have no lifecycle of their own (no conclusion, no evidence) - they are just a named,
 overwritable snapshot a new experience starts from, similar in spirit to :mod:`spectre.core.
@@ -81,7 +81,7 @@ def _nanofil_vpit_inverse_preset() -> SavedStructure:
 def default_structure_presets() -> dict[str, SavedStructure]:
     """Built-in structure presets, the same "standard, not stored, not deletable" status
     :func:`spectre.core.step_presets.default_step_presets` gives standard step presets - always
-    available from every project's structure library, under their own ``"preset"`` scope (see
+    available from every microproject's structure library, under their own ``"preset"`` scope (see
     :func:`spectre.api.structures.list_saved_structures`), never written to a JSON store.
     """
     return {s.name: s for s in [_nanofil_vpit_inverse_preset()]}

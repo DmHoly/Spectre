@@ -1,5 +1,5 @@
 """User accounts and sessions: the thin data-access layer over the ``users``/``sessions`` tables
-in :mod:`spectre.core.db`. Kept separate from permissions/projects - this module only knows about
+in :mod:`spectre.core.db`. Kept separate from permissions/microprojects - this module only knows about
 one user at a time, never about what they're allowed to do.
 """
 

@@ -37,7 +37,7 @@ def test_list_three_buckets_orders_presets_then_shared_then_own(tmp_path):
     assert result == {
         "presets": [{"name": "Built-in", "scope": "preset"}],
         "partagees": [{"name": "Shared", "scope": "partagee"}],
-        "projet": [{"name": "Mine", "scope": "projet"}],
+        "microprojet": [{"name": "Mine", "scope": "microprojet"}],
     }
 
 

@@ -12,7 +12,7 @@ formulaires nommés (la même bibliothèque partagée/par-projet que
 :mod:`spectre.core.step_presets`/:mod:`spectre.core.structure_library`/:mod:`spectre.core.
 tech_bricks`, via :class:`~spectre.core.keyed_store.KeyedJsonStore`), et lequel est actuellement
 actif pour un projet donné - voir :func:`activate`/:func:`active_form`/:func:`deactivate` dans
-:mod:`spectre.core.projects`, qui matérialisent le choix en ``commit_form.yml`` dans le dépôt
+:mod:`spectre.core.microprojects`, qui matérialisent le choix en ``commit_form.yml`` dans le dépôt
 Follow du projet : le seul endroit où Follow va effectivement le lire.
 """
 
@@ -54,6 +54,6 @@ def parse_yaml_form(text: str) -> CommitForm:
 
 def dump_yaml_form(form: CommitForm) -> str:
     """The inverse of :func:`parse_yaml_form` - used to write a library entry out as
-    ``commit_form.yml`` once a project activates it (see ``spectre.core.projects.activate_intent_form``).
+    ``commit_form.yml`` once a microproject activates it (see ``spectre.core.microprojects.activate_intent_form``).
     """
     return yaml.safe_dump(form.model_dump(mode="json", exclude_none=True), allow_unicode=True, sort_keys=False)

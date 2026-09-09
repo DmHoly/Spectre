@@ -37,7 +37,7 @@ function clearError() {
 }
 
 let currentRole = null;
-let currentProjectName = null;
+let currentMicroprojectName = null;
 let currentDetail = null;
 let currentProcess = null; // {substrate, steps} from /process - absent for structures without an
 // editable StructureForge recipe recorded (e.g. a campaign's representative entry).
@@ -620,18 +620,18 @@ function renderConcludeForm(detail, prefill) {
   });
 }
 
-async function populateCompareProjectSelect() {
-  const projectSelect = document.getElementById("compare-project-select");
+async function populateCompareMicroprojectSelect() {
+  const microprojectSelect = document.getElementById("compare-microproject-select");
   try {
-    const myProjects = await api.get("/api/microprojets");
-    projectSelect.innerHTML = myProjects
+    const myMicroprojects = await api.get("/api/microprojets");
+    microprojectSelect.innerHTML = myMicroprojects
       .map((p) => `<option value="${p.slug}">${escapeHtml(p.name)}${p.slug === slug ? " (ce µprojet)" : ""}</option>`)
       .join("");
-    projectSelect.value = slug;
+    microprojectSelect.value = slug;
   } catch (err) {
     // silent: comparison is a secondary feature
   }
-  await populateCompareExperienceSelect(projectSelect.value);
+  await populateCompareExperienceSelect(microprojectSelect.value);
 }
 
 async function populateCompareExperienceSelect(targetSlug) {
@@ -647,20 +647,20 @@ async function populateCompareExperienceSelect(targetSlug) {
   }
 }
 
-document.getElementById("compare-project-select").addEventListener("change", (event) => {
+document.getElementById("compare-microproject-select").addEventListener("change", (event) => {
   populateCompareExperienceSelect(event.target.value);
 });
 
 document.getElementById("compare-btn").addEventListener("click", async () => {
-  const targetProject = document.getElementById("compare-project-select").value;
+  const targetMicroproject = document.getElementById("compare-microproject-select").value;
   const target = document.getElementById("compare-select").value;
   if (!target) return;
   const box = document.getElementById("compare-result");
   try {
     const endpoint =
-      targetProject === slug
+      targetMicroproject === slug
         ? `/api/microprojets/${slug}/experiences/${experienceId}/diff?against=${target}`
-        : `/api/microprojets/${slug}/experiences/${experienceId}/diff-externe?autre_projet=${targetProject}&autre_experience=${target}`;
+        : `/api/microprojets/${slug}/experiences/${experienceId}/diff-externe?autre_projet=${targetMicroproject}&autre_experience=${target}`;
     const diff = await api.get(endpoint);
     if (diff.entries.length === 0) {
       box.innerHTML = `<div class="help">Aucune différence de structure.</div>`;
@@ -1429,7 +1429,7 @@ async function generateReportHtml() {
 </head>
 <body>
   <div class="report-page">
-    <div class="report-banner">Rapport d'expérience — extrait de Spectre (projet « ${escapeHtml(currentProjectName || "")} ») le ${generatedAt}. Document autonome : une photographie de cette fiche à cet instant, sans lien avec les données vivantes du µprojet.</div>
+    <div class="report-banner">Rapport d'expérience — extrait de Spectre (projet « ${escapeHtml(currentMicroprojectName || "")} ») le ${generatedAt}. Document autonome : une photographie de cette fiche à cet instant, sans lien avec les données vivantes du µprojet.</div>
     ${sections}
   </div>
 </body>
@@ -1502,15 +1502,15 @@ function applyModeVisibility() {
 async function init() {
   try {
     currentDetail = await api.get(`/api/microprojets/${slug}/experiences/${experienceId}`);
-    const project = await api.get(`/api/microprojets/${slug}`);
-    currentRole = project.role;
-    currentProjectName = project.name;
-    document.getElementById("project-crumb").textContent = project.name;
-    document.getElementById("project-crumb").href = `/microprojets/${slug}`;
+    const microproject = await api.get(`/api/microprojets/${slug}`);
+    currentRole = microproject.role;
+    currentMicroprojectName = microproject.name;
+    document.getElementById("microproject-crumb").textContent = microproject.name;
+    document.getElementById("microproject-crumb").href = `/microprojets/${slug}`;
     const areaCrumb = document.getElementById("area-crumb");
-    if (project.management_area) {
-      areaCrumb.textContent = project.management_area.name;
-      areaCrumb.href = `/management/${encodeURIComponent(project.management_area.slug)}`;
+    if (microproject.management_area) {
+      areaCrumb.textContent = microproject.management_area.name;
+      areaCrumb.href = `/management/${encodeURIComponent(microproject.management_area.slug)}`;
     } else {
       areaCrumb.textContent = "Non classé";
     }
@@ -1551,7 +1551,7 @@ async function init() {
     renderTimeline(timeline.versions);
     renderFullHistory(timeline.items);
     renderStructure(currentDetail, diff);
-    populateCompareProjectSelect();
+    populateCompareMicroprojectSelect();
   } catch (err) {
     showError(err);
   }

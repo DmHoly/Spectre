@@ -402,7 +402,7 @@ function populateInsertBrickSelect() {
   const entries = [
     ...state.techBricks.presets.map((b) => ({ ...b, scope: "preset" })),
     ...state.techBricks.partagees.map((b) => ({ ...b, scope: "partagee" })),
-    ...state.techBricks.projet.map((b) => ({ ...b, scope: "projet" })),
+    ...state.techBricks.microprojet.map((b) => ({ ...b, scope: "microprojet" })),
   ];
   const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", projet: "" };
   select.innerHTML =
@@ -417,7 +417,7 @@ document.getElementById("insert-brick-btn").addEventListener("click", () => {
   const [scope, encodedName] = document.getElementById("insert-brick-select").value.split("::");
   if (!scope) return;
   const name = decodeURIComponent(encodedName);
-  const bucket = scope === "preset" ? state.techBricks.presets : scope === "partagee" ? state.techBricks.partagees : state.techBricks.projet;
+  const bucket = scope === "preset" ? state.techBricks.presets : scope === "partagee" ? state.techBricks.partagees : state.techBricks.microprojet;
   const brick = bucket.find((b) => b.name === name);
   if (!brick) return;
   // Si l'étape en cours d'édition appartient déjà à une brique, insérer juste avant elle

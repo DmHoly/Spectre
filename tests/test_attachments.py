@@ -1,7 +1,7 @@
 """Pièces jointes (spectre.api.experiments's pieces-jointes routes): attaching a file to an
 experience, or to one of the physical entities it tracks. Like tags/physical_tracking, uploading
 or removing one records a new Follow version rather than mutating anything in place - the
-uploaded bytes themselves live on disk (spectre.core.projects.attachments_dir), addressed by a
+uploaded bytes themselves live on disk (spectre.core.microprojects.attachments_dir), addressed by a
 generated id, never the caller-supplied filename.
 """
 
@@ -20,10 +20,10 @@ def _steps(thickness=20):
     ]
 
 
-def _register_and_project(client, email, project_name="Projet"):
+def _register_and_microproject(client, email, microproject_name="Projet"):
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": microproject_name}).json()["slug"]
 
 
 def _launch(client, slug, title="Etude"):
@@ -50,7 +50,7 @@ def _png_bytes():
 
 
 def test_upload_attachment_records_a_new_version_and_lists_it(client):
-    slug = _register_and_project(client, "attach@example.com")
+    slug = _register_and_microproject(client, "attach@example.com")
     launched = _launch(client, slug)
 
     response = client.post(
@@ -69,12 +69,12 @@ def test_upload_attachment_records_a_new_version_and_lists_it(client):
     assert detail["attachments"][0]["filename"] == "mesure.png"
 
     atlas = client.get("/api/atlas").json()
-    project = next(p for p in atlas["projects"] if p["slug"] == slug)
-    assert project["experiences"][0]["attachments"][0]["filename"] == "mesure.png"
+    microproject = next(p for p in atlas["microprojects"] if p["slug"] == slug)
+    assert microproject["experiences"][0]["attachments"][0]["filename"] == "mesure.png"
 
 
 def test_uploaded_file_downloads_with_the_right_bytes_and_type(client):
-    slug = _register_and_project(client, "attach-download@example.com")
+    slug = _register_and_microproject(client, "attach-download@example.com")
     launched = _launch(client, slug)
     png = _png_bytes()
     upload = client.post(
@@ -92,7 +92,7 @@ def test_uploaded_file_downloads_with_the_right_bytes_and_type(client):
 
 
 def test_upload_rejects_disallowed_content_type(client):
-    slug = _register_and_project(client, "attach-badtype@example.com")
+    slug = _register_and_microproject(client, "attach-badtype@example.com")
     launched = _launch(client, slug)
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/pieces-jointes",
@@ -102,7 +102,7 @@ def test_upload_rejects_disallowed_content_type(client):
 
 
 def test_upload_rejects_a_file_over_the_size_limit(client):
-    slug = _register_and_project(client, "attach-toobig@example.com")
+    slug = _register_and_microproject(client, "attach-toobig@example.com")
     launched = _launch(client, slug)
     oversized = io.BytesIO(b"x" * (10 * 1024 * 1024 + 1))
     response = client.post(
@@ -113,7 +113,7 @@ def test_upload_rejects_a_file_over_the_size_limit(client):
 
 
 def test_attachment_can_be_scoped_to_a_specific_physical_entity(client):
-    slug = _register_and_project(client, "attach-entity@example.com")
+    slug = _register_and_microproject(client, "attach-entity@example.com")
     launched = _launch(client, slug)
     with_entity = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/entites",
@@ -138,7 +138,7 @@ def test_attachment_can_be_scoped_to_a_specific_physical_entity(client):
 
 
 def test_removing_an_attachment_records_a_new_version_without_it(client):
-    slug = _register_and_project(client, "attach-remove@example.com")
+    slug = _register_and_microproject(client, "attach-remove@example.com")
     launched = _launch(client, slug)
     upload = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/pieces-jointes",
@@ -160,7 +160,7 @@ def test_removing_an_attachment_records_a_new_version_without_it(client):
 
 
 def test_attachment_can_be_scoped_to_a_preuve_and_then_annotated(client):
-    slug = _register_and_project(client, "attach-evidence@example.com")
+    slug = _register_and_microproject(client, "attach-evidence@example.com")
     launched = _launch(client, slug)
     with_evidence = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
@@ -206,7 +206,7 @@ def test_attachment_can_be_scoped_to_a_preuve_and_then_annotated(client):
 
 
 def test_annotations_reject_an_attachment_that_does_not_belong_to_the_preuve(client):
-    slug = _register_and_project(client, "attach-annot-mismatch@example.com")
+    slug = _register_and_microproject(client, "attach-annot-mismatch@example.com")
     launched = _launch(client, slug)
     with_evidence = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
@@ -228,7 +228,7 @@ def test_annotations_reject_an_attachment_that_does_not_belong_to_the_preuve(cli
 
 
 def test_annotations_on_a_nonexistent_evidence_id_is_404(client):
-    slug = _register_and_project(client, "attach-annot-404@example.com")
+    slug = _register_and_microproject(client, "attach-annot-404@example.com")
     launched = _launch(client, slug)
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves/does-not-exist/annotations",
@@ -238,7 +238,7 @@ def test_annotations_on_a_nonexistent_evidence_id_is_404(client):
 
 
 def test_viewer_cannot_upload_an_attachment(client):
-    owner_slug = _register_and_project(client, "attach-owner@example.com")
+    owner_slug = _register_and_microproject(client, "attach-owner@example.com")
     launched = _launch(client, owner_slug)
 
     # the viewer's account must already exist for /members to add them directly (otherwise it

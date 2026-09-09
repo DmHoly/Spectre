@@ -39,7 +39,7 @@ def test_admin_creates_an_area_and_moves_a_microprojet_into_it(client):
     slug = created.json()["slug"]
     assert slug == "fiabilite"
 
-    moved = client.post(f"/api/management/{slug}/microprojets", json={"project_slug": "contact-ohmique"})
+    moved = client.post(f"/api/management/{slug}/microprojets", json={"microproject_slug": "contact-ohmique"})
     assert moved.status_code == 200
     assert [p["slug"] for p in moved.json()["microprojets"]] == ["contact-ohmique"]
 
@@ -62,7 +62,7 @@ def test_deleting_an_area_returns_its_microprojets_to_unclassified(client):
     _register(client, "boss@example.com")
     client.post("/api/microprojets", json={"name": "P1"})
     slug = client.post("/api/management", json={"name": "Temporaire"}).json()["slug"]
-    client.post(f"/api/management/{slug}/microprojets", json={"project_slug": "p1"})
+    client.post(f"/api/management/{slug}/microprojets", json={"microproject_slug": "p1"})
 
     assert client.delete(f"/api/management/{slug}").status_code == 200
     unclassified = next(a for a in client.get("/api/management").json()["areas"] if a["slug"] == "non-classe")

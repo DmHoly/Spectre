@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 
-def test_owner_can_delete_project(client):
+def test_owner_can_delete_microproject(client):
     client.post("/api/auth/register", json={"email": "del1@example.com", "password": "supersecret", "name": "D1"})
-    project = client.post("/api/microprojets", json={"name": "Projet a supprimer"}).json()
-    slug = project["slug"]
+    microproject = client.post("/api/microprojets", json={"name": "Projet a supprimer"}).json()
+    slug = microproject["slug"]
 
     response = client.delete(f"/api/microprojets/{slug}?confirm_name=Projet+a+supprimer")
     assert response.status_code == 200
@@ -15,18 +15,18 @@ def test_owner_can_delete_project(client):
 
 def test_delete_requires_matching_name(client):
     client.post("/api/auth/register", json={"email": "del2@example.com", "password": "supersecret", "name": "D2"})
-    project = client.post("/api/microprojets", json={"name": "Nom exact"}).json()
-    slug = project["slug"]
+    microproject = client.post("/api/microprojets", json={"name": "Nom exact"}).json()
+    slug = microproject["slug"]
 
     response = client.delete(f"/api/microprojets/{slug}?confirm_name=Mauvais+nom")
     assert response.status_code == 422
     assert client.get(f"/api/microprojets/{slug}").status_code == 200
 
 
-def test_editor_cannot_delete_project(client):
+def test_editor_cannot_delete_microproject(client):
     client.post("/api/auth/register", json={"email": "del3@example.com", "password": "supersecret", "name": "D3"})
-    project = client.post("/api/microprojets", json={"name": "Projet protege"}).json()
-    slug = project["slug"]
+    microproject = client.post("/api/microprojets", json={"name": "Projet protege"}).json()
+    slug = microproject["slug"]
 
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": "del3editor@example.com", "password": "supersecret", "name": "E3"})

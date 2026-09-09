@@ -6,7 +6,7 @@
 
 const slug = window.location.pathname.split("/").filter(Boolean)[1];
 document.getElementById("crumb").textContent = "/ " + slug;
-document.getElementById("project-link").href = `/microprojets/${slug}`;
+document.getElementById("microproject-link").href = `/microprojets/${slug}`;
 
 function refCardHtml(node) {
   const names = node.names

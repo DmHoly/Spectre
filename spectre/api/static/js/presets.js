@@ -109,7 +109,7 @@ function presetRow(preset) {
 }
 
 function findPreset(scope, name) {
-  const bucket = scope === "preset" ? state.presets.presets : scope === "partagee" ? state.presets.partagees : state.presets.projet;
+  const bucket = scope === "preset" ? state.presets.presets : scope === "partagee" ? state.presets.partagees : state.presets.microprojet;
   return (bucket || []).find((p) => p.name === name) || null;
 }
 
@@ -128,7 +128,7 @@ function renderList() {
   const entries = [
     ...state.presets.presets.map((p) => ({ ...p, scope: "preset" })),
     ...state.presets.partagees.map((p) => ({ ...p, scope: "partagee" })),
-    ...state.presets.projet.map((p) => ({ ...p, scope: "projet" })),
+    ...state.presets.microprojet.map((p) => ({ ...p, scope: "microprojet" })),
   ];
   document.getElementById("presets-list").innerHTML = entries.length
     ? entries.map(presetRow).join("")
@@ -205,9 +205,9 @@ document.getElementById("preset-form").addEventListener("submit", async (event) 
 
 async function init() {
   try {
-    const project = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
-    state.currentRole = project.role;
-    document.getElementById("crumb").textContent = "/ " + project.name;
+    const microproject = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
+    state.currentRole = microproject.role;
+    document.getElementById("crumb").textContent = "/ " + microproject.name;
     document.getElementById("back-link").href = "/bibliotheque";
     if (!(state.currentRole === "editor" || state.currentRole === "owner")) {
       document.querySelector(".card.card-pad").style.display = "none";

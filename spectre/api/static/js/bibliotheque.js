@@ -4,7 +4,7 @@
    passe par le constructeur ou les pages de gestion, qui ont besoin d'un µprojet (permissions +
    simulation) : d'où le sélecteur "projet de travail", mémorisé en local. */
 
-const WORK_PROJECT_KEY = "spectre.libWorkProject";
+const WORK_MICROPROJECT_KEY = "spectre.libWorkMicroproject";
 
 const errorBox = document.getElementById("error");
 function showError(err) {
@@ -12,27 +12,27 @@ function showError(err) {
   errorBox.style.display = "block";
 }
 
-function rememberedProject() {
+function rememberedMicroproject() {
   try {
-    return localStorage.getItem(WORK_PROJECT_KEY);
+    return localStorage.getItem(WORK_MICROPROJECT_KEY);
   } catch {
     return null;
   }
 }
 
-function applyProject(project) {
-  // project = { slug, role } ou null
+function applyMicroproject(microproject) {
+  // microproject = { slug, role } ou null
   const editorOnly = document.querySelectorAll(".js-editor-only");
-  if (!project) {
+  if (!microproject) {
     editorOnly.forEach((el) => (el.style.display = "none"));
     return;
   }
   try {
-    localStorage.setItem(WORK_PROJECT_KEY, project.slug);
+    localStorage.setItem(WORK_MICROPROJECT_KEY, microproject.slug);
   } catch {
     /* mode privé : on continue sans mémoriser */
   }
-  const s = encodeURIComponent(project.slug);
+  const s = encodeURIComponent(microproject.slug);
   const set = (id, href) => {
     const el = document.getElementById(id);
     if (el) el.href = href;
@@ -43,39 +43,39 @@ function applyProject(project) {
   set("new-brick-link", `/microprojets/${s}/briques-technologiques/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
   set("manage-bricks-link", `/microprojets/${s}/briques-technologiques`);
 
-  const canEdit = project.role === "editor" || project.role === "owner";
+  const canEdit = microproject.role === "editor" || microproject.role === "owner";
   editorOnly.forEach((el) => (el.style.display = canEdit ? "" : "none"));
 }
 
 async function init() {
-  let projects;
+  let microprojects;
   try {
-    projects = await api.get("/api/microprojets");
+    microprojects = await api.get("/api/microprojets");
   } catch (err) {
     showError(err);
     return;
   }
 
-  if (projects.length === 0) {
-    document.getElementById("no-project-msg").style.display = "";
-    applyProject(null);
+  if (microprojects.length === 0) {
+    document.getElementById("no-microproject-msg").style.display = "";
+    applyMicroproject(null);
     return;
   }
 
-  const select = document.getElementById("work-project");
-  select.innerHTML = projects
+  const select = document.getElementById("work-microproject");
+  select.innerHTML = microprojects
     .map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}</option>`)
     .join("");
 
-  const remembered = rememberedProject();
-  const initial = projects.find((p) => p.slug === remembered) || projects[0];
+  const remembered = rememberedMicroproject();
+  const initial = microprojects.find((p) => p.slug === remembered) || microprojects[0];
   select.value = initial.slug;
-  document.getElementById("work-project-row").style.display = projects.length > 1 ? "" : "none";
-  applyProject(initial);
+  document.getElementById("work-microproject-row").style.display = microprojects.length > 1 ? "" : "none";
+  applyMicroproject(initial);
 
   select.addEventListener("change", () => {
-    const chosen = projects.find((p) => p.slug === select.value);
-    if (chosen) applyProject(chosen);
+    const chosen = microprojects.find((p) => p.slug === select.value);
+    if (chosen) applyMicroproject(chosen);
   });
 }
 

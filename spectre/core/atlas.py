@@ -1,7 +1,7 @@
-"""The cross-project atlas: a bird's-eye view spanning every project a user belongs to, rather
-than the per-project "vue d'ensemble" (:mod:`spectre.api.experiments`'s ``project_graph_html``,
+"""The cross-microproject atlas: a bird's-eye view spanning every microproject a user belongs to, rather
+than the per-microproject "vue d'ensemble" (:mod:`spectre.api.experiments`'s ``microproject_graph_html``,
 which plots full commit history one node per version). Nodes here are branch tips
-(:func:`spectre.core.projects.branch_tips` - one per line of study, not every version ever
+(:func:`spectre.core.microprojects.branch_tips` - one per line of study, not every version ever
 committed to it) and the physical entities tracked on them; :func:`condensed_edges` collapses the
 intermediate commits between two tips down to a single link, so forks and merges still show up
 without drawing the whole history.
@@ -54,12 +54,12 @@ def entities_for(experiment: Any) -> list[dict]:
     ]
 
 
-def entity_history_for_project(repo: Any, tips: list[Any]) -> dict[str, list[str]]:
-    """Every distinct sample_id/location already used anywhere on the project's current branch
+def entity_history_for_microproject(repo: Any, tips: list[Any]) -> dict[str, list[str]]:
+    """Every distinct sample_id/location already used anywhere on the microproject's current branch
     tips - not the full commit history (a superseded intermediate version's entities don't
     surface), the same "current state, not every version" scope :func:`entities_for` already
     works at. Meant to feed an autocomplete on the physical-entities editor so a user typing a
-    sample id or location sees what's already in use elsewhere in the project, rather than
+    sample id or location sees what's already in use elsewhere in the microproject, rather than
     re-typing a slightly different spelling of the same thing.
     """
     sample_ids: set[str] = set()

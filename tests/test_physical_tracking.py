@@ -17,13 +17,13 @@ def _steps():
     ]
 
 
-def _register_and_project(client, email):
+def _register_and_microproject(client, email):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
     return client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
 
 
 def test_setting_physical_tracking_on_a_single_experience(client):
-    slug = _register_and_project(client, "physical@example.com")
+    slug = _register_and_microproject(client, "physical@example.com")
     launched = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={
@@ -49,7 +49,7 @@ def test_setting_physical_tracking_on_a_single_experience(client):
 
 
 def test_physical_tracking_rejects_wrong_entity_count_for_a_single_experience(client):
-    slug = _register_and_project(client, "physicalcount@example.com")
+    slug = _register_and_microproject(client, "physicalcount@example.com")
     launched = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={
@@ -68,7 +68,7 @@ def test_physical_tracking_rejects_wrong_entity_count_for_a_single_experience(cl
 
 
 def test_physical_tracking_on_a_campaign_matches_entity_count(client):
-    slug = _register_and_project(client, "physicalcampaign@example.com")
+    slug = _register_and_microproject(client, "physicalcampaign@example.com")
     campaign = client.post(
         f"/api/microprojets/{slug}/experiences/campagne",
         json={
@@ -98,7 +98,7 @@ def test_physical_tracking_on_a_campaign_matches_entity_count(client):
 
 
 def test_physical_tracking_carries_forward_through_evidence_and_conclude(client):
-    slug = _register_and_project(client, "physicalcarry@example.com")
+    slug = _register_and_microproject(client, "physicalcarry@example.com")
     launched = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={

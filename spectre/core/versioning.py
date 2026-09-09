@@ -125,7 +125,7 @@ def _topological_order(dag: dict[str, list[str]]) -> list[str]:
 
 
 def determine_keep_ids(dag: dict[str, list[str]], processes: dict[str, dict | None], tips: set[str]) -> set[str]:
-    """Which experiments stay visible in a collapsed project graph: every root, every merge (a
+    """Which experiments stay visible in a collapsed microproject graph: every root, every merge (a
     join between two lines of work is structurally significant on its own, whatever it did or
     didn't change), every branch tip (so "where things stand" is never hidden), and every commit
     that actually bumped the process/structure version. Everything else - a tag, an evidence, a

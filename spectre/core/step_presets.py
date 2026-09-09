@@ -3,7 +3,7 @@ recipes (see :mod:`structureforge.core.recipes`), persisted independently of any
 for a team's own vocabulary ("notre gravure standard") on top of the recipe library's own names.
 
 Two stores per Spectre instance, the same split as :mod:`spectre.core.structure_library`: one
-shared across every project, one private to a single project - see :func:`spectre.core.projects.
+shared across every microproject, one private to a single microproject - see :func:`spectre.core.microprojects.
 get_shared_step_preset_store`/``get_step_preset_store``. Applying a preset only pre-fills a step's
 form fields client-side (see ``structure-builder.js``); once added, a step carries its own
 ``recipe`` independently, the same "point of departure, not a live link" relationship the
@@ -51,8 +51,8 @@ def StepPresetStore(path: str | Path) -> KeyedJsonStore[StepPresetLibrary, StepP
 def default_step_presets() -> dict[str, StepPreset]:
     """The preset library's ``"preset"`` scope: the editable root library
     (``library/presets.yml`` via :mod:`spectre.core.registry`) when it exists, otherwise the
-    built-in set below. Always available from every project, never written to a JSON store (only
-    the shared/project stores are). Imported lazily to avoid a core import cycle
+    built-in set below. Always available from every microproject, never written to a JSON store (only
+    the shared/microproject stores are). Imported lazily to avoid a core import cycle
     (``registry`` imports this module for its models).
     """
     from .registry import registry_step_presets

@@ -38,9 +38,9 @@ const panel = document.getElementById("atlas-panel");
 const panelErrorBox = document.getElementById("panel-error");
 let selection = null; // the currently-clicked node's datum, for the side panel
 let currentAtlas = null; // the raw /api/atlas payload, for building link lists/pickers
-let nodesById = new Map(); // rebuilt on every build() - project:*/experience-id/entity:*:* -> node
+let nodesById = new Map(); // rebuilt on every build() - microproject:*/experience-id/entity:*:* -> node
 
-function projectColor(index) {
+function microprojectColor(index) {
   return `var(--atlas-cat-${(index % 8) + 1})`;
 }
 
@@ -49,7 +49,7 @@ function entityKey(ref) {
 }
 
 function matchesEntity(ref, d) {
-  return ref.project_slug === d.projectSlug && ref.experience_id === d.experienceId && ref.entity_index === d.entityIndex;
+  return ref.microproject_slug === d.microprojectSlug && ref.experience_id === d.experienceId && ref.entity_index === d.entityIndex;
 }
 
 function showPanelError(err) {
@@ -94,8 +94,8 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
-function attachmentItemHtml(a, projectSlug) {
-  const url = `/api/microprojets/${encodeURIComponent(projectSlug)}/pieces-jointes/${encodeURIComponent(a.id)}`;
+function attachmentItemHtml(a, microprojectSlug) {
+  const url = `/api/microprojets/${encodeURIComponent(microprojectSlug)}/pieces-jointes/${encodeURIComponent(a.id)}`;
   const isImage = a.content_type.startsWith("image/");
   return `
     <div class="js-attachment-item" data-id="${a.id}" style="padding:8px 0;border-top:1px solid var(--border-soft);font-size:12.5px;">
@@ -121,11 +121,11 @@ function deleteLinkButtonHtml(cls, id) {
   return `<button class="${cls}" data-id="${id}" type="button" title="Retirer le lien" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:0;font-size:15px;line-height:1;flex:none;">&times;</button>`;
 }
 
-function renderProjectPanel(d) {
+function renderMicroprojectPanel(d) {
   const experienceCount = d.experiences.length;
   const entityCount = d.experiences.reduce((n, e) => n + e.entities.length, 0);
-  const myLinks = (currentAtlas.project_links || []).filter((l) => l.a.slug === d.slug || l.b.slug === d.slug);
-  const otherProjects = currentAtlas.projects.filter((p) => p.slug !== d.slug);
+  const myLinks = (currentAtlas.microproject_links || []).filter((l) => l.a.slug === d.slug || l.b.slug === d.slug);
+  const otherMicroprojects = currentAtlas.microprojects.filter((p) => p.slug !== d.slug);
 
   const linksHtml = myLinks
     .map((l) => {
@@ -136,7 +136,7 @@ function renderProjectPanel(d) {
             <span style="font-weight:600;">${escapeHtml(other.name)}</span>
             ${l.note ? `<div style="color:var(--text-faint);margin-top:2px;">${escapeHtml(l.note)}</div>` : ""}
           </div>
-          ${deleteLinkButtonHtml("js-delete-project-link", l.id)}
+          ${deleteLinkButtonHtml("js-delete-microproject-link", l.id)}
         </div>`;
     })
     .join("");
@@ -153,40 +153,40 @@ function renderProjectPanel(d) {
     <div class="section-title" style="margin:20px 0 8px;">Projets liés</div>
     ${myLinks.length ? linksHtml : `<div class="help">Aucun lien pour l'instant.</div>`}
     ${
-      otherProjects.length
-        ? `<form id="project-link-form" style="margin-top:12px;">
-            <select class="field" id="project-link-select" style="margin-bottom:6px;">
-              ${otherProjects.map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}</option>`).join("")}
+      otherMicroprojects.length
+        ? `<form id="microproject-link-form" style="margin-top:12px;">
+            <select class="field" id="microproject-link-select" style="margin-bottom:6px;">
+              ${otherMicroprojects.map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}</option>`).join("")}
             </select>
-            <input class="field" id="project-link-note" placeholder="Pourquoi ces deux µprojets se rejoignent (optionnel)" style="margin-bottom:8px;">
+            <input class="field" id="microproject-link-note" placeholder="Pourquoi ces deux µprojets se rejoignent (optionnel)" style="margin-bottom:8px;">
             <button class="btn btn-line btn-block" type="submit">Lier à ce µprojet</button>
           </form>`
         : `<div class="help" style="margin-top:10px;">Aucun autre µprojet à lier.</div>`
     }`;
 
-  const form = document.getElementById("project-link-form");
+  const form = document.getElementById("microproject-link-form");
   if (form) {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       clearPanelError();
       try {
         await api.post("/api/liens-projets", {
-          project_a: d.slug,
-          project_b: document.getElementById("project-link-select").value,
-          note: document.getElementById("project-link-note").value.trim(),
+          microproject_a: d.slug,
+          microproject_b: document.getElementById("microproject-link-select").value,
+          note: document.getElementById("microproject-link-note").value.trim(),
         });
-        await refresh(`project:${d.slug}`);
+        await refresh(`microproject:${d.slug}`);
       } catch (err) {
         showPanelError(err);
       }
     });
   }
-  panel.querySelectorAll(".js-delete-project-link").forEach((btn) => {
+  panel.querySelectorAll(".js-delete-microproject-link").forEach((btn) => {
     btn.addEventListener("click", async () => {
       clearPanelError();
       try {
         await api.del(`/api/liens-projets/${btn.dataset.id}`);
-        await refresh(`project:${d.slug}`);
+        await refresh(`microproject:${d.slug}`);
       } catch (err) {
         showPanelError(err);
       }
@@ -204,7 +204,7 @@ function renderExperiencePanel(d) {
       </div>`
     )
     .join("");
-  const attachmentsHtml = d.attachments.map((a) => attachmentItemHtml(a, d.projectSlug)).join("");
+  const attachmentsHtml = d.attachments.map((a) => attachmentItemHtml(a, d.microprojectSlug)).join("");
   panel.innerHTML = `
     <div class="section-title" style="margin-bottom:6px;">Étude</div>
     <div style="margin-bottom:8px;">${statusBadgeHtml(d.status)}</div>
@@ -212,7 +212,7 @@ function renderExperiencePanel(d) {
     <p style="font-size:13px;color:var(--text-soft);line-height:1.55;margin-bottom:10px;">${escapeHtml(d.intent)}</p>
     ${d.conclusion_summary ? `<div style="font-size:12.5px;background:var(--bg);border-radius:var(--radius-sm);padding:8px 10px;line-height:1.5;margin-bottom:12px;">${escapeHtml(d.conclusion_summary)}</div>` : ""}
     ${objectives ? `<div style="margin-bottom:14px;">${objectives}</div>` : ""}
-    <a class="btn btn-primary btn-block" href="/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}">Ouvrir la fiche &rarr;</a>
+    <a class="btn btn-primary btn-block" href="/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}">Ouvrir la fiche &rarr;</a>
 
     <div class="section-title" style="margin:20px 0 8px;">Pièces jointes</div>
     ${d.attachments.length ? attachmentsHtml : `<div class="help">Aucune pièce jointe.</div>`}
@@ -227,7 +227,7 @@ function renderExperiencePanel(d) {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const result = await uploadFile(`/api/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes`, formData);
+      const result = await uploadFile(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes`, formData);
       await refresh(result.id);
     } catch (err) {
       showPanelError(err);
@@ -237,7 +237,7 @@ function renderExperiencePanel(d) {
     btn.addEventListener("click", async () => {
       clearPanelError();
       try {
-        const result = await api.del(`/api/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes/${btn.dataset.id}`);
+        const result = await api.del(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes/${btn.dataset.id}`);
         await refresh(result.id);
       } catch (err) {
         showPanelError(err);
@@ -247,8 +247,8 @@ function renderExperiencePanel(d) {
 }
 
 function populateEntityLinkExperienceSelect() {
-  const projSlug = document.getElementById("entity-link-project-select").value;
-  const proj = currentAtlas.projects.find((p) => p.slug === projSlug);
+  const projSlug = document.getElementById("entity-link-microproject-select").value;
+  const proj = currentAtlas.microprojects.find((p) => p.slug === projSlug);
   const withEntities = (proj ? proj.experiences : []).filter((e) => e.entities.length > 0);
   const select = document.getElementById("entity-link-experience-select");
   select.innerHTML = withEntities.length
@@ -258,9 +258,9 @@ function populateEntityLinkExperienceSelect() {
 }
 
 function populateEntityLinkEntitySelect() {
-  const projSlug = document.getElementById("entity-link-project-select").value;
+  const projSlug = document.getElementById("entity-link-microproject-select").value;
   const expId = document.getElementById("entity-link-experience-select").value;
-  const proj = currentAtlas.projects.find((p) => p.slug === projSlug);
+  const proj = currentAtlas.microprojects.find((p) => p.slug === projSlug);
   const exp = proj ? proj.experiences.find((e) => e.id === expId) : null;
   const select = document.getElementById("entity-link-entity-select");
   select.innerHTML = exp
@@ -279,15 +279,15 @@ function renderEntityPanel(d) {
         <div style="padding:8px 0;border-top:1px solid var(--border-soft);font-size:12.5px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
           <div>
             <span style="font-weight:600;">${escapeHtml(label)}</span>
-            <div style="color:var(--text-faint);margin-top:2px;">${escapeHtml(other.project_slug)}${l.note ? " — " + escapeHtml(l.note) : ""}</div>
+            <div style="color:var(--text-faint);margin-top:2px;">${escapeHtml(other.microproject_slug)}${l.note ? " — " + escapeHtml(l.note) : ""}</div>
           </div>
           ${deleteLinkButtonHtml("js-delete-entity-link", l.id)}
         </div>`;
     })
     .join("");
 
-  const hasAnyEntityElsewhere = currentAtlas.projects.some((p) => p.experiences.some((e) => e.entities.length > 0));
-  const attachmentsHtml = d.attachments.map((a) => attachmentItemHtml(a, d.projectSlug)).join("");
+  const hasAnyEntityElsewhere = currentAtlas.microprojects.some((p) => p.experiences.some((e) => e.entities.length > 0));
+  const attachmentsHtml = d.attachments.map((a) => attachmentItemHtml(a, d.microprojectSlug)).join("");
 
   panel.innerHTML = `
     <div class="section-title" style="margin-bottom:6px;">Entité physique</div>
@@ -295,7 +295,7 @@ function renderEntityPanel(d) {
     ${d.location ? `<div style="font-size:13px;color:var(--text-soft);margin-bottom:14px;">Emplacement&nbsp;: ${escapeHtml(d.location)}</div>` : ""}
     <div class="help" style="margin-bottom:10px;">Suivie sur l'étude :</div>
     <div style="font-size:13.5px;font-weight:600;margin-bottom:10px;">${escapeHtml(d.experienceTitle)}</div>
-    <a class="btn btn-line btn-block" href="/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}">Ouvrir la fiche &rarr;</a>
+    <a class="btn btn-line btn-block" href="/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.experienceId)}">Ouvrir la fiche &rarr;</a>
 
     <div class="section-title" style="margin:20px 0 8px;">Pièces jointes</div>
     ${d.attachments.length ? attachmentsHtml : `<div class="help">Aucune pièce jointe.</div>`}
@@ -307,8 +307,8 @@ function renderEntityPanel(d) {
       hasAnyEntityElsewhere
         ? `<form id="entity-link-form" style="margin-top:12px;">
             <label style="font-size:11px;">Projet</label>
-            <select class="field" id="entity-link-project-select" style="margin-bottom:6px;">
-              ${currentAtlas.projects.map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}</option>`).join("")}
+            <select class="field" id="entity-link-microproject-select" style="margin-bottom:6px;">
+              ${currentAtlas.microprojects.map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}</option>`).join("")}
             </select>
             <label style="font-size:11px;">Étude</label>
             <select class="field" id="entity-link-experience-select" style="margin-bottom:6px;"></select>
@@ -330,7 +330,7 @@ function renderEntityPanel(d) {
     formData.append("file", file);
     formData.append("entity_index", String(d.entityIndex));
     try {
-      const result = await uploadFile(`/api/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes`, formData);
+      const result = await uploadFile(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes`, formData);
       await refresh(entityKey({ experience_id: result.id, entity_index: d.entityIndex }));
     } catch (err) {
       showPanelError(err);
@@ -340,7 +340,7 @@ function renderEntityPanel(d) {
     btn.addEventListener("click", async () => {
       clearPanelError();
       try {
-        const result = await api.del(`/api/microprojets/${encodeURIComponent(d.projectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes/${btn.dataset.id}`);
+        const result = await api.del(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes/${btn.dataset.id}`);
         await refresh(entityKey({ experience_id: result.id, entity_index: d.entityIndex }));
       } catch (err) {
         showPanelError(err);
@@ -348,16 +348,16 @@ function renderEntityPanel(d) {
     });
   });
 
-  const projectSelect = document.getElementById("entity-link-project-select");
-  if (projectSelect) {
-    projectSelect.addEventListener("change", populateEntityLinkExperienceSelect);
+  const microprojectSelect = document.getElementById("entity-link-microproject-select");
+  if (microprojectSelect) {
+    microprojectSelect.addEventListener("change", populateEntityLinkExperienceSelect);
     document.getElementById("entity-link-experience-select").addEventListener("change", populateEntityLinkEntitySelect);
     populateEntityLinkExperienceSelect();
 
     document.getElementById("entity-link-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       clearPanelError();
-      const bProjectSlug = projectSelect.value;
+      const bMicroprojectSlug = microprojectSelect.value;
       const bExperienceId = document.getElementById("entity-link-experience-select").value;
       const bEntityIndexRaw = document.getElementById("entity-link-entity-select").value;
       if (!bExperienceId || bEntityIndexRaw === "") {
@@ -366,8 +366,8 @@ function renderEntityPanel(d) {
       }
       try {
         await api.post("/api/liens-entites", {
-          a: { project_slug: d.projectSlug, experience_id: d.experienceId, entity_index: d.entityIndex },
-          b: { project_slug: bProjectSlug, experience_id: bExperienceId, entity_index: parseInt(bEntityIndexRaw, 10) },
+          a: { microproject_slug: d.microprojectSlug, experience_id: d.experienceId, entity_index: d.entityIndex },
+          b: { microproject_slug: bMicroprojectSlug, experience_id: bExperienceId, entity_index: parseInt(bEntityIndexRaw, 10) },
           note: document.getElementById("entity-link-note").value.trim(),
         });
         await refresh(entityKey({ experience_id: d.experienceId, entity_index: d.entityIndex }));
@@ -396,8 +396,8 @@ function select(datum, element) {
   if (element) d3.select(element).classed("atlas-node-selected", true);
   if (!datum) {
     panel.innerHTML = panelEmptyState();
-  } else if (datum.type === "project") {
-    renderProjectPanel(datum);
+  } else if (datum.type === "microproject") {
+    renderMicroprojectPanel(datum);
   } else if (datum.type === "experience") {
     renderExperiencePanel(datum);
   } else {
@@ -409,8 +409,8 @@ function build(atlas) {
   svg.selectAll("*").remove();
   nodesById = new Map();
 
-  const projects = atlas.projects;
-  if (projects.length === 0) {
+  const microprojects = atlas.microprojects;
+  if (microprojects.length === 0) {
     document.getElementById("atlas-empty").style.display = "";
     return;
   }
@@ -420,29 +420,29 @@ function build(atlas) {
   const height = svg.node().clientHeight;
   const center = { x: width / 2, y: height / 2 };
   // An ellipse rather than a circle - the canvas is wide, not square, so this spreads clusters
-  // across the space actually available instead of stacking them awkwardly (two projects on a
+  // across the space actually available instead of stacking them awkwardly (two microprojects on a
   // circle land directly above/below each other).
   const radiusX = width * 0.28;
   const radiusY = height * 0.28;
 
-  const projectNodes = projects.map((p, i) => {
-    const angle = (2 * Math.PI * i) / projects.length;
-    const anchor = projects.length === 1 ? center : { x: center.x + radiusX * Math.cos(angle), y: center.y + radiusY * Math.sin(angle) };
-    return { id: `project:${p.slug}`, type: "project", slug: p.slug, name: p.name, description: p.description, role: p.role, experiences: p.experiences, color: projectColor(i), fx: anchor.x, fy: anchor.y, x: anchor.x, y: anchor.y };
+  const microprojectNodes = microprojects.map((p, i) => {
+    const angle = (2 * Math.PI * i) / microprojects.length;
+    const anchor = microprojects.length === 1 ? center : { x: center.x + radiusX * Math.cos(angle), y: center.y + radiusY * Math.sin(angle) };
+    return { id: `microproject:${p.slug}`, type: "microproject", slug: p.slug, name: p.name, description: p.description, role: p.role, experiences: p.experiences, color: microprojectColor(i), fx: anchor.x, fy: anchor.y, x: anchor.x, y: anchor.y };
   });
-  const projectBySlug = new Map(projectNodes.map((n) => [n.slug, n]));
+  const microprojectBySlug = new Map(microprojectNodes.map((n) => [n.slug, n]));
 
   const experienceNodes = [];
   const entityNodes = [];
   const links = [];
 
-  projects.forEach((p) => {
+  microprojects.forEach((p) => {
     p.experiences.forEach((exp) => {
-      const anchor = projectBySlug.get(p.slug);
+      const anchor = microprojectBySlug.get(p.slug);
       experienceNodes.push({
         id: exp.id,
         type: "experience",
-        projectSlug: p.slug,
+        microprojectSlug: p.slug,
         title: exp.title,
         intent: exp.intent,
         status: exp.status,
@@ -461,7 +461,7 @@ function build(atlas) {
         entityNodes.push({
           id: entityId,
           type: "entity",
-          projectSlug: p.slug,
+          microprojectSlug: p.slug,
           experienceId: exp.id,
           experienceTitle: exp.title,
           entityIndex: entity.index,
@@ -477,11 +477,11 @@ function build(atlas) {
     p.edges.forEach((e) => links.push({ source: e.from, target: e.to, kind: "derivation" }));
   });
 
-  const allNodes = [...projectNodes, ...experienceNodes, ...entityNodes];
+  const allNodes = [...microprojectNodes, ...experienceNodes, ...entityNodes];
   allNodes.forEach((n) => nodesById.set(n.id, n));
 
   const resolvableEntityLinks = (atlas.entity_links || []).filter((l) => nodesById.has(entityKey(l.a)) && nodesById.has(entityKey(l.b)));
-  const resolvableProjectLinks = (atlas.project_links || []).filter((l) => projectBySlug.has(l.a.slug) && projectBySlug.has(l.b.slug));
+  const resolvableMicroprojectLinks = (atlas.microproject_links || []).filter((l) => microprojectBySlug.has(l.a.slug) && microprojectBySlug.has(l.b.slug));
 
   const g = svg.append("g");
   const haloLayer = g.append("g");
@@ -502,15 +502,15 @@ function build(atlas) {
     .join("line")
     .attr("class", "atlas-leash");
 
-  const projectLinkSelection = crossLinkLayer
-    .selectAll("line.atlas-project-link")
-    .data(resolvableProjectLinks)
+  const microprojectLinkSelection = crossLinkLayer
+    .selectAll("line.atlas-microproject-link")
+    .data(resolvableMicroprojectLinks)
     .join("line")
-    .attr("class", "atlas-project-link")
-    .attr("x1", (l) => projectBySlug.get(l.a.slug).fx)
-    .attr("y1", (l) => projectBySlug.get(l.a.slug).fy)
-    .attr("x2", (l) => projectBySlug.get(l.b.slug).fx)
-    .attr("y2", (l) => projectBySlug.get(l.b.slug).fy);
+    .attr("class", "atlas-microproject-link")
+    .attr("x1", (l) => microprojectBySlug.get(l.a.slug).fx)
+    .attr("y1", (l) => microprojectBySlug.get(l.a.slug).fy)
+    .attr("x2", (l) => microprojectBySlug.get(l.b.slug).fx)
+    .attr("y2", (l) => microprojectBySlug.get(l.b.slug).fy);
 
   const entityLinkSelection = crossLinkLayer
     .selectAll("line.atlas-entity-link")
@@ -520,7 +520,7 @@ function build(atlas) {
 
   const haloSelection = haloLayer
     .selectAll("circle")
-    .data(projectNodes)
+    .data(microprojectNodes)
     .join("circle")
     .attr("class", "atlas-cluster-halo")
     .attr("fill", (d) => d.color)
@@ -530,11 +530,11 @@ function build(atlas) {
     .attr("r", CLUSTER_PADDING)
     .on("click", (event, d) => select(d, event.currentTarget));
 
-  const projectLabels = labelLayer
-    .selectAll("text.atlas-label-project")
-    .data(projectNodes)
+  const microprojectLabels = labelLayer
+    .selectAll("text.atlas-label-microproject")
+    .data(microprojectNodes)
     .join("text")
-    .attr("class", "atlas-label atlas-label-project")
+    .attr("class", "atlas-label atlas-label-microproject")
     .attr("text-anchor", "middle")
     .style("cursor", "pointer")
     .text((d) => d.name)
@@ -589,15 +589,15 @@ function build(atlas) {
         .distance((l) => (l.kind === "leash" ? 16 : 46))
         .strength((l) => (l.kind === "leash" ? 0.9 : 0.5))
     )
-    .force("charge", d3.forceManyBody().strength((d) => (d.type === "project" ? 0 : d.type === "experience" ? -90 : -12)))
-    .force("collide", d3.forceCollide().radius((d) => (d.type === "project" ? CLUSTER_PADDING : d.type === "experience" ? EXPERIENCE_RADIUS + 3 : ENTITY_RADIUS + 2)))
+    .force("charge", d3.forceManyBody().strength((d) => (d.type === "microproject" ? 0 : d.type === "experience" ? -90 : -12)))
+    .force("collide", d3.forceCollide().radius((d) => (d.type === "microproject" ? CLUSTER_PADDING : d.type === "experience" ? EXPERIENCE_RADIUS + 3 : ENTITY_RADIUS + 2)))
     .force(
       "cluster-x",
-      d3.forceX((d) => (d.type === "project" ? d.fx : projectBySlug.get(d.projectSlug).x)).strength((d) => (d.type === "project" ? 0 : d.type === "experience" ? 0.12 : 0.03))
+      d3.forceX((d) => (d.type === "microproject" ? d.fx : microprojectBySlug.get(d.microprojectSlug).x)).strength((d) => (d.type === "microproject" ? 0 : d.type === "experience" ? 0.12 : 0.03))
     )
     .force(
       "cluster-y",
-      d3.forceY((d) => (d.type === "project" ? d.fy : projectBySlug.get(d.projectSlug).y)).strength((d) => (d.type === "project" ? 0 : d.type === "experience" ? 0.12 : 0.03))
+      d3.forceY((d) => (d.type === "microproject" ? d.fy : microprojectBySlug.get(d.microprojectSlug).y)).strength((d) => (d.type === "microproject" ? 0 : d.type === "experience" ? 0.12 : 0.03))
     )
     .on("tick", ticked);
 
@@ -606,7 +606,7 @@ function build(atlas) {
     experienceLabels.attr("x", (d) => d.x).attr("y", (d) => d.y);
     entitySelection.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
     entityLabels.attr("x", (d) => d.x).attr("y", (d) => d.y);
-    projectLabels.attr("x", (d) => d.fx).attr("y", (d) => d.fy - CLUSTER_PADDING - 10);
+    microprojectLabels.attr("x", (d) => d.fx).attr("y", (d) => d.fy - CLUSTER_PADDING - 10);
 
     leashSelection
       .attr("x1", (d) => d.source.x)
@@ -615,8 +615,8 @@ function build(atlas) {
       .attr("y2", (d) => d.target.y);
     edgeSelection.attr("d", (d) => `M${d.source.x},${d.source.y} L${d.target.x},${d.target.y}`);
 
-    // Cross-project entity links aren't part of the force simulation (their two ends can belong
-    // to unrelated clusters - pulling them together would fight the per-project clustering), so
+    // Cross-microproject entity links aren't part of the force simulation (their two ends can belong
+    // to unrelated clusters - pulling them together would fight the per-microproject clustering), so
     // their endpoints are just read live from whichever node they reference.
     entityLinkSelection
       .attr("x1", (l) => nodesById.get(entityKey(l.a)).x)
@@ -624,12 +624,12 @@ function build(atlas) {
       .attr("x2", (l) => nodesById.get(entityKey(l.b)).x)
       .attr("y2", (l) => nodesById.get(entityKey(l.b)).y);
 
-    // The halo is sized to whatever currently sits farthest from its project's anchor, so it
+    // The halo is sized to whatever currently sits farthest from its microproject's anchor, so it
     // keeps enclosing the cluster as the simulation settles rather than a guessed fixed radius.
     haloSelection.attr("r", (d) => {
       let maxDist = CLUSTER_PADDING;
       experienceNodes.forEach((e) => {
-        if (e.projectSlug !== d.slug) return;
+        if (e.microprojectSlug !== d.slug) return;
         const dist = Math.hypot(e.x - d.fx, e.y - d.fy) + EXPERIENCE_RADIUS + 22;
         if (dist > maxDist) maxDist = dist;
       });

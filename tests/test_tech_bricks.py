@@ -20,13 +20,13 @@ def _steps():
     ]
 
 
-def _register_and_project(client, email, project_name="Projet"):
+def _register_and_microproject(client, email, microproject_name="Projet"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": microproject_name}).json()["slug"]
 
 
-def test_create_a_project_scoped_tech_brick(client):
-    slug = _register_and_project(client, "brickA@example.com")
+def test_create_a_microproject_scoped_tech_brick(client):
+    slug = _register_and_microproject(client, "brickA@example.com")
 
     created = client.post(
         f"/api/microprojets/{slug}/briques-technologiques",
@@ -34,14 +34,14 @@ def test_create_a_project_scoped_tech_brick(client):
     )
     assert created.status_code == 201
     body = created.json()
-    assert [b["name"] for b in body["projet"]] == ["Masque + gravure RIE"]
+    assert [b["name"] for b in body["microprojet"]] == ["Masque + gravure RIE"]
     assert body["partagees"] == []
-    assert len(body["projet"][0]["steps"]) == 1
-    assert body["projet"][0]["steps"][0]["material"] == "GaN"
+    assert len(body["microprojet"][0]["steps"]) == 1
+    assert body["microprojet"][0]["steps"][0]["material"] == "GaN"
 
 
-def test_shared_tech_brick_is_visible_from_a_different_project(client):
-    slug_a = _register_and_project(client, "brickB@example.com")
+def test_shared_tech_brick_is_visible_from_a_different_microproject(client):
+    slug_a = _register_and_microproject(client, "brickB@example.com")
     client.post(
         f"/api/microprojets/{slug_a}/briques-technologiques",
         json={"name": "Brique commune", "steps": _steps(), "partagee": True},
@@ -50,11 +50,11 @@ def test_shared_tech_brick_is_visible_from_a_different_project(client):
     slug_b = client.post("/api/microprojets", json={"name": "Autre projet"}).json()["slug"]
     listed = client.get(f"/api/microprojets/{slug_b}/briques-technologiques").json()
     assert [b["name"] for b in listed["partagees"]] == ["Brique commune"]
-    assert listed["projet"] == []
+    assert listed["microprojet"] == []
 
 
 def test_duplicate_name_in_the_same_library_is_rejected(client):
-    slug = _register_and_project(client, "brickC@example.com")
+    slug = _register_and_microproject(client, "brickC@example.com")
     payload = {"name": "Brique X", "steps": _steps(), "partagee": False}
     first = client.post(f"/api/microprojets/{slug}/briques-technologiques", json=payload)
     assert first.status_code == 201
@@ -63,7 +63,7 @@ def test_duplicate_name_in_the_same_library_is_rejected(client):
 
 
 def test_rename_a_tech_brick_in_place(client):
-    slug = _register_and_project(client, "brickD@example.com")
+    slug = _register_and_microproject(client, "brickD@example.com")
     client.post(
         f"/api/microprojets/{slug}/briques-technologiques",
         json={"name": "Nom initial", "steps": _steps(), "partagee": False},
@@ -74,35 +74,35 @@ def test_rename_a_tech_brick_in_place(client):
         json={"name": "Nom corrige", "steps": _steps()},
     )
     assert renamed.status_code == 200
-    names = [b["name"] for b in renamed.json()["projet"]]
+    names = [b["name"] for b in renamed.json()["microprojet"]]
     assert names == ["Nom corrige"]
 
 
 def test_delete_a_tech_brick(client):
-    slug = _register_and_project(client, "brickE@example.com")
+    slug = _register_and_microproject(client, "brickE@example.com")
     client.post(
         f"/api/microprojets/{slug}/briques-technologiques",
         json={"name": "A retirer", "steps": _steps(), "partagee": False},
     )
     deleted = client.delete(f"/api/microprojets/{slug}/briques-technologiques/A retirer", params={"partagee": False})
     assert deleted.status_code == 200
-    assert deleted.json()["projet"] == []
+    assert deleted.json()["microprojet"] == []
 
 
 def test_a_tech_brick_needs_no_substrate_unlike_a_saved_structure(client):
     """The whole point of a brick vs. a saved structure: it's just a sequence of steps, with
     nothing substrate-shaped in its request/response shape at all."""
-    slug = _register_and_project(client, "brickF@example.com")
+    slug = _register_and_microproject(client, "brickF@example.com")
     created = client.post(
         f"/api/microprojets/{slug}/briques-technologiques",
         json={"name": "Sans substrat", "steps": _steps(), "partagee": False},
     )
     assert created.status_code == 201
-    assert "substrate" not in created.json()["projet"][0]
+    assert "substrate" not in created.json()["microprojet"][0]
 
 
 def test_viewer_cannot_create_a_tech_brick(client):
-    slug = _register_and_project(client, "brickG-owner@example.com")
+    slug = _register_and_microproject(client, "brickG-owner@example.com")
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": "brickG-viewer@example.com", "password": "supersecret", "name": "V"})
     client.post("/api/auth/logout")

@@ -17,13 +17,13 @@ def _steps(thickness=20):
     ]
 
 
-def _register_and_project(client, email):
+def _register_and_microproject(client, email):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
     return client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
 
 
 def test_combine_two_experiences_keeps_the_base_structure_and_links_the_other(client):
-    slug = _register_and_project(client, "combine@example.com")
+    slug = _register_and_microproject(client, "combine@example.com")
     a = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={
@@ -61,7 +61,7 @@ def test_combine_two_experiences_keeps_the_base_structure_and_links_the_other(cl
 
 
 def test_combine_rejects_combining_an_experience_with_itself(client):
-    slug = _register_and_project(client, "combineself@example.com")
+    slug = _register_and_microproject(client, "combineself@example.com")
     a = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={
@@ -80,7 +80,7 @@ def test_combine_rejects_combining_an_experience_with_itself(client):
 
 
 def test_combine_rejects_a_single_experience_with_a_campaign(client):
-    slug = _register_and_project(client, "combinetypes@example.com")
+    slug = _register_and_microproject(client, "combinetypes@example.com")
     single = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={
@@ -110,7 +110,7 @@ def test_combine_rejects_a_single_experience_with_a_campaign(client):
 
 
 def test_setting_and_removing_tags_records_a_new_version_and_preserves_status(client):
-    slug = _register_and_project(client, "tags@example.com")
+    slug = _register_and_microproject(client, "tags@example.com")
     launched = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={
@@ -140,7 +140,7 @@ def test_setting_and_removing_tags_records_a_new_version_and_preserves_status(cl
 
 
 def test_adding_evidence_or_concluding_preserves_existing_tags(client):
-    slug = _register_and_project(client, "tagscarry@example.com")
+    slug = _register_and_microproject(client, "tagscarry@example.com")
     launched = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={
@@ -173,7 +173,7 @@ def test_adding_evidence_or_concluding_preserves_existing_tags(client):
 def test_concluding_does_not_reset_status_of_a_later_evidence_addition(client):
     # regression: add_evidence used to leave `conclusion` at its fresh default, silently
     # un-concluding an already-concluded experience the moment evidence was attached to it.
-    slug = _register_and_project(client, "statuscarry@example.com")
+    slug = _register_and_microproject(client, "statuscarry@example.com")
     launched = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={

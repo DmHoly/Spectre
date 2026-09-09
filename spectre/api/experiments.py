@@ -1,11 +1,11 @@
-"""Experiment endpoints: wraps ``follow.storage.repository.Repository`` for one project. Deep
+"""Experiment endpoints: wraps ``follow.storage.repository.Repository`` for one microproject. Deep
 logic (commits, diffing, DOE) stays in ``follow``; turning a re-edited process into a new
 committed version goes through ``structureforge.adapters.follow_adapter.derive_experiment`` (added
 in this repository's StructureForge branch specifically for Spectre's "evolve" flow). The one
 thing Follow deliberately doesn't know is what "structural" means for a StructureForge process
 (a substrate + ordered ``ProcessStep``s) - that classification, and the X.Y.Z it produces, lives
 in :mod:`spectre.core.versioning`, layered on top of Follow's plain commit chain. This module
-otherwise only resolves which project's repository to use and translates errors into HTTP
+otherwise only resolves which microproject's repository to use and translates errors into HTTP
 responses.
 
 Route order matters: ``{ref:path}`` is greedy (it matches slashes too - see
@@ -30,20 +30,20 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
 
-from ..core import projects, refs, structures, versioning
+from ..core import microprojects, refs, structures, versioning
 from ..core.accounts import User
-from ..core.permissions import get_project as resolve_project
+from ..core.permissions import get_microproject as resolve_microproject
 from ..core.permissions import require_role
-from ..core.projects import Project
+from ..core.microprojects import Microproject
 from .deps import get_current_user
 from .structures import EntityTrackingInput, LaunchExperienceRequest, _form_validation_error, _unique_branch, split_objectives
 
 router = APIRouter(prefix="/api/microprojets", tags=["experiments"])
 
-RUNNING_STATUSES = projects.RUNNING_STATUSES
-CONCLUDED_STATUSES = projects.CONCLUDED_STATUSES
+RUNNING_STATUSES = microprojects.RUNNING_STATUSES
+CONCLUDED_STATUSES = microprojects.CONCLUDED_STATUSES
 
-# Pièces jointes (spectre.core.projects.attachments_dir) : mesure, wafer map, photo, rapport -
+# Pièces jointes (spectre.core.microprojects.attachments_dir) : mesure, wafer map, photo, rapport -
 # assez large pour couvrir ces cas sans ouvrir la porte à n'importe quel type de fichier.
 # image/svg+xml volontairement absent : un SVG peut embarquer du <script>, un vecteur XSS stocké
 # classique pour un fichier destiné à être affiché tel quel dans le navigateur.
@@ -153,7 +153,7 @@ def _summary(experiment: Any) -> dict:
         "created_at": experiment.created_at.isoformat(),
         "branch": experiment.branch,
         "tags": list(experiment.tags),
-        # The list is where a project's studies are seen all at once - a concluded study's own
+        # The list is where a microproject's studies are seen all at once - a concluded study's own
         # summary belongs here too, not just on its own fiche, so where it fits is clear without
         # opening it.
         "conclusion_summary": experiment.conclusion.summary,
@@ -198,10 +198,10 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
 
 @router.get("/{slug}/experiences")
 def list_experiences(
-    status: str = "all", offset: int = 0, limit: int = 30, project: Project = Depends(require_role("viewer"))
+    status: str = "all", offset: int = 0, limit: int = 30, microproject: Microproject = Depends(require_role("viewer"))
 ) -> dict:
     """Newest first, paginated - mirrors the ``{items, total, offset, limit}`` shape
-    ``follow/api/app.py``'s own ``/api/experiments`` already uses, since a project's history is
+    ``follow/api/app.py``'s own ``/api/experiments`` already uses, since a microproject's history is
     exactly the kind of list that can outgrow "load everything at once" as it grows.
     """
     if status not in ("all", "running", "concluded"):
@@ -212,16 +212,16 @@ def list_experiences(
         raise HTTPException(status_code=422, detail="limit doit être entre 1 et 200")
     wanted = RUNNING_STATUSES if status == "running" else CONCLUDED_STATUSES if status == "concluded" else None
 
-    repo = projects.get_repository(project.slug)
-    matches = [exp for exp in projects.branch_tips(repo) if wanted is None or exp.conclusion.status in wanted]
+    repo = microprojects.get_repository(microproject.slug)
+    matches = [exp for exp in microprojects.branch_tips(repo) if wanted is None or exp.conclusion.status in wanted]
     matches.sort(key=lambda exp: exp.created_at, reverse=True)
     page = matches[offset : offset + limit]
     return {"items": [_summary(exp) for exp in page], "total": len(matches), "offset": offset, "limit": limit}
 
 
 @router.get("/{slug}/graphe.html", response_class=HTMLResponse)
-def project_graph_html(project: Project = Depends(require_role("viewer"))) -> str:
-    """The project's lineage as a self-contained Plotly page - the same rendering Follow's own
+def microproject_graph_html(microproject: Microproject = Depends(require_role("viewer"))) -> str:
+    """The microproject's lineage as a self-contained Plotly page - the same rendering Follow's own
     GUI embeds (``follow.presentation.graphing.build_graph_figure``), served directly so the
     "vue d'ensemble" page can drop it into an iframe. An advanced, opt-in view: the fiche's own
     frise chronologique (see :mod:`spectre.api.static.js.experience`) is the everyday one.
@@ -232,7 +232,7 @@ def project_graph_html(project: Project = Depends(require_role("viewer"))) -> st
     an otherwise-unchanged process is collapsed out of this graph the same way it's kept out of
     a fiche's version-only frise; it's still on the fiche's full history, just not here.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     if len(repo) == 0:
         return (
             "<p style='font-family: \"IBM Plex Sans\", sans-serif; padding: 1.5rem; color:#5c655e;'>"
@@ -263,8 +263,8 @@ def project_graph_html(project: Project = Depends(require_role("viewer"))) -> st
 
 
 @router.get("/{slug}/experiences/{ref:path}/process")
-def experience_process(ref: str, project: Project = Depends(require_role("viewer"))) -> dict:
-    repo = projects.get_repository(project.slug)
+def experience_process(ref: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    repo = microprojects.get_repository(microproject.slug)
     try:
         experiment = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -276,14 +276,14 @@ def experience_process(ref: str, project: Project = Depends(require_role("viewer
 
 
 @router.get("/{slug}/experiences/{ref:path}/timeline")
-def experience_timeline(ref: str, project: Project = Depends(require_role("viewer"))) -> dict:
+def experience_timeline(ref: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """Two views of the same lineage. ``versions`` keeps only the commits that actually moved the
     process/structure forward (see :mod:`spectre.core.versioning`), each carrying its own X.Y.Z -
     the frise chronologique's everyday view. ``items`` is every commit in the branch (a tag, a
     piece of evidence, a title edit... included), version number and all, for the "historique
     complet" at the bottom of the fiche.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         history = repo.log(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -309,8 +309,8 @@ def experience_timeline(ref: str, project: Project = Depends(require_role("viewe
 
 
 @router.get("/{slug}/experiences/{ref:path}/diff")
-def experience_diff(ref: str, against: str | None = None, project: Project = Depends(require_role("viewer"))) -> dict:
-    repo = projects.get_repository(project.slug)
+def experience_diff(ref: str, against: str | None = None, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    repo = microprojects.get_repository(microproject.slug)
     try:
         experiment = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -337,15 +337,15 @@ def experience_diff(ref: str, against: str | None = None, project: Project = Dep
 def evolve_experience(
     ref: str,
     body: LaunchExperienceRequest,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     try:
-        geometry, _frames, _materials = structures.run_simulation(project.slug, body.substrate, body.steps)
+        geometry, _frames, _materials = structures.run_simulation(microproject.slug, body.substrate, body.steps)
     except structures.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         parent = repo.get(ref)
         builder = follow_adapter.derive_experiment(
@@ -401,10 +401,10 @@ def evolve_experience(
 def conclude_experience(
     ref: str,
     body: ConcludeRequest,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         parent = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -455,14 +455,14 @@ def conclude_experience(
 def add_evidence(
     ref: str,
     body: EvidenceInput,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     """Attach a piece of evidence (a link, a measurement) to an experience - like ``conclure``,
     this is a lightweight evolution (structure/steps/objectives all carried over unchanged, only
     the evidence list grows) rather than a mutation, since committed experiences are immutable.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         parent = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -523,7 +523,7 @@ def add_evidence(
 def combine_experiences(
     ref: str,
     body: CombineRequest,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     """Combine two lines of work into one experience - Follow's ``repo.merge()`` supports
@@ -533,7 +533,7 @@ def combine_experiences(
     evidence still reachable from there. Both sides must be the same kind of structure (a single
     experience can't combine with a campaign).
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         a = repo.get(ref)
         b = repo.get(body.other_id)
@@ -576,14 +576,14 @@ def combine_experiences(
 def set_tags(
     ref: str,
     body: TagsRequest,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     """Replace this experience's tag set. Like ``conclure``/``preuves``, this is a lightweight
     evolution - since committed experiences are immutable, "editing" the tags means recording a
     new version that carries the status, structure, and everything else unchanged.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         parent = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -618,7 +618,7 @@ def set_tags(
 def set_status(
     ref: str,
     body: StatusRequest,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     """Move a study between « brouillon » (draft) and « en cours » (running), or reopen a
@@ -627,7 +627,7 @@ def set_status(
     ``conclusion.status`` (and, when reopening, the cleared ``decided_at``) differ; the
     per-objective results are kept as a starting point for the revised conclusion.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         parent = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -659,7 +659,7 @@ def set_status(
 def set_physical_tracking(
     ref: str,
     body: PhysicalTrackingRequest,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     """Attach a physical identifier and storage location to each entity this experience tracks -
@@ -668,7 +668,7 @@ def set_physical_tracking(
     field for, so like tags this rides in ``Experiment.metadata`` and, like ``etiquettes``, is a
     lightweight evolution: recording a new version that carries everything else unchanged.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         parent = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -723,7 +723,7 @@ async def upload_attachment(
     file: UploadFile = File(...),
     entity_index_raw: str | None = Form(None, alias="entity_index"),
     evidence_id: str | None = Form(None),
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     """Attach a file (mesure, wafer map, photo...) to this experience, to one of the physical
@@ -733,11 +733,11 @@ async def upload_attachment(
     then annotate, see :func:`update_evidence_annotations`). Omitting both means the attachment
     belongs to the study as a whole. Like tags/physical_tracking, this rides in
     ``Experiment.metadata`` and records a new version rather than mutating anything in place. The
-    uploaded bytes themselves live separately (:func:`spectre.core.projects.attachments_dir`),
+    uploaded bytes themselves live separately (:func:`spectre.core.microprojects.attachments_dir`),
     named by a fresh id rather than the uploaded filename so nothing here ever has to turn a
     user-supplied name into a safe path.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         parent = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -770,7 +770,7 @@ async def upload_attachment(
         raise HTTPException(status_code=422, detail="fichier trop volumineux (10 Mo maximum)")
 
     attachment_id = f"att_{secrets.token_hex(10)}"
-    directory = projects.attachments_dir(project.slug)
+    directory = microprojects.attachments_dir(microproject.slug)
     original_name = (file.filename or "fichier").strip() or "fichier"
     sidecar = {"filename": original_name, "content_type": content_type, "size": len(contents)}
     (directory / attachment_id).write_bytes(contents)
@@ -816,7 +816,7 @@ async def upload_attachment(
 def remove_attachment(
     ref: str,
     attachment_id: str,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     """Detach a file from this experience's current tip - a new version without it in the list,
@@ -824,7 +824,7 @@ def remove_attachment(
     experience may still list it in its own (immutable) metadata, and nothing else in this app
     deletes old history either.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         parent = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -860,7 +860,7 @@ def update_evidence_annotations(
     ref: str,
     evidence_id: str,
     body: EvidenceAnnotationsRequest,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
     """Replace a ``kind="image"`` preuve's annotations (arrows/boxes marking up one of its attached
@@ -869,7 +869,7 @@ def update_evidence_annotations(
     other mutation on evidence (tags/preuves/entités carried over unchanged, only this one preuve's
     ``image_annotations`` changes).
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         parent = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -909,15 +909,15 @@ def update_evidence_annotations(
 
 
 @router.get("/{slug}/pieces-jointes/{attachment_id}")
-def download_attachment(attachment_id: str, project: Project = Depends(require_role("viewer"))) -> FileResponse:
+def download_attachment(attachment_id: str, microproject: Microproject = Depends(require_role("viewer"))) -> FileResponse:
     """Serve an uploaded file's bytes directly off disk - deliberately not scoped to a specific
     experience version (an attachment's identity as a file doesn't depend on which commit still
-    lists it), just to the project it belongs to. Images are served inline so a preview can use
+    lists it), just to the microproject it belongs to. Images are served inline so a preview can use
     them directly as an ``<img src>``; everything else downloads.
     """
     if not _ATTACHMENT_ID_RE.fullmatch(attachment_id):
         raise HTTPException(status_code=404, detail="pièce jointe introuvable")
-    directory = projects.attachments_dir(project.slug)
+    directory = microprojects.attachments_dir(microproject.slug)
     blob_path = directory / attachment_id
     sidecar_path = directory / f"{attachment_id}.json"
     if not blob_path.is_file() or not sidecar_path.is_file():
@@ -935,22 +935,22 @@ def experience_diff_external(
     ref: str,
     autre_projet: str,
     autre_experience: str,
-    project: Project = Depends(require_role("viewer")),
+    microproject: Microproject = Depends(require_role("viewer")),
     user: User = Depends(get_current_user),
 ) -> dict:
-    """Compare this experience's structure against one in a *different* project - Follow's own
+    """Compare this experience's structure against one in a *different* microproject - Follow's own
     ``repo.diff`` only ever compares within one repository, so this calls
     ``follow.diff_structures`` directly on the two experiments' raw structure dicts instead.
-    Requires at least read access to both projects - comparing against a project the caller can't
+    Requires at least read access to both microprojects - comparing against a microproject the caller can't
     see would leak its content through the diff.
     """
-    other_project = resolve_project(autre_projet)
-    role = projects.role_for(other_project.id, user.id)
+    other_microproject = resolve_microproject(autre_projet)
+    role = microprojects.role_for(other_microproject.id, user.id)
     if role is None:
         raise HTTPException(status_code=403, detail="vous n'avez pas accès à cet autre projet")
 
-    repo = projects.get_repository(project.slug)
-    other_repo = projects.get_repository(other_project.slug)
+    repo = microprojects.get_repository(microproject.slug)
+    other_repo = microprojects.get_repository(other_microproject.slug)
     try:
         experiment = repo.get(ref)
         other_experiment = other_repo.get(autre_experience)
@@ -960,19 +960,19 @@ def experience_diff_external(
     diff = follow.diff_structures(experiment.structure, other_experiment.structure)
     return {
         "target": other_experiment.id,
-        "target_project": other_project.name,
+        "target_microproject": other_microproject.name,
         "target_title": other_experiment.title,
         **diff.model_dump(mode="json"),
     }
 
 
 @router.get("/{slug}/experiences/{ref:path}/matrice")
-def experience_batch(ref: str, project: Project = Depends(require_role("viewer"))) -> dict:
+def experience_batch(ref: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """The constant/varying split of a DOE campaign's variants (``follow.doe.batch.analyze_batch``,
     the same analysis Follow's own GUI calls "matrice de split") - only meaningful for an
     experience whose structure is a :class:`spectre.core.structures.ProcessLot`.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         experiment = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -1005,14 +1005,14 @@ def experience_batch(ref: str, project: Project = Depends(require_role("viewer")
 def create_ref(
     ref: str,
     body: CreateRefRequest,
-    project: Project = Depends(require_role("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
 ) -> dict:
     """Tag this experience as a ref: a named, reusable starting point future experiences can fork
     off from over and over (see :mod:`spectre.core.refs`), rather than being just one more version
     among many. ``body.name`` is a nickname ("omega", "banane"...) - left blank, it defaults to
     "ref vX.Y.Z" using the version :mod:`spectre.core.versioning` already computes for it.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         return refs.create_ref(repo, ref, name=body.name)
     except follow.ExperimentNotFoundError as exc:
@@ -1022,8 +1022,8 @@ def create_ref(
 
 
 @router.get("/{slug}/experiences/{ref:path}")
-def get_experience(ref: str, project: Project = Depends(require_role("viewer"))) -> dict:
-    repo = projects.get_repository(project.slug)
+def get_experience(ref: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    repo = microprojects.get_repository(microproject.slug)
     try:
         experiment = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:
@@ -1032,7 +1032,7 @@ def get_experience(ref: str, project: Project = Depends(require_role("viewer")))
 
 
 @router.delete("/{slug}/experiences/{ref:path}")
-def delete_experience(ref: str, project: Project = Depends(require_role("editor"))) -> dict:
+def delete_experience(ref: str, microproject: Microproject = Depends(require_role("editor"))) -> dict:
     """Delete a whole line of work: this version and its earlier versions, back to the point where
     the lineage forks or another branch/ref still needs them. Follow has no delete of its own
     (experiments are immutable, content-addressed), so this rewrites the JSON store directly - and
@@ -1040,7 +1040,7 @@ def delete_experience(ref: str, project: Project = Depends(require_role("editor"
     branch tip, no experiment derived from them). Refuses if this isn't the current tip of its
     piste, or if something forks off it.
     """
-    repo = projects.get_repository(project.slug)
+    repo = microprojects.get_repository(microproject.slug)
     try:
         target = repo.get(ref)
     except follow.ExperimentNotFoundError as exc:

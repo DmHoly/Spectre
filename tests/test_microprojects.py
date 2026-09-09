@@ -5,7 +5,7 @@ def register_and_login(client, email, name="Test", password="supersecret"):
     client.post("/api/auth/register", json={"email": email, "password": password, "name": name})
 
 
-def test_create_project_makes_creator_owner(client):
+def test_create_microproject_makes_creator_owner(client):
     register_and_login(client, "owner@example.com", "Owner")
     response = client.post("/api/microprojets", json={"name": "Couches minces", "description": "Salle blanche 2"})
     assert response.status_code == 201
@@ -26,13 +26,13 @@ def test_slug_collision_gets_suffixed(client):
     assert second.json()["slug"] == "couches-minces-2"
 
 
-def test_nonexistent_project_is_404(client):
+def test_nonexistent_microproject_is_404(client):
     register_and_login(client, "owner@example.com", "Owner")
     response = client.get("/api/microprojets/does-not-exist")
     assert response.status_code == 404
 
 
-def test_project_requires_authentication(client):
+def test_microproject_requires_authentication(client):
     response = client.get("/api/microprojets")
     assert response.status_code == 401
 
@@ -45,7 +45,7 @@ def _steps():
     return [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
 
 
-def test_entity_history_is_empty_for_a_project_with_no_tracked_entities(client):
+def test_entity_history_is_empty_for_a_microproject_with_no_tracked_entities(client):
     register_and_login(client, "hist-empty@example.com", "Owner")
     slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
     history = client.get(f"/api/microprojets/{slug}/entites/historique").json()

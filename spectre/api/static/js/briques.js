@@ -56,7 +56,7 @@ function renderList() {
   const entries = [
     ...state.bricks.presets.map((b) => ({ ...b, scope: "preset" })),
     ...state.bricks.partagees.map((b) => ({ ...b, scope: "partagee" })),
-    ...state.bricks.projet.map((b) => ({ ...b, scope: "projet" })),
+    ...state.bricks.microprojet.map((b) => ({ ...b, scope: "microprojet" })),
   ];
   document.getElementById("bricks-list").innerHTML = entries.length
     ? entries.map(brickRow).join("")
@@ -79,9 +79,9 @@ function renderList() {
 
 async function init() {
   try {
-    const project = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
-    state.currentRole = project.role;
-    document.getElementById("crumb").textContent = "/ " + project.name;
+    const microproject = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
+    state.currentRole = microproject.role;
+    document.getElementById("crumb").textContent = "/ " + microproject.name;
     document.getElementById("back-link").href = "/bibliotheque";
     document.getElementById("new-brick-link").href = `/microprojets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/nouvelle`;
     if (!(state.currentRole === "editor" || state.currentRole === "owner")) {

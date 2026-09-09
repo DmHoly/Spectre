@@ -13,8 +13,8 @@ def _login(client, email):
 
 def test_viewer_cannot_manage_members(client):
     _register(client, "owner@example.com", "Owner")
-    project = client.post("/api/microprojets", json={"name": "Projet A"}).json()
-    slug = project["slug"]
+    microproject = client.post("/api/microprojets", json={"name": "Projet A"}).json()
+    slug = microproject["slug"]
 
     _register(client, "viewer@example.com", "Viewer")
 
@@ -30,8 +30,8 @@ def test_viewer_cannot_manage_members(client):
 
 def test_editor_can_be_listed_but_not_manage_members(client):
     _register(client, "owner2@example.com", "Owner2")
-    project = client.post("/api/microprojets", json={"name": "Projet B"}).json()
-    slug = project["slug"]
+    microproject = client.post("/api/microprojets", json={"name": "Projet B"}).json()
+    slug = microproject["slug"]
 
     _register(client, "editor@example.com", "Editor")
 
@@ -45,10 +45,10 @@ def test_editor_can_be_listed_but_not_manage_members(client):
     assert forbidden.status_code == 403
 
 
-def test_non_member_cannot_see_project(client):
+def test_non_member_cannot_see_microproject(client):
     _register(client, "owner3@example.com", "Owner3")
-    project = client.post("/api/microprojets", json={"name": "Projet C"}).json()
-    slug = project["slug"]
+    microproject = client.post("/api/microprojets", json={"name": "Projet C"}).json()
+    slug = microproject["slug"]
 
     _register(client, "stranger@example.com", "Stranger")
     response = client.get(f"/api/microprojets/{slug}")

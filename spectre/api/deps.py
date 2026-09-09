@@ -1,5 +1,5 @@
-"""Shared FastAPI dependencies: who is making this request, and (see :mod:`spectre.api.projects`
-and :mod:`spectre.core.permissions` once a project is involved) what they're allowed to do here.
+"""Shared FastAPI dependencies: who is making this request, and (see :mod:`spectre.api.microprojects`
+and :mod:`spectre.core.permissions` once a microproject is involved) what they're allowed to do here.
 """
 
 from __future__ import annotations

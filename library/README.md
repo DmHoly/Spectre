@@ -25,7 +25,7 @@ Chargés par [`spectre/core/registry.py`](../spectre/core/registry.py).
 
 - Ces trois collections sont le **scope « préset »** du système à trois niveaux
   *intégré / partagé / projet*. Le partagé (`data/*_partages.json`) et le projet
-  (`data/projects/<slug>/*.json`) restent modifiables depuis l'app et ne sont pas touchés ici.
+  (`data/microprojects/<slug>/*.json`) restent modifiables depuis l'app et ne sont pas touchés ici.
 - **Matériaux** : le sélecteur ne montre que cette liste, mais la simulation résout toujours
   n'importe quel matériau connu de StructureForge (~46) — retirer une entrée n'empêche pas une
   structure existante de se simuler. Une entrée peut *ajouter* un matériau absent de StructureForge

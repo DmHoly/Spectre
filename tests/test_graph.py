@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 
-def _setup_project(client, email="owner@example.com", name="Owner"):
+def _setup_microproject(client, email="owner@example.com", name="Owner"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
-    project = client.post("/api/microprojets", json={"name": "Salle blanche"}).json()
-    return project["slug"]
+    microproject = client.post("/api/microprojets", json={"name": "Salle blanche"}).json()
+    return microproject["slug"]
 
 
-def test_graph_html_on_empty_project(client):
-    slug = _setup_project(client)
+def test_graph_html_on_empty_microproject(client):
+    slug = _setup_microproject(client)
     response = client.get(f"/api/microprojets/{slug}/graphe.html")
     assert response.status_code == 200
     assert "Aucune expérience" in response.text
 
 
 def test_graph_html_with_experiments(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     substrate = {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
     steps = [
         {
@@ -44,7 +44,7 @@ def test_graph_html_with_experiments(client):
 def test_graph_html_still_renders_with_a_tag_only_commit_collapsed_out(client):
     # the collapsing rules themselves (which commits are kept/removed) are unit-tested in
     # tests/test_versioning.py - this just proves the endpoint is wired up to them without crashing.
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     substrate = {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
     steps = [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
     launched = client.post(
@@ -68,12 +68,12 @@ def test_graph_html_still_renders_with_a_tag_only_commit_collapsed_out(client):
 
 
 def test_graph_page_is_served(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     assert client.get(f"/microprojets/{slug}/graphe").status_code == 200
 
 
 def test_non_member_cannot_see_graph(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": "stranger@example.com", "password": "supersecret", "name": "S"})
     response = client.get(f"/api/microprojets/{slug}/graphe.html")

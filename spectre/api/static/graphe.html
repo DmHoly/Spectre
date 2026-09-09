@@ -32,7 +32,7 @@
   </div>
 
   <div class="page" style="max-width:1180px;">
-    <p style="color:var(--text-faint);margin-bottom:8px;"><a id="project-link" href="/">&larr; Retour au µprojet</a></p>
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a id="microproject-link" href="/">&larr; Retour au µprojet</a></p>
     <h1 style="font-size:20px;margin-bottom:6px;">Vue d'ensemble</h1>
     <p style="color:var(--text-soft);font-size:13.5px;margin-bottom:20px;max-width:60ch;">
       Comment les versions des expériences de ce µprojet se relient entre elles : chaque point est une version, chaque trait un lien de filiation. Survolez un point pour le détail.
@@ -48,7 +48,7 @@
   <script>
     const slug = window.location.pathname.split("/").filter(Boolean)[1];
     document.getElementById("crumb").textContent = "/ " + slug;
-    document.getElementById("project-link").href = `/microprojets/${slug}`;
+    document.getElementById("microproject-link").href = `/microprojets/${slug}`;
     document.getElementById("graph-frame").src = `/api/microprojets/${slug}/graphe.html`;
   </script>
 </body>

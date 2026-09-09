@@ -4,7 +4,7 @@
 
 const slug = window.location.pathname.split("/").filter(Boolean)[1];
 document.getElementById("crumb").textContent = "/ " + slug;
-document.getElementById("project-link").href = `/microprojets/${slug}`;
+document.getElementById("microproject-link").href = `/microprojets/${slug}`;
 
 let currentRole = null;
 let activeForm = null; // {name, scope, form} | null
@@ -73,7 +73,7 @@ function libraryEntryRow(entry) {
 }
 
 function renderLibrary(library) {
-  const entries = [...library.partagees, ...library.projet];
+  const entries = [...library.partagees, ...library.microprojet];
   const box = document.getElementById("library-list");
   if (!entries.length) {
     box.innerHTML = `<div class="card card-pad" style="color:var(--text-faint);font-size:13.5px;">Aucun formulaire dans la bibliothèque pour l'instant.</div>`;
@@ -154,8 +154,8 @@ document.getElementById("upload-form-btn").addEventListener("click", () => {
 
 async function init() {
   try {
-    const project = await api.get(`/api/microprojets/${slug}`);
-    currentRole = project.role;
+    const microproject = await api.get(`/api/microprojets/${slug}`);
+    currentRole = microproject.role;
   } catch (err) {
     showError(err);
   }

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 
-def _setup_project(client, email="owner@example.com", name="Owner"):
+def _setup_microproject(client, email="owner@example.com", name="Owner"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
-    project = client.post("/api/microprojets", json={"name": "Salle blanche"}).json()
-    return project["slug"]
+    microproject = client.post("/api/microprojets", json={"name": "Salle blanche"}).json()
+    return microproject["slug"]
 
 
 def _substrate():
@@ -36,7 +36,7 @@ def _launch(client, slug, title="Essai initial", thickness=20):
 
 
 def test_get_experience_detail_has_structure_svg(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     launched = _launch(client, slug)
 
     response = client.get(f"/api/microprojets/{slug}/experiences/{launched['id']}")
@@ -49,7 +49,7 @@ def test_get_experience_detail_has_structure_svg(client):
 
 
 def test_mark_running_then_edit_conclusion(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     launched = _launch(client, slug)
     assert client.get(f"/api/microprojets/{slug}/experiences/{launched['id']}").json()["status"] == "draft"
 
@@ -82,7 +82,7 @@ def test_mark_running_then_edit_conclusion(client):
 
 
 def test_campaign_from_ref_keeps_lineage(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     ref = _launch(client, slug, title="Référence")["id"]
 
     plan = {"factors": [{"step_index": 0, "field": "thickness", "values": [10, 20, 30]}]}
@@ -111,7 +111,7 @@ def test_campaign_from_ref_keeps_lineage(client):
 
 
 def test_delete_experience_removes_the_whole_line_and_refuses_when_forked(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     a = _launch(client, slug, title="A")["id"]
     b = _launch(client, slug, title="B")["id"]
     b2 = client.post(
@@ -139,7 +139,7 @@ def test_delete_experience_removes_the_whole_line_and_refuses_when_forked(client
 
 
 def test_delete_experience_needs_editor(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     exp = _launch(client, slug)["id"]
     client.post("/api/auth/register", json={"email": "viewer@x.c", "password": "supersecret", "name": "V"})
     # the viewer isn't a member at all -> 403 (require_role)
@@ -147,14 +147,14 @@ def test_delete_experience_needs_editor(client):
 
 
 def test_status_endpoint_rejects_concluded_target(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     launched = _launch(client, slug)
     bad = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/statut", json={"status": "concluded"})
     assert bad.status_code == 422
 
 
 def test_process_endpoint_returns_editable_recipe(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     launched = _launch(client, slug)
 
     response = client.get(f"/api/microprojets/{slug}/experiences/{launched['id']}/process")
@@ -165,7 +165,7 @@ def test_process_endpoint_returns_editable_recipe(client):
 
 
 def test_evolve_then_timeline_and_diff(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     launched = _launch(client, slug, thickness=20)
 
     evolve_body = {
@@ -189,7 +189,7 @@ def test_evolve_then_timeline_and_diff(client):
 
 
 def test_timeline_versions_only_lists_process_changes_full_history_lists_everything(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     launched = _launch(client, slug, thickness=20)
 
     # a tag-only commit does not touch the process at all
@@ -224,7 +224,7 @@ def test_timeline_versions_only_lists_process_changes_full_history_lists_everyth
 
 
 def test_conclude_experience(client):
-    slug = _setup_project(client)
+    slug = _setup_microproject(client)
     launched = _launch(client, slug)
 
     body = {
@@ -246,7 +246,7 @@ def test_conclude_experience(client):
 
 
 def test_viewer_cannot_evolve_or_conclude(client):
-    slug = _setup_project(client, "owner4@example.com", "Owner4")
+    slug = _setup_microproject(client, "owner4@example.com", "Owner4")
     launched = _launch(client, slug)
 
     client.post("/api/auth/logout")

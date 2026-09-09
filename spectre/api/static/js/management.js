@@ -156,10 +156,10 @@ document.getElementById("attach-microprojet-btn").addEventListener("click", asyn
 });
 document.getElementById("attach-cancel").addEventListener("click", () => attachDialog.close());
 document.getElementById("attach-confirm").addEventListener("click", async () => {
-  const projectSlug = document.getElementById("attach-select").value;
-  if (!projectSlug) return attachDialog.close();
+  const microprojectSlug = document.getElementById("attach-select").value;
+  if (!microprojectSlug) return attachDialog.close();
   try {
-    render(await api.post(`/api/management/${encodeURIComponent(slug)}/microprojets`, { project_slug: projectSlug }));
+    render(await api.post(`/api/management/${encodeURIComponent(slug)}/microprojets`, { microproject_slug: microprojectSlug }));
     attachDialog.close();
     flash("µprojet rattaché.");
   } catch (err) {

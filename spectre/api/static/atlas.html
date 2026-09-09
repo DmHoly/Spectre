@@ -81,9 +81,9 @@
       stroke-opacity: 0.25;
       stroke-width: 1px;
     }
-    /* Cross-project links (spectre.core.links) - the one relationship allowed to reach across
+    /* Cross-microproject links (spectre.core.links) - the one relationship allowed to reach across
        clusters, so it's drawn distinctly (dashed, accent-colored) from filiation/containment. */
-    .atlas-project-link,
+    .atlas-microproject-link,
     .atlas-entity-link {
       stroke: var(--accent);
       stroke-opacity: 0.55;
@@ -91,7 +91,7 @@
       fill: none;
       pointer-events: none;
     }
-    .atlas-project-link {
+    .atlas-microproject-link {
       stroke-width: 1.5px;
     }
     .atlas-entity-link {
@@ -106,7 +106,7 @@
       stroke-width: 3px;
       stroke-linejoin: round;
     }
-    .atlas-label-project {
+    .atlas-label-microproject {
       font-size: 13px;
       font-weight: 700;
       fill: var(--text);
@@ -133,7 +133,7 @@
 
     .atlas-node-experience,
     .atlas-node-entity,
-    .atlas-node-project {
+    .atlas-node-microproject {
       cursor: pointer;
     }
     .atlas-node-selected {

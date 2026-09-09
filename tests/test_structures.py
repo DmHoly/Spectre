@@ -3,10 +3,10 @@ from __future__ import annotations
 import pytest
 
 
-def _register_and_create_project(client, email="owner@example.com", name="Owner", project_name="Salle blanche"):
+def _register_and_create_microproject(client, email="owner@example.com", name="Owner", microproject_name="Salle blanche"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
-    project = client.post("/api/microprojets", json={"name": project_name}).json()
-    return project["slug"]
+    microproject = client.post("/api/microprojets", json={"name": microproject_name}).json()
+    return microproject["slug"]
 
 
 def _substrate():
@@ -26,13 +26,13 @@ def _steps():
 
 
 def test_list_materials(client):
-    slug = _register_and_create_project(client)
+    slug = _register_and_create_microproject(client)
     materials = client.get(f"/api/microprojets/{slug}/materials").json()
     assert any(m["name"] == "Si" for m in materials)
 
 
 def test_simulate_returns_one_svg_per_frame(client):
-    slug = _register_and_create_project(client)
+    slug = _register_and_create_microproject(client)
     response = client.post(
         f"/api/microprojets/{slug}/structures/simulate", json={"substrate": _substrate(), "steps": _steps()}
     )
@@ -43,7 +43,7 @@ def test_simulate_returns_one_svg_per_frame(client):
 
 
 def test_selective_growth_seed_ingan_matches_any_composition(client):
-    slug = _register_and_create_project(client)
+    slug = _register_and_create_microproject(client)
     substrate = {"material": "GaN", "domain_width": {"value": 400, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
     steps = [
         {"kind": "epitaxial_growth", "name": "germe", "material": "In0.20Ga0.80N", "thickness": {"value": 20, "unit": "nm"}, "orientation": "c_plane", "seed_materials": []},
@@ -55,7 +55,7 @@ def test_selective_growth_seed_ingan_matches_any_composition(client):
 
 
 def test_simulate_accepts_a_flip_step_for_backside_processing(client):
-    slug = _register_and_create_project(client)
+    slug = _register_and_create_microproject(client)
     steps = [
         {"kind": "deposition", "name": "Metal avant", "material": "Au", "recipe": "Evaporation (normal)", "thickness": {"value": 20, "unit": "nm"}},
         {"kind": "flip", "name": "Retournement"},
@@ -71,7 +71,7 @@ def test_simulate_accepts_a_flip_step_for_backside_processing(client):
 
 
 def test_simulate_rejects_a_flip_on_a_non_flat_surface(client):
-    slug = _register_and_create_project(client)
+    slug = _register_and_create_microproject(client)
     steps = [
         # a directional deposit through a resist opening leaves an isolated bump, narrower than
         # the domain - flip() should reject it rather than silently producing broken geometry.
@@ -87,7 +87,7 @@ def test_simulate_rejects_a_flip_on_a_non_flat_surface(client):
 
 
 def test_simulate_rejects_unknown_material(client):
-    slug = _register_and_create_project(client)
+    slug = _register_and_create_microproject(client)
     bad_substrate = {**_substrate(), "material": "Vibranium"}
     response = client.post(
         f"/api/microprojets/{slug}/structures/simulate", json={"substrate": bad_substrate, "steps": []}
@@ -96,7 +96,7 @@ def test_simulate_rejects_unknown_material(client):
 
 
 def test_launch_experience_creates_a_tracked_experiment(client):
-    slug = _register_and_create_project(client)
+    slug = _register_and_create_microproject(client)
     body = {
         "substrate": _substrate(),
         "steps": _steps(),
@@ -115,7 +115,7 @@ def test_launch_experience_creates_a_tracked_experiment(client):
 
 
 def test_viewer_cannot_launch_experience(client):
-    slug = _register_and_create_project(client, "owner2@example.com", "Owner2")
+    slug = _register_and_create_microproject(client, "owner2@example.com", "Owner2")
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": "viewer2@example.com", "password": "supersecret", "name": "Viewer2"})
     client.post("/api/auth/logout")

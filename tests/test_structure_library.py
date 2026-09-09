@@ -17,13 +17,13 @@ def _steps():
     ]
 
 
-def _register_and_project(client, email, project_name="Projet"):
+def _register_and_microproject(client, email, microproject_name="Projet"):
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": microproject_name}).json()["slug"]
 
 
-def test_create_a_project_scoped_structure(client):
-    slug = _register_and_project(client, "libA@example.com")
+def test_create_a_microproject_scoped_structure(client):
+    slug = _register_and_microproject(client, "libA@example.com")
 
     created = client.post(
         f"/api/microprojets/{slug}/structures-sauvegardees",
@@ -31,12 +31,12 @@ def test_create_a_project_scoped_structure(client):
     )
     assert created.status_code == 201
     body = created.json()
-    assert [s["name"] for s in body["projet"]] == ["Epitaxie PGaN"]
+    assert [s["name"] for s in body["microprojet"]] == ["Epitaxie PGaN"]
     assert body["partagees"] == []
 
 
-def test_shared_structure_is_visible_from_a_different_project(client):
-    slug_a = _register_and_project(client, "libB@example.com")
+def test_shared_structure_is_visible_from_a_different_microproject(client):
+    slug_a = _register_and_microproject(client, "libB@example.com")
     client.post(
         f"/api/microprojets/{slug_a}/structures-sauvegardees",
         json={"name": "Base commune", "substrate": _substrate(), "steps": _steps(), "partagee": True},
@@ -45,11 +45,11 @@ def test_shared_structure_is_visible_from_a_different_project(client):
     slug_b = client.post("/api/microprojets", json={"name": "Autre projet"}).json()["slug"]
     listed = client.get(f"/api/microprojets/{slug_b}/structures-sauvegardees").json()
     assert [s["name"] for s in listed["partagees"]] == ["Base commune"]
-    assert listed["projet"] == []
+    assert listed["microprojet"] == []
 
 
 def test_derive_a_structure_keeps_a_derived_from_link(client):
-    slug = _register_and_project(client, "libC@example.com")
+    slug = _register_and_microproject(client, "libC@example.com")
     client.post(
         f"/api/microprojets/{slug}/structures-sauvegardees",
         json={"name": "Epitaxie", "substrate": _substrate(), "steps": _steps(), "partagee": False},
@@ -69,13 +69,13 @@ def test_derive_a_structure_keeps_a_derived_from_link(client):
         },
     )
     assert derived.status_code == 201
-    saved = next(s for s in derived.json()["projet"] if s["name"] == "Epitaxie + contact")
+    saved = next(s for s in derived.json()["microprojet"] if s["name"] == "Epitaxie + contact")
     assert saved["derived_from"] == "Epitaxie"
     assert len(saved["steps"]) == 2
 
 
 def test_duplicate_name_in_the_same_library_is_rejected(client):
-    slug = _register_and_project(client, "libD@example.com")
+    slug = _register_and_microproject(client, "libD@example.com")
     payload = {"name": "Structure X", "substrate": _substrate(), "steps": _steps(), "partagee": False}
     first = client.post(f"/api/microprojets/{slug}/structures-sauvegardees", json=payload)
     assert first.status_code == 201
@@ -84,7 +84,7 @@ def test_duplicate_name_in_the_same_library_is_rejected(client):
 
 
 def test_rename_a_saved_structure_in_place(client):
-    slug = _register_and_project(client, "libE@example.com")
+    slug = _register_and_microproject(client, "libE@example.com")
     client.post(
         f"/api/microprojets/{slug}/structures-sauvegardees",
         json={"name": "Nom initial", "substrate": _substrate(), "steps": _steps(), "partagee": False},
@@ -95,23 +95,23 @@ def test_rename_a_saved_structure_in_place(client):
         json={"name": "Nom corrige", "substrate": _substrate(), "steps": _steps()},
     )
     assert renamed.status_code == 200
-    names = [s["name"] for s in renamed.json()["projet"]]
+    names = [s["name"] for s in renamed.json()["microprojet"]]
     assert names == ["Nom corrige"]
 
 
 def test_delete_a_saved_structure(client):
-    slug = _register_and_project(client, "libF@example.com")
+    slug = _register_and_microproject(client, "libF@example.com")
     client.post(
         f"/api/microprojets/{slug}/structures-sauvegardees",
         json={"name": "A retirer", "substrate": _substrate(), "steps": _steps(), "partagee": False},
     )
     deleted = client.delete(f"/api/microprojets/{slug}/structures-sauvegardees/A retirer", params={"partagee": False})
     assert deleted.status_code == 200
-    assert deleted.json()["projet"] == []
+    assert deleted.json()["microprojet"] == []
 
 
 def test_builtin_presets_are_listed_and_can_be_duplicated_into_a_real_structure(client):
-    slug = _register_and_project(client, "libH@example.com")
+    slug = _register_and_microproject(client, "libH@example.com")
 
     listed = client.get(f"/api/microprojets/{slug}/structures-sauvegardees").json()
     presets = listed["presets"]
@@ -132,12 +132,12 @@ def test_builtin_presets_are_listed_and_can_be_duplicated_into_a_real_structure(
         },
     )
     assert derived.status_code == 201
-    saved = next(s for s in derived.json()["projet"] if s["name"] == "Mon nanofil")
+    saved = next(s for s in derived.json()["microprojet"] if s["name"] == "Mon nanofil")
     assert saved["derived_from"] == "Nanofil pointe semipolaire (V-pit inversé)"
 
 
 def test_viewer_cannot_create_a_saved_structure(client):
-    slug = _register_and_project(client, "libG-owner@example.com")
+    slug = _register_and_microproject(client, "libG-owner@example.com")
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": "libG-viewer@example.com", "password": "supersecret", "name": "V"})
     client.post("/api/auth/logout")

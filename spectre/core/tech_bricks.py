@@ -3,8 +3,8 @@ independently of any structure or experiment - so a recurring block of process (
 gravure RIE standard" or a whole epitaxial buffer stack) can be built once and inserted as a unit
 wherever it's needed, instead of retyping the same handful of steps every time. Two stores per
 Spectre instance, the same split as :mod:`spectre.core.structure_library`/:mod:`spectre.core.
-step_presets`: one shared across every project, one private to a single project - see
-:func:`spectre.core.projects.get_shared_tech_brick_store`/``get_tech_brick_store``.
+step_presets`: one shared across every microproject, one private to a single microproject - see
+:func:`spectre.core.microprojects.get_shared_tech_brick_store`/``get_tech_brick_store``.
 
 A brick is the "sequence" analog of :class:`spectre.core.step_presets.StepPreset` (a single step's
 mode/angle/selectivity) the same way :class:`spectre.core.structure_library.SavedStructure` is the
@@ -53,6 +53,6 @@ def _builtin_tech_bricks() -> dict[str, TechBrick]:
     """Fallback brick set when ``library/briques.yml`` is missing - empty: unlike a single step's
     mode/angle (which map cleanly onto real, universal recipe names), there's no single "standard"
     multi-step brick generic enough to bundle in code. Add bricks to ``library/briques.yml`` (or a
-    project's / the shared store) instead.
+    microproject's / the shared store) instead.
     """
     return {}

@@ -17,10 +17,10 @@ def _steps(thickness=20):
     ]
 
 
-def _register_and_project(client, email, project_name="Projet"):
+def _register_and_microproject(client, email, microproject_name="Projet"):
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": microproject_name}).json()["slug"]
 
 
 def _launch(client, slug, title="Reference", thickness=20):
@@ -37,7 +37,7 @@ def _launch(client, slug, title="Reference", thickness=20):
 
 
 def test_default_ref_name_uses_the_computed_version(client):
-    slug = _register_and_project(client, "refs-default@example.com")
+    slug = _register_and_microproject(client, "refs-default@example.com")
     launched = _launch(client, slug)
 
     response = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/ref", json={})
@@ -49,7 +49,7 @@ def test_default_ref_name_uses_the_computed_version(client):
 
 
 def test_ref_can_be_given_a_nickname(client):
-    slug = _register_and_project(client, "refs-nickname@example.com")
+    slug = _register_and_microproject(client, "refs-nickname@example.com")
     launched = _launch(client, slug)
 
     response = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/ref", json={"name": "  omega  "})
@@ -58,7 +58,7 @@ def test_ref_can_be_given_a_nickname(client):
 
 
 def test_a_nickname_already_used_elsewhere_conflicts(client):
-    slug = _register_and_project(client, "refs-conflict@example.com")
+    slug = _register_and_microproject(client, "refs-conflict@example.com")
     a = _launch(client, slug, title="A")
     b = _launch(client, slug, title="B")  # a distinct branch (different title slugifies differently)
 
@@ -68,7 +68,7 @@ def test_a_nickname_already_used_elsewhere_conflicts(client):
 
 
 def test_tagging_the_same_experience_with_no_nickname_twice_is_idempotent(client):
-    slug = _register_and_project(client, "refs-idempotent@example.com")
+    slug = _register_and_microproject(client, "refs-idempotent@example.com")
     launched = _launch(client, slug)
 
     first = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/ref", json={})
@@ -77,7 +77,7 @@ def test_tagging_the_same_experience_with_no_nickname_twice_is_idempotent(client
 
 
 def test_evolving_from_a_ref_name_works_like_any_other_ref(client):
-    slug = _register_and_project(client, "refs-evolve@example.com")
+    slug = _register_and_microproject(client, "refs-evolve@example.com")
     launched = _launch(client, slug)
     client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/ref", json={"name": "omega"})
 
@@ -89,8 +89,8 @@ def test_evolving_from_a_ref_name_works_like_any_other_ref(client):
     assert response.json()["id"] != launched["id"]
 
 
-def test_the_projects_first_experience_becomes_a_ref_automatically(client):
-    slug = _register_and_project(client, "refs-auto-first@example.com")
+def test_the_microprojects_first_experience_becomes_a_ref_automatically(client):
+    slug = _register_and_microproject(client, "refs-auto-first@example.com")
     launched = _launch(client, slug)
 
     items = client.get(f"/api/microprojets/{slug}/refs").json()["items"]
@@ -98,7 +98,7 @@ def test_the_projects_first_experience_becomes_a_ref_automatically(client):
     assert items[0]["experiment_id"] == launched["id"]
     assert items[0]["names"] == ["ref v1.0.0"]
 
-    # a later experience in the same project does *not* also get auto-tagged
+    # a later experience in the same microproject does *not* also get auto-tagged
     second = client.post(
         f"/api/microprojets/{slug}/experiences",
         json={
@@ -114,8 +114,8 @@ def test_the_projects_first_experience_becomes_a_ref_automatically(client):
     assert second["id"] != launched["id"]
 
 
-def test_the_projects_first_campaign_becomes_a_ref_automatically(client):
-    slug = _register_and_project(client, "refs-auto-first-campaign@example.com")
+def test_the_microprojects_first_campaign_becomes_a_ref_automatically(client):
+    slug = _register_and_microproject(client, "refs-auto-first-campaign@example.com")
     campaign = client.post(
         f"/api/microprojets/{slug}/experiences/campagne",
         json={
@@ -134,13 +134,13 @@ def test_the_projects_first_campaign_becomes_a_ref_automatically(client):
 
 
 def test_refs_list_and_graph_condense_intermediate_versions(client):
-    slug = _register_and_project(client, "refs-graph@example.com")
+    slug = _register_and_microproject(client, "refs-graph@example.com")
     root = _launch(client, slug, thickness=10)
     client.post(f"/api/microprojets/{slug}/experiences/{root['id']}/ref", json={"name": "omega"})
 
     # a lightweight evolution that doesn't change the process at all - version stays 1.0.0,
     # collapsed out of the ref graph the same way an unchanged commit is collapsed out of the
-    # project's own version graph (spectre.core.versioning.determine_keep_ids).
+    # microproject's own version graph (spectre.core.versioning.determine_keep_ids).
     tagged = client.post(f"/api/microprojets/{slug}/experiences/{root['id']}/etiquettes", json={"tags": ["a-suivre"]}).json()
 
     # a real structural change (a step added) - bumps to 2.0.0

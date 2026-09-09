@@ -58,7 +58,7 @@
       if (!invitationToken) return;
       try {
         const invitation = await api.get(`/api/auth/invitation/${invitationToken}`, { redirectOn401: false });
-        document.getElementById("subtitle").textContent = `Vous rejoignez le µprojet « ${invitation.project_name} ».`;
+        document.getElementById("subtitle").textContent = `Vous rejoignez le µprojet « ${invitation.microproject_name} ».`;
         const emailField = document.getElementById("email");
         emailField.value = invitation.email;
         emailField.readOnly = true;

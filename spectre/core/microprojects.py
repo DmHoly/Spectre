@@ -1,6 +1,6 @@
-"""Projects and membership - the data-access layer over the ``projects``/``memberships`` tables,
-plus where each project's own Follow repository, saved structures, and step presets live on disk.
-Follow and StructureForge never know a "project" exists; this is the one place that maps a slug
+"""Microprojects and membership - the data-access layer over the ``microprojects``/``memberships`` tables,
+plus where each microproject's own Follow repository, saved structures, and step presets live on disk.
+Follow and StructureForge never know a "microproject" exists; this is the one place that maps a slug
 to the paths they're given.
 """
 
@@ -18,14 +18,14 @@ from .db import data_dir, get_conn
 ROLE_ORDER = {"viewer": 0, "editor": 1, "owner": 2}
 
 
-class ProjectNotFoundError(Exception):
+class MicroprojectNotFoundError(Exception):
     pass
 
 
 @dataclass(frozen=True)
-class Project:
+class Microproject:
     """A "µprojet": one topic addressed under a management area (:mod:`spectre.core.management`).
-    Table/dir/API keep the historical name ``project``.
+    Table/dir/API keep the historical name ``microproject``.
     """
 
     id: int
@@ -36,9 +36,9 @@ class Project:
     management_area_id: int | None = None
 
 
-def _project_from_row(row: sqlite3.Row) -> Project:
+def _microproject_from_row(row: sqlite3.Row) -> Microproject:
     keys = row.keys()
-    return Project(
+    return Microproject(
         id=row["id"],
         slug=row["slug"],
         name=row["name"],
@@ -57,19 +57,19 @@ def slugify(name: str) -> str:
 
 
 def _slugify(name: str) -> str:
-    return slugify(name) or "projet"
+    return slugify(name) or "microprojet"
 
 
 def _unique_slug(conn: sqlite3.Connection, base: str) -> str:
     slug = base
     suffix = 2
-    while conn.execute("SELECT 1 FROM projects WHERE slug = ?", (slug,)).fetchone():
+    while conn.execute("SELECT 1 FROM microprojects WHERE slug = ?", (slug,)).fetchone():
         slug = f"{base}-{suffix}"
         suffix += 1
     return slug
 
 
-def create(name: str, description: str, *, owner_id: int, management_area_id: int | None = None) -> Project:
+def create(name: str, description: str, *, owner_id: int, management_area_id: int | None = None) -> Microproject:
     name = name.strip()
     if not name:
         raise ValueError("le nom du µprojet est obligatoire")
@@ -80,17 +80,17 @@ def create(name: str, description: str, *, owner_id: int, management_area_id: in
             ).fetchone()["id"]
         slug = _unique_slug(conn, _slugify(name))
         cursor = conn.execute(
-            "INSERT INTO projects (slug, name, description, management_area_id, created_by) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO microprojects (slug, name, description, management_area_id, created_by) VALUES (?, ?, ?, ?, ?)",
             (slug, name, description.strip(), management_area_id, owner_id),
         )
-        project_id = cursor.lastrowid
+        microproject_id = cursor.lastrowid
         conn.execute(
-            "INSERT INTO memberships (project_id, user_id, role) VALUES (?, ?, 'owner')",
-            (project_id, owner_id),
+            "INSERT INTO memberships (microproject_id, user_id, role) VALUES (?, ?, 'owner')",
+            (microproject_id, owner_id),
         )
-    project_dir(slug)  # create the on-disk home for this project's Follow repo/structures upfront
-    return Project(
-        id=project_id,
+    microproject_dir(slug)  # create the on-disk home for this microproject's Follow repo/structures upfront
+    return Microproject(
+        id=microproject_id,
         slug=slug,
         name=name,
         description=description.strip(),
@@ -99,73 +99,73 @@ def create(name: str, description: str, *, owner_id: int, management_area_id: in
     )
 
 
-def set_management_area(project_id: int, management_area_id: int) -> None:
+def set_management_area(microproject_id: int, management_area_id: int) -> None:
     with get_conn() as conn:
-        conn.execute("UPDATE projects SET management_area_id = ? WHERE id = ?", (management_area_id, project_id))
+        conn.execute("UPDATE microprojects SET management_area_id = ? WHERE id = ?", (management_area_id, microproject_id))
 
 
-def list_by_management_area(management_area_id: int) -> list[Project]:
+def list_by_management_area(management_area_id: int) -> list[Microproject]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM projects WHERE management_area_id = ? ORDER BY created_at DESC", (management_area_id,)
+            "SELECT * FROM microprojects WHERE management_area_id = ? ORDER BY created_at DESC", (management_area_id,)
         ).fetchall()
-    return [_project_from_row(row) for row in rows]
+    return [_microproject_from_row(row) for row in rows]
 
 
-def list_all() -> list[Project]:
+def list_all() -> list[Microproject]:
     with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
-    return [_project_from_row(row) for row in rows]
+        rows = conn.execute("SELECT * FROM microprojects ORDER BY created_at DESC").fetchall()
+    return [_microproject_from_row(row) for row in rows]
 
 
-def get_by_slug(slug: str) -> Project:
+def get_by_slug(slug: str) -> Microproject:
     with get_conn() as conn:
-        row = conn.execute("SELECT * FROM projects WHERE slug = ?", (slug,)).fetchone()
+        row = conn.execute("SELECT * FROM microprojects WHERE slug = ?", (slug,)).fetchone()
     if row is None:
-        raise ProjectNotFoundError(slug)
-    return _project_from_row(row)
+        raise MicroprojectNotFoundError(slug)
+    return _microproject_from_row(row)
 
 
-def get_by_id(project_id: int) -> Project:
+def get_by_id(microproject_id: int) -> Microproject:
     with get_conn() as conn:
-        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        row = conn.execute("SELECT * FROM microprojects WHERE id = ?", (microproject_id,)).fetchone()
     if row is None:
-        raise ProjectNotFoundError(str(project_id))
-    return _project_from_row(row)
+        raise MicroprojectNotFoundError(str(microproject_id))
+    return _microproject_from_row(row)
 
 
-def list_for_user(user_id: int) -> list[tuple[Project, str]]:
+def list_for_user(user_id: int) -> list[tuple[Microproject, str]]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT projects.*, memberships.role AS role FROM projects "
-            "JOIN memberships ON memberships.project_id = projects.id "
-            "WHERE memberships.user_id = ? ORDER BY projects.created_at DESC",
+            "SELECT microprojects.*, memberships.role AS role FROM microprojects "
+            "JOIN memberships ON memberships.microproject_id = microprojects.id "
+            "WHERE memberships.user_id = ? ORDER BY microprojects.created_at DESC",
             (user_id,),
         ).fetchall()
-    return [(_project_from_row(row), row["role"]) for row in rows]
+    return [(_microproject_from_row(row), row["role"]) for row in rows]
 
 
-def role_for(project_id: int, user_id: int) -> str | None:
+def role_for(microproject_id: int, user_id: int) -> str | None:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT role FROM memberships WHERE project_id = ? AND user_id = ?", (project_id, user_id)
+            "SELECT role FROM memberships WHERE microproject_id = ? AND user_id = ?", (microproject_id, user_id)
         ).fetchone()
     return row["role"] if row else None
 
 
-def list_members(project_id: int) -> list[dict]:
+def list_members(microproject_id: int) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT users.id, users.name, users.email, memberships.role FROM memberships "
-            "JOIN users ON users.id = memberships.user_id WHERE memberships.project_id = ? "
+            "JOIN users ON users.id = memberships.user_id WHERE memberships.microproject_id = ? "
             "ORDER BY users.name",
-            (project_id,),
+            (microproject_id,),
         ).fetchall()
     return [dict(row) for row in rows]
 
 
-def add_member(project_id: int, project_name: str, email: str, role: str, *, invited_by: int) -> str:
-    """Add ``email`` to the project directly if they already have an account (returns
+def add_member(microproject_id: int, microproject_name: str, email: str, role: str, *, invited_by: int) -> str:
+    """Add ``email`` to the microproject directly if they already have an account (returns
     ``"added"``), or create a two-week invitation and e-mail them a signup link otherwise
     (returns ``"invited"``) - see :func:`accept_invitation` for the other end of that link.
     """
@@ -180,55 +180,55 @@ def add_member(project_id: int, project_name: str, email: str, role: str, *, inv
     if user is not None:
         with get_conn() as conn:
             conn.execute(
-                "INSERT INTO memberships (project_id, user_id, role) VALUES (?, ?, ?) "
-                "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
-                (project_id, user.id, role),
+                "INSERT INTO memberships (microproject_id, user_id, role) VALUES (?, ?, ?) "
+                "ON CONFLICT(microproject_id, user_id) DO UPDATE SET role = excluded.role",
+                (microproject_id, user.id, role),
             )
         return "added"
 
     token = security.new_token()
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO invitations (token, project_id, email, role, invited_by, expires_at) "
+            "INSERT INTO invitations (token, microproject_id, email, role, invited_by, expires_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (token, project_id, email, role, invited_by, security.invitation_expiry()),
+            (token, microproject_id, email, role, invited_by, security.invitation_expiry()),
         )
     inviter = accounts.get_by_id(invited_by)
     link = f"{email_module.base_url()}/inscription?invitation={token}"
     email_module.send_email(
         email,
-        f"Invitation à rejoindre « {project_name} » sur Spectre",
+        f"Invitation à rejoindre « {microproject_name} » sur Spectre",
         f"{inviter.name if inviter else 'Un membre'} vous invite à rejoindre le projet "
-        f"« {project_name} » sur Spectre.\n\n"
+        f"« {microproject_name} » sur Spectre.\n\n"
         f"Pour créer votre compte et rejoindre le projet, ouvrez ce lien (valable 14 jours) :\n{link}",
     )
     return "invited"
 
 
-def remove_member(project_id: int, user_id: int) -> None:
+def remove_member(microproject_id: int, user_id: int) -> None:
     with get_conn() as conn:
-        conn.execute("DELETE FROM memberships WHERE project_id = ? AND user_id = ?", (project_id, user_id))
+        conn.execute("DELETE FROM memberships WHERE microproject_id = ? AND user_id = ?", (microproject_id, user_id))
 
 
-def list_invitations(project_id: int) -> list[dict]:
+def list_invitations(microproject_id: int) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT token, email, role, created_at FROM invitations WHERE project_id = ? ORDER BY created_at DESC",
-            (project_id,),
+            "SELECT token, email, role, created_at FROM invitations WHERE microproject_id = ? ORDER BY created_at DESC",
+            (microproject_id,),
         ).fetchall()
     return [dict(row) for row in rows]
 
 
-def cancel_invitation(project_id: int, token: str) -> None:
+def cancel_invitation(microproject_id: int, token: str) -> None:
     with get_conn() as conn:
-        conn.execute("DELETE FROM invitations WHERE project_id = ? AND token = ?", (project_id, token))
+        conn.execute("DELETE FROM invitations WHERE microproject_id = ? AND token = ?", (microproject_id, token))
 
 
 def get_invitation(token: str) -> dict | None:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT invitations.token, invitations.email, invitations.role, invitations.project_id, "
-            "projects.name AS project_name FROM invitations JOIN projects ON projects.id = invitations.project_id "
+            "SELECT invitations.token, invitations.email, invitations.role, invitations.microproject_id, "
+            "microprojects.name AS microproject_name FROM invitations JOIN microprojects ON microprojects.id = invitations.microproject_id "
             "WHERE invitations.token = ? AND invitations.expires_at > datetime('now')",
             (token,),
         ).fetchone()
@@ -245,43 +245,43 @@ def accept_invitation(token: str, user_id: int, user_email: str) -> bool:
         return False
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO memberships (project_id, user_id, role) VALUES (?, ?, ?) "
-            "ON CONFLICT(project_id, user_id) DO UPDATE SET role = excluded.role",
-            (invitation["project_id"], user_id, invitation["role"]),
+            "INSERT INTO memberships (microproject_id, user_id, role) VALUES (?, ?, ?) "
+            "ON CONFLICT(microproject_id, user_id) DO UPDATE SET role = excluded.role",
+            (invitation["microproject_id"], user_id, invitation["role"]),
         )
         conn.execute("DELETE FROM invitations WHERE token = ?", (token,))
     return True
 
 
-def delete(project: Project) -> None:
-    """Permanently delete a project: its database rows (memberships and pending invitations
+def delete(microproject: Microproject) -> None:
+    """Permanently delete a microproject: its database rows (memberships and pending invitations
     cascade via the foreign keys) and the on-disk directory holding its Follow repository, saved
     structures, step presets, and tech bricks - there is no undo, this is real experiment history.
     """
     import shutil
 
     with get_conn() as conn:
-        conn.execute("DELETE FROM projects WHERE id = ?", (project.id,))
-    shutil.rmtree(project_dir(project.slug), ignore_errors=True)
+        conn.execute("DELETE FROM microprojects WHERE id = ?", (microproject.id,))
+    shutil.rmtree(microproject_dir(microproject.slug), ignore_errors=True)
 
 
-def project_dir(slug: str) -> Path:
-    path = data_dir() / "projects" / slug
+def microproject_dir(slug: str) -> Path:
+    path = data_dir() / "microprojects" / slug
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def follow_repo_path(slug: str) -> Path:
-    return project_dir(slug) / "follow"
+    return microproject_dir(slug) / "follow"
 
 
 def attachments_dir(slug: str) -> Path:
-    """Where uploaded files live for this project (see :mod:`spectre.api.experiments`'s
+    """Where uploaded files live for this microproject (see :mod:`spectre.api.experiments`'s
     attachment routes) - one blob plus a small JSON sidecar (original filename/content
     type/size) per attachment, named by its id rather than the uploaded filename so nothing here
     ever has to sanitize that into a safe path.
     """
-    path = project_dir(slug) / "attachments"
+    path = microproject_dir(slug) / "attachments"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -289,13 +289,13 @@ def attachments_dir(slug: str) -> Path:
 def _scoped_store_getters(own_filename: str, shared_filename: str, store_factory):
     """A ``(get_own, get_shared)`` pair of store getters for a JSON-backed keyed collection that
     lives, the same way for every one of them (see :mod:`spectre.core.keyed_store`), as one file
-    inside a project's own directory and one shared file visible from every project - the split
+    inside a microproject's own directory and one shared file visible from every microproject - the split
     :func:`get_structure_store`/:func:`get_step_preset_store` and their ``get_shared_*``
     counterparts both need, with only the filename and the store type differing.
     """
 
     def get_own(slug: str):
-        return store_factory(project_dir(slug) / own_filename)
+        return store_factory(microproject_dir(slug) / own_filename)
 
     def get_shared():
         return store_factory(data_dir() / shared_filename)
@@ -326,11 +326,11 @@ get_intent_form_store, get_shared_intent_form_store = _scoped_store_getters(
 
 
 def active_intent_form_path(slug: str) -> Path:
-    return project_dir(slug) / "formulaire_intention_actif.json"
+    return microproject_dir(slug) / "formulaire_intention_actif.json"
 
 
 def get_active_intent_form(slug: str) -> dict | None:
-    """Which library entry (``{"name": ..., "partagee": bool}``) this project currently uses as
+    """Which library entry (``{"name": ..., "partagee": bool}``) this microproject currently uses as
     its Follow commit form, if any - just a pointer to the library entry (so the settings page can
     show "formulaire actif : X" and offer to deactivate it) alongside the real materialized copy,
     ``<repo>/commit_form.yml``, which is the only file Follow itself ever reads.
@@ -342,9 +342,9 @@ def get_active_intent_form(slug: str) -> dict | None:
 
 
 def activate_intent_form(slug: str, *, name: str, partagee: bool, form) -> None:
-    """Materialize ``form`` (a :class:`follow.storage.commit_form.CommitForm`) as this project's
+    """Materialize ``form`` (a :class:`follow.storage.commit_form.CommitForm`) as this microproject's
     active commit form - written to ``<repo>/commit_form.yml``, which
-    ``follow.storage.repository.Repository`` picks up automatically the next time this project's
+    ``follow.storage.repository.Repository`` picks up automatically the next time this microproject's
     repository is opened (every :func:`get_repository` call - nothing is cached), and remember
     which library entry it came from.
     """
@@ -362,8 +362,8 @@ def deactivate_intent_form(slug: str) -> None:
 
 
 def get_repository(slug: str):
-    """A fresh ``follow.storage.repository.Repository`` for this project, reloaded from disk on
-    every call - Spectre serves many projects from one process, so nothing is cached in memory
+    """A fresh ``follow.storage.repository.Repository`` for this microproject, reloaded from disk on
+    every call - Spectre serves many microprojects from one process, so nothing is cached in memory
     the way ``follow_api`` (one repository per process) can afford to.
     """
     import follow
@@ -381,7 +381,7 @@ def branch_tips(repo) -> list:
     otherwise-identical version (experiments are immutable), so without this a single study could
     show up as several cards, its own earlier drafts included, even after being concluded. The
     full version-by-version history is still there on the fiche itself ("Suivi de l'expérience")
-    and on the project's graph - this only thins out summary lists (the experiences list, project
+    and on the microproject's graph - this only thins out summary lists (the experiences list, microproject
     counts, "comparer avec", "combiner avec").
     """
     seen_ids: set[str] = set()

@@ -68,28 +68,28 @@ def register(body: RegisterRequest, response: Response) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    joined_project = None
+    joined_microproject = None
     if body.invitation:
-        from ..core import projects as projects_module
+        from ..core import microprojects as microprojects_module
 
-        invitation = projects_module.get_invitation(body.invitation)
-        if projects_module.accept_invitation(body.invitation, user.id, user.email):
-            joined_project = invitation["project_name"]
+        invitation = microprojects_module.get_invitation(body.invitation)
+        if microprojects_module.accept_invitation(body.invitation, user.id, user.email):
+            joined_microproject = invitation["microproject_name"]
 
     _set_session_cookie(response, accounts.create_session(user.id))
     payload = _user_payload(user)
-    payload["joined_project"] = joined_project
+    payload["joined_microproject"] = joined_microproject
     return payload
 
 
 @router.get("/invitation/{token}")
 def get_invitation(token: str) -> dict:
-    from ..core import projects as projects_module
+    from ..core import microprojects as microprojects_module
 
-    invitation = projects_module.get_invitation(token)
+    invitation = microprojects_module.get_invitation(token)
     if invitation is None:
         raise HTTPException(status_code=404, detail="cette invitation est invalide ou a expiré")
-    return {"email": invitation["email"], "project_name": invitation["project_name"]}
+    return {"email": invitation["email"], "microproject_name": invitation["microproject_name"]}
 
 
 @router.post("/login")

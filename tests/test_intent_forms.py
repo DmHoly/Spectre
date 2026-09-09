@@ -1,6 +1,6 @@
 """Formulaires d'intention (spectre.core.intent_forms / spectre.api.intent_forms): a library of
-named follow.storage.commit_form.CommitForm templates, one of which a project can activate -
-materialized as that project's Follow commit_form.yml, enforced by Follow itself on every commit.
+named follow.storage.commit_form.CommitForm templates, one of which a microproject can activate -
+materialized as that microproject's Follow commit_form.yml, enforced by Follow itself on every commit.
 """
 
 from __future__ import annotations
@@ -25,10 +25,10 @@ fields:
 """
 
 
-def _register_and_project(client, email, project_name="Projet"):
+def _register_and_microproject(client, email, microproject_name="Projet"):
     client.post("/api/auth/logout")
     client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": project_name}).json()["slug"]
+    return client.post("/api/microprojets", json={"name": microproject_name}).json()["slug"]
 
 
 def _launch(client, slug, **extra):
@@ -44,40 +44,40 @@ def _launch(client, slug, **extra):
 
 
 def test_create_and_list_intent_form(client):
-    slug = _register_and_project(client, "forms-list@example.com")
+    slug = _register_and_microproject(client, "forms-list@example.com")
     response = client.post(
         f"/api/microprojets/{slug}/formulaires-intention", json={"name": "Simple", "yaml": _SIMPLE_FORM_YAML}
     )
     assert response.status_code == 201
     items = response.json()
-    assert items["projet"][0]["name"] == "Simple"
-    assert items["projet"][0]["form"]["title"] == "Formulaire simple"
+    assert items["microprojet"][0]["name"] == "Simple"
+    assert items["microprojet"][0]["form"]["title"] == "Formulaire simple"
     assert items["presets"] == []
     assert items["partagees"] == []
 
 
 def test_invalid_yaml_is_rejected(client):
-    slug = _register_and_project(client, "forms-invalid@example.com")
+    slug = _register_and_microproject(client, "forms-invalid@example.com")
     response = client.post(f"/api/microprojets/{slug}/formulaires-intention", json={"name": "Cassé", "yaml": "not: [valid"})
     assert response.status_code == 422
 
 
 def test_duplicate_name_conflicts(client):
-    slug = _register_and_project(client, "forms-dup@example.com")
+    slug = _register_and_microproject(client, "forms-dup@example.com")
     client.post(f"/api/microprojets/{slug}/formulaires-intention", json={"name": "Simple", "yaml": _SIMPLE_FORM_YAML})
     response = client.post(f"/api/microprojets/{slug}/formulaires-intention", json={"name": "Simple", "yaml": _SIMPLE_FORM_YAML})
     assert response.status_code == 409
 
 
 def test_launching_without_an_active_form_needs_no_answers(client):
-    slug = _register_and_project(client, "forms-none@example.com")
+    slug = _register_and_microproject(client, "forms-none@example.com")
     response = _launch(client, slug)
     assert response.status_code == 201
     assert client.get(f"/api/microprojets/{slug}/formulaire-actif").json() is None
 
 
 def test_activating_a_form_requires_its_fields_on_launch(client):
-    slug = _register_and_project(client, "forms-required@example.com")
+    slug = _register_and_microproject(client, "forms-required@example.com")
     client.post(f"/api/microprojets/{slug}/formulaires-intention", json={"name": "Simple", "yaml": _SIMPLE_FORM_YAML})
     activated = client.post(f"/api/microprojets/{slug}/formulaire-actif", json={"name": "Simple", "partagee": False})
     assert activated.status_code == 200
@@ -94,7 +94,7 @@ def test_activating_a_form_requires_its_fields_on_launch(client):
 
 
 def test_lightweight_actions_carry_forward_form_answers_unchanged(client):
-    slug = _register_and_project(client, "forms-carry@example.com")
+    slug = _register_and_microproject(client, "forms-carry@example.com")
     client.post(f"/api/microprojets/{slug}/formulaires-intention", json={"name": "Simple", "yaml": _SIMPLE_FORM_YAML})
     client.post(f"/api/microprojets/{slug}/formulaire-actif", json={"name": "Simple", "partagee": False})
     launched = _launch(client, slug, form_answers={"operateur": "Alice"}).json()
@@ -106,7 +106,7 @@ def test_lightweight_actions_carry_forward_form_answers_unchanged(client):
 
 
 def test_evolving_requires_reanswering_the_form(client):
-    slug = _register_and_project(client, "forms-evolve@example.com")
+    slug = _register_and_microproject(client, "forms-evolve@example.com")
     client.post(f"/api/microprojets/{slug}/formulaires-intention", json={"name": "Simple", "yaml": _SIMPLE_FORM_YAML})
     client.post(f"/api/microprojets/{slug}/formulaire-actif", json={"name": "Simple", "partagee": False})
     launched = _launch(client, slug, form_answers={"operateur": "Alice"}).json()
@@ -127,7 +127,7 @@ def test_evolving_requires_reanswering_the_form(client):
 
 
 def test_deleting_the_active_form_deactivates_it(client):
-    slug = _register_and_project(client, "forms-delete@example.com")
+    slug = _register_and_microproject(client, "forms-delete@example.com")
     client.post(f"/api/microprojets/{slug}/formulaires-intention", json={"name": "Simple", "yaml": _SIMPLE_FORM_YAML})
     client.post(f"/api/microprojets/{slug}/formulaire-actif", json={"name": "Simple", "partagee": False})
 
@@ -139,7 +139,7 @@ def test_deleting_the_active_form_deactivates_it(client):
 
 
 def test_deactivating_a_form_stops_requiring_it(client):
-    slug = _register_and_project(client, "forms-deactivate@example.com")
+    slug = _register_and_microproject(client, "forms-deactivate@example.com")
     client.post(f"/api/microprojets/{slug}/formulaires-intention", json={"name": "Simple", "yaml": _SIMPLE_FORM_YAML})
     client.post(f"/api/microprojets/{slug}/formulaire-actif", json={"name": "Simple", "partagee": False})
 

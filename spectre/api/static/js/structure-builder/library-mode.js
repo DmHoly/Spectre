@@ -6,7 +6,7 @@ async function fetchSavedStructures() {
 }
 
 function findSavedStructure(list, name, scope) {
-  const bucket = scope === "preset" ? list.presets : scope === "partagee" ? list.partagees : list.projet;
+  const bucket = scope === "preset" ? list.presets : scope === "partagee" ? list.partagees : list.microprojet;
   return (bucket || []).find((s) => s.name === name) || null;
 }
 
@@ -60,7 +60,7 @@ async function saveLibraryStructure(forceNew) {
     } else {
       await api.post(`/api/microprojets/${slug}/structures-sauvegardees`, payload);
     }
-    const scope = partagee ? "partagee" : "projet";
+    const scope = partagee ? "partagee" : "microprojet";
     if (returnTo === "nouvelle-experience") {
       window.location.href = `/microprojets/${slug}/structures/nouvelle?structure=${encodeURIComponent(name)}&scope=${scope}`;
     } else if (returnTo === "bibliotheque") {

@@ -157,8 +157,8 @@ class Session:
         return r.json()
 
 
-class Project:
-    """One project, driven by whichever Session currently 'owns' each call - keeps the beat
+class Microproject:
+    """One microproject, driven by whichever Session currently 'owns' each call - keeps the beat
     functions below terse (``proj.launch(...)`` instead of repeating the slug/session juggling).
     """
 
@@ -169,7 +169,7 @@ class Project:
         # every experience needs a physical entity from the moment it's created (spectre.api.structures
         # enforces this) - passed straight through rather than tracked as an afterthought.
         result = session.post(
-            f"/api/projects/{self.slug}/experiences",
+            f"/api/microprojets/{self.slug}/experiences",
             json={
                 "substrate": substrate,
                 "steps": steps,
@@ -184,7 +184,7 @@ class Project:
 
     def evolve(self, session: Session, ref: str, *, title, intent, hypothesis, substrate, steps, objectives=None, new_branch=None, days_ago):
         result = session.post(
-            f"/api/projects/{self.slug}/experiences/{ref}/evoluer",
+            f"/api/microprojets/{self.slug}/experiences/{ref}/evoluer",
             json={
                 "substrate": substrate,
                 "steps": steps,
@@ -199,25 +199,25 @@ class Project:
 
     def evidence(self, session: Session, ref: str, *, description, source, metric_name=None, metric_value=None, metric_unit=None, days_ago) -> str:
         result = session.post(
-            f"/api/projects/{self.slug}/experiences/{ref}/preuves",
+            f"/api/microprojets/{self.slug}/experiences/{ref}/preuves",
             json={"description": description, "source": source, "metric_name": metric_name, "metric_value": metric_value, "metric_unit": metric_unit},
         )
         return record(result["id"], days_ago)
 
     def conclude(self, session: Session, ref: str, *, status="concluded", decision=None, summary=None, next_steps=None, objective_results=None, days_ago) -> str:
         result = session.post(
-            f"/api/projects/{self.slug}/experiences/{ref}/conclure",
+            f"/api/microprojets/{self.slug}/experiences/{ref}/conclure",
             json={"status": status, "decision": decision, "summary": summary, "next_steps": next_steps, "objective_results": objective_results or []},
         )
         return record(result["id"], days_ago)
 
     def tag(self, session: Session, ref: str, tags: list[str], *, days_ago) -> str:
-        result = session.post(f"/api/projects/{self.slug}/experiences/{ref}/etiquettes", json={"tags": tags})
+        result = session.post(f"/api/microprojets/{self.slug}/experiences/{ref}/etiquettes", json={"tags": tags})
         return record(result["id"], days_ago)
 
     def track(self, session: Session, ref: str, *, sample_id, location, days_ago) -> str:
         result = session.post(
-            f"/api/projects/{self.slug}/experiences/{ref}/entites",
+            f"/api/microprojets/{self.slug}/experiences/{ref}/entites",
             json={"entities": [{"sample_id": sample_id, "location": location}]},
         )
         return record(result["id"], days_ago)
@@ -227,7 +227,7 @@ class Project:
         as a second parent (a real content merge, if wanted, is a normal evolve() right after -
         see the "LED complète sur substrat SiC" beat)."""
         result = session.post(
-            f"/api/projects/{self.slug}/experiences/{ref}/combiner",
+            f"/api/microprojets/{self.slug}/experiences/{ref}/combiner",
             json={"other_id": other_id, "title": title, "intent": intent},
         )
         return record(result["id"], days_ago)
@@ -236,12 +236,12 @@ class Project:
         """Tag ``ref`` as a ref (:mod:`spectre.core.refs`) - unlike every other beat here, this
         doesn't create a new commit (a ref is just a name on an experience that already exists),
         so there's nothing to schedule for backdating."""
-        result = session.post(f"/api/projects/{self.slug}/experiences/{ref}/ref", json={"name": name})
+        result = session.post(f"/api/microprojets/{self.slug}/experiences/{ref}/ref", json={"name": name})
         return result["name"]
 
     def save_structure(self, session: Session, *, name, substrate, steps, partagee=False, derived_from=None):
         session.post(
-            f"/api/projects/{self.slug}/structures-sauvegardees",
+            f"/api/microprojets/{self.slug}/structures-sauvegardees",
             json={"name": name, "substrate": substrate, "steps": steps, "derived_from": derived_from, "partagee": partagee},
         )
 
@@ -286,9 +286,9 @@ GROWTH_TAPER = [
 # --------------------------------------------------------------------------------------------
 
 
-def build_single_qw_project(demo: Session, lea: Session, marc: Session) -> str:
+def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     created = demo.post(
-        "/api/projects",
+        "/api/microprojets",
         json={
             "name": "Nanofils GaN - puits quantique simple",
             "description": "Nanofils GaN à pointe semipolaire pour LED bleue - épitaxie, gravure, croissance sélective, un seul puits quantique, avec un changement de substrat de base et une déclinaison rouge/vert/bleu du taux d'indium.",
@@ -296,8 +296,8 @@ def build_single_qw_project(demo: Session, lea: Session, marc: Session) -> str:
     )
     slug = created["slug"]
     for email in (lea.email, marc.email):
-        demo.post(f"/api/projects/{slug}/members", json={"email": email, "role": "editor"})
-    proj = Project(slug)
+        demo.post(f"/api/microprojets/{slug}/members", json={"email": email, "role": "editor"})
+    proj = Microproject(slug)
 
     OBJ = [
         objective("Rugosité de surface", "rugosite_rms_nm", "minimize", target=1.0, rationale="Une surface rugueuse dégrade la qualité de l'épitaxie suivante.", verification_method="Mesure AFM sur 5x5 µm"),
@@ -547,9 +547,9 @@ def build_single_qw_project(demo: Session, lea: Session, marc: Session) -> str:
 # --------------------------------------------------------------------------------------------
 
 
-def build_mqw_project(demo: Session, lea: Session, marc: Session) -> str:
+def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     created = demo.post(
-        "/api/projects",
+        "/api/microprojets",
         json={
             "name": "Nanofils GaN - puits quantiques multiples (MQW)",
             "description": "Même base épitaxiale que le projet à puits simple, mais avec plusieurs puits quantiques : comparaison avec/sans couche bloqueuse d'électrons (EBL), puis réglage du dopage P en aval.",
@@ -557,8 +557,8 @@ def build_mqw_project(demo: Session, lea: Session, marc: Session) -> str:
     )
     slug = created["slug"]
     for email in (lea.email, marc.email):
-        demo.post(f"/api/projects/{slug}/members", json={"email": email, "role": "editor"})
-    proj = Project(slug)
+        demo.post(f"/api/microprojets/{slug}/members", json={"email": email, "role": "editor"})
+    proj = Microproject(slug)
 
     OBJ = [
         objective("Rugosité de surface", "rugosite_rms_nm", "minimize", target=1.0, rationale="Une surface rugueuse dégrade la qualité de l'épitaxie suivante.", verification_method="Mesure AFM sur 5x5 µm"),
@@ -805,7 +805,7 @@ def backdate_experiments(data_dir: Path, slugs: list[str]) -> None:
     """
     by_id = dict(SCHEDULE)
     for slug in slugs:
-        objects_dir = data_dir / "projects" / slug / "follow" / "objects"
+        objects_dir = data_dir / "microprojects" / slug / "follow" / "objects"
         if not objects_dir.exists():
             continue
         for file in objects_dir.glob("*.json"):
@@ -817,7 +817,7 @@ def backdate_experiments(data_dir: Path, slugs: list[str]) -> None:
             file.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def backdate_projects(data_dir: Path, slugs: list[str], days_ago: float) -> None:
+def backdate_microprojects(data_dir: Path, slugs: list[str], days_ago: float) -> None:
     import sqlite3
 
     db_path = data_dir / "spectre.db"
@@ -826,7 +826,7 @@ def backdate_projects(data_dir: Path, slugs: list[str], days_ago: float) -> None
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(
-            f"UPDATE projects SET created_at = ? WHERE slug IN ({','.join('?' * len(slugs))})",
+            f"UPDATE microprojects SET created_at = ? WHERE slug IN ({','.join('?' * len(slugs))})",
             [when(days_ago).isoformat(), *slugs],
         )
         conn.commit()
@@ -856,13 +856,13 @@ def main() -> None:
         marc = Session(client_marc, email=TEAMMATES[1][0], password=TEAMMATES[1][1], name=TEAMMATES[1][2])
 
         print("Génération du projet « Nanofils GaN - puits quantique simple »...")
-        single_qw_slug = build_single_qw_project(demo, lea, marc)
+        single_qw_slug = build_single_qw_microproject(demo, lea, marc)
         print("Génération du projet « Nanofils GaN - puits quantiques multiples (MQW) »...")
-        mqw_slug = build_mqw_project(demo, lea, marc)
+        mqw_slug = build_mqw_microproject(demo, lea, marc)
 
     print("Recalage des dates sur environ un an d'historique...")
     backdate_experiments(data_dir, [single_qw_slug, mqw_slug])
-    backdate_projects(data_dir, [single_qw_slug, mqw_slug], days_ago=350)
+    backdate_microprojects(data_dir, [single_qw_slug, mqw_slug], days_ago=350)
 
     print(
         f"\nCompte de démo prêt :\n"

@@ -1,6 +1,6 @@
 """The corporate strategy layer: "management areas" are the grands thèmes leadership steers by,
-each holding a set of µprojets (:mod:`spectre.core.projects`). Thin data-access over the
-``management_areas`` table - like :mod:`spectre.core.projects` but simpler: an area has no Follow
+each holding a set of µprojets (:mod:`spectre.core.microprojects`). Thin data-access over the
+``management_areas`` table - like :mod:`spectre.core.microprojects` but simpler: an area has no Follow
 repo or on-disk home of its own, and access is company-wide (every signed-in user sees every
 area; only an admin, ``users.is_admin``, creates/renames one or moves a µprojet between areas).
 """
@@ -40,7 +40,7 @@ def _from_row(row: sqlite3.Row) -> ManagementArea:
 
 
 def _slugify(name: str) -> str:
-    from .projects import slugify
+    from .microprojects import slugify
 
     return slugify(name) or "theme"
 
@@ -121,5 +121,5 @@ def delete(area_id: int) -> None:
         fallback = conn.execute(
             "SELECT id FROM management_areas WHERE slug = ?", (UNCLASSIFIED_AREA_SLUG,)
         ).fetchone()["id"]
-        conn.execute("UPDATE projects SET management_area_id = ? WHERE management_area_id = ?", (fallback, area_id))
+        conn.execute("UPDATE microprojects SET management_area_id = ? WHERE management_area_id = ?", (fallback, area_id))
         conn.execute("DELETE FROM management_areas WHERE id = ?", (area_id,))

@@ -1,7 +1,7 @@
 """Refs: a named, reusable starting point for future experiences - not a new storage concept,
 just Follow's own tag (:meth:`follow.storage.repository.Repository.tag`, an immutable pointer to
 one experiment) given a short, memorable name and a Spectre-shaped API around it. Every Follow tag
-in a Spectre project *is* a ref by construction - Spectre never exposes ad hoc tagging for
+in a Spectre microproject *is* a ref by construction - Spectre never exposes ad hoc tagging for
 anything else, so the two ideas are simply the same thing, the same way :mod:`spectre.core.
 versioning` layers a Spectre-specific X.Y.Z on top of Follow's plain commit chain without Follow
 needing to know anything structural changed.
@@ -90,7 +90,7 @@ def ref_names_for(repo: "follow.Repository", experiment_id: str) -> list[str]:
 
 
 def list_refs(repo: "follow.Repository") -> list[dict[str, Any]]:
-    """Every ref in this project, newest first: one entry per distinct tagged experiment (several
+    """Every ref in this microproject, newest first: one entry per distinct tagged experiment (several
     nicknames on the same one collapse into a single entry, its ``names`` carrying all of them),
     each with the version :mod:`spectre.core.versioning` already computes for it.
     """
