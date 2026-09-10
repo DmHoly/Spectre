@@ -219,6 +219,46 @@ def list_experiences(
     return {"items": [_summary(exp) for exp in page], "total": len(matches), "offset": offset, "limit": limit}
 
 
+@router.get("/{slug}/filiation")
+def microproject_lineage(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    """The microproject's structural lineage as plain JSON - what the µprojet page's default
+    view (a D3 git-like graph, see ``spectre/api/static/js/microprojet-graphe.js``) draws instead
+    of embedding the older Plotly ``/graphe.html``. Same collapsing rules as the fiche's own
+    "versions" timeline (see :mod:`spectre.core.versioning`): every root, every merge (two lines
+    of work joining is structurally significant on its own, whatever it changed), every branch
+    tip, and every commit that actually moved the process/structure forward are kept - a tag, a
+    piece of evidence, a title edit riding on an otherwise-unchanged process is collapsed out. So
+    a node here is always a genuine step or split in the process ("un µprojet = split de
+    structure"), never version noise.
+    """
+    repo = microprojects.get_repository(microproject.slug)
+    experiments = {exp.id: exp for exp in repo}
+    if not experiments:
+        return {"nodes": [], "edges": []}
+
+    dag = {exp_id: exp.parents for exp_id, exp in experiments.items()}
+    processes = {exp_id: exp.metadata.get("structureforge_process") for exp_id, exp in experiments.items()}
+    tips = set(repo.branches.values())
+    keep = versioning.determine_keep_ids(dag, processes, tips=tips)
+    collapsed = versioning.collapsed_dag(dag, keep)
+
+    nodes = [
+        {
+            "id": exp_id,
+            "title": experiments[exp_id].title,
+            "status": experiments[exp_id].conclusion.status,
+            "author": experiments[exp_id].author,
+            "created_at": experiments[exp_id].created_at.isoformat(),
+            "conclusion_summary": experiments[exp_id].conclusion.summary,
+            "is_merge": len(dag[exp_id]) > 1,
+            "is_tip": exp_id in tips,
+        }
+        for exp_id in keep
+    ]
+    edges = [{"parent": parent, "child": child} for child, parents in collapsed.items() for parent in parents]
+    return {"nodes": nodes, "edges": edges}
+
+
 @router.get("/{slug}/graphe.html", response_class=HTMLResponse)
 def microproject_graph_html(microproject: Microproject = Depends(require_role("viewer"))) -> str:
     """The microproject's lineage as a self-contained Plotly page - the same rendering Follow's own

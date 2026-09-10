@@ -8,6 +8,60 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+  <style>
+    /* Vue par défaut du µprojet : graphe de filiation (gauche, D3 - voir microprojet-graphe.js)
+       + carte contextuelle de l'expérience cliquée (droite). Même recette que .builder-grid/
+       .fiche-3col (grille alignée, pas de flex plein écran) plutôt que le plein-bord d'atlas.html
+       - cette page garde son en-tête (nom/description/actions) au-dessus, contrairement à l'atlas
+       qui n'a rien d'autre à montrer. */
+    .lineage-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 20px;
+      align-items: stretch;
+    }
+    .lineage-canvas-wrap {
+      position: relative;
+      min-height: 420px;
+      overflow: auto;
+      padding: 20px;
+    }
+    #lineage-svg {
+      display: block;
+      margin: 0 auto;
+    }
+    .lineage-edge {
+      stroke: var(--border);
+      stroke-width: 1.5px;
+      fill: none;
+    }
+    .lineage-node {
+      cursor: pointer;
+    }
+    .lineage-node .lineage-shape {
+      stroke: var(--surface);
+      stroke-width: 1.5px;
+      transition: stroke 0.1s, stroke-width 0.1s;
+    }
+    .lineage-node-selected .lineage-shape {
+      stroke: var(--accent) !important;
+      stroke-width: 2.5px !important;
+    }
+    .lineage-label {
+      font-family: var(--font-ui);
+      font-size: 11px;
+      fill: var(--text-soft);
+      pointer-events: none;
+    }
+    .lineage-panel {
+      overflow-y: auto;
+    }
+    @media (max-width: 1000px) {
+      .lineage-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -37,15 +91,13 @@
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
     <div id="flash" class="flash flash-ok" style="display:none;margin-bottom:16px;"></div>
 
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap;">
       <div>
         <h1 id="microproject-name" style="font-size:22px;"></h1>
         <p id="microproject-description" style="color:var(--text-soft);font-size:14px;margin-top:4px;"></p>
       </div>
       <div style="display:flex;gap:10px;">
-        <a id="refs-link" href="#" class="btn btn-line">Refs</a>
-        <a id="intent-form-link" href="#" class="btn btn-line">Formulaire d'intention</a>
-        <a id="graph-link" href="#" class="btn btn-line">Vue d'ensemble</a>
+        <button id="members-btn" class="btn btn-line" type="button">Membres</button>
         <button id="new-structure-btn" class="btn btn-primary" style="display:none;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           Nouvelle expérience
@@ -53,91 +105,58 @@
       </div>
     </div>
 
-    <div class="tabs" style="margin-bottom:24px;">
-      <button class="tab active" data-tab="running">En cours</button>
-      <button class="tab" data-tab="concluded">Terminées</button>
-      <button class="tab" data-tab="structures">Structures</button>
-      <button class="tab" data-tab="members">Membres</button>
-    </div>
-
-    <div id="tab-running" class="tab-panel">
-      <div id="running-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;"></div>
-      <div style="text-align:center;margin-top:20px;"><button class="btn btn-line" id="running-load-more" style="display:none;">Charger plus</button></div>
-    </div>
-
-    <div id="tab-concluded" class="tab-panel" style="display:none;">
-      <div id="concluded-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;"></div>
-      <div style="text-align:center;margin-top:20px;"><button class="btn btn-line" id="concluded-load-more" style="display:none;">Charger plus</button></div>
-    </div>
-
-    <div id="tab-structures" class="tab-panel" style="display:none;">
-      <p class="help" style="max-width:720px;margin-bottom:16px;">Tous ces éléments sont aussi accessibles depuis la <a id="library-hub-link" href="#">Bibliothèque</a> (lien « Bibliothèque » en haut à droite).</p>
-      <div class="card card-pad" style="max-width:720px;margin-bottom:20px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;">
-          <div class="section-title" style="margin-bottom:0;">Structures sauvegardées</div>
-          <a class="btn btn-line" id="new-library-structure-link" href="#" style="padding:6px 12px;font-size:12.5px;display:none;">+ Nouvelle structure</a>
+    <div class="lineage-layout">
+      <div class="card lineage-canvas-wrap">
+        <div id="lineage-empty" class="empty-state" style="display:none;">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
+          <p>Aucune expérience pour l'instant. « Nouvelle expérience » pour commencer.</p>
         </div>
-        <p class="help" style="margin-bottom:12px;">Réutilisables et dérivables (« dupliquer ») depuis n'importe quelle nouvelle expérience, sans avoir à tout reconstruire. Les structures partagées sont visibles dans tous les µprojets.</p>
-        <div id="saved-structures-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <svg id="lineage-svg"></svg>
       </div>
-
-      <div class="card card-pad" style="max-width:720px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div>
-            <div class="section-title" style="margin-bottom:4px;">Présets d'étape</div>
-            <p class="help" style="margin-bottom:0;">Des dépôts et gravures préconfigurés (mode, angle, sélectivité) pour aller plus vite dans le constructeur de structure.</p>
-          </div>
-          <a class="btn btn-line" id="presets-etapes-link" href="#" style="padding:6px 12px;font-size:12.5px;white-space:nowrap;">Gérer les présets d'étapes</a>
-        </div>
-      </div>
-
-      <div class="card card-pad" style="max-width:720px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div>
-            <div class="section-title" style="margin-bottom:4px;">Briques technologiques</div>
-            <p class="help" style="margin-bottom:0;">Des séquences d'étapes réutilisables (ex : masque + gravure standard) à insérer d'un coup dans le constructeur.</p>
-          </div>
-          <a class="btn btn-line" id="briques-link" href="#" style="padding:6px 12px;font-size:12.5px;white-space:nowrap;">Gérer les briques technologiques</a>
-        </div>
+      <div class="card card-pad lineage-panel" id="lineage-panel">
+        <p class="help">Cliquez un nœud pour voir la structure, l'objectif et la conclusion de cette expérience ici.</p>
       </div>
     </div>
+  </div>
 
-    <div id="tab-members" class="tab-panel" style="display:none;">
-      <div class="card card-pad" style="max-width:640px;">
-        <table style="width:100%;border-collapse:collapse;font-size:13.5px;" id="members-table">
-          <thead>
-            <tr style="text-align:left;color:var(--text-faint);font-size:12px;text-transform:uppercase;letter-spacing:.03em;">
-              <th style="padding-bottom:10px;">Personne</th>
-              <th style="padding-bottom:10px;">Droit</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="members-body"></tbody>
-        </table>
+  <dialog id="members-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
+    <div class="card-pad" style="width:440px;">
+      <h2 style="font-size:16px;margin-bottom:14px;">Membres</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:13.5px;" id="members-table">
+        <thead>
+          <tr style="text-align:left;color:var(--text-faint);font-size:12px;text-transform:uppercase;letter-spacing:.03em;">
+            <th style="padding-bottom:10px;">Personne</th>
+            <th style="padding-bottom:10px;">Droit</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="members-body"></tbody>
+      </table>
 
-        <form id="add-member-form" style="display:none;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);gap:10px;" class="field-row" style="grid-template-columns:1fr 140px auto;">
-          <input class="field" id="member-email" type="email" placeholder="e-mail de la personne" required>
-          <select class="field" id="member-role">
-            <option value="viewer">Lecture seule</option>
-            <option value="editor" selected>Peut modifier</option>
-            <option value="owner">Propriétaire</option>
-          </select>
-          <button class="btn btn-primary" type="submit">Ajouter</button>
-        </form>
+      <form id="add-member-form" style="display:none;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);gap:10px;" class="field-row" style="grid-template-columns:1fr 140px auto;">
+        <input class="field" id="member-email" type="email" placeholder="e-mail de la personne" required>
+        <select class="field" id="member-role">
+          <option value="viewer">Lecture seule</option>
+          <option value="editor" selected>Peut modifier</option>
+          <option value="owner">Propriétaire</option>
+        </select>
+        <button class="btn btn-primary" type="submit">Ajouter</button>
+      </form>
 
-        <div id="invitations-wrap"></div>
-      </div>
+      <div id="invitations-wrap"></div>
 
-      <div class="card card-pad" id="danger-zone" style="display:none;max-width:640px;margin-top:20px;border-color:var(--danger-tint);">
+      <div id="danger-zone" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid var(--danger-tint);">
         <div class="section-title" style="margin-bottom:10px;color:var(--danger);">Zone dangereuse</div>
         <p style="font-size:13px;color:var(--text-soft);margin-bottom:12px;">Supprimer ce µprojet efface définitivement toutes ses expériences et structures. Cette action est irréversible.</p>
         <div class="field-row" style="grid-template-columns:1fr auto;">
           <input class="field" id="delete-confirm-name" placeholder="Tapez le nom du µprojet pour confirmer">
-          <button class="btn btn-danger" id="delete-microproject-btn" type="button">Supprimer le µprojet</button>
+          <button class="btn btn-danger" id="delete-microproject-btn" type="button">Supprimer</button>
         </div>
       </div>
+
+      <button class="btn btn-line btn-block" id="close-members-dialog" type="button" style="margin-top:18px;">Fermer</button>
     </div>
-  </div>
+  </dialog>
 
   <dialog id="new-experience-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
     <div class="card-pad" style="width:400px;">
@@ -147,13 +166,6 @@
       <div style="display:flex;flex-direction:column;gap:16px;">
         <div>
           <button class="btn btn-line btn-block" id="option-scratch" type="button">Partir de zéro</button>
-        </div>
-
-        <div id="ref-option-block" style="padding-top:14px;border-top:1px solid var(--border-soft);display:none;">
-          <label>Partir d'une ref</label>
-          <div class="help" style="margin-bottom:8px;">Un point de départ réutilisable de ce µprojet - garde le lien avec la ref, comme « Continuer une expérience existante ». Voir la page <a id="ref-option-link" href="#" target="_blank">Refs</a>.</div>
-          <select class="field" id="ref-select" style="margin-bottom:8px;"></select>
-          <button class="btn btn-line btn-block" id="option-ref" type="button">Partir de cette ref</button>
         </div>
 
         <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
@@ -166,7 +178,7 @@
 
         <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
           <label>Continuer une expérience existante</label>
-          <div class="help" style="margin-bottom:8px;">Garde le lien avec la version de départ - vous pourrez aussi explorer une nouvelle piste.</div>
+          <div class="help" style="margin-bottom:8px;">Garde le lien avec la version de départ - hérite de sa structure et de son contexte (intention, objectifs, entité physique). Cliquer un nœud du graphe fait la même chose.</div>
           <select class="field" id="continue-select" style="margin-bottom:8px;"></select>
           <button class="btn btn-line btn-block" id="option-continue" type="button">Continuer cette expérience</button>
         </div>
@@ -178,6 +190,9 @@
 
   <script src="/static/js/api.js"></script>
   <script src="/static/js/common.js"></script>
+  <!-- D3 vendored localement (voir spectre/api/static/js/vendor/D3-LICENSE) - même raison qu'atlas.js. -->
+  <script src="/static/js/vendor/d3.v7.9.0.min.js"></script>
+  <script src="/static/js/microprojet-graphe.js"></script>
   <script>
     const slug = window.location.pathname.split("/")[2];
     const errorBox = document.getElementById("error");
@@ -199,53 +214,6 @@
       const flashBox = document.getElementById("flash");
       flashBox.textContent = message;
       flashBox.style.display = "block";
-    }
-
-    function experienceCard(exp) {
-      return `
-        <a href="/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(exp.id)}" class="card card-pad" style="display:flex;flex-direction:column;gap:12px;color:inherit;">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;">
-            ${statusBadgeHtml(exp.status)}
-            <span class="mono" style="font-size:11px;color:var(--text-faint);">${escapeHtml(exp.id.slice(0, 10))}</span>
-          </div>
-          <div>
-            <div style="font-size:15.5px;font-weight:700;line-height:1.35;">${escapeHtml(exp.title)}</div>
-            <div style="color:var(--text-soft);font-size:13px;margin-top:5px;line-height:1.5;">${escapeHtml(exp.intent)}</div>
-          </div>
-          ${
-            exp.conclusion_summary
-              ? `<div style="font-size:12.5px;color:var(--text);background:var(--bg);border-radius:var(--radius-sm);padding:8px 10px;line-height:1.5;">${escapeHtml(exp.conclusion_summary)}</div>`
-              : ""
-          }
-          <div style="font-size:12.5px;color:var(--text-soft);padding-top:8px;border-top:1px solid var(--border-soft);">
-            ${escapeHtml(exp.author || "Auteur inconnu")} &middot; ${timeAgo(exp.created_at)}
-          </div>
-        </a>`;
-    }
-
-    function emptyState(message) {
-      return `<div class="empty-state card" style="grid-column:1/-1;">${escapeHtml(message)}</div>`;
-    }
-
-    const PAGE_SIZE = 30;
-
-    async function loadExperiences(status, targetEl, emptyMessage, loadMoreBtn, offset = 0) {
-      try {
-        const data = await api.get(
-          `/api/microprojets/${encodeURIComponent(slug)}/experiences?status=${status}&offset=${offset}&limit=${PAGE_SIZE}`
-        );
-        const html = data.items.map(experienceCard).join("");
-        if (offset === 0) {
-          targetEl.innerHTML = data.items.length ? html : emptyState(emptyMessage);
-        } else {
-          targetEl.insertAdjacentHTML("beforeend", html);
-        }
-        const loaded = offset + data.items.length;
-        loadMoreBtn.style.display = loaded < data.total ? "" : "none";
-        loadMoreBtn.onclick = () => loadExperiences(status, targetEl, emptyMessage, loadMoreBtn, loaded);
-      } catch (err) {
-        showError(err);
-      }
     }
 
     function memberRow(member) {
@@ -281,85 +249,6 @@
         showError(err);
       }
     }
-
-    const newExperienceDialog = document.getElementById("new-experience-dialog");
-
-    async function fetchSavedStructures() {
-      return api.get(`/api/microprojets/${encodeURIComponent(slug)}/structures-sauvegardees`);
-    }
-
-    function savedStructureOptionsHtml(library) {
-      const entries = [
-        ...(library.presets || []).map((s) => ({ ...s, scope: "preset" })),
-        ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
-        ...library.microprojet.map((s) => ({ ...s, scope: "microprojet" })),
-      ];
-      if (!entries.length) return { html: `<option value="">Aucune structure enregistrée</option>`, empty: true };
-      const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", projet: "" };
-      const html = entries
-        .map((s) => `<option value="${s.scope}::${encodeURIComponent(s.name)}">${escapeHtml(s.name)}${scopeSuffix[s.scope]}</option>`)
-        .join("");
-      return { html, empty: false };
-    }
-
-    async function openNewExperienceDialog() {
-      clearErrorFlash();
-      try {
-        const [experiences, library, refs] = await Promise.all([
-          api.get(`/api/microprojets/${encodeURIComponent(slug)}/experiences?status=all&limit=200`),
-          fetchSavedStructures(),
-          api.get(`/api/microprojets/${encodeURIComponent(slug)}/refs`),
-        ]);
-        const expOptions = experiences.items.map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`).join("");
-        document.getElementById("continue-select").innerHTML = experiences.items.length
-          ? expOptions
-          : `<option value="">Aucune expérience pour l'instant</option>`;
-        document.getElementById("template-select").innerHTML = savedStructureOptionsHtml(library).html;
-
-        document.getElementById("ref-option-link").href = `/microprojets/${encodeURIComponent(slug)}/refs`;
-        document.getElementById("ref-option-block").style.display = refs.items.length ? "" : "none";
-        document.getElementById("ref-select").innerHTML = refs.items
-          .map((r) => `<option value="${r.experiment_id}">${escapeHtml(r.names.join(", "))} — ${escapeHtml(r.title)} (v${escapeHtml(r.version)})</option>`)
-          .join("");
-
-        newExperienceDialog.showModal();
-      } catch (err) {
-        showError(err);
-      }
-    }
-
-    document.getElementById("option-scratch").addEventListener("click", () => {
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle`;
-    });
-
-    document.getElementById("option-ref").addEventListener("click", () => {
-      const source = document.getElementById("ref-select").value;
-      if (!source) return;
-      // like "Continuer cette expérience" (option-continue) - garde le lien de filiation, ce qui
-      // est le but même d'une ref : que les futures pistes s'y rattachent vraiment, pour que la
-      // page Refs puisse ensuite les relier (spectre.core.refs.ref_graph).
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
-    });
-
-    document.getElementById("option-template").addEventListener("click", () => {
-      const source = document.getElementById("template-select").value;
-      if (!source) return;
-      const [scope, name] = source.split("::");
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${name}&scope=${scope}`;
-    });
-
-    document.getElementById("option-new-library-structure").addEventListener("click", (event) => {
-      event.preventDefault();
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle?retour=nouvelle-experience`;
-    });
-
-    document.getElementById("option-continue").addEventListener("click", () => {
-      const source = document.getElementById("continue-select").value;
-      if (!source) return;
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
-    });
-
-    document.getElementById("cancel-new-experience").addEventListener("click", () => newExperienceDialog.close());
 
     function invitationRow(invitation) {
       return `
@@ -398,73 +287,12 @@
       }
     }
 
-    const SCOPE_NOTE = {
-      preset: `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· préset, disponible dans tous les µprojets</span>`,
-      partagee: `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les µprojets</span>`,
-      projet: "",
-    };
-
-    function savedStructureRow(structure) {
-      const canManage = currentRole === "editor" || currentRole === "owner";
-      const isPreset = structure.scope === "preset";
-      const useHref = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${encodeURIComponent(structure.name)}&scope=${structure.scope}`;
-      const editHref = `/microprojets/${encodeURIComponent(slug)}/structures/bibliotheque/${encodeURIComponent(structure.name)}?scope=${structure.scope}`;
-      const duplicateHref = `${editHref}&dupliquer=1`;
-      return `
-        <div class="step-row" style="align-items:flex-start;">
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:600;">${escapeHtml(structure.name)} ${SCOPE_NOTE[structure.scope] || ""}</div>
-            <div style="font-size:12px;color:var(--text-faint);">${structure.steps.length} étape(s)${structure.derived_from ? " · dérivée de " + escapeHtml(structure.derived_from) : ""}</div>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
-            ${canManage ? `<a class="btn btn-line" href="${useHref}" style="padding:5px 10px;font-size:12px;">Utiliser</a>` : ""}
-            ${canManage ? `<a class="btn btn-line" href="${duplicateHref}" style="padding:5px 10px;font-size:12px;">Dupliquer</a>` : ""}
-            ${canManage && !isPreset ? `<a class="btn btn-line" href="${editHref}" style="padding:5px 10px;font-size:12px;">Modifier</a>` : ""}
-            ${
-              canManage && !isPreset
-                ? `<button class="btn btn-line js-remove-saved-structure" data-name="${escapeHtml(structure.name)}" data-scope="${structure.scope}" type="button" style="padding:5px 10px;font-size:12px;color:var(--danger);">Supprimer</button>`
-                : ""
-            }
-          </div>
-        </div>`;
-    }
-
-    async function loadSavedStructuresList() {
-      try {
-        const library = await fetchSavedStructures();
-        const entries = [
-          ...(library.presets || []).map((s) => ({ ...s, scope: "preset" })),
-          ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
-          ...library.microprojet.map((s) => ({ ...s, scope: "microprojet" })),
-        ];
-        document.getElementById("saved-structures-list").innerHTML = entries.length
-          ? entries.map(savedStructureRow).join("")
-          : `<div class="help">Aucune structure enregistrée pour l'instant. « + Nouvelle structure » pour en créer une, ou « Enregistrer dans la bibliothèque » depuis le constructeur.</div>`;
-        document.querySelectorAll(".js-remove-saved-structure").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            try {
-              await api.del(
-                `/api/microprojets/${encodeURIComponent(slug)}/structures-sauvegardees/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.scope === "partagee"}`
-              );
-              loadSavedStructuresList();
-            } catch (err) {
-              showError(err);
-            }
-          });
-        });
-      } catch (err) {
-        showError(err);
-      }
-    }
-
-    document.querySelectorAll(".tab").forEach((tab) => {
-      tab.addEventListener("click", () => {
-        document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-        document.querySelectorAll(".tab-panel").forEach((p) => (p.style.display = "none"));
-        tab.classList.add("active");
-        document.getElementById(`tab-${tab.dataset.tab}`).style.display = "";
-      });
+    const membersDialog = document.getElementById("members-dialog");
+    document.getElementById("members-btn").addEventListener("click", () => {
+      clearErrorFlash();
+      membersDialog.showModal();
     });
+    document.getElementById("close-members-dialog").addEventListener("click", () => membersDialog.close());
 
     document.getElementById("delete-microproject-btn").addEventListener("click", async () => {
       const typed = document.getElementById("delete-confirm-name").value.trim();
@@ -496,6 +324,69 @@
       }
     });
 
+    const newExperienceDialog = document.getElementById("new-experience-dialog");
+
+    async function fetchSavedStructures() {
+      return api.get(`/api/microprojets/${encodeURIComponent(slug)}/structures-sauvegardees`);
+    }
+
+    function savedStructureOptionsHtml(library) {
+      const entries = [
+        ...(library.presets || []).map((s) => ({ ...s, scope: "preset" })),
+        ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
+        ...library.microprojet.map((s) => ({ ...s, scope: "microprojet" })),
+      ];
+      if (!entries.length) return { html: `<option value="">Aucune structure enregistrée</option>`, empty: true };
+      const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", microprojet: "" };
+      const html = entries
+        .map((s) => `<option value="${s.scope}::${encodeURIComponent(s.name)}">${escapeHtml(s.name)}${scopeSuffix[s.scope]}</option>`)
+        .join("");
+      return { html, empty: false };
+    }
+
+    async function openNewExperienceDialog() {
+      clearErrorFlash();
+      try {
+        const [experiences, library] = await Promise.all([
+          api.get(`/api/microprojets/${encodeURIComponent(slug)}/experiences?status=all&limit=200`),
+          fetchSavedStructures(),
+        ]);
+        const expOptions = experiences.items.map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`).join("");
+        document.getElementById("continue-select").innerHTML = experiences.items.length
+          ? expOptions
+          : `<option value="">Aucune expérience pour l'instant</option>`;
+        document.getElementById("template-select").innerHTML = savedStructureOptionsHtml(library).html;
+
+        newExperienceDialog.showModal();
+      } catch (err) {
+        showError(err);
+      }
+    }
+
+    document.getElementById("option-scratch").addEventListener("click", () => {
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle`;
+    });
+
+    document.getElementById("option-template").addEventListener("click", () => {
+      const source = document.getElementById("template-select").value;
+      if (!source) return;
+      const [scope, name] = source.split("::");
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${name}&scope=${scope}`;
+    });
+
+    document.getElementById("option-new-library-structure").addEventListener("click", (event) => {
+      event.preventDefault();
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle?retour=nouvelle-experience`;
+    });
+
+    document.getElementById("option-continue").addEventListener("click", () => {
+      const source = document.getElementById("continue-select").value;
+      if (!source) return;
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
+    });
+
+    document.getElementById("cancel-new-experience").addEventListener("click", () => newExperienceDialog.close());
+
     async function init() {
       try {
         const microproject = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
@@ -511,22 +402,12 @@
         } else {
           areaCrumb.textContent = "Non classé";
         }
-        document.getElementById("crumb").textContent =
-          "/ " + (area ? area.name + " / " : "") + microproject.name;
-        document.getElementById("graph-link").href = `/microprojets/${encodeURIComponent(slug)}/graphe`;
-        document.getElementById("refs-link").href = `/microprojets/${encodeURIComponent(slug)}/refs`;
-        document.getElementById("intent-form-link").href = `/microprojets/${encodeURIComponent(slug)}/formulaire-intention`;
+        document.getElementById("crumb").textContent = "/ " + (area ? area.name + " / " : "") + microproject.name;
 
         if (currentRole === "editor" || currentRole === "owner") {
           document.getElementById("new-structure-btn").style.display = "";
           document.getElementById("new-structure-btn").addEventListener("click", openNewExperienceDialog);
-          document.getElementById("new-library-structure-link").style.display = "";
         }
-        document.getElementById("new-library-structure-link").href =
-          `/microprojets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle`;
-        document.getElementById("presets-etapes-link").href = `/microprojets/${encodeURIComponent(slug)}/presets-etapes`;
-        document.getElementById("briques-link").href = `/microprojets/${encodeURIComponent(slug)}/briques-technologiques`;
-        document.getElementById("library-hub-link").href = "/bibliotheque";
         if (currentRole === "owner") {
           document.getElementById("add-member-form").style.display = "grid";
           document.getElementById("danger-zone").style.display = "block";
@@ -536,21 +417,9 @@
         return;
       }
 
-      loadExperiences(
-        "running",
-        document.getElementById("running-list"),
-        "Aucune expérience en cours pour l'instant.",
-        document.getElementById("running-load-more")
-      );
-      loadExperiences(
-        "concluded",
-        document.getElementById("concluded-list"),
-        "Aucune expérience terminée pour l'instant.",
-        document.getElementById("concluded-load-more")
-      );
+      loadLineage();
       loadMembers();
       loadInvitations();
-      loadSavedStructuresList();
     }
 
     init();
