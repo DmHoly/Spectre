@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Données — Spectre</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+  <style>
+    #donnees-table-wrap { overflow: auto; max-height: 60vh; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); }
+    #donnees-table { border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
+    #donnees-table th, #donnees-table td { padding: 6px 10px; border-bottom: 1px solid var(--border-soft); text-align: left; }
+    #donnees-table th { position: sticky; top: 0; background: var(--surface); font-weight: 700; }
+    #donnees-table tr:nth-child(even) { background: var(--bg); }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/" style="display:flex;align-items:center;">
+      <div class="topbar__brand">
+        <span class="topbar__mark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
+        </span>
+        Spectre
+      </div>
+    </a>
+    <div class="topbar__actions">
+      <a href="/bibliotheque" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Bibliothèque</a>
+      <a href="/donnees" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Données</a>
+      <a href="/docs" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Documentation</a>
+      <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
+        <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
+        <div class="avatar js-user-initials"></div>
+      </a>
+      <a href="#" class="js-logout btn btn-line" style="padding:6px 12px;font-size:12.5px;">Se déconnecter</a>
+    </div>
+  </div>
+
+  <div class="page" style="max-width:1000px;">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">&larr; Thèmes</a></p>
+    <h1 style="font-size:24px;margin-bottom:6px;">Données</h1>
+    <p style="color:var(--text-soft);font-size:14px;margin-bottom:20px;max-width:70ch;">
+      Consultation directe du dictionnaire de hooks (<code>spectre/core/datahook</code>) : choisissez
+      une source, vérifiez ce qu'elle est censée renvoyer, puis lancez la requête pour voir le
+      résultat brut - un outil de vérification, pas encore un constructeur de graphiques.
+    </p>
+
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <label style="font-size:12px;">Source de données (hook)</label>
+      <select class="field" id="hook-select" style="margin-top:4px;max-width:420px;"></select>
+      <div id="hook-details" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="card card-pad" id="results-card" style="display:none;">
+      <div class="section-title" style="margin-bottom:8px;">Résultat</div>
+      <div id="results-summary" class="help" style="margin-bottom:10px;"></div>
+      <div id="donnees-table-wrap"><table id="donnees-table"></table></div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/donnees.js"></script>
+</body>
+</html>

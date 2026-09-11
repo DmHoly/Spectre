@@ -1,8 +1,9 @@
 title: "NCEL"
 description: >
-  Mesures NCEL (électroluminescence par nano-contact) par device : temps d'excitation/émission
-  et position (X, Y) du device sur le wafer, une ligne par point de mesure apparié
-  excitation/émission (même index de ligne du côté excitation et émission).
+  Mesures NCEL (électroluminescence par nano-contact) par device, filtrées sur les mesures sans
+  filtre optique (filter = "None") - reprend la logique de legacy/get_data.py::get_data_ncel.
+  Une ligne par point de mesure (X, Y) : courant appliqué, émission max, tension/délai JPV.
 parameters:
   - wafer_names
-postprocessing: []
+postprocessing:
+  - ncel:apply_ncel_kpi

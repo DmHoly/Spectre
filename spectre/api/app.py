@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from ..core.db import init_db
 from . import atlas as atlas_router
 from . import auth as auth_router
+from . import datahook as datahook_router
 from . import experiments as experiments_router
 from . import intent_forms as intent_forms_router
 from . import library as library_router
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(atlas_router.router)
     app.include_router(links_router.router)
     app.include_router(library_router.router)
+    app.include_router(datahook_router.router)
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -79,6 +81,7 @@ def create_app() -> FastAPI:
     app.get("/docs/exemples")(_page("docs-exemples.html"))
     app.get("/docs/architecture")(_page("docs-architecture.html"))
     app.get("/bibliotheque")(_page("bibliotheque.html"))
+    app.get("/donnees")(_page("donnees.html"))
     app.get("/pilotage")(_page("pilotage.html"))
     app.get("/management/{slug}")(_page("management.html"))
     app.get("/microprojets/{slug}")(_page("projet.html"))

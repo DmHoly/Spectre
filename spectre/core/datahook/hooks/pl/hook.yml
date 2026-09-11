@@ -1,10 +1,11 @@
 title: "Photoluminescence (PL)"
 description: >
   Mesures de photoluminescence par point sur wafer (longueur d'onde dominante/pic, largeur à
-  mi-hauteur, intensité intégrée), filtrées sur les trois recettes de mesure standard 200mm
-  (OD1.5/OD1/DUV) et sur les points dont la longueur d'onde dominante est exploitable (> 0).
-  Une ligne = un point de mesure (X, Y) sur un wafer donné.
+  mi-hauteur, intensité intégrée), limitées à la plage de longueur d'onde exploitable (440-700 nm).
+  Ne garde que la mesure la plus récente par point (X, Y), puis moyenne par "champ" (une zone de
+  20x9 mm du wafer, pas la coordonnée brute) plutôt que par point individuel - reprend la logique
+  de legacy/get_data.py::get_pl_eta.
 parameters:
   - wafer_names
 postprocessing:
-  - common:add_median_per_wafer
+  - pl:apply_pl_kpi

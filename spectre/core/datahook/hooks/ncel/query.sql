@@ -1,27 +1,22 @@
 SELECT
-    ncel.n_fk_device AS d_pk,
-    ncel.n_time_off AS "Time_off",
-    ncel.n_time_on AS "Time_on",
-    emission.nr_current AS pulse_points,
-    wafer.wafer_name,
-    devices."Block_X_Coordinate" AS x_position,
-    devices."Block_Y_Coordinate" AS y_position,
-    ncel.n_time AS "Time",
-    emission.nr_row,
-    emission.nr_record as r_emission,
-    excitation.nr_record as r_excitation,
-    test."TestEndDate" as "Test_Date",
+    n.n_fk_device AS d_pk,
+    n.n_time_off AS time_off,
+    n.n_time_on AS time_on,
+    n.n_filter AS filter,
+    t."Test_Date",
+    w.wafer_name,
+    d."Block_X_Coordinate" AS x_position,
+    d."Block_Y_Coordinate" AS y_position,
+    nca.*
 FROM
-    public.ncel
+    public.ncel n
 JOIN
-    public."Test" test ON ncel.n_fk_test = test."PK_Test"
+    public."Test" t ON n.n_fk_test = t."PK_Test"
 JOIN
-    schema_gozer.wafer wafer ON test.fk_wafer = wafer.pk_wafer
+    schema_gozer.wafer w ON t.fk_wafer = w.pk_wafer
 JOIN
-    public."Devices" devices ON ncel.n_fk_device = devices."PK_Devices"
+    public."Devices" d ON n.n_fk_device = d."PK_Devices"
 JOIN
-    public.ncel_records excitation ON ncel.n_pk_ncel = excitation.nr_fk_ncel AND excitation.nr_channel_name = 'Excitation'
-JOIN
-    public.ncel_records emission ON ncel.n_pk_ncel = emission.nr_fk_ncel AND emission.nr_channel_name = 'Emission' AND excitation.nr_row = emission.nr_row
+    public.ncel_analysis nca ON n.n_pk_ncel = nca.na_fk_ncel
 WHERE
-    wafer.wafer_name = ANY(%(wafer_names)s);
+    nca.na_jpv_max IS NOT NULL AND w.wafer_name = ANY(%(wafer_names)s);
