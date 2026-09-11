@@ -1,0 +1,8 @@
+title: "NCEL"
+description: >
+  Mesures NCEL (électroluminescence par nano-contact) par device : temps d'excitation/émission
+  et position (X, Y) du device sur le wafer, une ligne par point de mesure apparié
+  excitation/émission (même index de ligne du côté excitation et émission).
+parameters:
+  - wafer_names
+postprocessing: []

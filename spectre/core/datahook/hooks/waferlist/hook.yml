@@ -1,0 +1,8 @@
+title: "Liste des wafers"
+description: >
+  Un wafer par ligne : son épitaxie (run, recette, réacteur, dates), et les numéros de demande
+  (FDL) épitaxie / back-end / test associés, quand ils existent. Ne filtre sur aucun wafer en
+  particulier - sert à peupler un sélecteur ("quels wafers existent") plutôt qu'à afficher une
+  mesure.
+parameters: []
+postprocessing: []

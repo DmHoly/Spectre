@@ -12,3 +12,9 @@ data/
 .DS_Store
 node_modules/
 uv.lock
+
+# datahook : identifiants de connexion DB et chemins de fichiers personnels - jamais commités.
+# Credential_example.ini (le template, sans vraies valeurs) reste suivi.
+spectre/core/datahook/config/Credential.ini
+spectre/core/datahook/config/config.ini
+/spectre/core/datahook/legacy/
