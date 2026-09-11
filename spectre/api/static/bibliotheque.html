@@ -8,6 +8,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="/static/css/vendor/codemirror.min.css">
+  <link rel="stylesheet" href="/static/css/vendor/codemirror-theme-eclipse.min.css">
+  <style>
+    /* CodeMirror comes with a fixed default height (300px) meant for a small inline snippet - the
+       library editor modal below gives it a real, resizable amount of room instead. */
+    #library-editor-modal .CodeMirror { height: 50vh; font-family: var(--font-mono, monospace); font-size: 12.5px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -85,23 +92,43 @@
         </div>
       </div>
 
-      <div class="card card-pad" style="display:flex;flex-direction:column;gap:10px;">
-        <div style="font-size:15.5px;font-weight:700;">Matériaux &amp; recettes</div>
-        <div style="font-size:13px;color:var(--text-soft);line-height:1.55;">
-          La liste des matériaux du sélecteur et les recettes de dépôt/gravure (dont les gravures
-          sélectives) sont définies dans des fichiers à la racine de l'installation :
-          <code>library/materiaux.yml</code>, <code>library/presets.yml</code>,
-          <code>library/recettes.yml</code>, <code>library/briques.yml</code>.
+    </div>
+
+    <div class="section-title" style="margin:28px 0 10px;">Bibliothèque racine (fichiers YAML)</div>
+    <p style="color:var(--text-soft);font-size:13.5px;margin-bottom:14px;max-width:64ch;">
+      Le vocabulaire par défaut de cette installation, commun à tous les µprojets - un fichier YAML
+      par famille. Modifiable ici directement (réservé aux administrateurs) ou à la main sur le
+      serveur (voir <code>library/README.md</code>) ; un enregistrement est rechargé automatiquement,
+      sans redémarrage.
+    </p>
+    <div id="library-files-error" class="error" style="display:none;margin-bottom:16px;"></div>
+    <div id="library-files-list" class="docs-hub-grid"></div>
+  </div>
+
+  <dialog id="library-editor-modal" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);max-width:min(820px,94vw);width:100%;">
+    <div class="card-pad" style="max-height:88vh;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:4px;">
+        <div>
+          <div class="section-title" id="library-editor-title" style="margin-bottom:2px;"></div>
+          <div class="help" id="library-editor-filename" style="font-family:var(--font-mono);"></div>
         </div>
-        <div style="font-size:12.5px;color:var(--text-faint);margin-top:6px;">
-          Édition côté serveur — voir <code>library/README.md</code>. Rechargé automatiquement.
-        </div>
+        <button class="btn btn-line" id="library-editor-close-btn" type="button" style="padding:5px 10px;font-size:12px;flex:none;">Fermer</button>
+      </div>
+      <p class="help" id="library-editor-readonly-note" style="display:none;margin:6px 0 10px;">Lecture seule - réservé aux administrateurs. Vous pouvez copier ce contenu pour proposer un changement autrement.</p>
+      <div id="library-editor-host" style="margin-top:8px;"></div>
+      <div id="library-editor-save-error" class="error" style="display:none;margin-top:10px;"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-primary" id="library-editor-save-btn" type="button">Enregistrer</button>
+        <button class="btn btn-line" id="library-editor-cancel-btn" type="button">Annuler</button>
       </div>
     </div>
-  </div>
+  </dialog>
 
   <script src="/static/js/api.js"></script>
   <script src="/static/js/common.js"></script>
+  <script src="/static/js/vendor/codemirror.min.js"></script>
+  <script src="/static/js/vendor/codemirror-yaml.min.js"></script>
   <script src="/static/js/bibliotheque.js"></script>
+  <script src="/static/js/bibliotheque-library.js"></script>
 </body>
 </html>

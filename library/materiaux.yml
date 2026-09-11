@@ -46,6 +46,10 @@ materials:
   - name: SiO2
     category: dielectric
     color: "#8ecae6"
+  - name: Si3N4
+    category: dielectric
+    color: "#588157"
+    notes: Nitrure de silicium — masque dur / passivation, souvent LPCVD ou PECVD.
   - name: Al2O3
     category: dielectric
     color: "#a3cef1"

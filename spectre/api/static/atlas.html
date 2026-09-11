@@ -97,6 +97,12 @@
     .atlas-entity-link {
       stroke-width: 1px;
     }
+    .atlas-node-experience,
+    .atlas-node-entity,
+    .atlas-node-microproject {
+      cursor: pointer;
+    }
+
     .atlas-label {
       font-family: var(--font-ui);
       fill: var(--text-soft);
@@ -133,12 +139,6 @@
        échantillons un par un, voir .atlas-label-selected ci-dessous. */
     .atlas-label-entity.atlas-label-selected {
       opacity: 1;
-    }
-
-    .atlas-node-experience,
-    .atlas-node-entity,
-    .atlas-node-microproject {
-      cursor: pointer;
     }
     .atlas-node-selected {
       stroke: var(--accent) !important;
@@ -260,7 +260,7 @@
       <div id="panel-error" class="error" style="display:none;margin-bottom:12px;"></div>
       <div id="atlas-panel">
         <div class="section-title" style="margin-bottom:10px;">Atlas</div>
-        <p class="help">Chaque grande étiquette est un µprojet de ce thème. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis, leur nom n'apparaît qu'au clic sur l'étude. Cliquez un élément pour le détail ici ; zoomez pour distinguer les études proches.</p>
+        <p class="help">Chaque grande étiquette est un µprojet de ce thème. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version - zoomez pour voir leur titre. Les petits points sont les échantillons physiques suivis, leur nom n'apparaît qu'au clic sur l'étude. Cliquez un élément pour le détail ici.</p>
       </div>
     </div>
   </div>

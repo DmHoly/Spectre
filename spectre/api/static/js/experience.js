@@ -1553,6 +1553,7 @@ async function init() {
     // renderEvidence le badge/select par étape et l'outil de comparaison (voir stepLabelFor).
     applyModeVisibility();
     renderEvidence(currentDetail);
+    if (typeof renderDataGallery === "function") renderDataGallery(currentDetail);
     renderTimeline(timeline.versions);
     renderFullHistory(timeline.items);
     renderStructure(currentDetail, diff);

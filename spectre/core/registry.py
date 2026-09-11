@@ -230,6 +230,46 @@ def _drop_none(entry: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in entry.items() if v is not None}
 
 
+def validate_library_yaml(filename: str, text: str) -> None:
+    """Valide le contenu ``text`` comme un ``library/<filename>`` acceptable, ou lève
+    ``ValueError`` avec un message expliquant quoi corriger. N'écrit rien sur disque - c'est
+    l'appelant (l'endpoint d'édition) qui s'en charge une fois cette fonction passée sans lever.
+    """
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"YAML invalide : {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"le fichier doit être un mapping YAML (clé: valeur), reçu {type(data).__name__}")
+
+    if filename == "intention.yml":
+        return  # mapping plat, fusionné clé par clé - toute clé/valeur est acceptable ici
+
+    if filename == "recettes.yml":
+        for key, factory in (("deposition", DepositionRecipe), ("etch", EtchRecipe)):
+            entries = data.get(key) or []
+            if not isinstance(entries, list):
+                raise ValueError(f"'{key}' doit être une liste")
+            for i, entry in enumerate(entries):
+                try:
+                    factory(**_drop_none(entry))
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"{key}[{i}] invalide : {exc}") from exc
+        return
+
+    key, factory = _VALIDATORS.get(filename, (None, None))
+    if key is None:
+        raise ValueError(f"fichier de bibliothèque inconnu : {filename!r}")
+    entries = data.get(key)
+    if not isinstance(entries, list):
+        raise ValueError(f"le fichier doit contenir une clé '{key}' avec une liste")
+    for i, entry in enumerate(entries):
+        try:
+            factory(entry)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"{key}[{i}] invalide : {exc}") from exc
+
+
 def _material_from_entry(entry: dict[str, Any]) -> Material:
     category = entry.get("category", "other")
     if category not in {c.value for c in MaterialCategory}:
@@ -256,6 +296,19 @@ def _tech_brick_from_entry(entry: dict[str, Any]) -> TechBrick:
     return TechBrick.model_validate(
         {"name": entry["name"], "notes": entry.get("notes"), "steps": entry.get("steps") or [], "created_at": "preset"}
     )
+
+
+# Un fichier -> (la clé "collection" attendue, la fonction qui valide chaque entrée - jetée si
+# invalide). Utilisé par validate_library_yaml() ci-dessus - la seule porte d'entrée pour un "save"
+# côté bibliothèque éditable en ligne (voir spectre.api.library) : contrairement aux registry_*()
+# plus haut, qui retombent silencieusement sur le jeu intégré si le fichier est invalide
+# (comportement voulu pour ne jamais casser l'appli sur un fichier mal édité à la main), on doit ici
+# pouvoir dire *pourquoi* c'est invalide avant d'écrire quoi que ce soit sur disque.
+_VALIDATORS: dict[str, tuple[str, Any]] = {
+    "materiaux.yml": ("materials", _material_from_entry),
+    "presets.yml": ("presets", _step_preset_from_entry),
+    "briques.yml": ("bricks", _tech_brick_from_entry),
+}
 
 
 def _builtin_materials() -> list[Material]:

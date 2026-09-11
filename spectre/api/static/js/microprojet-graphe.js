@@ -30,10 +30,11 @@ async function loadCard(nodeId, node) {
   try {
     const detail = await api.get(`/api/microprojets/${slug}/experiences/${encodeURIComponent(nodeId)}`);
     let structureBlock;
+    let variation = null;
     if (detail.is_batch) {
       try {
-        const matrix = await api.get(`/api/microprojets/${slug}/experiences/${encodeURIComponent(nodeId)}/matrice`);
-        structureBlock = `<div class="help">Campagne — ${matrix.labels.length} variante${matrix.labels.length > 1 ? "s" : ""}.</div>`;
+        variation = await api.get(`/api/microprojets/${slug}/experiences/${encodeURIComponent(nodeId)}/matrice`);
+        structureBlock = `<div id="lineage-structure-carousel"></div>`;
       } catch (err) {
         structureBlock = "";
       }
@@ -79,9 +80,44 @@ async function loadCard(nodeId, node) {
             : ""
         }
       </div>`;
+    if (variation) renderLineageStructureCarousel(variation);
   } catch (err) {
     panel.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div>`;
   }
+}
+
+// Même carrousel (référence + chaque variante) que l'atlas (voir atlas.js::renderStructureCarousel)
+// - avant ça, une campagne cliquée ici ne montrait qu'un texte "Campagne — N variantes.", sans
+// jamais voir la structure elle-même ni pouvoir comparer les variantes entre elles.
+function renderLineageStructureCarousel(variation) {
+  const container = document.getElementById("lineage-structure-carousel");
+  if (!container) return;
+  const svgs = variation.svgs || [];
+  if (svgs.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+  let index = 0;
+  function paint() {
+    const isRef = index === 0;
+    container.innerHTML = `
+      <div class="atlas-carousel">
+        <div class="atlas-carousel__badge">${isRef ? `<span class="badge badge-role">RÉF</span>` : ""}<span>${escapeHtml(variantCaption(variation, index))}</span></div>
+        <div class="atlas-carousel__stage">${svgs[index]}</div>
+        <div class="atlas-carousel__nav">
+          <button type="button" class="btn btn-line" data-dir="-1" ${svgs.length < 2 ? "disabled" : ""}>&larr;</button>
+          <span class="help">${index + 1} / ${svgs.length}</span>
+          <button type="button" class="btn btn-line" data-dir="1" ${svgs.length < 2 ? "disabled" : ""}>&rarr;</button>
+        </div>
+      </div>`;
+    container.querySelectorAll("[data-dir]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        index = (index + parseInt(btn.dataset.dir, 10) + svgs.length) % svgs.length;
+        paint();
+      });
+    });
+  }
+  paint();
 }
 
 function render(nodes, edges) {

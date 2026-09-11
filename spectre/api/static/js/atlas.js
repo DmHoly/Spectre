@@ -63,7 +63,7 @@ function clearPanelError() {
 function panelEmptyState() {
   return `
     <div class="section-title" style="margin-bottom:10px;">Atlas</div>
-    <p class="help">Chaque grande étiquette est un µprojet de ce thème. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis, leur nom n'apparaît qu'au clic sur l'étude. Cliquez un élément pour le détail ici ; zoomez pour distinguer les études proches.</p>`;
+    <p class="help">Chaque grande étiquette est un µprojet de ce thème. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version - zoomez pour voir leur titre. Les petits points sont les échantillons physiques suivis, leur nom n'apparaît qu'au clic sur l'étude. Cliquez un élément pour le détail ici.</p>`;
 }
 
 function deleteLinkButtonHtml(cls, id) {
@@ -160,11 +160,66 @@ function renderExperiencePanel(d) {
     <p style="font-size:13px;color:var(--text-soft);line-height:1.55;margin-bottom:10px;">${escapeHtml(d.intent)}</p>
     ${d.conclusion_summary ? `<div style="font-size:12.5px;background:var(--bg);border-radius:var(--radius-sm);padding:8px 10px;line-height:1.5;margin-bottom:12px;">${escapeHtml(d.conclusion_summary)}</div>` : ""}
     ${objectives ? `<div style="margin-bottom:14px;">${objectives}</div>` : ""}
+    <div id="atlas-structure-preview" style="margin-bottom:14px;"><p class="help">Chargement de la structure…</p></div>
     <a class="btn btn-primary btn-block" href="/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}">Ouvrir la fiche &rarr;</a>
 
     <div class="section-title" style="margin:20px 0 8px;">Contexte</div>
     <div id="atlas-mini-tree"><p class="help">Chargement de l'arborescence…</p></div>`;
   loadMiniTree(d);
+  loadStructurePreview(d);
+}
+
+// Aperçu de structure du nœud sélectionné - une seule image pour une expérience normale, un
+// carrousel (référence + chaque variante) pour une campagne (ProcessLot) : avant ça, cliquer le
+// nœud d'une campagne dans l'atlas ne montrait ni la structure ni les variantes, il fallait ouvrir
+// la fiche complète pour les voir (voir experience.js::renderBatchMatrix, dont /matrice vient ici).
+async function loadStructurePreview(d) {
+  const container = document.getElementById("atlas-structure-preview");
+  try {
+    const detail = await api.get(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}`);
+    if (!document.getElementById("atlas-structure-preview")) return; // sélection déjà changée entre-temps
+    if (!detail.is_batch) {
+      container.innerHTML = detail.structure_svg ? `<div class="atlas-carousel"><div class="atlas-carousel__stage">${detail.structure_svg}</div></div>` : "";
+      return;
+    }
+    const variation = await api.get(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}/matrice`);
+    if (!document.getElementById("atlas-structure-preview")) return;
+    renderStructureCarousel(container, variation);
+  } catch (err) {
+    if (document.getElementById("atlas-structure-preview")) container.innerHTML = "";
+  }
+}
+
+function renderStructureCarousel(container, variation) {
+  const svgs = variation.svgs || [];
+  if (svgs.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+  let index = 0;
+  function paint() {
+    // La première variante d'une campagne est celle traitée comme "représentative" partout
+    // ailleurs (voir structures.render_structure_svg) - on la marque donc "RÉF" ici aussi, plutôt
+    // que d'inventer une notion de référence propre à ce carrousel.
+    const isRef = index === 0;
+    container.innerHTML = `
+      <div class="atlas-carousel">
+        <div class="atlas-carousel__badge">${isRef ? `<span class="badge badge-role">RÉF</span>` : ""}<span>${escapeHtml(variantCaption(variation, index))}</span></div>
+        <div class="atlas-carousel__stage">${svgs[index]}</div>
+        <div class="atlas-carousel__nav">
+          <button type="button" class="btn btn-line" data-dir="-1" ${svgs.length < 2 ? "disabled" : ""}>&larr;</button>
+          <span class="help">${index + 1} / ${svgs.length}</span>
+          <button type="button" class="btn btn-line" data-dir="1" ${svgs.length < 2 ? "disabled" : ""}>&rarr;</button>
+        </div>
+      </div>`;
+    container.querySelectorAll("[data-dir]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        index = (index + parseInt(btn.dataset.dir, 10) + svgs.length) % svgs.length;
+        paint();
+      });
+    });
+  }
+  paint();
 }
 
 // L'atlas ne montre que la pointe de chaque piste (une bulle par étude toujours en cours ou
@@ -339,8 +394,8 @@ function select(datum, element) {
   svg.selectAll(".atlas-node-selected").classed("atlas-node-selected", false);
   if (element) d3.select(element).classed("atlas-node-selected", true);
 
-  // Le nom d'un échantillon (wafer) ne s'affiche que pour l'étude sélectionnée - voir la note
-  // dans atlas.html sur pourquoi ça ne peut pas rester automatique au zoom.
+  // Le nom d'un échantillon (wafer) ne s'affiche que pour l'étude sélectionnée - le montrer pour
+  // toutes en même temps redevient illisible dès qu'un cluster en a plus de quelques-unes.
   const revealedExperienceId = !datum ? null : datum.type === "experience" ? datum.id : datum.type === "entity" ? datum.experienceId : null;
   svg
     .selectAll(".atlas-label-entity")
@@ -483,6 +538,15 @@ function build(atlas) {
     .attr("r", CLUSTER_PADDING)
     .on("click", (event, d) => select(d, event.currentTarget));
 
+  // Un nom par nœud reste utile pour se repérer sans avoir à cliquer chaque bulle - mais un nom
+  // pour CHAQUE nœud, tout le temps, se chevauchait dès qu'un cluster avait plus de 2-3 études
+  // (illisible, cachait les nœuds voisins). Le compromis : un seul label toujours visible par
+  // cluster (le nom du µprojet, bien dégagé au-dessus de sa bulle), le titre d'une étude n'apparaît
+  // qu'une fois assez zoomé pour avoir la place (voir #atlas-svg[data-zoom] dans atlas.html), et le
+  // nom d'un échantillon seulement pour l'étude sélectionnée (voir select() plus bas) - jamais les
+  // noms de toutes les études/entités d'un coup. `<title>` couvre le survol dans tous les cas.
+  haloSelection.append("title").text((d) => d.name);
+
   const microprojectLabels = labelLayer
     .selectAll("text.atlas-label-microproject")
     .data(microprojectNodes)
@@ -501,6 +565,7 @@ function build(atlas) {
     .attr("r", EXPERIENCE_RADIUS)
     .attr("fill", (d) => STATUS_COLOR[d.status] || STATUS_COLOR.draft)
     .on("click", (event, d) => select(d, event.currentTarget));
+  experienceSelection.append("title").text((d) => d.title);
 
   const experienceLabels = labelLayer
     .selectAll("text.atlas-label-experience")
@@ -518,6 +583,7 @@ function build(atlas) {
     .attr("class", "atlas-node-entity")
     .attr("r", ENTITY_RADIUS)
     .on("click", (event, d) => select(d, event.currentTarget));
+  entitySelection.append("title").text((d) => d.sample_id || d.location || "");
 
   const entityLabels = labelLayer
     .selectAll("text.atlas-label-entity")
@@ -560,7 +626,10 @@ function build(atlas) {
     experienceLabels.attr("x", (d) => d.x).attr("y", (d) => d.y);
     entitySelection.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
     entityLabels.attr("x", (d) => d.x).attr("y", (d) => d.y);
-    microprojectLabels.attr("x", (d) => d.fx).attr("y", (d) => d.fy - CLUSTER_PADDING - 10);
+    // Bien dégagé au-dessus du halo (pas juste au-dessus des nœuds, qui peuvent monter jusqu'au
+    // bord du cluster) - voir la note plus haut sur pourquoi ce label-ci reste seul à s'afficher en
+    // permanence.
+    microprojectLabels.attr("x", (d) => d.fx).attr("y", (d) => d.fy - CLUSTER_PADDING - 14);
 
     leashSelection
       .attr("x1", (d) => d.source.x)

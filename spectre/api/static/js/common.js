@@ -92,6 +92,21 @@ function escapeHtml(value) {
   return div.innerHTML.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+// Ce qui change entre deux variantes d'une campagne, pour l'entité `i` d'un `/matrice`
+// (spectre.api.experiments::experience_batch) : "Épaisseur — Dépôt : 10" plutôt que le simple "10"
+// de `variation.labels[i]`, qui ne dit jamais *quel* paramètre a cette valeur (utilisé par le
+// carrousel de structure de atlas.js et microprojet-graphe.js). Retombe sur `labels[i]` seul si
+// `factor_labels`/`factor_values` sont absents (campagnes lancées avant leur ajout).
+function variantCaption(variation, i) {
+  const factorLabels = variation.factor_labels || [];
+  const factorValues = (variation.factor_values || [])[i];
+  if (factorLabels.length && factorValues) {
+    return factorLabels.map((label, j) => `${label} : ${factorValues[j]}`).join(" · ");
+  }
+  const labels = variation.labels || [];
+  return labels[i] != null ? String(labels[i]) : `#${i + 1}`;
+}
+
 async function mountUserBadge() {
   const nameEls = document.querySelectorAll(".js-user-name");
   const initialsEls = document.querySelectorAll(".js-user-initials");

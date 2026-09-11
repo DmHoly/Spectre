@@ -20,6 +20,7 @@ from . import atlas as atlas_router
 from . import auth as auth_router
 from . import experiments as experiments_router
 from . import intent_forms as intent_forms_router
+from . import library as library_router
 from . import links as links_router
 from . import management as management_router
 from . import microprojects as microprojects_router
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(intent_forms_router.router)
     app.include_router(atlas_router.router)
     app.include_router(links_router.router)
+    app.include_router(library_router.router)
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

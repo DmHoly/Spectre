@@ -140,17 +140,23 @@
       <datalist id="entity-location-history"></datalist>
 
       <div class="card card-pad" id="evidence-card">
-        <div class="section-title" style="margin-bottom:16px;">Preuves</div>
-        <div id="evidence-list"></div>
-        <div id="add-evidence-wrap"></div>
-        <div id="evidence-compare-tool" data-report-hide style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
-          <label style="font-size:11px;">Comparer deux preuves</label>
-          <div class="field-row" style="margin-top:6px;">
-            <select class="field" id="evidence-compare-a"></select>
-            <select class="field" id="evidence-compare-b"></select>
+        <div class="section-title" style="margin-bottom:16px;">Data</div>
+
+        <div id="data-gallery-list"></div>
+        <div id="data-gallery-add-wrap"></div>
+
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-soft);">
+          <div id="evidence-list"></div>
+          <div id="add-evidence-wrap"></div>
+          <div id="evidence-compare-tool" data-report-hide style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
+            <label style="font-size:11px;">Comparer deux preuves</label>
+            <div class="field-row" style="margin-top:6px;">
+              <select class="field" id="evidence-compare-a"></select>
+              <select class="field" id="evidence-compare-b"></select>
+            </div>
+            <button class="btn btn-line btn-block" id="evidence-compare-btn" type="button" style="margin-top:10px;">Comparer</button>
+            <div id="evidence-compare-result" style="margin-top:12px;"></div>
           </div>
-          <button class="btn btn-line btn-block" id="evidence-compare-btn" type="button" style="margin-top:10px;">Comparer</button>
-          <div id="evidence-compare-result" style="margin-top:12px;"></div>
         </div>
       </div>
 
@@ -222,5 +228,6 @@
   <script src="/static/js/api.js"></script>
   <script src="/static/js/common.js"></script>
   <script src="/static/js/experience.js"></script>
+  <script src="/static/js/experience-data.js"></script>
 </body>
 </html>

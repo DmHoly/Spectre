@@ -47,6 +47,9 @@ const api = {
   put(path, body, options) {
     return this.request(path, { method: "PUT", body, ...(options || {}) });
   },
+  patch(path, body, options) {
+    return this.request(path, { method: "PATCH", body, ...(options || {}) });
+  },
   del(path, options) {
     return this.request(path, { method: "DELETE", ...(options || {}) });
   },
