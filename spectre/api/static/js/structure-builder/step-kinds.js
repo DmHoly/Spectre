@@ -421,15 +421,21 @@ function stepIconHtml(kind) {
 function renderKindFields(kind) {
   const container = document.getElementById("kind-fields");
   const def = STEP_KIND_DEFS[kind];
-  container.innerHTML = def.renderFields();
+  container.innerHTML = def.renderFields() + declaredParamsSectionHtml(state.formDeclaredParams);
   if (def.wire) def.wire();
+  wireDeclaredParamsSection(state.formDeclaredParams, renderDeclaredParams);
 }
 
 function buildStepFromForm() {
   const kind = document.getElementById("kind-select").value;
   const def = STEP_KIND_DEFS[kind];
   const name = document.getElementById("f-name").value || def.label;
-  return def.buildFromForm(name);
+  const step = def.buildFromForm(name);
+  const declaredParams = state.formDeclaredParams
+    .filter((p) => p.name.trim() !== "")
+    .map((p) => ({ name: p.name.trim(), value: parseDeclaredValue(p.value), obtention: p.obtention || {} }));
+  if (declaredParams.length) step.declaredParams = declaredParams;
+  return step;
 }
 
 function stepSummary(step) {

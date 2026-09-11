@@ -33,6 +33,10 @@ router = APIRouter(prefix="/api/microprojets", tags=["structures"])
 class NewStructureRequest(BaseModel):
     substrate: structures.SubstrateSpec
     steps: list[ProcessStep]
+    # Spectre-only extra parameters attached per-step in the builder (see structures.DeclaredParam)
+    # - JSON object keys are always strings, converted to the step-index ints run_simulation wants
+    # just before calling it.
+    declared_params: dict[str, list[structures.DeclaredParam]] = {}
 
 
 class ObjectiveInput(BaseModel):
@@ -326,8 +330,9 @@ def delete_tech_brick(name: str, partagee: bool = False, microproject: Microproj
 
 @router.post("/{slug}/structures/simulate")
 def simulate_structure(body: NewStructureRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+    declared_params = {int(k): v for k, v in body.declared_params.items()} if body.declared_params else None
     try:
-        _geometry, frames, materials = structures.run_simulation(microproject.slug, body.substrate, body.steps)
+        _geometry, frames, materials = structures.run_simulation(microproject.slug, body.substrate, body.steps, declared_params)
     except structures.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return structures.frames_payload(frames, materials)

@@ -223,13 +223,24 @@ def list_experiences(
 def microproject_lineage(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """The microproject's structural lineage as plain JSON - what the µprojet page's default
     view (a D3 git-like graph, see ``spectre/api/static/js/microprojet-graphe.js``) draws instead
-    of embedding the older Plotly ``/graphe.html``. Same collapsing rules as the fiche's own
-    "versions" timeline (see :mod:`spectre.core.versioning`): every root, every merge (two lines
-    of work joining is structurally significant on its own, whatever it changed), every branch
-    tip, and every commit that actually moved the process/structure forward are kept - a tag, a
-    piece of evidence, a title edit riding on an otherwise-unchanged process is collapsed out. So
-    a node here is always a genuine step or split in the process ("un µprojet = split de
-    structure"), never version noise.
+    of embedding the older Plotly ``/graphe.html``. Unlike the fiche's own "versions" timeline
+    (:func:`spectre.core.versioning.determine_keep_ids`, which also keeps every branch tip so
+    "where things stand" is never hidden there), a branch tip is *not* kept here just for being
+    the tip - only a genuine structural change creates a node (a root, a merge from ``/combiner``,
+    or a commit that actually moved the process forward). Changing only the status, tags, or title
+    of an otherwise-unchanged process (``/statut``, ``/etiquettes``, ``/conclure`` without editing
+    the structure...) must update the existing node's displayed state in place, never spawn a new
+    one - that's the whole point of a view meant to show "un µprojet = split de structure", not
+    version noise.
+
+    So each structural id's displayed status/title/conclusion comes from whichever commit is
+    actually current for it: itself, if it's still a live tip, or - when exactly one still-live
+    tip descends from it with no structural change since - that tip's own live state, with the
+    node's ``id`` switched to the tip's so "Ouvrir la fiche"/"Continuer d'ici" always act on the
+    real current experiment. The rare case of two tips sharing the same structural point without
+    either having changed anything structural (a fork with no structural edit yet) is genuinely
+    two lines of work already - both are kept as their own small nodes off that shared point
+    rather than arbitrarily picking one.
     """
     repo = microprojects.get_repository(microproject.slug)
     experiments = {exp.id: exp for exp in repo}
@@ -239,23 +250,62 @@ def microproject_lineage(microproject: Microproject = Depends(require_role("view
     dag = {exp_id: exp.parents for exp_id, exp in experiments.items()}
     processes = {exp_id: exp.metadata.get("structureforge_process") for exp_id, exp in experiments.items()}
     tips = set(repo.branches.values())
-    keep = versioning.determine_keep_ids(dag, processes, tips=tips)
-    collapsed = versioning.collapsed_dag(dag, keep)
+    structural_ids = versioning.determine_keep_ids(dag, processes, tips=set())
+    collapsed = versioning.collapsed_dag(dag, structural_ids)
 
-    nodes = [
-        {
+    def nearest_structural_ancestor(exp_id: str) -> str:
+        while exp_id not in structural_ids:
+            parents = dag[exp_id]
+            if len(parents) != 1:
+                return exp_id  # unreachable in practice - a merge is always its own structural id
+            exp_id = parents[0]
+        return exp_id
+
+    tips_by_anchor: dict[str, list[str]] = {}
+    for tip_id in tips:
+        if tip_id not in structural_ids:
+            tips_by_anchor.setdefault(nearest_structural_ancestor(tip_id), []).append(tip_id)
+
+    def node_payload(exp_id: str, *, is_tip: bool, is_merge_id: str) -> dict:
+        exp = experiments[exp_id]
+        return {
             "id": exp_id,
-            "title": experiments[exp_id].title,
-            "status": experiments[exp_id].conclusion.status,
-            "author": experiments[exp_id].author,
-            "created_at": experiments[exp_id].created_at.isoformat(),
-            "conclusion_summary": experiments[exp_id].conclusion.summary,
-            "is_merge": len(dag[exp_id]) > 1,
-            "is_tip": exp_id in tips,
+            "title": exp.title,
+            "status": exp.conclusion.status,
+            "decision": exp.conclusion.decision,
+            "author": exp.author,
+            "created_at": exp.created_at.isoformat(),
+            "conclusion_summary": exp.conclusion.summary,
+            "is_merge": len(dag[is_merge_id]) > 1,
+            "is_tip": is_tip,
         }
-        for exp_id in keep
+
+    # A structural id's own commit isn't always what ends up in ``nodes`` for it (the common-case
+    # override below shows a live tip instead) - every edge from ``collapsed`` must be translated
+    # through this before use, or it points at an id no node in the response actually carries.
+    display_id: dict[str, str] = {}
+    nodes = []
+    for exp_id in structural_ids:
+        resolved_tips = tips_by_anchor.get(exp_id, [])
+        already_a_tip = exp_id in tips
+        if not already_a_tip and len(resolved_tips) == 1:
+            display_id[exp_id] = resolved_tips[0]
+            nodes.append(node_payload(resolved_tips[0], is_tip=True, is_merge_id=exp_id))
+        else:
+            display_id[exp_id] = exp_id
+            nodes.append(node_payload(exp_id, is_tip=already_a_tip, is_merge_id=exp_id))
+            for tip_id in resolved_tips:  # only non-empty when ambiguous (len > 1) - see docstring
+                nodes.append(node_payload(tip_id, is_tip=True, is_merge_id=exp_id))
+
+    edges = [
+        {"parent": display_id[parent], "child": display_id[child]}
+        for child, parents in collapsed.items()
+        for parent in parents
     ]
-    edges = [{"parent": parent, "child": child} for child, parents in collapsed.items() for parent in parents]
+    for exp_id, resolved_tips in tips_by_anchor.items():
+        if len(resolved_tips) > 1:
+            edges.extend({"parent": display_id[exp_id], "child": tip_id} for tip_id in resolved_tips)
+
     return {"nodes": nodes, "edges": edges}
 
 

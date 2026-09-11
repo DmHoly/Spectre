@@ -68,7 +68,7 @@ def test_upload_attachment_records_a_new_version_and_lists_it(client):
     assert len(detail["attachments"]) == 1
     assert detail["attachments"][0]["filename"] == "mesure.png"
 
-    atlas = client.get("/api/atlas").json()
+    atlas = client.get("/api/atlas?theme=non-classe").json()
     microproject = next(p for p in atlas["microprojects"] if p["slug"] == slug)
     assert microproject["experiences"][0]["attachments"][0]["filename"] == "mesure.png"
 

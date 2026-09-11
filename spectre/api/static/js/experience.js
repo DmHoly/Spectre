@@ -51,7 +51,7 @@ function objectiveResultFor(detail, objectiveName) {
 }
 
 function renderHeader(detail) {
-  document.getElementById("status-badge").innerHTML = statusBadgeHtml(detail.status);
+  document.getElementById("status-badge").innerHTML = statusBadgeHtml(detail.status, detail.conclusion.decision);
   renderStatusActions(detail);
   document.getElementById("exp-title").textContent = detail.title;
   document.getElementById("exp-intent").textContent = detail.intent;

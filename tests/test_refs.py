@@ -163,3 +163,16 @@ def test_refs_list_and_graph_condense_intermediate_versions(client):
     edges = {(e["from"], e["to"]) for e in graph["edges"]}
     # the ordinary commit ("tagged") in between is collapsed out - one edge straight from ref to ref
     assert edges == {(root["id"], grown["id"])}
+
+
+def test_ref_list_exposes_the_conclusion_decision(client):
+    slug = _register_and_microproject(client, "refs-decision@example.com")
+    launched = _launch(client, slug)
+    concluded = client.post(
+        f"/api/microprojets/{slug}/experiences/{launched['id']}/conclure",
+        json={"status": "concluded", "decision": "inconclusive"},
+    ).json()
+    client.post(f"/api/microprojets/{slug}/experiences/{concluded['id']}/ref", json={"name": "essai-a"})
+
+    items = client.get(f"/api/microprojets/{slug}/refs").json()["items"]
+    assert items[0]["decision"] == "inconclusive"  # for the "Non concluante" badge nuance

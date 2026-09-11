@@ -9,10 +9,9 @@
    en tirets accent par-dessus les clusters, créés/retirés depuis le panneau contextuel d'un µprojet
    ou d'une entité.
 
-   Pièces jointes (spectre.api.experiments) : contrairement aux liens, ça enregistre une nouvelle
-   version Follow (comme une étiquette ou le suivi physique) - l'id d'expérience/l'id de noeud
-   change donc après un envoi ou un retrait. Le formulaire réutilise l'id renvoyé par l'upload pour
-   resélectionner le bon noeud après refresh() plutôt que l'ancien id, devenu périmé.
+   Pièces jointes : retirées du panneau contextuel pour l'instant (gestion depuis la fiche
+   d'expérience uniquement, spectre/api/static/js/experience.js) - cette partie doit être revue en
+   entier, pas seulement republiée telle quelle ici.
 */
 
 const STATUS_COLOR = {
@@ -64,57 +63,7 @@ function clearPanelError() {
 function panelEmptyState() {
   return `
     <div class="section-title" style="margin-bottom:10px;">Atlas</div>
-    <p class="help">Chaque grande étiquette est un µprojet. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis. Cliquez un élément pour le détail ici ; zoomez pour voir les noms.</p>`;
-}
-
-async function uploadFile(url, formData) {
-  // Deliberately not api.post(): that helper always JSON.stringifies its body and forces
-  // Content-Type: application/json, both wrong for a multipart upload (the browser needs to set
-  // its own Content-Type with the form's boundary). Same error-shape as api.js otherwise.
-  const response = await fetch(url, { method: "POST", credentials: "same-origin", body: formData });
-  const text = await response.text();
-  let data = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      data = text;
-    }
-  }
-  if (!response.ok) {
-    const detail = data && typeof data === "object" ? data.detail : data;
-    throw new Error(typeof detail === "string" ? detail : "Une erreur est survenue.");
-  }
-  return data;
-}
-
-function formatFileSize(bytes) {
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
-}
-
-function attachmentItemHtml(a, microprojectSlug) {
-  const url = `/api/microprojets/${encodeURIComponent(microprojectSlug)}/pieces-jointes/${encodeURIComponent(a.id)}`;
-  const isImage = a.content_type.startsWith("image/");
-  return `
-    <div class="js-attachment-item" data-id="${a.id}" style="padding:8px 0;border-top:1px solid var(--border-soft);font-size:12.5px;">
-      ${isImage ? `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${escapeHtml(a.filename)}" style="max-width:100%;border-radius:var(--radius-sm);margin-bottom:6px;display:block;"></a>` : ""}
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-        <a href="${url}" target="_blank" rel="noopener" style="font-weight:600;word-break:break-all;">${escapeHtml(a.filename)}</a>
-        ${deleteLinkButtonHtml("js-delete-attachment", a.id)}
-      </div>
-      <div style="color:var(--text-faint);margin-top:2px;">${formatFileSize(a.size)}</div>
-    </div>`;
-}
-
-function attachmentUploadFormHtml() {
-  return `
-    <form id="attachment-upload-form" style="margin-top:12px;">
-      <input class="field" type="file" id="attachment-file-input" required style="margin-bottom:8px;">
-      <div class="help" style="margin-bottom:8px;">Image, PDF, CSV ou texte - 10 Mo maximum.</div>
-      <button class="btn btn-line btn-block" type="submit">Ajouter un fichier</button>
-    </form>`;
+    <p class="help">Chaque grande étiquette est un µprojet de ce thème. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version. Les petits points sont les échantillons physiques suivis, leur nom n'apparaît qu'au clic sur l'étude. Cliquez un élément pour le détail ici ; zoomez pour distinguer les études proches.</p>`;
 }
 
 function deleteLinkButtonHtml(cls, id) {
@@ -204,46 +153,70 @@ function renderExperiencePanel(d) {
       </div>`
     )
     .join("");
-  const attachmentsHtml = d.attachments.map((a) => attachmentItemHtml(a, d.microprojectSlug)).join("");
   panel.innerHTML = `
     <div class="section-title" style="margin-bottom:6px;">Étude</div>
-    <div style="margin-bottom:8px;">${statusBadgeHtml(d.status)}</div>
+    <div style="margin-bottom:8px;">${statusBadgeHtml(d.status, d.decision)}</div>
     <h2 style="font-size:17px;line-height:1.3;margin:0 0 8px;">${escapeHtml(d.title)}</h2>
     <p style="font-size:13px;color:var(--text-soft);line-height:1.55;margin-bottom:10px;">${escapeHtml(d.intent)}</p>
     ${d.conclusion_summary ? `<div style="font-size:12.5px;background:var(--bg);border-radius:var(--radius-sm);padding:8px 10px;line-height:1.5;margin-bottom:12px;">${escapeHtml(d.conclusion_summary)}</div>` : ""}
     ${objectives ? `<div style="margin-bottom:14px;">${objectives}</div>` : ""}
     <a class="btn btn-primary btn-block" href="/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}">Ouvrir la fiche &rarr;</a>
 
-    <div class="section-title" style="margin:20px 0 8px;">Pièces jointes</div>
-    ${d.attachments.length ? attachmentsHtml : `<div class="help">Aucune pièce jointe.</div>`}
-    ${attachmentUploadFormHtml()}`;
+    <div class="section-title" style="margin:20px 0 8px;">Contexte</div>
+    <div id="atlas-mini-tree"><p class="help">Chargement de l'arborescence…</p></div>`;
+  loadMiniTree(d);
+}
 
-  document.getElementById("attachment-upload-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    clearPanelError();
-    const input = document.getElementById("attachment-file-input");
-    const file = input.files[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const result = await uploadFile(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes`, formData);
-      await refresh(result.id);
-    } catch (err) {
-      showPanelError(err);
+// L'atlas ne montre que la pointe de chaque piste (une bulle par étude toujours en cours ou
+// conclue) - mélanger tout l'historique dedans serait illisible à l'échelle d'un thème entier.
+// Ce mini-arbre (même layout que microprojet-graphe.js, voir lineage-graph.js) replace cette
+// pointe dans sa filiation complète au clic, sans avoir à quitter l'atlas pour comprendre "d'où
+// ça vient" - lecture seule : cliquer un nœud ouvre sa fiche plutôt que de re-sélectionner ici.
+async function loadMiniTree(d) {
+  const container = document.getElementById("atlas-mini-tree");
+  try {
+    const body = await api.get(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/filiation`);
+    if (!document.getElementById("atlas-mini-tree")) return; // sélection déjà changée entre-temps
+    if (!body.nodes.length) {
+      container.innerHTML = `<p class="help">Aucun historique.</p>`;
+      return;
     }
-  });
-  panel.querySelectorAll(".js-delete-attachment").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      clearPanelError();
-      try {
-        const result = await api.del(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}/pieces-jointes/${btn.dataset.id}`);
-        await refresh(result.id);
-      } catch (err) {
-        showPanelError(err);
-      }
+    const miniRadius = 6;
+    const { positioned, width, height } = lineageLayout(body.nodes, body.edges, { colWidth: 70, rowHeight: 54, margin: 20 });
+    const byId = new Map(positioned.map((n) => [n.id, n]));
+    container.innerHTML = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="max-width:100%;display:block;"></svg>`;
+    const miniSvg = d3.select(container).select("svg");
+
+    miniSvg
+      .append("g")
+      .selectAll("path")
+      .data(body.edges)
+      .join("path")
+      .attr("d", (e) => lineageEdgePath(byId.get(e.parent), byId.get(e.child)))
+      .attr("stroke", "var(--border)")
+      .attr("stroke-width", 1.2)
+      .attr("fill", "none");
+
+    const nodeGroups = miniSvg
+      .append("g")
+      .selectAll("g")
+      .data(positioned)
+      .join("g")
+      .attr("transform", (n) => `translate(${n.x},${n.y})`)
+      .style("cursor", "pointer")
+      .on("click", (event, n) => {
+        window.location.href = `/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(n.id)}`;
+      });
+    nodeGroups.each(function (n) {
+      d3.select(this).html(lineageNodeShapeHtml(n, { radius: n.id === d.id ? miniRadius + 1.5 : miniRadius }));
+      d3.select(this)
+        .append("title") // pas la place pour un libellé texte à cette échelle - le titre au survol suffit
+        .text(n.title);
+      if (n.id === d.id) d3.select(this).select(".lineage-shape").attr("stroke", "var(--accent)").attr("stroke-width", 2);
     });
-  });
+  } catch (err) {
+    if (document.getElementById("atlas-mini-tree")) container.innerHTML = `<p class="help">Arborescence indisponible.</p>`;
+  }
 }
 
 function populateEntityLinkExperienceSelect() {
@@ -287,7 +260,6 @@ function renderEntityPanel(d) {
     .join("");
 
   const hasAnyEntityElsewhere = currentAtlas.microprojects.some((p) => p.experiences.some((e) => e.entities.length > 0));
-  const attachmentsHtml = d.attachments.map((a) => attachmentItemHtml(a, d.microprojectSlug)).join("");
 
   panel.innerHTML = `
     <div class="section-title" style="margin-bottom:6px;">Entité physique</div>
@@ -297,9 +269,8 @@ function renderEntityPanel(d) {
     <div style="font-size:13.5px;font-weight:600;margin-bottom:10px;">${escapeHtml(d.experienceTitle)}</div>
     <a class="btn btn-line btn-block" href="/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.experienceId)}">Ouvrir la fiche &rarr;</a>
 
-    <div class="section-title" style="margin:20px 0 8px;">Pièces jointes</div>
-    ${d.attachments.length ? attachmentsHtml : `<div class="help">Aucune pièce jointe.</div>`}
-    ${attachmentUploadFormHtml()}
+    <div class="section-title" style="margin:20px 0 8px;">Contexte</div>
+    <div id="atlas-mini-tree"><p class="help">Chargement de l'arborescence…</p></div>
 
     <div class="section-title" style="margin:20px 0 8px;">Entités liées</div>
     ${myLinks.length ? linksHtml : `<div class="help">Aucun lien pour l'instant.</div>`}
@@ -319,34 +290,7 @@ function renderEntityPanel(d) {
           </form>`
         : `<div class="help" style="margin-top:10px;">Aucune autre entité suivie à lier pour l'instant.</div>`
     }`;
-
-  document.getElementById("attachment-upload-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    clearPanelError();
-    const input = document.getElementById("attachment-file-input");
-    const file = input.files[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("entity_index", String(d.entityIndex));
-    try {
-      const result = await uploadFile(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes`, formData);
-      await refresh(entityKey({ experience_id: result.id, entity_index: d.entityIndex }));
-    } catch (err) {
-      showPanelError(err);
-    }
-  });
-  panel.querySelectorAll(".js-delete-attachment").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      clearPanelError();
-      try {
-        const result = await api.del(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.experienceId)}/pieces-jointes/${btn.dataset.id}`);
-        await refresh(entityKey({ experience_id: result.id, entity_index: d.entityIndex }));
-      } catch (err) {
-        showPanelError(err);
-      }
-    });
-  });
+  loadMiniTree({ microprojectSlug: d.microprojectSlug, id: d.experienceId });
 
   const microprojectSelect = document.getElementById("entity-link-microproject-select");
   if (microprojectSelect) {
@@ -394,6 +338,16 @@ function select(datum, element) {
   clearPanelError();
   svg.selectAll(".atlas-node-selected").classed("atlas-node-selected", false);
   if (element) d3.select(element).classed("atlas-node-selected", true);
+
+  // Le nom d'un échantillon (wafer) ne s'affiche que pour l'étude sélectionnée - voir la note
+  // dans atlas.html sur pourquoi ça ne peut pas rester automatique au zoom.
+  const revealedExperienceId = !datum ? null : datum.type === "experience" ? datum.id : datum.type === "entity" ? datum.experienceId : null;
+  svg
+    .selectAll(".atlas-label-entity")
+    .classed("atlas-label-selected", function () {
+      return revealedExperienceId !== null && this.getAttribute("data-experience-id") === revealedExperienceId;
+    });
+
   if (!datum) {
     panel.innerHTML = panelEmptyState();
   } else if (datum.type === "microproject") {
@@ -446,17 +400,17 @@ function build(atlas) {
         title: exp.title,
         intent: exp.intent,
         status: exp.status,
+        decision: exp.decision,
         conclusion_summary: exp.conclusion_summary,
         objectives: exp.objectives,
-        attachments: exp.attachments.filter((a) => a.entity_index === null),
         color: anchor.color,
         x: anchor.x + (Math.random() - 0.5) * 20,
         y: anchor.y + (Math.random() - 0.5) * 20,
       });
       exp.entities.forEach((entity) => {
         // entity.index is its position in the *raw* physical_tracking list (spectre.core.atlas's
-        // entities_for()), not in this already-filtered array - the addressing links/attachments
-        // use, so it has to survive some campaign variants being untracked.
+        // entities_for()), not in this already-filtered array - the addressing links use, so it
+        // has to survive some campaign variants being untracked.
         const entityId = `entity:${exp.id}:${entity.index}`;
         entityNodes.push({
           id: entityId,
@@ -467,7 +421,6 @@ function build(atlas) {
           entityIndex: entity.index,
           sample_id: entity.sample_id,
           location: entity.location,
-          attachments: exp.attachments.filter((a) => a.entity_index === entity.index),
           x: anchor.x,
           y: anchor.y,
         });
@@ -571,6 +524,7 @@ function build(atlas) {
     .data(entityNodes)
     .join("text")
     .attr("class", "atlas-label atlas-label-entity")
+    .attr("data-experience-id", (d) => d.experienceId)
     .attr("dy", -ENTITY_RADIUS - 3)
     .attr("text-anchor", "middle")
     .text((d) => d.sample_id || d.location || "");
@@ -652,9 +606,17 @@ function build(atlas) {
   document.getElementById("atlas-zoom-reset").addEventListener("click", () => svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity));
 }
 
+// /management/{slug}/atlas - un atlas par thème (voir spectre/api/atlas.py::get_atlas), pas un
+// atlas transverse à toute la société : mélanger des µprojets de thèmes stratégiques sans rapport
+// dans une seule bulle de force-layout n'était lisible pour personne.
+const themeSlug = window.location.pathname.split("/").filter(Boolean)[1];
+
 async function refresh(reselectId) {
-  const atlas = await api.get("/api/atlas");
+  const atlas = await api.get(`/api/atlas?theme=${encodeURIComponent(themeSlug)}`);
   currentAtlas = atlas;
+  document.getElementById("theme-link").href = `/management/${encodeURIComponent(themeSlug)}`;
+  document.getElementById("theme-link").textContent = atlas.theme.name;
+  document.getElementById("topbar-crumb").textContent = `/ ${atlas.theme.name} / Atlas`;
   build(atlas);
   if (reselectId && nodesById.has(reselectId)) {
     select(nodesById.get(reselectId), null);

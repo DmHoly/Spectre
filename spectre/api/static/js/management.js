@@ -3,6 +3,7 @@
    éditer ou supprimer le thème. Voir spectre.api.management. */
 
 const slug = window.location.pathname.split("/").filter(Boolean)[1];
+document.getElementById("atlas-link").href = `/management/${encodeURIComponent(slug)}/atlas`;
 
 const errorBox = document.getElementById("error");
 const flashBox = document.getElementById("flash");

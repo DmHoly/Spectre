@@ -7,18 +7,10 @@
    d'ensemble Plotly (toujours servie sur /graphe pour les anciens liens, mais plus la vue par
    défaut) : rendu D3 pour un vrai contrôle du layout et du clic, dans le même esprit qu'atlas.js.
 
-   Layout : une rangée par profondeur (plus long chemin depuis une racine), les nœuds d'une même
-   rangée ordonnés par le barycentre x de leurs parents (une seule passe - suffisant pour la
-   plupart des historiques, pas un vrai algorithme anti-croisements). À affiner plus tard, comme
-   convenu - la carte aussi.
+   Le layout et le dessin d'un nœud/trait vivent dans lineage-graph.js (chargé avant ce fichier) -
+   partagés avec le mini-arbre qu'atlas.js affiche au clic sur une étude, pour resituer son
+   contexte sans dupliquer l'algorithme (et sans collision de noms - voir la note dans ce fichier).
 */
-
-const STATUS_COLOR = {
-  draft: "var(--draft)",
-  running: "var(--running)",
-  concluded: "var(--done)",
-  abandoned: "var(--abandoned)",
-};
 
 const NODE_RADIUS = 9;
 const COL_WIDTH = 130;
@@ -28,83 +20,6 @@ const MARGIN = 40;
 const svg = d3.select("#lineage-svg");
 const panel = document.getElementById("lineage-panel");
 let selectedId = null;
-
-function layout(nodes, edges) {
-  const parentsOf = new Map(nodes.map((n) => [n.id, []]));
-  edges.forEach((e) => {
-    if (parentsOf.has(e.child)) parentsOf.get(e.child).push(e.parent);
-  });
-
-  const depthOf = new Map();
-  function depthOfNode(id) {
-    if (depthOf.has(id)) return depthOf.get(id);
-    depthOf.set(id, 0); // garde-fou anti-boucle - une filiation ne devrait jamais en avoir
-    const parents = parentsOf.get(id) || [];
-    const depth = parents.length ? Math.max(...parents.map(depthOfNode)) + 1 : 0;
-    depthOf.set(id, depth);
-    return depth;
-  }
-  nodes.forEach((n) => depthOfNode(n.id));
-
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const rows = new Map();
-  nodes.forEach((n) => {
-    const d = depthOf.get(n.id);
-    if (!rows.has(d)) rows.set(d, []);
-    rows.get(d).push(n.id);
-  });
-  const maxDepth = Math.max(...rows.keys());
-
-  const colIndex = new Map();
-  for (let d = 0; d <= maxDepth; d++) {
-    const row = rows.get(d) || [];
-    if (d === 0) {
-      row.sort((a, b) => byId.get(a).created_at.localeCompare(byId.get(b).created_at));
-    } else {
-      row.sort((a, b) => {
-        const barycenter = (id) => {
-          const parents = parentsOf.get(id) || [];
-          if (!parents.length) return 0;
-          return parents.reduce((sum, p) => sum + (colIndex.get(p) ?? 0), 0) / parents.length;
-        };
-        return barycenter(a) - barycenter(b);
-      });
-    }
-    row.forEach((id, i) => colIndex.set(id, i));
-  }
-
-  const maxCols = Math.max(1, ...[...rows.values()].map((row) => row.length));
-  const width = MARGIN * 2 + (maxCols - 1) * COL_WIDTH;
-  const height = MARGIN * 2 + maxDepth * ROW_HEIGHT;
-  const rowWidth = (d) => (rows.get(d) || []).length;
-  const positioned = nodes.map((n) => {
-    const d = depthOf.get(n.id);
-    const cols = rowWidth(d);
-    const centeredOffset = ((maxCols - cols) / 2) * COL_WIDTH;
-    return { ...n, x: MARGIN + centeredOffset + colIndex.get(n.id) * COL_WIDTH, y: MARGIN + d * ROW_HEIGHT };
-  });
-  return { positioned, width: Math.max(width, 260), height: Math.max(height, 200) };
-}
-
-function nodeShapeHtml(node) {
-  // Une fusion (/combiner - README : "visible dans le graphe du projet comme un losange") reste
-  // un losange ici ; une pointe de piste actuelle porte un anneau accent pour rester repérable
-  // même une fois qu'on a cliqué ailleurs.
-  const color = STATUS_COLOR[node.status] || STATUS_COLOR.draft;
-  const ring = node.is_tip ? `<circle r="${NODE_RADIUS + 4}" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 2"></circle>` : "";
-  if (node.is_merge) {
-    const r = NODE_RADIUS * 0.9;
-    return `${ring}<path class="lineage-shape" d="M0,-${r} L${r},0 L0,${r} L-${r},0 Z" fill="${color}"></path>`;
-  }
-  return `${ring}<circle class="lineage-shape" r="${NODE_RADIUS}" fill="${color}"></circle>`;
-}
-
-function edgePath(source, target) {
-  // Coude vertical simple (pas une vraie courbe de Bézier) : assez lisible pour un historique de
-  // quelques dizaines de nœuds, à revoir si des filiations très larges le rendent illisible.
-  const midY = (source.y + target.y) / 2;
-  return `M${source.x},${source.y} C${source.x},${midY} ${target.x},${midY} ${target.x},${target.y}`;
-}
 
 function panelEmptyState() {
   return `<p class="help">Cliquez un nœud pour voir la structure, l'objectif et la conclusion de cette expérience ici.</p>`;
@@ -147,7 +62,7 @@ async function loadCard(nodeId, node) {
     panel.innerHTML = `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
         <div class="section-title" style="margin-bottom:0;">${escapeHtml(detail.title)}</div>
-        ${statusBadgeHtml(detail.status)}
+        ${statusBadgeHtml(detail.status, detail.conclusion.decision)}
       </div>
       <p class="help" style="margin-bottom:10px;">${escapeHtml(detail.intent)}</p>
       ${structureBlock}
@@ -176,7 +91,7 @@ function render(nodes, edges) {
     return;
   }
 
-  const { positioned, width, height } = layout(nodes, edges);
+  const { positioned, width, height } = lineageLayout(nodes, edges, { colWidth: COL_WIDTH, rowHeight: ROW_HEIGHT, margin: MARGIN });
   const byId = new Map(positioned.map((n) => [n.id, n]));
 
   svg.attr("width", width).attr("height", height).attr("viewBox", `0 0 ${width} ${height}`);
@@ -188,7 +103,7 @@ function render(nodes, edges) {
     .data(edges)
     .join("path")
     .attr("class", "lineage-edge")
-    .attr("d", (e) => edgePath(byId.get(e.parent), byId.get(e.child)));
+    .attr("d", (e) => lineageEdgePath(byId.get(e.parent), byId.get(e.child)));
 
   const nodeGroups = svg
     .append("g")
@@ -206,7 +121,7 @@ function render(nodes, edges) {
     });
 
   nodeGroups.each(function (d) {
-    d3.select(this).html(nodeShapeHtml(d));
+    d3.select(this).html(lineageNodeShapeHtml(d, { radius: NODE_RADIUS }));
   });
 
   nodeGroups

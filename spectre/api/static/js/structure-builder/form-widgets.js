@@ -240,3 +240,100 @@ function modeSummary(mode, angle_deg) {
   const label = MODE_LABELS[mode] || mode;
   return angle_deg ? `${label} (${angle_deg}°)` : label;
 }
+
+// Paramètres déclarés (Spectre-only) : des paramètres libres (nom + valeur + obtention) qu'on
+// attache à n'importe quelle étape, indépendamment de ses propres champs typés (voir
+// spectre.core.structures.DeclaredParam) - communs à tous les types d'étape, donc rendus une seule
+// fois par le formulaire commun (step-list.js), pas dans STEP_KIND_DEFS.
+function declaredParamRowHtml(param, index) {
+  const obtentionText = Object.entries(param.obtention || {})
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
+  return `
+    <div class="field-row js-declared-param-row" data-index="${index}" style="grid-template-columns:1fr 1fr;align-items:end;">
+      <div><label>Nom</label><input class="field js-declared-name" value="${escapeHtml(param.name || "")}" placeholder="ex : dopage"></div>
+      <div><label>Valeur</label><input class="field js-declared-value" value="${escapeHtml(param.value ?? "")}" placeholder="ex : 2.5e18"></div>
+      <div style="grid-column:1/-1;">
+        <label>Obtention (clé=valeur, séparées par des virgules)</label>
+        <div style="display:flex;gap:6px;">
+          <input class="field js-declared-obtention" value="${escapeHtml(obtentionText)}" placeholder="ex : precurseur=SiH4, debit_sccm=12">
+          <button class="btn btn-line js-declared-remove" data-index="${index}" type="button" title="Retirer ce paramètre" style="flex:none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M5 19L19 5"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// A declared param's value is typed free-hand (a doping concentration, a precursor name...) - try
+// numeric first, fall back to the raw string, same convention as an obtention entry's value.
+function parseDeclaredValue(raw) {
+  const text = (raw ?? "").toString().trim();
+  const num = Number(text);
+  return text !== "" && !Number.isNaN(num) ? num : text;
+}
+
+function parseObtentionText(text) {
+  const obtention = {};
+  (text || "").split(",").forEach((part) => {
+    const eq = part.indexOf("=");
+    if (eq === -1) return;
+    const key = part.slice(0, eq).trim();
+    const raw = part.slice(eq + 1).trim();
+    if (!key) return;
+    const num = Number(raw);
+    obtention[key] = raw !== "" && !Number.isNaN(num) ? num : raw;
+  });
+  return obtention;
+}
+
+// `params` : liste vivante (ex : state.formDeclaredParams) mutée en place à chaque frappe/retrait,
+// et redessinée via `onChange` (qui recolle typiquement le formulaire complet, cf. livePreviewFromForm).
+function declaredParamsSectionHtml(params) {
+  return `
+    <div class="card" id="declared-params-section" style="padding:10px 12px;margin:4px 0;background:var(--bg);">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Paramètres déclarés (optionnel)</div>
+      <div class="help" style="margin-bottom:8px;">Traçabilité libre, indépendante des champs ci-dessus (dopage, précurseur, débit...) - visible ensuite dans le détail de la couche.</div>
+      <div id="declared-params-list" style="display:flex;flex-direction:column;gap:8px;">
+        ${params.map((p, i) => declaredParamRowHtml(p, i)).join("")}
+      </div>
+      <button class="btn btn-line btn-block" id="declared-param-add-btn" type="button" style="margin-top:8px;">+ Ajouter un paramètre déclaré</button>
+    </div>`;
+}
+
+function wireDeclaredParamsSection(params, onChange) {
+  const list = document.getElementById("declared-params-list");
+  list.querySelectorAll(".js-declared-param-row").forEach((row) => {
+    const i = parseInt(row.dataset.index, 10);
+    row.querySelector(".js-declared-name").addEventListener("input", (e) => {
+      params[i].name = e.target.value;
+    });
+    row.querySelector(".js-declared-value").addEventListener("input", (e) => {
+      params[i].value = e.target.value;
+    });
+    row.querySelector(".js-declared-obtention").addEventListener("input", (e) => {
+      params[i].obtention = parseObtentionText(e.target.value);
+    });
+  });
+  list.querySelectorAll(".js-declared-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      params.splice(parseInt(btn.dataset.index, 10), 1);
+      onChange();
+      livePreviewFromForm();
+    });
+  });
+  document.getElementById("declared-param-add-btn").addEventListener("click", () => {
+    params.push({ name: "", value: "", obtention: {} });
+    onChange();
+  });
+}
+
+// Redessine uniquement le bloc "paramètres déclarés" en place (jamais tout #kind-fields, qui
+// perdrait les valeurs déjà tapées dans les champs propres au type d'étape) - utilisé à la fois au
+// premier rendu d'un formulaire d'étape et à chaque ajout/retrait de paramètre déclaré.
+function renderDeclaredParams() {
+  const section = document.getElementById("declared-params-section");
+  if (!section) return;
+  section.outerHTML = declaredParamsSectionHtml(state.formDeclaredParams);
+  wireDeclaredParamsSection(state.formDeclaredParams, renderDeclaredParams);
+}

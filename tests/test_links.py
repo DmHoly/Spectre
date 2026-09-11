@@ -33,7 +33,7 @@ def test_editor_on_both_microprojects_can_link_them(client):
     body = created.json()
     assert body["note"] == "Même famille de matériaux"
 
-    atlas = client.get("/api/atlas").json()
+    atlas = client.get("/api/atlas?theme=non-classe").json()
     assert len(atlas["microproject_links"]) == 1
     assert atlas["microproject_links"][0]["note"] == "Même famille de matériaux"
 
@@ -71,7 +71,7 @@ def test_microproject_link_only_appears_in_atlas_for_members_of_both_sides(clien
 
     # a third user, unrelated to either microproject, sees neither the microprojects nor the link
     _register_and_microproject(client, "visibility-c@example.com", "Projet C")
-    atlas = client.get("/api/atlas").json()
+    atlas = client.get("/api/atlas?theme=non-classe").json()
     assert atlas["microproject_links"] == []
 
 
@@ -112,7 +112,7 @@ def test_editor_on_both_microprojects_can_link_two_physical_entities(client):
     )
     assert created.status_code == 201
 
-    atlas = client.get("/api/atlas").json()
+    atlas = client.get("/api/atlas?theme=non-classe").json()
     assert len(atlas["entity_links"]) == 1
     link = atlas["entity_links"][0]
     assert link["a"]["microproject_slug"] == slug_a
@@ -137,5 +137,5 @@ def test_delete_microproject_link_requires_editor_on_at_least_one_side(client):
     ok = client.delete(f"/api/liens-projets/{link_id}")
     assert ok.status_code == 200
 
-    atlas = client.get("/api/atlas").json()
+    atlas = client.get("/api/atlas?theme=non-classe").json()
     assert atlas["microproject_links"] == []

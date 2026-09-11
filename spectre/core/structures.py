@@ -14,12 +14,13 @@ from typing import Any
 
 import follow
 from follow.doe.batch import BatchVariation, analyze_batch
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from structureforge.adapters.follow_adapter import ProcessStructure, to_structure
 from structureforge.core.materials import Material, MaterialLibrary, aluminum_gan, default_library, indium_gan
 from structureforge.core.recipes import RecipeLibrary, default_recipes
+from structureforge.core.traced import Traced
 from structureforge.core.units import Length
-from structureforge.geometry.engine import Geometry
+from structureforge.geometry.engine import Geometry, LayerProvenance
 from structureforge.presentation.svg import frame_to_svg
 from structureforge.process.simulate import Frame, SimulationError, simulate
 from structureforge.process.steps import ProcessStep
@@ -44,6 +45,20 @@ class SubstrateSpec(BaseModel):
 
 class SimulationFailedError(Exception):
     pass
+
+
+class DeclaredParam(BaseModel):
+    """A Spectre-only, freely-named parameter a user attaches to a step in the builder - a name,
+    a value, and free-form "obtention" details (e.g. ``precursor="SiH4"``, ``flow_sccm=12``).
+    Independent of whatever typed fields the step's own ``ProcessStep`` subclass exposes (those
+    are frozen pydantic models from ``structureforge`` and are never touched), and never stored
+    on the step itself - merged onto the resulting layer(s)' ``provenance`` after simulation (see
+    :func:`run_simulation`), as a ``Traced.declared`` entry.
+    """
+
+    name: str
+    value: Any
+    obtention: dict[str, Any] = Field(default_factory=dict)
 
 
 def picker_materials() -> list[Material]:
@@ -171,13 +186,43 @@ def recipes_library() -> RecipeLibrary:
     return base.with_recipes(deposition=deposition, etch=etch) if (deposition or etch) else base
 
 
-def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]) -> tuple[Geometry, list[Frame], MaterialLibrary]:
+def _apply_declared_params(frames: list[Frame], declared_params: dict[int, list[DeclaredParam]]) -> None:
+    """Merge user-declared parameters (see :class:`DeclaredParam`) onto the layer(s) each step
+    actually produced. Walks frames in step order tracking how many layers existed before each
+    one - a step that appended new layers (growth, deposition, lithography...) gets its declared
+    params attached to exactly those new layers; a step that didn't append any (etch,
+    planarization, flip, chemical...) is skipped, since there's no safe way to know which existing
+    layer a new declared param should be attributed to.
+    """
+    prev_count = 0
+    for frame in frames:
+        params = declared_params.get(frame.step_index)
+        new_layers = frame.layers[prev_count:] if len(frame.layers) > prev_count else []
+        if params and new_layers:
+            for layer in new_layers:
+                if layer.provenance is None:
+                    layer.provenance = LayerProvenance(step_kind=frame.step_kind, step_name=frame.step_name, parameters={})
+                for param in params:
+                    layer.provenance.parameters[param.name] = Traced.declared(param.value, **param.obtention)
+        prev_count = len(frame.layers)
+
+
+def run_simulation(
+    slug: str,
+    substrate: SubstrateSpec,
+    steps: list[ProcessStep],
+    declared_params: dict[int, list[DeclaredParam]] | None = None,
+) -> tuple[Geometry, list[Frame], MaterialLibrary]:
     """Build the starting geometry and apply ``steps`` to it, the same way
     ``structureforge.api.app`` does for its own ``/api/simulate`` - returns the live objects
     (geometry, one frame per step, the material library used) for a caller that needs them for
     more than just a preview (e.g. to commit the result as a Follow experiment). ``slug`` is kept
     in the signature even though every microproject shares the same material/step/recipe physics now -
     callers already pass it, and a microproject-specific material library is a plausible future need.
+
+    ``declared_params`` (step_index -> extra parameters the user attached in the builder, see
+    :class:`DeclaredParam`) is Spectre-only bookkeeping never seen by ``structureforge`` itself -
+    it's merged onto the resulting layers' ``provenance`` after simulation succeeds.
     """
     steps = _expand_seed_material_aliases(steps, substrate.material)
     materials = materials_library(substrate.material, *_material_names_in_steps(steps))
@@ -192,7 +237,22 @@ def run_simulation(slug: str, substrate: SubstrateSpec, steps: list[ProcessStep]
         frames = simulate(geometry, steps, materials, recipes)
     except SimulationError as exc:
         raise SimulationFailedError(str(exc)) from exc
+    if declared_params:
+        _apply_declared_params(frames, declared_params)
     return geometry, frames, materials
+
+
+_PATH_TAG_RE = re.compile(r"<path ")
+
+
+def _tag_layer_indices(svg: str) -> str:
+    """Insert ``data-layer-index="{k}"`` into the k-th ``<path `` tag of ``svg`` (0-based, in
+    order of appearance) - ``frame_to_svg`` (external, unmodifiable) draws exactly one path per
+    layer with a non-empty ``rings()``, in ``frame.layers`` order, so index ``k`` here lines up
+    with ``frames_payload``'s own ``"layers"`` list (same filter, same order).
+    """
+    counter = itertools.count()
+    return _PATH_TAG_RE.sub(lambda _m: f'<path data-layer-index="{next(counter)}" ', svg)
 
 
 def frames_payload(frames: list[Frame], materials: MaterialLibrary) -> dict[str, Any]:
@@ -203,10 +263,20 @@ def frames_payload(frames: list[Frame], materials: MaterialLibrary) -> dict[str,
                 "step_index": frame.step_index,
                 "step_kind": frame.step_kind,
                 "step_name": frame.step_name,
-                "svg": frame_to_svg(frame, material_colors),
+                "svg": _tag_layer_indices(frame_to_svg(frame, material_colors)),
                 # only the materials this particular frame actually shows - material_colors below
                 # is the whole library (40+ entries), which would make a poor legend on its own.
                 "materials": sorted({layer.material for layer in frame.layers}),
+                # same order/filter as the SVG's paths (see _tag_layer_indices) - index k here is
+                # the layer behind the k-th <path data-layer-index="k">.
+                "layers": [
+                    {
+                        "material": layer.material,
+                        "provenance": layer.provenance.model_dump(mode="json") if layer.provenance else None,
+                    }
+                    for layer in frame.layers
+                    if layer.rings()
+                ],
             }
             for frame in frames
         ],

@@ -20,7 +20,7 @@ function refCardHtml(node) {
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         ${names}
-        ${statusBadgeHtml(node.status)}
+        ${statusBadgeHtml(node.status, node.decision)}
       </div>
     </div>
     <div style="color:var(--text-faint);font-size:11.5px;margin-top:4px;">${formatDate(node.created_at)}</div>`;

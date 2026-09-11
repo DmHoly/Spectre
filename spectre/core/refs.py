@@ -108,6 +108,7 @@ def list_refs(repo: "follow.Repository") -> list[dict[str, Any]]:
                 "title": experiment.title,
                 "branch": experiment.branch,
                 "status": experiment.conclusion.status,
+                "decision": experiment.conclusion.decision,
                 "version": _version_for(repo, experiment_id),
                 "created_at": experiment.created_at.isoformat(),
             }

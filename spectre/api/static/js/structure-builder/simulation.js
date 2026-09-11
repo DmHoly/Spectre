@@ -33,6 +33,51 @@ function applyZoom() {
   document.getElementById("zoom-level-label").textContent = `${Math.round(state.zoom * 100)}%`;
 }
 
+// Un dérivé "null" (mesuré/donné directement) ; un dict (déclaré ou calculé depuis une formule
+// dérivée type Length) affiche ses clés ; toute autre forme retombe sur un JSON brut lisible.
+function formatDerivation(derivation) {
+  if (derivation === null || derivation === undefined) return "mesuré / donné directement";
+  if (typeof derivation === "object" && !Array.isArray(derivation)) {
+    const entries = Object.entries(derivation);
+    if (entries.length === 0) return "mesuré / donné directement";
+    return entries.map(([k, v]) => `${escapeHtml(k)}=${escapeHtml(String(v))}`).join(", ");
+  }
+  return escapeHtml(JSON.stringify(derivation));
+}
+
+function renderLayerProvenance(layer) {
+  const panel = document.getElementById("layer-provenance-panel");
+  const content = document.getElementById("layer-provenance-content");
+  if (!layer) {
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "";
+  const provenance = layer.provenance;
+  if (!provenance) {
+    content.innerHTML = `<div class="help">Aucune traçabilité enregistrée pour cette couche (${escapeHtml(layer.material)}).</div>`;
+    return;
+  }
+  const params = Object.entries(provenance.parameters || {});
+  content.innerHTML = `
+    <div style="font-size:12px;margin-bottom:8px;"><strong>${escapeHtml(provenance.step_kind)}</strong> — ${escapeHtml(provenance.step_name)}</div>
+    ${
+      params.length === 0
+        ? `<div class="help">Aucun paramètre enregistré.</div>`
+        : `<div style="display:flex;flex-direction:column;gap:6px;">
+            ${params
+              .map(
+                ([name, traced]) => `
+              <div style="font-size:12px;border-top:1px solid var(--border-soft);padding-top:6px;">
+                <div><strong>${escapeHtml(name)}</strong> = ${escapeHtml(String(traced.value))}</div>
+                <div class="help">${formatDerivation(traced.derivation)}</div>
+              </div>`
+              )
+              .join("")}
+          </div>`
+    }`;
+}
+
 function renderFrame() {
   const frame = state.frames ? state.frames[state.currentFrame] : null;
   document.getElementById("svg-container").innerHTML = frame ? frame.svg : "";
@@ -41,10 +86,22 @@ function renderFrame() {
   legend.innerHTML = materials
     .map((name) => `<div class="legend-item"><span class="legend-swatch" style="background:${state.materialColors[name] || "#999"};"></span>${escapeHtml(name)}</div>`)
     .join("");
+  renderLayerProvenance(null);
   renderScrubber();
   highlightSelectedLayer();
   applyZoom();
 }
+
+// Clic sur une couche du dessin -> affiche sa traçabilité (voir renderLayerProvenance) ; distinct
+// du clic qui ouvre l'édition de l'étape (step-list.js) - les deux écoutent le même conteneur.
+document.getElementById("svg-container").addEventListener("click", (event) => {
+  const path = event.target.closest("[data-layer-index]");
+  if (!path) return;
+  const frame = state.frames ? state.frames[state.currentFrame] : null;
+  if (!frame || !frame.layers) return;
+  const layerIndex = parseInt(path.dataset.layerIndex, 10);
+  renderLayerProvenance(frame.layers[layerIndex] || null);
+});
 
 // `overrideSteps` simule une liste d'étapes différente de `state.steps` sans la commiter (aperçu
 // d'une étape en cours d'ajout, pas encore validée). `silent` avale l'erreur au lieu de l'afficher
@@ -54,9 +111,15 @@ function renderFrame() {
 async function simulateNow(overrideSteps, { silent = false } = {}) {
   clearError();
   try {
+    const steps = overrideSteps || state.steps;
+    const declared_params = {};
+    steps.forEach((step, i) => {
+      if (step.declaredParams && step.declaredParams.length) declared_params[i] = step.declaredParams;
+    });
     const result = await api.post(`/api/microprojets/${slug}/structures/simulate`, {
       substrate: substrateSpec(),
-      steps: overrideSteps || state.steps,
+      steps,
+      declared_params,
     });
     state.frames = result.frames;
     state.materialColors = result.material_colors;

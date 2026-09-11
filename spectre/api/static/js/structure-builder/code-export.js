@@ -32,7 +32,21 @@ function generateStructureForgeCode() {
   const importNames = new Set(["Geometry", "Length", "default_library", "default_recipes", "save_svg", "simulate"]);
   usedKinds.forEach((k) => importNames.add(PY_STEP_CLASS[k] || k));
   if (usedKinds.includes("epitaxial_growth")) importNames.add("GrowthOrientation");
-  const stepsLines = state.steps.length ? state.steps.map((s) => `    ${pyStepCode(s)},`).join("\n") : "    # aucune étape pour l'instant";
+  const declaredParamComment = (p) => {
+    const obtention = Object.entries(p.obtention || {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join(", ");
+    return `    # declared: ${p.name}=${p.value}${obtention ? ` (${obtention})` : ""}`;
+  };
+  const stepsLines = state.steps.length
+    ? state.steps
+        .map((s) => {
+          const lines = [`    ${pyStepCode(s)},`];
+          (s.declaredParams || []).forEach((p) => lines.push(declaredParamComment(p)));
+          return lines.join("\n");
+        })
+        .join("\n")
+    : "    # aucune étape pour l'instant";
   return `from structureforge import (
     ${[...importNames].sort().join(",\n    ")},
 )

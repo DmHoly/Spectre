@@ -8,14 +8,31 @@ const STATUS_LABELS = {
   abandoned: { label: "Abandonnée", cls: "badge-abandoned" },
 };
 
+// Conclusion.status alone ("concluded") doesn't say what kind of conclusion it was -
+// Conclusion.decision (posé par /conclure : promote/branch/replicate/abandon/inconclusive)
+// already carries that nuance, just not shown anywhere before. Reusing the existing .badge-*
+// classes (each already fixes the right colour/teinte pair) rather than inventing new ones -
+// only the label changes. "concluded" with no decision (older data, or never set) keeps the
+// generic "Conclue" from STATUS_LABELS above.
+const CONCLUDED_DECISION_LABELS = {
+  promote: { label: "Concluante", cls: "badge-concluded" },
+  inconclusive: { label: "Non concluante", cls: "badge-abandoned" },
+  branch: { label: "À poursuivre", cls: "badge-running" },
+  replicate: { label: "À poursuivre", cls: "badge-running" },
+};
+
 const ROLE_LABELS = {
   owner: "Propriétaire",
   editor: "Peut modifier",
   viewer: "Lecture seule",
 };
 
-function statusBadgeHtml(status) {
-  const info = STATUS_LABELS[status] || STATUS_LABELS.draft;
+// `decision` is optional (Conclusion.decision, only meaningful when status === "concluded") -
+// every call site should pass it when it has it (an experiment's ``conclusion.decision`` or a
+// node payload's ``decision``) so "Concluante"/"Non concluante"/"À poursuivre" show up instead of
+// the generic "Conclue" wherever a status badge appears.
+function statusBadgeHtml(status, decision) {
+  const info = (status === "concluded" && CONCLUDED_DECISION_LABELS[decision]) || STATUS_LABELS[status] || STATUS_LABELS.draft;
   return `<span class="badge ${info.cls}"><span class="dot"></span>${info.label}</span>`;
 }
 

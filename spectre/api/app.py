@@ -66,7 +66,7 @@ def create_app() -> FastAPI:
         return handler
 
     app.get("/")(_page("index.html"))
-    app.get("/atlas")(_page("atlas.html"))
+    app.get("/management/{slug}/atlas")(_page("atlas.html"))
     app.get("/connexion")(_page("connexion.html"))
     app.get("/inscription")(_page("inscription.html"))
     app.get("/mot-de-passe-oublie")(_page("mot-de-passe-oublie.html"))

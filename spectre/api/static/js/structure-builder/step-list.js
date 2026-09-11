@@ -4,6 +4,7 @@
 
 function fillKindFields(step) {
   document.getElementById("kind-select").value = step.kind;
+  state.formDeclaredParams = JSON.parse(JSON.stringify(step.declaredParams || []));
   renderKindFields(step.kind);
   document.getElementById("f-name").value = step.name;
   const def = STEP_KIND_DEFS[step.kind];
@@ -39,7 +40,11 @@ function stepRowHtml(step, i, compact, locked) {
       ${stepIconHtml(step.kind)}
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:600;">${i + 1}. ${escapeHtml(STEP_KINDS[step.kind].label)} &mdash; ${escapeHtml(step.name)}</div>
-        <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(stepSummary(step))}</div>
+        <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(stepSummary(step))}${
+          step.declaredParams && step.declaredParams.length
+            ? ` · ${step.declaredParams.length} paramètre${step.declaredParams.length > 1 ? "s" : ""} déclaré${step.declaredParams.length > 1 ? "s" : ""}`
+            : ""
+        }</div>
       </div>
       <div style="display:flex;flex-direction:column;">
         <button class="step-remove js-step-up" data-index="${i}" title="${upTitle}" type="button" ${upDisabled ? "disabled style='opacity:.3;'" : ""}>
@@ -319,12 +324,14 @@ function cancelEditingStep() {
   }
   state.editingIndex = null;
   state.editingOriginalStep = null;
+  state.formDeclaredParams = [];
   closeStepForm();
 }
 
 function startAddingStep() {
   state.editingIndex = null;
   state.editingOriginalStep = null;
+  state.formDeclaredParams = [];
   state.showStepForm = true;
   document.getElementById("step-form-title").textContent = "Ajouter une étape";
   document.getElementById("add-step-btn-label").textContent = "Ajouter cette étape";
@@ -408,6 +415,7 @@ document.getElementById("add-step-btn").addEventListener("click", () => {
     // d'enregistrer avec le snapshot d'avant édition).
     state.editingIndex = null;
     state.editingOriginalStep = null;
+    state.formDeclaredParams = [];
     closeStepForm();
   } catch (err) {
     showError(err);

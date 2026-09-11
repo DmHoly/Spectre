@@ -37,7 +37,7 @@ def test_atlas_lists_only_the_current_user_own_microprojects(client):
     )
 
     # atlas-b's session is the last one logged in on the shared client - only their own microproject shows.
-    atlas = client.get("/api/atlas").json()
+    atlas = client.get("/api/atlas?theme=non-classe").json()
     slugs = [p["slug"] for p in atlas["microprojects"]]
     assert slug_b in slugs
     assert slug_a not in slugs
@@ -64,16 +64,18 @@ def test_atlas_shows_one_experience_node_per_branch_tip_with_entities_and_object
         f"/api/microprojets/{slug}/experiences/{with_entity['id']}/conclure",
         json={
             "status": "concluded",
+            "decision": "promote",
             "objective_results": [{"objective": "Rugosité", "status": "met", "reasoning": "0.5nm mesuré."}],
         },
     ).json()
 
-    atlas = client.get("/api/atlas").json()
+    atlas = client.get("/api/atlas?theme=non-classe").json()
     microproject = next(p for p in atlas["microprojects"] if p["slug"] == slug)
     assert len(microproject["experiences"]) == 1  # one card per branch tip, not one per version
     exp = microproject["experiences"][0]
     assert exp["id"] == concluded["id"]
     assert exp["status"] == "concluded"
+    assert exp["decision"] == "promote"  # for the "Concluante"/"Non concluante"/"À poursuivre" badge nuance
     assert exp["entities"] == [{"index": 0, "sample_id": "W1-A1", "location": "congélateur B"}]
     assert exp["objectives"] == [{"name": "Rugosité", "status": "met"}]
 
@@ -92,7 +94,7 @@ def test_atlas_skips_physical_tracking_entries_with_no_sample_id_or_location(cli
     ).json()
     client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/entites", json={"entities": [{}]})
 
-    atlas = client.get("/api/atlas").json()
+    atlas = client.get("/api/atlas?theme=non-classe").json()
     microproject = next(p for p in atlas["microprojects"] if p["slug"] == slug)
     assert microproject["experiences"][0]["entities"] == []
 
@@ -122,7 +124,7 @@ def test_atlas_entity_index_survives_a_partially_tracked_campaign(client):
         json={"entities": [{"sample_id": "V0"}, {}, {"sample_id": "V2"}]},
     )
 
-    atlas = client.get("/api/atlas").json()
+    atlas = client.get("/api/atlas?theme=non-classe").json()
     microproject = next(p for p in atlas["microprojects"] if p["slug"] == slug)
     entities = microproject["experiences"][0]["entities"]
     assert {(e["index"], e["sample_id"]) for e in entities} == {(0, "V0"), (2, "V2")}
@@ -162,7 +164,7 @@ def test_atlas_condenses_a_fork_and_merge_into_tip_to_tip_edges(client):
         json={"other_id": branch_b["id"], "title": "Fusion", "intent": "Reunir A et B"},
     ).json()
 
-    atlas = client.get("/api/atlas").json()
+    atlas = client.get("/api/atlas?theme=non-classe").json()
     microproject = next(p for p in atlas["microprojects"] if p["slug"] == slug)
     # root and branch_a were both superseded on the same (default) branch by the merge commit ;
     # branch_b's own branch was never advanced, so it's still a separate, live node.
@@ -171,3 +173,32 @@ def test_atlas_condenses_a_fork_and_merge_into_tip_to_tip_edges(client):
 
     edges = {(e["from"], e["to"]) for e in microproject["edges"]}
     assert edges == {(branch_b["id"], merged["id"])}  # not one edge per commit in the collapsed history
+
+
+def test_atlas_requires_a_theme(client):
+    _register_and_microproject(client, "atlas-notheme@example.com")
+    assert client.get("/api/atlas").status_code == 422
+
+
+def test_atlas_404s_on_an_unknown_theme(client):
+    _register_and_microproject(client, "atlas-badtheme@example.com")
+    response = client.get("/api/atlas?theme=ne-existe-pas")
+    assert response.status_code == 404
+
+
+def test_atlas_only_shows_microprojects_in_the_given_theme(client):
+    slug = _register_and_microproject(client, "atlas-theme-scope@example.com", "Projet thématique")
+    client.post(
+        f"/api/microprojets/{slug}/experiences",
+        json={"substrate": _substrate(), "steps": _steps(), "title": "Etude", "intent": "Depart"},
+    )
+    created = client.post("/api/management", json={"name": "Fiabilité"}).json()
+    client.post(f"/api/management/{created['slug']}/microprojets", json={"microproject_slug": slug})
+
+    # still a member, but moved out of "non-classe" - no longer shows there.
+    unclassified = client.get("/api/atlas?theme=non-classe").json()
+    assert slug not in {p["slug"] for p in unclassified["microprojects"]}
+
+    own_theme = client.get(f"/api/atlas?theme={created['slug']}").json()
+    assert own_theme["theme"] == {"slug": created["slug"], "name": "Fiabilité"}
+    assert slug in {p["slug"] for p in own_theme["microprojects"]}
