@@ -282,6 +282,66 @@ summary.disclosure-btn--line .disclosure-btn__sub {
   color: var(--text-faint);
 }
 
+/* Section « Objectifs et intention » du constructeur de structure : léger accent visuel propre à
+   cette section (les autres disclosure-btn gardent leur style plat inchangé). */
+summary.disclosure-btn--intention {
+  background: linear-gradient(90deg, #f3ecfb 0%, #fff 65%);
+  border-left: 3px solid #7b4fa3;
+}
+summary.disclosure-btn--intention:hover {
+  border-color: var(--border);
+  border-left-color: #7b4fa3;
+  color: #5d3b80;
+}
+summary.disclosure-btn--intention .disclosure-btn__icon {
+  color: #7b4fa3;
+  margin-right: 6px;
+  vertical-align: -3px;
+}
+
+.intention-panel {
+  background: #faf7fd;
+  border: 1px solid #ece2f7;
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.objectives-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.objective-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.objective-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--accent);
+}
+
+.objective-direction-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 /* -- cartes / cadres ------------------------------------------------------------------ */
 
 .card {

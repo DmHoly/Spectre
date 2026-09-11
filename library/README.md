@@ -9,6 +9,7 @@ dur dans le code :
 | `presets.yml` | les présets d'étape (scope « préset ») | `spectre.core.step_presets.StepPreset` |
 | `briques.yml` | les briques technologiques (scope « préset ») | `spectre.core.tech_bricks.TechBrick` |
 | `recettes.yml` | des recettes de dépôt / gravure en plus de celles de StructureForge (fusion par nom) | `structureforge.core.recipes.DepositionRecipe` / `EtchRecipe` |
+| `intention.yml` | la copie (libellés/placeholders/aides) de la section « Objectifs et intention » du constructeur de structure | dict brut, voir `registry_intention_form` |
 
 Chargés par [`spectre/core/registry.py`](../spectre/core/registry.py).
 
@@ -20,6 +21,10 @@ Chargés par [`spectre/core/registry.py`](../spectre/core/registry.py).
 3. Un fichier absent, vide ou invalide → jeu intégré de repli, avec un avertissement dans les logs
    du serveur (`Bibliothèque racine : … invalide`). Votre modification n'est alors *pas* prise en
    compte — vérifiez les logs.
+
+- **Intention** : contrairement aux trois autres fichiers (des listes sous une clé), `intention.yml`
+  est un objet unique à plat - un fichier partiel (qui ne redéfinit que quelques libellés) est
+  fusionné par-dessus le jeu intégré, clé par clé.
 
 ## Portée
 

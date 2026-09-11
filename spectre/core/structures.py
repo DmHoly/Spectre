@@ -196,7 +196,11 @@ def _apply_declared_params(frames: list[Frame], declared_params: dict[int, list[
     """
     prev_count = 0
     for frame in frames:
-        params = declared_params.get(frame.step_index)
+        # `simulate()` prepends an implicit frame 0 ("initial", the starting geometry) before any
+        # real step - so a real step at `frame.step_index == i` (1-based there) is the user's step
+        # `i - 1` (0-based, how `declared_params` is keyed). Frame 0 itself never has a step to
+        # attach declared params to.
+        params = declared_params.get(frame.step_index - 1) if frame.step_index > 0 else None
         new_layers = frame.layers[prev_count:] if len(frame.layers) > prev_count else []
         if params and new_layers:
             for layer in new_layers:

@@ -1,0 +1,53 @@
+# Copie éditable de la section « Objectifs et intention » du constructeur de structure
+# (structure-builder.html). Rechargée à chaud (voir spectre/core/registry.py,
+# registry_intention_form) - éditez, rafraîchissez la page, pas besoin de redémarrer le serveur.
+#
+# Toutes les clés sont des chaînes simples sauf `objective_directions`, qui liste les 4 options
+# du menu « Sens » d'un objectif, chacune avec sa couleur d'accent (utilisée pour le badge coloré
+# affiché à côté de chaque objectif).
+
+section_title: "Objectifs et intention"
+section_subtitle: "Pourquoi cette expérience, ce qu'on cherche à savoir, et comment on saura si c'est atteint."
+
+title_label: "Titre de l'expérience"
+title_placeholder: "ex : Contact ohmique PGaN, dopage cible"
+
+intent_label: "Intention (pourquoi fait-on cette expérience ?)"
+intent_placeholder: "Que cherche-t-on à vérifier, et pourquoi maintenant ?"
+
+hypothesis_label: "Hypothèse (optionnelle)"
+hypothesis_placeholder: "Ce qu'on pense observer"
+
+entity_field_label: "Entité physique (obligatoire)"
+entity_id_placeholder: "ex : W12-A3"
+entity_location_label: "Emplacement (optionnel)"
+entity_location_placeholder: "ex : congélateur B, tiroir 2"
+entity_field_hint: "Chaque expérience doit être reliée à un échantillon réel - c'est cet identifiant qui permet de la retrouver."
+
+objectives_title: "Objectifs"
+
+objective_name_label: "Objectif"
+objective_name_placeholder: "ex : isolation électrique"
+objective_rationale_label: "Pourquoi cet objectif"
+objective_rationale_placeholder: "ex : condition pour passer en production"
+objective_metric_label: "Mesure"
+objective_metric_placeholder: "ex : resistivity_ohm_cm"
+objective_direction_label: "Sens"
+objective_target_label: "Valeur cible (optionnelle)"
+objective_verification_label: "Comment on compte le vérifier"
+objective_verification_placeholder: "ex : mesure au profilomètre après dépôt"
+objective_submit_label: "Ajouter l'objectif"
+
+objective_directions:
+  - value: observe
+    label: "Observer"
+    color: "#2f6fb0"
+  - value: maximize
+    label: "Maximiser"
+    color: "#2f8f5b"
+  - value: minimize
+    label: "Minimiser"
+    color: "#b5842a"
+  - value: target
+    label: "Cible précise"
+    color: "#7b4fa3"

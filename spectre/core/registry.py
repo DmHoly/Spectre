@@ -37,6 +37,10 @@ logger = logging.getLogger(__name__)
 # Par (fichier, clé) : (mtime au dernier chargement, liste de dicts bruts) - voir _raw_entries.
 _CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
+# Par fichier : (mtime au dernier chargement, dict brut) - voir _raw_mapping (fichiers qui sont un
+# seul objet de config, pas une collection de {key: [...]}).
+_MAPPING_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
 
 def library_dir() -> Path:
     """Le dossier de la bibliothèque racine - ``$SPECTRE_LIBRARY_DIR`` ou ``<dépôt>/library``.
@@ -71,6 +75,89 @@ def _raw_entries(filename: str, key: str) -> list[dict[str, Any]] | None:
         return None
     _CACHE[cache_key] = (mtime, entries)
     return entries
+
+
+def _raw_mapping(filename: str) -> dict[str, Any] | None:
+    """Le contenu de ``library/<filename>`` comme un dict brut (fichier qui *est* un seul objet de
+    config, pas une collection de ``{key: [...]}`` comme ``_raw_entries``). ``None`` si le fichier
+    est absent ou illisible - l'appelant retombe alors sur son jeu intégré. Mise en cache tant que
+    le mtime du fichier ne bouge pas.
+    """
+    path = library_dir() / filename
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    cached = _MAPPING_CACHE.get(filename)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not isinstance(data, dict):
+            raise TypeError(f"attendu un mapping, reçu {type(data).__name__}")
+    except (yaml.YAMLError, OSError, TypeError) as exc:
+        logger.warning("Bibliothèque racine : %s illisible (%s) - jeu intégré utilisé.", path, exc)
+        return None
+    _MAPPING_CACHE[filename] = (mtime, data)
+    return data
+
+
+def registry_intention_form() -> dict[str, Any]:
+    """La copie (libellés/placeholders/aides) de la section « Objectifs et intention » du
+    constructeur de structure - ``library/intention.yml`` si présent, sinon
+    :func:`_builtin_intention_form`. Fusionnée par-dessus le jeu intégré clé par clé, pour qu'un
+    fichier partiel (qui n'override que quelques libellés) reste valide.
+    """
+    data = _raw_mapping("intention.yml")
+    builtin = _builtin_intention_form()
+    if data is None:
+        return builtin
+    merged = {**builtin, **data}
+    return merged
+
+
+def _builtin_intention_form() -> dict[str, Any]:
+    """Repli quand ``library/intention.yml`` est absent : la copie française telle qu'elle était
+    codée en dur jusqu'ici dans structure-builder.html.
+    """
+    return {
+        "section_title": "Objectifs et intention",
+        "section_subtitle": (
+            "Pourquoi cette expérience, ce qu'on cherche à savoir, et comment on saura si c'est atteint."
+        ),
+        "title_label": "Titre de l'expérience",
+        "title_placeholder": "ex : Contact ohmique PGaN, dopage cible",
+        "intent_label": "Intention (pourquoi fait-on cette expérience ?)",
+        "intent_placeholder": "Que cherche-t-on à vérifier, et pourquoi maintenant ?",
+        "hypothesis_label": "Hypothèse (optionnelle)",
+        "hypothesis_placeholder": "Ce qu'on pense observer",
+        "entity_field_label": "Entité physique (obligatoire)",
+        "entity_id_placeholder": "ex : W12-A3",
+        "entity_location_label": "Emplacement (optionnel)",
+        "entity_location_placeholder": "ex : congélateur B, tiroir 2",
+        "entity_field_hint": (
+            "Chaque expérience doit être reliée à un échantillon réel - c'est cet identifiant qui "
+            "permet de la retrouver."
+        ),
+        "objectives_title": "Objectifs",
+        "objective_name_label": "Objectif",
+        "objective_name_placeholder": "ex : isolation électrique",
+        "objective_rationale_label": "Pourquoi cet objectif",
+        "objective_rationale_placeholder": "ex : condition pour passer en production",
+        "objective_metric_label": "Mesure",
+        "objective_metric_placeholder": "ex : resistivity_ohm_cm",
+        "objective_direction_label": "Sens",
+        "objective_target_label": "Valeur cible (optionnelle)",
+        "objective_verification_label": "Comment on compte le vérifier",
+        "objective_verification_placeholder": "ex : mesure au profilomètre après dépôt",
+        "objective_submit_label": "Ajouter l'objectif",
+        "objective_directions": [
+            {"value": "observe", "label": "Observer", "color": "#2f6fb0"},
+            {"value": "maximize", "label": "Maximiser", "color": "#2f8f5b"},
+            {"value": "minimize", "label": "Minimiser", "color": "#b5842a"},
+            {"value": "target", "label": "Cible précise", "color": "#7b4fa3"},
+        ],
+    }
 
 
 def registry_materials() -> list[Material]:

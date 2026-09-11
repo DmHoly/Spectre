@@ -86,7 +86,11 @@ function renderFrame() {
   legend.innerHTML = materials
     .map((name) => `<div class="legend-item"><span class="legend-swatch" style="background:${state.materialColors[name] || "#999"};"></span>${escapeHtml(name)}</div>`)
     .join("");
-  renderLayerProvenance(null);
+  // Re-simulating (e.g. after editing a step) rebuilds `state.frames` and calls `renderFrame()`
+  // asynchronously, which used to unconditionally hide the provenance panel - wiping it out right
+  // after a layer click set it, since that click's re-simulation resolves later. Restoring from
+  // `state.selectedLayerIndex` (set by the click handler below) keeps the panel in sync instead.
+  renderLayerProvenance(frame && state.selectedLayerIndex != null ? frame.layers[state.selectedLayerIndex] || null : null);
   renderScrubber();
   highlightSelectedLayer();
   applyZoom();
@@ -100,6 +104,7 @@ document.getElementById("svg-container").addEventListener("click", (event) => {
   const frame = state.frames ? state.frames[state.currentFrame] : null;
   if (!frame || !frame.layers) return;
   const layerIndex = parseInt(path.dataset.layerIndex, 10);
+  state.selectedLayerIndex = layerIndex;
   renderLayerProvenance(frame.layers[layerIndex] || null);
 });
 

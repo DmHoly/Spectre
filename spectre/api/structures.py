@@ -145,6 +145,17 @@ def list_materials(microproject: Microproject = Depends(require_role("viewer")))
     return [m.model_dump(mode="json") for m in structures.picker_materials()]
 
 
+@router.get("/{slug}/structures/intention-form")
+def get_intention_form(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    """Libellés/placeholders/aides éditables de la section « Objectifs et intention » du
+    constructeur de structure (``library/intention.yml``, voir
+    :func:`spectre.core.registry.registry_intention_form`).
+    """
+    from ..core.registry import registry_intention_form
+
+    return registry_intention_form()
+
+
 @router.get("/{slug}/recettes")
 def list_recipes(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """The named deposition/etch recipes a step can pick from - mode/angle/selectivity live on

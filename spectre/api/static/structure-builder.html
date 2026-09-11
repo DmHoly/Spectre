@@ -211,36 +211,37 @@
     <div id="experience-sections" style="display:flex;flex-direction:column;gap:12px;margin:20px 0;">
       <div id="wizard-step-intention" style="display:flex;flex-direction:column;gap:12px;">
         <details id="objectives-section" class="card" style="padding:0;overflow:hidden;" open>
-          <summary class="disclosure-btn disclosure-btn--line">
+          <summary class="disclosure-btn disclosure-btn--line disclosure-btn--intention">
             <span>
-              Objectifs et intention
-              <span class="disclosure-btn__sub">Pourquoi cette expérience, ce qu'on cherche à savoir, et comment on saura si c'est atteint.</span>
+              <svg class="disclosure-btn__icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 2z"/><path d="M9 21h6"/><path d="M10 18h4"/></svg>
+              <span id="intention-section-title">Objectifs et intention</span>
+              <span class="disclosure-btn__sub" id="intention-section-subtitle">Pourquoi cette expérience, ce qu'on cherche à savoir, et comment on saura si c'est atteint.</span>
             </span>
             <svg class="disclosure-btn__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
           </summary>
           <div style="padding:0 16px 16px;">
-            <div class="field-group" style="margin-bottom:16px;">
-              <div><label>Titre de l'expérience</label><input class="field" id="exp-title" placeholder="ex : Contact ohmique PGaN, dopage cible"></div>
+            <div class="field-group intention-panel" style="margin-bottom:16px;">
+              <div><label id="title-label" for="exp-title">Titre de l'expérience</label><input class="field" id="exp-title" placeholder="ex : Contact ohmique PGaN, dopage cible"></div>
               <div class="field-row">
-                <div><label>Intention (pourquoi fait-on cette expérience ?)</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier, et pourquoi maintenant ?"></textarea></div>
-                <div><label>Hypothèse (optionnelle)</label><textarea class="field" id="exp-hypothesis" rows="2" placeholder="Ce qu'on pense observer"></textarea></div>
+                <div><label id="intent-label" for="exp-intent">Intention (pourquoi fait-on cette expérience ?)</label><textarea class="field" id="exp-intent" rows="2" placeholder="Que cherche-t-on à vérifier, et pourquoi maintenant ?"></textarea></div>
+                <div><label id="hypothesis-label" for="exp-hypothesis">Hypothèse (optionnelle)</label><textarea class="field" id="exp-hypothesis" rows="2" placeholder="Ce qu'on pense observer"></textarea></div>
               </div>
               <div id="entity-fields-wrap" style="display:none;">
                 <div class="field-row">
-                  <div><label id="entity-field-label">Entité physique (obligatoire)</label><input class="field" id="exp-entity-sample-id" placeholder="ex : W12-A3"></div>
-                  <div><label>Emplacement (optionnel)</label><input class="field" id="exp-entity-location" placeholder="ex : congélateur B, tiroir 2"></div>
+                  <div><label id="entity-field-label" for="exp-entity-sample-id">Entité physique (obligatoire)</label><input class="field" id="exp-entity-sample-id" placeholder="ex : W12-A3"></div>
+                  <div><label id="entity-location-label" for="exp-entity-location">Emplacement (optionnel)</label><input class="field" id="exp-entity-location" placeholder="ex : congélateur B, tiroir 2"></div>
                 </div>
                 <div class="help" id="entity-field-hint" style="margin-top:-4px;">Chaque expérience doit être reliée à un échantillon réel - c'est cet identifiant qui permet de la retrouver.</div>
               </div>
             </div>
-            <div class="section-title" style="margin-bottom:6px;">Objectifs</div>
-            <div id="objectives-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;"></div>
-            <form id="objective-form" style="display:flex;flex-direction:column;gap:8px;">
-              <div><label>Objectif</label><input class="field" id="obj-name" placeholder="ex : isolation électrique" required></div>
-              <div><label>Pourquoi cet objectif</label><textarea class="field" id="obj-rationale" rows="2" placeholder="ex : condition pour passer en production"></textarea></div>
+            <div class="section-title" id="objectives-title" style="margin-bottom:6px;">Objectifs</div>
+            <div id="objectives-list" class="objectives-list"></div>
+            <form id="objective-form" class="objective-form">
+              <div><label id="objective-name-label" for="obj-name">Objectif</label><input class="field" id="obj-name" placeholder="ex : isolation électrique" required></div>
+              <div><label id="objective-rationale-label" for="obj-rationale">Pourquoi cet objectif</label><textarea class="field" id="obj-rationale" rows="2" placeholder="ex : condition pour passer en production"></textarea></div>
               <div class="field-row">
-                <div><label>Mesure</label><input class="field" id="obj-metric" placeholder="ex : resistivity_ohm_cm" required></div>
-                <div><label>Sens</label>
+                <div><label id="objective-metric-label" for="obj-metric">Mesure</label><input class="field" id="obj-metric" placeholder="ex : resistivity_ohm_cm" required></div>
+                <div><label id="objective-direction-label" for="obj-direction">Sens</label>
                   <select class="field" id="obj-direction">
                     <option value="observe">Observer</option>
                     <option value="maximize">Maximiser</option>
@@ -249,9 +250,9 @@
                   </select>
                 </div>
               </div>
-              <div><label>Valeur cible (optionnelle)</label><input class="field" id="obj-target" type="number"></div>
-              <div><label>Comment on compte le vérifier</label><textarea class="field" id="obj-verification" rows="2" placeholder="ex : mesure au profilomètre après dépôt"></textarea></div>
-              <button class="btn btn-line btn-block" type="submit">Ajouter l'objectif</button>
+              <div><label id="objective-target-label" for="obj-target">Valeur cible (optionnelle)</label><input class="field" id="obj-target" type="number"></div>
+              <div><label id="objective-verification-label" for="obj-verification">Comment on compte le vérifier</label><textarea class="field" id="obj-verification" rows="2" placeholder="ex : mesure au profilomètre après dépôt"></textarea></div>
+              <button class="btn btn-line btn-block" id="objective-submit-btn" type="submit">Ajouter l'objectif</button>
             </form>
           </div>
         </details>
@@ -305,6 +306,7 @@
   <script src="/static/js/structure-builder/step-kinds.js"></script>
   <script src="/static/js/structure-builder/step-list.js"></script>
   <script src="/static/js/structure-builder/objectives.js"></script>
+  <script src="/static/js/structure-builder/intention-copy.js"></script>
   <script src="/static/js/structure-builder/simulation.js"></script>
   <script src="/static/js/structure-builder/history.js"></script>
   <script src="/static/js/structure-builder/intent-form.js"></script>
