@@ -172,26 +172,28 @@
         <div id="compare-result" style="margin-top:12px;max-height:260px;overflow:auto;"></div>
       </div>
 
-      <div class="card card-pad" id="references-card">
-        <div class="section-title" style="margin-bottom:14px;">Liens</div>
-        <div id="references-list"></div>
-      </div>
-
       <details class="card card-pad" id="advanced-actions" style="display:none;">
         <summary style="cursor:pointer;font-size:13px;font-weight:700;">Actions avancées</summary>
         <div style="margin-top:14px;max-width:480px;">
-          <label>Combiner avec une autre expérience</label>
-          <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, mais relie l'historique et les preuves de l'autre expérience choisie.</div>
-          <select class="field" id="combine-select" style="margin-bottom:8px;"></select>
-          <input class="field" id="combine-title" placeholder="Titre du résultat" style="margin-bottom:8px;">
-          <input class="field" id="combine-intent" placeholder="Pourquoi combiner ces deux pistes ?" style="margin-bottom:8px;">
-          <button class="btn btn-line" id="combine-btn" type="button">Combiner</button>
+          <div id="references-card">
+            <label>Liens</label>
+            <div id="references-list" style="margin-top:6px;"></div>
+          </div>
 
-          <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--danger-tint);">
-            <label style="color:var(--danger);">Supprimer cette étude</label>
-            <div class="help" style="margin-bottom:8px;">Efface définitivement cette version et les versions précédentes de cette piste, jusqu'à un point encore utilisé par une autre piste ou une ref. Irréversible.</div>
-            <button class="btn btn-danger" id="delete-experience-btn" type="button">Supprimer</button>
-            <span id="delete-experience-hint" class="help" style="margin-left:10px;"></span>
+          <div id="advanced-actions-editor-only" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-soft);">
+            <label>Combiner avec une autre expérience</label>
+            <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, mais relie l'historique et les preuves de l'autre expérience choisie.</div>
+            <select class="field" id="combine-select" style="margin-bottom:8px;"></select>
+            <input class="field" id="combine-title" placeholder="Titre du résultat" style="margin-bottom:8px;">
+            <input class="field" id="combine-intent" placeholder="Pourquoi combiner ces deux pistes ?" style="margin-bottom:8px;">
+            <button class="btn btn-line" id="combine-btn" type="button">Combiner</button>
+
+            <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--danger-tint);">
+              <label style="color:var(--danger);">Supprimer cette étude</label>
+              <div class="help" style="margin-bottom:8px;">Efface définitivement cette version et les versions précédentes de cette piste, jusqu'à un point encore utilisé par une autre piste ou une ref. Irréversible.</div>
+              <button class="btn btn-danger" id="delete-experience-btn" type="button">Supprimer</button>
+              <span id="delete-experience-hint" class="help" style="margin-left:10px;"></span>
+            </div>
           </div>
         </div>
       </details>

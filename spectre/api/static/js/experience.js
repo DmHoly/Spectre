@@ -1492,7 +1492,12 @@ function applyModeVisibility() {
   // lien reste caché même si editing est vrai, applyModeVisibility() étant rappelée une fois de
   // plus dès que currentProcess est résolu.
   document.getElementById("structure-evolve-link").style.display = editing && currentProcess ? "" : "none";
-  document.getElementById("advanced-actions").style.display = editing ? "" : "none";
+  // "Actions avancées" héberge à la fois les Liens (lecture seule, utile à tout le monde) et les
+  // actions réservées à l'éditeur (combiner/supprimer) - le panneau reste donc visible dès qu'il y a
+  // au moins un lien à montrer, même hors édition ; seule la partie éditeur se masque alors.
+  const hasReferences = currentDetail && currentDetail.references && currentDetail.references.length > 0;
+  document.getElementById("advanced-actions").style.display = editing || hasReferences ? "" : "none";
+  document.getElementById("advanced-actions-editor-only").style.display = editing ? "" : "none";
   // le rapport reste disponible pour tout le monde en permanence - un éditeur voit ses propres
   // formulaires d'édition sur la fiche vivante, mais l'export les retire toujours (data-report-hide,
   // voir generateReportHtml) : plus besoin d'un mode dédié pour garantir un rapport propre.
