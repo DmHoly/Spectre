@@ -1,4 +1,5 @@
 title: "EQE / LIV"
+category: "Post EPI"
 description: >
   Balayage I-V-EQE-spectre par device (une ligne = un device, chaque colonne de mesure porte le
   vecteur du balayage complet, pas juste un point). Le post-traitement en tire les grandeurs
@@ -15,3 +16,94 @@ postprocessing:
   - eqe:apply_eqe_kpi
   - eqe:downsample_spectra
 cache_key_column: wafername
+
+raw_columns:
+  - name: "wafer_name"
+    description: "Nom du wafer tel qu'enregistré en base."
+    example: "16J5A426MMD4"
+  - name: "X / Y"
+    description: "Coordonnées du device sur le wafer (déjà aliasées ainsi par la requête)."
+    example: "1, 10"
+  - name: "Led_Name"
+    description: "Nom du device - encode sa taille (ex. 20x20-1, largeur x hauteur en µm, -N un multiplicateur optionnel)."
+    example: "1.55x1.55-5852-R"
+  - name: "I / V"
+    description: "Vecteurs courant (A) / tension (V) du balayage complet pour ce device."
+    example: "[-5.0, 0.0, 10.0]"
+  - name: "EQE"
+    description: "Vecteur du rendement quantique externe à chaque point du balayage."
+    example: "[0.01, 0.05, 0.02]"
+  - name: "Wavelength / Spectra"
+    description: "L'axe de longueur d'onde commun, et un spectre (vecteur d'intensité) par point du balayage."
+    example: "108 points après sous-échantillonnage (voir downsample_spectra)"
+  - name: "CIEx / CIEy"
+    description: "Coordonnées chromatiques CIE 1931 à chaque point du balayage."
+    example: "[0.30, 0.31, 0.32]"
+  - name: "Lambda_Dominant / Purity"
+    description: "Longueur d'onde dominante et pureté colorimétrique à chaque point du balayage."
+    example: "[450.0, 452.0, 451.0]"
+  - name: "Optical_Sensor"
+    description: "Capteur optique utilisé pour la mesure."
+    example: "sensor1"
+
+kpi_columns:
+  - name: "max_EQE"
+    description: "EQE maximal atteint sur tout le balayage de ce device."
+    source: "eqe:apply_eqe_kpi"
+    example: 0.0177
+  - name: "V at Max EQE / I at Max EQE"
+    description: "Tension et courant au point où l'EQE est maximal."
+    source: "eqe:apply_eqe_kpi"
+    example: "6.60 V, 30.3 mA"
+  - name: "yield_per_wafer"
+    description: "% de devices allumés (is_lit) sur l'ensemble du wafer, répété sur chaque ligne de ce wafer."
+    source: "eqe:apply_eqe_kpi"
+    example: 97.5
+  - name: "area_cm2"
+    description: "Surface du device (cm²), déduite de son nom (Led_Name)."
+    source: "eqe:apply_eqe_kpi"
+    example: 0.00014
+  - name: "J_at_MaxEQE"
+    description: "Densité de courant (A/cm²) au point d'EQE maximal."
+    source: "eqe:apply_eqe_kpi"
+    example: 21.5
+  - name: "EQE_25A_cm2 / V_25A_cm2"
+    description: "EQE et tension interpolés à 25 A/cm², pour comparer des devices de tailles différentes au même régime."
+    source: "eqe:apply_eqe_kpi"
+    example: "0.016, 6.8 V"
+  - name: "srgb"
+    description: "Couleur sRGB approximative (un hex par point du balayage), dérivée de CIEx/CIEy."
+    source: "eqe:apply_eqe_kpi"
+    example: "['#8040A0', '#8242A2']"
+  - name: "Lambda_Peak / FWHM"
+    description: "Longueur d'onde de pic et largeur à mi-hauteur du spectre, extraites par point du balayage."
+    source: "eqe:apply_eqe_kpi"
+    example: "[451.0, 452.0]"
+  - name: "is_lit"
+    description: "True si au moins un point EQE dépasse le seuil d'allumage (1e-6)."
+    source: "eqe:apply_eqe_kpi"
+    example: true
+
+representative_column: "max_EQE"
+example_rows:
+  - wafername: "16J5A426MMD4"
+    X: 1
+    Y: 10
+    max_EQE: 0.0177
+    yield_per_wafer: 97.5
+    area_cm2: 0.00014
+    is_lit: true
+  - wafername: "16J5A426MMD4"
+    X: 2
+    Y: 10
+    max_EQE: 0.0163
+    yield_per_wafer: 97.5
+    area_cm2: 0.00014
+    is_lit: true
+  - wafername: "16J5A446MMF1"
+    X: 1
+    Y: 10
+    max_EQE: 0.0201
+    yield_per_wafer: 99.1
+    area_cm2: 0.00014
+    is_lit: true

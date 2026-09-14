@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/donnees", tags=["donnees"])
 
 
+def _column_doc_json(col: hooks.ColumnDoc) -> dict[str, Any]:
+    return {"name": col.name, "description": col.description, "example": col.example, "source": col.source}
+
+
 def _hook_summary(key: str) -> dict[str, Any]:
     hook = hooks.load_hook(key)
     return {
@@ -35,12 +39,28 @@ def _hook_summary(key: str) -> dict[str, Any]:
         "parameters": hook.parameters,
         "postprocessing": hook.postprocessing,
         "cacheable": bool(hook.cache_key_column) and "wafer_names" in hook.parameters,
+        "category": hook.category,
+        "status": hook.status,
+        "raw_columns": [_column_doc_json(c) for c in hook.raw_columns],
+        "kpi_columns": [_column_doc_json(c) for c in hook.kpi_columns],
+        "example_rows": hook.example_rows,
+        "representative_column": hook.representative_column,
     }
 
 
 @router.get("/hooks")
 def list_hooks(user: User = Depends(get_current_user)) -> dict:
     return {"hooks": [_hook_summary(key) for key in hooks.list_hooks()]}
+
+
+@router.get("/categories")
+def list_categories(user: User = Depends(get_current_user)) -> dict:
+    """Le regroupement de la page wiki (voir static/donnees.html) : chaque catégorie ("Post EPI",
+    "Structure"...) avec ses hooks, implémentés et "planned" (fiche documentaire seule) mêlés -
+    c'est ``status`` sur chaque hook qui dit à la page s'il propose un bouton "lancer la requête".
+    """
+    grouped = hooks.list_hooks_by_category()
+    return {"categories": [{"name": name, "hooks": [_hook_summary(h.key) for h in hs]} for name, hs in grouped.items()]}
 
 
 @router.get("/hooks/{key}")
@@ -86,6 +106,9 @@ def run_hook(key: str, body: RunHookRequest, user: User = Depends(get_current_us
         hook = hooks.load_hook(key)
     except hooks.HookNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if hook.status == "planned":
+        raise HTTPException(status_code=422, detail="ce hook est une fiche documentaire (pas encore implémenté) - pas de requête à lancer")
 
     missing = [p for p in hook.parameters if p not in body.parameters]
     if missing:

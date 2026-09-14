@@ -1,0 +1,11 @@
+title: "Comptage de défauts"
+category: "Défectivité"
+status: planned
+description: >
+  Comptage de défauts par wafer/champ (densité, classification). Fiche documentaire uniquement
+  pour l'instant : pas encore de requête SQL branchée.
+parameters: []
+postprocessing: []
+raw_columns: []
+kpi_columns: []
+example_rows: []

@@ -1,0 +1,12 @@
+title: "SEM101"
+category: "Structure"
+status: planned
+description: >
+  Images SEM101 (nommage structuré par run/recette/champ/design - voir legacy/get_sem101_img.py,
+  qui parse le nom de fichier plutôt que d'interroger la base). Fiche documentaire uniquement
+  pour l'instant : pas encore branché sur le système de hooks/cache.
+parameters: []
+postprocessing: []
+raw_columns: []
+kpi_columns: []
+example_rows: []

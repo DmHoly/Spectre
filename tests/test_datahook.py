@@ -36,6 +36,43 @@ def test_load_hook_unknown_key_raises():
         hooks.load_hook("ceci_n_existe_pas")
 
 
+def test_load_hook_reads_wiki_metadata():
+    hook = hooks.load_hook("pl")
+    assert hook.category == "Post EPI"
+    assert hook.status == "implemented"
+    assert hook.representative_column == "Dominant WL(nm)"
+    assert len(hook.raw_columns) > 0
+    assert len(hook.kpi_columns) > 0
+    assert len(hook.example_rows) > 0
+    col = next(c for c in hook.raw_columns if c.name == "Wafer name")
+    assert col.description
+    assert col.example == "16J5A426MMD4"
+    kpi_col = next(c for c in hook.kpi_columns if c.name == "Dominant WL(nm)")
+    assert kpi_col.source == "pl:apply_pl_kpi"
+
+
+def test_planned_hook_has_no_sql_and_is_not_runnable():
+    hook = hooks.load_hook("tem")
+    assert hook.status == "planned"
+    assert hook.category == "Structure"
+    assert hook.sql == ""
+    with pytest.raises(hooks.HookDefinitionError):
+        # query.sql absent - une tentative d'exécution doit échouer proprement, pas planter sur
+        # une requête vide envoyée telle quelle à psycopg2.
+        hooks.run_hook("tem")
+
+
+def test_list_hooks_by_category_groups_implemented_and_planned_hooks():
+    grouped = hooks.list_hooks_by_category()
+    assert {h.key for h in grouped["Post EPI"]} >= {"pl", "ncel", "eqe", "pdpl", "cathodo"}
+    assert {h.key for h in grouped["Structure"]} >= {"tem", "fib", "meb_g4", "sem101"}
+    assert {h.key for h in grouped["Post Process"]} >= {"el", "el_pattern"}
+    assert {h.key for h in grouped["Défectivité"]} >= {"defect_images", "defect_counting"}
+    # un hook "planned" n'a pas de requête réelle - jamais montré comme exécutable.
+    planned = [h for h in grouped["Structure"] if h.key == "tem"][0]
+    assert planned.status == "planned"
+
+
 def test_run_hook_missing_parameter_raises_before_touching_the_database(monkeypatch):
     called = False
 

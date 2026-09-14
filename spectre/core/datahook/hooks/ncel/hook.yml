@@ -1,4 +1,5 @@
 title: "NCEL"
+category: "Post EPI"
 description: >
   Mesures NCEL (électroluminescence par nano-contact) par device, filtrées sur les mesures sans
   filtre optique (filter = "None") - reprend la logique de legacy/get_data.py::get_data_ncel.
@@ -8,3 +9,74 @@ parameters:
 postprocessing:
   - ncel:apply_ncel_kpi
 cache_key_column: wafername
+
+raw_columns:
+  - name: "filter"
+    description: "Filtre optique utilisé pendant la mesure ('None' = pas de filtre)."
+    example: "None"
+  - name: "wafer_name"
+    description: "Nom du wafer tel qu'enregistré en base."
+    example: "16J5A426MMD4"
+  - name: "Test_Date"
+    description: "Date/heure du test."
+    example: "2026-01-15 10:32:00"
+  - name: "x_position"
+    description: "Coordonnée X du device sur le wafer."
+    example: 3
+  - name: "y_position"
+    description: "Coordonnée Y du device sur le wafer."
+    example: 7
+  - name: "na_current_a"
+    description: "Courant appliqué (A), texte brut converti en entier au post-traitement."
+    example: "5"
+  - name: "na_emission_max"
+    description: "Émission maximale mesurée."
+    example: 812.4
+  - name: "na_jpv_max"
+    description: "Valeur JPV maximale (indicateur de qualité de jonction)."
+    example: 0.92
+  - name: "na_jpv_delay"
+    description: "Délai associé au JPV max."
+    example: 3.2
+  - name: "na_time_delay"
+    description: "Délai temporel de la mesure."
+    example: 1.1
+
+kpi_columns:
+  - name: "wafername"
+    description: "Alias de wafer_name, pour rester cohérent avec les autres hooks."
+    source: "ncel:apply_ncel_kpi"
+    example: "16J5A426MMD4"
+  - name: "X"
+    description: "Alias de x_position."
+    source: "ncel:apply_ncel_kpi"
+    example: 3
+  - name: "Y"
+    description: "Alias de y_position."
+    source: "ncel:apply_ncel_kpi"
+    example: 7
+  - name: "na_current_a"
+    description: "Converti en entier (les valeurs texte non numériques deviennent 0)."
+    source: "ncel:apply_ncel_kpi"
+    example: 5
+
+representative_column: "na_emission_max"
+example_rows:
+  - wafername: "16J5A426MMD4"
+    X: 3
+    Y: 7
+    na_current_a: 5
+    na_emission_max: 812.4
+    na_jpv_max: 0.92
+  - wafername: "16J5A426MMD4"
+    X: 4
+    Y: 7
+    na_current_a: 5
+    na_emission_max: 798.1
+    na_jpv_max: 0.89
+  - wafername: "16J5A446MMF1"
+    X: 3
+    Y: 7
+    na_current_a: 5
+    na_emission_max: 845.0
+    na_jpv_max: 0.94

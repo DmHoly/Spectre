@@ -1,4 +1,5 @@
 title: "Liste des wafers"
+category: "Général"
 description: >
   Un wafer par ligne : son épitaxie (run, recette, réacteur, dates), et les numéros de demande
   (FDL) épitaxie / back-end / test associés, quand ils existent. Ne filtre sur aucun wafer en
@@ -6,3 +7,31 @@ description: >
   mesure.
 parameters: []
 postprocessing: []
+
+raw_columns:
+  - name: "wafer_name"
+    description: "Nom du wafer."
+    example: "16J5A426MMD4"
+  - name: "Run_Name"
+    description: "Nom du run d'épitaxie."
+    example: "VA1725"
+  - name: "start_date / end_date"
+    description: "Dates de début/fin de l'épitaxie."
+    example: "2026-01-06 / 2026-01-10"
+  - name: "Recipe_Type"
+    description: "Type de recette d'épitaxie."
+    example: "NWLED"
+  - name: "reactor"
+    description: "Réacteur utilisé."
+    example: "VA"
+  - name: "Epi_Request_Number / BW_Request_Number / Test_Request_Number"
+    description: "Numéros de demande (FDL) épitaxie / back-end / test, quand ils existent."
+    example: "FDL-4821"
+
+kpi_columns: []
+representative_column: null
+example_rows:
+  - wafer_name: "16J5A426MMD4"
+    Run_Name: "VA1725"
+    Recipe_Type: "NWLED"
+    reactor: "VA"

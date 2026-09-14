@@ -82,6 +82,7 @@ def create_app() -> FastAPI:
     app.get("/docs/architecture")(_page("docs-architecture.html"))
     app.get("/bibliotheque")(_page("bibliotheque.html"))
     app.get("/donnees")(_page("donnees.html"))
+    app.get("/donnees/{key}")(_page("donnees.html"))
     app.get("/pilotage")(_page("pilotage.html"))
     app.get("/management/{slug}")(_page("management.html"))
     app.get("/microprojets/{slug}")(_page("projet.html"))

@@ -1,0 +1,12 @@
+title: "Image MEB G4"
+category: "Structure"
+status: planned
+description: >
+  Images MEB (microscopie électronique à balayage) du bloc "SEM SL Wafermap" - voir
+  legacy/get_sem_img.py (parcourt un dossier d'images par wafer, pas une requête SQL). Fiche
+  documentaire uniquement pour l'instant : pas encore branché sur le système de hooks/cache.
+parameters: []
+postprocessing: []
+raw_columns: []
+kpi_columns: []
+example_rows: []

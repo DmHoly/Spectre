@@ -1,0 +1,11 @@
+title: "Images de défectivité"
+category: "Défectivité"
+status: planned
+description: >
+  Images brutes de défectivité (cartographie de wafer). Fiche documentaire uniquement pour
+  l'instant : pas encore de requête/lien branché.
+parameters: []
+postprocessing: []
+raw_columns: []
+kpi_columns: []
+example_rows: []

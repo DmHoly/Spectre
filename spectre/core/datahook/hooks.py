@@ -15,6 +15,16 @@ savoir où vit la vraie requête SQL ni comment les KPI qu'elle expose sont calc
 Un post-traitement se référence par un chemin pointé ``module:fonction`` résolu dans
 ``spectre.core.datahook.postprocessing`` (voir ce module) - jamais du code arbitraire dans le YAML
 lui-même, pour qu'un hook reste un fichier texte inspectable plutôt qu'un vecteur d'exécution.
+
+``hook.yml`` porte aussi tout ce qu'il faut pour générer la page wiki (voir
+:mod:`spectre.api.datahook`, ``static/donnees.html``) sans toucher au code Python : ``category``
+(le regroupement affiché - "Post EPI", "Structure"...), ``status`` (``implemented`` - une vraie
+requête existe - ou ``planned`` - fiche documentaire seule, pas encore de ``query.sql``),
+``raw_columns``/``kpi_columns`` (niveau 1 : ce que la requête renvoie telle quelle ; niveau 2 : ce
+que le post-traitement calcule ou recalcule - chaque colonne documentée porte ``name``,
+``description``, un ``example`` et, pour une colonne KPI, sa ``source``), ``example_rows`` (un
+petit échantillon écrit à la main pour illustrer la fiche sans dépendre de la base), et
+``representative_column`` (la colonne mise en avant par défaut sur le graphique de la fiche).
 """
 
 from __future__ import annotations
@@ -45,6 +55,19 @@ class HookDefinitionError(Exception):
 
 
 @dataclass(frozen=True)
+class ColumnDoc:
+    """Une colonne documentée dans la page wiki d'un hook (voir spectre/api/datahook.py et
+    static/donnees.html) : son nom, ce qu'elle représente, et - pour une colonne KPI, pas une
+    colonne brute - d'où elle vient (quelle fonction de post-traitement la calcule).
+    """
+
+    name: str
+    description: str
+    example: Any = None
+    source: str | None = None
+
+
+@dataclass(frozen=True)
 class DataHook:
     key: str
     title: str
@@ -56,6 +79,17 @@ class DataHook:
     # ce qui permet de mettre ce hook en cache par wafer (voir run_hook_cached). None : ce hook ne
     # se prête pas au cache par wafer (ex. waferlist, qui ne prend pas de wafer_names du tout).
     cache_key_column: str | None
+    # Wiki (voir README.md) : regroupement d'affichage ("Post EPI", "Structure"...), statut
+    # ("implemented" - vraie requête exécutable - ou "planned" - fiche documentaire seule, pas
+    # encore de query.sql), les deux niveaux de colonnes (brutes vs KPI calculés), un exemple de
+    # ligne pour illustrer la fiche sans avoir à interroger la base, et la colonne mise en avant
+    # par défaut sur le graphique représentatif de la page.
+    category: str
+    status: str
+    raw_columns: list[ColumnDoc]
+    kpi_columns: list[ColumnDoc]
+    example_rows: list[dict[str, Any]]
+    representative_column: str | None
 
 
 def list_hooks() -> list[str]:
@@ -65,14 +99,38 @@ def list_hooks() -> list[str]:
     return sorted(p.name for p in HOOKS_DIR.iterdir() if p.is_dir() and (p / "hook.yml").is_file())
 
 
+def list_hooks_by_category() -> dict[str, list[DataHook]]:
+    """Tous les hooks (implémentés ou non), groupés par ``category`` - l'ordre des catégories suit
+    celui dans lequel leur premier hook est rencontré (ordre alphabétique des clés), pas un ordre
+    éditorial fixe ; la page wiki peut réordonner à l'affichage si besoin.
+    """
+    grouped: dict[str, list[DataHook]] = {}
+    for key in list_hooks():
+        hook = load_hook(key)
+        grouped.setdefault(hook.category, []).append(hook)
+    return grouped
+
+
+def _column_docs(entries: list[dict[str, Any]] | None) -> list[ColumnDoc]:
+    out = []
+    for entry in entries or []:
+        out.append(
+            ColumnDoc(
+                name=entry["name"],
+                description=entry.get("description", ""),
+                example=entry.get("example"),
+                source=entry.get("source"),
+            )
+        )
+    return out
+
+
 def load_hook(key: str) -> DataHook:
     hook_dir = HOOKS_DIR / key
     yml_path = hook_dir / "hook.yml"
     sql_path = hook_dir / "query.sql"
     if not yml_path.is_file():
         raise HookNotFoundError(f"hook inconnu : {key!r} ({yml_path} absent)")
-    if not sql_path.is_file():
-        raise HookDefinitionError(f"{sql_path} absent pour le hook {key!r}")
 
     try:
         raw = yaml.safe_load(yml_path.read_text(encoding="utf-8")) or {}
@@ -87,14 +145,31 @@ def load_hook(key: str) -> DataHook:
     except KeyError as exc:
         raise HookDefinitionError(f"{yml_path} : champ manquant {exc}") from exc
 
+    status = raw.get("status", "implemented")
+    if status not in ("implemented", "planned"):
+        raise HookDefinitionError(f"{yml_path} : status inconnu {status!r} (attendu implemented|planned)")
+
+    # Un hook "planned" est une fiche documentaire pure : pas encore de requête réelle, donc pas de
+    # query.sql à exiger - la page wiki l'affiche (catégorie, description, colonnes envisagées),
+    # elle ne propose juste pas de bouton "lancer la requête" pour lui (voir status côté API).
+    if status == "implemented" and not sql_path.is_file():
+        raise HookDefinitionError(f"{sql_path} absent pour le hook implémenté {key!r}")
+    sql = sql_path.read_text(encoding="utf-8") if sql_path.is_file() else ""
+
     return DataHook(
         key=key,
         title=title,
         description=description,
         parameters=list(raw.get("parameters") or []),
         postprocessing=list(raw.get("postprocessing") or []),
-        sql=sql_path.read_text(encoding="utf-8"),
+        sql=sql,
         cache_key_column=raw.get("cache_key_column"),
+        category=raw.get("category", "Général"),
+        status=status,
+        raw_columns=_column_docs(raw.get("raw_columns")),
+        kpi_columns=_column_docs(raw.get("kpi_columns")),
+        example_rows=list(raw.get("example_rows") or []),
+        representative_column=raw.get("representative_column"),
     )
 
 
@@ -123,6 +198,8 @@ def run_hook(key: str, **params: Any) -> pd.DataFrame:
     doit renvoyer un DataFrame à son tour.
     """
     hook = load_hook(key)
+    if hook.status == "planned":
+        raise HookDefinitionError(f"le hook {key!r} est une fiche documentaire (status: planned) - pas encore de requête à exécuter")
     missing = [p for p in hook.parameters if p not in params]
     if missing:
         raise HookDefinitionError(f"paramètre(s) manquant(s) pour le hook {key!r} : {missing}")

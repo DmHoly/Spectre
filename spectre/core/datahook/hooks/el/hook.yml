@@ -1,0 +1,11 @@
+title: "EL"
+category: "Post Process"
+status: planned
+description: >
+  Mesures d'électroluminescence (EL) post-process. Fiche documentaire uniquement pour l'instant :
+  pas encore de requête SQL branchée.
+parameters: []
+postprocessing: []
+raw_columns: []
+kpi_columns: []
+example_rows: []
