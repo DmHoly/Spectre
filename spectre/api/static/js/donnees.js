@@ -225,6 +225,24 @@ function runnerHtml(hook) {
     </div>`;
 }
 
+// Les graphiques pédagogiques (charts, voir hook.yml) sont de la documentation, pas un résultat de
+// requête : dessinés une fois pour toutes sur un exemple figé (charts[].example), affichés à côté
+// des autres exemples de la fiche - jamais liés à "Tester en direct" ni à un wafer choisi par l'utilisateur.
+function hookChartsHtml(hook) {
+  if (!hook.charts || hook.charts.length === 0) return "";
+  return hook.charts
+    .map(
+      (c) => `
+      <div style="margin-top:14px;">
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px;">${escapeHtml(c.title)}</div>
+        <p class="help" style="margin-bottom:8px;">${escapeHtml(c.description || "")}</p>
+        <img src="/api/donnees/hooks/${encodeURIComponent(hook.key)}/graphiques/${encodeURIComponent(c.key)}"
+             alt="${escapeHtml(c.title)}" style="max-width:100%;border-radius:var(--radius-sm);border:1px solid var(--border-soft);">
+      </div>`
+    )
+    .join("");
+}
+
 function wireRunner(hook) {
   const form = document.getElementById("hook-run-form");
   if (!form) return;
@@ -326,6 +344,7 @@ async function renderHookPage(key) {
       <div class="section-title" style="margin-bottom:10px;">Exemple</div>
       ${exampleRowsTableHtml(hook.example_rows || [])}
       <div id="wiki-chart" style="margin-top:14px;"></div>
+      ${hookChartsHtml(hook)}
     </div>
 
     ${

@@ -15,6 +15,7 @@ import math
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ..core.accounts import User
@@ -45,6 +46,7 @@ def _hook_summary(key: str) -> dict[str, Any]:
         "kpi_columns": [_column_doc_json(c) for c in hook.kpi_columns],
         "example_rows": hook.example_rows,
         "representative_column": hook.representative_column,
+        "charts": [{"key": c.key, "title": c.title, "description": c.description} for c in hook.charts],
     }
 
 
@@ -133,3 +135,22 @@ def run_hook(key: str, body: RunHookRequest, user: User = Depends(get_current_us
     columns = list(df.columns)
     rows = [[_json_safe(v) for v in row] for row in df.itertuples(index=False, name=None)]
     return {"columns": columns, "rows": rows, "row_count": len(rows), **cache_summary}
+
+
+@router.get("/hooks/{key}/graphiques/{chart_key}")
+def get_hook_chart(key: str, chart_key: str, user: User = Depends(get_current_user)) -> Response:
+    """Rend en PNG un graphique déclaré par ce hook (voir hook.yml -> charts, et
+    spectre/core/datahook/charts). Toujours dessiné sur l'exemple figé du hook.yml (``charts[].
+    example``), jamais sur une vraie requête : la page wiki documente les données, elle ne relance
+    aucun calcul à l'affichage."""
+    try:
+        png = hooks.render_chart(key, chart_key)
+    except hooks.HookNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except hooks.HookDefinitionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("hook %r : échec du graphique %r (%s)", key, chart_key, exc)
+        raise HTTPException(status_code=502, detail=f"le graphique a échoué : {exc}") from exc
+
+    return Response(content=png, media_type="image/png")

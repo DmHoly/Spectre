@@ -39,11 +39,13 @@ import pandas as pd
 import yaml
 
 from . import cache, connection
+from .charts import common as charts_common
 
 logger = logging.getLogger(__name__)
 
 HOOKS_DIR = Path(__file__).resolve().parent / "hooks"
 POSTPROCESSING_PACKAGE = "spectre.core.datahook.postprocessing"
+CHARTS_PACKAGE = "spectre.core.datahook.charts"
 
 
 class HookNotFoundError(Exception):
@@ -65,6 +67,22 @@ class ColumnDoc:
     description: str
     example: Any = None
     source: str | None = None
+
+
+@dataclass(frozen=True)
+class ChartSpec:
+    """Un graphique pédagogique déclaré par un hook (voir charts/__init__.py) : une clé stable
+    (utilisée dans l'URL de l'image), un titre/description affichés sur la fiche wiki, la fonction
+    ``module:fonction`` qui le dessine, et ``example`` - une ligne de données écrite à la main dans
+    le ``hook.yml`` (comme ``example_rows``, mais avec les vecteurs complets dont un graphique a
+    besoin). La page wiki documente, elle ne calcule pas à l'affichage : ce graphique se dessine
+    toujours sur cet exemple figé, jamais sur une vraie requête - voir README.md."""
+
+    key: str
+    title: str
+    description: str
+    function: str
+    example: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -90,6 +108,10 @@ class DataHook:
     kpi_columns: list[ColumnDoc]
     example_rows: list[dict[str, Any]]
     representative_column: str | None
+    # Graphiques pédagogiques custom (facteur d'idéalité, résistance série...) - voir charts/. Rendus
+    # à la demande depuis de vraies données (pas depuis example_rows, souvent trop pauvres pour ça :
+    # un graphique a besoin des vecteurs complets, pas d'un scalaire par ligne).
+    charts: list[ChartSpec]
 
 
 def list_hooks() -> list[str]:
@@ -120,6 +142,21 @@ def _column_docs(entries: list[dict[str, Any]] | None) -> list[ColumnDoc]:
                 description=entry.get("description", ""),
                 example=entry.get("example"),
                 source=entry.get("source"),
+            )
+        )
+    return out
+
+
+def _chart_specs(entries: list[dict[str, Any]] | None) -> list[ChartSpec]:
+    out = []
+    for entry in entries or []:
+        out.append(
+            ChartSpec(
+                key=entry["key"],
+                title=entry.get("title", entry["key"]),
+                description=entry.get("description", ""),
+                function=entry["function"],
+                example=dict(entry.get("example") or {}),
             )
         )
     return out
@@ -170,6 +207,7 @@ def load_hook(key: str) -> DataHook:
         kpi_columns=_column_docs(raw.get("kpi_columns")),
         example_rows=list(raw.get("example_rows") or []),
         representative_column=raw.get("representative_column"),
+        charts=_chart_specs(raw.get("charts")),
     )
 
 
@@ -189,6 +227,38 @@ def _resolve_postprocessing_function(dotted_path: str) -> Callable[[pd.DataFrame
     if func is None or not callable(func):
         raise HookDefinitionError(f"fonction de post-traitement introuvable : {dotted_path!r}")
     return func
+
+
+def _resolve_chart_function(dotted_path: str) -> Callable[[pd.DataFrame], Any]:
+    """Même principe que :func:`_resolve_postprocessing_function`, mais résolu dans
+    ``spectre.core.datahook.charts`` - un graphique ne peut désigner que des fonctions qui y ont
+    été délibérément ajoutées, jamais un chemin arbitraire."""
+    if ":" not in dotted_path:
+        raise HookDefinitionError(f"graphique mal formé (attendu 'module:fonction') : {dotted_path!r}")
+    module_name, func_name = dotted_path.split(":", 1)
+    try:
+        module = importlib.import_module(f"{CHARTS_PACKAGE}.{module_name}")
+    except ImportError as exc:
+        raise HookDefinitionError(f"module de graphique introuvable : {module_name!r} ({exc})") from exc
+    func = getattr(module, func_name, None)
+    if func is None or not callable(func):
+        raise HookDefinitionError(f"fonction de graphique introuvable : {dotted_path!r}")
+    return func
+
+
+def render_chart(key: str, chart_key: str) -> bytes:
+    """Dessine le graphique ``chart_key`` déclaré dans le ``hook.yml`` de ``key``, sérialisé en PNG.
+    La page wiki documente les données, elle ne recalcule rien à l'affichage : ce graphique se
+    dessine toujours sur l'exemple figé (``example``, écrit à la main dans le ``hook.yml``, avec
+    les vecteurs complets), jamais sur une vraie requête - pas de paramètre, pas d'accès base."""
+    hook = load_hook(key)
+    spec = next((c for c in hook.charts if c.key == chart_key), None)
+    if spec is None:
+        raise HookDefinitionError(f"graphique inconnu {chart_key!r} pour le hook {key!r}")
+    df = pd.DataFrame([spec.example]) if spec.example else pd.DataFrame()
+    func = _resolve_chart_function(spec.function)
+    fig = func(df)
+    return charts_common.render_png(fig)
 
 
 def run_hook(key: str, **params: Any) -> pd.DataFrame:

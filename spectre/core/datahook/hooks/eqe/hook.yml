@@ -84,6 +84,22 @@ kpi_columns:
     source: "eqe:apply_eqe_kpi"
     example: true
 
+charts:
+  - key: iv_extraction
+    title: "Facteur d'idéalité & résistance série (I-V)"
+    description: >
+      Courbe I-V d'un device réel (wafer 16J5A426MMD4, MONO2-1.55x1.55-5852-R), avec l'ajustement
+      qui sert à en extraire le facteur d'idéalité (pente de ln(I) vs V en zone exponentielle) et
+      la résistance série (pente de V vs I en haute injection) - deux grandeurs qu'on ne lit pas
+      directement dans le tableau de KPI ci-dessus. Fige un exemple réel (sous-échantillonné pour
+      rester lisible dans ce fichier) plutôt que de relancer une requête : cette fiche documente,
+      elle ne recalcule rien à l'affichage.
+    function: "eqe:iv_curve_with_extraction"
+    example:
+      Led_Name: "MONO2-1.55x1.55-5852-R"
+      V: [-4.9993, -3.333, -1.6663, 0.0001, 0.5001, 0.8451, 0.8457, 0.8466, 0.8489, 1.01, 1.2746, 1.5829, 2.2613, 2.7064, 3.4465, 3.9251, 4.557, 5.411, 6.5982]
+      I: [-2.63373e-3, -1.02016e-3, -2.53652e-4, 3.77926e-9, 1.5737e-4, 5.00124e-4, 5.00053e-4, 5.00051e-4, 5.0005e-4, 7.53889e-4, 1.1368e-3, 1.71365e-3, 2.58326e-3, 3.89417e-3, 5.87038e-3, 8.84917e-3, 1.334e-2, 2.01116e-2, 3.03185e-2]
+
 representative_column: "max_EQE"
 example_rows:
   - wafername: "16J5A426MMD4"

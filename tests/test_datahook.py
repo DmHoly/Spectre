@@ -182,6 +182,30 @@ def test_run_hook_applies_eqe_postprocessing(monkeypatch):
     assert len(row["Wavelength"]) == 3
 
 
+def test_eqe_hook_declares_iv_extraction_chart_with_embedded_example():
+    hook = hooks.load_hook("eqe")
+    assert len(hook.charts) == 1
+    chart = hook.charts[0]
+    assert chart.key == "iv_extraction"
+    assert chart.function == "eqe:iv_curve_with_extraction"
+    # la fiche wiki dessine toujours sur un exemple figé dans le hook.yml, jamais une vraie requête.
+    assert len(chart.example["V"]) == len(chart.example["I"]) > 0
+
+
+def test_render_chart_produces_a_png_without_touching_the_database(monkeypatch):
+    def fail_if_called(sql, params):
+        raise AssertionError("render_chart ne doit jamais interroger la base - il documente un exemple figé")
+
+    monkeypatch.setattr("spectre.core.datahook.connection.run_query", fail_if_called)
+    png = hooks.render_chart("eqe", "iv_extraction")
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_render_chart_unknown_chart_key_raises():
+    with pytest.raises(hooks.HookDefinitionError):
+        hooks.render_chart("eqe", "ne-existe-pas")
+
+
 def test_downsample_spectra_keeps_roughly_n_points():
     wavelengths = list(range(1000))
     spectra = [[float(i) for i in range(1000)], [float(i) * 2 for i in range(1000)]]
