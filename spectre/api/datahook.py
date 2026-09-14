@@ -34,6 +34,7 @@ def _hook_summary(key: str) -> dict[str, Any]:
         "description": hook.description,
         "parameters": hook.parameters,
         "postprocessing": hook.postprocessing,
+        "cacheable": bool(hook.cache_key_column) and "wafer_names" in hook.parameters,
     }
 
 
@@ -56,6 +57,10 @@ class RunHookRequest(BaseModel):
     # Un paramètre de hook est toujours une liste de chaînes à ce jour (wafer_names...) - un champ
     # libre plutôt qu'un modèle par hook, puisque chaque hook déclare son propre jeu de paramètres.
     parameters: dict[str, list[str]] = {}
+    # Ignore le cache disque et retape la base pour tous les wafers demandés - utile si une mesure
+    # a été refaite depuis la dernière consultation. Sans effet sur un hook non cacheable
+    # (cache_key_column absent, ex. waferlist).
+    refresh: bool = False
 
 
 def _json_safe(value: Any) -> Any:
@@ -86,8 +91,14 @@ def run_hook(key: str, body: RunHookRequest, user: User = Depends(get_current_us
     if missing:
         raise HTTPException(status_code=422, detail=f"paramètre(s) manquant(s) : {missing}")
 
+    cache_summary: dict[str, Any] = {}
     try:
-        df = hooks.run_hook(key, **body.parameters)
+        if hook.cache_key_column and "wafer_names" in hook.parameters:
+            result = hooks.run_hook_cached(key, wafer_names=body.parameters.get("wafer_names", []), refresh=body.refresh)
+            df = result.df
+            cache_summary = {"from_cache": result.from_cache, "fetched": result.fetched}
+        else:
+            df = hooks.run_hook(key, **body.parameters)
     except hooks.HookDefinitionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except connection.DatahookConfigError as exc:
@@ -98,4 +109,4 @@ def run_hook(key: str, body: RunHookRequest, user: User = Depends(get_current_us
 
     columns = list(df.columns)
     rows = [[_json_safe(v) for v in row] for row in df.itertuples(index=False, name=None)]
-    return {"columns": columns, "rows": rows, "row_count": len(rows)}
+    return {"columns": columns, "rows": rows, "row_count": len(rows), **cache_summary}

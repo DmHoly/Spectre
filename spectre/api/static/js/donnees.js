@@ -31,11 +31,21 @@ function hookDetailsHtml(hook) {
     ? `<div class="help" style="margin-top:8px;">Post-traitement : ${hook.postprocessing.map(escapeHtml).join(", ")}</div>`
     : "";
 
+  // Le cache disque (voir spectre/core/datahook/cache.py) ne s'applique qu'aux hooks qui
+  // déclarent cache_key_column ET prennent wafer_names - offrir la case sinon ("forcer le
+  // rafraîchissement") n'aurait aucun effet et laisserait croire que ce hook est mis en cache.
+  const cacheHtml = hook.cacheable
+    ? `<label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12.5px;font-weight:400;">
+         <input type="checkbox" id="hook-refresh-checkbox"> Forcer le rafraîchissement (ignorer le cache)
+       </label>`
+    : "";
+
   return `
     <p style="font-size:13px;color:var(--text-soft);line-height:1.55;white-space:pre-line;">${escapeHtml(hook.description)}</p>
     ${postHtml}
     <form id="hook-run-form" style="margin-top:12px;">
       ${paramsHtml}
+      ${cacheHtml}
       <button class="btn btn-primary" type="submit" style="margin-top:12px;">Lancer la requête</button>
     </form>`;
 }
@@ -59,11 +69,13 @@ function renderHookDetails(key) {
         .map((v) => v.trim())
         .filter((v) => v.length > 0);
     });
+    const refreshCheckbox = document.getElementById("hook-refresh-checkbox");
+    const refresh = refreshCheckbox ? refreshCheckbox.checked : false;
     const submitBtn = event.target.querySelector("button[type=submit]");
     submitBtn.disabled = true;
     submitBtn.textContent = "Requête en cours…";
     try {
-      const result = await api.post(`/api/donnees/hooks/${encodeURIComponent(key)}/executer`, { parameters });
+      const result = await api.post(`/api/donnees/hooks/${encodeURIComponent(key)}/executer`, { parameters, refresh });
       renderResults(result);
     } catch (err) {
       showError(err);
@@ -83,8 +95,14 @@ function cellText(value) {
 
 function renderResults(result) {
   document.getElementById("results-card").style.display = "";
-  document.getElementById("results-summary").textContent =
-    result.row_count === 0 ? "Aucune ligne renvoyée." : `${result.row_count} ligne${result.row_count > 1 ? "s" : ""}.`;
+  const countLabel = result.row_count === 0 ? "Aucune ligne renvoyée." : `${result.row_count} ligne${result.row_count > 1 ? "s" : ""}.`;
+  // from_cache/fetched n'existent que pour un hook cacheable (voir _hook_summary côté API) - absents
+  // pour les autres, où la distinction cache/base n'a pas de sens.
+  const cacheLabel =
+    result.from_cache !== undefined
+      ? ` (${result.from_cache.length} wafer${result.from_cache.length > 1 ? "s" : ""} en cache, ${result.fetched.length} requêté${result.fetched.length > 1 ? "s" : ""})`
+      : "";
+  document.getElementById("results-summary").textContent = countLabel + cacheLabel;
 
   const table = document.getElementById("donnees-table");
   if (result.row_count === 0) {

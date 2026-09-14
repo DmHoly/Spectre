@@ -1,0 +1,17 @@
+title: "EQE / LIV"
+description: >
+  Balayage I-V-EQE-spectre par device (une ligne = un device, chaque colonne de mesure porte le
+  vecteur du balayage complet, pas juste un point). Le post-traitement en tire les grandeurs
+  comparables d'un device/wafer à l'autre : EQE max et le point de fonctionnement associé
+  (tension, courant, longueur d'onde dominante, pureté), rendement d'allumage par wafer (%
+  is_lit), densité de courant (surface calculée depuis le nom du device), spectre (longueur
+  d'onde/FWHM du pic) et couleur sRGB approximative (CIE xy), plus les mêmes grandeurs
+  interpolées à 25 A/cm² pour comparer des devices de tailles différentes à même régime de
+  fonctionnement. Reprend la logique de legacy/get_data.py::get_liv +
+  legacy/liv_kpi_calculation.py + legacy/color_kpi_calculation.py::ciexy_to_hex.
+parameters:
+  - wafer_names
+postprocessing:
+  - eqe:apply_eqe_kpi
+  - eqe:downsample_spectra
+cache_key_column: wafername

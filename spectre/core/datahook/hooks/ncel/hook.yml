@@ -7,3 +7,4 @@ parameters:
   - wafer_names
 postprocessing:
   - ncel:apply_ncel_kpi
+cache_key_column: wafername

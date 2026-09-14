@@ -28,7 +28,7 @@ from typing import Any, Callable
 import pandas as pd
 import yaml
 
-from . import connection
+from . import cache, connection
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,10 @@ class DataHook:
     parameters: list[str]
     postprocessing: list[str]
     sql: str
+    # Le nom de la colonne (dans le résultat déjà post-traité) qui identifie le wafer d'une ligne -
+    # ce qui permet de mettre ce hook en cache par wafer (voir run_hook_cached). None : ce hook ne
+    # se prête pas au cache par wafer (ex. waferlist, qui ne prend pas de wafer_names du tout).
+    cache_key_column: str | None
 
 
 def list_hooks() -> list[str]:
@@ -90,6 +94,7 @@ def load_hook(key: str) -> DataHook:
         parameters=list(raw.get("parameters") or []),
         postprocessing=list(raw.get("postprocessing") or []),
         sql=sql_path.read_text(encoding="utf-8"),
+        cache_key_column=raw.get("cache_key_column"),
     )
 
 
@@ -127,3 +132,52 @@ def run_hook(key: str, **params: Any) -> pd.DataFrame:
         func = _resolve_postprocessing_function(step)
         df = func(df)
     return df
+
+
+class CacheResult:
+    """Le résultat de :func:`run_hook_cached` : le DataFrame combiné, plus le détail de quels
+    wafers venaient du cache disque et lesquels viennent d'être requêtés (et donc mis en cache à
+    l'instant) - utile à l'appelant pour l'afficher ("3 wafers en cache, 2 requêtés").
+    """
+
+    def __init__(self, df: pd.DataFrame, from_cache: list[str], fetched: list[str]):
+        self.df = df
+        self.from_cache = from_cache
+        self.fetched = fetched
+
+
+def run_hook_cached(key: str, wafer_names: list[str], refresh: bool = False) -> CacheResult:
+    """Comme :func:`run_hook`, mais met le résultat en cache disque **par wafer**
+    (:mod:`spectre.core.datahook.cache`) : un wafer déjà vu (par cette requête ou une précédente,
+    même sur un lot différent) est relu instantanément depuis son fichier JSON plutôt que
+    retaper la base ; seuls les wafers manquants (ou tous, si ``refresh=True``) déclenchent une
+    vraie requête. Ne s'applique qu'aux hooks qui déclarent ``cache_key_column`` dans leur
+    ``hook.yml`` - les autres (ex. ``waferlist``, qui ne prend pas ``wafer_names``) retombent sur
+    :func:`run_hook` tel quel, sans mise en cache.
+    """
+    hook = load_hook(key)
+    if not hook.cache_key_column:
+        return CacheResult(run_hook(key, wafer_names=wafer_names), from_cache=[], fetched=list(wafer_names))
+
+    from_cache_frames: list[pd.DataFrame] = []
+    from_cache: list[str] = []
+    missing: list[str] = []
+    for wafer in wafer_names:
+        cached_rows = None if refresh else cache.read_cached_rows(key, wafer)
+        if cached_rows is None:
+            missing.append(wafer)
+        else:
+            from_cache.append(wafer)
+            from_cache_frames.append(pd.DataFrame(cached_rows))
+
+    fetched_frames: list[pd.DataFrame] = []
+    if missing:
+        fresh_df = run_hook(key, wafer_names=missing)
+        for wafer in missing:
+            wafer_df = fresh_df[fresh_df[hook.cache_key_column] == wafer] if not fresh_df.empty else fresh_df
+            cache.write_cache(key, wafer, wafer_df.to_dict(orient="records"))
+        fetched_frames.append(fresh_df)
+
+    frames = [f for f in (*from_cache_frames, *fetched_frames) if not f.empty]
+    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return CacheResult(combined, from_cache=from_cache, fetched=missing)
