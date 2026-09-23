@@ -44,13 +44,21 @@ call .venv\Scripts\activate.bat
 echo Mise a jour de pip ...
 python -m pip install --upgrade pip
 
-echo Installation de Spectre et de ses dependances ^(StructureForge, Follow^) ...
-echo Cette etape telecharge du code depuis GitHub, elle peut prendre quelques minutes.
+echo Installation de Spectre et de ses dependances ^(StructureForge, Follow, PRISM^) ...
+echo Cette etape telecharge du code depuis GitHub et gitlab-it.aledia.com ^(reseau Aledia requis^),
+echo elle peut prendre quelques minutes.
 pip install -e ".[dev]"
 if errorlevel 1 (
     echo [ERREUR] L'installation a echoue - voir le message ci-dessus.
     pause
     exit /b 1
+)
+
+if not exist "%USERPROFILE%\.prism\connections.yml" (
+    echo.
+    echo [A FAIRE] PRISM n'est pas encore configure : la page Data ne pourra pas interroger les bases.
+    echo Creez %USERPROFILE%\.prism\connections.yml et credentials.ini - voir la section
+    echo "Donnees de caracterisation - PRISM" du README. La commande "prism doctor" verifie tout.
 )
 
 echo.

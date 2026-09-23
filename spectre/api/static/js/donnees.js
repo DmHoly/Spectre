@@ -1,4 +1,4 @@
-/* Page "wiki" du dictionnaire de hooks (spectre/core/datahook) :
+/* Page "wiki" du dictionnaire de hooks PRISM (paquet prism-aledia-datahook) :
    - /donnees              -> le hub, une carte par catégorie (Post EPI, Structure...), chaque hook
                               en chip (implémenté = cliquable, "planned" = grisé "à venir").
    - /donnees/<key>         -> la fiche d'un hook : description, colonnes niveau 1 (données brutes,
@@ -9,7 +9,7 @@
                               implémenté - un testeur en direct (mêmes paramètres, exécute
                               vraiment la requête, comme avant).
 
-   Tout vient de hook.yml (voir spectre/core/datahook/hooks.py) via /api/donnees/categories -
+   Tout vient des hook.yml de PRISM (voir prism/hooks.py) via /api/donnees/categories -
    rien de tout ça n'est câblé en dur ici. */
 
 const errorBox = document.getElementById("error");
@@ -69,7 +69,7 @@ async function renderHub() {
   root.innerHTML = `
     <h1 style="font-size:24px;margin-bottom:6px;">Data</h1>
     <p style="color:var(--text-soft);font-size:14px;margin-bottom:20px;max-width:70ch;">
-      Le dictionnaire de données de cette installation (<code>spectre/core/datahook</code>), organisé
+      Le dictionnaire de données partagé <a href="https://gitlab-it.aledia.com/sda/tools/soft/prism" target="_blank" rel="noopener">PRISM</a>, organisé
       par catégorie. Chaque source documente ses données brutes (niveau 1) et les KPI qu'on en calcule
       (niveau 2), avec un exemple et un graphique - avant même de lancer une vraie requête.
     </p>

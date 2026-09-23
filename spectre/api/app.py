@@ -9,13 +9,14 @@ tie them into one workflow.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..core.db import init_db
+from ..core.db import data_dir, init_db
 from . import atlas as atlas_router
 from . import auth as auth_router
 from . import datahook as datahook_router
@@ -33,6 +34,10 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 def create_app() -> FastAPI:
     init_db()
+    # Le cache disque de PRISM (résultats de hooks par wafer) vit avec le reste des données de
+    # Spectre - donc dans le volume monté en production - plutôt que sous ~/.prism/data. Une
+    # valeur explicite de PRISM_DATA_DIR reste prioritaire.
+    os.environ.setdefault("PRISM_DATA_DIR", str(data_dir() / "prism"))
 
     app = FastAPI(title="Spectre", docs_url=None, redoc_url=None)
 

@@ -48,7 +48,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo Recuperation des dernieres versions de StructureForge et Follow depuis GitHub ...
+echo Recuperation des dernieres versions de StructureForge, Follow ^(GitHub^) et PRISM ^(GitLab^) ...
 echo ^(pip garde sinon la version deja installee meme si le depot a change^)
 pip install --upgrade --force-reinstall --no-deps "structureforge[follow] @ git+https://github.com/dmholy/structureforge.git@main"
 if errorlevel 1 (
@@ -59,6 +59,13 @@ if errorlevel 1 (
 pip install --upgrade --force-reinstall --no-deps "follow @ git+https://github.com/DmHoly/Follow.git"
 if errorlevel 1 (
     echo [ERREUR] La mise a jour de Follow a echoue - voir le message ci-dessus.
+    pause
+    exit /b 1
+)
+pip install --upgrade --force-reinstall --no-deps "prism-aledia-datahook @ git+https://gitlab-it.aledia.com/sda/tools/soft/prism.git@master"
+if errorlevel 1 (
+    echo [ERREUR] La mise a jour de PRISM a echoue - voir le message ci-dessus.
+    echo Verifiez l'acces a gitlab-it.aledia.com ^(reseau Aledia / VPN, identifiants Git^).
     pause
     exit /b 1
 )

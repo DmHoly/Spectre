@@ -1,7 +1,7 @@
 [project]
 name = "spectre"
 version = "0.1.0"
-description = "Suivi d'expériences : intégration métier de StructureForge (définition de structure) et Follow (suivi/versioning), avec comptes utilisateurs, projets et droits."
+description = "Suivi d'expériences : intégration métier de StructureForge (définition de structure), Follow (suivi/versioning) et PRISM (données de caractérisation), avec comptes utilisateurs, projets et droits."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -11,7 +11,9 @@ dependencies = [
     "pydantic>=2.7",
     "python-multipart>=0.0.9",
     "structureforge[follow] @ git+https://github.com/dmholy/structureforge.git@main",
-    "psycopg2-binary>=2.9",
+    # PRISM : le dictionnaire de données de caractérisation (hooks, connexions, cache, KPI).
+    # [postgres] amène psycopg2, [charts] le rendu des graphiques de la page /donnees.
+    "prism-aledia-datahook[postgres,charts] @ git+https://gitlab-it.aledia.com/sda/tools/soft/prism.git@master",
     "pandas>=2.0",
     "scipy>=1.11",
     "matplotlib>=3.8",

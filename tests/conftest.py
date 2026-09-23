@@ -7,6 +7,8 @@ import pytest
 def data_dir(tmp_path, monkeypatch):
     path = tmp_path / "data"
     monkeypatch.setenv("SPECTRE_DATA_DIR", str(path))
+    # Le cache PRISM aussi : jamais le vrai ~/.prism/data d'un développeur depuis un test.
+    monkeypatch.setenv("PRISM_DATA_DIR", str(path / "prism"))
     return path
 
 

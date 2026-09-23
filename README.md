@@ -2,15 +2,18 @@
 
 Suivi d'expériences de procédé, de la définition de la structure jusqu'à la conclusion.
 
-Spectre est l'application métier qui relie deux bibliothèques :
+Spectre est l'application métier qui relie trois bibliothèques :
 
 - **[StructureForge](https://github.com/dmholy/structureforge)** : construire et simuler la
   structure d'un empilement de couches (substrat, dépôt, gravure, planarisation, lithographie).
 - **[Follow](https://github.com/dmholy/follow)** : suivre l'évolution d'une expérience dans le
   temps (versions successives, comparaisons, conclusions), sans jamais l'exposer avec du
   vocabulaire technique.
+- **[PRISM](https://gitlab-it.aledia.com/sda/tools/soft/prism)** (`prism-aledia-datahook`) : le
+  dictionnaire des données de caractérisation (EQE, PL, NCEL...) - requêtes, formules KPI, cache,
+  documentation - partagé avec les autres projets Aledia. C'est lui qui alimente la page **Data**.
 
-Spectre lui-même n'ajoute que ce qui manque aux deux bibliothèques pour devenir une application
+Spectre lui-même n'ajoute que ce qui manque à ces bibliothèques pour devenir une application
 d'équipe : des comptes utilisateurs, plusieurs µprojets avec des droits de modification, une couche
 de pilotage stratégique par-dessus, et une interface unique et simple - une **fiche d'identité**
 par expérience.
@@ -52,7 +55,8 @@ Prérequis : [Python 3.11+](https://www.python.org/downloads/) (cocher « Add py
    ```
 2. Double-cliquer **`install.bat`** (ou l'exécuter depuis une invite de commandes). Il crée un
    environnement virtuel `.venv` et installe Spectre avec ses dépendances (StructureForge,
-   Follow - téléchargées depuis GitHub, ça peut prendre quelques minutes).
+   Follow - téléchargées depuis GitHub - et PRISM, depuis gitlab-it.aledia.com : il faut donc être
+   sur le réseau Aledia ; ça peut prendre quelques minutes).
 3. Double-cliquer **`start.bat`**. Une fenêtre s'ouvre avec les journaux du serveur, et le
    navigateur s'ouvre automatiquement sur `http://127.0.0.1:8000/`.
 
@@ -60,9 +64,9 @@ Pour arrêter le serveur : fermer la fenêtre de journaux (ou `Ctrl+C` dedans). 
 tard, `start.bat` suffit - pas besoin de relancer `install.bat` à chaque fois.
 
 Pour mettre à jour vers la dernière version : double-cliquer **`update.bat`**. Il récupère les
-derniers changements de Spectre (`git pull`) et force le rechargement de StructureForge et Follow
-depuis GitHub - les trois dépôts dont dépend l'application - puisque `pip` garde sinon la version
-déjà installée même quand ces dépôts ont changé.
+derniers changements de Spectre (`git pull`) et force le rechargement de StructureForge, Follow
+(GitHub) et PRISM (GitLab) - les dépôts dont dépend l'application - puisque `pip` garde sinon la
+version déjà installée même quand ces dépôts ont changé.
 
 ### macOS / Linux
 
@@ -76,6 +80,30 @@ spectre --port 8000
 
 Les données (comptes, projets, dépôts d'expériences, présets d'étape) sont écrites sous `./data`
 par défaut - voir `SPECTRE_DATA_DIR` pour changer cet emplacement.
+
+### Données de caractérisation (PRISM)
+
+La page **Data** interroge les bases de caractérisation via PRISM, qui se configure une fois par
+poste, **hors du dépôt** (rien de secret n'est jamais commité ici) :
+
+1. copier le modèle
+   [`config/connections.example.yml`](https://gitlab-it.aledia.com/sda/tools/soft/prism/-/blob/master/config/connections.example.yml)
+   de PRISM en `~/.prism/connections.yml` (`%USERPROFILE%\.prism\connections.yml` sous
+   Windows) - hôtes et bases, sans mot de passe ;
+2. créer `~/.prism/credentials.ini` avec le compte de lecture :
+   ```ini
+   [DEFAULT]
+   user = ...
+   password = ...
+   ```
+   (ou les variables d'environnement `PRISM_USER` / `PRISM_PASSWORD` ; l'ancienne section
+   `[DB_CREDENTIALS]` et `DB_LUMIERE_USER` / `DB_LUMIERE_PASSWORD` restent acceptées) ;
+3. vérifier, sans se connecter à rien : `prism doctor`.
+
+Sans cette configuration Spectre fonctionne normalement ; seule l'exécution d'une requête depuis
+la page Data renvoie « configuration de connexion incomplète ». Le cache par wafer de PRISM est
+rangé sous `<SPECTRE_DATA_DIR>/prism`. Pour ajouter ou corriger une donnée (requête, KPI), c'est
+dans le dépôt PRISM que ça se passe, plus dans Spectre.
 
 ### Administrateur (couche Management)
 
@@ -120,7 +148,7 @@ docker compose up -d --build
 ```
 
 L'image (voir `Dockerfile`) installe le paquet avec pip (nécessite un accès réseau sortant vers
-GitHub, `structureforge` étant une dépendance `git+https`), tourne en utilisateur non privilégié
+GitHub et gitlab-it.aledia.com, `structureforge` et PRISM étant des dépendances `git+https`), tourne en utilisateur non privilégié
 et écrit ses données sous `/data` - `docker-compose.yml` monte ce chemin en volume nommé pour
 qu'elles survivent à un redémarrage du conteneur. Sans `docker compose`, l'équivalent direct :
 
@@ -139,6 +167,9 @@ Variables d'environnement reconnues :
 | `SPECTRE_SMTP_PORT` | Port SMTP | `587` |
 | `SPECTRE_SMTP_USER` / `SPECTRE_SMTP_PASSWORD` | Identifiants SMTP | (aucun) |
 | `SPECTRE_SMTP_FROM` | Adresse d'expéditeur | `SPECTRE_SMTP_USER`, sinon `spectre@localhost` |
+| `PRISM_CONNECTIONS_FILE` | Fichier de profils de connexion PRISM (à monter dans le conteneur) | `~/.prism/connections.yml` |
+| `PRISM_USER` / `PRISM_PASSWORD` | Identifiants des bases de caractérisation (ou `PRISM_<PROFIL>_USER`...) | (aucun) |
+| `PRISM_DATA_DIR` | Cache disque de PRISM | `<SPECTRE_DATA_DIR>/prism` |
 
 Il n'y a pas de pipeline d'intégration continue : construire l'image et lancer `pytest` avant de
 déployer reste une étape manuelle.
@@ -147,7 +178,8 @@ déployer reste une étape manuelle.
 
 - `spectre/core/` - accès aux données (comptes, sessions, µprojets, droits, thèmes de management)
   et le pont vers StructureForge/Follow. Aucune logique de simulation, de diff ou de versioning
-  n'est réécrite ici : elle est importée depuis les deux bibliothèques.
+  n'est réécrite ici : elle est importée depuis les bibliothèques. De même, aucune requête ni
+  formule KPI de caractérisation : `spectre/api/datahook.py` n'est que l'adaptateur HTTP de PRISM.
   - `management.py` : les thèmes de pilotage stratégique (au-dessus des µprojets).
   - `registry.py` : la bibliothèque racine éditable (`library/*.yml` - matériaux, présets,
     briques, recettes), rechargée à chaud.

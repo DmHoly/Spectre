@@ -1,8 +1,13 @@
 # Spectre - image de production.
 #
-# Le paquet dépend de structureforge[follow] installé depuis GitHub (voir pyproject.toml) :
-# construire cette image nécessite donc un accès réseau sortant vers GitHub. Rien d'autre à
-# compiler (pas d'extension C) - une seule étape suffit.
+# Le paquet dépend de structureforge[follow] installé depuis GitHub et de PRISM
+# (prism-aledia-datahook) installé depuis gitlab-it.aledia.com (voir pyproject.toml) : construire
+# cette image nécessite donc un accès réseau sortant vers GitHub et vers le GitLab interne. Rien
+# d'autre à compiler (pas d'extension C) - une seule étape suffit.
+#
+# PRISM se configure au lancement, pas dans l'image : monter un connections.yml et fournir les
+# identifiants par variables d'environnement (PRISM_USER / PRISM_PASSWORD, ou PRISM_<PROFIL>_*),
+# avec PRISM_CONNECTIONS_FILE pointé sur le fichier monté.
 
 FROM python:3.11-slim
 
@@ -22,7 +27,7 @@ RUN pip install --no-cache-dir .
 
 # Les données (comptes, projets, dépôts d'expériences Follow, recettes) sont écrites ici - monter
 # un volume sur ce chemin pour les faire survivre à un redémarrage du conteneur.
-ENV SPECTRE_DATA_DIR=/data
+ENV SPECTRE_DATA_DIR=/data     PRISM_DATA_DIR=/data/prism
 RUN mkdir -p /data
 
 # Utilisateur non privilégié : l'image ne tourne jamais en root.

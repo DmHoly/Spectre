@@ -1,11 +1,13 @@
-"""API de consultation du dictionnaire de hooks (spectre/core/datahook) - lister les hooks
-disponibles, voir la fiche de l'un d'eux (titre/description/paramètres attendus), et lancer sa
-requête pour voir ce qu'elle renvoie. Page associée : /donnees (voir static/donnees.html).
+"""API de consultation du dictionnaire de données PRISM (paquet ``prism-aledia-datahook``, voir
+https://gitlab-it.aledia.com/sda/tools/soft/prism) - lister les hooks disponibles, voir la fiche de
+l'un d'eux (titre/description/paramètres attendus), et lancer sa requête pour voir ce qu'elle
+renvoie. Page associée : /donnees (voir static/donnees.html).
 
-Cette API parle à une vraie base PostgreSQL externe (voir spectre.core.datahook.connection) - les
-erreurs de connexion/requête sont donc attendues (mauvais identifiants, base injoignable, requête
-invalide) et renvoyées comme des 400/502 lisibles plutôt que de laisser remonter une trace psycopg2
-brute.
+Spectre ne porte plus aucune requête ni formule KPI : tout vit dans PRISM, partagé avec les autres
+projets. Ce module n'est que l'adaptateur HTTP. PRISM parle à de vraies bases externes (profils de
+``~/.prism/connections.yml``) - les erreurs de configuration/connexion/requête sont donc attendues
+(identifiants absents, base injoignable, requête invalide) et renvoyées comme des 400/502 lisibles
+plutôt que de laisser remonter une trace brute.
 """
 
 from __future__ import annotations
@@ -18,8 +20,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+import prism
+
 from ..core.accounts import User
-from ..core.datahook import connection, hooks
 from .deps import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -27,12 +30,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/donnees", tags=["donnees"])
 
 
-def _column_doc_json(col: hooks.ColumnDoc) -> dict[str, Any]:
-    return {"name": col.name, "description": col.description, "example": col.example, "source": col.source}
+def _column_doc_json(col: prism.ColumnDoc) -> dict[str, Any]:
+    return {
+        "name": col.name,
+        "description": col.description,
+        "example": col.example,
+        "source": col.source,
+        "formula": col.formula,
+        "unit": col.unit,
+    }
 
 
 def _hook_summary(key: str) -> dict[str, Any]:
-    hook = hooks.load_hook(key)
+    hook = prism.load_hook(key)
     return {
         "key": hook.key,
         "title": hook.title,
@@ -52,7 +62,7 @@ def _hook_summary(key: str) -> dict[str, Any]:
 
 @router.get("/hooks")
 def list_hooks(user: User = Depends(get_current_user)) -> dict:
-    return {"hooks": [_hook_summary(key) for key in hooks.list_hooks()]}
+    return {"hooks": [_hook_summary(key) for key in prism.list_hooks()]}
 
 
 @router.get("/categories")
@@ -61,7 +71,7 @@ def list_categories(user: User = Depends(get_current_user)) -> dict:
     "Structure"...) avec ses hooks, implémentés et "planned" (fiche documentaire seule) mêlés -
     c'est ``status`` sur chaque hook qui dit à la page s'il propose un bouton "lancer la requête".
     """
-    grouped = hooks.list_hooks_by_category()
+    grouped = prism.list_hooks_by_category()
     return {"categories": [{"name": name, "hooks": [_hook_summary(h.key) for h in hs]} for name, hs in grouped.items()]}
 
 
@@ -69,9 +79,9 @@ def list_categories(user: User = Depends(get_current_user)) -> dict:
 def get_hook(key: str, user: User = Depends(get_current_user)) -> dict:
     try:
         return _hook_summary(key)
-    except hooks.HookNotFoundError as exc:
+    except prism.HookNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except hooks.HookDefinitionError as exc:
+    except prism.HookDefinitionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -105,8 +115,8 @@ def _json_safe(value: Any) -> Any:
 @router.post("/hooks/{key}/executer")
 def run_hook(key: str, body: RunHookRequest, user: User = Depends(get_current_user)) -> dict:
     try:
-        hook = hooks.load_hook(key)
-    except hooks.HookNotFoundError as exc:
+        hook = prism.load_hook(key)
+    except prism.HookNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     if hook.status == "planned":
@@ -119,16 +129,16 @@ def run_hook(key: str, body: RunHookRequest, user: User = Depends(get_current_us
     cache_summary: dict[str, Any] = {}
     try:
         if hook.cache_key_column and "wafer_names" in hook.parameters:
-            result = hooks.run_hook_cached(key, wafer_names=body.parameters.get("wafer_names", []), refresh=body.refresh)
+            result = prism.run_hook_cached(key, wafer_names=body.parameters.get("wafer_names", []), refresh=body.refresh)
             df = result.df
             cache_summary = {"from_cache": result.from_cache, "fetched": result.fetched}
         else:
-            df = hooks.run_hook(key, **body.parameters)
-    except hooks.HookDefinitionError as exc:
+            df = prism.run_hook(key, **body.parameters)
+    except prism.HookDefinitionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except connection.DatahookConfigError as exc:
+    except prism.ConfigError as exc:
         raise HTTPException(status_code=400, detail=f"configuration de connexion incomplète : {exc}") from exc
-    except Exception as exc:  # psycopg2.Error et consorts - jamais une trace brute côté client
+    except Exception as exc:  # ConnectionFailed, QueryFailed, post-traitement - jamais une trace brute côté client
         logger.warning("hook %r : échec de la requête (%s)", key, exc)
         raise HTTPException(status_code=502, detail=f"la requête a échoué : {exc}") from exc
 
@@ -140,14 +150,14 @@ def run_hook(key: str, body: RunHookRequest, user: User = Depends(get_current_us
 @router.get("/hooks/{key}/graphiques/{chart_key}")
 def get_hook_chart(key: str, chart_key: str, user: User = Depends(get_current_user)) -> Response:
     """Rend en PNG un graphique déclaré par ce hook (voir hook.yml -> charts, et
-    spectre/core/datahook/charts). Toujours dessiné sur l'exemple figé du hook.yml (``charts[].
+    prism.charts). Toujours dessiné sur l'exemple figé du hook.yml (``charts[].
     example``), jamais sur une vraie requête : la page wiki documente les données, elle ne relance
     aucun calcul à l'affichage."""
     try:
-        png = hooks.render_chart(key, chart_key)
-    except hooks.HookNotFoundError as exc:
+        png = prism.render_chart(key, chart_key)
+    except prism.HookNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except hooks.HookDefinitionError as exc:
+    except prism.HookDefinitionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.warning("hook %r : échec du graphique %r (%s)", key, chart_key, exc)
