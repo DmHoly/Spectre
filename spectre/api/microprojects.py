@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from ..core import atlas as atlas_core
 from ..core import management, microprojects
 from ..core.accounts import User
-from ..core.management import ManagementAreaNotFoundError
+from ..core.management import ManagementAreaNotFoundError, ThematicNotFoundError
 from ..core.permissions import require_admin, require_role
 from ..core.microprojects import Microproject
 from .deps import get_current_user
@@ -25,7 +25,8 @@ CONCLUDED_STATUSES = microprojects.CONCLUDED_STATUSES
 class CreateMicroprojectRequest(BaseModel):
     name: str
     description: str = ""
-    management_area_slug: str | None = None  # which grand thème it belongs to (default: « Non classé »)
+    management_area_slug: str | None = None  # which corporate project it belongs to (default: « Non classé »)
+    thematique_slug: str | None = None  # one of that project's thématiques (optional)
 
 
 class AddMemberRequest(BaseModel):
@@ -50,6 +51,16 @@ def _area_ref(management_area_id: int | None) -> dict | None:
     return {"slug": area.slug, "name": area.name}
 
 
+def _thematic_ref(thematic_id: int | None) -> dict | None:
+    if thematic_id is None:
+        return None
+    try:
+        thematic = management.get_thematic_by_id(thematic_id)
+    except ThematicNotFoundError:
+        return None
+    return {"slug": thematic.slug, "name": thematic.name}
+
+
 def _microproject_payload(microproject: Microproject, role: str) -> dict:
     running, concluded = _experiment_counts(microproject.slug)
     return {
@@ -61,6 +72,7 @@ def _microproject_payload(microproject: Microproject, role: str) -> dict:
         "running_count": running,
         "concluded_count": concluded,
         "management_area": _area_ref(microproject.management_area_id),
+        "thematique": _thematic_ref(microproject.thematic_id),
     }
 
 
@@ -71,14 +83,21 @@ def list_microprojects(user: User = Depends(get_current_user)) -> list[dict]:
 
 @router.post("", status_code=201)
 def create_microproject(body: CreateMicroprojectRequest, user: User = Depends(get_current_user)) -> dict:
-    area_id = None
+    area_id = thematic_id = None
     if body.management_area_slug:
         try:
             area_id = management.get_by_slug(body.management_area_slug).id
         except ManagementAreaNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=f"thème {body.management_area_slug!r} introuvable") from exc
+            raise HTTPException(status_code=404, detail=f"projet {body.management_area_slug!r} introuvable") from exc
+        if body.thematique_slug:
+            try:
+                thematic_id = management.get_thematic(area_id, body.thematique_slug).id
+            except ThematicNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=f"thématique {body.thematique_slug!r} introuvable") from exc
     try:
-        microproject = microprojects.create(body.name, body.description, owner_id=user.id, management_area_id=area_id)
+        microproject = microprojects.create(
+            body.name, body.description, owner_id=user.id, management_area_id=area_id, thematic_id=thematic_id
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _microproject_payload(microproject, "owner")
@@ -86,10 +105,15 @@ def create_microproject(body: CreateMicroprojectRequest, user: User = Depends(ge
 
 @router.get("/tous")
 def list_all_microprojects(_admin: User = Depends(require_admin)) -> list[dict]:
-    """Every µprojet, whichever theme it sits in - admin only, for the "move a µprojet into this
-    theme" picker on the management-area page."""
+    """Every µprojet, whichever project/thématique it sits in - admin only, for the "move a µprojet
+    here" picker on the corporate-project page."""
     return [
-        {"slug": p.slug, "name": p.name, "management_area": _area_ref(p.management_area_id)}
+        {
+            "slug": p.slug,
+            "name": p.name,
+            "management_area": _area_ref(p.management_area_id),
+            "thematique": _thematic_ref(p.thematic_id),
+        }
         for p in microprojects.list_all()
     ]
 

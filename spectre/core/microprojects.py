@@ -34,6 +34,7 @@ class Microproject:
     description: str
     created_by: int
     management_area_id: int | None = None
+    thematic_id: int | None = None  # one of that area's thématiques (spectre.core.management.Thematic), optional
 
 
 def _microproject_from_row(row: sqlite3.Row) -> Microproject:
@@ -45,6 +46,7 @@ def _microproject_from_row(row: sqlite3.Row) -> Microproject:
         description=row["description"],
         created_by=row["created_by"],
         management_area_id=row["management_area_id"] if "management_area_id" in keys else None,
+        thematic_id=row["thematic_id"] if "thematic_id" in keys else None,
     )
 
 
@@ -69,7 +71,14 @@ def _unique_slug(conn: sqlite3.Connection, base: str) -> str:
     return slug
 
 
-def create(name: str, description: str, *, owner_id: int, management_area_id: int | None = None) -> Microproject:
+def create(
+    name: str,
+    description: str,
+    *,
+    owner_id: int,
+    management_area_id: int | None = None,
+    thematic_id: int | None = None,
+) -> Microproject:
     name = name.strip()
     if not name:
         raise ValueError("le nom du µprojet est obligatoire")
@@ -80,8 +89,9 @@ def create(name: str, description: str, *, owner_id: int, management_area_id: in
             ).fetchone()["id"]
         slug = _unique_slug(conn, _slugify(name))
         cursor = conn.execute(
-            "INSERT INTO microprojects (slug, name, description, management_area_id, created_by) VALUES (?, ?, ?, ?, ?)",
-            (slug, name, description.strip(), management_area_id, owner_id),
+            "INSERT INTO microprojects (slug, name, description, management_area_id, thematic_id, created_by) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (slug, name, description.strip(), management_area_id, thematic_id, owner_id),
         )
         microproject_id = cursor.lastrowid
         conn.execute(
@@ -96,12 +106,18 @@ def create(name: str, description: str, *, owner_id: int, management_area_id: in
         description=description.strip(),
         created_by=owner_id,
         management_area_id=management_area_id,
+        thematic_id=thematic_id,
     )
 
 
-def set_management_area(microproject_id: int, management_area_id: int) -> None:
+def set_management_area(microproject_id: int, management_area_id: int, thematic_id: int | None = None) -> None:
+    """Move a µprojet to an area and, optionally, one of its thématiques - the caller checks that
+    ``thematic_id`` belongs to ``management_area_id``."""
     with get_conn() as conn:
-        conn.execute("UPDATE microprojects SET management_area_id = ? WHERE id = ?", (management_area_id, microproject_id))
+        conn.execute(
+            "UPDATE microprojects SET management_area_id = ?, thematic_id = ? WHERE id = ?",
+            (management_area_id, thematic_id, microproject_id),
+        )
 
 
 def list_by_management_area(management_area_id: int) -> list[Microproject]:

@@ -1,5 +1,6 @@
-/* Racine de la navigation : les grands thèmes (couche Management), bien mis en avant, puis un lien
-   discret « Mes µprojets » en bas pour l'accès direct. Entrer dans un thème -> /management/{slug}. */
+/* Racine de la navigation : les projets corporate (couche Management : Native, VLC, Nova), bien
+   mis en avant, puis un lien discret « Mes µprojets » en bas pour l'accès direct. Entrer dans un
+   projet -> /management/{slug} (objectifs, thématiques, µprojets). */
 
 const errorBox = document.getElementById("error");
 function showError(err) {
@@ -8,33 +9,38 @@ function showError(err) {
 }
 
 function stat(n, label) {
-  return `<span><strong>${n}</strong> ${label}</span>`;
+  return `<div class="kpi"><div class="kpi__value">${n}</div><div class="kpi__label">${label}</div></div>`;
 }
 
 function themeCard(area) {
   const s = area.stats;
   return `
     <a href="/management/${encodeURIComponent(area.slug)}" class="theme-card">
-      <div class="theme-card__name">${escapeHtml(area.name)}</div>
-      <div style="font-size:13px;color:var(--text-soft);line-height:1.55;min-height:20px;">${escapeHtml(area.description || area.strategy || "")}</div>
+      <div class="theme-card__art">${techArtSvg(area.slug, area.name)}</div>
+      <div class="theme-card__head">
+        <div class="theme-card__name">${escapeHtml(area.name)}</div>
+        <svg class="theme-card__go" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+      </div>
+      <div class="theme-card__desc">${escapeHtml(area.description || area.strategy || "")}</div>
       <div class="theme-card__stats">
+        ${stat(s.thematiques, "thématiques")}
         ${stat(s.microprojets, "µprojets")}
         ${stat(s.experiences, "expériences")}
         ${stat(s.wafers, "wafers")}
-        ${stat(s.concluded, "concluantes")}
       </div>
     </a>`;
 }
 
 function microprojectCard(microproject) {
   const area = microproject.management_area;
+  const where = [area && area.name, microproject.thematique && microproject.thematique.name].filter(Boolean).join(" › ");
   return `
     <a href="/microprojets/${encodeURIComponent(microproject.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:6px;color:inherit;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <div style="font-size:14px;font-weight:700;">${escapeHtml(microproject.name)}</div>
         <span class="badge badge-role">${escapeHtml(roleLabel(microproject.role))}</span>
       </div>
-      ${area ? `<div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(area.name)}</div>` : ""}
+      ${where ? `<div style="font-size:11.5px;color:var(--text-faint);font-family:var(--font-mono);">${escapeHtml(where)}</div>` : ""}
       <div style="font-size:12px;color:var(--text-faint);padding-top:6px;border-top:1px solid var(--border-soft);">
         ${microproject.running_count} en cours &middot; ${microproject.concluded_count} terminées
       </div>
@@ -47,15 +53,18 @@ async function load() {
 
     // "Non classé" ne s'affiche que s'il contient vraiment quelque chose - sinon il encombre.
     const themes = mgmt.areas.filter((a) => a.slug !== "non-classe" || a.stats.microprojets > 0);
-    document.getElementById("themes").innerHTML = themes.map(themeCard).join("");
+    const grid = document.getElementById("themes");
+    grid.innerHTML = themes.map(themeCard).join("");
+    grid.removeAttribute("aria-busy");
     if (mgmt.is_admin) document.getElementById("new-theme-btn").style.display = "";
 
     document.getElementById("my-microprojects-count").textContent = `(${mine.length})`;
     document.getElementById("my-microprojects").innerHTML = mine.length
       ? mine.map(microprojectCard).join("")
-      : `<div style="grid-column:1/-1;font-size:13px;color:var(--text-faint);">Vous n'êtes membre d'aucun µprojet. Ouvrez un thème pour en créer un.</div>`;
+      : `<div style="grid-column:1/-1;font-size:13px;color:var(--text-faint);">Vous n'êtes membre d'aucun µprojet. Ouvrez un projet pour en créer un.</div>`;
     if (mine.length) document.getElementById("my-microprojects-details").open = false;
   } catch (err) {
+    document.getElementById("themes").innerHTML = "";
     showError(err);
   }
 }

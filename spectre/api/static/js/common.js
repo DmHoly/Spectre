@@ -133,9 +133,35 @@ function initLogout() {
   });
 }
 
+// Marque la section courante dans la navigation principale de la topbar (aria-current="page",
+// souligné or en CSS). Tout ce qui vit sous un projet corporate (projet, µprojet, expérience...)
+// relève de « Projets » - sauf l'atlas d'un projet, qui a son propre lien sur la page du projet.
+const NAV_SECTIONS = [
+  ["/pilotage", /^\/pilotage/],
+  ["/bibliotheque", /^\/bibliotheque/],
+  ["/donnees", /^\/donnees/],
+  ["/docs", /^\/docs/],
+  ["/", /^\/(management|microprojets|$)/],
+];
+
+function initNavActive() {
+  const path = window.location.pathname;
+  const atlas = document.getElementById("atlas-link");
+  if (atlas && /\/atlas$/.test(path)) {
+    atlas.setAttribute("aria-current", "page");
+    return;
+  }
+  const match = NAV_SECTIONS.find(([, re]) => re.test(path));
+  if (!match) return;
+  document.querySelectorAll(".topbar__nav .topbar__link").forEach((link) => {
+    if (link.getAttribute("href") === match[0]) link.setAttribute("aria-current", "page");
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   mountUserBadge();
   initLogout();
+  initNavActive();
 });
 
 /* Docs pages only: highlights the nav link matching whichever <section id="..."> is currently in

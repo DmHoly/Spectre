@@ -1519,6 +1519,7 @@ async function init() {
     } else {
       areaCrumb.textContent = "Non classé";
     }
+    document.getElementById("thematic-crumb").textContent = microproject.thematique ? " / " + microproject.thematique.name : "";
 
     renderHeader(currentDetail);
     renderTags(currentDetail);

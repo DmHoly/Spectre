@@ -21,14 +21,16 @@ par expérience.
 ## Hiérarchie
 
 ```
-Thème (Management)         grand thème piloté par la société - Datacom (VLC), Nova (PT1), Native (PT2)...
-  └─ µprojet                 un sujet adressé sous ce thème (ex-« projet »)
-       └─ expérience          une étude versionnée (Follow) : brouillon → en cours → conclue
-            └─ entité physique   un wafer réel suivi (identifiant + emplacement)
-                 └─ structure       le procédé simulé (StructureForge) porté par ce wafer
-                      └─ étape          une opération du procédé (dépôt, gravure...), regroupable en
-                                        brique technologique réutilisable ; ses paramètres process
-                                        se sauvegardent en préset d'étape
+Projet corporate (Management)   Native (PT2), VLC (microlink), Nova (PT1)... - avec ses objectifs
+                                 de la période (ex. 6 prochains mois), classés par importance
+  └─ thématique                   un axe technique du projet (dopage PGaN, double EBL...)
+       └─ µprojet                  une chaîne d'expériences sur cette thématique
+            └─ expérience          une étude versionnée (Follow) : brouillon → en cours → conclue
+                 └─ entité physique   un wafer réel suivi (identifiant + emplacement)
+                      └─ structure       le procédé simulé (StructureForge) porté par ce wafer
+                           └─ étape          une opération du procédé (dépôt, gravure...), regroupable en
+                                             brique technologique réutilisable ; ses paramètres process
+                                             se sauvegardent en préset d'étape
 ```
 
 - **Thèmes** (`spectre.core.management`) : visibles par tout utilisateur connecté (vue société

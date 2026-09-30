@@ -27,7 +27,7 @@ def test_new_microprojet_lands_in_the_unclassified_area(client):
 def test_flagship_themes_are_seeded_on_a_fresh_instance(client):
     _register(client, "boss@example.com")
     names = {a["name"] for a in client.get("/api/management").json()["areas"]}
-    assert {"Datacom (VLC)", "Nova (PT1)", "Native (PT2)"} <= names
+    assert {"VLC (microlink)", "Nova (PT1)", "Native (PT2)"} <= names
 
 
 def test_admin_creates_an_area_and_moves_a_microprojet_into_it(client):
@@ -94,3 +94,89 @@ def test_list_all_microprojets_is_admin_only(client):
 
     _register(client, "hand@example.com")
     assert client.get("/api/microprojets/tous").status_code == 403
+
+
+def test_thematiques_group_microprojets_inside_a_corporate_project(client):
+    _register(client, "boss@example.com")
+    area = client.post("/api/management/native-pt2/thematiques", json={"name": "Dopage PGaN"})
+    assert area.status_code == 201
+    client.post("/api/management/native-pt2/thematiques", json={"name": "Double EBL"})
+    assert [t["slug"] for t in area.json()["thematiques"]] == ["dopage-pgan"]
+
+    created = client.post(
+        "/api/microprojets",
+        json={"name": "Recuit Mg", "management_area_slug": "native-pt2", "thematique_slug": "dopage-pgan"},
+    )
+    assert created.status_code == 201
+    assert created.json()["thematique"] == {"slug": "dopage-pgan", "name": "Dopage PGaN"}
+
+    client.post("/api/microprojets", json={"name": "Orphelin"})
+    moved = client.post(
+        "/api/management/native-pt2/microprojets", json={"microproject_slug": "orphelin", "thematique_slug": "double-ebl"}
+    ).json()
+    by_slug = {p["slug"]: p["thematique_slug"] for p in moved["microprojets"]}
+    assert by_slug == {"recuit-mg": "dopage-pgan", "orphelin": "double-ebl"}
+    stats = {t["slug"]: t["stats"]["microprojets"] for t in moved["thematiques"]}
+    assert stats == {"dopage-pgan": 1, "double-ebl": 1}
+
+    # A thématique of another project is rejected.
+    bad = client.post("/api/microprojets", json={"name": "X", "management_area_slug": "nova-pt1", "thematique_slug": "dopage-pgan"})
+    assert bad.status_code == 404
+
+    # Deleting a thématique keeps its µprojets in the project, without thématique.
+    after = client.delete("/api/management/native-pt2/thematiques/dopage-pgan").json()
+    assert {p["slug"]: p["thematique_slug"] for p in after["microprojets"]}["recuit-mg"] is None
+
+
+def test_corporate_objectives_are_ranked_and_editable(client):
+    _register(client, "boss@example.com")
+    base = "/api/management/nova-pt1/objectifs"
+    client.post(base, json={"title": "Qualifier le procédé", "target": "T1 2027"})
+    client.post(base, json={"title": "Transférer en prod"})
+    area = client.post(base, json={"title": "Réduire le coût"}).json()
+    ids = [o["id"] for o in area["objectifs"]]
+    assert [o["title"] for o in area["objectifs"]] == ["Qualifier le procédé", "Transférer en prod", "Réduire le coût"]
+    assert area["objectives_period"] == "6 prochains mois"
+
+    reordered = client.put(base, json={"ids": [ids[2], ids[0], ids[1]]}).json()
+    assert [o["title"] for o in reordered["objectifs"]] == ["Réduire le coût", "Qualifier le procédé", "Transférer en prod"]
+    assert client.put(base, json={"ids": ids[:2]}).status_code == 422
+
+    edited = client.put(f"{base}/{ids[1]}", json={"title": "Transférer en production", "detail": "Ligne 200 mm"}).json()
+    assert edited["objectifs"][2]["title"] == "Transférer en production"
+    assert client.delete(f"{base}/{ids[0]}").json()["objectifs"][0]["title"] == "Réduire le coût"
+
+    renamed = client.put(
+        "/api/management/nova-pt1", json={"name": "Nova (PT1)", "objectives_period": "S1 2027"}
+    ).json()
+    assert renamed["objectives_period"] == "S1 2027"
+
+    _register(client, "hand@example.com")
+    assert client.get("/api/management/nova-pt1").json()["objectifs"]
+    assert client.post(base, json={"title": "x"}).status_code == 403
+    assert client.post("/api/management/nova-pt1/thematiques", json={"name": "x"}).status_code == 403
+
+
+def test_trend_kpis_are_listed_and_served_lazily(client):
+    _register(client, "boss@example.com")
+    kpis = client.get("/api/management/native-pt2/tendances").json()["kpis"]
+    by_key = {k["key"]: k for k in kpis}
+    assert by_key["activite"]["status"] == "live" and by_key["eqe"]["status"] == "placeholder"
+
+    live = client.get("/api/management/native-pt2/tendances/activite?mois=6").json()
+    assert live["status"] == "live" and len(live["points"]) == 6 and len(live["periods"]) == 6
+    assert all(p["value"] == 0 for p in live["points"])
+
+    placeholder = client.get("/api/management/native-pt2/tendances/eqe").json()
+    assert placeholder["status"] == "placeholder" and placeholder["points"] == [] and len(placeholder["periods"]) == 12
+
+    assert client.get("/api/management/native-pt2/tendances/inconnu").status_code == 404
+    assert client.get("/api/management/inconnu/tendances").status_code == 404
+
+
+def test_month_periods_cross_the_year_boundary():
+    from datetime import date
+
+    from spectre.core.trends import month_periods
+
+    assert month_periods(3, today=date(2027, 2, 10)) == ["2026-12", "2027-01", "2027-02"]

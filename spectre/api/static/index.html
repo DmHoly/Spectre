@@ -3,74 +3,103 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Thèmes — Spectre</title>
+  <title>Projets — Spectre</title>
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
   <style>
-    .theme-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:22px; max-width:1000px; margin:0 auto; }
+    .home { max-width:1080px; margin:0 auto; }
+    .home-head { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap; margin-bottom:28px; padding-bottom:22px; border-bottom:1px solid var(--border); }
+    .home-head h1 { font-size:30px; margin-top:10px; }
+    .home-head p { color:var(--text-soft); font-size:14.5px; margin-top:6px; max-width:60ch; }
+    .theme-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:20px; }
     .theme-card {
+      position:relative; overflow:hidden;
       display:flex; flex-direction:column; gap:14px; color:inherit; text-decoration:none;
-      padding:26px 24px; border-radius:var(--radius); border:1px solid var(--border-soft);
-      background:var(--surface); transition:border-color .12s ease, box-shadow .12s ease, transform .12s ease;
+      padding:24px 24px 20px; border-radius:var(--radius); border:1px solid var(--border-soft);
+      background:var(--surface); box-shadow:var(--shadow);
+      transition:border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
     }
-    .theme-card:hover { border-color:var(--accent); box-shadow:var(--shadow); transform:translateY(-2px); }
-    .theme-card__name { font-size:19px; font-weight:700; }
-    .theme-card__stats { display:flex; flex-wrap:wrap; gap:16px; font-size:12.5px; color:var(--text-faint); padding-top:12px; border-top:1px solid var(--border-soft); }
-    .theme-card__stats strong { color:var(--text); font-size:14px; }
+    .theme-card::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,var(--gold),rgba(201,168,76,.15)); }
+    .theme-card:hover { color:inherit; border-color:var(--navy-600); box-shadow:var(--shadow-lift); }
+    .theme-card__art { margin:-24px -24px 0; height:104px; padding:10px 24px 4px; background:linear-gradient(135deg,var(--navy-950),var(--navy) 60%,var(--navy-700)); }
+    .theme-card__head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .theme-card__name { font-size:19px; font-weight:700; color:var(--navy); }
+    .theme-card__go { flex:none; color:var(--text-faint); transition:color var(--dur) var(--ease), transform var(--dur) var(--ease); }
+    .theme-card:hover .theme-card__go { color:var(--gold-dark); transform:translateX(3px); }
+    .theme-card__desc { font-size:13px; color:var(--text-soft); line-height:1.55; min-height:20px; }
+    .theme-card__stats { display:flex; flex-wrap:wrap; gap:10px 22px; padding-top:14px; margin-top:auto; border-top:1px solid var(--border-soft); }
+    .mine { margin-top:48px; }
+    .mine summary { display:inline-flex; align-items:center; gap:8px; list-style:none; font-size:13.5px; font-weight:600; color:var(--text-soft); padding:6px 0; }
+    .mine summary::-webkit-details-marker { display:none; }
+    .mine summary svg { transition:transform var(--dur) var(--ease); }
+    .mine[open] summary svg { transform:rotate(90deg); }
+    .mine summary:hover { color:var(--navy); }
   </style>
 </head>
 <body>
   <div class="topbar">
-    <a href="/" style="display:flex;align-items:center;">
     <div class="topbar__brand">
-      <span class="topbar__mark">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
-      </span>
-      Spectre
-    </div>
-    </a>
-    <div class="topbar__actions">
-      <a href="/pilotage" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Pilotage</a>
-      <a href="/bibliotheque" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Bibliothèque</a>
-      <a href="/donnees" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Data</a>
-      <a href="/docs" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Documentation</a>
-      <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
-        <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
-        <div class="avatar js-user-initials"></div>
+      <a href="/" class="topbar__home" aria-label="Spectre - accueil">
+        <img class="brand-logo" src="/static/img/aledia-logo.svg" alt="Aledia" width="71" height="28">
+        <span class="topbar__sep" aria-hidden="true"></span>
+        <span class="topbar__product">Spectre</span>
       </a>
-      <a href="#" class="js-logout btn btn-line" style="padding:6px 12px;font-size:12.5px;">Se déconnecter</a>
+    </div>
+    <nav class="topbar__nav" aria-label="Navigation principale">
+      <a href="/" class="topbar__link">Projets</a>
+      <a href="/pilotage" class="topbar__link">Pilotage</a>
+      <a href="/bibliotheque" class="topbar__link">Bibliothèque</a>
+      <a href="/donnees" class="topbar__link">Data</a>
+      <a href="/docs" class="topbar__link">Documentation</a>
+    </nav>
+    <div class="topbar__actions">
+      <a href="/profil" class="topbar__user" title="Mon profil">
+        <span class="js-user-name topbar__user-name"></span>
+        <span class="avatar js-user-initials" aria-hidden="true"></span>
+      </a>
+      <a href="#" class="js-logout topbar__icon-btn" aria-label="Se déconnecter" title="Se déconnecter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></a>
     </div>
   </div>
 
-  <div class="page" style="padding-top:44px;">
-    <div style="text-align:center;max-width:640px;margin:0 auto 34px;">
-      <h1 style="font-size:26px;">Thèmes</h1>
-      <p style="color:var(--text-soft);font-size:14.5px;margin-top:8px;">Les grands thèmes que la société pilote. Entrez dans un thème pour voir les µprojets qui l'adressent.</p>
-      <button id="new-theme-btn" class="btn btn-line" style="display:none;margin-top:14px;">+ Nouveau thème</button>
+  <div class="page" style="padding-top:40px;">
+    <div class="home">
+    <div class="home-head">
+      <div>
+        <div class="page-eyebrow">Pilotage R&amp;D</div>
+        <h1>Projets corporate</h1>
+        <p>Les projets que la société pilote. Entrez dans un projet pour voir ses objectifs, ses thématiques et les µprojets qui les adressent.</p>
+      </div>
+      <button id="new-theme-btn" class="btn btn-primary" style="display:none;">+ Nouveau projet</button>
     </div>
 
-    <div id="error" class="error" style="display:none;margin:0 auto 20px;max-width:1000px;"></div>
+    <div id="error" class="error" style="display:none;margin-bottom:20px;"></div>
 
-    <div id="themes" class="theme-grid"></div>
+    <div id="themes" class="theme-grid" aria-busy="true">
+      <div class="skeleton" style="height:190px;"></div>
+      <div class="skeleton" style="height:190px;"></div>
+      <div class="skeleton" style="height:190px;"></div>
+    </div>
 
-    <details id="my-microprojects-details" style="max-width:1000px;margin:56px auto 0;">
-      <summary style="cursor:pointer;color:var(--text-faint);font-size:13px;list-style:none;">
-        <span style="border-bottom:1px dashed var(--border);">Mes µprojets <span id="my-microprojects-count"></span></span>
+    <details id="my-microprojects-details" class="mine">
+      <summary>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+        Mes µprojets <span id="my-microprojects-count" style="font-family:var(--font-mono);font-weight:500;color:var(--text-faint);"></span>
       </summary>
-      <div style="font-size:12px;color:var(--text-faint);margin:8px 0 14px;">Accès direct aux µprojets dont vous êtes membre.</div>
+      <div style="font-size:12.5px;color:var(--text-faint);margin:6px 0 14px;">Accès direct aux µprojets dont vous êtes membre.</div>
       <div id="my-microprojects" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;"></div>
     </details>
+    </div>
   </div>
 
   <dialog id="new-theme-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
     <div class="card-pad" style="width:380px;">
-      <h2 style="font-size:16px;margin-bottom:14px;">Nouveau thème</h2>
+      <h2 style="font-size:16px;margin-bottom:14px;">Nouveau projet corporate</h2>
       <form id="new-theme-form" class="field-group">
-        <div><label for="theme-name">Nom du thème</label><input class="field" id="theme-name" required placeholder="ex : Fiabilité produit"></div>
+        <div><label for="theme-name">Nom du projet</label><input class="field" id="theme-name" required placeholder="ex : Native (PT2)"></div>
         <div><label for="theme-description">Description (optionnelle)</label><textarea class="field" id="theme-description" rows="2"></textarea></div>
-        <div><label for="theme-strategy">Objectif stratégique (optionnel)</label><textarea class="field" id="theme-strategy" rows="2" placeholder="Ce que ce thème doit faire avancer"></textarea></div>
+        <div><label for="theme-strategy">Note stratégique (optionnelle)</label><textarea class="field" id="theme-strategy" rows="2" placeholder="Les objectifs classés se définissent ensuite sur la page du projet"></textarea></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" id="cancel-theme" class="btn btn-line btn-block">Annuler</button>
           <button type="submit" class="btn btn-primary btn-block">Créer</button>
@@ -81,6 +110,7 @@
 
   <script src="/static/js/api.js"></script>
   <script src="/static/js/common.js"></script>
+  <script src="/static/js/tech-art.js"></script>
   <script src="/static/js/themes.js"></script>
 </body>
 </html>

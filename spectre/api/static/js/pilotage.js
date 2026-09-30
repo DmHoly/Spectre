@@ -34,7 +34,7 @@ async function load() {
   }
   const t = data.totals;
   document.getElementById("totals").innerHTML = [
-    bigStat(t.themes, "thèmes"),
+    bigStat(t.themes, "projets"),
     bigStat(t.microprojets, "µprojets"),
     bigStat(t.experiences, "expériences"),
     bigStat(t.running, "en cours"),

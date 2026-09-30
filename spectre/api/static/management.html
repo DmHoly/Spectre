@@ -3,68 +3,155 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Thème — Spectre</title>
+  <title>Projet — Spectre</title>
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+  <style>
+    .mgmt-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px; }
+    .mgmt-head__id { display:flex; align-items:center; gap:18px; min-width:0; }
+    .mgmt-head__art { flex:none; width:132px; height:76px; border-radius:var(--radius); background:linear-gradient(135deg,var(--navy-950),var(--navy)); padding:6px 8px; box-shadow:var(--shadow); }
+    .mgmt-head h1 { font-size:26px; margin-top:8px; }
+    @media (max-width:560px) { .mgmt-head__art { width:96px; height:56px; } }
+    .mgmt-head p { color:var(--text-soft); font-size:14px; margin-top:4px; max-width:70ch; }
+
+    /* -- objectifs corporate : le bloc mis en avant, en tête de page -- */
+    .objectives {
+      position:relative; overflow:hidden;
+      background:linear-gradient(135deg, var(--navy-950), var(--navy) 55%, var(--navy-700));
+      color:#fff; border-radius:var(--radius); padding:24px 24px 26px; margin-bottom:26px;
+      box-shadow:var(--shadow-lift);
+    }
+    .objectives::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,var(--gold),var(--gold-light) 40%,transparent); }
+    .objectives__head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+    .objectives__eyebrow { font-family:var(--font-mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold-light); }
+    .objectives__title { font-size:20px; font-weight:700; margin-top:6px; color:#fff; }
+    .objectives__period { color:var(--gold-light); }
+    .objectives .btn-line { background:transparent; color:#fff; border-color:rgba(255,255,255,.35); }
+    .objectives .btn-line:hover { border-color:var(--gold-light); color:var(--gold-light); }
+    .objectives :focus-visible { outline:2px solid var(--gold-light); outline-offset:2px; }
+    .obj-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; list-style:none; margin:0; padding:0; }
+    .obj {
+      position:relative; display:flex; flex-direction:column; gap:8px;
+      padding:18px 18px 16px 18px; border-radius:var(--radius-md);
+      background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12);
+    }
+    .obj--first { grid-column:1 / -1; background:rgba(201,168,76,.12); border-color:rgba(232,201,122,.45); padding:22px 22px 20px; }
+    .obj__top { display:flex; align-items:flex-start; gap:14px; }
+    .obj__rank { flex:none; font-family:var(--font-mono); font-size:26px; font-weight:500; line-height:1; color:var(--gold-light); font-variant-numeric:tabular-nums; min-width:2ch; }
+    .obj--first .obj__rank { font-size:40px; }
+    .obj__body { flex:1; min-width:0; }
+    .obj__title { font-size:15.5px; font-weight:700; line-height:1.35; color:#fff; overflow-wrap:anywhere; }
+    .obj--first .obj__title { font-size:20px; }
+    .obj__detail { font-size:13px; line-height:1.55; color:rgba(255,255,255,.78); margin-top:6px; white-space:pre-line; overflow-wrap:anywhere; }
+    .obj__target { display:inline-flex; align-items:center; gap:6px; margin-top:10px; font-family:var(--font-mono); font-size:11.5px; color:var(--gold-light); }
+    .obj__tools { display:flex; gap:4px; flex:none; }
+    .obj__tool {
+      display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px;
+      border-radius:var(--radius-sm); border:1px solid transparent; background:transparent; color:rgba(255,255,255,.7); cursor:pointer;
+      transition:color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+    }
+    .obj__tool:hover:not(:disabled) { color:var(--gold-light); border-color:rgba(255,255,255,.25); }
+    .obj__tool:disabled { opacity:.3; cursor:default; }
+    .obj-empty { padding:18px; border:1px dashed rgba(255,255,255,.25); border-radius:var(--radius-md); color:rgba(255,255,255,.78); font-size:13.5px; }
+
+    /* -- thématiques et leurs µprojets -- */
+    .thematic { margin-top:28px; }
+    .thematic__head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; padding-bottom:10px; margin-bottom:14px; border-bottom:1px solid var(--border); }
+    .thematic__name { font-size:17px; font-weight:700; color:var(--navy); display:flex; align-items:center; gap:10px; }
+    .thematic__name::before { content:""; width:4px; height:18px; border-radius:2px; background:var(--gold); }
+    .thematic--none .thematic__name::before { background:var(--border); }
+    .thematic__desc { font-size:13px; color:var(--text-soft); margin-top:4px; max-width:70ch; }
+    .thematic__meta { font-family:var(--font-mono); font-size:11.5px; color:var(--text-faint); margin-top:4px; }
+    .thematic__actions { display:flex; gap:8px; flex:none; }
+    .mp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
+    .btn-sm { min-height:30px; padding:4px 10px; font-size:12.5px; }
+  </style>
 </head>
 <body>
   <div class="topbar">
-    <a href="/" style="display:flex;align-items:center;">
-      <div class="topbar__brand">
-        <span class="topbar__mark">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
-        </span>
-        Spectre
-        <span class="topbar__crumb" id="crumb"></span>
-      </div>
-    </a>
-    <div class="topbar__actions">
-      <a href="/pilotage" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Pilotage</a>
-      <a href="#" id="atlas-link" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Atlas</a>
-      <a href="/bibliotheque" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Bibliothèque</a>
-      <a href="/docs" class="btn btn-line" style="padding:6px 12px;font-size:12.5px;">Documentation</a>
-      <a href="/profil" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">
-        <span class="js-user-name" style="font-size:13.5px;color:var(--text-soft);"></span>
-        <div class="avatar js-user-initials"></div>
+    <div class="topbar__brand">
+      <a href="/" class="topbar__home" aria-label="Spectre - accueil">
+        <img class="brand-logo" src="/static/img/aledia-logo.svg" alt="Aledia" width="71" height="28">
+        <span class="topbar__sep" aria-hidden="true"></span>
+        <span class="topbar__product">Spectre</span>
       </a>
-      <a href="#" class="js-logout btn btn-line" style="padding:6px 12px;font-size:12.5px;">Se déconnecter</a>
+      <span class="topbar__crumb" id="crumb"></span>
+    </div>
+    <nav class="topbar__nav" aria-label="Navigation principale">
+      <a href="/" class="topbar__link">Projets</a>
+      <a href="/pilotage" class="topbar__link">Pilotage</a>
+      <a href="#" class="topbar__link" id="atlas-link">Atlas</a>
+      <a href="/bibliotheque" class="topbar__link">Bibliothèque</a>
+      <a href="/donnees" class="topbar__link">Data</a>
+      <a href="/docs" class="topbar__link">Documentation</a>
+    </nav>
+    <div class="topbar__actions">
+      <a href="/profil" class="topbar__user" title="Mon profil">
+        <span class="js-user-name topbar__user-name"></span>
+        <span class="avatar js-user-initials" aria-hidden="true"></span>
+      </a>
+      <a href="#" class="js-logout topbar__icon-btn" aria-label="Se déconnecter" title="Se déconnecter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></a>
     </div>
   </div>
 
   <div class="page">
-    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">Thèmes</a> / <span id="area-name-crumb">…</span></p>
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">Projets</a> / <span id="area-name-crumb">…</span></p>
 
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
-    <div id="flash" class="flash flash-ok" style="display:none;margin-bottom:16px;"></div>
+    <div id="flash" class="flash flash-ok" style="display:none;margin-bottom:16px;" role="status"></div>
 
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:8px;">
-      <div>
-        <h1 id="area-name" style="font-size:22px;"></h1>
-        <p id="area-description" style="color:var(--text-soft);font-size:14px;margin-top:4px;max-width:70ch;"></p>
+    <div class="mgmt-head">
+      <div class="mgmt-head__id">
+        <div class="mgmt-head__art" id="area-art"></div>
+        <div>
+          <div class="page-eyebrow">Projet corporate</div>
+          <h1 id="area-name"></h1>
+          <p id="area-description"></p>
+        </div>
       </div>
       <div style="display:flex;gap:10px;flex:none;">
-        <button id="edit-area-btn" class="btn btn-line" style="display:none;">Modifier</button>
+        <button id="edit-area-btn" class="btn btn-line" style="display:none;">Modifier le projet</button>
         <button id="new-microprojet-btn" class="btn btn-primary">+ Nouveau µprojet</button>
       </div>
     </div>
-    <div id="area-strategy" class="card card-pad" style="display:none;background:var(--bg);margin:12px 0 4px;font-size:13px;"></div>
 
-    <div id="area-kpi" style="display:flex;flex-wrap:wrap;gap:22px;margin:18px 0 26px;padding:14px 18px;border:1px solid var(--border-soft);border-radius:var(--radius);"></div>
+    <section class="objectives" aria-labelledby="objectives-title">
+      <div class="objectives__head">
+        <div>
+          <div class="objectives__eyebrow">Objectifs corporate</div>
+          <h2 class="objectives__title" id="objectives-title">Pour les <span class="objectives__period" id="objectives-period">6 prochains mois</span></h2>
+        </div>
+        <button id="new-objective-btn" class="btn btn-line btn-sm" style="display:none;">+ Objectif</button>
+      </div>
+      <ol id="objectives" class="obj-list" aria-busy="true">
+        <li class="skeleton" style="height:90px;grid-column:1/-1;opacity:.15;"></li>
+      </ol>
+    </section>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <h2 style="font-size:16px;">µprojets de ce thème</h2>
-      <button id="attach-microprojet-btn" class="btn btn-line" style="display:none;padding:5px 10px;font-size:12px;">Rattacher un µprojet existant</button>
+    <section id="trends" style="margin-bottom:26px;" aria-label="Tendances des KPI du projet"></section>
+
+    <div id="area-strategy" class="card card-pad" style="display:none;background:var(--bg);margin:0 0 4px;font-size:13px;"></div>
+
+    <div id="area-kpi" style="display:flex;flex-wrap:wrap;gap:22px 34px;margin:18px 0 8px;padding:14px 18px;border:1px solid var(--border-soft);border-radius:var(--radius);background:var(--surface);"></div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:30px;">
+      <h2 style="font-size:18px;">Thématiques</h2>
+      <div style="display:flex;gap:8px;">
+        <button id="attach-microprojet-btn" class="btn btn-line btn-sm" style="display:none;">Rattacher un µprojet existant</button>
+        <button id="new-thematic-btn" class="btn btn-line btn-sm" style="display:none;">+ Thématique</button>
+      </div>
     </div>
-    <div id="microprojets" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;"></div>
+    <div id="thematics"></div>
   </div>
 
   <dialog id="microprojet-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
-    <div class="card-pad" style="width:360px;">
-      <h2 style="font-size:16px;margin-bottom:14px;">Nouveau µprojet dans ce thème</h2>
+    <div class="card-pad" style="width:min(400px,92vw);">
+      <h2 style="font-size:16px;margin-bottom:14px;">Nouveau µprojet</h2>
       <form id="microprojet-form" class="field-group">
         <div><label for="mp-name">Nom du µprojet</label><input class="field" id="mp-name" required></div>
+        <div><label for="mp-thematic">Thématique</label><select class="field" id="mp-thematic"></select></div>
         <div><label for="mp-description">Description (optionnelle)</label><textarea class="field" id="mp-description" rows="2"></textarea></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" id="mp-cancel" class="btn btn-line btn-block">Annuler</button>
@@ -75,27 +162,63 @@
   </dialog>
 
   <dialog id="edit-area-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
-    <div class="card-pad" style="width:400px;">
-      <h2 style="font-size:16px;margin-bottom:14px;">Modifier le thème</h2>
+    <div class="card-pad" style="width:min(420px,92vw);">
+      <h2 style="font-size:16px;margin-bottom:14px;">Modifier le projet</h2>
       <form id="edit-area-form" class="field-group">
         <div><label for="ea-name">Nom</label><input class="field" id="ea-name" required></div>
         <div><label for="ea-description">Description</label><textarea class="field" id="ea-description" rows="2"></textarea></div>
-        <div><label for="ea-strategy">Objectif stratégique</label><textarea class="field" id="ea-strategy" rows="2"></textarea></div>
+        <div><label for="ea-period">Horizon des objectifs</label><input class="field" id="ea-period" placeholder="6 prochains mois"><div class="help">Affiché en tête : « Pour les … ».</div></div>
+        <div><label for="ea-strategy">Note stratégique (optionnelle)</label><textarea class="field" id="ea-strategy" rows="2"></textarea></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" id="ea-cancel" class="btn btn-line btn-block">Annuler</button>
           <button type="submit" class="btn btn-primary btn-block">Enregistrer</button>
         </div>
-        <button type="button" id="ea-delete" class="btn btn-danger btn-block" style="display:none;margin-top:4px;">Supprimer ce thème</button>
+        <button type="button" id="ea-delete" class="btn btn-danger btn-block" style="display:none;margin-top:4px;">Supprimer ce projet</button>
+      </form>
+    </div>
+  </dialog>
+
+  <dialog id="objective-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
+    <div class="card-pad" style="width:min(440px,92vw);">
+      <h2 id="obj-dialog-title" style="font-size:16px;margin-bottom:14px;">Nouvel objectif</h2>
+      <form id="objective-form" class="field-group">
+        <div><label for="obj-title">Objectif</label><input class="field" id="obj-title" required maxlength="200" placeholder="ex : Qualifier le dopage PGaN sur 200 mm"></div>
+        <div><label for="obj-detail">Précisions / critère de réussite (optionnel)</label><textarea class="field" id="obj-detail" rows="3"></textarea></div>
+        <div><label for="obj-target">Échéance (optionnelle)</label><input class="field" id="obj-target" placeholder="ex : fin T1 2027"></div>
+        <div class="help" id="obj-rank-help">Ajouté en dernière position ; réordonnez ensuite avec les flèches.</div>
+        <div style="display:flex;gap:10px;margin-top:8px;">
+          <button type="button" id="obj-cancel" class="btn btn-line btn-block">Annuler</button>
+          <button type="submit" class="btn btn-primary btn-block">Enregistrer</button>
+        </div>
+        <button type="button" id="obj-delete" class="btn btn-danger btn-block" style="display:none;margin-top:4px;">Supprimer cet objectif</button>
+      </form>
+    </div>
+  </dialog>
+
+  <dialog id="thematic-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
+    <div class="card-pad" style="width:min(400px,92vw);">
+      <h2 id="th-dialog-title" style="font-size:16px;margin-bottom:14px;">Nouvelle thématique</h2>
+      <form id="thematic-form" class="field-group">
+        <div><label for="th-name">Nom</label><input class="field" id="th-name" required placeholder="ex : Dopage PGaN"></div>
+        <div><label for="th-description">Description (optionnelle)</label><textarea class="field" id="th-description" rows="2"></textarea></div>
+        <div style="display:flex;gap:10px;margin-top:8px;">
+          <button type="button" id="th-cancel" class="btn btn-line btn-block">Annuler</button>
+          <button type="submit" class="btn btn-primary btn-block">Enregistrer</button>
+        </div>
+        <button type="button" id="th-delete" class="btn btn-danger btn-block" style="display:none;margin-top:4px;">Supprimer cette thématique</button>
       </form>
     </div>
   </dialog>
 
   <dialog id="attach-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
-    <div class="card-pad" style="width:400px;">
-      <h2 style="font-size:16px;margin-bottom:6px;">Rattacher un µprojet à ce thème</h2>
-      <p class="help" style="margin-bottom:12px;">Le µprojet quitte son thème actuel pour celui-ci.</p>
-      <select class="field" id="attach-select" style="margin-bottom:12px;"></select>
-      <div style="display:flex;gap:10px;">
+    <div class="card-pad" style="width:min(420px,92vw);">
+      <h2 style="font-size:16px;margin-bottom:6px;">Rattacher un µprojet</h2>
+      <p class="help" style="margin-bottom:12px;">Le µprojet rejoint ce projet, dans la thématique choisie.</p>
+      <div class="field-group">
+        <div><label for="attach-select">µprojet</label><select class="field" id="attach-select"></select></div>
+        <div><label for="attach-thematic">Thématique</label><select class="field" id="attach-thematic"></select></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
         <button type="button" id="attach-cancel" class="btn btn-line btn-block">Annuler</button>
         <button type="button" id="attach-confirm" class="btn btn-primary btn-block">Rattacher</button>
       </div>
@@ -104,6 +227,9 @@
 
   <script src="/static/js/api.js"></script>
   <script src="/static/js/common.js"></script>
+  <script src="/static/js/vendor/d3.v7.9.0.min.js"></script>
+  <script src="/static/js/tech-art.js"></script>
+  <script src="/static/js/kpi-trend.js"></script>
   <script src="/static/js/management.js"></script>
 </body>
 </html>

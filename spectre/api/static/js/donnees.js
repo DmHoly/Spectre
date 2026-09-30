@@ -161,7 +161,7 @@ function renderRepresentativeChart(hook) {
     .attr("width", x.bandwidth())
     .attr("y", (r) => y(r[col]))
     .attr("height", (r) => y(0) - y(r[col]))
-    .attr("fill", "var(--accent, #0e5f68)");
+    .attr("fill", "var(--accent, #1a2f6a)");
 
   svg
     .append("g")
