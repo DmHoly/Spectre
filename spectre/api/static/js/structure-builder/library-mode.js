@@ -20,9 +20,10 @@ async function loadChosenStructureForExperience() {
       return;
     }
     setSubstrateFields(found.substrate);
-    state.steps = found.steps;
+    state.steps = attachDeclaredParams(found.steps, found.declared_params);
+    selectLastStep();
     renderSteps();
-    document.getElementById("based-on-note").style.display = "";
+    document.getElementById("based-on-note").hidden = false;
     document.getElementById("based-on-name").textContent = found.name;
     document.getElementById("edit-structure-link").href =
       `/microprojets/${slug}/structures/bibliotheque/${encodeURIComponent(found.name)}` +
@@ -40,6 +41,7 @@ async function saveLibraryStructure(forceNew) {
   const name = document.getElementById("library-name").value.trim();
   if (!name) {
     showError(new Error("Donnez un nom à cette structure pour l'enregistrer."));
+    document.getElementById("library-name").focus();
     return;
   }
   const partagee = document.getElementById("library-shared-checkbox").checked;
@@ -47,6 +49,7 @@ async function saveLibraryStructure(forceNew) {
     name,
     substrate: substrateSpec(),
     steps: state.steps,
+    declared_params: declaredParamsPayload(state.steps),
     derived_from: state.derivedFrom || null,
     partagee,
   };
@@ -74,14 +77,15 @@ async function saveLibraryStructure(forceNew) {
 }
 
 async function initLibraryMode() {
-  document.getElementById("library-header").style.display = "";
-  document.getElementById("experience-sections").style.display = "none";
+  document.getElementById("library-header").hidden = false;
+  document.getElementById("library-save-btn").hidden = false;
   // Arrivée depuis le hub /bibliotheque (?partagee=1) : la structure sera par défaut "partagée
   // avec tous les µprojets", pas propre au µprojet de travail choisi pour ouvrir l'éditeur.
   if (queryParams.get("partagee") === "1") document.getElementById("library-shared-checkbox").checked = true;
 
   if (!libraryStructureName) {
-    document.getElementById("page-title").textContent = "Nouvelle structure";
+    setPageTitle("Nouvelle structure");
+    document.getElementById("library-name").focus();
     return;
   }
   try {
@@ -92,29 +96,29 @@ async function initLibraryMode() {
       return;
     }
     setSubstrateFields(found.substrate);
-    state.steps = found.steps;
+    state.steps = attachDeclaredParams(found.steps, found.declared_params);
+    selectLastStep();
     renderSteps();
     // A preset (structureforge built-in) has no backing store to edit in place - forcing
     // duplicate mode turns "Modifier" into "dupliquer sous un nouveau nom", which is the only
     // thing that makes sense for it.
     const duplicateMode = libraryDuplicateMode || librarySourceScope === "preset";
     if (duplicateMode) {
-      document.getElementById("page-title").textContent =
-        librarySourceScope === "preset" ? "Enregistrer ce préset sous un nouveau nom" : "Dupliquer une structure";
+      setPageTitle(librarySourceScope === "preset" ? "Enregistrer ce préset sous un nouveau nom" : "Dupliquer une structure");
       document.getElementById("library-name").placeholder = `ex : ${found.name} + ...`;
       state.derivedFrom = found.name;
-      document.getElementById("library-derived-note").style.display = "";
+      document.getElementById("library-derived-note").hidden = false;
       document.getElementById("library-derived-note").textContent = `Dérivée de : ${found.name}`;
     } else {
-      document.getElementById("page-title").textContent = "Modifier la structure";
+      setPageTitle("Modifier la structure");
       document.getElementById("library-name").value = found.name;
       document.getElementById("library-shared-checkbox").checked = librarySourceScope === "partagee";
       state.derivedFrom = found.derived_from || null;
       state.editingLibraryName = found.name;
       state.editingLibraryScope = librarySourceScope;
-      document.getElementById("library-save-as-btn").style.display = "";
+      document.getElementById("library-save-as-btn").hidden = false;
       if (found.derived_from) {
-        document.getElementById("library-derived-note").style.display = "";
+        document.getElementById("library-derived-note").hidden = false;
         document.getElementById("library-derived-note").textContent = `Dérivée de : ${found.derived_from}`;
       }
     }

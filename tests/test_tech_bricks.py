@@ -116,3 +116,13 @@ def test_viewer_cannot_create_a_tech_brick(client):
         json={"name": "Interdit", "steps": _steps(), "partagee": False},
     )
     assert denied.status_code == 403
+
+
+def test_a_tech_brick_keeps_its_declared_parameters(client):
+    slug = _register_and_microproject(client, "brickDeclared@example.com")
+    declared = {"0": [{"name": "dopage", "value": 3e18, "obtention": {}}]}
+    body = client.post(
+        f"/api/microprojets/{slug}/briques-technologiques",
+        json={"name": "PGaN dope", "steps": _steps(), "declared_params": declared},
+    ).json()
+    assert body["microprojet"][0]["declared_params"] == declared

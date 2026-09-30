@@ -161,13 +161,16 @@ def test_trend_kpis_are_listed_and_served_lazily(client):
     _register(client, "boss@example.com")
     kpis = client.get("/api/management/native-pt2/tendances").json()["kpis"]
     by_key = {k["key"]: k for k in kpis}
-    assert by_key["activite"]["status"] == "live" and by_key["eqe"]["status"] == "placeholder"
+    assert by_key["activite"]["status"] == "live" and by_key["eqe"]["status"] == "demo"
+    assert by_key["pl"]["status"] == "placeholder"
+    assert [v["key"] for v in by_key["activite"]["variants"]] == ["running", "wafers"]
 
     live = client.get("/api/management/native-pt2/tendances/activite?mois=6").json()
     assert live["status"] == "live" and len(live["points"]) == 6 and len(live["periods"]) == 6
+    assert live["variant"] == "running" and live["unit"] == "expériences"
     assert all(p["value"] == 0 for p in live["points"])
 
-    placeholder = client.get("/api/management/native-pt2/tendances/eqe").json()
+    placeholder = client.get("/api/management/native-pt2/tendances/pl").json()
     assert placeholder["status"] == "placeholder" and placeholder["points"] == [] and len(placeholder["periods"]) == 12
 
     assert client.get("/api/management/native-pt2/tendances/inconnu").status_code == 404
@@ -180,3 +183,141 @@ def test_month_periods_cross_the_year_boundary():
     from spectre.core.trends import month_periods
 
     assert month_periods(3, today=date(2027, 2, 10)) == ["2026-12", "2027-01", "2027-02"]
+
+
+def test_objectives_record_a_bonus_percentage_and_the_microproject_that_validated_them(client):
+    _register(client, "boss@example.com")
+    nova = "/api/management/nova-pt1/objectifs"
+    client.post(nova, json={"title": "Réduire le coût", "weight": 5})
+    client.post(nova, json={"title": "Sans pourcentage"})
+    area = client.post(nova, json={"title": "Qualifier le procédé", "weight": 60}).json()
+    assert [(o["title"], o["weight"]) for o in area["objectifs"]] == [
+        ("Qualifier le procédé", 60),
+        ("Réduire le coût", 5),
+        ("Sans pourcentage", None),
+    ]
+    assert "effort" not in area and "effort_total" not in area  # un simple chiffre, rien de calculé
+    assert all(o["achieved"] is False and o["validated_by"] is None for o in area["objectifs"])
+
+    microproject = client.post("/api/microprojets", json={"name": "Pilote procédé", "management_area_slug": "nova-pt1"}).json()
+    objective_id = area["objectifs"][0]["id"]
+    done = client.put(
+        f"{nova}/{objective_id}",
+        json={"title": "Qualifier le procédé", "weight": 60, "achieved": True, "validated_by": microproject["slug"]},
+    ).json()
+    first = done["objectifs"][0]
+    assert first["achieved"] is True
+    assert first["validated_by"] == {"slug": microproject["slug"], "code": "Nov_0001", "name": "Pilote procédé"}
+
+    assert client.post(nova, json={"title": "Trop", "weight": 120}).status_code == 422
+    assert client.post(nova, json={"title": "Zéro", "weight": 0}).status_code == 201
+    assert client.post(nova, json={"title": "Fantôme", "validated_by": "inconnu"}).status_code == 422
+
+
+def test_microprojets_get_an_auto_incremented_number_from_their_corporate_project(client):
+    _register(client, "boss@example.com")
+
+    def create(name, area=None):
+        body = {"name": name, **({"management_area_slug": area} if area else {})}
+        return client.post("/api/microprojets", json=body).json()
+
+    nat1, nat2 = create("Dopage A", "native-pt2"), create("Dopage B", "native-pt2")
+    nov1 = create("Pilote", "nova-pt1")
+    loose = create("Pas encore classé")
+    assert [nat1["code"], nat2["code"], nov1["code"], loose["code"]] == ["Nat_0001", "Nat_0002", "Nov_0001", None]
+
+    # rattaché plus tard : numéroté à ce moment-là ; déplacé ensuite : garde son numéro
+    client.post("/api/management/datacom-vlc/microprojets", json={"microproject_slug": loose["slug"]})
+    client.post("/api/management/nova-pt1/microprojets", json={"microproject_slug": nat1["slug"]})
+    codes = {p["slug"]: p["code"] for p in client.get("/api/microprojets/tous").json()}
+    assert codes[loose["slug"]] == "VLC_0001" and codes[nat1["slug"]] == "Nat_0001"
+    assert create("Dopage C", "native-pt2")["code"] == "Nat_0003"  # jamais de numéro réutilisé
+
+    for typed in ("Nat_0002", "nat 2", "NAT2", "Nat-02"):
+        found = client.get(f"/api/microprojets/code/{typed}")
+        assert found.status_code == 200 and found.json()["slug"] == nat2["slug"], typed
+    assert client.get("/api/microprojets/code/Nat_0099").status_code == 404
+    redirect = client.get("/p/Nat_0002", follow_redirects=False)
+    assert redirect.status_code == 302 and redirect.headers["location"] == f"/microprojets/{nat2['slug']}"
+
+    area = client.post("/api/management", json={"name": "Fiabilité"}).json()
+    assert area["code_prefix"] == "Fia"
+    assert client.put(f"/api/management/{area['slug']}", json={"name": "Fiabilité", "code_prefix": "Nat"}).status_code == 422
+    assert client.put(f"/api/management/{area['slug']}", json={"name": "Fiabilité", "code_prefix": "N4t"}).status_code == 422
+    renamed = client.put("/api/management/native-pt2", json={"name": "Native (PT2)", "code_prefix": "Ntv"}).json()
+    assert renamed["code_prefix"] == "Ntv"
+    assert create("Dopage D", "native-pt2")["code"] == "Ntv_0001"
+    assert client.get(f"/api/microprojets/{nat2['slug']}").json()["code"] == "Nat_0002"
+
+
+def test_activity_trend_counts_experiments_in_progress_and_their_wafers(client):
+    _register(client, "boss@example.com")
+    microproject = client.post(
+        "/api/microprojets", json={"name": "Suivi activite", "management_area_slug": "native-pt2"}
+    ).json()
+    substrate = {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
+    steps = [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
+    for title, wafers in (("Essai A", ["W1", "W2"]), ("Essai B", ["W3"])):
+        response = client.post(
+            f"/api/microprojets/{microproject['slug']}/experiences",
+            json={"substrate": substrate, "steps": steps, "title": title, "intent": "x", "entities": [{"sample_id": w} for w in wafers]},
+        )
+        assert response.status_code == 201, response.text
+
+    running = client.get("/api/management/native-pt2/tendances/activite?mois=3").json()
+    assert [p["value"] for p in running["points"]][-1] == 2  # two studies in progress this month
+    wafers = client.get("/api/management/native-pt2/tendances/activite?mois=3&variante=wafers").json()
+    assert wafers["variant"] == "wafers" and wafers["unit"] == "wafers"
+    assert [p["value"] for p in wafers["points"]][-1] == 3
+    assert client.get("/api/management/native-pt2/tendances/activite?variante=inconnue").status_code == 404
+
+
+def test_eqe_demo_trend_rises_and_opens_a_mock_study_fiche(client):
+    _register(client, "boss@example.com")
+    eqe = client.get("/api/management/native-pt2/tendances/eqe?mois=12").json()
+    assert eqe["status"] == "demo" and "fictives" in eqe["message"]
+    values = [p["value"] for p in eqe["points"]]
+    assert values[-1] > values[0] + 4  # clearly rising
+    studies = [p for p in eqe["points"] if p.get("study")]
+    assert studies and all(p["label"] for p in studies)
+
+    fiche = client.get(f"/api/management/native-pt2/tendances/eqe/etudes/{studies[-1]['study']}").json()
+    assert fiche["demo"] is True
+    assert "<svg" in fiche["structure_svg"] and "InGaN" in fiche["materials"]
+    assert fiche["objective"]["target"] == 10.0 and fiche["conclusion"]["summary"]
+    assert any(node["state"] == "current" for node in fiche["tree"]["nodes"]) and fiche["tree"]["edges"]
+
+    assert client.get("/api/management/native-pt2/tendances/eqe/etudes/inconnue").status_code == 404
+    assert client.get("/api/management/native-pt2/tendances/activite/etudes/eqe-ref").status_code == 404
+
+
+def test_activity_counts_a_study_in_every_month_it_was_in_progress():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from spectre.core.trends import _running_intervals
+
+    def version(day, status):
+        return SimpleNamespace(created_at=datetime(2026, *day, tzinfo=timezone.utc), conclusion=SimpleNamespace(status=status))
+
+    # lancée fin janvier, conclue début mars, rouverte en mai (évolution) et toujours en cours
+    versions = [version((1, 28), "draft"), version((2, 10), "running"), version((3, 2), "concluded"), version((5, 5), "draft")]
+    intervals = _running_intervals(versions)
+    assert intervals == [(versions[0].created_at, versions[2].created_at), (versions[3].created_at, None)]
+
+
+def test_topbar_search_finds_microprojets_by_number_or_name(client):
+    _register(client, "boss@example.com")
+    for name in ("Dopage PGaN", "Amélioration IQE", "Double EBL"):
+        client.post("/api/microprojets", json={"name": name, "management_area_slug": "native-pt2"})
+
+    def names(q):
+        return [p["name"] for p in client.get(f"/api/microprojets/recherche?q={q}").json()]
+
+    assert names("nat 2") == ["Amélioration IQE"]  # le numéro exact d'abord
+    assert names("nat") == ["Dopage PGaN", "Amélioration IQE", "Double EBL"]  # Nat_0001, 0002, 0003
+    assert names("amelio") == ["Amélioration IQE"]  # sans accent, début du nom
+    assert names("ebl double") == ["Double EBL"]  # tous les mots, dans le désordre
+    assert names("") == [] and names("introuvable") == []
+    hit = client.get("/api/microprojets/recherche?q=Nat_0003").json()[0]
+    assert hit["code"] == "Nat_0003" and hit["management_area"]["slug"] == "native-pt2"

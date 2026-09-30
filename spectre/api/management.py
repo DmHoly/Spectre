@@ -26,6 +26,7 @@ class AreaRequest(BaseModel):
     description: str = ""
     strategy: str = ""
     objectives_period: str | None = None  # left untouched when omitted
+    code_prefix: str | None = None  # prefix of its µprojets' numbers (« Nat »); left untouched / derived when omitted
 
 
 class AssignRequest(BaseModel):
@@ -42,6 +43,9 @@ class ObjectiveRequest(BaseModel):
     title: str
     detail: str = ""
     target: str = ""
+    weight: float | None = None  # bonus figure, 0-100 %; None = not set
+    achieved: bool = False
+    validated_by: str | None = None  # slug of the µprojet that validated it
 
 
 class ReorderRequest(BaseModel):
@@ -76,14 +80,36 @@ def _microproject_stats(slug: str) -> dict:
     return {"experiences": running + concluded, "running": running, "concluded": concluded, "wafers": _wafer_count(slug)}
 
 
+def _microproject_ref(microproject_id: int | None) -> dict | None:
+    if microproject_id is None:
+        return None
+    try:
+        microproject = microprojects.get_by_id(microproject_id)
+    except microprojects.MicroprojectNotFoundError:
+        return None
+    return {"slug": microproject.slug, "code": microproject.code, "name": microproject.name}
+
+
 def _objective_payload(objective: management.Objective) -> dict:
     return {
         "id": objective.id,
         "title": objective.title,
         "detail": objective.detail,
         "target": objective.target,
+        "weight": objective.weight,
+        "achieved": objective.achieved,
+        "validated_by": _microproject_ref(objective.validated_by),
         "position": objective.position,
     }
+
+
+def _validated_by_id(slug: str | None) -> int | None:
+    if not slug:
+        return None
+    try:
+        return microprojects.get_by_slug(slug).id
+    except microprojects.MicroprojectNotFoundError as exc:
+        raise HTTPException(status_code=422, detail=f"µprojet {slug!r} introuvable") from exc
 
 
 def _area_payload(area: ManagementArea, *, detailed: bool = False, user: User | None = None) -> dict:
@@ -109,6 +135,7 @@ def _area_payload(area: ManagementArea, *, detailed: bool = False, user: User | 
             microproject_rows.append(
                 {
                     "slug": microproject.slug,
+                    "code": microproject.code,
                     "name": microproject.name,
                     "description": microproject.description,
                     "role": role,
@@ -123,6 +150,7 @@ def _area_payload(area: ManagementArea, *, detailed: bool = False, user: User | 
         "description": area.description,
         "strategy": area.strategy,
         "objectives_period": area.objectives_period,
+        "code_prefix": area.code_prefix,
         "stats": agg,
     }
     if detailed:
@@ -161,7 +189,7 @@ def get_area(slug: str, user: User = Depends(get_current_user)) -> dict:
 @router.post("", status_code=201)
 def create_area(body: AreaRequest, user: User = Depends(require_admin)) -> dict:
     try:
-        area = management.create(body.name, body.description, body.strategy, created_by=user.id)
+        area = management.create(body.name, body.description, body.strategy, created_by=user.id, code_prefix=body.code_prefix)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _area_payload(area, detailed=True, user=user)
@@ -177,6 +205,7 @@ def update_area(slug: str, body: AreaRequest, user: User = Depends(require_admin
             description=body.description,
             strategy=body.strategy,
             objectives_period=body.objectives_period,
+            code_prefix=body.code_prefix,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -244,7 +273,16 @@ def delete_thematic(slug: str, thematique_slug: str, user: User = Depends(requir
 def create_objective(slug: str, body: ObjectiveRequest, user: User = Depends(require_admin)) -> dict:
     area = _get_area(slug)
     try:
-        management.create_objective(area.id, body.title, body.detail, body.target, created_by=user.id)
+        management.create_objective(
+            area.id,
+            body.title,
+            body.detail,
+            body.target,
+            weight=body.weight,
+            achieved=body.achieved,
+            validated_by=_validated_by_id(body.validated_by),
+            created_by=user.id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _detailed(area, user)
@@ -265,7 +303,16 @@ def reorder_objectives(slug: str, body: ReorderRequest, user: User = Depends(req
 def update_objective(slug: str, objective_id: int, body: ObjectiveRequest, user: User = Depends(require_admin)) -> dict:
     area = _get_area(slug)
     try:
-        management.update_objective(area.id, objective_id, title=body.title, detail=body.detail, target=body.target)
+        management.update_objective(
+            area.id,
+            objective_id,
+            title=body.title,
+            detail=body.detail,
+            target=body.target,
+            weight=body.weight,
+            achieved=body.achieved,
+            validated_by=_validated_by_id(body.validated_by),
+        )
     except ObjectiveNotFoundError as exc:
         raise HTTPException(status_code=404, detail="objectif introuvable") from exc
     except ValueError as exc:
@@ -296,7 +343,16 @@ def _kpi_payload(kpi: trends.KpiDefinition) -> dict:
         "source": kpi.source,
         "hook": kpi.hook,
         "status": kpi.status,
+        "variants": [{"key": v.key, "label": v.label, "unit": v.unit} for v in kpi.variants],
     }
+
+
+def _point_payload(point: trends.TrendPoint) -> dict:
+    payload = {"period": point.period, "value": point.value}
+    if point.study:
+        payload["study"] = point.study
+        payload["label"] = point.label
+    return payload
 
 
 @router.get("/{slug}/tendances")
@@ -307,21 +363,55 @@ def list_trends(slug: str, user: User = Depends(get_current_user)) -> dict:
     return {"kpis": [_kpi_payload(k) for k in trends.list_kpis()]}
 
 
-@router.get("/{slug}/tendances/{kpi_key}")
-def get_trend(
-    slug: str, kpi_key: str, mois: int = Query(12, ge=1, le=60), user: User = Depends(get_current_user)
-) -> dict:
-    area = _get_area(slug)
+def _get_kpi(kpi_key: str) -> trends.KpiDefinition:
     try:
-        kpi = trends.get_kpi(kpi_key)
+        return trends.get_kpi(kpi_key)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"KPI {kpi_key!r} inconnu") from exc
-    result = trends.series(kpi_key, area, mois)
-    return {
+
+
+@router.get("/{slug}/tendances/{kpi_key}")
+def get_trend(
+    slug: str,
+    kpi_key: str,
+    mois: int = Query(12, ge=1, le=60),
+    variante: str | None = Query(None),
+    user: User = Depends(get_current_user),
+) -> dict:
+    area = _get_area(slug)
+    kpi = _get_kpi(kpi_key)
+    try:
+        variant = kpi.variant(variante)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"variante {variante!r} inconnue pour {kpi_key!r}") from exc
+    result = trends.series(kpi_key, area, mois, variant.key if variant else None)
+    payload = {
         **_kpi_payload(kpi),
         "status": result.status,
         "message": result.message,
         "target": result.target,
         "periods": trends.month_periods(mois),
-        "points": [{"period": pt.period, "value": pt.value} for pt in result.points],
+        "points": [_point_payload(pt) for pt in result.points],
+        "variant": variant.key if variant else None,
     }
+    if variant:
+        payload["unit"] = variant.unit or kpi.unit
+        payload["description"] = variant.description or kpi.description
+        payload["variant_label"] = variant.label
+    return payload
+
+
+@router.get("/{slug}/tendances/{kpi_key}/etudes/{study_id}")
+def get_trend_study(slug: str, kpi_key: str, study_id: str, user: User = Depends(get_current_user)) -> dict:
+    """The fiche of the study behind a point of a demo trend (see :mod:`spectre.core.demo_trends`)
+    - a mock: structure, objective, conclusion and a symbolic view of its experiment tree."""
+    area = _get_area(slug)
+    kpi = _get_kpi(kpi_key)
+    if not kpi.demo:
+        raise HTTPException(status_code=404, detail="pas de fiche d'étude pour ce KPI")
+    from ..core.demo_trends import demo_study
+
+    try:
+        return demo_study(area, study_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"étude {study_id!r} introuvable") from exc

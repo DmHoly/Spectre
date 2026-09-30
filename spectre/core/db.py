@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS management_areas (
     strategy TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     created_by INTEGER REFERENCES users(id),
-    objectives_period TEXT NOT NULL DEFAULT '6 prochains mois'
+    objectives_period TEXT NOT NULL DEFAULT '6 prochains mois',
+    -- prefix of the numbers its µprojets get (« Nat » -> Nat_0001, Nat_0002...); '' = not numbered
+    code_prefix TEXT NOT NULL DEFAULT ''
 );
 
 -- Middle level: a technical thématique of one corporate project (dopage PGaN, double EBL...). It
@@ -56,14 +58,19 @@ CREATE TABLE IF NOT EXISTS thematics (
     UNIQUE (management_area_id, slug)
 );
 
--- A corporate project's objectives for the coming period, ranked: ``position`` 0 is the most
--- important. Shown first, with emphasis, on the project's page.
+-- A corporate project's objectives for the coming period. ``weight`` is a figure (0-100 %) used to
+-- compute the team's bonus - only recorded and shown, and objectives are ranked by it; ``position``
+-- only orders objectives without one (0 = most important). ``achieved`` + the µprojet that
+-- validated it say whether it was reached, and by whom.
 CREATE TABLE IF NOT EXISTS area_objectives (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     management_area_id INTEGER NOT NULL REFERENCES management_areas(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     detail TEXT NOT NULL DEFAULT '',
     target TEXT NOT NULL DEFAULT '',
+    weight REAL,
+    achieved INTEGER NOT NULL DEFAULT 0,
+    validated_by_microproject_id INTEGER REFERENCES microprojects(id) ON DELETE SET NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     created_by INTEGER REFERENCES users(id)
@@ -87,7 +94,11 @@ CREATE TABLE IF NOT EXISTS microprojects (
     management_area_id INTEGER REFERENCES management_areas(id),
     thematic_id INTEGER REFERENCES thematics(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    created_by INTEGER NOT NULL REFERENCES users(id)
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    -- its number, « Nat_0004 » = prefix + number: given once, when it first lands in a numbered
+    -- corporate project, and kept for good (even if it moves) - see spectre.core.microprojects
+    code_prefix TEXT,
+    code_number INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS memberships (
@@ -262,6 +273,24 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE microprojects ADD COLUMN thematic_id INTEGER REFERENCES thematics(id) ON DELETE SET NULL")
     if "objectives_period" not in _column_names(conn, "management_areas"):
         conn.execute("ALTER TABLE management_areas ADD COLUMN objectives_period TEXT NOT NULL DEFAULT '6 prochains mois'")
+    if "weight" not in _column_names(conn, "area_objectives"):
+        conn.execute("ALTER TABLE area_objectives ADD COLUMN weight REAL")
+    if "achieved" not in _column_names(conn, "area_objectives"):
+        conn.execute("ALTER TABLE area_objectives ADD COLUMN achieved INTEGER NOT NULL DEFAULT 0")
+    if "validated_by_microproject_id" not in _column_names(conn, "area_objectives"):
+        conn.execute(
+            "ALTER TABLE area_objectives ADD COLUMN validated_by_microproject_id INTEGER "
+            "REFERENCES microprojects(id) ON DELETE SET NULL"
+        )
+    if "code_prefix" not in _column_names(conn, "management_areas"):
+        conn.execute("ALTER TABLE management_areas ADD COLUMN code_prefix TEXT NOT NULL DEFAULT ''")
+    if "code_number" not in _column_names(conn, "microprojects"):
+        conn.execute("ALTER TABLE microprojects ADD COLUMN code_prefix TEXT")
+        conn.execute("ALTER TABLE microprojects ADD COLUMN code_number INTEGER")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_microprojects_code ON microprojects(code_prefix, code_number) "
+        "WHERE code_number IS NOT NULL"
+    )
 
     if conn.execute("SELECT 1 FROM management_areas WHERE slug = ?", (UNCLASSIFIED_AREA_SLUG,)).fetchone() is None:
         conn.execute(
@@ -286,6 +315,37 @@ def _migrate(conn: sqlite3.Connection) -> None:
     has_admin = conn.execute("SELECT 1 FROM users WHERE is_admin = 1 LIMIT 1").fetchone() is not None
     if has_users and not has_admin:
         conn.execute("UPDATE users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM users)")
+
+    _backfill_microproject_codes(conn)
+
+
+_FLAGSHIP_PREFIXES = (("native-pt2", "Nat"), ("nova-pt1", "Nov"), ("datacom-vlc", "VLC"))
+
+
+def _backfill_microproject_codes(conn: sqlite3.Connection) -> None:
+    """Every corporate project gets a code prefix (the flagship ones their usual « Nat »/« Nov »/
+    « VLC », any other one derived from its name) and every µprojet already sitting in one gets its
+    number, in creation order - only what's still missing, never renumbering. « Non classé » has no
+    prefix: its µprojets are numbered once attached to a real project."""
+    from .management import derive_code_prefix
+    from .microprojects import assign_code
+
+    for slug, prefix in _FLAGSHIP_PREFIXES:
+        conn.execute("UPDATE management_areas SET code_prefix = ? WHERE slug = ? AND code_prefix = ''", (prefix, slug))
+    unprefixed = conn.execute(
+        "SELECT id, name FROM management_areas WHERE code_prefix = '' AND slug != ?", (UNCLASSIFIED_AREA_SLUG,)
+    ).fetchall()
+    for row in unprefixed:
+        taken = {r["code_prefix"].lower() for r in conn.execute("SELECT code_prefix FROM management_areas") if r["code_prefix"]}
+        conn.execute("UPDATE management_areas SET code_prefix = ? WHERE id = ?", (derive_code_prefix(row["name"], taken), row["id"]))
+    pending = conn.execute(
+        "SELECT microprojects.id, microprojects.management_area_id FROM microprojects "
+        "JOIN management_areas ON management_areas.id = microprojects.management_area_id "
+        "WHERE microprojects.code_number IS NULL AND management_areas.code_prefix != '' "
+        "ORDER BY microprojects.created_at, microprojects.id"
+    ).fetchall()
+    for row in pending:
+        assign_code(conn, row["id"], row["management_area_id"])
 
 
 def init_db() -> None:

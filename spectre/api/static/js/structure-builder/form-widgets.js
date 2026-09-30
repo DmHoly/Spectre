@@ -15,6 +15,27 @@ const MATERIAL_CATEGORY_LABELS = {
   other: "Autres",
 };
 
+// Pré-remplit un <select> avec une valeur venue d'une étape existante, même absente de ses options
+// (un matériau connu de StructureForge mais pas de library/materiaux.yml, une recette retirée, une
+// unité que ce formulaire ne propose pas...) : on ajoute alors l'option plutôt que de laisser le
+// champ vide - vide, la moindre modification de l'étape écraserait la valeur d'origine.
+function ensureSelectValue(selectOrId, value, suffix = " (hors bibliothèque)") {
+  const select = typeof selectOrId === "string" ? document.getElementById(selectOrId) : selectOrId;
+  if (!select) return;
+  if (value === null || value === undefined || value === "") {
+    select.value = "";
+    return;
+  }
+  select.value = value;
+  if (select.value !== String(value)) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = `${value}${suffix}`;
+    select.appendChild(option);
+    select.value = value;
+  }
+}
+
 function materialOptions(selectedValue) {
   const optionHtml = (m) =>
     `<option value="${escapeHtml(m.name)}" ${m.name === selectedValue ? "selected" : ""}>${escapeHtml(m.name)}</option>`;
@@ -107,7 +128,7 @@ function fillGradedMaterialField(id, materialName) {
     const label = document.getElementById(`${id}-fraction-label`);
     if (label) label.textContent = match[1] === "Al" ? "Taux d'aluminium (%)" : "Taux d'indium (%)";
   } else {
-    select.value = materialName || "";
+    ensureSelectValue(select, materialName || "");
     wrap.style.display = "none";
   }
 }
@@ -118,9 +139,9 @@ function presetOptionsHtml(kind) {
     ...state.stepPresets.partagees.map((p) => ({ ...p, scope: "partagee" })),
     ...state.stepPresets.microprojet.map((p) => ({ ...p, scope: "microprojet" })),
   ].filter((p) => p.payload.kind === kind);
-  const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", projet: "" };
+  const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", microprojet: "" };
   return entries
-    .map((p) => `<option value="${p.scope}::${encodeURIComponent(p.name)}">${escapeHtml(p.name)}${scopeSuffix[p.scope]}</option>`)
+    .map((p) => `<option value="${p.scope}::${encodeURIComponent(p.name)}">${escapeHtml(p.name)}${scopeSuffix[p.scope] || ""}</option>`)
     .join("");
 }
 
@@ -245,6 +266,34 @@ function modeSummary(mode, angle_deg) {
 // attache à n'importe quelle étape, indépendamment de ses propres champs typés (voir
 // spectre.core.structures.DeclaredParam) - communs à tous les types d'étape, donc rendus une seule
 // fois par le formulaire commun (step-list.js), pas dans STEP_KIND_DEFS.
+// Un nombre à remettre dans un champ de saisie : notation scientifique exacte pour les grandes/
+// petites grandeurs (2.5e18 reste « 2.5e18 », pas « 2500000000000000000 »), sans perte de
+// précision - relu tel quel par parseDeclaredValue / Number().
+function formatNumberInput(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return value == null ? "" : String(value);
+  const abs = Math.abs(value);
+  return value !== 0 && (abs >= 1e6 || abs < 1e-4) ? value.toExponential().replace("e+", "e") : String(value);
+}
+
+// Les paramètres déclarés voyagent à part des étapes dans l'API (un ProcessStep StructureForge ne
+// les connaît pas) : {index d'étape: [paramètres]} à l'envoi, et rattachés à chaque étape
+// (step.declaredParams) au chargement d'un procédé, d'une structure ou d'une brique enregistrés.
+function declaredParamsPayload(steps) {
+  const out = {};
+  steps.forEach((step, i) => {
+    if (step.declaredParams && step.declaredParams.length) out[i] = step.declaredParams;
+  });
+  return out;
+}
+
+function attachDeclaredParams(steps, declaredParams) {
+  if (!declaredParams) return steps;
+  return steps.map((step, i) => {
+    const params = declaredParams[i] || declaredParams[String(i)];
+    return params && params.length ? { ...step, declaredParams: JSON.parse(JSON.stringify(params)) } : step;
+  });
+}
+
 function declaredParamRowHtml(param, index) {
   const obtentionText = Object.entries(param.obtention || {})
     .map(([k, v]) => `${k}=${v}`)
@@ -252,7 +301,7 @@ function declaredParamRowHtml(param, index) {
   return `
     <div class="field-row js-declared-param-row" data-index="${index}" style="grid-template-columns:1fr 1fr;align-items:end;">
       <div><label>Nom</label><input class="field js-declared-name" value="${escapeHtml(param.name || "")}" placeholder="ex : dopage"></div>
-      <div><label>Valeur</label><input class="field js-declared-value" value="${escapeHtml(param.value ?? "")}" placeholder="ex : 2.5e18"></div>
+      <div><label>Valeur</label><input class="field js-declared-value" value="${escapeHtml(formatNumberInput(param.value))}" placeholder="ex : 2.5e18"></div>
       <div style="grid-column:1/-1;">
         <label>Obtention (clé=valeur, séparées par des virgules)</label>
         <div style="display:flex;gap:6px;">
@@ -289,16 +338,20 @@ function parseObtentionText(text) {
 
 // `params` : liste vivante (ex : state.formDeclaredParams) mutée en place à chaque frappe/retrait,
 // et redessinée via `onChange` (qui recolle typiquement le formulaire complet, cf. livePreviewFromForm).
+// Replié tant qu'aucun paramètre n'est déclaré : c'est de la traçabilité optionnelle, qui ne doit
+// pas allonger le formulaire de chaque étape.
 function declaredParamsSectionHtml(params) {
   return `
-    <div class="card" id="declared-params-section" style="padding:10px 12px;margin:4px 0;background:var(--bg);">
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Paramètres déclarés (optionnel)</div>
-      <div class="help" style="margin-bottom:8px;">Traçabilité libre, indépendante des champs ci-dessus (dopage, précurseur, débit...) - visible ensuite dans le détail de la couche.</div>
-      <div id="declared-params-list" style="display:flex;flex-direction:column;gap:8px;">
-        ${params.map((p, i) => declaredParamRowHtml(p, i)).join("")}
+    <details class="sb-declared" id="declared-params-section" ${params.length ? "open" : ""}>
+      <summary class="sb-declared__summary">Paramètres déclarés <span class="sb-declared__count">${params.length ? params.length : "optionnel"}</span></summary>
+      <div class="sb-declared__body">
+        <div class="help" style="margin:0 0 8px;">Traçabilité libre, indépendante des champs ci-dessus (dopage, précurseur, débit...) - visible ensuite dans le détail de la couche.</div>
+        <div id="declared-params-list" style="display:flex;flex-direction:column;gap:8px;">
+          ${params.map((p, i) => declaredParamRowHtml(p, i)).join("")}
+        </div>
+        <button class="btn btn-line btn-block" id="declared-param-add-btn" type="button" style="margin-top:8px;">+ Ajouter un paramètre déclaré</button>
       </div>
-      <button class="btn btn-line btn-block" id="declared-param-add-btn" type="button" style="margin-top:8px;">+ Ajouter un paramètre déclaré</button>
-    </div>`;
+    </details>`;
 }
 
 function wireDeclaredParamsSection(params, onChange) {

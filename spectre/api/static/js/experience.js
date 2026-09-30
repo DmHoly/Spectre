@@ -1,5 +1,9 @@
-/* Fiche d'identité d'une expérience : en-tête, frise chronologique, structure actuelle (+diff),
-   objectifs, conclusion (ou formulaire pour la rédiger), comparaison avec une autre expérience. */
+/* Fiche d'identité d'une expérience : un en-tête (statut, titre, responsable, étiquettes), puis
+   trois onglets qui vivent chacun leur vie - « Structure & intention » (structure actuelle + diff,
+   en carrousel pour une campagne, intention, objectifs, versions, suivi physique, cartographie),
+   « Données » (données mesurées + preuves), « Conclusion » (ou le formulaire pour la rédiger).
+   L'onglet ouvert est dans l'adresse (#structure / #donnees / #conclusion) et survit aux actions
+   qui enregistrent une nouvelle version (voir goToVersion). Le rapport téléchargé reprend les trois. */
 
 const pathParts = window.location.pathname.split("/").filter(Boolean);
 const slug = pathParts[1];
@@ -21,6 +25,15 @@ const OBJECTIVE_STATUS_LABELS = {
   inconclusive: "Non concluant",
 };
 
+// mêmes libellés que les options du formulaire de conclusion (renderConcludeForm)
+const DECISION_LABELS = {
+  promote: "Retenir comme référence",
+  branch: "Explorer une variante",
+  replicate: "Reproduire pour confirmer",
+  abandon: "Abandonner la piste",
+  inconclusive: "Non concluant",
+};
+
 const EVIDENCE_KIND_LABELS = {
   standard: "Standard",
   image: "Image",
@@ -38,12 +51,81 @@ function clearError() {
 
 let currentRole = null;
 let currentMicroprojectName = null;
+let currentMicroprojectCode = null;
 let currentDetail = null;
 let currentProcess = null; // {substrate, steps} from /process - absent for structures without an
 // editable StructureForge recipe recorded (e.g. a campaign's representative entry).
 
 function isEditorRole() {
   return currentRole === "editor" || currentRole === "owner";
+}
+
+// Chaque action (preuve, étiquette, conclusion...) enregistre une nouvelle version immuable : on la
+// suit, en gardant l'onglet ouvert (#donnees...) plutôt que de revenir au premier.
+function goToVersion(id) {
+  window.location.href = `/microprojets/${slug}/experiences/${id}${window.location.hash}`;
+}
+
+// La matrice d'une campagne (/matrice : une structure par variante, facteurs, suivi physique) - un
+// seul appel partagé par le carrousel de structure, la cartographie et la galerie de données.
+let batchVariationPromise = null;
+function getBatchVariation() {
+  if (!batchVariationPromise) {
+    batchVariationPromise = api.get(`/api/microprojets/${slug}/experiences/${experienceId}/matrice`).catch((err) => {
+      batchVariationPromise = null;
+      throw err;
+    });
+  }
+  return batchVariationPromise;
+}
+
+// --- onglets ------------------------------------------------------------------------------------
+
+const FICHE_TABS = ["structure", "donnees", "conclusion"];
+
+function showTab(name, { focus = false } = {}) {
+  const tab = FICHE_TABS.includes(name) ? name : "structure";
+  FICHE_TABS.forEach((key) => {
+    const button = document.getElementById(`tab-${key}`);
+    const selected = key === tab;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    document.getElementById(`panel-${key}`).hidden = !selected;
+  });
+  if (focus) document.getElementById(`tab-${tab}`).focus();
+  const hash = tab === "structure" ? "" : `#${tab}`;
+  if (window.location.hash !== hash) history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
+}
+
+document.querySelector(".fiche-tabs").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-tab]");
+  if (button) showTab(button.dataset.tab);
+});
+document.querySelector(".fiche-tabs").addEventListener("keydown", (event) => {
+  const current = FICHE_TABS.indexOf(document.querySelector(".fiche-tabs [aria-selected='true']").dataset.tab);
+  let next = null;
+  if (event.key === "ArrowRight") next = (current + 1) % FICHE_TABS.length;
+  else if (event.key === "ArrowLeft") next = (current - 1 + FICHE_TABS.length) % FICHE_TABS.length;
+  else if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = FICHE_TABS.length - 1;
+  if (next === null) return;
+  event.preventDefault();
+  showTab(FICHE_TABS[next], { focus: true });
+});
+window.addEventListener("hashchange", () => showTab(window.location.hash.slice(1)));
+showTab(window.location.hash.slice(1));
+
+// Repères sur les onglets : combien de données, et si l'étude est conclue.
+function updateTabBadges(detail) {
+  const count = (detail.evidence || []).length + (detail.data_items || []).length;
+  document.getElementById("tab-donnees-count").textContent = count ? String(count) : "";
+  const state = document.getElementById("tab-conclusion-state");
+  const concluded = detail.status === "concluded" || detail.status === "abandoned";
+  state.textContent = concluded ? "✓" : "à rédiger";
+  state.classList.toggle("is-done", concluded);
+  state.classList.toggle("is-open", !concluded);
+  state.title = concluded ? "Étude conclue" : "Pas encore conclue";
 }
 
 function objectiveResultFor(detail, objectiveName) {
@@ -55,12 +137,16 @@ function renderHeader(detail) {
   renderStatusActions(detail);
   document.getElementById("exp-title").textContent = detail.title;
   document.getElementById("exp-intent").textContent = detail.intent;
+  const hypothesis = document.getElementById("exp-hypothesis");
+  hypothesis.style.display = detail.hypothesis ? "" : "none";
+  hypothesis.innerHTML = detail.hypothesis ? `<strong>Hypothèse</strong> : ${escapeHtml(detail.hypothesis)}` : "";
   document.getElementById("exp-meta").innerHTML = `
+    ${currentMicroprojectCode ? `<span class="fiche-code" title="Numéro du µprojet">${escapeHtml(currentMicroprojectCode)}</span> &middot; ` : ""}
     Responsable&nbsp;: <span class="meta-value">${escapeHtml(detail.author || "inconnu")}</span>
     &middot; Débutée le&nbsp;: <span class="meta-value">${formatDate(detail.created_at)}</span>
-    ${detail.hypothesis ? `<br>Hypothèse&nbsp;: ${escapeHtml(detail.hypothesis)}` : ""}
   `;
-  document.getElementById("crumb").textContent = "/ " + detail.title;
+  document.getElementById("crumb").textContent = "/ " + (currentMicroprojectCode ? `${currentMicroprojectCode} / ` : "") + detail.title;
+  document.title = `${detail.title} — Spectre`;
 }
 
 // Transitions de statut « en cours » (voir POST .../statut) : une étude nouvellement lancée est
@@ -88,7 +174,7 @@ async function changeStatus(targetStatus, btn) {
   if (btn) btn.disabled = true;
   try {
     const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/statut`, { status: targetStatus });
-    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+    goToVersion(result.id);
   } catch (err) {
     showError(err);
     if (btn) btn.disabled = false;
@@ -178,14 +264,64 @@ function renderFullHistory(items) {
     .join("");
 }
 
-function renderStructure(detail, diff) {
-  document.getElementById("structure-svg").innerHTML = detail.structure_svg || "<div class='help'>Pas de schéma pour ce type de structure.</div>";
+// Index de la variante affichée par le carrousel d'une campagne (0 = la référence). Le détail des
+// couches au survol/clic ne vaut que pour la référence : c'est son procédé que /process décrit.
+let structureVariantIndex = 0;
+
+// Ce qui a changé quand une structure en images est en jeu : le résumé en clair calculé par /diff
+// (spectre.core.structures.describe_image_changes) plutôt que les chemins bruts (images[1].image_id...).
+function diffSummaryHtml(lines) {
+  return lines.map((line) => `<div style="font-size:12.5px;color:var(--text-soft);padding:2px 0;">${escapeHtml(line)}</div>`).join("");
+}
+
+async function renderStructure(detail, diff) {
+  const container = document.getElementById("structure-svg");
+  structureVariantIndex = 0;
+  if (detail.structure_images) {
+    // une structure en images (schéma, coupes TEM...) : la planche, et ce qui a changé
+    const images = detail.structure_images;
+    document.getElementById("structure-title").textContent =
+      images.length > 1 ? `Structure · ${images.length} images` : `Structure · ${STRUCTURE_IMAGE_KIND_LABELS[images[0].kind] || "Image"}`;
+    container.classList.remove("builder-canvas-svg", "layer-clickable");
+    container.innerHTML = structureBoardHtml(slug, images);
+    document.getElementById("structure-click-hint").style.display = "none";
+    const lines = (diff && diff.target && diff.summary) || [];
+    document.getElementById("diff-note").textContent = diff && diff.target && !lines.length ? "identique à la version précédente" : "";
+    document.getElementById("diff-details").innerHTML = diffSummaryHtml(lines);
+    return;
+  }
+  if (detail.is_batch) {
+    // une campagne : un carrousel (référence + chaque variante, avec ses paramètres variés)
+    document.getElementById("structure-title").textContent = "Structures des variantes";
+    container.classList.remove("builder-canvas-svg");
+    container.classList.add("fiche-structure-carousel");
+    try {
+      const variation = await getBatchVariation();
+      mountStructureCarousel(container, variation, {
+        onChange: (index) => {
+          structureVariantIndex = index;
+          hideLayerTooltip();
+          document.getElementById("structure-click-hint").style.display = currentProcess && index === 0 ? "" : "none";
+        },
+      });
+    } catch (err) {
+      container.innerHTML = detail.structure_svg || "";
+    }
+  } else {
+    container.innerHTML = detail.structure_svg || "<div class='help'>Pas de schéma pour ce type de structure.</div>";
+  }
   document.getElementById("structure-click-hint").style.display = currentProcess ? "" : "none";
   const diffNote = document.getElementById("diff-note");
   const diffDetails = document.getElementById("diff-details");
   if (!diff || !diff.target || diff.entries.length === 0) {
     diffNote.textContent = diff && diff.target ? "identique à la version précédente" : "";
     diffDetails.innerHTML = "";
+    return;
+  }
+  if (diff.summary) {
+    // la version précédente était donnée en images : pas de liste de paramètres qui ait un sens
+    diffNote.textContent = "";
+    diffDetails.innerHTML = diffSummaryHtml(diff.summary);
     return;
   }
   diffNote.innerHTML = `<span style="color:var(--abandoned);font-weight:600;">${diff.entries.length} paramètre${diff.entries.length > 1 ? "s" : ""} modifié${diff.entries.length > 1 ? "s" : ""}</span>`;
@@ -330,13 +466,13 @@ function hideLayerTooltip() {
 
 document.getElementById("structure-svg").addEventListener("click", (event) => {
   const path = event.target.closest("[data-layer-index]");
-  if (!path) return;
+  if (!path || structureVariantIndex > 0) return;
   showLayerModal(parseInt(path.dataset.layerIndex, 10));
 });
 
 document.getElementById("structure-svg").addEventListener("mousemove", (event) => {
   const path = event.target.closest("[data-layer-index]");
-  if (!path) {
+  if (!path || structureVariantIndex > 0) {
     hideLayerTooltip();
     return;
   }
@@ -383,7 +519,7 @@ async function renderBatchMatrix(detail) {
   }
   card.style.display = "";
   try {
-    const variation = await api.get(`/api/microprojets/${slug}/experiences/${experienceId}/matrice`);
+    const variation = await getBatchVariation();
     const labels = variation.labels || variation.svgs.map((_, i) => `#${i + 1}`);
     const canEdit = isEditorRole();
     const tracking = variation.physical_tracking || [];
@@ -429,7 +565,12 @@ async function renderBatchMatrix(detail) {
       <table style="border-collapse:collapse;font-size:13px;width:100%;">
         <thead><tr style="text-align:left;color:var(--text-faint);font-size:11px;text-transform:uppercase;">
           <th style="padding:4px 10px 4px 0;">Échantillon</th>
-          ${factorLabels.map((label) => `<th style="padding:4px 10px;">${escapeHtml(label)}</th>`).join("")}
+          ${factorLabels
+            .map((label, j) => {
+              const log = (variation.factor_scales || [])[j] === "log";
+              return `<th style="padding:4px 10px;">${escapeHtml(label)}${log ? ` <span style="text-transform:none;font-weight:500;">(échelle log)</span>` : ""}</th>`;
+            })
+            .join("")}
         </tr></thead>
         <tbody>
           ${labels
@@ -437,7 +578,7 @@ async function renderBatchMatrix(detail) {
               const values = variation.factor_values && variation.factor_values[i] ? variation.factor_values[i] : [label];
               return `<tr style="border-top:1px solid var(--border-soft);">
                 <td class="mono" style="padding:6px 10px 6px 0;">${escapeHtml(label)}</td>
-                ${values.map((v) => `<td class="mono" style="padding:6px 10px;">${escapeHtml(String(v))}</td>`).join("")}
+                ${values.map((v) => `<td class="mono" style="padding:6px 10px;">${escapeHtml(formatParamValue(v))}</td>`).join("")}
               </tr>`;
             })
             .join("")}
@@ -491,7 +632,7 @@ function concludedViewHtml(detail) {
   return `
     <div class="section-title" style="margin-bottom:14px;">Conclusion</div>
     ${c.summary ? `<p style="font-size:13.5px;line-height:1.6;margin-bottom:10px;">${escapeHtml(c.summary)}</p>` : ""}
-    ${c.decision ? `<div style="font-size:12.5px;color:var(--text-soft);">Décision&nbsp;: <strong>${escapeHtml(c.decision)}</strong></div>` : ""}
+    ${c.decision ? `<div style="font-size:12.5px;color:var(--text-soft);">Décision&nbsp;: <strong>${escapeHtml(DECISION_LABELS[c.decision] || c.decision)}</strong></div>` : ""}
     ${c.next_steps ? `<div style="font-size:12.5px;color:var(--text-soft);margin-top:4px;">Suite&nbsp;: ${escapeHtml(c.next_steps)}</div>` : ""}
     ${answers ? `<div style="margin-top:14px;">${answers}</div>` : ""}
   `;
@@ -613,7 +754,7 @@ function renderConcludeForm(detail, prefill) {
       });
       // conclure records a new version carrying the conclusion (experiences are immutable) -
       // go to it, not back to this now-superseded draft.
-      window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+      goToVersion(result.id);
     } catch (err) {
       showError(err);
     }
@@ -662,7 +803,9 @@ document.getElementById("compare-btn").addEventListener("click", async () => {
         ? `/api/microprojets/${slug}/experiences/${experienceId}/diff?against=${target}`
         : `/api/microprojets/${slug}/experiences/${experienceId}/diff-externe?autre_projet=${targetMicroproject}&autre_experience=${target}`;
     const diff = await api.get(endpoint);
-    if (diff.entries.length === 0) {
+    if (diff.note) {
+      box.innerHTML = `<div class="help">${escapeHtml(diff.note)}</div>`;
+    } else if (diff.entries.length === 0) {
       box.innerHTML = `<div class="help">Aucune différence de structure.</div>`;
     } else {
       box.innerHTML = diff.entries
@@ -703,7 +846,7 @@ async function saveAnnotations(evidenceId, annotations) {
     const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/preuves/${evidenceId}/annotations`, {
       annotations,
     });
-    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+    goToVersion(result.id);
   } catch (err) {
     showError(err);
   }
@@ -1076,7 +1219,7 @@ function renderEvidence(detail) {
         const uploadResult = await uploadFile(`/api/microprojets/${slug}/experiences/${result.id}/pieces-jointes`, formData);
         finalId = uploadResult.id;
       }
-      window.location.href = `/microprojets/${slug}/experiences/${finalId}`;
+      goToVersion(finalId);
     } catch (err) {
       showError(err);
     }
@@ -1220,7 +1363,7 @@ async function updateTags(tags) {
   try {
     const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/etiquettes`, { tags });
     // like conclure/preuves, tagging records a new version - follow it there.
-    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+    goToVersion(result.id);
   } catch (err) {
     showError(err);
   }
@@ -1335,7 +1478,7 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
       title,
       intent,
     });
-    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+    goToVersion(result.id);
   } catch (err) {
     showError(err);
   }
@@ -1346,7 +1489,7 @@ async function savePhysicalTracking(entities) {
   try {
     const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/entites`, { entities });
     // like tags/preuves, this records a new version - follow it there.
-    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+    goToVersion(result.id);
   } catch (err) {
     showError(err);
   }
@@ -1374,8 +1517,9 @@ function renderPhysicalTracking(detail) {
 
 function renderReferences(detail) {
   const el = document.getElementById("references-list");
+  document.getElementById("references-card").style.display = detail.references.length ? "" : "none";
   if (detail.references.length === 0) {
-    el.innerHTML = `<div class="help">Aucun lien enregistré.</div>`;
+    el.innerHTML = "";
     return;
   }
   el.innerHTML = detail.references
@@ -1390,29 +1534,65 @@ function renderReferences(detail) {
 }
 
 // Le rapport est une capture de ce qui est affiché, purgée de tout ce qui n'a de sens que dans
-// l'appli vivante - plutôt que de dépendre d'un mode dédié qui garantissait autrefois qu'aucun
-// formulaire d'édition ne traînait dans le DOM au moment de l'export (l'ancien "mode vue"), chaque
-// section est clonée puis débarrassée de tout nœud marqué data-report-hide (un formulaire, un
-// bouton d'action, un champ éditable...) ; le miroir texte .report-only qui l'accompagne parfois
-// (cf. entityFieldsHtml) - invisible sur la fiche vivante - est alors révélé pour porter la valeur
-// à sa place. Ne garde que les cartes qui ont un sens hors de l'appli (pas "Comparer avec", un
-// outil interactif, ni "Actions avancées").
-const REPORT_SECTION_IDS = ["header-card", "matrix-card", "physical-tracking-card", "evidence-card", "conclusion-section", "references-card"];
-
-function cleanSectionForReport(el) {
+// l'appli vivante : chaque bloc est cloné puis débarrassé de tout nœud marqué data-report-hide (un
+// formulaire, un bouton d'action, un champ éditable, la barre d'onglets...) ; le miroir texte
+// .report-only qui l'accompagne parfois (cf. entityFieldsHtml) - invisible sur la fiche vivante -
+// est alors révélé pour porter la valeur à sa place. Les trois onglets y figurent tous, l'un après
+// l'autre sous leur titre, quel que soit celui qui est ouvert à l'écran (un onglet masqué est
+// dévoilé dans la copie) ; les flèches d'un carrousel de variantes disparaissent, la cartographie
+// montrant déjà chaque variante.
+function cleanSectionForReport(el, inlined = {}) {
   const clone = el.cloneNode(true);
-  clone.querySelectorAll("[data-report-hide]").forEach((node) => node.remove());
+  clone.removeAttribute("hidden");
+  clone.querySelectorAll("[data-report-hide], .atlas-carousel__nav").forEach((node) => node.remove());
+  clone.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id")); // pas de doublons d'id dans le document
+  // Les images servies par l'appli (dessin d'une structure en image, données, preuves) ne
+  // s'ouvriraient pas hors de Spectre : le rapport les embarque (data: URL, voir inlineReportImages).
+  clone.querySelectorAll("img").forEach((img) => {
+    const src = img.getAttribute("src");
+    if (src && inlined[src]) img.setAttribute("src", inlined[src]);
+    img.removeAttribute("loading");
+  });
+  clone.querySelectorAll("a[href^='/api/']").forEach((link) => link.removeAttribute("href"));
   return clone.outerHTML;
+}
+
+async function inlineReportImages(roots) {
+  const sources = new Set();
+  roots.forEach((root) =>
+    root.querySelectorAll("img[src^='/api/']").forEach((img) => sources.add(img.getAttribute("src")))
+  );
+  const inlined = {};
+  await Promise.all(
+    [...sources].map(async (src) => {
+      try {
+        const blob = await fetch(src, { credentials: "same-origin" }).then((r) => (r.ok ? r.blob() : Promise.reject(r)));
+        inlined[src] = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } catch (err) {
+        // image indisponible : le rapport garde le lien d'origine
+      }
+    })
+  );
+  return inlined;
 }
 
 async function generateReportHtml() {
   const css = await fetch("/static/css/style.css").then((r) => r.text());
-  const threeCol = document.querySelector(".fiche-3col");
-  const sections = [document.getElementById("header-card"), threeCol, ...REPORT_SECTION_IDS.slice(1).map((id) => document.getElementById(id))]
-    .filter((el) => el)
-    .map((el) => cleanSectionForReport(el))
+  // styles propres à la page (infobulles de couches...) : repris tels quels
+  const pageCss = [...document.querySelectorAll("head style")].map((el) => el.textContent).join("\n");
+  const panelEls = ["panel-structure", "panel-donnees", "panel-conclusion"].map((id) => document.getElementById(id)).filter((el) => el);
+  const inlined = await inlineReportImages(panelEls);
+  const panels = panelEls
+    .map((el) => `<h2 class="report-section-title">${escapeHtml(el.dataset.reportTitle || "")}</h2>${cleanSectionForReport(el, inlined)}`)
     .join("\n");
+  const sections = cleanSectionForReport(document.getElementById("header-card")) + panels;
   const generatedAt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short" }).format(new Date());
+  const project = [currentMicroprojectCode, currentMicroprojectName].filter(Boolean).join(" · ");
   return `<!doctype html>
 <html lang="fr">
 <head>
@@ -1420,16 +1600,20 @@ async function generateReportHtml() {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(currentDetail.title)} — rapport d'expérience</title>
 <style>${css}</style>
+<style>${pageCss}</style>
 <style>
   body{background:var(--bg);padding:28px 16px;}
   .report-page{max-width:1180px;margin:0 auto;}
   .report-banner{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:20px;font-size:12px;color:var(--text-faint);}
   .report-only{display:inline !important;}
+  .fiche-panel{margin-bottom:8px;}
+  .fiche-card__scroll,.fiche-history .timeline{max-height:none;overflow:visible;}
+  @media print{body{padding:0;background:#fff;}.card{box-shadow:none;break-inside:avoid;}.report-section-title{break-after:avoid;}}
 </style>
 </head>
 <body>
   <div class="report-page">
-    <div class="report-banner">Rapport d'expérience — extrait de Spectre (projet « ${escapeHtml(currentMicroprojectName || "")} ») le ${generatedAt}. Document autonome : une photographie de cette fiche à cet instant, sans lien avec les données vivantes du µprojet.</div>
+    <div class="report-banner">Rapport d'expérience — extrait de Spectre (µprojet « ${escapeHtml(project)} ») le ${generatedAt}. Document autonome : une photographie de cette fiche à cet instant, sans lien avec les données vivantes du µprojet.</div>
     ${sections}
   </div>
 </body>
@@ -1444,7 +1628,7 @@ async function downloadReport() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `rapport-${slug}-${experienceId}.html`;
+    link.download = `rapport-${currentMicroprojectCode || slug}-${experienceId}.html`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1455,7 +1639,58 @@ async function downloadReport() {
 }
 
 function goToEvolve() {
-  window.location.href = `/microprojets/${slug}/experiences/${experienceId}/evoluer`;
+  const mode = currentDetail && currentDetail.structure_images ? "evoluer-image" : "evoluer";
+  window.location.href = `/microprojets/${slug}/experiences/${experienceId}/${mode}`;
+}
+
+// --- structure en images : modifier la planche ---------------------------------------------------
+
+let replaceDrawingDrop = null;
+
+function showReplaceDrawingError(err) {
+  const box = document.getElementById("replace-drawing-error");
+  box.textContent = err ? err.message || String(err) : "";
+  box.style.display = err ? "block" : "none";
+}
+
+function openReplaceDrawing() {
+  const dialog = document.getElementById("replace-drawing-dialog");
+  if (!replaceDrawingDrop) {
+    replaceDrawingDrop = mountImageDrop(document.getElementById("replace-drawing-drop"), {
+      slug,
+      onChange: () => showReplaceDrawingError(null),
+      onError: showReplaceDrawingError,
+      isActive: () => dialog.open,
+    });
+    document.getElementById("replace-drawing-cancel").addEventListener("click", () => dialog.close());
+    document.getElementById("replace-drawing-save").addEventListener("click", saveReplacedDrawing);
+  }
+  replaceDrawingDrop.set(currentDetail.structure_images);
+  showReplaceDrawingError(null);
+  document.getElementById("replace-drawing-save").disabled = false;
+  dialog.showModal();
+  document.querySelector("#replace-drawing-drop .img-board__bar .img-board__add")?.focus();
+}
+
+async function saveReplacedDrawing() {
+  const images = replaceDrawingDrop.get();
+  if (replaceDrawingDrop.isUploading()) return showReplaceDrawingError(new Error("Une image est encore en cours d'envoi - un instant."));
+  if (!images.length) return showReplaceDrawingError(new Error("Il faut au moins une image."));
+  const button = document.getElementById("replace-drawing-save");
+  button.disabled = true;
+  try {
+    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/dessin`, {
+      images: images.map((img) => ({ ...img, caption: (img.caption || "").trim() || null })),
+    });
+    if (result.id === experienceId) {
+      document.getElementById("replace-drawing-dialog").close();
+      return;
+    }
+    goToVersion(result.id);
+  } catch (err) {
+    showReplaceDrawingError(err);
+    button.disabled = false;
+  }
 }
 
 function wireDeleteExperience() {
@@ -1492,12 +1727,10 @@ function applyModeVisibility() {
   // lien reste caché même si editing est vrai, applyModeVisibility() étant rappelée une fois de
   // plus dès que currentProcess est résolu.
   document.getElementById("structure-evolve-link").style.display = editing && currentProcess ? "" : "none";
-  // "Actions avancées" héberge à la fois les Liens (lecture seule, utile à tout le monde) et les
-  // actions réservées à l'éditeur (combiner/supprimer) - le panneau reste donc visible dès qu'il y a
-  // au moins un lien à montrer, même hors édition ; seule la partie éditeur se masque alors.
-  const hasReferences = currentDetail && currentDetail.references && currentDetail.references.length > 0;
-  document.getElementById("advanced-actions").style.display = editing || hasReferences ? "" : "none";
-  document.getElementById("advanced-actions-editor-only").style.display = editing ? "" : "none";
+  document.getElementById("structure-replace-btn").style.display = editing && currentDetail && currentDetail.structure_images ? "" : "none";
+  // "Actions avancées" (combiner / supprimer) : réservé à l'éditeur - les Liens, eux, sont dans
+  // l'onglet « Structure & intention », visibles de tous.
+  document.getElementById("advanced-actions").style.display = editing ? "" : "none";
   // le rapport reste disponible pour tout le monde en permanence - un éditeur voit ses propres
   // formulaires d'édition sur la fiche vivante, mais l'export les retire toujours (data-report-hide,
   // voir generateReportHtml) : plus besoin d'un mode dédié pour garantir un rapport propre.
@@ -1510,7 +1743,8 @@ async function init() {
     const microproject = await api.get(`/api/microprojets/${slug}`);
     currentRole = microproject.role;
     currentMicroprojectName = microproject.name;
-    document.getElementById("microproject-crumb").textContent = microproject.name;
+    currentMicroprojectCode = microproject.code || null;
+    document.getElementById("microproject-crumb").textContent = microproject.code ? `${microproject.code} · ${microproject.name}` : microproject.name;
     document.getElementById("microproject-crumb").href = `/microprojets/${slug}`;
     const areaCrumb = document.getElementById("area-crumb");
     if (microproject.management_area) {
@@ -1522,6 +1756,7 @@ async function init() {
     document.getElementById("thematic-crumb").textContent = microproject.thematique ? " / " + microproject.thematique.name : "";
 
     renderHeader(currentDetail);
+    updateTabBadges(currentDetail);
     renderTags(currentDetail);
     renderRefs(currentDetail);
     renderIntentFormInfo(currentDetail);
@@ -1535,6 +1770,7 @@ async function init() {
     if (isEditorRole()) {
       document.getElementById("evolve-btn").addEventListener("click", goToEvolve);
       document.getElementById("structure-evolve-link").addEventListener("click", goToEvolve);
+      document.getElementById("structure-replace-btn").addEventListener("click", openReplaceDrawing);
       populateCombineSelect();
       wireDeleteExperience();
     }
@@ -1544,7 +1780,9 @@ async function init() {
     const [timeline, diff, process, entityHistory] = await Promise.all([
       api.get(`/api/microprojets/${slug}/experiences/${experienceId}/timeline`),
       api.get(`/api/microprojets/${slug}/experiences/${experienceId}/diff`),
-      api.get(`/api/microprojets/${slug}/experiences/${experienceId}/process`).catch(() => null),
+      currentDetail.has_editable_process
+        ? api.get(`/api/microprojets/${slug}/experiences/${experienceId}/process`).catch(() => null)
+        : Promise.resolve(null),
       api.get(`/api/microprojets/${slug}/entites/historique`).catch(() => ({ sample_ids: [], locations: [] })),
     ]);
     currentProcess = process;

@@ -7,6 +7,7 @@ from spectre.core.versioning import (
     collapsed_dag,
     compute_branch_versions,
     determine_keep_ids,
+    structure_signature,
 )
 
 
@@ -120,6 +121,29 @@ def test_a_gap_with_no_process_does_not_reset_the_next_real_comparison():
     assert versions["c"]["version"] == "2.0.0"
 
 
+def test_a_pictured_structure_is_versioned_by_its_revision_not_its_image():
+    # structure en image : même révision (dessin remplacé) -> rien ; nouvelle révision -> majeur
+    assert structure_signature({"structure_image_revision": "r1"}) == {"image_revision": "r1"}
+    assert structure_signature({}) is None
+    history = [
+        SimpleNamespace(id="a", metadata={"structure_image_revision": "r1"}),
+        SimpleNamespace(id="b", metadata={"structure_image_revision": "r1"}),
+        SimpleNamespace(id="c", metadata={"structure_image_revision": "r2"}),
+    ]
+    versions = compute_branch_versions(history)
+    assert [(versions[e.id]["version"], versions[e.id]["level"]) for e in history] == [
+        ("1.0.0", "initial"),
+        ("1.0.0", "none"),
+        ("2.0.0", "major"),
+    ]
+
+
+def test_switching_between_drawn_and_pictured_is_major():
+    drawn = _process([_dep("Oxyde")])
+    assert classify_process_change(drawn, {"image_revision": "r1"}) == "major"
+    assert classify_process_change({"image_revision": "r1"}, drawn) == "major"
+
+
 # -- determine_keep_ids / collapsed_dag ------------------------------------------------------------
 
 
@@ -162,3 +186,10 @@ def test_a_chain_of_several_collapsed_commits_reconnects_to_the_nearest_kept_anc
     keep = determine_keep_ids(dag, processes, tips={"e"})
     assert keep == {"a", "e"}  # only the root and the tip - nothing in between ever changed
     assert collapsed_dag(dag, keep) == {"a": [], "e": ["a"]}
+
+
+def test_changing_a_declared_parameter_is_minor():
+    before = _process([_dep("PGaN")])
+    after = {**_process([_dep("PGaN")]), "declared_params": {"0": [{"name": "dopage", "value": 1e19, "obtention": {}}]}}
+    assert classify_process_change(before, after) == "minor"
+    assert classify_process_change(after, after) == "none"

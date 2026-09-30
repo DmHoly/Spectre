@@ -18,7 +18,7 @@ from structureforge.core.units import Length
 from structureforge.process.steps import Deposition, Etch, FacetedGrowth, Lithography, ProcessStep, ResistStrip
 
 from .keyed_store import KeyedJsonStore
-from .structures import SubstrateSpec
+from .structures import DeclaredParam, SubstrateSpec
 
 
 class SavedStructure(BaseModel):
@@ -26,6 +26,8 @@ class SavedStructure(BaseModel):
     substrate: SubstrateSpec
     steps: list[ProcessStep]
     derived_from: str | None = None
+    # the steps' declared parameters (see spectre.core.structures.DeclaredParam), by step index
+    declared_params: dict[str, list[DeclaredParam]] = Field(default_factory=dict)
     created_at: str
 
 

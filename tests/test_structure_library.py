@@ -151,3 +151,13 @@ def test_viewer_cannot_create_a_saved_structure(client):
         json={"name": "Interdit", "substrate": _substrate(), "steps": _steps(), "partagee": False},
     )
     assert denied.status_code == 403
+
+
+def test_a_saved_structure_keeps_its_declared_parameters(client):
+    slug = _register_and_microproject(client, "libDeclared@example.com")
+    declared = {"0": [{"name": "dopage", "value": 1e19, "obtention": {"precurseur": "Cp2Mg"}}]}
+    body = client.post(
+        f"/api/microprojets/{slug}/structures-sauvegardees",
+        json={"name": "PGaN dope", "substrate": _substrate(), "steps": _steps(), "declared_params": declared},
+    ).json()
+    assert body["microprojet"][0]["declared_params"] == declared

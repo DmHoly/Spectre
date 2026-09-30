@@ -96,6 +96,7 @@
 
     <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap;">
       <div>
+        <div id="microproject-code" class="page-eyebrow" style="display:none;" title="Numéro du µprojet - à citer pour y renvoyer (lien court : /p/…)"></div>
         <h1 id="microproject-name" style="font-size:22px;"></h1>
         <p id="microproject-description" style="color:var(--text-soft);font-size:14px;margin-top:4px;"></p>
       </div>
@@ -162,13 +163,22 @@
   </dialog>
 
   <dialog id="new-experience-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
-    <div class="card-pad" style="width:400px;">
+    <div class="card-pad" style="width:min(460px,92vw);">
       <h2 style="font-size:16px;margin-bottom:4px;">Nouvelle expérience</h2>
-      <p class="help" style="margin-bottom:16px;">Comment voulez-vous démarrer ?</p>
+      <p class="help" style="margin-bottom:16px;">Comment voulez-vous donner la structure ?</p>
 
       <div style="display:flex;flex-direction:column;gap:16px;">
-        <div>
-          <button class="btn btn-line btn-block" id="option-scratch" type="button">Partir de zéro</button>
+        <div class="new-exp-modes">
+          <button class="new-exp-mode" id="option-scratch" type="button">
+            <span class="new-exp-mode__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"/><path d="M5 20v-4h14v4"/><path d="M7 16v-4h10v4"/><path d="M10 12V8h4v4"/></svg></span>
+            <span class="new-exp-mode__title">Dessiner la structure</span>
+            <span class="new-exp-mode__desc">Étape par étape dans le constructeur : simulation, variations, versions fines.</span>
+          </button>
+          <button class="new-exp-mode new-exp-mode--image" id="option-image" type="button">
+            <span class="new-exp-mode__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg></span>
+            <span class="new-exp-mode__title">Coller une image</span>
+            <span class="new-exp-mode__desc">Un schéma PowerPoint, une coupe TEM ou MEB - remplaçable à tout moment.</span>
+          </button>
         </div>
 
         <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
@@ -183,7 +193,10 @@
           <label>Continuer une expérience existante</label>
           <div class="help" style="margin-bottom:8px;">Garde le lien avec la version de départ - hérite de sa structure et de son contexte (intention, objectifs, entité physique). Cliquer un nœud du graphe fait la même chose.</div>
           <select class="field" id="continue-select" style="margin-bottom:8px;"></select>
-          <button class="btn btn-line btn-block" id="option-continue" type="button">Continuer cette expérience</button>
+          <div class="btn-pair">
+            <button class="btn btn-line" id="option-continue" type="button">Dans le constructeur</button>
+            <button class="btn btn-line" id="option-continue-image" type="button">Avec une image</button>
+          </div>
         </div>
       </div>
 
@@ -371,6 +384,10 @@
       window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle`;
     });
 
+    document.getElementById("option-image").addEventListener("click", () => {
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/image`;
+    });
+
     document.getElementById("option-template").addEventListener("click", () => {
       const source = document.getElementById("template-select").value;
       if (!source) return;
@@ -389,6 +406,12 @@
       window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
     });
 
+    document.getElementById("option-continue-image").addEventListener("click", () => {
+      const source = document.getElementById("continue-select").value;
+      if (!source) return;
+      window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer-image`;
+    });
+
     document.getElementById("cancel-new-experience").addEventListener("click", () => newExperienceDialog.close());
 
     async function init() {
@@ -398,6 +421,12 @@
         currentMicroprojectName = microproject.name;
         document.getElementById("microproject-name").textContent = microproject.name;
         document.getElementById("microproject-description").textContent = microproject.description;
+        const codeEl = document.getElementById("microproject-code");
+        if (microproject.code) {
+          codeEl.textContent = `µprojet ${microproject.code}`;
+          codeEl.style.display = "";
+          document.title = `${microproject.code} · ${microproject.name} — Spectre`;
+        }
         const area = microproject.management_area;
         const areaCrumb = document.getElementById("area-crumb");
         if (area) {
@@ -409,7 +438,7 @@
         const thematic = microproject.thematique;
         document.getElementById("thematic-crumb").textContent = thematic ? " / " + thematic.name : "";
         document.getElementById("crumb").textContent =
-          "/ " + [area && area.name, thematic && thematic.name, microproject.name].filter(Boolean).join(" / ");
+          "/ " + [area && area.name, thematic && thematic.name, microproject.code || microproject.name].filter(Boolean).join(" / ");
 
         if (currentRole === "editor" || currentRole === "owner") {
           document.getElementById("new-structure-btn").style.display = "";

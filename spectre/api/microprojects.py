@@ -5,7 +5,7 @@ microproject resolved here.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..core import atlas as atlas_core
@@ -66,6 +66,7 @@ def _microproject_payload(microproject: Microproject, role: str) -> dict:
     return {
         "id": microproject.id,
         "slug": microproject.slug,
+        "code": microproject.code,
         "name": microproject.name,
         "description": microproject.description,
         "role": role,
@@ -103,6 +104,22 @@ def create_microproject(body: CreateMicroprojectRequest, user: User = Depends(ge
     return _microproject_payload(microproject, "owner")
 
 
+@router.get("/recherche")
+def search_microprojects(q: str = Query("", max_length=80), user: User = Depends(get_current_user)) -> list[dict]:
+    """The topbar search: µprojets by number (« Nat 4 ») or name, for any signed-in user - the same
+    company-wide visibility as the corporate-project pages (each µprojet's page keeps its own
+    access rules)."""
+    return [
+        {
+            "slug": p.slug,
+            "code": p.code,
+            "name": p.name,
+            "management_area": _area_ref(p.management_area_id),
+        }
+        for p in microprojects.search(q)
+    ]
+
+
 @router.get("/tous")
 def list_all_microprojects(_admin: User = Depends(require_admin)) -> list[dict]:
     """Every µprojet, whichever project/thématique it sits in - admin only, for the "move a µprojet
@@ -110,12 +127,24 @@ def list_all_microprojects(_admin: User = Depends(require_admin)) -> list[dict]:
     return [
         {
             "slug": p.slug,
+            "code": p.code,
             "name": p.name,
             "management_area": _area_ref(p.management_area_id),
             "thematique": _thematic_ref(p.thematic_id),
         }
         for p in microprojects.list_all()
     ]
+
+
+@router.get("/code/{code}")
+def find_by_code(code: str, user: User = Depends(get_current_user)) -> dict:
+    """A µprojet by its number, however it's typed (« Nat_0004 », « Nat 4 », « nat4 ») - for the
+    « aller au µprojet » fields; any signed-in user (its page then applies its own access rules)."""
+    try:
+        microproject = microprojects.get_by_code(code)
+    except microprojects.MicroprojectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"aucun µprojet numéroté « {code} »") from exc
+    return {"slug": microproject.slug, "code": microproject.code, "name": microproject.name}
 
 
 @router.get("/{slug}")

@@ -35,10 +35,20 @@ class Microproject:
     created_by: int
     management_area_id: int | None = None
     thematic_id: int | None = None  # one of that area's thématiques (spectre.core.management.Thematic), optional
+    code: str | None = None  # « Nat_0004 » - see assign_code ; None while it sits in « Non classé »
+
+
+def format_code(prefix: str, number: int) -> str:
+    return f"{prefix}_{number:04d}"
 
 
 def _microproject_from_row(row: sqlite3.Row) -> Microproject:
     keys = row.keys()
+    code = (
+        format_code(row["code_prefix"], row["code_number"])
+        if "code_number" in keys and row["code_number"] is not None and row["code_prefix"]
+        else None
+    )
     return Microproject(
         id=row["id"],
         slug=row["slug"],
@@ -47,7 +57,81 @@ def _microproject_from_row(row: sqlite3.Row) -> Microproject:
         created_by=row["created_by"],
         management_area_id=row["management_area_id"] if "management_area_id" in keys else None,
         thematic_id=row["thematic_id"] if "thematic_id" in keys else None,
+        code=code,
     )
+
+
+def assign_code(conn: sqlite3.Connection, microproject_id: int, management_area_id: int | None) -> None:
+    """Give a µprojet its number - its corporate project's prefix and the next free number for that
+    prefix (Nat_0001, Nat_0002...) - if it has none yet and the project numbers its µprojets. A
+    number is never changed afterwards, even if the µprojet moves to another project: « regarde
+    Nat_0004 » must always point to the same µprojet."""
+    row = conn.execute("SELECT code_number FROM microprojects WHERE id = ?", (microproject_id,)).fetchone()
+    if row is None or row["code_number"] is not None or management_area_id is None:
+        return
+    area = conn.execute("SELECT code_prefix FROM management_areas WHERE id = ?", (management_area_id,)).fetchone()
+    prefix = area["code_prefix"] if area else ""
+    if not prefix:
+        return
+    number = conn.execute(
+        "SELECT COALESCE(MAX(code_number), 0) + 1 AS n FROM microprojects WHERE lower(code_prefix) = lower(?)", (prefix,)
+    ).fetchone()["n"]
+    conn.execute("UPDATE microprojects SET code_prefix = ?, code_number = ? WHERE id = ?", (prefix, number, microproject_id))
+
+
+_CODE_RE = re.compile(r"^\s*([A-Za-z]{2,5})[\s_\-]*0*(\d{1,6})\s*$")
+
+
+def _folded(text: str) -> str:
+    return unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode("ascii").lower().strip()
+
+
+def search(text: str, *, limit: int = 8) -> list[Microproject]:
+    """µprojets matching what someone typed in the search bar: its exact number first (« Nat 4 »),
+    then numbers starting with it (« nat » -> every Nat_…), then names starting with / containing
+    every word typed - accents and case ignored."""
+    query = _folded(text)
+    if not query:
+        return []
+    exact = None
+    try:
+        exact = get_by_code(text)
+    except MicroprojectNotFoundError:
+        pass
+    words = query.split()
+    scored = []
+    for microproject in list_all():
+        if exact and microproject.id == exact.id:
+            continue
+        code = (microproject.code or "").lower()
+        name = _folded(microproject.name)
+        if code and code.replace("_", "").startswith(query.replace(" ", "").replace("_", "")):
+            rank = 1
+        elif name.startswith(query):
+            rank = 2
+        elif all(word in f"{name} {code}" for word in words):
+            rank = 3
+        else:
+            continue
+        scored.append((rank, code or "~", name, microproject))
+    scored.sort(key=lambda item: item[:3])
+    results = ([exact] if exact else []) + [item[3] for item in scored]
+    return results[:limit]
+
+
+def get_by_code(text: str) -> Microproject:
+    """A µprojet by its number, written the way people say it: « Nat_0004 », « Nat 4 », « nat4 »."""
+    match = _CODE_RE.match(text or "")
+    if not match:
+        raise MicroprojectNotFoundError(text)
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM microprojects WHERE lower(code_prefix) = lower(?) AND code_number = ?",
+            (match.group(1), int(match.group(2))),
+        ).fetchone()
+    if row is None:
+        raise MicroprojectNotFoundError(text)
+    return _microproject_from_row(row)
 
 
 def slugify(name: str) -> str:
@@ -98,16 +182,9 @@ def create(
             "INSERT INTO memberships (microproject_id, user_id, role) VALUES (?, ?, 'owner')",
             (microproject_id, owner_id),
         )
+        assign_code(conn, microproject_id, management_area_id)
     microproject_dir(slug)  # create the on-disk home for this microproject's Follow repo/structures upfront
-    return Microproject(
-        id=microproject_id,
-        slug=slug,
-        name=name,
-        description=description.strip(),
-        created_by=owner_id,
-        management_area_id=management_area_id,
-        thematic_id=thematic_id,
-    )
+    return get_by_id(microproject_id)
 
 
 def set_management_area(microproject_id: int, management_area_id: int, thematic_id: int | None = None) -> None:
@@ -118,6 +195,7 @@ def set_management_area(microproject_id: int, management_area_id: int, thematic_
             "UPDATE microprojects SET management_area_id = ?, thematic_id = ? WHERE id = ?",
             (management_area_id, thematic_id, microproject_id),
         )
+        assign_code(conn, microproject_id, management_area_id)  # numbered on first landing in a numbered project
 
 
 def list_by_management_area(management_area_id: int) -> list[Microproject]:

@@ -18,13 +18,21 @@ d'équipe : des comptes utilisateurs, plusieurs µprojets avec des droits de mod
 de pilotage stratégique par-dessus, et une interface unique et simple - une **fiche d'identité**
 par expérience.
 
+La structure d'une expérience se dessine étape par étape dans le constructeur (simulée par
+StructureForge), ou se donne simplement en **images** - un schéma collé depuis PowerPoint, des
+coupes TEM, une ou plusieurs dans l'ordre où les lire - modifiables à tout moment
+(`spectre.core.structures.StructureImage`, page `/microprojets/<slug>/structures/image`).
+
 ## Hiérarchie
 
 ```
 Projet corporate (Management)   Native (PT2), VLC (microlink), Nova (PT1)... - avec ses objectifs
-                                 de la période (ex. 6 prochains mois), classés par importance
+                                 de la période (ex. 6 prochains mois) : un % (chiffre de bonus,
+                                 0-100, simplement noté - ils sont classés par lui), atteint ou non,
+                                 et le µprojet qui l'a validé
   └─ thématique                   un axe technique du projet (dopage PGaN, double EBL...)
-       └─ µprojet                  une chaîne d'expériences sur cette thématique
+       └─ µprojet                  une chaîne d'expériences sur cette thématique, numérotée d'après
+                                   son projet (Nat_0004, Nov_0001, VLC_0002 - lien court /p/Nat_0004)
             └─ expérience          une étude versionnée (Follow) : brouillon → en cours → conclue
                  └─ entité physique   un wafer réel suivi (identifiant + emplacement)
                       └─ structure       le procédé simulé (StructureForge) porté par ce wafer

@@ -1,8 +1,11 @@
 /* Page d'un projet corporate (/management/{slug}) - trois niveaux : le projet (Native, VLC, Nova),
    ses thématiques (dopage PGaN, double EBL...), et sous chacune les µprojets (chaînes
-   d'expériences). En tête, mis en avant, les objectifs corporate de la période, classés par
-   importance. Un admin édite tout (objectifs, thématiques, rattachements) ; chacun peut créer un
-   µprojet. Voir spectre.api.management. */
+   d'expériences). En tête, dans un bloc repliable, les objectifs corporate de la période : chacun
+   porte un pourcentage (un chiffre de 0 à 100 % servant au calcul du bonus, simplement noté - les
+   objectifs sont classés par lui), et peut être marqué atteint, avec le µprojet qui l'a validé.
+   Un admin édite tout (objectifs, thématiques, rattachements) ; chacun peut créer un µprojet.
+   Chaque µprojet porte son numéro (Nat_0004) : la recherche de la topbar y mène directement.
+   Voir spectre.api.management. */
 
 const slug = window.location.pathname.split("/").filter(Boolean)[1];
 const areaUrl = `/api/management/${encodeURIComponent(slug)}`;
@@ -14,8 +17,11 @@ KpiTrendBlock.mount(document.getElementById("trends"), {
   eyebrow: "Tendances",
   title: "Évolution des KPI",
   kpisUrl: `${areaUrl}/tendances`,
-  seriesUrl: (key, months) => `${areaUrl}/tendances/${encodeURIComponent(key)}?mois=${months}`,
+  seriesUrl: (key, months, variant) =>
+    `${areaUrl}/tendances/${encodeURIComponent(key)}?mois=${months}${variant ? `&variante=${encodeURIComponent(variant)}` : ""}`,
   storageKey: `spectre:tendances:${slug}`,
+  // un point jalon (étude) d'une tendance -> sa fiche (aujourd'hui : données de démo EQE)
+  onPointClick: (point, series) => openStudy(series.key, point.study),
 });
 
 const errorBox = document.getElementById("error");
@@ -33,9 +39,8 @@ function flash(msg) {
 
 let current = null;
 
-const ICON_UP = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>`;
-const ICON_DOWN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
 const ICON_EDIT = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+const ICON_CHECK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`;
 const ICON_FLAG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/></svg>`;
 
 function kpi(n, label) {
@@ -48,25 +53,39 @@ function plural(n, one, many) {
 
 // --- objectifs --------------------------------------------------------------------------------
 
-function objectiveBlock(o, index, total, admin) {
+function percent(value) {
+  return `${Number(value).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`;
+}
+
+// Toutes les cartes au même format : rang (ordre des pourcentages), pourcentage, intitulé,
+// précisions, échéance, et en pied l'état (atteint ou non) avec le µprojet qui l'a validé.
+function objectiveBlock(o, index, admin) {
   const tools = admin
-    ? `<div class="obj__tools">
-        <button type="button" class="obj__tool" data-move="${o.id}" data-dir="-1" ${index === 0 ? "disabled" : ""} aria-label="Monter l'objectif « ${escapeHtml(o.title)} »" title="Plus important">${ICON_UP}</button>
-        <button type="button" class="obj__tool" data-move="${o.id}" data-dir="1" ${index === total - 1 ? "disabled" : ""} aria-label="Descendre l'objectif « ${escapeHtml(o.title)} »" title="Moins important">${ICON_DOWN}</button>
-        <button type="button" class="obj__tool" data-edit-objective="${o.id}" aria-label="Modifier l'objectif « ${escapeHtml(o.title)} »" title="Modifier">${ICON_EDIT}</button>
-      </div>`
+    ? `<div class="obj__tools"><button type="button" class="obj__tool" data-edit-objective="${o.id}" aria-label="Modifier l'objectif « ${escapeHtml(o.title)} »" title="Modifier">${ICON_EDIT}</button></div>`
     : "";
+  const weight =
+    o.weight !== null && o.weight !== undefined
+      ? `<span class="obj__weight" title="Pourcentage servant au calcul du bonus">${percent(o.weight)}<small>bonus</small></span>`
+      : `<span class="obj__weight obj__weight--none">% à définir</span>`;
+  const validator = o.validated_by
+    ? `validé par <a href="/microprojets/${encodeURIComponent(o.validated_by.slug)}">${escapeHtml(o.validated_by.code || o.validated_by.name)}</a>${o.validated_by.code ? ` · ${escapeHtml(o.validated_by.name)}` : ""}`
+    : "";
+  const status = o.achieved
+    ? `<span class="obj__achieved">${ICON_CHECK}Atteint</span>${validator ? ` · ${validator}` : ""}`
+    : validator
+      ? `<span>En cours · ${validator}</span>`
+      : `<span>En cours</span>`;
   return `
-    <li class="obj${index === 0 ? " obj--first" : ""}">
+    <li class="obj${o.achieved ? " obj--achieved" : ""}">
       <div class="obj__top">
-        <div class="obj__rank" aria-label="Priorité ${index + 1}">${String(index + 1).padStart(2, "0")}</div>
-        <div class="obj__body">
-          <div class="obj__title">${escapeHtml(o.title)}</div>
-          ${o.detail ? `<div class="obj__detail">${escapeHtml(o.detail)}</div>` : ""}
-          ${o.target ? `<div class="obj__target">${ICON_FLAG}${escapeHtml(o.target)}</div>` : ""}
-        </div>
+        <span class="obj__rank" aria-label="Rang ${index + 1}">${String(index + 1).padStart(2, "0")}</span>
+        ${weight}
         ${tools}
       </div>
+      <div class="obj__title">${escapeHtml(o.title)}</div>
+      ${o.detail ? `<div class="obj__detail" title="${escapeHtml(o.detail)}">${escapeHtml(o.detail)}</div>` : ""}
+      ${o.target ? `<div class="obj__target">${ICON_FLAG}${escapeHtml(o.target)}</div>` : ""}
+      <div class="obj__status">${status}</div>
     </li>`;
 }
 
@@ -75,25 +94,57 @@ function renderObjectives(area) {
   const admin = area.is_admin;
   document.getElementById("objectives-period").textContent = area.objectives_period || "6 prochains mois";
   const objs = area.objectifs || [];
+  const achieved = objs.filter((o) => o.achieved).length;
+  document.getElementById("objectives-summary").textContent = objs.length
+    ? `${plural(objs.length, "objectif", "objectifs")} · ${achieved} atteint${achieved > 1 ? "s" : ""}`
+    : "aucun objectif";
   list.innerHTML = objs.length
-    ? objs.map((o, i) => objectiveBlock(o, i, objs.length, admin)).join("")
+    ? objs.map((o, i) => objectiveBlock(o, i, admin)).join("")
     : `<li class="obj-empty" style="grid-column:1/-1;">${
         admin
-          ? "Aucun objectif défini pour cette période. Ajoutez-les par ordre d'importance avec « + Objectif »."
+          ? "Aucun objectif défini pour cette période. Ajoutez-les avec « + Objectif », chacun avec son pourcentage."
           : "Aucun objectif corporate n'a encore été défini pour cette période."
       }</li>`;
   list.removeAttribute("aria-busy");
 }
+
+// Bloc repliable : son état (ouvert/replié) est mémorisé par le navigateur, pour tous les projets.
+const OBJECTIVES_COLLAPSED_KEY = "spectre:objectifs-replies";
+
+function setObjectivesCollapsed(collapsed) {
+  document.getElementById("objectives-section").classList.toggle("is-collapsed", collapsed);
+  document.getElementById("objectives-toggle").setAttribute("aria-expanded", String(!collapsed));
+  try {
+    localStorage.setItem(OBJECTIVES_COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch (err) {
+    /* stockage indisponible (navigation privée...) : simple confort perdu */
+  }
+}
+
+document.getElementById("objectives-toggle").addEventListener("click", () => {
+  setObjectivesCollapsed(!document.getElementById("objectives-section").classList.contains("is-collapsed"));
+});
+
+(function restoreObjectivesCollapsed() {
+  let collapsed = false;
+  try {
+    collapsed = localStorage.getItem(OBJECTIVES_COLLAPSED_KEY) === "1";
+  } catch (err) {
+    collapsed = false;
+  }
+  if (collapsed) setObjectivesCollapsed(true);
+})();
 
 // --- thématiques & µprojets -------------------------------------------------------------------
 
 function microprojetCard(p) {
   const roleBadge = p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role))}</span>` : "";
   const inner = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-      <div style="font-size:15px;font-weight:700;">${escapeHtml(p.name)}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:22px;">
+      ${p.code ? `<span class="mp-code" title="Numéro du µprojet">${escapeHtml(p.code)}</span>` : "<span></span>"}
       ${roleBadge || `<span style="font-size:11px;color:var(--text-faint);">non membre</span>`}
     </div>
+    <div style="font-size:15px;font-weight:700;line-height:1.3;overflow-wrap:anywhere;">${escapeHtml(p.name)}</div>
     <div style="font-size:13px;color:var(--text-soft);min-height:16px;">${escapeHtml(p.description || "")}</div>
     <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--text-faint);padding-top:8px;border-top:1px solid var(--border-soft);">
       <span>${p.experiences} expériences</span><span>${p.running} en cours</span><span>${p.concluded} concluantes</span><span>${p.wafers} wafers</span>
@@ -224,7 +275,17 @@ function openObjectiveDialog(objective) {
   document.getElementById("obj-title").value = objective ? objective.title : "";
   document.getElementById("obj-detail").value = objective ? objective.detail : "";
   document.getElementById("obj-target").value = objective ? objective.target : "";
-  document.getElementById("obj-rank-help").style.display = objective ? "none" : "";
+  document.getElementById("obj-weight").value = objective && objective.weight != null ? objective.weight : "";
+  document.getElementById("obj-achieved").checked = Boolean(objective && objective.achieved);
+  // le µprojet qui valide : un de ce projet (numéro + nom), ou celui déjà choisi s'il est ailleurs
+  const validator = objective && objective.validated_by;
+  const choices = current.microprojets.map((p) => ({ slug: p.slug, code: p.code, name: p.name }));
+  if (validator && !choices.some((p) => p.slug === validator.slug)) choices.unshift(validator);
+  const select = document.getElementById("obj-validated-by");
+  select.innerHTML =
+    `<option value="">— aucun —</option>` +
+    choices.map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.code ? `${p.code} · ${p.name}` : p.name)}</option>`).join("");
+  select.value = validator ? validator.slug : "";
   document.getElementById("obj-delete").style.display = objective ? "" : "none";
   objDialog.showModal();
 }
@@ -232,10 +293,14 @@ document.getElementById("new-objective-btn").addEventListener("click", () => ope
 document.getElementById("obj-cancel").addEventListener("click", () => objDialog.close());
 document.getElementById("objective-form").addEventListener("submit", (event) => {
   event.preventDefault();
+  const weightRaw = document.getElementById("obj-weight").value;
   const body = {
     title: document.getElementById("obj-title").value,
     detail: document.getElementById("obj-detail").value,
     target: document.getElementById("obj-target").value,
+    weight: weightRaw === "" ? null : Number(weightRaw),
+    achieved: document.getElementById("obj-achieved").checked,
+    validated_by: document.getElementById("obj-validated-by").value || null,
   };
   const o = editingObjective;
   save(
@@ -251,16 +316,6 @@ document.getElementById("obj-delete").addEventListener("click", () => {
 });
 
 document.getElementById("objectives").addEventListener("click", (event) => {
-  const move = event.target.closest("[data-move]");
-  if (move && !move.disabled) {
-    const ids = current.objectifs.map((o) => o.id);
-    const from = ids.indexOf(Number(move.dataset.move));
-    const to = from + Number(move.dataset.dir);
-    if (from < 0 || to < 0 || to >= ids.length) return;
-    [ids[from], ids[to]] = [ids[to], ids[from]];
-    save(null, () => api.put(`${areaUrl}/objectifs`, { ids }));
-    return;
-  }
   const edit = event.target.closest("[data-edit-objective]");
   if (edit) openObjectiveDialog(current.objectifs.find((o) => o.id === Number(edit.dataset.editObjective)));
 });
@@ -335,6 +390,8 @@ document.getElementById("edit-area-btn").addEventListener("click", () => {
   document.getElementById("ea-description").value = current.description || "";
   document.getElementById("ea-period").value = current.objectives_period || "";
   document.getElementById("ea-strategy").value = current.strategy || "";
+  document.getElementById("ea-prefix").value = current.code_prefix || "";
+  document.getElementById("ea-prefix-wrap").style.display = current.slug === "non-classe" ? "none" : "";
   eaDialog.showModal();
 });
 document.getElementById("ea-cancel").addEventListener("click", () => eaDialog.close());
@@ -348,6 +405,7 @@ document.getElementById("edit-area-form").addEventListener("submit", (event) => 
         description: document.getElementById("ea-description").value,
         strategy: document.getElementById("ea-strategy").value,
         objectives_period: document.getElementById("ea-period").value,
+        code_prefix: current.slug === "non-classe" ? null : document.getElementById("ea-prefix").value,
       }),
     "Projet mis à jour."
   );
@@ -374,7 +432,7 @@ document.getElementById("attach-microprojet-btn").addEventListener("click", asyn
       ? all
           .map((p) => {
             const where = [p.management_area && p.management_area.name, p.thematique && p.thematique.name].filter(Boolean).join(" › ");
-            return `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}${where ? ` — ${escapeHtml(where)}` : ""}</option>`;
+            return `<option value="${escapeHtml(p.slug)}">${p.code ? `${escapeHtml(p.code)} · ` : ""}${escapeHtml(p.name)}${where ? ` — ${escapeHtml(where)}` : ""}</option>`;
           })
           .join("")
       : `<option value="">Aucun µprojet</option>`;
@@ -397,6 +455,132 @@ document.getElementById("attach-confirm").addEventListener("click", () => {
       }),
     "µprojet rattaché."
   );
+});
+
+// --- fiche d'étude derrière un point de tendance (démo) -----------------------------------------
+
+const studyDialog = document.getElementById("study-dialog");
+const DIRECTION_LABELS = { maximize: "Maximiser", minimize: "Minimiser", target: "Cible précise", observe: "Observer" };
+
+// Vue symbolique de l'arbre d'expériences : la ligne principale des études (en haut), les pistes
+// secondaires en dessous ; le chemin jusqu'à l'étude affichée est tracé, la suite estompée.
+function studyTreeSvg(tree) {
+  const colW = 118;
+  const laneH = 58;
+  const pad = 52; // place pour les libellés centrés sous les nœuds des bords
+  const cols = Math.max(...tree.nodes.map((n) => n.col)) + 1;
+  const lanes = Math.max(...tree.nodes.map((n) => n.lane)) + 1;
+  const width = pad * 2 + (cols - 1) * colW;
+  const height = pad + (lanes - 1) * laneH + 34;
+  const pos = new Map(tree.nodes.map((n) => [n.id, { x: pad + n.col * colW, y: pad + n.lane * laneH, node: n }]));
+  const edges = tree.edges
+    .map(([from, to]) => {
+      const a = pos.get(from);
+      const b = pos.get(to);
+      const onPath = b.node.state !== "future" && a.node.state !== "future";
+      const d = a.y === b.y ? `M${a.x},${a.y} L${b.x},${b.y}` : `M${a.x},${a.y} C${a.x + colW * 0.55},${a.y} ${b.x - colW * 0.55},${b.y} ${b.x},${b.y}`;
+      return `<path class="tree-edge${onPath ? " is-path" : ""}" d="${d}"/>`;
+    })
+    .join("");
+  const nodes = tree.nodes
+    .map((n) => {
+      const { x, y } = pos.get(n.id);
+      const status = n.status === "abandoned" ? " is-abandoned" : n.status === "inconclusive" ? " is-inconclusive" : "";
+      const study = n.lane === 0 ? ` data-study="${escapeHtml(n.id)}" tabindex="0" role="button" aria-label="Ouvrir l'étude ${escapeHtml(n.title)}"` : "";
+      return `<g class="tree-node is-${n.state}${status}" transform="translate(${x},${y})"${study}>
+          <title>${escapeHtml(n.title)}</title>
+          <circle r="${n.state === "current" ? 10 : 8}"></circle>
+          <text y="24" text-anchor="middle">${escapeHtml(n.label)}</text>
+        </g>`;
+    })
+    .join("");
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Arbre des expériences de l'étude">${edges}${nodes}</svg>`;
+}
+
+function studyHtml(study) {
+  const r = study.result;
+  const delta = r.previous != null ? `<span class="study__result-delta">${r.value - r.previous >= 0 ? "+" : ""}${(r.value - r.previous).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} pt</span> vs étude précédente · ` : "";
+  const o = study.objective;
+  const [year, month] = study.period.split("-");
+  const when = new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+  return `
+    <div class="study__head">
+      <div>
+        <div class="study__badges">
+          ${study.demo ? `<span class="study__demo">Démo · fiche fictive</span>` : ""}
+          <span class="study__where">${escapeHtml(study.project)} › ${escapeHtml(study.microproject)} · conclue en ${escapeHtml(when)}</span>
+        </div>
+        <h2 class="study__title" id="study-title">${escapeHtml(study.title)}</h2>
+        <p class="study__change">${escapeHtml(study.change)}</p>
+      </div>
+      <button type="button" class="btn btn-line btn-sm" id="study-close">Fermer</button>
+    </div>
+    <div class="study__grid">
+      <div class="study__panel">
+        <div class="study__panel-title">Structure</div>
+        <div class="study__svg">${study.structure_svg}</div>
+        <div class="study__legend">${study.materials.map((m) => `<span><i style="background:${escapeHtml(study.material_colors[m] || "var(--text-faint)")};"></i>${escapeHtml(m)}</span>`).join("")}</div>
+        <details class="study__steps"><summary>Procédé (${study.steps.length} étapes)</summary><ol>${study.steps.map((name) => `<li>${escapeHtml(name)}</li>`).join("")}</ol></details>
+      </div>
+      <div>
+        <div class="study__panel">
+          <div class="study__panel-title">Résultat</div>
+          <div class="study__result">
+            <span class="study__result-value">${escapeHtml(r.metric)} ${r.value.toLocaleString("fr-FR")} ${escapeHtml(r.unit)}</span>
+          </div>
+          <div class="study__result-meta">${delta}objectif ${r.target.toLocaleString("fr-FR")} ${escapeHtml(r.unit)}</div>
+        </div>
+        <div class="study__panel">
+          <div class="study__panel-title">Objectif</div>
+          <div class="study__objective-name">${escapeHtml(o.name)}</div>
+          <div class="study__meta">${escapeHtml(DIRECTION_LABELS[o.direction] || o.direction)} · cible ${o.target.toLocaleString("fr-FR")} % · <strong>${escapeHtml(o.status)}</strong></div>
+          <div class="study__meta">${escapeHtml(o.rationale)}</div>
+        </div>
+        <div class="study__panel">
+          <div class="study__panel-title">Conclusion</div>
+          ${statusBadgeHtml("concluded", study.conclusion.decision)}
+          <p class="study__conclusion">${escapeHtml(study.conclusion.summary)}</p>
+        </div>
+      </div>
+    </div>
+    <div class="study__panel study__tree">
+      <div class="study__panel-title">Arbre d'expériences</div>
+      ${studyTreeSvg(study.tree)}
+      <div class="tree-legend"><span>● étude de la ligne principale (cliquer pour l'ouvrir)</span><span>◌ piste abandonnée ou non concluante</span></div>
+    </div>`;
+}
+
+async function openStudy(kpiKey, studyId) {
+  if (!kpiKey || !studyId) return;
+  const box = document.getElementById("study-content");
+  if (!studyDialog.open) {
+    box.innerHTML = `<div class="skeleton" style="height:420px;"></div>`;
+    studyDialog.showModal();
+  }
+  try {
+    const study = await api.get(`${areaUrl}/tendances/${encodeURIComponent(kpiKey)}/etudes/${encodeURIComponent(studyId)}`);
+    box.innerHTML = studyHtml(study);
+    box.dataset.kpi = kpiKey;
+    document.getElementById("study-close").focus();
+  } catch (err) {
+    box.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div><button type="button" class="btn btn-line btn-sm" id="study-close" style="margin-top:12px;">Fermer</button>`;
+  }
+}
+
+document.getElementById("study-content").addEventListener("click", (event) => {
+  if (event.target.closest("#study-close")) return studyDialog.close();
+  const node = event.target.closest("[data-study]");
+  if (node) openStudy(document.getElementById("study-content").dataset.kpi, node.dataset.study);
+});
+document.getElementById("study-content").addEventListener("keydown", (event) => {
+  const node = event.target.closest && event.target.closest("[data-study]");
+  if (node && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    openStudy(document.getElementById("study-content").dataset.kpi, node.dataset.study);
+  }
+});
+studyDialog.addEventListener("click", (event) => {
+  if (event.target === studyDialog) studyDialog.close(); // clic sur le fond
 });
 
 load();

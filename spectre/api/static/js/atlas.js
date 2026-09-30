@@ -178,6 +178,10 @@ async function loadStructurePreview(d) {
   try {
     const detail = await api.get(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}`);
     if (!document.getElementById("atlas-structure-preview")) return; // sélection déjà changée entre-temps
+    if (detail.structure_images) {
+      container.innerHTML = structureBoardHtml(d.microprojectSlug, detail.structure_images, { compact: true });
+      return;
+    }
     if (!detail.is_batch) {
       container.innerHTML = detail.structure_svg ? `<div class="atlas-carousel"><div class="atlas-carousel__stage">${detail.structure_svg}</div></div>` : "";
       return;
@@ -191,35 +195,7 @@ async function loadStructurePreview(d) {
 }
 
 function renderStructureCarousel(container, variation) {
-  const svgs = variation.svgs || [];
-  if (svgs.length === 0) {
-    container.innerHTML = "";
-    return;
-  }
-  let index = 0;
-  function paint() {
-    // La première variante d'une campagne est celle traitée comme "représentative" partout
-    // ailleurs (voir structures.render_structure_svg) - on la marque donc "RÉF" ici aussi, plutôt
-    // que d'inventer une notion de référence propre à ce carrousel.
-    const isRef = index === 0;
-    container.innerHTML = `
-      <div class="atlas-carousel">
-        <div class="atlas-carousel__badge">${isRef ? `<span class="badge badge-role">RÉF</span>` : ""}<span>${escapeHtml(variantCaption(variation, index))}</span></div>
-        <div class="atlas-carousel__stage">${svgs[index]}</div>
-        <div class="atlas-carousel__nav">
-          <button type="button" class="btn btn-line" data-dir="-1" ${svgs.length < 2 ? "disabled" : ""}>&larr;</button>
-          <span class="help">${index + 1} / ${svgs.length}</span>
-          <button type="button" class="btn btn-line" data-dir="1" ${svgs.length < 2 ? "disabled" : ""}>&rarr;</button>
-        </div>
-      </div>`;
-    container.querySelectorAll("[data-dir]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        index = (index + parseInt(btn.dataset.dir, 10) + svgs.length) % svgs.length;
-        paint();
-      });
-    });
-  }
-  paint();
+  mountStructureCarousel(container, variation); // composant partagé, voir common.js
 }
 
 // L'atlas ne montre que la pointe de chaque piste (une bulle par étude toujours en cours ou

@@ -6,8 +6,6 @@
    experience.js (slug, experienceId, currentDetail, isEditorRole, escapeHtml) - ce fichier est
    chargé juste après lui. */
 
-let _dataMatrixCache = null; // {promise} - la matrice de campagne n'est chargée qu'une fois par
-// rendu même si plusieurs items de data pointent vers une entité (voir renderDataGallery).
 
 function dataGalleryShowError(message) {
   const box = document.getElementById("data-gallery-error");
@@ -47,14 +45,15 @@ function dataImageTag(path, extraStyle) {
   return `<img class="js-data-image" src="${dataImageUrl(path)}" alt="${safePath}" data-path="${safePath}" style="${extraStyle || ""}">`;
 }
 
+// la matrice de campagne, partagée avec le reste de la fiche (voir experience.js::getBatchVariation)
 async function fetchBatchVariationCached() {
-  if (!_dataMatrixCache) {
-    _dataMatrixCache = api.get(`/api/microprojets/${slug}/experiences/${experienceId}/matrice`).catch(() => null);
-  }
-  return _dataMatrixCache;
+  return getBatchVariation().catch(() => null);
 }
 
 async function structureCompareHtml(detail, item) {
+  if (detail.structure_images) {
+    return `${structureBoardHtml(slug, detail.structure_images, { compact: true })}<div class="help" style="margin-top:4px;">Structure (images)</div>`;
+  }
   if (item.entity_index == null) {
     return `${detail.structure_svg || ""}<div class="help" style="margin-top:4px;">Structure simulée</div>`;
   }
@@ -99,7 +98,6 @@ async function dataItemHtml(detail, item) {
 }
 
 async function renderDataGallery(detail) {
-  _dataMatrixCache = null; // one fresh fetch per render pass, shared across items
   const list = document.getElementById("data-gallery-list");
   const items = detail.data_items || [];
   if (!items.length) {
@@ -120,7 +118,7 @@ async function renderDataGallery(detail) {
         const result = await api.patch(`/api/microprojets/${slug}/experiences/${experienceId}/data/${el.dataset.itemId}/epingle`, {
           pinned_index: parseInt(el.dataset.index, 10),
         });
-        window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+        goToVersion(result.id);
       } catch (err) {
         dataGalleryShowError(err.message || String(err));
       }
@@ -132,7 +130,7 @@ async function renderDataGallery(detail) {
       dataGalleryClearError();
       try {
         const result = await api.del(`/api/microprojets/${slug}/experiences/${experienceId}/data/${btn.dataset.itemId}`);
-        window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+        goToVersion(result.id);
       } catch (err) {
         dataGalleryShowError(err.message || String(err));
       }
@@ -271,7 +269,7 @@ function renderDataGalleryAddForm(detail) {
     };
     try {
       const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/data`, body);
-      window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+      goToVersion(result.id);
     } catch (err) {
       dataGalleryShowError(err.message || String(err));
     }

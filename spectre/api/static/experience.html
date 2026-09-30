@@ -66,62 +66,79 @@
 
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
 
-    <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px;">
-      <button class="btn btn-line" id="export-report-btn" style="display:none;">Télécharger le rapport</button>
-      <button class="btn btn-primary" id="evolve-btn" style="display:none;">Enregistrer une évolution</button>
-    </div>
-
-    <!-- Titre de l'étude, seul en pleine largeur. -->
-    <div class="card card-pad" id="header-card" style="margin-bottom:20px;">
-      <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span id="status-badge"></span>
-        <span id="status-actions" data-report-hide style="display:flex;gap:8px;"></span>
+    <!-- En-tête de l'étude : statut, titre, responsable, étiquettes - toujours visible, au-dessus
+         des trois onglets (qui, eux, vivent chacun leur vie). -->
+    <div class="card card-pad fiche-head" id="header-card">
+      <div class="fiche-head__top">
+        <div class="fiche-head__status">
+          <span id="status-badge"></span>
+          <span id="status-actions" data-report-hide style="display:flex;gap:8px;"></span>
+        </div>
+        <div class="fiche-head__actions" data-report-hide>
+          <button class="btn btn-line btn-sm" id="export-report-btn" style="display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+            Télécharger le rapport
+          </button>
+          <button class="btn btn-primary btn-sm" id="evolve-btn" style="display:none;">Enregistrer une évolution</button>
+        </div>
       </div>
-      <h1 id="exp-title" style="font-size:24px;line-height:1.3;"></h1>
-      <p id="exp-intent" style="color:var(--text-soft);font-size:14.5px;margin-top:10px;line-height:1.55;max-width:70ch;"></p>
-      <div id="exp-meta" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);font-size:12.5px;color:var(--text-faint);line-height:1.7;"></div>
-      <div id="tags-row" style="margin-top:14px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;"></div>
-      <div id="refs-row" style="margin-top:8px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;"></div>
-      <div id="intent-form-info-box" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);"></div>
+      <h1 id="exp-title" class="fiche-head__title"></h1>
+      <div id="exp-meta" class="fiche-head__meta"></div>
+      <div id="tags-row" class="fiche-head__chips"></div>
+      <div id="refs-row" class="fiche-head__chips"></div>
     </div>
 
-    <!-- Structure / suivi de l'expérience / objectifs, côte à côte : vue d'ensemble d'un coup
-         d'oeil, sans avoir à faire défiler pour recouper les trois. -->
-    <div class="fiche-3col" style="margin-bottom:20px;">
+    <!-- Trois blocs indépendants, un onglet chacun (adresse #structure / #donnees / #conclusion,
+         gardée quand une action enregistre une nouvelle version). Le rapport, lui, les reprend
+         tous les trois l'un après l'autre (voir generateReportHtml). -->
+    <div class="tabs fiche-tabs" role="tablist" aria-label="Fiche d'expérience" data-report-hide>
+      <button type="button" class="tab active" role="tab" id="tab-structure" data-tab="structure" aria-controls="panel-structure" aria-selected="true">
+        Structure &amp; intention
+      </button>
+      <button type="button" class="tab" role="tab" id="tab-donnees" data-tab="donnees" aria-controls="panel-donnees" aria-selected="false" tabindex="-1">
+        Données <span class="fiche-tabs__count" id="tab-donnees-count"></span>
+      </button>
+      <button type="button" class="tab" role="tab" id="tab-conclusion" data-tab="conclusion" aria-controls="panel-conclusion" aria-selected="false" tabindex="-1">
+        Conclusion <span class="fiche-tabs__state" id="tab-conclusion-state"></span>
+      </button>
+    </div>
 
-      <div class="card card-pad builder-col">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-          <div class="section-title">Structure actuelle</div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div style="font-size:12px;color:var(--text-faint);" id="diff-note"></div>
-            <button type="button" id="structure-evolve-link" data-report-hide style="display:none;background:none;border:none;padding:0;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;">Corriger une étape &rarr;</button>
+    <!-- ───────────── Onglet 1 : structure et intention ───────────── -->
+    <section class="fiche-panel" id="panel-structure" role="tabpanel" aria-labelledby="tab-structure" data-report-title="Structure &amp; intention">
+      <div class="fiche-grid">
+        <div class="card card-pad fiche-card">
+          <div class="fiche-card__head">
+            <div class="section-title" id="structure-title">Structure actuelle</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="font-size:12px;color:var(--text-faint);" id="diff-note"></div>
+              <button type="button" id="structure-evolve-link" data-report-hide style="display:none;background:none;border:none;padding:0;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;">Corriger une étape &rarr;</button>
+              <button type="button" class="btn btn-line" id="structure-replace-btn" data-report-hide style="display:none;min-height:32px;padding:5px 12px;font-size:12.5px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+                Modifier les images
+              </button>
+            </div>
+          </div>
+          <div class="layer-clickable builder-canvas-svg" id="structure-svg"></div>
+          <div class="help" id="structure-click-hint" style="margin-top:8px;display:none;">Survolez ou cliquez une couche pour voir les paramètres de l'étape qui l'a produite.</div>
+          <div id="diff-details" class="fiche-card__scroll" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="card card-pad fiche-card">
+          <div class="section-title" style="margin-bottom:10px;">Intention</div>
+          <p id="exp-intent" class="fiche-intent"></p>
+          <div id="exp-hypothesis" class="fiche-hypothesis" style="display:none;"></div>
+          <div id="intent-form-info-box" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);"></div>
+          <div class="fiche-card__head" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border-soft);">
+            <div class="section-title" style="margin-bottom:0;">Objectifs</div>
+            <div id="objectives-summary" style="display:none;font-size:12px;font-weight:600;color:var(--text-faint);"></div>
+          </div>
+          <div id="objectives-list" class="fiche-card__scroll" style="display:flex;flex-direction:column;gap:12px;"></div>
+          <div id="references-card" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft);">
+            <div class="section-title" style="margin-bottom:8px;">Liens</div>
+            <div id="references-list"></div>
           </div>
         </div>
-        <div class="layer-clickable builder-canvas-svg" id="structure-svg"></div>
-        <div class="help" id="structure-click-hint" style="margin-top:8px;display:none;">Cliquez une couche pour voir les paramètres de l'étape qui l'a produite.</div>
-        <div id="diff-details" class="builder-col__scroll" style="margin-top:10px;"></div>
       </div>
-
-      <div class="card card-pad builder-col">
-        <div class="section-title" style="margin-bottom:4px;">Versions du procédé</div>
-        <div class="help" style="margin-bottom:12px;">Chaque changement de structure ou de procédé (X.Y.Z) - une preuve, un tag ou un titre modifié n'en crée pas ; retrouvez-les dans l'historique complet, en bas de la fiche.</div>
-        <div class="timeline builder-col__scroll" id="timeline"></div>
-        <div id="forks-note" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);"></div>
-      </div>
-
-      <div class="card card-pad builder-col">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-          <div class="section-title" style="margin-bottom:0;">Objectifs</div>
-          <div id="objectives-summary" style="display:none;font-size:12px;font-weight:600;color:var(--text-faint);"></div>
-        </div>
-        <div id="objectives-list" class="builder-col__scroll" style="display:flex;flex-direction:column;gap:14px;"></div>
-      </div>
-
-    </div>
-
-    <!-- Suivi physique, preuves et conclusion (avec réponses aux objectifs) : le détail d'une
-         seule étude, en pleine largeur plutôt qu'écrasé dans une colonne étroite. -->
-    <div style="display:flex;flex-direction:column;gap:20px;">
 
       <div class="card card-pad" id="matrix-card" style="display:none;">
         <div class="section-title" style="margin-bottom:16px;">Cartographie des variantes</div>
@@ -130,10 +147,24 @@
         <div id="matrix-content"></div>
       </div>
 
-      <div class="card card-pad" id="physical-tracking-card">
-        <div class="section-title" style="margin-bottom:16px;">Suivi physique</div>
-        <div class="help" style="margin-bottom:14px;">Où en est l'échantillon réel : son identifiant et son emplacement.</div>
-        <div id="physical-tracking-content"></div>
+      <div class="fiche-grid">
+        <div class="card card-pad fiche-card">
+          <div class="section-title" style="margin-bottom:4px;">Versions du procédé</div>
+          <div class="help" style="margin-bottom:12px;">Chaque changement de structure ou de procédé (X.Y.Z) - une preuve, un tag ou un titre modifié n'en crée pas ; retrouvez-les dans l'historique complet.</div>
+          <div class="timeline fiche-card__scroll" id="timeline"></div>
+          <div id="forks-note" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);"></div>
+          <details class="fiche-history" id="full-history-card" data-report-hide>
+            <summary>Historique complet</summary>
+            <div class="help" style="margin:8px 0 12px;">Toutes les versions, et tout le reste : preuves, tags, titres, objectifs... Les entrées en retrait n'ont pas changé le procédé.</div>
+            <div class="timeline" id="full-history"></div>
+          </details>
+        </div>
+
+        <div class="card card-pad fiche-card" id="physical-tracking-card">
+          <div class="section-title" style="margin-bottom:6px;">Suivi physique</div>
+          <div class="help" style="margin-bottom:14px;">Où en est l'échantillon réel : son identifiant et son emplacement.</div>
+          <div id="physical-tracking-content"></div>
+        </div>
       </div>
 
       <!-- Autocomplétion des identifiants/emplacements déjà utilisés ailleurs dans le µprojet -
@@ -142,31 +173,8 @@
       <datalist id="entity-sample-id-history"></datalist>
       <datalist id="entity-location-history"></datalist>
 
-      <div class="card card-pad" id="evidence-card">
-        <div class="section-title" style="margin-bottom:16px;">Data</div>
-
-        <div id="data-gallery-list"></div>
-        <div id="data-gallery-add-wrap"></div>
-
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-soft);">
-          <div id="evidence-list"></div>
-          <div id="add-evidence-wrap"></div>
-          <div id="evidence-compare-tool" data-report-hide style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
-            <label style="font-size:11px;">Comparer deux preuves</label>
-            <div class="field-row" style="margin-top:6px;">
-              <select class="field" id="evidence-compare-a"></select>
-              <select class="field" id="evidence-compare-b"></select>
-            </div>
-            <button class="btn btn-line btn-block" id="evidence-compare-btn" type="button" style="margin-top:10px;">Comparer</button>
-            <div id="evidence-compare-result" style="margin-top:12px;"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card card-pad" id="conclusion-section"></div>
-
-      <div class="card card-pad">
-        <div class="section-title" style="margin-bottom:14px;">Comparer avec</div>
+      <div class="card card-pad" data-report-hide>
+        <div class="section-title" style="margin-bottom:14px;">Comparer la structure avec</div>
         <div class="field-row">
           <div>
             <label style="font-size:11px;">µprojet</label>
@@ -180,40 +188,59 @@
         <button class="btn btn-line btn-block" id="compare-btn" type="button" style="margin-top:10px;">Voir les différences</button>
         <div id="compare-result" style="margin-top:12px;max-height:260px;overflow:auto;"></div>
       </div>
+    </section>
 
-      <details class="card card-pad" id="advanced-actions" style="display:none;">
-        <summary style="cursor:pointer;font-size:13px;font-weight:700;">Actions avancées</summary>
-        <div style="margin-top:14px;max-width:480px;">
-          <div id="references-card">
-            <label>Liens</label>
-            <div id="references-list" style="margin-top:6px;"></div>
-          </div>
+    <!-- ───────────── Onglet 2 : données ───────────── -->
+    <section class="fiche-panel" id="panel-donnees" role="tabpanel" aria-labelledby="tab-donnees" data-report-title="Données" hidden>
+      <div class="card card-pad" id="evidence-card">
+        <div class="section-title" style="margin-bottom:6px;">Données mesurées</div>
+        <div class="help" style="margin-bottom:12px;">Images de mesure rattachées à l'étude (comparées à la structure simulée), puis les preuves enregistrées.</div>
 
-          <div id="advanced-actions-editor-only" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-soft);">
-            <label>Combiner avec une autre expérience</label>
-            <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, mais relie l'historique et les preuves de l'autre expérience choisie.</div>
-            <select class="field" id="combine-select" style="margin-bottom:8px;"></select>
-            <input class="field" id="combine-title" placeholder="Titre du résultat" style="margin-bottom:8px;">
-            <input class="field" id="combine-intent" placeholder="Pourquoi combiner ces deux pistes ?" style="margin-bottom:8px;">
-            <button class="btn btn-line" id="combine-btn" type="button">Combiner</button>
+        <div id="data-gallery-list"></div>
+        <div id="data-gallery-add-wrap"></div>
 
-            <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--danger-tint);">
-              <label style="color:var(--danger);">Supprimer cette étude</label>
-              <div class="help" style="margin-bottom:8px;">Efface définitivement cette version et les versions précédentes de cette piste, jusqu'à un point encore utilisé par une autre piste ou une ref. Irréversible.</div>
-              <button class="btn btn-danger" id="delete-experience-btn" type="button">Supprimer</button>
-              <span id="delete-experience-hint" class="help" style="margin-left:10px;"></span>
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-soft);">
+          <div class="section-title" style="margin-bottom:4px;">Preuves</div>
+          <div id="evidence-list"></div>
+          <div id="add-evidence-wrap"></div>
+          <div id="evidence-compare-tool" data-report-hide style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
+            <label style="font-size:11px;">Comparer deux preuves</label>
+            <div class="field-row" style="margin-top:6px;">
+              <select class="field" id="evidence-compare-a"></select>
+              <select class="field" id="evidence-compare-b"></select>
             </div>
+            <button class="btn btn-line btn-block" id="evidence-compare-btn" type="button" style="margin-top:10px;">Comparer</button>
+            <div id="evidence-compare-result" style="margin-top:12px;"></div>
           </div>
         </div>
-      </details>
-
-      <div class="card card-pad" id="full-history-card">
-        <div class="section-title" style="margin-bottom:4px;">Historique complet</div>
-        <div class="help" style="margin-bottom:16px;">Toutes les versions ci-dessus, et tout le reste : preuves, tags, titres, objectifs... Les entrées en retrait n'ont pas changé le procédé.</div>
-        <div class="timeline" id="full-history"></div>
       </div>
+    </section>
 
-    </div>
+    <!-- ───────────── Onglet 3 : conclusion ───────────── -->
+    <section class="fiche-panel" id="panel-conclusion" role="tabpanel" aria-labelledby="tab-conclusion" data-report-title="Conclusion" hidden>
+      <div class="card card-pad" id="conclusion-section"></div>
+    </section>
+
+    <details class="card card-pad" id="advanced-actions" style="display:none;margin-top:20px;" data-report-hide>
+      <summary style="cursor:pointer;font-size:13px;font-weight:700;">Actions avancées</summary>
+      <div style="margin-top:14px;max-width:480px;">
+        <div id="advanced-actions-editor-only">
+          <label>Combiner avec une autre expérience</label>
+          <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, mais relie l'historique et les preuves de l'autre expérience choisie.</div>
+          <select class="field" id="combine-select" style="margin-bottom:8px;"></select>
+          <input class="field" id="combine-title" placeholder="Titre du résultat" style="margin-bottom:8px;">
+          <input class="field" id="combine-intent" placeholder="Pourquoi combiner ces deux pistes ?" style="margin-bottom:8px;">
+          <button class="btn btn-line" id="combine-btn" type="button">Combiner</button>
+
+          <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--danger-tint);">
+            <label style="color:var(--danger);">Supprimer cette étude</label>
+            <div class="help" style="margin-bottom:8px;">Efface définitivement cette version et les versions précédentes de cette piste, jusqu'à un point encore utilisé par une autre piste ou une ref. Irréversible.</div>
+            <button class="btn btn-danger" id="delete-experience-btn" type="button">Supprimer</button>
+            <span id="delete-experience-hint" class="help" style="margin-left:10px;"></span>
+          </div>
+        </div>
+      </div>
+    </details>
   </div>
 
   <div id="layer-tooltip" class="layer-tooltip" style="display:none;"></div>
@@ -228,8 +255,25 @@
     </div>
   </dialog>
 
+  <!-- Structure en images : changer la planche (ajouter, retirer, réordonner, remplacer, type et
+       légende de chaque image) sans créer de nouvelle version de structure - voir
+       openReplaceDrawing() dans experience.js. -->
+  <dialog id="replace-drawing-dialog" aria-labelledby="replace-drawing-title" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow-lift);max-width:min(980px,95vw);width:100%;">
+    <div class="card-pad" style="display:flex;flex-direction:column;gap:12px;max-height:92vh;">
+      <h2 id="replace-drawing-title" style="font-size:16px;margin:0;">Modifier les images de la structure</h2>
+      <p class="help" style="margin:0;">Même structure, autres images : un schéma retouché dans PowerPoint, la coupe TEM une fois faite, un zoom de plus… Les images précédentes restent sur la version précédente.</p>
+      <div id="replace-drawing-drop" style="height:min(62vh,560px);"></div>
+      <div id="replace-drawing-error" class="error" style="display:none;"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn btn-line" id="replace-drawing-cancel" type="button">Annuler</button>
+        <button class="btn btn-primary" id="replace-drawing-save" type="button">Enregistrer les images</button>
+      </div>
+    </div>
+  </dialog>
+
   <script src="/static/js/api.js"></script>
   <script src="/static/js/common.js"></script>
+  <script src="/static/js/image-drop.js"></script>
   <script src="/static/js/experience.js"></script>
   <script src="/static/js/experience-data.js"></script>
 </body>

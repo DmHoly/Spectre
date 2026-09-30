@@ -4,7 +4,7 @@
 
    Purement côté client : n'annule que l'état de la structure en cours d'édition. Une brique déjà
    enregistrée dans la bibliothèque via « Grouper en brique » n'est pas supprimée du serveur par un
-   Ctrl+Z (seules les étiquettes 🧱 posées sur les étapes courantes sont retirées). */
+   Ctrl+Z (seules les étiquettes de brique posées sur les étapes courantes sont retirées). */
 
 const undoStack = [];
 const redoStack = [];
@@ -37,18 +37,17 @@ function captureHistory() {
   updateHistoryButtons();
 }
 
+// La sélection est conservée autant que possible (même index, ramené dans les bornes) : annuler
+// une modification de l'étape 4 laisse l'inspecteur sur l'étape 4, avec ses valeurs d'avant.
 function applyHistorySnapshot(serialized) {
   const snap = JSON.parse(serialized);
   state.steps = snap.steps;
   setSubstrateFields(snap.substrate);
-  state.editingIndex = null;
-  state.showStepForm = false;
   state.selectedStepIndices.clear();
-  historyBaseline = serialized; // avant renderSteps pour que le captureHistory qu'il déclenche soit un no-op
-  document.getElementById("step-form-title").textContent = "Ajouter une étape";
-  document.getElementById("add-step-btn-label").textContent = "Ajouter cette étape";
-  renderKindFields(document.getElementById("kind-select").value);
-  renderSteps();
+  if (state.selectedBrickGroup && !brickGroupSpan(state.selectedBrickGroup)) state.selectedBrickGroup = null;
+  state.selectedIndex = Math.min(state.selectedIndex, state.steps.length - 1);
+  historyBaseline = serialized; // avant commitStructure pour que le captureHistory qu'il déclenche soit un no-op
+  commitStructure();
   updateHistoryButtons();
 }
 
@@ -76,6 +75,7 @@ document.addEventListener("keydown", (e) => {
   // Dans un champ de saisie, on laisse Ctrl+Z faire l'annulation native du texte.
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "select" || tag === "textarea") return;
+  if (state.wizardScreen === "intention") return; // rien de structurel à annuler sur cet écran
   const key = e.key.toLowerCase();
   if (key === "z" && !e.shiftKey) {
     e.preventDefault();

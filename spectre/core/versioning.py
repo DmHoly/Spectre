@@ -19,6 +19,12 @@ Rules, from the coarsest to the finest-grained:
 - **none** - the process is byte-identical; whatever changed on this commit (a tag, a title, a
   piece of evidence...) isn't a process/structure change at all.
 
+A structure given as a picture (:class:`spectre.core.structures.StructureImage`) has no process
+to compare - its "signature" is the token stored under ``structure_image_revision``, renewed on
+each real launch/evolution and kept by everything else (replacing the picture included): a new
+token, or a switch between a drawn and a pictured structure, is a **major** change, since nothing
+tells how big it was; the same token is **none**.
+
 Everything that isn't a process/structure change still gets its own immutable Follow commit -
 that full chain is the "historique complet" a fiche shows in full; this module only picks out,
 and numbers, the subset of it that actually moved the process/structure forward.
@@ -42,6 +48,19 @@ def _step_without_name(step: dict) -> dict:
     return {k: v for k, v in step.items() if k != "name"}
 
 
+def structure_signature(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    """What versioning compares for one commit: its StructureForge process, or - for a structure
+    given as a picture - its revision token (see the module docstring). ``None`` when there is
+    neither."""
+    process = metadata.get("structureforge_process")
+    if process is not None:
+        return process
+    revision = metadata.get("structure_image_revision")
+    if revision is not None:
+        return {"image_revision": revision}
+    return None
+
+
 def classify_process_change(before: dict[str, Any] | None, after: dict[str, Any]) -> ChangeLevel:
     """Classify the process/structure change from ``before`` to ``after`` (both the
     ``{"substrate": ..., "steps": [...]}`` shape :func:`spectre.core.structures.process_metadata`
@@ -54,6 +73,10 @@ def classify_process_change(before: dict[str, Any] | None, after: dict[str, Any]
     if before == after:
         return "none"
 
+    # une structure en image (ou le passage dessin <-> image) : aucune idée de l'ampleur du changement
+    if "image_revision" in before or "image_revision" in after:
+        return "major"
+
     if before.get("substrate") != after.get("substrate"):
         return "major"
 
@@ -63,6 +86,11 @@ def classify_process_change(before: dict[str, Any] | None, after: dict[str, Any]
         return "major"
 
     if any(_step_without_name(b) != _step_without_name(a) for b, a in zip(before_steps, after_steps)):
+        return "minor"
+
+    # un paramètre déclaré (dopage, précurseur... - voir structures.process_metadata) est un réglage
+    # de l'étape comme un autre, pas un simple renommage
+    if before.get("declared_params", {}) != after.get("declared_params", {}):
         return "minor"
 
     return "patch"
@@ -91,7 +119,7 @@ def compute_branch_versions(history: list[Any]) -> dict[str, dict[str, Any]]:
     version = (0, 0, 0)
     previous_process: dict[str, Any] | None = None
     for exp in history:
-        process = exp.metadata.get("structureforge_process")
+        process = structure_signature(exp.metadata)
         level = classify_process_change(previous_process, process) if process is not None else "none"
         version = _bump(version, level)
         out[exp.id] = {"version": "{}.{}.{}".format(*version), "level": level}
@@ -131,7 +159,7 @@ def determine_keep_ids(dag: dict[str, list[str]], processes: dict[str, dict | No
     that actually bumped the process/structure version. Everything else - a tag, an evidence, a
     title edit riding on an otherwise-unchanged process - gets collapsed out.
 
-    ``processes`` maps experiment id to its ``structureforge_process`` metadata (or ``None``).
+    ``processes`` maps experiment id to its :func:`structure_signature` (or ``None``).
     """
     keep: set[str] = set()
     for node, parents in dag.items():

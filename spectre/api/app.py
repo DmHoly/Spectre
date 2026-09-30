@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from ..core import microprojects as microprojects_core
 from ..core.db import data_dir, init_db
 from . import atlas as atlas_router
 from . import auth as auth_router
@@ -90,6 +92,16 @@ def create_app() -> FastAPI:
     app.get("/donnees/{key}")(_page("donnees.html"))
     app.get("/management/{slug}")(_page("management.html"))
     app.get("/microprojets/{slug}")(_page("projet.html"))
+
+    @app.get("/p/{code}")
+    def _microproject_by_code(code: str):
+        """Raccourci à partager : /p/Nat_0004 (ou /p/Nat4) -> la page de ce µprojet."""
+        try:
+            microproject = microprojects_core.get_by_code(code)
+        except microprojects_core.MicroprojectNotFoundError:
+            return RedirectResponse(url=f"/?introuvable={quote(code)}", status_code=302)
+        return RedirectResponse(url=f"/microprojets/{microproject.slug}", status_code=302)
+
     app.get("/microprojets/{slug}/presets-etapes")(_page("presets.html"))
     app.get("/microprojets/{slug}/briques-technologiques")(_page("briques.html"))
     app.get("/microprojets/{slug}/briques-technologiques/bibliotheque/nouvelle")(_page("structure-builder.html"))
@@ -97,7 +109,9 @@ def create_app() -> FastAPI:
     app.get("/microprojets/{slug}/structures/bibliotheque/nouvelle")(_page("structure-builder.html"))
     app.get("/microprojets/{slug}/structures/bibliotheque/{name}")(_page("structure-builder.html"))
     app.get("/microprojets/{slug}/structures/nouvelle")(_page("structure-builder.html"))
+    app.get("/microprojets/{slug}/structures/image")(_page("structure-image.html"))
     app.get("/microprojets/{slug}/experiences/{experience_id}/evoluer")(_page("structure-builder.html"))
+    app.get("/microprojets/{slug}/experiences/{experience_id}/evoluer-image")(_page("structure-image.html"))
     app.get("/microprojets/{slug}/experiences/{experience_id}")(_page("experience.html"))
     app.get("/microprojets/{slug}/graphe")(_page("graphe.html"))
     app.get("/microprojets/{slug}/refs")(_page("refs.html"))

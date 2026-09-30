@@ -22,11 +22,14 @@ from pydantic import BaseModel, Field
 from structureforge.process.steps import ProcessStep
 
 from .keyed_store import KeyedJsonStore
+from .structures import DeclaredParam
 
 
 class TechBrick(BaseModel):
     name: str
     steps: list[ProcessStep]  # no substrate - a brick applies on top of whatever already exists
+    # the steps' declared parameters (see spectre.core.structures.DeclaredParam), by step index
+    declared_params: dict[str, list[DeclaredParam]] = Field(default_factory=dict)
     notes: str | None = None
     created_at: str
 

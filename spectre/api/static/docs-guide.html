@@ -44,10 +44,11 @@
         <a href="#roles">Rôles et membres</a>
 
         <div class="docs-nav__group">Construire une structure</div>
-        <a href="#substrat">Le substrat</a>
+        <a href="#substrat">L'atelier de structure</a>
         <a href="#etapes">Ajouter des étapes</a>
-        <a href="#vues">Vue par couches / par étapes</a>
+        <a href="#vues">Éditer, réordonner, grouper</a>
         <a href="#simuler">Simuler</a>
+        <a href="#structure-image">Sans constructeur : des images</a>
 
         <div class="docs-nav__group">Suivre une expérience</div>
         <a href="#lancer">Lancer le suivi</a>
@@ -113,15 +114,15 @@
         </section>
 
         <section id="substrat">
-          <h2>Le substrat</h2>
-          <p>Toute structure part d'un substrat : un matériau, une largeur et une épaisseur. C'est le point de départ visible en bas de la coupe transversale, et il reste modifiable à tout moment tant que l'expérience n'est pas lancée.</p>
+          <h2>L'atelier de structure</h2>
+          <p>Le constructeur de structure tient sur un seul écran, sans défilement : en haut le <strong>process flow</strong> (le procédé qui se lit de gauche à droite, substrat en tête), à gauche la <strong>palette d'outils</strong>, au centre la coupe transversale simulée, à droite l'<strong>inspecteur</strong> de ce qui est sélectionné. Toute structure part d'un substrat : un matériau, une largeur et une épaisseur - cliquer la puce « Substrat » du flow l'ouvre dans l'inspecteur, modifiable à tout moment.</p>
           <img class="docs-shot" src="/static/docs/img/05-builder-initial.png" alt="Constructeur de structure, état initial avec seulement le substrat">
-          <p class="docs-shot-caption">Le constructeur au départ : seulement le substrat, rien d'autre. Le formulaire d'étape reste caché tant qu'on n'a rien à y faire.</p>
+          <p class="docs-shot-caption">Le constructeur au départ : seulement le substrat.</p>
         </section>
 
         <section id="etapes">
           <h2>Ajouter des étapes</h2>
-          <p>Une structure se construit étape par étape. Neuf types d'étapes sont disponibles :</p>
+          <p>Une structure se construit étape par étape. Neuf types d'étapes sont disponibles dans la palette, groupés par famille (ajout de matière, motif et retrait, autres) :</p>
           <ul>
             <li><strong>Dépôt</strong> — ajoute une couche d'un matériau, avec une recette (mode conforme ou directionnel, angle) et une épaisseur. Un préset d'étape (voir <a href="#presets-etapes">Gérer les présets d'étapes</a>) préremplit la recette en un clic.</li>
             <li><strong>Gravure</strong> — retire de la matière selon une recette (mode isotrope ou directionnel, sélectivité par matériau), et une profondeur.</li>
@@ -133,38 +134,52 @@
             <li><strong>Croissance épitaxiale</strong> — croissance sélective (SAG) ou non selon un matériau d'amorçage, dans une orientation cristalline donnée (plan C vertical, plan M latéral, ou semipolaire à un angle choisi).</li>
             <li><strong>Retournement</strong> — retourne physiquement la structure pour travailler sa face arrière (amincissement, via traversant, contact) ; la face avant n'est plus directement exposée, mais reste atteignable — un amincissement ou une gravure de face arrière suffisamment profond la traverse (un via qui vient contacter un plot enterré, par exemple). Nécessite une face avant plane sur toute la largeur (une planarisation juste avant), comme un vrai collage sur support temporaire. Voir <a href="/docs/exemples#retournement">Exemples : retournement et via de face arrière</a>.</li>
           </ul>
-          <p>Cliquer une étape déjà ajoutée l'ouvre en édition ; les flèches ▲▼ la déplacent dans l'ordre du procédé.</p>
-          <img class="docs-shot" src="/static/docs/img/06-etape-ajoutee.png" alt="Une étape de dépôt ajoutée, affichée en pastille compacte">
+          <p>Trois façons d'insérer une étape : cliquer un outil de la palette (elle s'insère juste après l'étape sélectionnée), le <strong>glisser</strong> à l'endroit voulu du flow, ou cliquer un « + » entre deux puces. Les touches <kbd>1</kbd> à <kbd>9</kbd> font de même au clavier. La nouvelle étape est aussitôt sélectionnée avec ses valeurs par défaut : il ne reste qu'à la régler dans l'inspecteur.</p>
+          <img class="docs-shot" src="/static/docs/img/06-etape-ajoutee.png" alt="Une étape de dépôt ajoutée au process flow">
         </section>
 
         <section id="vues">
-          <h2>Vue par couches / par étapes</h2>
-          <p>Deux façons d'éditer une structure, à basculer en haut de la barre latérale :</p>
+          <h2>Éditer, réordonner, grouper</h2>
           <ul>
-            <li><strong>Par couches</strong> — pour un empilement de dépôts uniquement (typiquement une épitaxie). Cliquer une couche directement dans le dessin (ou sa pastille dans la liste) ouvre ses caractéristiques. Le formulaire d'ajout reste discret jusqu'à ce qu'on clique « + Ajouter une couche » ou une couche existante.</li>
-            <li><strong>Par étapes</strong> — la liste complète, pour tout le reste (gravure, lithographie, intégration de contacts...). Cette vue s'active automatiquement dès qu'une étape autre que dépôt est ajoutée.</li>
+            <li><strong>Édition en direct</strong> — l'inspecteur applique chaque modification immédiatement (la puce du flow et la coupe se mettent à jour) ; <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> annulent et rétablissent. Changer le « Type d'étape » transforme l'étape sélectionnée.</li>
+            <li><strong>Réordonner</strong> — glisser une puce dans le flow, ou les flèches de l'inspecteur (<kbd>Ctrl</kbd>+<kbd>←</kbd>/<kbd>→</kbd>). Dupliquer (<kbd>Ctrl</kbd>+<kbd>D</kbd>) et supprimer (<kbd>Suppr</kbd>) sont au même endroit.</li>
+            <li><strong>Depuis le dessin</strong> — cliquer une couche de la coupe sélectionne l'étape qui l'a produite (la vue reste en place) et affiche sa traçabilité ; survoler une puce du flow illumine ses couches.</li>
+            <li><strong>Briques</strong> — <kbd>Ctrl</kbd>+clic ou <kbd>Maj</kbd>+clic sélectionne plusieurs étapes consécutives, que l'inspecteur propose de grouper en brique technologique réutilisable. Les briques disponibles sont listées sous les outils (clic ou glisser pour en insérer une) ; dans le flow, une brique se replie en une seule puce.</li>
           </ul>
-          <img class="docs-shot" src="/static/docs/img/07-vue-etapes.png" alt="Bascule manuelle sur la vue par étapes">
-          <p class="docs-shot-caption">Bascule manuelle : ici on repasse en « Par étapes » même si la structure ne contient encore que des dépôts.</p>
-          <div class="docs-callout">Pourquoi deux vues ? Une épitaxie se pense couche par couche (« la couche de PGaN », « le canal ») — cliquer directement dans le dessin colle à cette façon de voir. Une intégration (contacts, gravures, nettoyages) se pense comme une suite d'opérations dans l'ordre — la liste d'étapes colle mieux à ce déroulé. Dès qu'une étape non-dépôt existe, la vue par couches n'a plus de sens (une couche ne correspond plus forcément à une étape) et se désactive automatiquement.</div>
+          <p>Le bouton clavier du bandeau (ou <kbd>?</kbd>) liste tous les raccourcis.</p>
+          <img class="docs-shot" src="/static/docs/img/07-vue-etapes.png" alt="Process flow avec plusieurs étapes et l'inspecteur">
         </section>
 
         <section id="simuler">
           <h2>Simuler</h2>
-          <p>Le bouton « Simuler » calcule la coupe transversale après chaque étape et affiche le résultat final. Le curseur au-dessus de la coupe permet de rejouer le procédé étape par étape.</p>
+          <p>La coupe transversale est recalculée automatiquement à chaque modification. Elle montre la structure <strong>après l'étape sélectionnée</strong> : le process flow sert aussi de frise pour rejouer le procédé étape par étape (flèches <kbd>←</kbd> <kbd>→</kbd>) ; la bascule « Finale » affiche toujours le résultat complet. Zoom : boutons, ou <kbd>Ctrl</kbd>+molette, puis glisser pour se déplacer. Si une étape rend la simulation impossible, le message s'affiche sur la coupe, sans perdre l'aperçu précédent.</p>
           <img class="docs-shot" src="/static/docs/img/09-structure-simulee.png" alt="Structure simulée, empilement PGaN puis contact Ni/Au">
+        </section>
+
+        <section id="structure-image">
+          <h2>Sans constructeur : des images de la structure</h2>
+          <p>Pas besoin de passer par l'atelier pour démarrer une expérience : dans « Nouvelle expérience », choisissez <strong>Coller une image</strong>. La structure est alors donnée en images - un schéma fait dans PowerPoint (sélectionnez la forme ou la diapositive, <kbd>Ctrl</kbd>+<kbd>C</kbd>), des coupes TEM ou MEB copiées depuis le logiciel du microscope, une photo. <strong>Plusieurs images</strong> quand une seule ne suffit pas (le schéma visé, une coupe d'ensemble, un zoom...), jusqu'à 12, dans l'ordre où les lire : chacune avec son type (schéma, coupe TEM/MEB, autre) et sa légende.</p>
+          <p>Pour ajouter : <kbd>Ctrl</kbd>+<kbd>V</kbd> n'importe où sur la page, glisser-déposer un ou plusieurs fichiers, ou « Ajouter une image » (PNG, JPEG, GIF ou WebP, 10 Mo max ; un TIFF de microscope se colle plutôt qu'il ne s'envoie, le navigateur ne sait pas l'afficher). Sur chaque image : les flèches pour la placer avant ou après, « Remplacer » (ou déposer un fichier directement dessus), la corbeille pour la retirer. À droite, le titre, l'intention, l'entité physique et les objectifs, comme pour tout lancement.</p>
+          <p>Sur la fiche, les images forment une planche numérotée ; <strong>Modifier les images</strong> ouvre la même planche pour en ajouter, en retirer, les réordonner ou les remplacer à tout moment - un schéma retouché, la coupe TEM une fois faite : c'est la même structure, donc pas de nouvelle version (les images précédentes restent sur la version précédente, et la fiche résume ce qui a changé : « 1 image ajoutée », « Ordre des images modifié »...). Quand la structure change vraiment, <strong>Enregistrer une évolution</strong> repart de nouvelles images et crée une nouvelle version (vX+1), avec son nœud dans le graphe du µprojet. On peut passer d'un mode à l'autre à tout moment : « Continuer dans le constructeur » redessine étape par étape une structure donnée en images, et « Avec une image » (dans « Nouvelle expérience ») continue une expérience dessinée par des images.</p>
+          <p>Ce qu'on perd sans constructeur : la simulation, le détail des couches au survol, les campagnes (variations) et la comparaison paramètre par paramètre - une image ne dit rien de ses épaisseurs. Le rapport téléchargé embarque toutes les images.</p>
         </section>
 
         <section id="lancer">
           <h2>Lancer le suivi</h2>
-          <p>Une fois la structure prête, le formulaire « Lancer » demande un titre, une intention (pourquoi fait-on cette expérience, et pourquoi maintenant) et, optionnellement, une hypothèse.</p>
-          <p>La section « Objectifs » (repliée par défaut) permet de poser, pour chacun : pourquoi cet objectif compte, la mesure suivie, le sens recherché (observer / maximiser / minimiser / cible précise) et comment on compte le vérifier. Les réponses viendront à la conclusion.</p>
-          <img class="docs-shot" src="/static/docs/img/10-lancer.png" alt="Formulaire de lancement, titre et intention">
+          <p>Pour une nouvelle expérience, le bandeau de l'atelier porte trois étapes : <strong>1. Structure</strong>, <strong>2. Intention &amp; objectifs</strong>, <strong>3. Variations &amp; lancement</strong>. L'écran « Intention » demande un titre, une intention (pourquoi fait-on cette expérience, et pourquoi maintenant) et, optionnellement, une hypothèse ; à côté, les objectifs : pour chacun, pourquoi il compte, la mesure suivie, le sens recherché (observer / maximiser / minimiser / cible précise) et comment on compte le vérifier. Les réponses viendront à la conclusion.</p>
+          <p>L'écran « Variations » reprend le process flow : cliquer une étape, le substrat, ou une couche du dessin pour faire varier n'importe lequel de ses paramètres (voir <a href="#campagnes">Plusieurs échantillons</a>), puis nommer les wafers dans le tableau des échantillons avant de lancer.</p>
+          <img class="docs-shot" src="/static/docs/img/10-lancer.png" alt="Écran intention et objectifs">
         </section>
 
         <section id="fiche">
           <h2>La fiche d'expérience</h2>
-          <p>Chaque expérience a sa propre fiche : statut, versions du procédé (une ligne par changement de structure/procédé, numérotée X.Y.Z), structure actuelle avec les différences par rapport à la version précédente, objectifs, liens vers d'autres expériences, et — selon le cas — cartographie de campagne, suivi physique, preuves et conclusion. Tout le reste (une preuve ajoutée, un tag, un titre modifié...) reste tracé sans faire bouger cette numérotation, dans l'historique complet en bas de la fiche.</p>
+          <p>Chaque expérience a sa propre fiche : un en-tête (statut, titre, numéro du µprojet, responsable, étiquettes), puis trois onglets indépendants :</p>
+          <ul>
+            <li><strong>Structure &amp; intention</strong> — la structure actuelle avec les différences par rapport à la version précédente (pour une campagne, un carrousel : la référence puis chaque variante, avec la valeur de ses paramètres variés), l'intention, l'hypothèse et les objectifs, les versions du procédé (une ligne par changement de structure/procédé, numérotée X.Y.Z), le suivi physique, la cartographie des variantes et la feuille de split.</li>
+            <li><strong>Données</strong> — les données mesurées (images comparées à la structure simulée) et les preuves.</li>
+            <li><strong>Conclusion</strong> — la conclusion et les réponses aux objectifs, ou le formulaire pour la rédiger.</li>
+          </ul>
+          <p>L'onglet ouvert fait partie de l'adresse (<code>#donnees</code>, <code>#conclusion</code>) : on peut partager un lien direct, et on y reste après avoir ajouté une preuve ou conclu. Tout le reste (une preuve ajoutée, un tag, un titre modifié...) reste tracé sans faire bouger la numérotation des versions, dans l'historique complet. « Télécharger le rapport » produit un fichier HTML autonome qui reprend les trois onglets l'un après l'autre.</p>
           <img class="docs-shot" src="/static/docs/img/11-fiche-experience.png" alt="Fiche d'expérience complète">
         </section>
 
@@ -202,7 +217,8 @@
 
         <section id="campagnes">
           <h2>Plusieurs échantillons (campagne)</h2>
-          <p>La section « Créer plusieurs variantes » du constructeur permet de lancer une seule expérience qui suit plusieurs échantillons à la fois. Pour chaque paramètre à faire varier : une étape, une grandeur numérique de l'étape (une épaisseur, une profondeur, un niveau cible...) et une liste de valeurs.</p>
+          <p>L'écran « Variations &amp; lancement » du constructeur permet de lancer une seule expérience qui suit plusieurs échantillons à la fois. Tout paramètre de la structure peut varier : une épaisseur, une profondeur, un niveau cible, une vitesse ou un angle de croissance, le taux d'indium/aluminium d'un nitrure à composition, le pas ou le diamètre d'un réseau de lithographie, un matériau, une recette, une orientation, les dimensions ou le matériau du substrat — et les <strong>paramètres déclarés</strong> d'une étape (un dopage, un débit...), qui ne changent pas la géométrie simulée mais sont enregistrés échantillon par échantillon.</p>
+          <p>Une grandeur numérique se répartit de trois façons : <strong>Linéaire</strong> (min, max, nombre de points), <strong>Log</strong> (même rapport d'une valeur à la suivante : 1e17 → 1e19 en 5 points donne 1e17, 3.16e17, 1e18, 3.16e18, 1e19 — proposé d'office pour un dopage ou une concentration) ou une liste de <strong>Valeurs</strong>. L'échelle choisie est gardée : une variation en log rouvre en log, et la feuille de split l'indique. Les grandes valeurs s'affichent en notation scientifique partout. Pour un matériau, une recette ou une orientation, on coche les options à comparer.</p>
           <img class="docs-shot" src="/static/docs/img/15-campagne-facteurs.png" alt="Section campagne, facteur splitté sur une épaisseur">
 
           <h3>Pourquoi croiser plusieurs paramètres</h3>

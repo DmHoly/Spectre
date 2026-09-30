@@ -36,10 +36,11 @@ function microprojectCard(microproject) {
   const where = [area && area.name, microproject.thematique && microproject.thematique.name].filter(Boolean).join(" › ");
   return `
     <a href="/microprojets/${encodeURIComponent(microproject.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:6px;color:inherit;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <div style="font-size:14px;font-weight:700;">${escapeHtml(microproject.name)}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:22px;">
+        ${microproject.code ? `<span class="mp-code" title="Numéro du µprojet">${escapeHtml(microproject.code)}</span>` : "<span></span>"}
         <span class="badge badge-role">${escapeHtml(roleLabel(microproject.role))}</span>
       </div>
+      <div style="font-size:14px;font-weight:700;line-height:1.3;overflow-wrap:anywhere;">${escapeHtml(microproject.name)}</div>
       ${where ? `<div style="font-size:11.5px;color:var(--text-faint);font-family:var(--font-mono);">${escapeHtml(where)}</div>` : ""}
       <div style="font-size:12px;color:var(--text-faint);padding-top:6px;border-top:1px solid var(--border-soft);">
         ${microproject.running_count} en cours &middot; ${microproject.concluded_count} terminées
@@ -123,5 +124,9 @@ unclassifiedDetails.addEventListener("toggle", async () => {
     showError(err);
   }
 });
+
+// /p/{code} (lien court vers un µprojet) renvoie ici avec ?introuvable= quand le numéro n'existe pas.
+const notFoundCode = new URLSearchParams(window.location.search).get("introuvable");
+if (notFoundCode) showError(new Error(`Aucun µprojet numéroté « ${notFoundCode} ».`));
 
 load();

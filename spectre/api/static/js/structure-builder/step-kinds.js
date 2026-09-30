@@ -38,9 +38,9 @@ const STEP_KIND_DEFS = {
     }),
     fillFields: (step) => {
       fillGradedMaterialField("f-material", step.material);
-      document.getElementById("f-recipe").value = step.recipe;
+      ensureSelectValue("f-recipe", step.recipe);
       document.getElementById("f-thickness").value = step.thickness.value;
-      document.getElementById("f-thickness-unit").value = step.thickness.unit;
+      ensureSelectValue("f-thickness-unit", step.thickness.unit, "");
     },
     summary: (step) => `${step.material} · ${step.thickness.value} ${step.thickness.unit} · ${step.recipe}`,
     pyCode: (step) =>
@@ -72,9 +72,9 @@ const STEP_KIND_DEFS = {
       depth: { value: parseFloat(document.getElementById("f-depth").value) || 0, unit: document.getElementById("f-depth-unit").value },
     }),
     fillFields: (step) => {
-      document.getElementById("f-recipe").value = step.recipe;
+      ensureSelectValue("f-recipe", step.recipe);
       document.getElementById("f-depth").value = step.depth.value;
-      document.getElementById("f-depth-unit").value = step.depth.unit;
+      ensureSelectValue("f-depth-unit", step.depth.unit, "");
     },
     summary: (step) => `${step.recipe} · ${step.depth.value} ${step.depth.unit}`,
     pyCode: (step) => `Etch(name=${pyStr(step.name)}, recipe=${pyStr(step.recipe)}, depth=${pyLength(step.depth)})`,
@@ -119,9 +119,9 @@ const STEP_KIND_DEFS = {
       document.getElementById("f-plana-mode").dispatchEvent(new Event("change"));
       if (mode === "level") {
         document.getElementById("f-target-level").value = step.target_level.value;
-        document.getElementById("f-target-level-unit").value = step.target_level.unit;
+        ensureSelectValue("f-target-level-unit", step.target_level.unit, "");
       } else {
-        document.getElementById("f-stop-material").value = step.stop_material;
+        ensureSelectValue("f-stop-material", step.stop_material);
       }
     },
     summary: (step) => (step.target_level ? `jusqu'à ${step.target_level.value} ${step.target_level.unit}` : `jusqu'au ${step.stop_material}`),
@@ -183,9 +183,9 @@ const STEP_KIND_DEFS = {
       openings: parseOpenings(document.getElementById("f-openings").value),
     }),
     fillFields: (step) => {
-      document.getElementById("f-resist-material").value = step.resist_material;
+      ensureSelectValue("f-resist-material", step.resist_material);
       document.getElementById("f-thickness").value = step.thickness.value;
-      document.getElementById("f-thickness-unit").value = step.thickness.unit;
+      ensureSelectValue("f-thickness-unit", step.thickness.unit, "");
       document.getElementById("f-openings").value = step.openings.map((pair) => pair.join("-")).join(", ");
     },
     summary: (step) => `${step.resist_material} · ${step.openings.length} ouverture(s)`,
@@ -225,7 +225,7 @@ const STEP_KIND_DEFS = {
       <div><label>Matériau</label><select class="field" id="f-material">${materialOptions("Photoresist")}</select></div>`,
     buildFromForm: (name) => ({ kind: "resist_strip", name, material: document.getElementById("f-material").value }),
     fillFields: (step) => {
-      document.getElementById("f-material").value = step.material;
+      ensureSelectValue("f-material", step.material);
     },
     summary: (step) => step.material,
     pyCode: (step) => `ResistStrip(name=${pyStr(step.name)}, material=${pyStr(step.material)})`,
@@ -280,7 +280,7 @@ const STEP_KIND_DEFS = {
     fillFields: (step) => {
       fillGradedMaterialField("f-material", step.material);
       document.getElementById("f-thickness").value = step.thickness.value;
-      document.getElementById("f-thickness-unit").value = step.thickness.unit;
+      ensureSelectValue("f-thickness-unit", step.thickness.unit, "");
       document.getElementById("f-rate-c").value = step.rate_c;
       document.getElementById("f-rate-m").value = step.rate_m;
       document.getElementById("f-rate-sp").value = step.rate_sp;
@@ -362,7 +362,7 @@ const STEP_KIND_DEFS = {
     fillFields: (step) => {
       fillGradedMaterialField("f-material", step.material);
       document.getElementById("f-thickness").value = step.thickness.value;
-      document.getElementById("f-thickness-unit").value = step.thickness.unit;
+      ensureSelectValue("f-thickness-unit", step.thickness.unit, "");
       document.getElementById("f-orientation").value = step.orientation;
       document.getElementById("f-angle-wrap").style.display = step.orientation === "semi_polar" ? "" : "none";
       document.getElementById("f-angle").value = step.angle_deg || 32;

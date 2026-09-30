@@ -1,19 +1,28 @@
 /* Mode expérience : reprise d'un procédé existant (évolution d'une expérience, ou nouvelle
    expérience à partir d'un modèle), et lancement (création, évolution, ou campagne DOE).
-   Une évolution reste un seul écran (#launch-btn, comme avant) ; un nouveau lancement passe par
-   les deux écrans du magicien (#continue-btn -> écran variations -> #launch-btn-variations), tous
-   deux aboutissant à commitExperience() ci-dessous - seule la provenance des `entities` diffère
-   (les deux champs d'entité en évolution, le tableau de variations.js en nouveau lancement). */
+   Une évolution peut s'enregistrer directement depuis l'écran structure ou intention
+   (#launch-btn) ; un nouveau lancement passe par les trois écrans de l'atelier (structure ->
+   intention -> variations -> #launch-btn-variations), tous deux aboutissant à commitExperience()
+   ci-dessous - seule la provenance des `entities` diffère (les deux champs d'entité en évolution,
+   le tableau de variations.js en nouveau lancement). */
 
 async function loadExistingProcess() {
   if (!evolveExperienceId) return;
   try {
-    const data = await api.get(`/api/microprojets/${slug}/experiences/${evolveExperienceId}/process`);
-    setSubstrateFields(data.substrate);
-    state.steps = data.steps;
-    renderSteps();
-    document.getElementById("page-title").textContent = "Enregistrer une évolution";
-    document.getElementById("launch-btn").textContent = "Enregistrer cette évolution";
+    // Une expérience dont la structure n'est qu'une image (structure-image.html) n'a pas de procédé
+    // à rouvrir : on la redessine à partir du seul substrat, le reste (intention, objectifs,
+    // entité) est repris comme pour toute évolution.
+    const data = await api.get(`/api/microprojets/${slug}/experiences/${evolveExperienceId}/process`).catch((err) => {
+      if (err.status === 404) return null;
+      throw err;
+    });
+    if (data) {
+      setSubstrateFields(data.substrate);
+      state.steps = attachDeclaredParams(data.steps, data.declared_params);
+      selectLastStep();
+      renderSteps();
+    }
+    setPageTitle(data ? "Enregistrer une évolution" : "Redessiner la structure");
 
     const detail = await api.get(`/api/microprojets/${slug}/experiences/${evolveExperienceId}`);
     document.getElementById("exp-title").value = detail.title;
@@ -23,6 +32,7 @@ async function loadExistingProcess() {
     state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
     renderObjectives();
     fillIntentFormAnswers(detail.form_answers);
+    updateStageMeta();
 
     // en évolution, l'entité physique se transmet automatiquement de la version précédente
     // (voir experiments.py::evolve_experience) - le champ reste modifiable pour la corriger,
@@ -39,19 +49,23 @@ async function loadExistingProcess() {
   }
 }
 
-// Titre/intention/objectifs/formulaire sont toujours lus depuis l'écran 1 (#wizard-step-intention,
-// jamais quitté en évolution) ; seules les `entities` varient selon l'appelant. `state.campaignPlan`
+// Titre/intention/objectifs/formulaire sont toujours lus depuis l'écran intention
+// (#wizard-step-intention, masqué mais présent quand un autre écran est affiché) ; seules les
+// `entities` varient selon l'appelant. `state.campaignPlan`
 // (maintenu par variations.js) décide de l'endpoint exactement comme avant.
 async function commitExperience(entities) {
   const title = document.getElementById("exp-title").value.trim();
   const intent = document.getElementById("exp-intent").value.trim();
   if (!title || !intent) {
     showError(new Error("Le titre et l'intention sont obligatoires."));
+    setStage("intention");
+    document.getElementById(title ? "exp-intent" : "exp-title").focus();
     return;
   }
   const payload = {
     substrate: substrateSpec(),
     steps: state.steps,
+    declared_params: declaredParamsPayload(state.steps),
     title,
     intent,
     hypothesis: document.getElementById("exp-hypothesis").value || null,
@@ -63,6 +77,8 @@ async function commitExperience(entities) {
     const branchName = document.getElementById("new-branch-name").value.trim();
     if (!branchName) {
       showError(new Error("Donnez un nom à la nouvelle piste."));
+      setStage("intention");
+      document.getElementById("new-branch-name").focus();
       return;
     }
     payload.new_branch = branchName;
@@ -88,7 +104,7 @@ async function commitExperience(entities) {
   }
 }
 
-// Évolution : un seul écran, comportement inchangé - l'entité physique reste optionnelle ici
+// Évolution directe (écran structure ou intention) - l'entité physique reste optionnelle ici
 // (le serveur la reprend automatiquement de la version précédente, voir loadExistingProcess).
 document.getElementById("launch-btn").addEventListener("click", () => {
   clearError();
@@ -97,21 +113,25 @@ document.getElementById("launch-btn").addEventListener("click", () => {
   commitExperience(entitySampleId ? [{ sample_id: entitySampleId, location: entityLocation || null }] : []);
 });
 
-// Nouveau lancement, écran 1 -> écran 2 : la structure et l'intention sont déjà en mémoire dans
-// `state`, seule la validation minimale (titre/intention) garde le même garde-fou qu'avant de
-// basculer d'écran plutôt que de le reporter jusqu'au clic sur "Lancer".
-document.getElementById("continue-btn").addEventListener("click", () => {
+// Vers l'écran variations (bouton du bandeau ou étape 3 cliquée) : la structure et l'intention
+// sont déjà en mémoire dans `state`, seule la validation minimale (titre/intention) garde le même
+// garde-fou avant de basculer d'écran plutôt que de le reporter jusqu'au clic sur "Lancer".
+function goToVariations() {
   clearError();
   const title = document.getElementById("exp-title").value.trim();
   const intent = document.getElementById("exp-intent").value.trim();
   if (!title || !intent) {
-    showError(new Error("Le titre et l'intention sont obligatoires."));
+    showError(new Error("Le titre et l'intention sont obligatoires avant de définir les variations."));
+    setStage("intention");
+    document.getElementById(title ? "exp-intent" : "exp-title").focus();
     return;
   }
   showWizardStepVariations();
-});
+}
 
-// Nouveau lancement, écran 2 : les entités viennent du tableau de variations plutôt que d'un
+document.getElementById("continue-btn").addEventListener("click", goToVariations);
+
+// Nouveau lancement, écran 3 : les entités viennent du tableau de variations plutôt que d'un
 // unique champ - au moins un échantillon doit être nommé pour lancer le suivi (même garde-fou
 // qu'avant, appliqué à la colonne "Nom du wafer" du tableau plutôt qu'à un champ unique).
 document.getElementById("launch-btn-variations").addEventListener("click", () => {
@@ -134,19 +154,21 @@ document.getElementById("launch-btn-variations").addEventListener("click", () =>
 });
 
 document.getElementById("branch-continue").addEventListener("change", () => {
-  document.getElementById("new-branch-name").style.display = "none";
+  document.getElementById("new-branch-name").hidden = true;
 });
 document.getElementById("branch-fork").addEventListener("change", () => {
-  document.getElementById("new-branch-name").style.display = "";
+  document.getElementById("new-branch-name").hidden = false;
+  document.getElementById("new-branch-name").focus();
 });
 
 async function loadTemplateProcess() {
   if (!templateExperienceId) return;
-  document.getElementById("page-title").textContent = "Nouvelle expérience (structure reprise)";
+  setPageTitle("Nouvelle expérience (structure reprise)");
   try {
     const data = await api.get(`/api/microprojets/${slug}/experiences/${templateExperienceId}/process`);
     setSubstrateFields(data.substrate);
-    state.steps = data.steps;
+    state.steps = attachDeclaredParams(data.steps, data.declared_params);
+    selectLastStep();
     renderSteps();
   } catch (err) {
     showError(err);

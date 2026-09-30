@@ -20,6 +20,7 @@ async function saveTechBrick(forceNew) {
   const name = document.getElementById("brick-name").value.trim();
   if (!name) {
     showError(new Error("Donnez un nom à cette brique pour l'enregistrer."));
+    document.getElementById("brick-name").focus();
     return;
   }
   if (state.steps.length === 0) {
@@ -27,7 +28,13 @@ async function saveTechBrick(forceNew) {
     return;
   }
   const partagee = document.getElementById("brick-shared-checkbox").checked;
-  const payload = { name, steps: state.steps, notes: document.getElementById("brick-notes").value.trim() || null, partagee };
+  const payload = {
+    name,
+    steps: state.steps,
+    declared_params: declaredParamsPayload(state.steps),
+    notes: document.getElementById("brick-notes").value.trim() || null,
+    partagee,
+  };
   try {
     if (!forceNew && state.editingBrickName) {
       await api.put(
@@ -45,14 +52,15 @@ async function saveTechBrick(forceNew) {
 }
 
 async function initBrickMode() {
-  document.getElementById("brick-header").style.display = "";
-  document.getElementById("experience-sections").style.display = "none";
-  document.getElementById("brick-preview-note").style.display = "";
+  document.getElementById("brick-header").hidden = false;
+  document.getElementById("brick-save-btn").hidden = false;
+  document.getElementById("brick-preview-note").hidden = false;
   // Arrivée depuis le hub /bibliotheque (?partagee=1) : brique partagée par défaut.
   if (queryParams.get("partagee") === "1") document.getElementById("brick-shared-checkbox").checked = true;
 
   if (!brickName) {
-    document.getElementById("page-title").textContent = "Nouvelle brique technologique";
+    setPageTitle("Nouvelle brique technologique");
+    document.getElementById("brick-name").focus();
     return;
   }
   try {
@@ -64,23 +72,23 @@ async function initBrickMode() {
       showError(new Error(`Brique "${brickName}" introuvable.`));
       return;
     }
-    state.steps = found.steps;
+    state.steps = attachDeclaredParams(found.steps, found.declared_params);
+    selectLastStep();
     renderSteps();
     // Un préset (aucun aujourd'hui, mais même garde-fou que la bibliothèque de structures/présets
     // d'étape) n'a pas de support à éditer en place.
     const duplicateMode = libraryDuplicateMode || librarySourceScope === "preset";
     if (duplicateMode) {
-      document.getElementById("page-title").textContent =
-        librarySourceScope === "preset" ? "Enregistrer cette brique sous un nouveau nom" : "Dupliquer une brique";
+      setPageTitle(librarySourceScope === "preset" ? "Enregistrer cette brique sous un nouveau nom" : "Dupliquer une brique");
       document.getElementById("brick-name").placeholder = `ex : ${found.name} + ...`;
     } else {
-      document.getElementById("page-title").textContent = "Modifier la brique";
+      setPageTitle("Modifier la brique");
       document.getElementById("brick-name").value = found.name;
       document.getElementById("brick-shared-checkbox").checked = librarySourceScope === "partagee";
       document.getElementById("brick-notes").value = found.notes || "";
       state.editingBrickName = found.name;
       state.editingBrickScope = librarySourceScope;
-      document.getElementById("brick-save-as-btn").style.display = "";
+      document.getElementById("brick-save-as-btn").hidden = false;
     }
   } catch (err) {
     showError(err);

@@ -38,6 +38,8 @@ async function loadCard(nodeId, node) {
       } catch (err) {
         structureBlock = "";
       }
+    } else if (detail.structure_images) {
+      structureBlock = structureBoardHtml(slug, detail.structure_images, { compact: true });
     } else if (detail.structure_svg) {
       structureBlock = `<div class="builder-canvas-svg" style="height:150px;">${detail.structure_svg}</div>`;
     } else {
@@ -76,7 +78,7 @@ async function loadCard(nodeId, node) {
         <a class="btn btn-line" style="flex:1;" href="/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(nodeId)}">Ouvrir la fiche</a>
         ${
           canEvolve
-            ? `<a class="btn btn-primary" style="flex:1;" href="/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(nodeId)}/evoluer">Continuer d'ici</a>`
+            ? `<a class="btn btn-primary" style="flex:1;" href="/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(nodeId)}/${detail.structure_images ? "evoluer-image" : "evoluer"}">Continuer d'ici</a>`
             : ""
         }
       </div>`;
@@ -86,38 +88,11 @@ async function loadCard(nodeId, node) {
   }
 }
 
-// Même carrousel (référence + chaque variante) que l'atlas (voir atlas.js::renderStructureCarousel)
-// - avant ça, une campagne cliquée ici ne montrait qu'un texte "Campagne — N variantes.", sans
-// jamais voir la structure elle-même ni pouvoir comparer les variantes entre elles.
+// Même carrousel (référence + chaque variante) que l'atlas et la fiche (voir common.js::
+// mountStructureCarousel) - avant ça, une campagne cliquée ici ne montrait qu'un texte « Campagne —
+// N variantes. », sans jamais voir la structure elle-même ni pouvoir comparer les variantes.
 function renderLineageStructureCarousel(variation) {
-  const container = document.getElementById("lineage-structure-carousel");
-  if (!container) return;
-  const svgs = variation.svgs || [];
-  if (svgs.length === 0) {
-    container.innerHTML = "";
-    return;
-  }
-  let index = 0;
-  function paint() {
-    const isRef = index === 0;
-    container.innerHTML = `
-      <div class="atlas-carousel">
-        <div class="atlas-carousel__badge">${isRef ? `<span class="badge badge-role">RÉF</span>` : ""}<span>${escapeHtml(variantCaption(variation, index))}</span></div>
-        <div class="atlas-carousel__stage">${svgs[index]}</div>
-        <div class="atlas-carousel__nav">
-          <button type="button" class="btn btn-line" data-dir="-1" ${svgs.length < 2 ? "disabled" : ""}>&larr;</button>
-          <span class="help">${index + 1} / ${svgs.length}</span>
-          <button type="button" class="btn btn-line" data-dir="1" ${svgs.length < 2 ? "disabled" : ""}>&rarr;</button>
-        </div>
-      </div>`;
-    container.querySelectorAll("[data-dir]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        index = (index + parseInt(btn.dataset.dir, 10) + svgs.length) % svgs.length;
-        paint();
-      });
-    });
-  }
-  paint();
+  mountStructureCarousel(document.getElementById("lineage-structure-carousel"), variation);
 }
 
 function render(nodes, edges) {

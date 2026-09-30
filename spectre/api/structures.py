@@ -1,5 +1,7 @@
 """Structure definition and launch: the materials picker, the simulation preview, and turning a
-simulated process into a new tracked experience. All simulation and rendering logic is
+simulated process into a new tracked experience - or, without the builder at all, launching one whose
+structure is just a picture (a PowerPoint schematic, a TEM cross-section: see
+:class:`spectre.core.structures.StructureImage`). All simulation and rendering logic is
 ``structureforge``'s (see :mod:`spectre.core.structures`); Follow's part (committing the result) is
 ``structureforge.adapters.follow_adapter``, extended in this repository with ``build_experiment``
 for exactly this "commit once fully formed" use.
@@ -7,12 +9,14 @@ for exactly this "commit once fully formed" use.
 
 from __future__ import annotations
 
+import json
 import re
+import secrets
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import follow
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
 from structureforge.process.steps import ProcessStep
@@ -65,9 +69,37 @@ class LaunchExperienceRequest(BaseModel):
     # it's only needed to fix forward an experience whose lineage never got one (see evolve_experience).
     entities: list[EntityTrackingInput] = []
     new_branch: str | None = None  # only meaningful when evolving: fork instead of continuing
+    # the steps' declared parameters (see structures.DeclaredParam), keyed by step index - kept in
+    # the committed process metadata (structures.process_metadata) so an evolution gets them back
+    declared_params: dict[str, list[structures.DeclaredParam]] = {}
     # answers to the microproject's active commit form (spectre.core.intent_forms), if one is
     # configured - re-asked on every real launch/evolution, unlike metadata/tags/evidence which
     # lightweight evolutions (conclure/preuves/etiquettes...) simply carry forward unchanged.
+    form_answers: dict[str, Any] = {}
+
+
+class StructureImageInput(BaseModel):
+    image_id: str  # returned by POST /structures/images once the picture is uploaded
+    kind: Literal["schema", "coupe", "autre"] = "schema"
+    caption: str | None = None
+
+
+class StructureImagesInput(BaseModel):
+    images: list[StructureImageInput]  # in reading order
+
+
+class LaunchImageExperienceRequest(BaseModel):
+    """A launch (or an evolution, see ``experiments.evolve_experience_with_image``) whose structure is
+    given as pictures instead of a simulated process - otherwise the same intention fields as
+    :class:`LaunchExperienceRequest`."""
+
+    images: list[StructureImageInput]
+    title: str
+    intent: str
+    hypothesis: str | None = None
+    objectives: list[ObjectiveInput] = []
+    entities: list[EntityTrackingInput] = []
+    new_branch: str | None = None  # evolution only: fork instead of continuing
     form_answers: dict[str, Any] = {}
 
 
@@ -75,6 +107,7 @@ class CampaignPreviewRequest(BaseModel):
     substrate: structures.SubstrateSpec
     steps: list[ProcessStep]
     plan: structures.VariantPlan
+    declared_params: dict[str, list[structures.DeclaredParam]] = {}  # a factor can vary one of them ("declared:<name>")
 
 
 class LaunchCampaignRequest(CampaignPreviewRequest):
@@ -122,6 +155,47 @@ def _ref_the_first_experience(repo: "follow.Repository", experiment: "follow.Exp
     """
     if len(repo) == 1:
         refs.create_ref(repo, experiment.id)
+
+
+STRUCTURE_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+_IMAGE_ID_RE = re.compile(r"^att_[0-9a-f]{20}$")  # same ids as the attachments (served by /pieces-jointes/{id})
+
+
+def structure_image_from_input(slug: str, items: list[StructureImageInput]) -> structures.StructureImage:
+    """The :class:`~spectre.core.structures.StructureImage` a request points at - only once every
+    picture really is an uploaded image of *this* microproject (each id is checked against the
+    files on disk, never turned into a path from anything else)."""
+    if not items:
+        raise HTTPException(status_code=422, detail="Collez ou choisissez au moins une image de la structure.")
+    if len(items) > structures.MAX_STRUCTURE_IMAGES:
+        raise HTTPException(status_code=422, detail=f"{structures.MAX_STRUCTURE_IMAGES} images au maximum.")
+    if len({item.image_id for item in items}) != len(items):
+        raise HTTPException(status_code=422, detail="La même image figure deux fois.")
+    missing = HTTPException(status_code=422, detail="Image de structure introuvable - collez-la ou choisissez-la à nouveau.")
+    directory = microprojects.attachments_dir(slug)
+    pictures = []
+    for item in items:
+        if not _IMAGE_ID_RE.fullmatch(item.image_id):
+            raise missing
+        sidecar_path = directory / f"{item.image_id}.json"
+        if not (directory / item.image_id).is_file() or not sidecar_path.is_file():
+            raise missing
+        if json.loads(sidecar_path.read_text(encoding="utf-8")).get("content_type") not in structures.STRUCTURE_IMAGE_TYPES:
+            raise HTTPException(status_code=422, detail="Ce fichier n'est pas une image affichable (PNG, JPEG, GIF ou WebP).")
+        caption = (item.caption or "").strip()[:200] or None
+        pictures.append(structures.StructureImageItem(image_id=item.image_id, kind=item.kind, caption=caption))
+    return structures.StructureImage(images=pictures)
+
+
+def require_title_and_intent(title: str, intent: str) -> None:
+    if not title.strip() or not intent.strip():
+        raise HTTPException(status_code=422, detail="Le titre et l'intention sont obligatoires.")
+
+
+def first_tracked_entity(entities: list[dict[str, str | None]]) -> list[dict[str, str | None]]:
+    """An image-mode experience follows exactly one sample - the first one actually named."""
+    named = [e for e in entities if e["sample_id"]]
+    return named[:1]
 
 
 def split_objectives(inputs: list[ObjectiveInput]) -> tuple[list["follow.Objective"], dict[str, str]]:
@@ -228,6 +302,7 @@ class SavedStructureInput(BaseModel):
     name: str
     substrate: structures.SubstrateSpec
     steps: list[ProcessStep]
+    declared_params: dict[str, list[structures.DeclaredParam]] = {}
     derived_from: str | None = None
     partagee: bool = False
 
@@ -258,6 +333,7 @@ def create_saved_structure(body: SavedStructureInput, microproject: Microproject
         name=body.name,
         substrate=body.substrate,
         steps=body.steps,
+        declared_params=structures.declared_params_json(structures.declared_params_by_index(body.declared_params)),
         derived_from=body.derived_from,
         created_at=datetime.now(timezone.utc).isoformat(),
     )
@@ -275,6 +351,7 @@ def update_saved_structure(
         name=body.name,
         substrate=body.substrate,
         steps=body.steps,
+        declared_params=structures.declared_params_json(structures.declared_params_by_index(body.declared_params)),
         derived_from=existing.derived_from,
         created_at=existing.created_at,
     )
@@ -291,6 +368,7 @@ def delete_saved_structure(name: str, partagee: bool = False, microproject: Micr
 class TechBrickInput(BaseModel):
     name: str
     steps: list[ProcessStep]
+    declared_params: dict[str, list[structures.DeclaredParam]] = {}
     notes: str | None = None
     partagee: bool = False
 
@@ -317,7 +395,13 @@ def list_tech_bricks(microproject: Microproject = Depends(require_role("viewer")
 def create_tech_brick(body: TechBrickInput, microproject: Microproject = Depends(require_role("editor"))) -> dict:
     store = _tech_brick_store(microproject, body.partagee)
     reject_duplicate(store, body.name, message=f"Une brique nommée {body.name!r} existe déjà dans cette bibliothèque.")
-    brick = TechBrick(name=body.name, steps=body.steps, notes=body.notes, created_at=datetime.now(timezone.utc).isoformat())
+    brick = TechBrick(
+        name=body.name,
+        steps=body.steps,
+        declared_params=structures.declared_params_json(structures.declared_params_by_index(body.declared_params)),
+        notes=body.notes,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
     store.upsert(brick)
     return list_tech_bricks(microproject)
 
@@ -328,7 +412,13 @@ def update_tech_brick(
 ) -> dict:
     store = _tech_brick_store(microproject, partagee)
     existing = require_existing(store, name, message=f"Brique {name!r} introuvable.")
-    brick = TechBrick(name=body.name, steps=body.steps, notes=body.notes, created_at=existing.created_at)
+    brick = TechBrick(
+        name=body.name,
+        steps=body.steps,
+        declared_params=structures.declared_params_json(structures.declared_params_by_index(body.declared_params)),
+        notes=body.notes,
+        created_at=existing.created_at,
+    )
     store.rename(name, brick)
     return list_tech_bricks(microproject)
 
@@ -341,7 +431,7 @@ def delete_tech_brick(name: str, partagee: bool = False, microproject: Microproj
 
 @router.post("/{slug}/structures/simulate")
 def simulate_structure(body: NewStructureRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    declared_params = {int(k): v for k, v in body.declared_params.items()} if body.declared_params else None
+    declared_params = structures.declared_params_by_index(body.declared_params) or None
     try:
         _geometry, frames, materials = structures.run_simulation(microproject.slug, body.substrate, body.steps, declared_params)
     except structures.SimulationFailedError as exc:
@@ -382,7 +472,9 @@ def launch_experience(
         hypothesis=body.hypothesis,
         objectives=objectives,
     )
-    builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
+    builder.metadata["structureforge_process"] = structures.process_metadata(
+        body.substrate, body.steps, structures.declared_params_by_index(body.declared_params)
+    )
     builder.metadata["physical_tracking"] = entities
     if verification:
         builder.metadata["objective_verification"] = verification
@@ -398,6 +490,99 @@ def launch_experience(
     return {"id": experiment.id, "branch": experiment.branch}
 
 
+@router.post("/{slug}/structures/images", status_code=201)
+async def upload_structure_image(
+    file: UploadFile = File(...),
+    microproject: Microproject = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Upload one picture of a structure (pasted, dropped or picked on the « structure en image »
+    page, or when changing the pictures on a fiche) ahead of the launch that will use it - so the
+    page can show it straight from the server and the launch itself stays plain JSON. Stored like
+    an attachment (blob + JSON sidecar named by a fresh id, see
+    :func:`spectre.core.microprojects.attachments_dir`), served by the same
+    ``/pieces-jointes/{id}`` route. A picture no launch ends up using just stays there, like a
+    detached attachment."""
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in structures.STRUCTURE_IMAGE_TYPES:
+        if content_type in ("image/tiff", "image/tif", "image/bmp"):
+            detail = "Format non affichable par le navigateur - copiez l'image depuis votre logiciel puis collez-la (Ctrl+V), ou exportez-la en PNG."
+        else:
+            detail = f"Type de fichier non pris en charge ({content_type or 'inconnu'}) : une image PNG, JPEG, GIF ou WebP."
+        raise HTTPException(status_code=422, detail=detail)
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=422, detail="Image vide.")
+    if len(contents) > STRUCTURE_IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=422, detail="Image trop volumineuse (10 Mo maximum).")
+
+    image_id = f"att_{secrets.token_hex(10)}"
+    directory = microprojects.attachments_dir(microproject.slug)
+    filename = (file.filename or "structure").strip() or "structure"
+    sidecar = {
+        "filename": filename,
+        "content_type": content_type,
+        "size": len(contents),
+        "role": "structure",
+        "uploaded_by": user.name,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    (directory / image_id).write_bytes(contents)
+    (directory / f"{image_id}.json").write_text(json.dumps(sidecar), encoding="utf-8")
+    return {
+        "image_id": image_id,
+        "url": f"/api/microprojets/{microproject.slug}/pieces-jointes/{image_id}",
+        "filename": filename,
+        "content_type": content_type,
+        "size": len(contents),
+    }
+
+
+@router.post("/{slug}/experiences/image", status_code=201)
+def launch_image_experience(
+    body: LaunchImageExperienceRequest,
+    microproject: Microproject = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Launch an experience without the builder: its structure is given as pictures (see
+    :class:`spectre.core.structures.StructureImage`). Same rules as any launch otherwise - a title,
+    an intention and a physical entity are required, the microproject's intention form applies,
+    and the very first experience of a microproject becomes its first ref."""
+    require_title_and_intent(body.title, body.intent)
+    entities = first_tracked_entity(structures.clean_entity_entries(body.entities))
+    if not entities:
+        raise HTTPException(
+            status_code=422,
+            detail="Une entité physique (l'échantillon réel suivi) est obligatoire pour lancer une expérience.",
+        )
+    image = structure_image_from_input(microproject.slug, body.images)
+
+    repo = microprojects.get_repository(microproject.slug)
+    objectives, verification = split_objectives(body.objectives)
+    builder = repo.new(
+        branch=_unique_branch(repo, body.title),
+        structure=image,
+        title=body.title.strip(),
+        intent=body.intent.strip(),
+        author=user.name,
+        hypothesis=body.hypothesis or None,
+        objectives=objectives,
+    )
+    builder.metadata[structures.IMAGE_REVISION_KEY] = structures.new_image_revision()
+    builder.metadata["physical_tracking"] = entities
+    if verification:
+        builder.metadata["objective_verification"] = verification
+    builder.form_answers = dict(body.form_answers)
+    try:
+        experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
+    except follow.FollowError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _ref_the_first_experience(repo, experiment)
+    return {"id": experiment.id, "branch": experiment.branch}
+
+
 @router.post("/{slug}/structures/variantes")
 def preview_campaign(body: CampaignPreviewRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
     """A preview of a DOE campaign: one simulated variant per combination of ``body.plan.factors``
@@ -405,7 +590,9 @@ def preview_campaign(body: CampaignPreviewRequest, microproject: Microproject = 
     "matrice de split", available before anyone commits to the campaign.
     """
     try:
-        result = structures.generate_campaign_variants(microproject.slug, body.substrate, body.steps, body.plan)
+        result = structures.generate_campaign_variants(
+            microproject.slug, body.substrate, body.steps, body.plan, structures.declared_params_by_index(body.declared_params)
+        )
     except structures.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
@@ -435,8 +622,9 @@ def launch_campaign(
             detail="Une entité physique (l'échantillon de référence) est obligatoire pour lancer une campagne.",
         )
 
+    declared_params = structures.declared_params_by_index(body.declared_params)
     try:
-        result = structures.generate_campaign_variants(microproject.slug, body.substrate, body.steps, body.plan)
+        result = structures.generate_campaign_variants(microproject.slug, body.substrate, body.steps, body.plan, declared_params)
     except structures.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -482,11 +670,15 @@ def launch_campaign(
             objectives=objectives,
             steps=follow_adapter.to_steps(body.steps),
         )
-    builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
+    builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps, declared_params)
     builder.metadata["physical_tracking"] = physical_tracking
     builder.metadata["campaign_labels"] = result.labels
     builder.metadata["campaign_factor_labels"] = result.factor_labels
     builder.metadata["campaign_factor_values"] = result.factor_values
+    # how each factor's values were laid out ("log" for a doping sweep over decades...) so every
+    # later view shows them the same way, plus the plan itself (step/field/values) for re-reading
+    builder.metadata["campaign_factor_scales"] = [factor.scale for factor in body.plan.factors]
+    builder.metadata["campaign_plan"] = body.plan.model_dump(mode="json")
     if verification:
         builder.metadata["objective_verification"] = verification
     builder.form_answers = dict(body.form_answers)

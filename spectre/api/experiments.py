@@ -10,7 +10,8 @@ responses.
 
 Route order matters: ``{ref:path}`` is greedy (it matches slashes too - see
 ``follow/api/app.py``'s own note on the same trick), so every route with a literal suffix after
-``{ref:path}`` (``/process``, ``/timeline``, ``/diff``, ``/evoluer``, ``/conclure``, ``/preuves``,
+``{ref:path}`` (``/process``, ``/timeline``, ``/diff``, ``/evoluer``, ``/evoluer-image``, ``/dessin``,
+``/conclure``, ``/preuves``,
 ``/combiner``, ``/etiquettes``, ``/entites``, ``/pieces-jointes``, ``/diff-externe``, ``/matrice``,
 ``/ref``) is registered before the bare "get one experience" route below it - otherwise that
 catch-all would swallow them.
@@ -36,7 +37,18 @@ from ..core.permissions import get_microproject as resolve_microproject
 from ..core.permissions import require_role
 from ..core.microprojects import Microproject
 from .deps import get_current_user
-from .structures import EntityTrackingInput, LaunchExperienceRequest, _form_validation_error, _unique_branch, split_objectives
+from .structures import (
+    EntityTrackingInput,
+    LaunchExperienceRequest,
+    LaunchImageExperienceRequest,
+    StructureImagesInput,
+    _form_validation_error,
+    _unique_branch,
+    first_tracked_entity,
+    require_title_and_intent,
+    split_objectives,
+    structure_image_from_input,
+)
 
 router = APIRouter(prefix="/api/microprojets", tags=["experiments"])
 
@@ -188,6 +200,9 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
         "ref_names": refs.ref_names_for(repo, experiment.id) if repo is not None else [],
         "structure_svg": structures.render_structure_svg(experiment.structure_type, experiment.structure),
         "is_batch": experiment.structure_type == structures.ProcessLot.registry_key(),
+        # a structure given as pictures: [{image_id, kind, caption}, ...] in reading order - the page
+        # shows each /pieces-jointes/{image_id} where a drawn structure shows structure_svg
+        "structure_images": structures.structure_images(experiment.structure_type, experiment.structure),
         "has_editable_process": "structureforge_process" in experiment.metadata,
         "evidence": [e.model_dump(mode="json") for e in experiment.evidence],
         "physical_tracking": experiment.metadata.get("physical_tracking", []),
@@ -249,7 +264,7 @@ def microproject_lineage(microproject: Microproject = Depends(require_role("view
         return {"nodes": [], "edges": []}
 
     dag = {exp_id: exp.parents for exp_id, exp in experiments.items()}
-    processes = {exp_id: exp.metadata.get("structureforge_process") for exp_id, exp in experiments.items()}
+    processes = {exp_id: versioning.structure_signature(exp.metadata) for exp_id, exp in experiments.items()}
     tips = set(repo.branches.values())
     structural_ids = versioning.determine_keep_ids(dag, processes, tips=set())
     collapsed = versioning.collapsed_dag(dag, structural_ids)
@@ -333,7 +348,7 @@ def microproject_graph_html(microproject: Microproject = Depends(require_role("v
 
     experiments = {exp.id: exp for exp in repo}
     dag = {exp_id: exp.parents for exp_id, exp in experiments.items()}
-    processes = {exp_id: exp.metadata.get("structureforge_process") for exp_id, exp in experiments.items()}
+    processes = {exp_id: versioning.structure_signature(exp.metadata) for exp_id, exp in experiments.items()}
     keep = versioning.determine_keep_ids(dag, processes, tips=set(repo.branches.values()))
     filtered_dag = versioning.collapsed_dag(dag, keep)
 
@@ -419,9 +434,15 @@ def experience_diff(ref: str, against: str | None = None, microproject: Micropro
 
     try:
         diff = repo.diff(target, experiment.id)
+        before = repo.get(target)
     except follow.FollowError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"target": target, **diff.model_dump(mode="json")}
+    payload = {"target": target, **diff.model_dump(mode="json")}
+    # pictures: a plain-French summary instead of Follow's position-by-position entries
+    summary = structures.describe_image_changes(before.structure_type, before.structure, experiment.structure_type, experiment.structure)
+    if summary is not None:
+        payload["summary"] = summary
+    return payload
 
 
 @router.post("/{slug}/experiences/{ref:path}/evoluer", status_code=201)
@@ -455,6 +476,8 @@ def evolve_experience(
         raise _not_found(exc) from exc
 
     builder.metadata = dict(parent.metadata)
+    # continuing an image-mode experience in the builder: its structure is drawn from now on
+    builder.metadata.pop(structures.IMAGE_REVISION_KEY, None)
     builder.evidence = list(parent.evidence)
     builder.tags = list(parent.tags)
     if body.objectives:
@@ -464,7 +487,9 @@ def evolve_experience(
             builder.metadata["objective_verification"] = verification
         else:
             builder.metadata.pop("objective_verification", None)
-    builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps)
+    builder.metadata["structureforge_process"] = structures.process_metadata(
+        body.substrate, body.steps, structures.declared_params_by_index(body.declared_params)
+    )
     # entities are usually inherited unchanged from the parent (physical_tracking rides along in
     # builder.metadata above) - body.entities only matters to fix forward a lineage that started
     # before this rule existed, or predates the entity ever being set (see has_tracked_physical_entity).
@@ -486,6 +511,121 @@ def evolve_experience(
             status_code=400, detail="Impossible d'enregistrer cette évolution - rechargez la page et réessayez."
         ) from exc
     return {"id": experiment.id, "branch": experiment.branch}
+
+
+@router.post("/{slug}/experiences/{ref:path}/evoluer-image", status_code=201)
+def evolve_experience_with_image(
+    ref: str,
+    body: LaunchImageExperienceRequest,
+    microproject: Microproject = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Continue an experience with a new structure given as pictures - from an image-mode one, or
+    from one drawn in the builder (a campaign included: the new version follows a single sample).
+    The évolution counterpart of ``launch_image_experience``: same lineage rules as
+    ``evolve_experience`` (baseline link, same piste unless forked, intention re-asked, the rest
+    carried over), a fresh image revision so it counts as a new structure version."""
+    require_title_and_intent(body.title, body.intent)
+    image = structure_image_from_input(microproject.slug, body.images)
+    repo = microprojects.get_repository(microproject.slug)
+    try:
+        parent = repo.get(ref)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+    entities = first_tracked_entity(structures.clean_entity_entries(body.entities)) or first_tracked_entity(
+        structures.clean_entity_entries([EntityTrackingInput(**e) for e in parent.metadata.get("physical_tracking", [])])
+    )
+    if not entities:
+        raise HTTPException(
+            status_code=422,
+            detail="Une entité physique (l'échantillon réel suivi) est obligatoire - renseignez-la avant de continuer.",
+        )
+
+    builder = repo.derive(
+        ref,
+        title=body.title.strip(),
+        intent=body.intent.strip(),
+        new_branch=_derive_branch(repo, parent, body.new_branch),
+        structure=image,
+        author=user.name,
+        hypothesis=body.hypothesis or None,
+        carry_objectives=not body.objectives,
+        carry_steps=False,
+    )
+    builder.metadata = {k: v for k, v in parent.metadata.items() if k not in structures.DRAWN_STRUCTURE_METADATA_KEYS}
+    builder.metadata[structures.IMAGE_REVISION_KEY] = structures.new_image_revision()
+    builder.metadata["physical_tracking"] = entities
+    builder.evidence = list(parent.evidence)
+    builder.tags = list(parent.tags)
+    if body.objectives:
+        objectives, verification = split_objectives(body.objectives)
+        builder.objectives = objectives
+        if verification:
+            builder.metadata["objective_verification"] = verification
+        else:
+            builder.metadata.pop("objective_verification", None)
+    builder.form_answers = dict(body.form_answers)
+    try:
+        experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
+    except follow.FollowError as exc:
+        raise HTTPException(
+            status_code=400, detail="Impossible d'enregistrer cette évolution - rechargez la page et réessayez."
+        ) from exc
+    return {"id": experiment.id, "branch": experiment.branch}
+
+
+@router.post("/{slug}/experiences/{ref:path}/dessin", status_code=201)
+def replace_structure_drawing(
+    ref: str,
+    body: StructureImagesInput,
+    microproject: Microproject = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Change the pictures of an image-mode experience - the whole set, in reading order: a
+    cleaner PowerPoint drawing, the TEM cross-section once it exists, one more close-up, another
+    order, a caption... Like tags, a lightweight evolution: same structure revision, so no new
+    structure version and no new node on the µprojet's graph - the previous pictures stay on the
+    previous version. A drawn structure changes through the builder instead."""
+    repo = microprojects.get_repository(microproject.slug)
+    try:
+        parent = repo.get(ref)
+    except follow.ExperimentNotFoundError as exc:
+        raise _not_found(exc) from exc
+    if not structures.is_image_structure(parent.structure_type):
+        raise HTTPException(
+            status_code=422,
+            detail="Cette structure est dessinée dans le constructeur : modifiez-la avec « Enregistrer une évolution ».",
+        )
+    image = structure_image_from_input(microproject.slug, body.images)
+    if image.model_dump()["images"] == structures.structure_images(parent.structure_type, parent.structure):
+        return {"id": parent.id}
+
+    builder = repo.derive(
+        ref,
+        title=parent.title,
+        intent=parent.intent,
+        new_branch=_derive_branch(repo, parent, None),
+        structure=image,
+        author=user.name,
+        hypothesis=parent.hypothesis,
+    )
+    builder.metadata = dict(parent.metadata)
+    builder.form_answers = dict(parent.form_answers)
+    builder.evidence = list(parent.evidence)
+    builder.tags = list(parent.tags)
+    builder.conclusion = parent.conclusion
+    try:
+        experiment = builder.commit()
+    except follow.FormValidationError as exc:
+        raise _form_validation_error(exc) from exc
+    except follow.FollowError as exc:
+        raise HTTPException(
+            status_code=400, detail="Impossible d'enregistrer le nouveau dessin - rechargez la page et réessayez."
+        ) from exc
+    return {"id": experiment.id}
 
 
 @router.post("/{slug}/experiences/{ref:path}/conclure", status_code=201)
@@ -1267,13 +1407,16 @@ def experience_diff_external(
     except follow.ExperimentNotFoundError as exc:
         raise _not_found(exc) from exc
 
-    diff = follow.diff_structures(experiment.structure, other_experiment.structure)
-    return {
+    base = {
         "target": other_experiment.id,
         "target_microproject": other_microproject.name,
         "target_title": other_experiment.title,
-        **diff.model_dump(mode="json"),
     }
+    if structures.is_image_structure(experiment.structure_type) or structures.is_image_structure(other_experiment.structure_type):
+        # a picture has no parameters to line up against anything - say so rather than list raw fields
+        return {**base, "entries": [], "note": "Une des deux structures est donnée en images : pas de comparaison paramètre par paramètre possible."}
+    diff = follow.diff_structures(experiment.structure, other_experiment.structure)
+    return {**base, **diff.model_dump(mode="json")}
 
 
 @router.get("/{slug}/experiences/{ref:path}/matrice")
@@ -1290,7 +1433,7 @@ def experience_batch(ref: str, microproject: Microproject = Depends(require_role
     if experiment.structure_type != structures.ProcessLot.registry_key():
         raise HTTPException(status_code=400, detail="cette expérience n'est pas une campagne à plusieurs variantes")
     lot = structures.ProcessLot.model_validate(experiment.structure)
-    variation = follow.analyze_batch(lot.entries)
+    variation = structures.analyze_variants(lot.entries)
     payload = variation.model_dump(mode="json")
 
     # The atlas: one drawn cross-section per entity - StructureForge does the actual rendering
@@ -1306,6 +1449,7 @@ def experience_batch(ref: str, microproject: Microproject = Depends(require_role
     # path table as a secondary, opt-in detail rather than the headline.
     payload["factor_labels"] = experiment.metadata.get("campaign_factor_labels", [])
     payload["factor_values"] = experiment.metadata.get("campaign_factor_values", [])
+    payload["factor_scales"] = experiment.metadata.get("campaign_factor_scales", [])
     payload["labels"] = experiment.metadata.get("campaign_labels") or [f"#{i + 1}" for i in range(variation.entity_count)]
     payload["physical_tracking"] = experiment.metadata.get("physical_tracking", [])
     return payload

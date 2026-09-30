@@ -1,128 +1,19 @@
-/* Liste des étapes : rendu (mode "par couches" compact vs "par étapes" détaillé), ajout/édition/
-   suppression/réordonnancement, et le formulaire d'ajout/édition lui-même (délègue tout ce qui est
-   spécifique à un type d'étape à step-kinds.js). */
+/* Process flow : le stepper horizontal en tête de l'atelier (le substrat, puis une puce par étape,
+   les briques regroupées sous un même cadre), et toutes les opérations structurelles sur la liste
+   d'étapes - insertion (outil de la palette, « + » entre deux puces, glisser-déposer),
+   déplacement, duplication, suppression, groupement en brique.
 
-function fillKindFields(step) {
-  document.getElementById("kind-select").value = step.kind;
-  state.formDeclaredParams = JSON.parse(JSON.stringify(step.declaredParams || []));
-  renderKindFields(step.kind);
-  document.getElementById("f-name").value = step.name;
-  const def = STEP_KIND_DEFS[step.kind];
-  if (def.fillFields) def.fillFields(step);
-}
+   La sélection (state.selectedIndex, -1 = substrat) pilote tout le reste : l'inspecteur
+   (inspector.js) édite l'étape sélectionnée en direct, et le dessin (simulation.js) montre la
+   structure *après* cette étape - le flow sert donc aussi de frise chronologique. */
 
-function stepSelectCheckboxHtml(i) {
-  return `<input type="checkbox" class="js-step-select" data-index="${i}" ${state.selectedStepIndices.has(i) ? "checked" : ""} title="Sélectionner pour grouper en brique" style="margin-top:2px;flex:none;cursor:pointer;">`;
-}
-
-function stepRowHtml(step, i, compact, locked) {
-  const highlight = state.editingIndex === i ? "border-color:var(--accent);background:var(--accent-tint);" : "";
-  if (compact) {
-    return `
-      <div class="step-row js-step-row" data-index="${i}" style="cursor:pointer;${highlight}">
-        ${stepSelectCheckboxHtml(i)}
-        ${stepIconHtml(step.kind)}
-        <div style="flex:1;min-width:0;font-size:13px;font-weight:600;">${i + 1}. ${escapeHtml(step.name)}</div>
-        <button class="step-remove js-step-remove" data-index="${i}" title="Retirer" type="button">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M5 19L19 5"/></svg>
-        </button>
-      </div>`;
-  }
-  // Une étape membre d'une brique ne se réordonne pas individuellement (voir moveStep) - ses
-  // propres flèches sont désactivées, seul le bloc entier se déplace via l'en-tête du groupe.
-  const upTitle = locked ? "Dissociez la brique pour réordonner ses étapes" : "Monter";
-  const downTitle = locked ? "Dissociez la brique pour réordonner ses étapes" : "Descendre";
-  const upDisabled = locked || i === 0;
-  const downDisabled = locked || i === state.steps.length - 1;
-  return `
-    <div class="step-row js-step-row" data-index="${i}" style="cursor:pointer;${highlight}">
-      ${stepSelectCheckboxHtml(i)}
-      ${stepIconHtml(step.kind)}
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;">${i + 1}. ${escapeHtml(STEP_KINDS[step.kind].label)} &mdash; ${escapeHtml(step.name)}</div>
-        <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(stepSummary(step))}${
-          step.declaredParams && step.declaredParams.length
-            ? ` · ${step.declaredParams.length} paramètre${step.declaredParams.length > 1 ? "s" : ""} déclaré${step.declaredParams.length > 1 ? "s" : ""}`
-            : ""
-        }</div>
-      </div>
-      <div style="display:flex;flex-direction:column;">
-        <button class="step-remove js-step-up" data-index="${i}" title="${upTitle}" type="button" ${upDisabled ? "disabled style='opacity:.3;'" : ""}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 15l7-7 7 7"/></svg>
-        </button>
-        <button class="step-remove js-step-down" data-index="${i}" title="${downTitle}" type="button" ${downDisabled ? "disabled style='opacity:.3;'" : ""}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 9l7 7 7-7"/></svg>
-        </button>
-      </div>
-      <button class="step-remove js-step-remove" data-index="${i}" title="Retirer" type="button">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M5 19L19 5"/></svg>
-      </button>
-    </div>`;
-}
-
-// Regroupe les étapes consécutives partageant le même brick_group_id (voir BrickTag côté
-// StructureForge) sous un bloc visuel commun - une étape sans groupe reste une ligne nue. Le
-// groupement est déterminé uniquement par cette étiquette persistée sur l'étape elle-même, pas
-// par un état séparé côté client : il survit donc à un rechargement de la structure.
-function stepsListHtml(compact) {
-  const parts = [];
-  let i = 0;
-  while (i < state.steps.length) {
-    const groupId = state.steps[i].brick_group_id;
-    if (!groupId) {
-      parts.push(stepRowHtml(state.steps[i], i, compact, false));
-      i += 1;
-      continue;
-    }
-    const rows = [];
-    const brickName = state.steps[i].brick_name;
-    const groupStart = i;
-    let j = i;
-    while (j < state.steps.length && state.steps[j].brick_group_id === groupId) {
-      // en mode compact (couches) il n'y a pas de flèches par étape à désactiver de toute façon
-      rows.push(stepRowHtml(state.steps[j], j, compact, !compact));
-      j += 1;
-    }
-    const groupEnd = j - 1;
-    // Une brique repliée est rendue en une seule ligne de résumé ; on la déplie d'office si l'étape
-    // en cours d'édition est à l'intérieur, sinon on ne verrait pas ce qu'on modifie.
-    const editingInGroup = state.editingIndex !== null && state.editingIndex >= groupStart && state.editingIndex <= groupEnd;
-    const collapsed = state.collapsedBrickGroups.has(groupId) && !editingInGroup;
-    const stepCount = groupEnd - groupStart + 1;
-    // Les flèches du bloc déplacent la brique entière d'un cran (voir moveStep) - jamais une
-    // étape isolée à l'intérieur, ce qui scinderait le bracket en deux morceaux disjoints.
-    parts.push(`
-      <div class="step-brick-group" style="border:1.5px dashed var(--accent);border-radius:var(--radius-sm);padding:8px;display:flex;flex-direction:column;gap:8px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-          <button class="js-toggle-brick" data-group-id="${escapeHtml(groupId)}" type="button" title="${collapsed ? "Déplier" : "Replier"} la brique" style="background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.02em;">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform:rotate(${collapsed ? -90 : 0}deg);transition:transform .12s ease;flex:none;"><path d="M6 9l6 6 6-6"/></svg>
-            🧱 ${escapeHtml(brickName || "Brique")}${collapsed ? ` <span style="font-weight:600;color:var(--text-faint);text-transform:none;letter-spacing:0;">(${stepCount} étape${stepCount > 1 ? "s" : ""})</span>` : ""}
-          </button>
-          <div style="display:flex;align-items:center;gap:4px;">
-            ${
-              compact
-                ? ""
-                : `<button class="step-remove js-group-up" data-index="${groupStart}" title="Monter la brique" type="button" ${groupStart === 0 ? "disabled style='opacity:.3;'" : ""}>
-                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 15l7-7 7 7"/></svg>
-                   </button>
-                   <button class="step-remove js-group-down" data-index="${groupStart}" title="Descendre la brique" type="button" ${groupEnd === state.steps.length - 1 ? "disabled style='opacity:.3;'" : ""}>
-                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 9l7 7 7-7"/></svg>
-                   </button>`
-            }
-            <button class="js-ungroup-brick" data-group-id="${escapeHtml(groupId)}" type="button" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:11px;">Dissocier</button>
-          </div>
-        </div>
-        ${collapsed ? "" : rows.join("")}
-      </div>`);
-    i = j;
-  }
-  return parts.join("");
-}
+// ---------------------------------------------------------------------------------------------
+// Briques : bornes, échanges de blocs, étiquettes
+// ---------------------------------------------------------------------------------------------
 
 // Bornes [début, fin] (incluses) du bloc auquel appartient l'étape à `index` - toute la brique si
-// elle en fait partie, sinon juste elle-même. Utilisé par moveStep pour déplacer une brique comme
-// un seul bloc (jamais scinder son bracket) et par l'insertion pour ne jamais atterrir en son
-// milieu.
+// elle en fait partie, sinon juste elle-même. Un bracket de brique doit toujours rester un unique
+// morceau contigu (voir le bug historique : un groupe scindé en deux moitiés affichant le même nom).
 function brickSpanAt(index) {
   const groupId = state.steps[index].brick_group_id;
   if (!groupId) return [index, index];
@@ -131,6 +22,12 @@ function brickSpanAt(index) {
   let end = index;
   while (end < state.steps.length - 1 && state.steps[end + 1].brick_group_id === groupId) end += 1;
   return [start, end];
+}
+
+// Bornes d'une brique par son identifiant (null si elle n'existe plus, ex : après un Ctrl+Z).
+function brickGroupSpan(groupId) {
+  const start = state.steps.findIndex((s) => s.brick_group_id === groupId);
+  return start === -1 ? null : brickSpanAt(start);
 }
 
 // Échange deux blocs adjacents et contigus de `steps` en place.
@@ -146,240 +43,192 @@ function generateBrickGroupId() {
 
 // Une brique enregistrée dans la bibliothèque reste "propre" (jamais étiquetée) - l'étiquette
 // n'existe que sur les copies vivantes dans une structure en cours, posée fraîche à chaque
-// groupement ou insertion (voir plus bas).
+// groupement ou insertion.
 function stripBrickTag(step) {
   const { brick_group_id, brick_name, ...rest } = step;
   return rest;
 }
 
-function updateViewModeAvailability() {
-  const eligible = state.steps.length === 0 || state.steps.every((s) => s.kind === "deposition");
-  const couchesBtn = document.getElementById("view-mode-couches");
-  couchesBtn.disabled = !eligible;
-  couchesBtn.title = eligible
-    ? ""
-    : "Disponible uniquement pour un empilement de dépôts (pas de gravure, planarisation, lithographie...)";
-  if (!eligible && state.viewMode === "couches") {
-    state.viewMode = "etapes";
-    state.showStepForm = true;
-    document.getElementById("view-mode-help").textContent =
-      "Passé en vue par étapes : cette structure contient une étape autre que dépôt.";
+// Un « trou » d'insertion `gap` (0..n, avant l'étape d'index `gap`) tombe-t-il à l'intérieur d'une
+// brique (entre deux de ses étapes) ? Renvoie alors son identifiant, sinon null.
+function brickGroupInsideGap(gap) {
+  if (gap <= 0 || gap >= state.steps.length) return null;
+  const before = state.steps[gap - 1].brick_group_id;
+  return before && before === state.steps[gap].brick_group_id ? before : null;
+}
+
+// Ramène un trou situé à l'intérieur d'une brique sur l'un de ses bords - pour un déplacement ou
+// l'insertion d'une autre brique, qui ne doivent jamais scinder ce bracket.
+function snapGapOutsideBricks(gap, preferEnd) {
+  const groupId = brickGroupInsideGap(gap);
+  if (!groupId) return gap;
+  const [start, end] = brickGroupSpan(groupId);
+  return preferEnd ? end + 1 : start;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sélection
+// ---------------------------------------------------------------------------------------------
+
+function hasMultiSelection() {
+  return state.selectedStepIndices.size >= 2;
+}
+
+// Où insérer « après la sélection » (outil de la palette, touches 1-9, brique cliquée) : après
+// l'étape sélectionnée (ou la brique, ou la sélection multiple), en tête si c'est le substrat.
+function defaultInsertIndex() {
+  if (state.selectedBrickGroup) {
+    const span = brickGroupSpan(state.selectedBrickGroup);
+    if (span) return span[1] + 1;
   }
-  couchesBtn.classList.toggle("active", state.viewMode === "couches");
-  document.getElementById("view-mode-etapes").classList.toggle("active", state.viewMode === "etapes");
-  document.getElementById("steps-list-help").textContent =
-    state.viewMode === "couches"
-      ? "Cliquez une couche (dans le dessin ou ci-dessous) pour l'éditer."
-      : "Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.";
+  if (hasMultiSelection()) return Math.max(...state.selectedStepIndices) + 1;
+  if (state.selectedIndex >= 0 && state.selectedIndex < state.steps.length) return state.selectedIndex + 1;
+  return state.selectedIndex === -1 ? 0 : state.steps.length;
 }
 
-function updateStepFormVisibility() {
-  // À l'écran 2 (variations), c'est variations.js qui décide de ce qui s'affiche dans
-  // #context-panel (formulaire de variation ou son état vide) - rien à faire ici.
-  if (state.wizardScreen === "variations") return;
-  const formVisible = state.viewMode === "etapes" || state.editingIndex !== null || state.showStepForm;
-  document.getElementById("step-form-section").style.display = formVisible ? "" : "none";
-  document.getElementById("context-panel-empty").style.display = formVisible ? "none" : "";
-  document.getElementById("add-step-shortcut-btn").style.display =
-    !formVisible && state.viewMode === "couches" ? "" : "none";
-  document.getElementById("cancel-edit-btn").style.display =
-    state.editingIndex !== null || (state.viewMode === "couches" && state.showStepForm) ? "" : "none";
-}
-
-function highlightSelectedLayer() {
+// Clic sur une puce : sélection simple, ou multiple avec Ctrl/⌘ (bascule) et Maj (plage depuis
+// l'ancre). `fromCanvas` : sélection faite en cliquant une couche du dessin - la vue en cours est
+// conservée (voir state.frameLock dans simulation.js) au lieu de sauter à cette étape.
+function selectStep(index, { toggle = false, range = false, fromCanvas = false } = {}) {
+  const n = state.steps.length;
+  if (index < -1 || index >= n) return;
   if (state.wizardScreen === "variations") {
-    highlightVariationLayer();
+    startVaryingLayer(index); // -1 : le substrat se fait varier aussi
     return;
   }
-  const container = document.getElementById("svg-container");
-  container.querySelectorAll("[data-layer-index]").forEach((path) => {
-    const stepIndex = parseInt(path.dataset.layerIndex, 10) - 1; // layer 0 is always the substrate
-    const selected = state.viewMode === "couches" && state.editingIndex === stepIndex;
-    path.style.stroke = selected ? "var(--accent)" : "";
-    path.style.strokeWidth = selected ? "2.5" : "";
-  });
+  const frameBefore = currentFrameIndex(); // l'image à l'écran avant ce clic (voir fromCanvas)
+  state.selectedBrickGroup = null;
+  if (index >= 0 && (toggle || range)) {
+    const anchor = state.selectedIndex;
+    if (range && anchor >= 0) {
+      state.selectedStepIndices = new Set();
+      for (let k = Math.min(anchor, index); k <= Math.max(anchor, index); k++) state.selectedStepIndices.add(k);
+    } else {
+      if (state.selectedStepIndices.size === 0 && anchor >= 0) state.selectedStepIndices.add(anchor);
+      if (state.selectedStepIndices.has(index)) state.selectedStepIndices.delete(index);
+      else state.selectedStepIndices.add(index);
+    }
+    if (state.selectedStepIndices.size === 1) {
+      index = [...state.selectedStepIndices][0];
+      state.selectedStepIndices.clear();
+    } else if (state.selectedStepIndices.size === 0) {
+      state.selectedStepIndices.clear();
+    }
+  } else {
+    state.selectedStepIndices.clear();
+  }
+  state.selectedIndex = index;
+  if (!fromCanvas) state.frameLock = null;
+  else if (state.frameLock == null) state.frameLock = frameBefore;
+  if (!fromCanvas) hideLayerProvenance();
+  renderRail();
+  renderInspector();
+  renderFrame();
 }
 
-function renderSteps() {
-  updateViewModeAvailability(); // may fall back to étapes mode before we render rows below
-  const list = document.getElementById("steps-list");
-  document.getElementById("steps-count").textContent = state.steps.length;
-  if (state.steps.length === 0) {
-    list.innerHTML = `<div class="help" style="padding:12px 0;">Aucune étape pour l'instant.</div>`;
-  } else {
-    const compact = state.viewMode === "couches";
-    list.innerHTML = stepsListHtml(compact);
-    list.querySelectorAll(".js-step-row").forEach((row) => {
-      row.addEventListener("click", (event) => {
-        if (event.target.closest("button") || event.target.closest("input")) return;
-        const index = parseInt(row.dataset.index, 10);
-        if (state.wizardScreen === "variations") {
-          startVaryingLayer(index);
-          return;
-        }
-        startEditingStep(index);
-      });
-    });
-    list.querySelectorAll(".js-step-remove").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const index = parseInt(btn.dataset.index, 10);
-        state.steps.splice(index, 1);
-        state.selectedStepIndices.clear();
-        // L'étape éditée disparaît avec la suppression - fermer le formulaire sans tenter de la
-        // restaurer (cancelEditingStep() la ferait réapparaître à sa position d'avant l'édition).
-        if (state.editingIndex === index) {
-          state.editingIndex = null;
-          state.editingOriginalStep = null;
-          closeStepForm();
-        } else renderSteps();
-      });
-    });
-    list.querySelectorAll(".js-step-up").forEach((btn) => {
-      btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), -1));
-    });
-    list.querySelectorAll(".js-step-down").forEach((btn) => {
-      btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), 1));
-    });
-    list.querySelectorAll(".js-group-up").forEach((btn) => {
-      btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), -1));
-    });
-    list.querySelectorAll(".js-group-down").forEach((btn) => {
-      btn.addEventListener("click", () => moveStep(parseInt(btn.dataset.index, 10), 1));
-    });
-    list.querySelectorAll(".js-step-select").forEach((cb) => {
-      cb.addEventListener("click", (event) => event.stopPropagation());
-      cb.addEventListener("change", () => {
-        toggleStepSelection(parseInt(cb.dataset.index, 10), cb.checked);
-      });
-    });
-    list.querySelectorAll(".js-toggle-brick").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const groupId = btn.dataset.groupId;
-        if (state.collapsedBrickGroups.has(groupId)) state.collapsedBrickGroups.delete(groupId);
-        else state.collapsedBrickGroups.add(groupId);
-        renderSteps();
-      });
-    });
-    list.querySelectorAll(".js-ungroup-brick").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const groupId = btn.dataset.groupId;
-        state.steps.forEach((s, i) => {
-          if (s.brick_group_id === groupId) state.steps[i] = { ...s, brick_group_id: null, brick_name: null };
-        });
-        renderSteps();
-      });
-    });
-  }
+function selectBrickGroup(groupId) {
+  if (state.wizardScreen === "variations") return;
+  const span = brickGroupSpan(groupId);
+  if (!span) return;
+  state.selectedStepIndices.clear();
+  state.selectedBrickGroup = groupId;
+  state.selectedIndex = span[1];
+  state.frameLock = null;
+  hideLayerProvenance();
+  renderRail();
+  renderInspector();
+  renderFrame();
+}
+
+function clearMultiSelection() {
+  if (!hasMultiSelection() && !state.selectedBrickGroup) return false;
+  state.selectedStepIndices.clear();
+  state.selectedBrickGroup = null;
+  renderRail();
+  renderInspector();
+  return true;
+}
+
+// Sélection initiale après un chargement (structure existante, modèle, brique...) : la dernière
+// étape, pour que le dessin montre la structure finale et que la palette ajoute à la suite.
+function selectLastStep() {
+  state.selectedIndex = state.steps.length - 1; // -1 (substrat) si la liste est vide
+  state.selectedStepIndices.clear();
+  state.selectedBrickGroup = null;
+  state.frameLock = null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Opérations structurelles - toutes finissent par commitStructure()
+// ---------------------------------------------------------------------------------------------
+
+// Après tout changement de la liste d'étapes : les variations (index d'étapes) sont invalidées, le
+// flow et l'inspecteur redessinés, l'historique capturé, la simulation relancée.
+function commitStructure() {
+  state.frameLock = null;
   invalidateVariations();
-  updateStepFormVisibility();
-  updateGroupBrickWrapVisibility();
-  highlightSelectedLayer();
+  renderRail();
+  renderInspector();
   captureHistory();
   scheduleSimulate();
+  updateStageMeta();
 }
 
-// Sélection par cases à cocher pour "grouper en brique" (voir #group-brick-btn plus bas) - toute
-// modification structurelle de la liste (ajout, retrait, déplacement, insertion) invalide les
-// indices choisis, donc `state.selectedStepIndices` est vidé à chaque fois ailleurs dans ce fichier.
-function toggleStepSelection(index, checked) {
-  if (checked) state.selectedStepIndices.add(index);
-  else state.selectedStepIndices.delete(index);
-  updateGroupBrickWrapVisibility();
+// Compatibilité : les autres modules (chargement d'un procédé, historique...) appellent encore
+// renderSteps() après avoir remplacé state.steps.
+function renderSteps() {
+  if (state.selectedIndex >= state.steps.length) state.selectedIndex = state.steps.length - 1;
+  commitStructure();
 }
 
-function updateGroupBrickWrapVisibility() {
-  const wrap = document.getElementById("group-brick-wrap");
-  const count = state.selectedStepIndices.size;
-  wrap.style.display = count > 0 ? "" : "none";
-  document.getElementById("group-brick-count").textContent =
-    count === 1 ? "1 étape sélectionnée" : `${count} étapes sélectionnées`;
+function insertSteps(at, newSteps) {
+  state.steps.splice(at, 0, ...newSteps);
+  state.selectedStepIndices.clear();
+  state.selectedBrickGroup = null;
+  state.selectedIndex = at + newSteps.length - 1;
+  hideLayerProvenance();
+  commitStructure();
+  scrollChipIntoView(state.selectedIndex);
 }
 
-function startEditingStep(index) {
-  state.editingIndex = index;
-  // Snapshot restauré par cancelEditingStep() - l'aperçu en temps réel (voir livePreviewFromForm)
-  // mute state.steps[index] à chaque frappe, avant tout clic sur "Enregistrer".
-  state.editingOriginalStep = state.steps[index];
-  fillKindFields(state.steps[index]);
-  document.getElementById("step-form-title").textContent = `Modifier l'étape ${index + 1}`;
-  document.getElementById("add-step-btn-label").textContent = "Enregistrer les modifications";
-  renderSteps();
-}
-
-// Ferme le formulaire sans toucher à state.steps - après un commit délibéré (Ajouter/Enregistrer)
-// ou à l'ouverture du mode ajout. cancelEditingStep() ci-dessous gère en plus la restauration.
-function closeStepForm() {
-  if (state.viewMode === "couches") state.showStepForm = false;
-  document.getElementById("step-form-title").textContent = "Ajouter une étape";
-  document.getElementById("add-step-btn-label").textContent = "Ajouter cette étape";
-  renderKindFields(document.getElementById("kind-select").value);
-  renderSteps();
-}
-
-// "Annuler la modification" : restaure l'étape éditée à sa valeur d'avant l'aperçu en temps réel
-// (l'aperçu a pu la muter à chaque frappe sans qu'on ait jamais cliqué "Enregistrer").
-function cancelEditingStep() {
-  if (state.editingIndex !== null && state.editingOriginalStep) {
-    state.steps[state.editingIndex] = state.editingOriginalStep;
+// Nouvelle étape d'un type donné, avec les valeurs par défaut de son formulaire - insérée à `at`
+// et sélectionnée, l'inspecteur est aussitôt prêt à la régler. Dans une brique (entre deux de ses
+// étapes), elle en fait partie : le bracket reste contigu.
+function insertStepOfKind(kind, at = defaultInsertIndex()) {
+  if (state.wizardScreen !== "structure") return;
+  clearError();
+  const step = defaultStepOfKind(kind);
+  const groupId = brickGroupInsideGap(at);
+  if (groupId) {
+    step.brick_group_id = groupId;
+    step.brick_name = state.steps[at].brick_name;
   }
-  state.editingIndex = null;
-  state.editingOriginalStep = null;
-  state.formDeclaredParams = [];
-  closeStepForm();
+  insertSteps(at, [step]);
 }
 
-function startAddingStep() {
-  state.editingIndex = null;
-  state.editingOriginalStep = null;
-  state.formDeclaredParams = [];
-  state.showStepForm = true;
-  document.getElementById("step-form-title").textContent = "Ajouter une étape";
-  document.getElementById("add-step-btn-label").textContent = "Ajouter cette étape";
-  renderKindFields(document.getElementById("kind-select").value);
-  renderSteps();
+// Une brique technologique est une séquence d'étapes préenregistrée (voir brick-mode.js /
+// spectre.core.tech_bricks) - l'insérer copie ses étapes une bonne fois pour toutes, comme un
+// préset : aucun lien vivant après coup avec la brique elle-même. Elle arrive repliée.
+function insertBrickAt(brick, at = defaultInsertIndex()) {
+  if (state.wizardScreen !== "structure" || !brick || !brick.steps || !brick.steps.length) return;
+  clearError();
+  const target = snapGapOutsideBricks(at, true);
+  const groupId = generateBrickGroupId();
+  const copied = JSON.parse(JSON.stringify(brick.steps)).map((s) => ({ ...stripBrickTag(s), brick_group_id: groupId, brick_name: brick.name }));
+  state.collapsedBrickGroups.add(groupId);
+  insertSteps(target, copied);
+  state.selectedBrickGroup = groupId;
+  renderRail();
+  renderInspector();
+  renderFrame();
 }
-
-function setViewMode(mode) {
-  state.viewMode = mode;
-  state.showStepForm = false;
-  document.getElementById("view-mode-help").textContent =
-    mode === "couches"
-      ? "Cliquez une couche du dessin pour l'éditer. Disponible tant que la structure n'est faite que de dépôts (empilement d'épitaxie)."
-      : "Cliquez une étape pour la modifier ; ▲▼ pour la déplacer.";
-  renderSteps();
-}
-
-document.getElementById("view-mode-couches").addEventListener("click", () => setViewMode("couches"));
-document.getElementById("view-mode-etapes").addEventListener("click", () => setViewMode("etapes"));
-
-document.getElementById("add-step-shortcut-btn").addEventListener("click", startAddingStep);
-
-document.getElementById("svg-container").addEventListener("click", (event) => {
-  const path = event.target.closest("[data-layer-index]");
-  if (!path) return;
-  const layerIndex = parseInt(path.dataset.layerIndex, 10);
-  if (state.wizardScreen === "variations") {
-    if (layerIndex === 0) return; // le substrat n'est pas une grandeur qu'on fait varier ici
-    const stepIndex = layerIndex - 1;
-    if (stepIndex >= 0 && stepIndex < state.steps.length) startVaryingLayer(stepIndex);
-    return;
-  }
-  if (state.viewMode !== "couches") return;
-  if (layerIndex === 0) {
-    document.getElementById("substrate-section").scrollIntoView({ behavior: "smooth", block: "center" });
-    return;
-  }
-  const stepIndex = layerIndex - 1;
-  if (stepIndex >= 0 && stepIndex < state.steps.length) startEditingStep(stepIndex);
-});
 
 // Déplace le bloc (une brique entière si `index` en fait partie, sinon l'étape seule) d'un cran,
-// en échange avec son voisin - qui peut lui-même être une brique entière, auquel cas on la
-// dépasse en un clic plutôt que d'atterrir au milieu. Ça garantit qu'un bracket de brique reste
-// toujours un unique morceau contigu (voir le bug historique : scinder un groupe en deux moitiés
-// affichant le même nom, découvert en réordonnant une étape à l'intérieur d'un groupe).
+// en échange avec son voisin - qui peut lui-même être une brique entière, auquel cas on la dépasse
+// en un clic plutôt que d'atterrir au milieu.
 function moveStep(index, delta) {
-  const editingStep = state.editingIndex !== null ? state.steps[state.editingIndex] : null;
+  if (index < 0 || index >= state.steps.length) return;
+  const selectedStep = state.selectedIndex >= 0 ? state.steps[state.selectedIndex] : null;
   const [start, end] = brickSpanAt(index);
   if (delta === -1) {
     if (start === 0) return;
@@ -392,137 +241,447 @@ function moveStep(index, delta) {
   } else {
     return;
   }
-  if (editingStep) state.editingIndex = state.steps.indexOf(editingStep);
+  if (selectedStep) state.selectedIndex = state.steps.indexOf(selectedStep);
   state.selectedStepIndices.clear();
-  renderSteps();
+  commitStructure();
+  scrollChipIntoView(state.selectedIndex);
 }
 
-document.getElementById("kind-select").addEventListener("change", (e) => renderKindFields(e.target.value));
-
-document.getElementById("add-step-btn").addEventListener("click", () => {
-  clearError();
-  try {
-    const step = buildStepFromForm();
-    if (state.editingIndex !== null) {
-      // Éditer un champ d'une étape déjà groupée ne doit pas la dissocier silencieusement de sa
-      // brique - on reporte l'étiquette de l'ancienne étape sur la nouvelle.
-      const previous = state.steps[state.editingIndex];
-      state.steps[state.editingIndex] = { ...step, brick_group_id: previous.brick_group_id, brick_name: previous.brick_name };
-    } else {
-      state.steps.push(step);
-    }
-    // Commit délibéré : fermer sans restaurer (cancelEditingStep() écraserait ce qu'on vient
-    // d'enregistrer avec le snapshot d'avant édition).
-    state.editingIndex = null;
-    state.editingOriginalStep = null;
-    state.formDeclaredParams = [];
-    closeStepForm();
-  } catch (err) {
-    showError(err);
-  }
-});
-
-document.getElementById("cancel-edit-btn").addEventListener("click", () => {
-  clearError();
-  cancelEditingStep();
-});
-
-// Aperçu en temps réel : à chaque frappe/sélection dans le formulaire d'étape (délégué sur son
-// conteneur stable, puisque #kind-fields est reconstruit à chaque changement de type), on
-// resimule sans attendre "Ajouter"/"Enregistrer" - state.steps n'est muté que si une étape est
-// déjà en cours d'édition (avec rollback possible, voir cancelEditingStep) ; en mode ajout, on
-// simule une liste temporaire sans jamais toucher state.steps tant que rien n'est confirmé.
-function livePreviewFromForm() {
-  if (state.editingIndex === null && !state.showStepForm) return;
-  let step;
-  try {
-    step = buildStepFromForm();
-  } catch (err) {
-    return; // valeur transitoire pas encore exploitable (champ vide, plage mal formée...) - on attend la suite de la frappe
-  }
-  if (state.editingIndex !== null) {
-    const previous = state.steps[state.editingIndex];
-    state.steps[state.editingIndex] = { ...step, brick_group_id: previous.brick_group_id, brick_name: previous.brick_name };
-    scheduleSimulate(120, undefined, { silent: true });
-  } else {
-    scheduleSimulate(120, [...state.steps, step], { silent: true });
-  }
-}
-
-const stepFormSection = document.getElementById("step-form-section");
-stepFormSection.addEventListener("input", livePreviewFromForm);
-stepFormSection.addEventListener("change", livePreviewFromForm);
-
-// Une brique technologique est une séquence d'étapes préenregistrée (voir brick-mode.js /
-// spectre.core.tech_bricks) - l'insérer copie ses étapes dans la structure courante une bonne
-// fois pour toutes, comme un préset : aucun lien vivant après coup avec la brique elle-même.
-function populateInsertBrickSelect() {
-  const select = document.getElementById("insert-brick-select");
-  const entries = [
-    ...state.techBricks.presets.map((b) => ({ ...b, scope: "preset" })),
-    ...state.techBricks.partagees.map((b) => ({ ...b, scope: "partagee" })),
-    ...state.techBricks.microprojet.map((b) => ({ ...b, scope: "microprojet" })),
-  ];
-  const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", projet: "" };
-  select.innerHTML =
-    `<option value="">— choisir —</option>` +
-    entries
-      .map((b) => `<option value="${b.scope}::${encodeURIComponent(b.name)}">${escapeHtml(b.name)}${scopeSuffix[b.scope]}</option>`)
-      .join("");
-}
-
-document.getElementById("insert-brick-btn").addEventListener("click", () => {
-  clearError();
-  const [scope, encodedName] = document.getElementById("insert-brick-select").value.split("::");
-  if (!scope) return;
-  const name = decodeURIComponent(encodedName);
-  const bucket = scope === "preset" ? state.techBricks.presets : scope === "partagee" ? state.techBricks.partagees : state.techBricks.microprojet;
-  const brick = bucket.find((b) => b.name === name);
-  if (!brick) return;
-  // Si l'étape en cours d'édition appartient déjà à une brique, insérer juste avant elle
-  // atterrirait au milieu de ce groupe et scinderait son bracket - on insère avant le groupe
-  // entier à la place (voir brickSpanAt).
-  const insertAt = state.editingIndex !== null ? brickSpanAt(state.editingIndex)[0] : state.steps.length;
-  const groupId = generateBrickGroupId();
-  const copiedSteps = JSON.parse(JSON.stringify(brick.steps)).map((s) => ({ ...s, brick_group_id: groupId, brick_name: brick.name }));
-  state.collapsedBrickGroups.add(groupId); // une brique insérée arrive repliée - on déplie au besoin
-  state.steps.splice(insertAt, 0, ...copiedSteps);
-  if (state.editingIndex !== null) state.editingIndex += copiedSteps.length;
+// Glisser-déposer : amène le bloc [start, end] au trou `gap` (indices d'avant le déplacement).
+function moveBlockToGap(start, end, gap) {
+  if (gap >= start && gap <= end + 1) return; // lâché sur place
+  const target = snapGapOutsideBricks(gap, gap > end);
+  if (target >= start && target <= end + 1) return;
+  const selectedStep = state.selectedIndex >= 0 ? state.steps[state.selectedIndex] : null;
+  const block = state.steps.splice(start, end - start + 1);
+  const insertAt = target > end ? target - block.length : target;
+  state.steps.splice(insertAt, 0, ...block);
+  if (selectedStep) state.selectedIndex = state.steps.indexOf(selectedStep);
   state.selectedStepIndices.clear();
-  document.getElementById("insert-brick-select").value = "";
-  renderSteps();
-});
+  commitStructure();
+}
 
-// Grouper une sélection d'étapes déjà présentes dans la structure en cours en une nouvelle brique
-// réutilisable - l'inverse de "insérer une brique" ci-dessus. L'ordre des étapes étant physiquement
-// significatif (la simulation dépend de la séquence), seule une sélection contiguë peut être
-// bracketée sensément ; une sélection éparpillée est refusée plutôt que silencieusement réordonnée.
-document.getElementById("group-brick-btn").addEventListener("click", async () => {
+function duplicateStep(index) {
+  if (index < 0 || index >= state.steps.length) return;
+  const copy = JSON.parse(JSON.stringify(state.steps[index])); // garde l'étiquette de brique : la copie atterrit juste après, le bracket reste contigu
+  insertSteps(index + 1, [copy]);
+}
+
+function deleteSteps(indices) {
+  const sorted = [...new Set(indices)].filter((i) => i >= 0 && i < state.steps.length).sort((a, b) => b - a);
+  if (!sorted.length) return;
+  sorted.forEach((i) => state.steps.splice(i, 1));
+  const first = sorted[sorted.length - 1];
+  state.selectedStepIndices.clear();
+  state.selectedBrickGroup = null;
+  // on se replace sur l'étape d'avant (ou le substrat) : c'est là que la suivante s'insérerait
+  state.selectedIndex = Math.min(first - 1, state.steps.length - 1);
+  hideLayerProvenance();
+  commitStructure();
+}
+
+// Suppr / bouton poubelle : la sélection multiple, sinon la brique sélectionnée, sinon l'étape.
+function deleteCurrentSelection() {
+  if (hasMultiSelection()) deleteSteps([...state.selectedStepIndices]);
+  else if (state.selectedBrickGroup) deleteBrickGroup(state.selectedBrickGroup);
+  else if (state.selectedIndex >= 0) deleteSteps([state.selectedIndex]);
+}
+
+function toggleBrickCollapse(groupId) {
+  if (state.collapsedBrickGroups.has(groupId)) state.collapsedBrickGroups.delete(groupId);
+  else state.collapsedBrickGroups.add(groupId);
+  // replier une brique qui contient la sélection : on sélectionne la brique elle-même, sinon la
+  // puce sélectionnée disparaîtrait dans le repli (et la brique se redéplierait d'office)
+  const span = brickGroupSpan(groupId);
+  if (span && state.collapsedBrickGroups.has(groupId) && state.selectedIndex >= span[0] && state.selectedIndex <= span[1]) {
+    state.selectedBrickGroup = groupId;
+    state.selectedStepIndices.clear();
+  }
+  renderRail();
+  renderInspector();
+}
+
+function ungroupBrick(groupId) {
+  state.steps.forEach((s, i) => {
+    if (s.brick_group_id === groupId) state.steps[i] = stripBrickTag(s);
+  });
+  state.collapsedBrickGroups.delete(groupId);
+  if (state.selectedBrickGroup === groupId) state.selectedBrickGroup = null;
+  commitStructure();
+}
+
+function deleteBrickGroup(groupId) {
+  const span = brickGroupSpan(groupId);
+  if (!span) return;
+  const indices = [];
+  for (let k = span[0]; k <= span[1]; k++) indices.push(k);
+  deleteSteps(indices);
+}
+
+// Grouper une sélection d'étapes déjà présentes en une nouvelle brique réutilisable - l'inverse de
+// « insérer une brique ». L'ordre des étapes étant physiquement significatif, seule une sélection
+// contiguë peut être bracketée sensément ; une sélection éparpillée est refusée plutôt que
+// silencieusement réordonnée.
+async function groupSelectionIntoBrick() {
   clearError();
-  const indices = Array.from(state.selectedStepIndices).sort((a, b) => a - b);
-  if (indices.length === 0) return;
+  const indices = [...state.selectedStepIndices].sort((a, b) => a - b);
+  if (indices.length < 2) return;
   const contiguous = indices.every((idx, k) => k === 0 || idx === indices[k - 1] + 1);
   if (!contiguous) {
     showError(new Error("Les étapes sélectionnées doivent être consécutives pour former une brique."));
     return;
   }
-  const name = document.getElementById("group-brick-name").value.trim();
+  if (indices.some((idx) => state.steps[idx].brick_group_id)) {
+    showError(new Error("Une de ces étapes appartient déjà à une brique - dissociez-la d'abord."));
+    return;
+  }
+  const nameInput = document.getElementById("group-brick-name");
+  const name = nameInput.value.trim();
   if (!name) {
     showError(new Error("Donnez un nom à la brique."));
+    nameInput.focus();
     return;
   }
   try {
     const selectedSteps = indices.map((idx) => stripBrickTag(state.steps[idx]));
-    state.techBricks = await api.post(`/api/microprojets/${slug}/briques-technologiques`, { name, steps: selectedSteps, partagee: false });
+    state.techBricks = await api.post(`/api/microprojets/${slug}/briques-technologiques`, {
+      name,
+      steps: selectedSteps,
+      declared_params: declaredParamsPayload(selectedSteps),
+      partagee: false,
+    });
     const groupId = generateBrickGroupId();
     indices.forEach((idx) => {
       state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name };
     });
-    populateInsertBrickSelect();
+    renderBrickList();
+    nameInput.value = "";
     state.selectedStepIndices.clear();
-    document.getElementById("group-brick-name").value = "";
-    renderSteps();
+    state.selectedBrickGroup = groupId;
+    state.selectedIndex = indices[indices.length - 1];
+    commitStructure();
   } catch (err) {
     showError(err);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rendu du flow
+// ---------------------------------------------------------------------------------------------
+
+// Matériau "produit" par une étape - sa pastille reprend la couleur du dessin et de la légende.
+function stepMaterial(step) {
+  if (step.kind === "lithography") return step.resist_material;
+  if (step.kind === "deposition" || step.kind === "epitaxial_growth" || step.kind === "faceted_growth") return step.material;
+  return null;
+}
+
+function chipSubtitle(step) {
+  return stepSummary(step).split(" · ").slice(0, 2).join(" · ");
+}
+
+
+function lengthLabel(length) {
+  return `${length.value} ${length.unit === "um" ? "µm" : length.unit}`;
+}
+
+function substrateChipHtml() {
+  const substrate = substrateSpec();
+  const variations = state.wizardScreen === "variations";
+  const selected = variations ? variationEditingStepIndex === -1 : state.selectedIndex === -1 && !hasMultiSelection() && !state.selectedBrickGroup;
+  const color = state.materialColors[substrate.material];
+  const factorCount = variations ? state.variationFactors.filter((f) => f.step_index === -1).reduce((acc, f) => acc * f.values.length, 1) : 1;
+  const hasFactor = variations && state.variationFactors.some((f) => f.step_index === -1);
+  return `
+    <div class="sb-chip sb-chip--substrate ${selected ? "is-selected" : ""}" role="button" id="sb-chip--1" data-index="-1"
+         tabindex="${selected ? 0 : -1}" aria-pressed="${selected}" title="Substrat : ${escapeHtml(substrate.material)}">
+      <span class="sb-chip__mat" style="${color ? `--mat:${color};` : ""}" aria-hidden="true"></span>
+      <span class="sb-chip__icon sb-chip__icon--substrate" aria-hidden="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="14" width="18" height="6" rx="1"/><path d="M3 10h18"/></svg>
+      </span>
+      <span class="sb-chip__body">
+        <span class="sb-chip__top"><span class="sb-chip__num">S</span><span class="sb-chip__name">Substrat</span></span>
+        <span class="sb-chip__sub">${escapeHtml(substrate.material)} · ${escapeHtml(lengthLabel(substrate.thickness))}</span>
+      </span>
+      ${hasFactor ? `<span class="sb-chip__badge sb-chip__badge--factor" title="Paramètre varié">×${factorCount}</span>` : ""}
+    </div>`;
+}
+
+function stepChipHtml(i) {
+  const step = state.steps[i];
+  const def = STEP_KIND_DEFS[step.kind];
+  const variations = state.wizardScreen === "variations";
+  const multi = state.selectedStepIndices.has(i);
+  const selected = (variations ? variationEditingStepIndex === i : state.selectedIndex === i && !state.selectedBrickGroup) || multi;
+  const dim = variations && !isVariableTarget(i);
+  const material = stepMaterial(step);
+  const color = material ? state.materialColors[material] : null;
+  const factorCount = variations ? state.variationFactors.filter((f) => f.step_index === i).reduce((acc, f) => acc * f.values.length, 1) : 1;
+  const hasFactor = variations && state.variationFactors.some((f) => f.step_index === i);
+  const declared = step.declaredParams && step.declaredParams.length;
+  const title = dim ? `${step.name} - aucun paramètre à faire varier sur ce type d'étape` : `${def.label} — ${step.name}\n${stepSummary(step)}`;
+  return `
+    <div class="sb-chip ${selected ? "is-selected" : ""} ${multi ? "is-multi" : ""} ${dim ? "is-dim" : ""}" role="button" id="sb-chip-${i}" data-index="${i}"
+         tabindex="${selected && !multi ? 0 : -1}" aria-pressed="${selected}" aria-disabled="${dim}" draggable="${variations ? "false" : "true"}"
+         title="${escapeHtml(title)}" style="--kind:${def.color};--kind-tint:${def.tint};">
+      <span class="sb-chip__mat" style="${color ? `--mat:${color};` : ""}" aria-hidden="true"></span>
+      <span class="sb-chip__icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${def.iconPath}</svg></span>
+      <span class="sb-chip__body">
+        <span class="sb-chip__top"><span class="sb-chip__num">${String(i + 1).padStart(2, "0")}</span><span class="sb-chip__name">${escapeHtml(step.name)}</span></span>
+        <span class="sb-chip__sub">${escapeHtml(chipSubtitle(step))}</span>
+      </span>
+      ${declared ? `<span class="sb-chip__badge" title="${declared} paramètre(s) déclaré(s)">+${declared}</span>` : ""}
+      ${hasFactor ? `<span class="sb-chip__badge sb-chip__badge--factor" title="Paramètre varié">×${factorCount}</span>` : ""}
+      ${multi ? `<span class="sb-chip__check" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>` : ""}
+    </div>`;
+}
+
+function gapHtml(gap) {
+  const disabled = state.wizardScreen !== "structure";
+  return `
+    <div class="sb-gap" data-gap="${gap}" aria-hidden="${disabled}">
+      <span class="sb-gap__line" aria-hidden="true"></span>
+      ${disabled ? "" : `<button class="sb-gap__add" type="button" tabindex="-1" data-gap="${gap}" title="Insérer une étape ici" aria-label="Insérer une étape ici">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>`}
+    </div>`;
+}
+
+function brickGroupHtml(groupId, start, end) {
+  const name = state.steps[start].brick_name || "Brique";
+  const count = end - start + 1;
+  const variations = state.wizardScreen === "variations";
+  const containsSelection =
+    (state.selectedIndex >= start && state.selectedIndex <= end && state.selectedBrickGroup !== groupId) ||
+    [...state.selectedStepIndices].some((k) => k >= start && k <= end) ||
+    (variations && variationEditingStepIndex !== null && variationEditingStepIndex >= start && variationEditingStepIndex <= end);
+  // une brique repliée se déplie d'office si ce qui est sélectionné est à l'intérieur - et à
+  // l'écran variations, où il faut pouvoir cliquer chacune de ses étapes
+  const collapsed = state.collapsedBrickGroups.has(groupId) && !containsSelection && !variations;
+  const selected = state.selectedBrickGroup === groupId && !variations;
+  let inner;
+  if (collapsed) {
+    const kinds = state.steps.slice(start, end + 1).map((s) => STEP_KIND_DEFS[s.kind]);
+    inner = `
+      <div class="sb-chip sb-chip--brick ${selected ? "is-selected" : ""}" role="button" data-brick="${escapeHtml(groupId)}" tabindex="${selected ? 0 : -1}"
+           aria-pressed="${selected}" draggable="${variations ? "false" : "true"}" title="${escapeHtml(name)} - ${count} étapes (repliée)">
+        <span class="sb-chip__body">
+          <span class="sb-chip__top"><span class="sb-chip__num">${String(start + 1).padStart(2, "0")}–${String(end + 1).padStart(2, "0")}</span><span class="sb-chip__name">${escapeHtml(name)}</span></span>
+          <span class="sb-chip__kinds">${kinds
+            .slice(0, 6)
+            .map((def) => `<span class="sb-chip__kind" style="--kind:${def.color};--kind-tint:${def.tint};"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">${def.iconPath}</svg></span>`)
+            .join("")}${kinds.length > 6 ? `<span class="sb-chip__more">+${kinds.length - 6}</span>` : ""}</span>
+        </span>
+      </div>`;
+  } else {
+    const parts = [];
+    for (let k = start; k <= end; k++) {
+      parts.push(stepChipHtml(k));
+      if (k < end) parts.push(gapHtml(k + 1));
+    }
+    inner = parts.join("");
+  }
+  return `
+    <div class="sb-brick ${collapsed ? "is-collapsed" : ""} ${selected ? "is-selected" : ""}" data-group-id="${escapeHtml(groupId)}">
+      <div class="sb-brick__label" data-brick-drag="${escapeHtml(groupId)}" draggable="${variations ? "false" : "true"}">
+        <button class="sb-brick__toggle js-toggle-brick" type="button" data-group-id="${escapeHtml(groupId)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? "Déplier" : "Replier"} la brique ${escapeHtml(name)}" title="${collapsed ? "Déplier" : "Replier"}">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(${collapsed ? -90 : 0}deg);"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <button class="sb-brick__name js-select-brick" type="button" data-group-id="${escapeHtml(groupId)}" title="Sélectionner la brique">
+          <span class="sb-brick__tag">Brique</span>${escapeHtml(name)}${collapsed ? "" : ` <span class="sb-brick__count">· ${count}</span>`}
+        </button>
+      </div>
+      <div class="sb-brick__chips">${inner}</div>
+    </div>`;
+}
+
+function addChipHtml() {
+  if (state.wizardScreen !== "structure") return "";
+  return `
+    <button class="sb-chip sb-chip--add" type="button" id="add-step-shortcut-btn" data-gap="${state.steps.length}" title="Ajouter une étape à la fin">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span>Ajouter une étape</span>
+    </button>`;
+}
+
+function renderRail() {
+  const track = document.getElementById("steps-list");
+  const n = state.steps.length;
+  document.getElementById("steps-count").textContent = n;
+  document.getElementById("steps-count-plural").textContent = n > 1 ? "s" : "";
+  const focusInside = track.contains(document.activeElement);
+  const parts = [substrateChipHtml(), gapHtml(0)];
+  let i = 0;
+  while (i < n) {
+    const groupId = state.steps[i].brick_group_id;
+    if (!groupId) {
+      parts.push(stepChipHtml(i), gapHtml(i + 1));
+      i += 1;
+      continue;
+    }
+    const [start, end] = brickSpanAt(i);
+    parts.push(brickGroupHtml(groupId, start, end), gapHtml(end + 1));
+    i = end + 1;
+  }
+  parts.push(addChipHtml());
+  if (n === 0 && state.wizardScreen === "structure") {
+    parts.push(`<div class="sb-flow__empty">Commencez par un outil de la palette - ou glissez-le ici.</div>`);
+  }
+  track.innerHTML = parts.join("");
+  track.classList.toggle("is-varying", state.wizardScreen === "variations");
+  updateFlowHint();
+  if (focusInside) {
+    const focusTarget = track.querySelector('[tabindex="0"]');
+    if (focusTarget) focusTarget.focus({ preventScroll: true });
+  }
+  highlightSelectedLayer();
+}
+
+function updateFlowHint() {
+  const hint = document.getElementById("steps-list-help");
+  if (state.wizardScreen === "variations") {
+    hint.innerHTML = "Cliquez une étape pour faire varier un de ses paramètres";
+  } else if (hasMultiSelection()) {
+    hint.innerHTML = `<strong>${state.selectedStepIndices.size} étapes sélectionnées</strong> · <kbd>Échap</kbd> pour désélectionner`;
+  } else {
+    hint.innerHTML = "Clic : sélectionner · glisser : réordonner · <kbd>Ctrl</kbd>+clic : sélection multiple";
+  }
+}
+
+function scrollChipIntoView(index) {
+  const chip = document.getElementById(`sb-chip-${index}`);
+  if (chip) chip.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Interactions du flow (délégation : le contenu est reconstruit à chaque rendu)
+// ---------------------------------------------------------------------------------------------
+
+const flowTrack = document.getElementById("steps-list");
+
+flowTrack.addEventListener("click", (event) => {
+  const addBtn = event.target.closest(".sb-gap__add, .sb-chip--add");
+  if (addBtn) {
+    openKindMenu(addBtn, parseInt(addBtn.dataset.gap, 10));
+    return;
+  }
+  const toggle = event.target.closest(".js-toggle-brick");
+  if (toggle) {
+    toggleBrickCollapse(toggle.dataset.groupId);
+    return;
+  }
+  const brickName = event.target.closest(".js-select-brick");
+  if (brickName) {
+    selectBrickGroup(brickName.dataset.groupId);
+    return;
+  }
+  const collapsedBrick = event.target.closest(".sb-chip--brick");
+  if (collapsedBrick) {
+    selectBrickGroup(collapsedBrick.dataset.brick);
+    return;
+  }
+  const chip = event.target.closest(".sb-chip[data-index]");
+  if (!chip) return;
+  selectStep(parseInt(chip.dataset.index, 10), { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey });
 });
+
+// Double-clic sur une puce : on file directement au premier champ de l'inspecteur.
+flowTrack.addEventListener("dblclick", (event) => {
+  if (event.target.closest(".sb-chip[data-index]")) focusInspector();
+});
+
+// Molette verticale -> défilement horizontal du flow (sans Maj), tant qu'il déborde.
+flowTrack.addEventListener(
+  "wheel",
+  (event) => {
+    if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    if (flowTrack.scrollWidth <= flowTrack.clientWidth) return;
+    flowTrack.scrollLeft += event.deltaY;
+    event.preventDefault();
+  },
+  { passive: false }
+);
+
+// -- glisser-déposer : réordonner les puces, ou déposer un outil / une brique de la palette -----
+
+let dragPayload = null; // {type: "move", start, end} | {type: "kind", kind} | {type: "brick", brick}
+
+function startFlowDrag(event, payload) {
+  dragPayload = payload;
+  event.dataTransfer.effectAllowed = payload.type === "move" ? "move" : "copy";
+  try {
+    event.dataTransfer.setData("text/plain", payload.type);
+  } catch (err) {
+    /* certains navigateurs refusent setData hors dragstart - sans conséquence ici */
+  }
+  document.getElementById("sb-flow").classList.add("is-dragging");
+}
+
+function endFlowDrag() {
+  dragPayload = null;
+  document.getElementById("sb-flow").classList.remove("is-dragging");
+  flowTrack.querySelectorAll(".is-drop-target, .is-drag-source").forEach((el) => el.classList.remove("is-drop-target", "is-drag-source"));
+}
+
+flowTrack.addEventListener("dragstart", (event) => {
+  if (state.wizardScreen !== "structure") return;
+  const label = event.target.closest("[data-brick-drag]");
+  const collapsed = event.target.closest(".sb-chip--brick");
+  const chip = event.target.closest(".sb-chip[data-index]");
+  let span = null;
+  if (label || collapsed) span = brickGroupSpan((label && label.dataset.brickDrag) || collapsed.dataset.brick);
+  else if (chip && chip.dataset.index !== "-1") span = brickSpanAt(parseInt(chip.dataset.index, 10));
+  if (!span) {
+    event.preventDefault();
+    return;
+  }
+  startFlowDrag(event, { type: "move", start: span[0], end: span[1] });
+  (label ? label.closest(".sb-brick") : collapsed || chip.closest(".sb-brick") || chip).classList.add("is-drag-source");
+});
+
+// Le trou le plus proche horizontalement du pointeur - c'est là que le dépôt insérera.
+function nearestGap(clientX) {
+  let best = null;
+  let bestDistance = Infinity;
+  flowTrack.querySelectorAll(".sb-gap").forEach((gap) => {
+    const rect = gap.getBoundingClientRect();
+    const distance = Math.abs(rect.left + rect.width / 2 - clientX);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = gap;
+    }
+  });
+  return best;
+}
+
+flowTrack.addEventListener("dragover", (event) => {
+  if (!dragPayload) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = dragPayload.type === "move" ? "move" : "copy";
+  const gap = nearestGap(event.clientX);
+  flowTrack.querySelectorAll(".sb-gap.is-drop-target").forEach((el) => el !== gap && el.classList.remove("is-drop-target"));
+  if (gap) gap.classList.add("is-drop-target");
+  // défilement automatique près des bords
+  const rect = flowTrack.getBoundingClientRect();
+  if (event.clientX < rect.left + 48) flowTrack.scrollLeft -= 14;
+  else if (event.clientX > rect.right - 48) flowTrack.scrollLeft += 14;
+});
+
+flowTrack.addEventListener("dragleave", (event) => {
+  if (!flowTrack.contains(event.relatedTarget)) flowTrack.querySelectorAll(".sb-gap.is-drop-target").forEach((el) => el.classList.remove("is-drop-target"));
+});
+
+flowTrack.addEventListener("drop", (event) => {
+  if (!dragPayload) return;
+  event.preventDefault();
+  const gapEl = nearestGap(event.clientX);
+  const payload = dragPayload;
+  endFlowDrag();
+  if (!gapEl) return;
+  const gap = parseInt(gapEl.dataset.gap, 10);
+  if (payload.type === "move") moveBlockToGap(payload.start, payload.end, gap);
+  else if (payload.type === "kind") insertStepOfKind(payload.kind, gap);
+  else if (payload.type === "brick") insertBrickAt(payload.brick, gap);
+});
+
+document.addEventListener("dragend", endFlowDrag);
