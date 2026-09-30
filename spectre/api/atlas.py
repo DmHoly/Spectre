@@ -6,7 +6,7 @@ microprojects at once, not into a single one.
 
 Scoped to one thème (``theme``, an area slug) rather than every microproject the viewer belongs to
 company-wide: a global cross-thème atlas mixed µprojets from unrelated strategic efforts into one
-unreadable bubble soup, and thèmes are already the grouping the rest of the app (``/pilotage``, the
+unreadable bubble soup, and thèmes are already the grouping the rest of the app (the home page, the
 thème page) organizes around. Visibility stays membership-based, not the thème page's own
 company-wide "everyone sees the counts" model - this endpoint shows real experiment content
 (titles, objectives, wafer identifiers), not just rolled-up numbers, so only a thème's µprojets the

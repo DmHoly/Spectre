@@ -35,8 +35,8 @@ Projet corporate (Management)   Native (PT2), VLC (microlink), Nova (PT1)... - a
 
 - **Thèmes** (`spectre.core.management`) : visibles par tout utilisateur connecté (vue société
   transverse) ; seul un compte **administrateur** (`users.is_admin`) crée/renomme/supprime un thème
-  ou y rattache un µprojet - voir `spectre admin` plus bas. Page d'accueil (`/`), un thème
-  (`/management/{slug}`), vue globale chiffrée (`/pilotage`).
+  ou y rattache un µprojet - voir `spectre admin` plus bas. Page d'accueil (`/`), un projet
+  (`/management/{slug}` : objectifs classés, tendances des KPI, thématiques et µprojets).
 - **µprojets** gardent leurs droits par membre (`viewer`/`editor`/`owner`) exactement comme avant -
   la couche Management n'y change rien, elle ne fait que les regrouper.
 - **Bibliothèque** (`/bibliotheque`) : structures/présets/briques réutilisables entre µprojets, plus

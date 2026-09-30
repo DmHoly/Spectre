@@ -52,7 +52,14 @@ async function load() {
     const [mgmt, mine] = await Promise.all([api.get("/api/management"), api.get("/api/microprojets")]);
 
     // "Non classé" ne s'affiche que s'il contient vraiment quelque chose - sinon il encombre.
-    const themes = mgmt.areas.filter((a) => a.slug !== "non-classe" || a.stats.microprojets > 0);
+    // « Non classé » n'est pas un projet : il sort de la grille, replié en bas comme « Mes µprojets »
+    // (et n'apparaît que s'il contient quelque chose).
+    const themes = mgmt.areas.filter((a) => a.slug !== "non-classe");
+    const unclassified = mgmt.areas.find((a) => a.slug === "non-classe");
+    if (unclassified && unclassified.stats.microprojets > 0) {
+      document.getElementById("unclassified-count").textContent = `(${unclassified.stats.microprojets})`;
+      document.getElementById("unclassified-details").style.display = "";
+    }
     const grid = document.getElementById("themes");
     grid.innerHTML = themes.map(themeCard).join("");
     grid.removeAttribute("aria-busy");
@@ -83,6 +90,36 @@ document.getElementById("new-theme-form").addEventListener("submit", async (even
     window.location.href = `/management/${encodeURIComponent(area.slug)}`;
   } catch (err) {
     dialog.close();
+    showError(err);
+  }
+});
+
+// Contenu de « Non classé » chargé seulement à l'ouverture du bloc (la page d'accueil n'en a pas besoin).
+const unclassifiedDetails = document.getElementById("unclassified-details");
+unclassifiedDetails.addEventListener("toggle", async () => {
+  if (!unclassifiedDetails.open || unclassifiedDetails.dataset.loaded) return;
+  const box = document.getElementById("unclassified");
+  box.innerHTML = `<div class="skeleton" style="height:84px;"></div>`;
+  try {
+    const area = await api.get("/api/management/non-classe");
+    unclassifiedDetails.dataset.loaded = "1";
+    box.innerHTML = area.microprojets
+      .map((p) => {
+        const inner = `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div style="font-size:14px;font-weight:700;">${escapeHtml(p.name)}</div>
+            ${p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role))}</span>` : `<span style="font-size:11px;color:var(--text-faint);">non membre</span>`}
+          </div>
+          <div style="font-size:12px;color:var(--text-faint);padding-top:6px;border-top:1px solid var(--border-soft);">
+            ${p.running} en cours &middot; ${p.concluded} terminées
+          </div>`;
+        return p.role
+          ? `<a href="/microprojets/${encodeURIComponent(p.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:6px;color:inherit;">${inner}</a>`
+          : `<div class="card card-pad" style="display:flex;flex-direction:column;gap:6px;opacity:.75;">${inner}</div>`;
+      })
+      .join("");
+  } catch (err) {
+    box.innerHTML = "";
     showError(err);
   }
 });

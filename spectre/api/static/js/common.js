@@ -137,7 +137,6 @@ function initLogout() {
 // souligné or en CSS). Tout ce qui vit sous un projet corporate (projet, µprojet, expérience...)
 // relève de « Projets » - sauf l'atlas d'un projet, qui a son propre lien sur la page du projet.
 const NAV_SECTIONS = [
-  ["/pilotage", /^\/pilotage/],
   ["/bibliotheque", /^\/bibliotheque/],
   ["/donnees", /^\/donnees/],
   ["/docs", /^\/docs/],

@@ -33,6 +33,7 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 | Or lisible | `--gold-dark` | `#8a6d1f` | texte or sur fond clair (4.9:1) |
 | Fond | `--bg` | `#f5f6fa` | |
 | Texte | `--text` / `--text-soft` / `--text-faint` | `#1b2440` / `#4a5470` / `#646e8c` | tous ≥ 4.5:1 sur blanc |
+| Émission InGaN | `--emit-red` `--emit-green` `--emit-blue` | `#ef5a5a` / `#3ecf7a` / `#4a8cff` | **uniquement** les schémas des technos (`js/tech-art.js`, fond navy) - jamais en UI |
 | Statuts | `--draft` `--running` `--done` `--abandoned` `--danger` | + `*-tint` | badges, graphe de filiation |
 
 ## Typographie

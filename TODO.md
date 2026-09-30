@@ -5,19 +5,19 @@ faite, déplacer la ligne dans la section « Fait » du bas (ou simplement la re
 
 ## Couche Management — Phase 2 (analytique)
 
-La Phase 1 (thèmes, hiérarchie, navigation, `/pilotage` avec compteurs + leaderboard) est livrée.
-Reste :
+La Phase 1 (thèmes, hiérarchie, navigation) est livrée ; la page `/pilotage` (compteurs +
+leaderboard) a été retirée - la page d'un projet corporate porte désormais ses objectifs classés et
+un bloc de tendances à onglets (`spectre/core/trends.py`, `static/js/kpi-trend.js`). Reste :
 
 - [ ] **Définir les indicateurs clés société** à suivre dans le temps : lesquelles des mesures
       d'objectif (`Objective.metric`) ou de preuve (`Evidence.metric_value`) comptent comme un
       indicateur stratégique, sur quel µprojet/thème, avec quelle cible. Préalable obligatoire aux
       deux points suivants - sans ça il n'y a rien à tracer.
-- [ ] **Courbes de tendance** sur `/pilotage` : évolution dans le temps des indicateurs clés
-      choisis ci-dessus (par thème et/ou société entière).
+- [ ] **Brancher les KPI de tendance** (EQE, PL, défectivité, rendement - aujourd'hui des
+      aperçus « à venir ») : écrire leur `provider` dans `spectre/core/trends.py`, typiquement un
+      hook PRISM sur les wafers suivis par les µprojets du projet.
 - [ ] **« Hero perfs »** : mettre en avant les meilleures valeurs atteintes à date pour chaque
       indicateur clé (quel µprojet/expérience, quelle valeur, quand).
-- [ ] Leaderboard : bascule optionnelle « par thème » / « par µprojet » (actuellement thèmes
-      uniquement, décision prise pour la Phase 1).
 
 ## Polish navigation / rename
 
