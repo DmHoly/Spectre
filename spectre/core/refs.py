@@ -22,7 +22,7 @@ from typing import Any
 
 import follow
 
-from . import versioning
+from . import microprojects, versioning
 from .atlas import condensed_edges
 
 REF_NAME_PREFIX = "ref v"
@@ -107,7 +107,7 @@ def list_refs(repo: "follow.Repository") -> list[dict[str, Any]]:
                 "names": sorted(names),
                 "title": experiment.title,
                 "branch": experiment.branch,
-                "status": experiment.conclusion.status,
+                "status": microprojects.display_status(experiment),
                 "decision": experiment.conclusion.decision,
                 "version": _version_for(repo, experiment_id),
                 "created_at": experiment.created_at.isoformat(),

@@ -794,17 +794,27 @@ def render_lot_svgs(lot: ProcessLot) -> list[str]:
     return [_svg_for_process_structure(entry, material_colors) for entry in lot.entries]
 
 
-def clean_entity_entries(entities: list[Any]) -> list[dict[str, str | None]]:
-    """Normalize a list of entity-tracking inputs (each with a ``sample_id``/``location``
+def clean_entity_entries(entities: list[Any]) -> list[dict[str, Any]]:
+    """Normalize a list of entity-tracking inputs (each with a ``sample_id``/``location``/``fdl``
     attribute) into the plain dict shape stored in ``Experiment.metadata["physical_tracking"]`` -
     blank strings become ``None``, the same cleanup ``spectre.api.experiments::set_physical_tracking``
-    already applied locally before this was shared with the launch routes below.
+    already applied locally before this was shared with the launch routes below. A wafer's FDLs
+    (JIRA launch sheets, see :mod:`spectre.core.fdl`) are normalized and kept under ``"fdl"`` -
+    only when there is at least one, so an entity without any reads exactly as before.
     """
+    from .fdl import clean_fdl_list
 
     def _clean(value: str | None) -> str | None:
         return value.strip() or None if value else None
 
-    return [{"sample_id": _clean(e.sample_id), "location": _clean(e.location)} for e in entities]
+    cleaned = []
+    for e in entities:
+        entry: dict[str, Any] = {"sample_id": _clean(e.sample_id), "location": _clean(e.location)}
+        fdl = clean_fdl_list(getattr(e, "fdl", None))
+        if fdl:
+            entry["fdl"] = fdl
+        cleaned.append(entry)
+    return cleaned
 
 
 def has_tracked_physical_entity(metadata: dict[str, Any]) -> bool:

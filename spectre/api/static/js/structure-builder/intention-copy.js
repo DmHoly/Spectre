@@ -19,6 +19,8 @@ function applyIntentionCopy(cfg) {
 
   setText("title-label", cfg.title_label);
   setPlaceholder("exp-title", cfg.title_placeholder);
+  setText("context-label", cfg.context_label);
+  setPlaceholder("exp-context", cfg.context_placeholder);
   setText("intent-label", cfg.intent_label);
   setPlaceholder("exp-intent", cfg.intent_placeholder);
   setText("hypothesis-label", cfg.hypothesis_label);

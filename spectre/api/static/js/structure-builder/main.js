@@ -61,6 +61,8 @@ async function init() {
   // point de départ : l'historique d'annulation ne commence qu'à partir d'ici.
   renderSteps();
   resetHistory();
+  // « Éditer la fiche » depuis l'en-tête d'une fiche : on arrive directement sur l'intention
+  if (!isLibraryMode && !isBrickMode && queryParams.get("etape") === "intention") setStage("intention");
   const selectedChip = document.getElementById(`sb-chip-${state.selectedIndex}`);
   if (selectedChip) selectedChip.scrollIntoView({ block: "nearest", inline: "nearest" });
 }

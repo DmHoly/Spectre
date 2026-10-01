@@ -473,6 +473,7 @@ function variationRowHtml(row, index) {
       ${cells}
       <td><input class="field js-wafer-name" data-index="${index}" value="${escapeHtml(entity.sample_id || "")}" placeholder="ex : W12-A3" aria-label="Nom du wafer, ligne ${index + 1}"></td>
       <td><input class="field js-wafer-location" data-index="${index}" value="${escapeHtml(entity.location || "")}" placeholder="optionnel" aria-label="Emplacement, ligne ${index + 1}"></td>
+      <td class="sb-samples-table__fdl"><div class="js-wafer-fdl" data-index="${index}"></div></td>
     </tr>`;
 }
 
@@ -496,6 +497,7 @@ function renderVariationTable(rows, factorLabels) {
           ${headerFactors}
           <th>Nom du wafer</th>
           <th>Emplacement</th>
+          <th title="Feuilles de lancement JIRA - Entrée pour en empiler plusieurs">FDL</th>
         </tr>
       </thead>
       <tbody>${rows.map((row, i) => variationRowHtml(row, i)).join("")}</tbody>
@@ -510,6 +512,18 @@ function renderVariationTable(rows, factorLabels) {
     input.addEventListener("input", () => {
       const i = parseInt(input.dataset.index, 10);
       state.variationEntities[i] = { ...state.variationEntities[i], location: input.value };
+    });
+  });
+  // FDL (feuilles de lancement JIRA) : plusieurs par wafer, empilées (mountFdlField, common.js)
+  wrap.querySelectorAll(".js-wafer-fdl").forEach((el) => {
+    const i = parseInt(el.dataset.index, 10);
+    mountFdlField(el, {
+      values: (state.variationEntities[i] || {}).fdl || [],
+      compact: true,
+      label: `FDL du wafer, ligne ${i + 1}`,
+      onChange: (fdl) => {
+        state.variationEntities[i] = { ...state.variationEntities[i], fdl };
+      },
     });
   });
 }
@@ -529,7 +543,7 @@ function updateLaunchVariationsLabel() {
     const n = state.variationEntities.length || 1;
     btn.textContent = `Lancer la campagne (${n} échantillon${n > 1 ? "s" : ""})`;
   } else if (evolveExperienceId) {
-    btn.textContent = "Enregistrer cette évolution";
+    btn.textContent = "Enregistrer les modifications";
   } else {
     btn.textContent = "Lancer le suivi de cette expérience";
   }
@@ -573,9 +587,12 @@ async function refreshVariationTable() {
 // vide (sample_id/location null) pour une ligne non encore remplie plutôt qu'omise, pour que
 // l'index reste aligné avec les entités simulées côté serveur.
 function variationTableEntities() {
+  // un numéro de FDL encore en cours de frappe (sans Entrée) compte aussi
+  document.querySelectorAll("#variation-table-wrap .fdl-field__input").forEach((input) => input.dispatchEvent(new Event("blur")));
   return state.variationEntities.map((e) => ({
     sample_id: (e.sample_id || "").trim() || null,
     location: (e.location || "").trim() || null,
+    fdl: e.fdl || [],
   }));
 }
 
@@ -604,6 +621,7 @@ function showWizardStepVariations() {
     state.variationEntities[0] = {
       sample_id: screenOneSampleId,
       location: (document.getElementById("exp-entity-location").value || "").trim(),
+      fdl: entityFdlField ? entityFdlField.get() : [],
     };
   }
   setStage("variations");

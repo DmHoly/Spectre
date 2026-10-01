@@ -6,6 +6,10 @@
    ci-dessous - seule la provenance des `entities` diffère (les deux champs d'entité en évolution,
    le tableau de variations.js en nouveau lancement). */
 
+// FDL de l'entité (écran intention, en évolution) - voir mountFdlField (common.js)
+const entityFdlField = mountFdlField(document.getElementById("exp-entity-fdl"), { label: "FDL du wafer" });
+document.querySelector("#exp-entity-fdl .fdl-field__input").id = "exp-entity-fdl-input";
+
 async function loadExistingProcess() {
   if (!evolveExperienceId) return;
   try {
@@ -22,12 +26,13 @@ async function loadExistingProcess() {
       selectLastStep();
       renderSteps();
     }
-    setPageTitle(data ? "Enregistrer une évolution" : "Redessiner la structure");
+    setPageTitle(data ? "Éditer la fiche" : "Redessiner la structure");
 
     const detail = await api.get(`/api/microprojets/${slug}/experiences/${evolveExperienceId}`);
     document.getElementById("exp-title").value = detail.title;
     document.getElementById("exp-intent").value = detail.intent;
     document.getElementById("exp-hypothesis").value = detail.hypothesis || "";
+    document.getElementById("exp-context").value = detail.context || "";
     const verification = detail.objective_verification || {};
     state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
     renderObjectives();
@@ -40,7 +45,8 @@ async function loadExistingProcess() {
     const currentEntity = (detail.physical_tracking && detail.physical_tracking[0]) || {};
     document.getElementById("exp-entity-sample-id").value = currentEntity.sample_id || "";
     document.getElementById("exp-entity-location").value = currentEntity.location || "";
-    document.getElementById("entity-field-label").textContent = "Entité physique";
+    entityFdlField.set(currentEntity.fdl || []);
+    document.getElementById("entity-field-label").textContent = "Plaque suivie - lasermark";
     document.getElementById("entity-field-hint").textContent = currentEntity.sample_id
       ? "Reprise de la version précédente - modifiez-la si besoin."
       : "Aucune entité physique n'a encore été renseignée sur cette piste - il en faut une pour continuer.";
@@ -69,6 +75,8 @@ async function commitExperience(entities) {
     title,
     intent,
     hypothesis: document.getElementById("exp-hypothesis").value || null,
+    // le contexte tel qu'il est dans le champ : vidé, il est retiré de la fiche (voir structures.apply_context)
+    context: document.getElementById("exp-context").value,
     objectives: state.objectives,
     entities,
     form_answers: collectIntentFormAnswers(),
@@ -110,7 +118,7 @@ document.getElementById("launch-btn").addEventListener("click", () => {
   clearError();
   const entitySampleId = document.getElementById("exp-entity-sample-id").value.trim();
   const entityLocation = document.getElementById("exp-entity-location").value.trim();
-  commitExperience(entitySampleId ? [{ sample_id: entitySampleId, location: entityLocation || null }] : []);
+  commitExperience(entitySampleId ? [{ sample_id: entitySampleId, location: entityLocation || null, fdl: entityFdlField.get() }] : []);
 });
 
 // Vers l'écran variations (bouton du bandeau ou étape 3 cliquée) : la structure et l'intention

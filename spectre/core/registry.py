@@ -121,17 +121,23 @@ def _builtin_intention_form() -> dict[str, Any]:
     codée en dur jusqu'ici dans structure-builder.html.
     """
     return {
-        "section_title": "Objectifs et intention",
+        "section_title": "Intention & objectifs",
         "section_subtitle": (
-            "Pourquoi cette expérience, ce qu'on cherche à savoir, et comment on saura si c'est atteint."
+            "Le contexte, ce que je veux démontrer, et comment je compte le faire - c'est ce qu'on lira "
+            "en tête de la fiche."
         ),
         "title_label": "Titre de l'expérience",
         "title_placeholder": "ex : Contact ohmique PGaN, dopage cible",
-        "intent_label": "Intention (pourquoi fait-on cette expérience ?)",
-        "intent_placeholder": "Que cherche-t-on à vérifier, et pourquoi maintenant ?",
+        "context_label": "Contexte (description sommaire)",
+        "context_placeholder": (
+            "D'où part cette expérience, pourquoi maintenant - ex : suite du run W40, la directivité "
+            "chutait sur les plaques pixélisées"
+        ),
+        "intent_label": "Ce que je veux démontrer",
+        "intent_placeholder": "ex : la pixélisation au niveau du contact P ne change pas la directivité",
         "hypothesis_label": "Hypothèse (optionnelle)",
         "hypothesis_placeholder": "Ce qu'on pense observer",
-        "entity_field_label": "Entité physique (obligatoire)",
+        "entity_field_label": "Plaque suivie - lasermark (obligatoire)",
         "entity_id_placeholder": "ex : W12-A3",
         "entity_location_label": "Emplacement (optionnel)",
         "entity_location_placeholder": "ex : congélateur B, tiroir 2",
@@ -139,7 +145,7 @@ def _builtin_intention_form() -> dict[str, Any]:
             "Chaque expérience doit être reliée à un échantillon réel - c'est cet identifiant qui "
             "permet de la retrouver."
         ),
-        "objectives_title": "Objectifs",
+        "objectives_title": "Comment je compte le démontrer (objectifs)",
         "objective_name_label": "Objectif",
         "objective_name_placeholder": "ex : isolation électrique",
         "objective_rationale_label": "Pourquoi cet objectif",

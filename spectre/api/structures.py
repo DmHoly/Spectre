@@ -56,6 +56,7 @@ class ObjectiveInput(BaseModel):
 class EntityTrackingInput(BaseModel):
     sample_id: str | None = None
     location: str | None = None
+    fdl: list[str] = []  # FDL (JIRA launch sheets) this wafer went through - see spectre.core.fdl
 
 
 class LaunchExperienceRequest(BaseModel):
@@ -64,6 +65,9 @@ class LaunchExperienceRequest(BaseModel):
     title: str
     intent: str
     hypothesis: str | None = None
+    # a short description that puts the experience back in context (shown at the top of the fiche) -
+    # None on an evolution keeps the previous version's (see apply_context)
+    context: str | None = None
     objectives: list[ObjectiveInput] = []
     # required on a brand-new launch (see launch_experience below) ; optional when evolving, where
     # it's only needed to fix forward an experience whose lineage never got one (see evolve_experience).
@@ -97,6 +101,9 @@ class LaunchImageExperienceRequest(BaseModel):
     title: str
     intent: str
     hypothesis: str | None = None
+    # a short description that puts the experience back in context (shown at the top of the fiche) -
+    # None on an evolution keeps the previous version's (see apply_context)
+    context: str | None = None
     objectives: list[ObjectiveInput] = []
     entities: list[EntityTrackingInput] = []
     new_branch: str | None = None  # evolution only: fork instead of continuing
@@ -114,6 +121,9 @@ class LaunchCampaignRequest(CampaignPreviewRequest):
     title: str
     intent: str
     hypothesis: str | None = None
+    # a short description that puts the experience back in context (shown at the top of the fiche) -
+    # None on an evolution keeps the previous version's (see apply_context)
+    context: str | None = None
     objectives: list[ObjectiveInput] = []
     entities: list[EntityTrackingInput] = []  # at least one (the reference sample) is required
     form_answers: dict[str, Any] = {}
@@ -171,20 +181,45 @@ def structure_image_from_input(slug: str, items: list[StructureImageInput]) -> s
         raise HTTPException(status_code=422, detail=f"{structures.MAX_STRUCTURE_IMAGES} images au maximum.")
     if len({item.image_id for item in items}) != len(items):
         raise HTTPException(status_code=422, detail="La même image figure deux fois.")
-    missing = HTTPException(status_code=422, detail="Image de structure introuvable - collez-la ou choisissez-la à nouveau.")
-    directory = microprojects.attachments_dir(slug)
     pictures = []
     for item in items:
-        if not _IMAGE_ID_RE.fullmatch(item.image_id):
-            raise missing
-        sidecar_path = directory / f"{item.image_id}.json"
-        if not (directory / item.image_id).is_file() or not sidecar_path.is_file():
-            raise missing
-        if json.loads(sidecar_path.read_text(encoding="utf-8")).get("content_type") not in structures.STRUCTURE_IMAGE_TYPES:
-            raise HTTPException(status_code=422, detail="Ce fichier n'est pas une image affichable (PNG, JPEG, GIF ou WebP).")
+        uploaded_image(slug, item.image_id)
         caption = (item.caption or "").strip()[:200] or None
         pictures.append(structures.StructureImageItem(image_id=item.image_id, kind=item.kind, caption=caption))
     return structures.StructureImage(images=pictures)
+
+
+def uploaded_image(slug: str, image_id: str) -> dict:
+    """The sidecar (filename, content type, size...) of an image uploaded to *this* microproject
+    (``POST /images`` or ``/structures/images``) - 422 unless the id really names one, checked
+    against the files on disk, never turned into a path from anything else."""
+    missing = HTTPException(status_code=422, detail="Image introuvable - collez-la ou choisissez-la à nouveau.")
+    if not _IMAGE_ID_RE.fullmatch(image_id or ""):
+        raise missing
+    directory = microprojects.attachments_dir(slug)
+    sidecar_path = directory / f"{image_id}.json"
+    if not (directory / image_id).is_file() or not sidecar_path.is_file():
+        raise missing
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    if sidecar.get("content_type") not in structures.STRUCTURE_IMAGE_TYPES:
+        raise HTTPException(status_code=422, detail="Ce fichier n'est pas une image affichable (PNG, JPEG, GIF ou WebP).")
+    return sidecar
+
+
+CONTEXT_METADATA_KEY = "context"
+
+
+def apply_context(metadata: dict, context: str | None) -> None:
+    """Set (or clear, when blank) the experience's short context description in its metadata -
+    Follow's Experiment has title/intent/hypothesis but nothing for « remettre en contexte ». ``None``
+    leaves whatever the metadata already carries (an evolution keeps the previous version's)."""
+    if context is None:
+        return
+    value = context.strip()[:2000]
+    if value:
+        metadata[CONTEXT_METADATA_KEY] = value
+    else:
+        metadata.pop(CONTEXT_METADATA_KEY, None)
 
 
 def require_title_and_intent(title: str, intent: str) -> None:
@@ -476,6 +511,7 @@ def launch_experience(
         body.substrate, body.steps, structures.declared_params_by_index(body.declared_params)
     )
     builder.metadata["physical_tracking"] = entities
+    apply_context(builder.metadata, body.context)
     if verification:
         builder.metadata["objective_verification"] = verification
     builder.form_answers = dict(body.form_answers)
@@ -488,6 +524,17 @@ def launch_experience(
     _ref_the_first_experience(repo, experiment)
 
     return {"id": experiment.id, "branch": experiment.branch}
+
+
+@router.post("/{slug}/images", status_code=201)
+async def upload_image(
+    file: UploadFile = File(...),
+    microproject: Microproject = Depends(require_role("editor")),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Upload a picture ahead of the preuve that will show it (pasted or dropped in the preuve
+    form) - same storage and rules as :func:`upload_structure_image`."""
+    return await _store_uploaded_image(file, microproject, user, role="preuve")
 
 
 @router.post("/{slug}/structures/images", status_code=201)
@@ -503,6 +550,10 @@ async def upload_structure_image(
     :func:`spectre.core.microprojects.attachments_dir`), served by the same
     ``/pieces-jointes/{id}`` route. A picture no launch ends up using just stays there, like a
     detached attachment."""
+    return await _store_uploaded_image(file, microproject, user, role="structure")
+
+
+async def _store_uploaded_image(file: UploadFile, microproject: Microproject, user: User, *, role: str) -> dict:
     content_type = (file.content_type or "").split(";")[0].strip().lower()
     if content_type not in structures.STRUCTURE_IMAGE_TYPES:
         if content_type in ("image/tiff", "image/tif", "image/bmp"):
@@ -523,7 +574,7 @@ async def upload_structure_image(
         "filename": filename,
         "content_type": content_type,
         "size": len(contents),
-        "role": "structure",
+        "role": role,
         "uploaded_by": user.name,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -570,6 +621,7 @@ def launch_image_experience(
     )
     builder.metadata[structures.IMAGE_REVISION_KEY] = structures.new_image_revision()
     builder.metadata["physical_tracking"] = entities
+    apply_context(builder.metadata, body.context)
     if verification:
         builder.metadata["objective_verification"] = verification
     builder.form_answers = dict(body.form_answers)
@@ -672,6 +724,11 @@ def launch_campaign(
         )
     builder.metadata["structureforge_process"] = structures.process_metadata(body.substrate, body.steps, declared_params)
     builder.metadata["physical_tracking"] = physical_tracking
+    if body.from_ref and body.context is None:
+        previous_context = repo.get(body.from_ref).metadata.get(CONTEXT_METADATA_KEY)
+        if previous_context:
+            builder.metadata[CONTEXT_METADATA_KEY] = previous_context
+    apply_context(builder.metadata, body.context)
     builder.metadata["campaign_labels"] = result.labels
     builder.metadata["campaign_factor_labels"] = result.factor_labels
     builder.metadata["campaign_factor_values"] = result.factor_values

@@ -1445,6 +1445,12 @@
 .sb-samples-table__num {
   white-space: nowrap;
 }
+.sb-samples-table__fdl {
+  min-width: 170px;
+}
+.sb-samples-table .fdl-field__input {
+  min-width: 70px;
+}
 
 /* inspecteur */
 .sb-inspector {

@@ -15,6 +15,7 @@ const evolveExperienceId = pathParts[2] === "experiences" ? pathParts[3] : null;
 const state = { objectives: [] };
 
 let imageDrop = null;
+let entityFdlField = null;
 
 const errorBox = document.getElementById("error");
 function showError(err) {
@@ -38,6 +39,7 @@ async function loadEntityHistory() {
     const history = await api.get(`/api/microprojets/${slug}/entites/historique`);
     document.getElementById("entity-sample-id-history").innerHTML = history.sample_ids.map((v) => `<option value="${escapeHtml(v)}">`).join("");
     document.getElementById("entity-location-history").innerHTML = history.locations.map((v) => `<option value="${escapeHtml(v)}">`).join("");
+    document.getElementById("entity-fdl-history").innerHTML = (history.fdls || []).map((v) => `<option value="${escapeHtml(v)}">`).join("");
   } catch (err) {
     // autocomplétion seulement
   }
@@ -48,6 +50,7 @@ async function loadParent() {
   document.getElementById("exp-title").value = detail.title;
   document.getElementById("exp-intent").value = detail.intent;
   document.getElementById("exp-hypothesis").value = detail.hypothesis || "";
+  document.getElementById("exp-context").value = detail.context || "";
   const verification = detail.objective_verification || {};
   state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
   renderObjectives();
@@ -56,7 +59,8 @@ async function loadParent() {
   const entity = (detail.physical_tracking || []).find((e) => e.sample_id) || {};
   document.getElementById("exp-entity-sample-id").value = entity.sample_id || "";
   document.getElementById("exp-entity-location").value = entity.location || "";
-  document.getElementById("entity-field-label").textContent = "Entité physique";
+  entityFdlField.set(entity.fdl || []);
+  document.getElementById("entity-field-label").textContent = "Plaque suivie - lasermark";
   document.getElementById("entity-field-hint").textContent = entity.sample_id
     ? detail.is_batch
       ? "Reprise du premier échantillon de la campagne - la nouvelle version n'en suit qu'un, changez-le si besoin."
@@ -87,8 +91,9 @@ function collectPayload() {
     title,
     intent,
     hypothesis: document.getElementById("exp-hypothesis").value.trim() || null,
+    context: document.getElementById("exp-context").value,
     objectives: state.objectives,
-    entities: sampleId ? [{ sample_id: sampleId, location: document.getElementById("exp-entity-location").value.trim() || null }] : [],
+    entities: sampleId ? [{ sample_id: sampleId, location: document.getElementById("exp-entity-location").value.trim() || null, fdl: entityFdlField.get() }] : [],
     form_answers: collectIntentFormAnswers(),
   };
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
@@ -126,8 +131,8 @@ async function initStructureImagePage() {
   const builderLink = document.getElementById("builder-link");
   const cancelLink = document.getElementById("cancel-link");
   if (evolveExperienceId) {
-    setPageTitle("Nouvelle version · structure en image");
-    document.getElementById("launch-btn").textContent = "Enregistrer cette évolution";
+    setPageTitle("Éditer la fiche · structure en images");
+    document.getElementById("launch-btn").textContent = "Enregistrer les modifications";
     document.getElementById("branch-choice-wrap").hidden = false;
     builderLink.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(evolveExperienceId)}/evoluer`;
     builderLink.textContent = "Continuer dans le constructeur";
@@ -138,6 +143,8 @@ async function initStructureImagePage() {
     cancelLink.href = `/microprojets/${encodeURIComponent(slug)}`;
   }
 
+  entityFdlField = mountFdlField(document.getElementById("exp-entity-fdl"), { datalistId: "entity-fdl-history", label: "FDL du wafer" });
+  document.querySelector("#exp-entity-fdl .fdl-field__input").id = "exp-entity-fdl-input";
   imageDrop = mountImageDrop(document.getElementById("image-drop"), {
     slug,
     onChange: () => clearError(),

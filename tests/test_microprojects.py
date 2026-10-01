@@ -49,7 +49,7 @@ def test_entity_history_is_empty_for_a_microproject_with_no_tracked_entities(cli
     register_and_login(client, "hist-empty@example.com", "Owner")
     slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
     history = client.get(f"/api/microprojets/{slug}/entites/historique").json()
-    assert history == {"sample_ids": [], "locations": []}
+    assert history == {"sample_ids": [], "locations": [], "fdls": []}
 
 
 def test_entity_history_collects_distinct_values_across_experiences(client):
@@ -68,4 +68,4 @@ def test_entity_history_collects_distinct_values_across_experiences(client):
     client.post(f"/api/microprojets/{slug}/experiences/{second['id']}/entites", json={"entities": [{"sample_id": "W1-A2", "location": "congélateur B"}]})
 
     history = client.get(f"/api/microprojets/{slug}/entites/historique").json()
-    assert history == {"sample_ids": ["W1-A1", "W1-A2"], "locations": ["congélateur B"]}
+    assert history == {"sample_ids": ["W1-A1", "W1-A2"], "locations": ["congélateur B"], "fdls": []}

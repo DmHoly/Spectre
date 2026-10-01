@@ -321,3 +321,50 @@ def test_topbar_search_finds_microprojets_by_number_or_name(client):
     assert names("") == [] and names("introuvable") == []
     hit = client.get("/api/microprojets/recherche?q=Nat_0003").json()[0]
     assert hit["code"] == "Nat_0003" and hit["management_area"]["slug"] == "native-pt2"
+
+
+def test_microprojet_payloads_name_their_owner(client):
+    _register(client, "boss@example.com", name="Alice Martin")
+    client.post("/api/microprojets", json={"name": "Recuit Mg", "management_area_slug": "native-pt2"})
+
+    assert client.get("/api/microprojets/recuit-mg").json()["owners"] == [{"id": 1, "name": "Alice Martin"}]
+    assert client.get("/api/microprojets").json()[0]["owners"][0]["name"] == "Alice Martin"
+    row = client.get("/api/management/native-pt2").json()["microprojets"][0]
+    assert row["owners"] == [{"id": 1, "name": "Alice Martin"}]
+
+
+def _launch(client, slug, title):
+    substrate = {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
+    steps = [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
+    return client.post(
+        f"/api/microprojets/{slug}/experiences",
+        json={"substrate": substrate, "steps": steps, "title": title, "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
+    ).json()
+
+
+def test_thematique_page_lists_its_microprojets_on_a_frise(client):
+    _register(client, "boss@example.com", name="Alice Martin")
+    client.post("/api/management/native-pt2/thematiques", json={"name": "Dopage PGaN", "description": "Mg"})
+    client.post("/api/management/native-pt2/thematiques", json={"name": "Double EBL"})
+    client.post("/api/microprojets", json={"name": "Recuit Mg", "management_area_slug": "native-pt2", "thematique_slug": "dopage-pgan"})
+    client.post("/api/microprojets", json={"name": "Ailleurs", "management_area_slug": "native-pt2", "thematique_slug": "double-ebl"})
+    launched = _launch(client, "recuit-mg", "Recuit 700 C")
+
+    page = client.get("/api/management/native-pt2/thematiques/dopage-pgan")
+    assert page.status_code == 200
+    body = page.json()
+    assert body["name"] == "Dopage PGaN" and body["area"]["slug"] == "native-pt2"
+    assert [p["slug"] for p in body["microprojets"]] == ["recuit-mg"]
+    assert body["stats"]["microprojets"] == 1 and body["stats"]["experiences"] == 1
+    row = body["microprojets"][0]
+    assert row["owners"][0]["name"] == "Alice Martin" and row["created_at"].endswith("Z")
+    assert [(n["id"], n["title"], n["status"], n["ended_at"]) for n in row["frise"]] == [(launched["id"], "Recuit 700 C", "draft", None)]
+    assert {t["slug"]: t["microprojets"] for t in body["thematiques"]} == {"dopage-pgan": 1, "double-ebl": 1}
+
+    # Someone outside the µprojet sees its counts and dates, not what its experiments are.
+    _register(client, "hand@example.com")
+    point = client.get("/api/management/native-pt2/thematiques/dopage-pgan").json()["microprojets"][0]["frise"][0]
+    assert "title" not in point and "id" not in point and point["status"] == "draft"
+
+    assert client.get("/api/management/native-pt2/thematiques/inconnue").status_code == 404
+    assert client.get("/management/native-pt2/thematiques/dopage-pgan").status_code == 200  # the page itself

@@ -44,10 +44,12 @@ from .structures import (
     StructureImagesInput,
     _form_validation_error,
     _unique_branch,
+    apply_context,
     first_tracked_entity,
     require_title_and_intent,
     split_objectives,
     structure_image_from_input,
+    uploaded_image,
 )
 
 router = APIRouter(prefix="/api/microprojets", tags=["experiments"])
@@ -69,6 +71,13 @@ ATTACHMENT_ALLOWED_TYPES = {
     "text/plain",
 }
 ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+
+
+def _same_drawn_structure(parent: Any, process: dict) -> bool:
+    """Whether an evolution in the builder left a single drawn structure exactly as it was."""
+    from structureforge.adapters.follow_adapter import ProcessStructure
+
+    return parent.structure_type == ProcessStructure.registry_key() and versioning.structure_signature(parent.metadata) == process
 
 
 def _derive_branch(repo: "follow.Repository", parent: Any, requested: str | None) -> str | None:
@@ -100,9 +109,17 @@ class ConcludeRequest(BaseModel):
     objective_results: list[ObjectiveResultInput] = []
 
 
+class EvidenceImageInput(BaseModel):
+    image_id: str  # returned by POST /images once pasted/dropped in the preuve form
+    caption: str | None = None
+
+
 class EvidenceInput(BaseModel):
     description: str
-    source: str
+    source: str = ""
+    # a folder, a PowerPoint deck, a SharePoint page... - network paths as well as URLs
+    links: list[str] = []
+    images: list[EvidenceImageInput] = []
     metric_name: str | None = None
     metric_value: float | None = None
     metric_unit: str | None = None
@@ -138,9 +155,11 @@ class TagsRequest(BaseModel):
 
 
 class StatusRequest(BaseModel):
-    # only the two "in progress" states - moving to concluded/abandoned goes through /conclure,
-    # which also records the per-objective verdicts and the narrative.
-    status: Literal["draft", "running"]
+    # only the "in progress" states - moving to concluded/abandoned goes through /conclure,
+    # which also records the per-objective verdicts and the narrative. « hold » pauses the study
+    # (spectre.core.microprojects.HOLD_KEY) - draft/running resume it.
+    status: Literal["draft", "running", "hold"]
+    reason: str | None = None  # why it is paused (« hold » only)
 
 
 class CreateRefRequest(BaseModel):
@@ -160,7 +179,7 @@ def _summary(experiment: Any) -> dict:
         "id": experiment.id,
         "title": experiment.title,
         "intent": experiment.intent,
-        "status": experiment.conclusion.status,
+        "status": microprojects.display_status(experiment),
         "author": experiment.author,
         "created_at": experiment.created_at.isoformat(),
         "branch": experiment.branch,
@@ -181,6 +200,9 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
         if repo is not None
         else []
     )
+    # « continuée » : la même règle que le graphe de filiation (un nœud brouillon avec une suite)
+    node = next((n for n in lineage_graph(repo)["nodes"] if n["id"] == experiment.id), None) if repo is not None else None
+    continued_at = node["continued_at"] if node else None
     return {
         "id": experiment.id,
         "parents": list(experiment.parents),
@@ -191,7 +213,11 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
         "title": experiment.title,
         "intent": experiment.intent,
         "hypothesis": experiment.hypothesis,
-        "status": experiment.conclusion.status,
+        # short description putting the experience back in context (metadata - see structures.apply_context)
+        "context": experiment.metadata.get("context"),
+        "status": microprojects.display_status(experiment, continued=bool(continued_at)),
+        "continued_at": continued_at,
+        "hold": microprojects.hold_of(experiment),
         "objectives": [o.model_dump(mode="json") for o in experiment.objectives],
         "objective_verification": experiment.metadata.get("objective_verification", {}),
         "conclusion": experiment.conclusion.model_dump(mode="json"),
@@ -207,6 +233,11 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
         "evidence": [e.model_dump(mode="json") for e in experiment.evidence],
         "physical_tracking": experiment.metadata.get("physical_tracking", []),
         "attachments": experiment.metadata.get("attachments", []),
+        # per preuve id: the links (folder, PowerPoint deck...) recorded with it - kept here rather
+        # than on follow.Evidence, whose fields depend on the installed Follow version
+        "evidence_links": experiment.metadata.get("evidence_links", {}),
+        # the experience's data notebook: views on its plates' characterization data (see api.notebook)
+        "data_notebook": experiment.metadata.get("data_notebook", []),
         "data_items": experiment.metadata.get("data_items", []),
         "form_answers": dict(experiment.form_answers),
     }
@@ -257,8 +288,19 @@ def microproject_lineage(microproject: Microproject = Depends(require_role("view
     either having changed anything structural (a fork with no structural edit yet) is genuinely
     two lines of work already - both are kept as their own small nodes off that shared point
     rather than arbitrarily picking one.
+
+    Each node also carries ``started_at`` (when that structurally distinct experiment was
+    created), ``ended_at`` (when it was concluded or abandoned, ``None`` while it is still a
+    draft or running) and ``continued_at`` (when its first child started, if any) - the elapsed
+    time the graph shows under each node.
     """
-    repo = microprojects.get_repository(microproject.slug)
+    return lineage_graph(microprojects.get_repository(microproject.slug))
+
+
+def lineage_graph(repo: Any) -> dict:
+    """The ``{"nodes", "edges"}`` payload of :func:`microproject_lineage` for one repository -
+    shared with the thématique page's frise (:mod:`spectre.api.management`), which lays out the
+    same nodes on a time axis."""
     experiments = {exp.id: exp for exp in repo}
     if not experiments:
         return {"nodes": [], "edges": []}
@@ -282,15 +324,33 @@ def microproject_lineage(microproject: Microproject = Depends(require_role("view
         if tip_id not in structural_ids:
             tips_by_anchor.setdefault(nearest_structural_ancestor(tip_id), []).append(tip_id)
 
-    def node_payload(exp_id: str, *, is_tip: bool, is_merge_id: str) -> dict:
+    def line_start(exp_id: str, anchor_id: str) -> datetime:
+        """When the line ending at tip ``exp_id`` started, for two tips forked off the same
+        structural point ``anchor_id``: its first commit after that point."""
+        start = experiments[exp_id].created_at
+        parents = dag[exp_id]
+        while len(parents) == 1 and parents[0] != anchor_id:
+            exp_id = parents[0]
+            start = experiments[exp_id].created_at
+            parents = dag[exp_id]
+        return start
+
+    def node_payload(exp_id: str, *, is_tip: bool, is_merge_id: str, started_at: datetime) -> dict:
         exp = experiments[exp_id]
+        ended_at = None
+        if exp.conclusion.status in CONCLUDED_STATUSES:
+            ended_at = exp.conclusion.decided_at or exp.created_at
+        hold = microprojects.hold_of(exp)
         return {
             "id": exp_id,
             "title": exp.title,
-            "status": exp.conclusion.status,
+            "status": microprojects.display_status(exp),
+            "hold": {"since": hold.get("since"), "reason": hold.get("reason")} if hold else None,
             "decision": exp.conclusion.decision,
             "author": exp.author,
             "created_at": exp.created_at.isoformat(),
+            "started_at": started_at.isoformat(),
+            "ended_at": ended_at.isoformat() if ended_at else None,
             "conclusion_summary": exp.conclusion.summary,
             "is_merge": len(dag[is_merge_id]) > 1,
             "is_tip": is_tip,
@@ -304,14 +364,17 @@ def microproject_lineage(microproject: Microproject = Depends(require_role("view
     for exp_id in structural_ids:
         resolved_tips = tips_by_anchor.get(exp_id, [])
         already_a_tip = exp_id in tips
+        started_at = experiments[exp_id].created_at
         if not already_a_tip and len(resolved_tips) == 1:
             display_id[exp_id] = resolved_tips[0]
-            nodes.append(node_payload(resolved_tips[0], is_tip=True, is_merge_id=exp_id))
+            nodes.append(node_payload(resolved_tips[0], is_tip=True, is_merge_id=exp_id, started_at=started_at))
         else:
             display_id[exp_id] = exp_id
-            nodes.append(node_payload(exp_id, is_tip=already_a_tip, is_merge_id=exp_id))
+            nodes.append(node_payload(exp_id, is_tip=already_a_tip, is_merge_id=exp_id, started_at=started_at))
             for tip_id in resolved_tips:  # only non-empty when ambiguous (len > 1) - see docstring
-                nodes.append(node_payload(tip_id, is_tip=True, is_merge_id=exp_id))
+                nodes.append(
+                    node_payload(tip_id, is_tip=True, is_merge_id=exp_id, started_at=line_start(tip_id, exp_id))
+                )
 
     edges = [
         {"parent": display_id[parent], "child": display_id[child]}
@@ -321,6 +384,15 @@ def microproject_lineage(microproject: Microproject = Depends(require_role("view
     for exp_id, resolved_tips in tips_by_anchor.items():
         if len(resolved_tips) > 1:
             edges.extend({"parent": display_id[exp_id], "child": tip_id} for tip_id in resolved_tips)
+
+    # When the work moved on from a node: its first child's start - what ends the elapsed time of a
+    # draft that was never concluded but continued into a new version (« poursuivie »).
+    started = {node["id"]: node["started_at"] for node in nodes}
+    for node in nodes:
+        children = [started[edge["child"]] for edge in edges if edge["parent"] == node["id"]]
+        node["continued_at"] = min(children) if children else None
+        if node["continued_at"]:
+            node["status"] = microprojects.display_status(experiments[node["id"]], continued=True)
 
     return {"nodes": nodes, "edges": edges}
 
@@ -476,6 +548,7 @@ def evolve_experience(
         raise _not_found(exc) from exc
 
     builder.metadata = dict(parent.metadata)
+    builder.metadata.pop(microprojects.HOLD_KEY, None)  # a new version starts afresh, not paused
     # continuing an image-mode experience in the builder: its structure is drawn from now on
     builder.metadata.pop(structures.IMAGE_REVISION_KEY, None)
     builder.evidence = list(parent.evidence)
@@ -490,11 +563,17 @@ def evolve_experience(
     builder.metadata["structureforge_process"] = structures.process_metadata(
         body.substrate, body.steps, structures.declared_params_by_index(body.declared_params)
     )
+    # « Éditer la fiche » without touching the structure (a clearer intention, a context, one more
+    # objective...) is still the same study: its status and conclusion stay - only a structure that
+    # actually changed starts a new, unconcluded iteration.
+    if _same_drawn_structure(parent, builder.metadata["structureforge_process"]):
+        builder.conclusion = parent.conclusion
     # entities are usually inherited unchanged from the parent (physical_tracking rides along in
     # builder.metadata above) - body.entities only matters to fix forward a lineage that started
     # before this rule existed, or predates the entity ever being set (see has_tracked_physical_entity).
     if body.entities:
         builder.metadata["physical_tracking"] = structures.clean_entity_entries(body.entities)
+    apply_context(builder.metadata, body.context)
     if not structures.has_tracked_physical_entity(builder.metadata):
         raise HTTPException(
             status_code=422,
@@ -553,9 +632,19 @@ def evolve_experience_with_image(
         carry_objectives=not body.objectives,
         carry_steps=False,
     )
-    builder.metadata = {k: v for k, v in parent.metadata.items() if k not in structures.DRAWN_STRUCTURE_METADATA_KEYS}
-    builder.metadata[structures.IMAGE_REVISION_KEY] = structures.new_image_revision()
+    builder.metadata = {
+        k: v for k, v in parent.metadata.items() if k not in structures.DRAWN_STRUCTURE_METADATA_KEYS and k != microprojects.HOLD_KEY
+    }
+    same_pictures = structures.is_image_structure(parent.structure_type) and image.model_dump()["images"] == structures.structure_images(
+        parent.structure_type, parent.structure
+    )
+    if same_pictures and parent.metadata.get(structures.IMAGE_REVISION_KEY):
+        # same pictures: the fiche was edited, not the structure - same version, same conclusion
+        builder.conclusion = parent.conclusion
+    else:
+        builder.metadata[structures.IMAGE_REVISION_KEY] = structures.new_image_revision()
     builder.metadata["physical_tracking"] = entities
+    apply_context(builder.metadata, body.context)
     builder.evidence = list(parent.evidence)
     builder.tags = list(parent.tags)
     if body.objectives:
@@ -661,6 +750,7 @@ def conclude_experience(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.metadata.pop(microprojects.HOLD_KEY, None)  # concluded: no longer paused
     builder.form_answers = dict(parent.form_answers)
     builder.tags = list(parent.tags)
     builder.evidence = list(parent.evidence)
@@ -719,6 +809,15 @@ def add_evidence(
             raise HTTPException(status_code=422, detail="une valeur est requise pour la mesure nommée")
         metric = {body.metric_name: follow.Quantity(value=body.metric_value, unit=body.metric_unit)}
 
+    links = _clean_evidence_links(body.links)
+    if len(body.images) > MAX_EVIDENCE_IMAGES:
+        raise HTTPException(status_code=422, detail=f"{MAX_EVIDENCE_IMAGES} images au maximum par preuve")
+    if len({img.image_id for img in body.images}) != len(body.images):
+        raise HTTPException(status_code=422, detail="La même image figure deux fois.")
+    images = [(img, uploaded_image(microproject.slug, img.image_id)) for img in body.images]
+    kind = "image" if images and body.kind == "standard" else body.kind
+    source = body.source.strip() or (links[0] if links else "")
+
     builder = repo.derive(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
@@ -728,13 +827,33 @@ def add_evidence(
     builder.tags = list(parent.tags)
     builder.conclusion = parent.conclusion
     evidence_id = secrets.token_hex(6)
+    if links:
+        builder.metadata["evidence_links"] = {**parent.metadata.get("evidence_links", {}), evidence_id: links}
+    if images:
+        # the pasted images become the preuve's attachments in this same version (see upload_attachment
+        # for the one-file-at-a-time route, which records a version per file)
+        now = datetime.now(timezone.utc).isoformat()
+        builder.metadata["attachments"] = list(parent.metadata.get("attachments", [])) + [
+            {
+                "id": img.image_id,
+                "filename": sidecar.get("filename", "image"),
+                "content_type": sidecar.get("content_type"),
+                "size": sidecar.get("size"),
+                "entity_index": None,
+                "evidence_id": evidence_id,
+                "caption": (img.caption or "").strip()[:200] or None,
+                "uploaded_by": user.name,
+                "uploaded_at": now,
+            }
+            for img, sidecar in images
+        ]
     builder.add_evidence(
         id=evidence_id,
         description=body.description,
-        source=body.source,
+        source=source,
         metrics=metric or {},
         step_index=body.step_index,
-        kind=body.kind,
+        kind=kind,
         objective=body.objective,
         interpretation=body.interpretation,
         graph_config=body.graph_config,
@@ -790,6 +909,7 @@ def combine_experiences(
     except follow.FollowError as exc:
         raise HTTPException(status_code=422, detail="Ces deux expériences ne peuvent pas être combinées.") from exc
     builder.metadata = dict(a.metadata)
+    builder.metadata.pop(microprojects.HOLD_KEY, None)
     builder.tags = list(a.tags)
     builder.form_answers = dict(a.form_answers)
     try:
@@ -852,11 +972,12 @@ def set_status(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(get_current_user),
 ) -> dict:
-    """Move a study between « brouillon » (draft) and « en cours » (running), or reopen a
-    concluded one to « en cours » so its conclusion can be revised. Like ``etiquettes``/``preuves``
-    this records a new immutable version carrying everything else unchanged - only
-    ``conclusion.status`` (and, when reopening, the cleared ``decided_at``) differ; the
-    per-objective results are kept as a starting point for the revised conclusion.
+    """Move a study between « brouillon » (draft) and « en cours » (running), pause it
+    (« hold », with an optional reason) or resume it, or reopen a concluded one to « en cours » so
+    its conclusion can be revised. Like ``etiquettes``/``preuves`` this records a new immutable
+    version carrying everything else unchanged - only ``conclusion.status`` (and, when reopening,
+    the cleared ``decided_at``) or the ``hold`` metadata differ; the per-objective results are kept
+    as a starting point for the revised conclusion.
     """
     repo = microprojects.get_repository(microproject.slug)
     try:
@@ -864,8 +985,10 @@ def set_status(
     except follow.ExperimentNotFoundError as exc:
         raise _not_found(exc) from exc
 
-    if parent.conclusion.status == body.status:
+    if microprojects.display_status(parent) == body.status:
         return {"id": parent.id, "status": body.status}
+    if body.status == "hold" and parent.conclusion.status not in RUNNING_STATUSES:
+        raise HTTPException(status_code=422, detail="Seule une étude en brouillon ou en cours peut être mise en pause.")
 
     builder = repo.derive(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
@@ -874,7 +997,13 @@ def set_status(
     builder.form_answers = dict(parent.form_answers)
     builder.tags = list(parent.tags)
     builder.evidence = list(parent.evidence)
-    builder.conclusion = parent.conclusion.model_copy(update={"status": body.status, "decided_at": None})
+    if body.status == "hold":
+        reason = (body.reason or "").strip()[:300] or None
+        builder.metadata[microprojects.HOLD_KEY] = {"since": datetime.now(timezone.utc).isoformat(), "by": user.name, "reason": reason}
+        builder.conclusion = parent.conclusion
+    else:
+        builder.metadata.pop(microprojects.HOLD_KEY, None)
+        builder.conclusion = parent.conclusion.model_copy(update={"status": body.status, "decided_at": None})
     try:
         experiment = builder.commit()
     except follow.FormValidationError as exc:
@@ -939,6 +1068,22 @@ def set_physical_tracking(
 
 
 _ATTACHMENT_ID_RE = re.compile(r"^att_[0-9a-f]{20}$")
+
+MAX_EVIDENCE_IMAGES = 12
+MAX_EVIDENCE_LINKS = 10
+
+
+def _clean_evidence_links(raw: list[str]) -> list[str]:
+    """A preuve's links as typed or pasted - one per entry, surrounding quotes dropped (Windows'
+    « Copier en tant que chemin d'accès » adds them), blanks and duplicates removed."""
+    links: list[str] = []
+    for value in raw:
+        value = (value or "").strip().strip('"').strip()
+        if value and value not in links:
+            links.append(value[:1000])
+    if len(links) > MAX_EVIDENCE_LINKS:
+        raise HTTPException(status_code=422, detail=f"{MAX_EVIDENCE_LINKS} liens au maximum par preuve")
+    return links
 
 
 def _safe_ascii_filename(name: str) -> str:

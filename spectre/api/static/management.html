@@ -81,6 +81,8 @@
     .thematic__name { font-size:17px; font-weight:700; color:var(--navy); display:flex; align-items:center; gap:10px; }
     .thematic__name::before { content:""; width:4px; height:18px; border-radius:2px; background:var(--gold); }
     .thematic--none .thematic__name::before { background:var(--border); }
+    .thematic__name a { color:inherit; text-decoration:underline; text-decoration-color:transparent; text-underline-offset:4px; transition:text-decoration-color var(--dur) var(--ease); }
+    .thematic__name a:hover { text-decoration-color:var(--gold); }
     .thematic__desc { font-size:13px; color:var(--text-soft); margin-top:4px; max-width:70ch; }
     .thematic__meta { font-family:var(--font-mono); font-size:11.5px; color:var(--text-faint); margin-top:4px; }
     .thematic__actions { display:flex; gap:8px; flex:none; }

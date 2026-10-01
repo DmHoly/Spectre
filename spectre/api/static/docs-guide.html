@@ -53,6 +53,7 @@
         <div class="docs-nav__group">Suivre une expérience</div>
         <a href="#lancer">Lancer le suivi</a>
         <a href="#fiche">La fiche d'expérience</a>
+        <a href="#cahier">Cahier de données</a>
         <a href="#preuves">Preuves</a>
         <a href="#conclure">Conclure</a>
 
@@ -160,22 +161,22 @@
           <h2>Sans constructeur : des images de la structure</h2>
           <p>Pas besoin de passer par l'atelier pour démarrer une expérience : dans « Nouvelle expérience », choisissez <strong>Coller une image</strong>. La structure est alors donnée en images - un schéma fait dans PowerPoint (sélectionnez la forme ou la diapositive, <kbd>Ctrl</kbd>+<kbd>C</kbd>), des coupes TEM ou MEB copiées depuis le logiciel du microscope, une photo. <strong>Plusieurs images</strong> quand une seule ne suffit pas (le schéma visé, une coupe d'ensemble, un zoom...), jusqu'à 12, dans l'ordre où les lire : chacune avec son type (schéma, coupe TEM/MEB, autre) et sa légende.</p>
           <p>Pour ajouter : <kbd>Ctrl</kbd>+<kbd>V</kbd> n'importe où sur la page, glisser-déposer un ou plusieurs fichiers, ou « Ajouter une image » (PNG, JPEG, GIF ou WebP, 10 Mo max ; un TIFF de microscope se colle plutôt qu'il ne s'envoie, le navigateur ne sait pas l'afficher). Sur chaque image : les flèches pour la placer avant ou après, « Remplacer » (ou déposer un fichier directement dessus), la corbeille pour la retirer. À droite, le titre, l'intention, l'entité physique et les objectifs, comme pour tout lancement.</p>
-          <p>Sur la fiche, les images forment une planche numérotée ; <strong>Modifier les images</strong> ouvre la même planche pour en ajouter, en retirer, les réordonner ou les remplacer à tout moment - un schéma retouché, la coupe TEM une fois faite : c'est la même structure, donc pas de nouvelle version (les images précédentes restent sur la version précédente, et la fiche résume ce qui a changé : « 1 image ajoutée », « Ordre des images modifié »...). Quand la structure change vraiment, <strong>Enregistrer une évolution</strong> repart de nouvelles images et crée une nouvelle version (vX+1), avec son nœud dans le graphe du µprojet. On peut passer d'un mode à l'autre à tout moment : « Continuer dans le constructeur » redessine étape par étape une structure donnée en images, et « Avec une image » (dans « Nouvelle expérience ») continue une expérience dessinée par des images.</p>
+          <p>Sur la fiche, les images forment une planche numérotée ; <strong>Modifier les images</strong> ouvre la même planche pour en ajouter, en retirer, les réordonner ou les remplacer à tout moment - un schéma retouché, la coupe TEM une fois faite : c'est la même structure, donc pas de nouvelle version (les images précédentes restent sur la version précédente, et la fiche résume ce qui a changé : « 1 image ajoutée », « Ordre des images modifié »...). Quand la structure change vraiment, <strong>Éditer la fiche</strong> avec de nouvelles images et crée une nouvelle version (vX+1), avec son nœud dans le graphe du µprojet. On peut passer d'un mode à l'autre à tout moment : « Continuer dans le constructeur » redessine étape par étape une structure donnée en images, et « Avec une image » (dans « Nouvelle expérience ») continue une expérience dessinée par des images.</p>
           <p>Ce qu'on perd sans constructeur : la simulation, le détail des couches au survol, les campagnes (variations) et la comparaison paramètre par paramètre - une image ne dit rien de ses épaisseurs. Le rapport téléchargé embarque toutes les images.</p>
         </section>
 
         <section id="lancer">
           <h2>Lancer le suivi</h2>
-          <p>Pour une nouvelle expérience, le bandeau de l'atelier porte trois étapes : <strong>1. Structure</strong>, <strong>2. Intention &amp; objectifs</strong>, <strong>3. Variations &amp; lancement</strong>. L'écran « Intention » demande un titre, une intention (pourquoi fait-on cette expérience, et pourquoi maintenant) et, optionnellement, une hypothèse ; à côté, les objectifs : pour chacun, pourquoi il compte, la mesure suivie, le sens recherché (observer / maximiser / minimiser / cible précise) et comment on compte le vérifier. Les réponses viendront à la conclusion.</p>
+          <p>Pour une nouvelle expérience, le bandeau de l'atelier porte trois étapes : <strong>1. Structure</strong>, <strong>2. Intention &amp; objectifs</strong>, <strong>3. Variations &amp; lancement</strong>. L'écran « Intention » demande un titre, un <strong>contexte</strong> (une description sommaire : d'où part l'expérience, pourquoi maintenant), <strong>ce que je veux démontrer</strong> et, optionnellement, une hypothèse ; à côté, <strong>comment je compte le démontrer</strong> - les objectifs : pour chacun, pourquoi il compte, la mesure suivie, le sens recherché (observer / maximiser / minimiser / cible précise) et comment on compte le vérifier. C'est exactement ce qu'on lira en tête de la fiche ; les réponses aux objectifs viendront à la conclusion.</p>
           <p>L'écran « Variations » reprend le process flow : cliquer une étape, le substrat, ou une couche du dessin pour faire varier n'importe lequel de ses paramètres (voir <a href="#campagnes">Plusieurs échantillons</a>), puis nommer les wafers dans le tableau des échantillons avant de lancer.</p>
           <img class="docs-shot" src="/static/docs/img/10-lancer.png" alt="Écran intention et objectifs">
         </section>
 
         <section id="fiche">
           <h2>La fiche d'expérience</h2>
-          <p>Chaque expérience a sa propre fiche : un en-tête (statut, titre, numéro du µprojet, responsable, étiquettes), puis trois onglets indépendants :</p>
+          <p>Chaque expérience a sa propre fiche. Son <strong>en-tête est un résumé</strong> qui se lit d'un coup d'œil : numéro du µprojet, version, statut, titre, responsable et dates ; le <strong>contexte</strong> ; <strong>ce qu'on veut démontrer</strong> (encadré) et <strong>comment</strong> - les objectifs, chacun avec sa mesure, sa cible, sa méthode de vérification et son résultat ; à droite, le <strong>verdict</strong> en badge (un anneau, un segment par objectif : atteint, partiellement, non atteint, à vérifier), la conclusion dès qu'elle est écrite, et les <strong>plaques suivies</strong> - lasermarks, FDL et « Données en base », qui ouvre leurs données dans la page Data (requête PRISM lancée sur ces lasermarks). « Éditer la fiche » rouvre l'éditeur sur cet écran d'intention ; tant que la structure ne change pas, l'étude garde son statut et sa conclusion. Viennent ensuite trois onglets indépendants :</p>
           <ul>
-            <li><strong>Structure &amp; intention</strong> — la structure actuelle avec les différences par rapport à la version précédente (pour une campagne, un carrousel : la référence puis chaque variante, avec la valeur de ses paramètres variés), l'intention, l'hypothèse et les objectifs, les versions du procédé (une ligne par changement de structure/procédé, numérotée X.Y.Z), le suivi physique, la cartographie des variantes et la feuille de split.</li>
+            <li><strong>Structure &amp; plaques</strong> — la structure actuelle avec les différences par rapport à la version précédente (pour une campagne, un carrousel : la référence puis chaque variante, avec la valeur de ses paramètres variés) et, à côté, les plaques et entités physiques (lasermark, emplacement, FDL de chacune, modifiables) ; puis les versions du procédé (une ligne par changement de structure/procédé, numérotée X.Y.Z), la cartographie des variantes et la feuille de split.</li>
             <li><strong>Données</strong> — les données mesurées (images comparées à la structure simulée) et les preuves.</li>
             <li><strong>Conclusion</strong> — la conclusion et les réponses aux objectifs, ou le formulaire pour la rédiger.</li>
           </ul>
@@ -183,9 +184,16 @@
           <img class="docs-shot" src="/static/docs/img/11-fiche-experience.png" alt="Fiche d'expérience complète">
         </section>
 
+        <section id="cahier">
+          <h2>Cahier de données</h2>
+          <p>L'onglet « Données » d'une fiche s'ouvre sur son <strong>cahier de données</strong> : les mesures de ses plaques, tirées directement des bases de caractérisation (via PRISM), vues comme on a l'habitude de les regarder, avec ce qu'on y voit et ce qu'on en conclut - le cahier de labo de l'étude, repris tel quel dans le rapport téléchargé.</p>
+          <p><strong>Ajouter une vue</strong> : choisissez le type de données (EQE / LIV, PL, NCEL, liste des wafers...), les plaques - celles de l'expérience sont déjà cochées, ajoutez-en d'autres pour comparer (une plaque de référence...) -, puis « Charger les données ». Les vues habituelles de ce type de données sont proposées en premier (pour l'EQE : EQE en fonction de la densité de courant, carte wafer de l'EQE max, distribution par plaque, synthèse par plaque, courbes I-V...) ; « Toutes les vues possibles » ouvre les autres (tableau, carte wafer, distribution, nuage de points, courbes, synthèse). La vue se règle en direct (valeur affichée, échelle log, devices éteints à part...), on lui donne un titre, éventuellement l'objectif qu'elle sert et une première observation.</p>
+          <p>Sur chaque vue : les observations et la conclusion à côté du graphique (« Enregistrer la note »), « Réglages » pour changer de vue ou d'options, de titre, d'objectif servi, ou la sortir du rapport, « Actualiser » pour recharger les données depuis la base, les flèches pour l'ordre, la corbeille pour la retirer. Les données d'une vue sont figées au moment où on les charge : le cahier et le rapport restent tels qu'ils étaient, même si la base bouge, jusqu'au prochain « Actualiser ». Comme le reste de la fiche, chaque changement est tracé dans l'historique.</p>
+        </section>
+
         <section id="preuves">
           <h2>Preuves</h2>
-          <p>À tout moment, ajouter une preuve : une description, une source (lien, fichier, référence) et, optionnellement, une mesure nommée avec sa valeur. Chaque preuve ajoutée enregistre une nouvelle version de l'expérience.</p>
+          <p>À tout moment, ajouter une preuve (onglet « Données ») : une description et, au choix, des <strong>liens</strong> - un dossier, une présentation PowerPoint, une page SharePoint, un par ligne (un chemin copié avec « Copier en tant que chemin d'accès » de l'explorateur se colle tel quel, guillemets compris) -, une ou plusieurs <strong>images</strong> collées (<kbd>Ctrl</kbd>+<kbd>V</kbd>), glissées-déposées ou choisies, chacune avec sa légende, une référence et une mesure nommée avec sa valeur. Sur la fiche, une page web s'ouvre d'un clic ; un chemin réseau ou disque, que le navigateur ne sait pas ouvrir, se copie (« Copier le chemin ») pour le coller dans l'explorateur. Les images se commentent d'une flèche ou d'un cadre. Chaque preuve ajoutée - liens et images compris - enregistre une seule nouvelle version de l'expérience.</p>
           <img class="docs-shot" src="/static/docs/img/12-preuves.png" alt="Formulaire d'ajout d'une preuve avec mesure nommée">
         </section>
 
@@ -197,7 +205,7 @@
 
         <section id="evoluer">
           <h2>Continuer ou explorer une nouvelle piste</h2>
-          <p>Le bouton « Enregistrer une évolution » sur une fiche rouvre le constructeur, préchargé avec la structure actuelle. Deux choix apparaissent alors :</p>
+          <p>Le bouton « Éditer la fiche » rouvre l'éditeur, préchargé avec la fiche actuelle (sur l'écran d'intention ; « Modifier la structure », à côté du dessin, l'ouvre sur la structure). Enregistrer crée une nouvelle version. Deux choix apparaissent alors :</p>
           <ul>
             <li><strong>Continuer cette piste</strong> — la nouvelle version prolonge directement celle-ci.</li>
             <li><strong>Explorer une nouvelle piste à partir d'ici</strong> — un embranchement : la version de départ reste inchangée, et une deuxième direction se développe en parallèle, comparable à tout moment à la première. La fiche d'une version qui a donné plusieurs pistes affiche un lien vers chacune.</li>
@@ -211,7 +219,7 @@
           <ul>
             <li><strong>Partir de zéro</strong> — un constructeur vide.</li>
             <li><strong>Utiliser cette structure</strong> — reprend la structure d'une expérience existante comme point de départ, sans lien de filiation avec elle (une nouvelle piste indépendante).</li>
-            <li><strong>Continuer cette expérience</strong> — équivaut à ouvrir « Enregistrer une évolution » depuis cette expérience.</li>
+            <li><strong>Continuer cette expérience</strong> — équivaut à ouvrir « Éditer la fiche » depuis cette expérience.</li>
           </ul>
         </section>
 
@@ -237,6 +245,8 @@
         <section id="suivi-physique">
           <h2>Suivi physique par échantillon</h2>
           <p>Un identifiant et un emplacement peuvent être posés sur une expérience simple (dans la fiche), ou par échantillon pour une campagne (directement sous chaque vignette de la cartographie). Utile pour retrouver quel échantillon physique correspond à quelle ligne de la feuille de split.</p>
+          <p><strong>FDL.</strong> Chaque wafer porte aussi ses FDL - les feuilles de lancement JIRA, le numéro de suivi qu'on cite pour le retrouver. Un wafer peut en avoir plusieurs (une par passage en ligne) : tapez le numéro puis <kbd>Entrée</kbd> pour l'empiler, × pour en retirer une. « 1234 », « fdl 1234 » ou « FDL_1234 » s'écrivent tous <code>FDL-1234</code>. Elles se saisissent au lancement (tableau des échantillons, page « structure en image »), sur la fiche (suivi physique, ou sous chaque vignette d'une campagne), sont reprises d'une version à l'autre et s'affichent en tête de fiche, dans le graphe du µprojet et l'atlas. La barre de recherche de la topbar les trouve : tapez le numéro (« 1234 ») pour ouvrir directement l'expérience du wafer.</p>
+          <p><strong>Retrouver une plaque.</strong> La même barre de recherche trouve aussi les plaques par leur lasermark (« w12a3 », « W12-A3 » : casse et séparateurs ignorés). Une plaque ouvre sa propre page : son dernier emplacement connu, toutes ses FDL, les µprojets où elle passe, « Données en base », et son <strong>parcours</strong> - chaque étude qui la suit, la plus récente d'abord, avec la variante qu'elle porte dans une campagne et l'emplacement noté dans cette étude. Un lasermark cliqué sur une fiche (en-tête ou carte des plaques) mène à la même page. Seuls les µprojets dont vous êtes membre y apparaissent.</p>
           <img class="docs-shot" src="/static/docs/img/17-suivi-physique.png" alt="Identifiants physiques renseignés sous chaque vignette de la cartographie">
         </section>
 
@@ -267,7 +277,7 @@
         <section id="refs">
           <h2>Refs</h2>
           <p>Une ref est un point de départ réutilisable : une version qu'on prévoit de reprendre encore et encore comme base de nouvelles pistes, plutôt que de repartir de zéro à chaque fois. Sur la fiche d'une version, à côté des étiquettes, « + ref » lui donne un petit nom (« omega », « banane »... librement choisi) - laissé vide, elle reçoit automatiquement le nom « ref vX.Y.Z » (le numéro de version affiché plus haut sur la fiche). Une même version peut porter plusieurs noms de ref à la fois.</p>
-          <p>Une fois nommée, une ref se retrouve exactement comme une version normale - « Enregistrer une évolution » depuis sa fiche, ou en tapant directement son nom (par ex. <code>omega</code>) à la place d'un identifiant technique partout où Spectre en demande un.</p>
+          <p>Une fois nommée, une ref se retrouve exactement comme une version normale - « Éditer la fiche » depuis sa fiche, ou en tapant directement son nom (par ex. <code>omega</code>) à la place d'un identifiant technique partout où Spectre en demande un.</p>
           <p>Le lien « Refs » d'un projet liste toutes ses refs et comment elles s'enchaînent : chaque ref n'affiche que la ref suivante dont elle est l'ancêtre la plus proche, sans les versions ordinaires entre les deux - une vue condensée des points de repère du projet, complémentaire à la « Vue d'ensemble » qui montre elle chaque version.</p>
           <img class="docs-shot" src="/static/docs/img/22-refs.png" alt="Page Refs d'un projet, montrant deux refs et leur enchaînement">
         </section>

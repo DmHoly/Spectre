@@ -4,6 +4,8 @@
 const STATUS_LABELS = {
   draft: { label: "Brouillon", cls: "badge-draft" },
   running: { label: "En cours", cls: "badge-running" },
+  hold: { label: "En pause", cls: "badge-hold" }, // statut propre à Spectre (metadata « hold »)
+  continued: { label: "Continuée", cls: "badge-continued" }, // brouillon repris par une version suivante
   concluded: { label: "Conclue", cls: "badge-concluded" },
   abandoned: { label: "Abandonnée", cls: "badge-abandoned" },
 };
@@ -14,12 +16,24 @@ const STATUS_LABELS = {
 // classes (each already fixes the right colour/teinte pair) rather than inventing new ones -
 // only the label changes. "concluded" with no decision (older data, or never set) keeps the
 // generic "Conclue" from STATUS_LABELS above.
+// « À poursuivre » a sa propre couleur (violet) : en bleu, on la confondait avec « En cours » ; une
+// conclusion « Abandonner la piste » est une piste abandonnée, pas une « Conclue » verte.
 const CONCLUDED_DECISION_LABELS = {
   promote: { label: "Concluante", cls: "badge-concluded" },
   inconclusive: { label: "Non concluante", cls: "badge-abandoned" },
-  branch: { label: "À poursuivre", cls: "badge-running" },
-  replicate: { label: "À poursuivre", cls: "badge-running" },
+  branch: { label: "À poursuivre", cls: "badge-continue" },
+  replicate: { label: "À poursuivre", cls: "badge-continue" },
+  abandon: { label: "Abandonnée", cls: "badge-abandoned" },
 };
+
+// L'issue d'une expérience en une clé (draft, continued, running, hold, promote, concluded, continue,
+// inconclusive, abandoned) : la même partout - badge (statusBadgeHtml), nœud du graphe et frise (lineage-graph.js).
+const OUTCOME_BY_DECISION = { promote: "promote", inconclusive: "inconclusive", branch: "continue", replicate: "continue", abandon: "abandoned" };
+
+function experimentOutcome(status, decision) {
+  if (status === "concluded") return OUTCOME_BY_DECISION[decision] || "concluded";
+  return STATUS_LABELS[status] ? status : "draft";
+}
 
 const ROLE_LABELS = {
   owner: "Propriétaire",
@@ -34,6 +48,43 @@ const ROLE_LABELS = {
 function statusBadgeHtml(status, decision) {
   const info = (status === "concluded" && CONCLUDED_DECISION_LABELS[decision]) || STATUS_LABELS[status] || STATUS_LABELS.draft;
   return `<span class="badge ${info.cls}"><span class="dot"></span>${info.label}</span>`;
+}
+
+// Durée compacte en français : « 40 min », « 5 h », « 3 j », « 2 sem. », « 4 mois », « 1 an 2 mois ».
+function formatDuration(ms) {
+  const minutes = Math.max(0, Math.round(ms / 60000));
+  if (minutes < 60) return minutes < 1 ? "< 1 min" : `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  const days = Math.round(hours / 24);
+  if (days < 14) return `${days} j`;
+  if (days < 60) return `${Math.round(days / 7)} sem.`;
+  const months = Math.round(days / 30.44);
+  if (months < 12) return `${months} mois`;
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  return `${years} an${years > 1 ? "s" : ""}${rest ? ` ${rest} mois` : ""}`;
+}
+
+// Temps écoulé d'une expérience : du début à la fin, ou jusqu'à maintenant tant qu'elle n'est pas
+// terminée (`ended` vide) - « 12 j » ou « depuis 12 j ».
+function elapsedLabel(started, ended) {
+  if (!started) return "";
+  const end = ended ? new Date(ended) : new Date();
+  const span = formatDuration(end - new Date(started));
+  return ended ? span : `depuis ${span}`;
+}
+
+// « Propriétaire » d'un µprojet : le premier (son créateur s'il l'est toujours), « +N » s'il y en a d'autres.
+function ownerChipHtml(owners, { label = true } = {}) {
+  if (!owners || !owners.length) return "";
+  const [first, ...others] = owners;
+  const all = owners.map((o) => o.name).join(", ");
+  return `<span class="owner-chip" title="Propriétaire${owners.length > 1 ? "s" : ""} : ${escapeHtml(all)}">
+      <span class="avatar avatar--xs" aria-hidden="true">${escapeHtml(initials(first.name))}</span>
+      ${label ? `<span class="owner-chip__label">Propriétaire</span>` : ""}
+      <span class="owner-chip__name">${escapeHtml(first.name)}</span>${others.length ? `<span class="owner-chip__more">+${others.length}</span>` : ""}
+    </span>`;
 }
 
 function roleLabel(role) {
@@ -223,9 +274,186 @@ function structureBoardHtml(slug, images, { compact = false } = {}) {
     .join("")}</div>`;
 }
 
+/* FDL - feuille de lancement (ticket JIRA) : le numéro de suivi avec lequel un wafer passe en
+   ligne, celui qu'on cite pour le retrouver. Un wafer peut en avoir plusieurs (une par passage) :
+   elles s'empilent, dans l'ordre. Même écriture partout que côté serveur (spectre.core.fdl) :
+   « fdl 1234 », « 1234 » -> FDL-1234 ; une autre clé JIRA « abc 12 » -> ABC-12. */
+function normalizeFdl(text) {
+  const value = String(text || "").replace(/\s+/g, " ").trim().replace(/^["']+|["']+$/g, "").trim();
+  if (!value) return null;
+  let match = value.match(/^(?:fdl)?[\s_\-#:]*(\d{1,8})$/i);
+  if (match) return `FDL-${parseInt(match[1], 10)}`;
+  match = value.match(/^([A-Za-z][A-Za-z0-9]{1,9})[\s_\-#:]*(\d{1,8})$/);
+  if (match) return `${match[1].toUpperCase()}-${parseInt(match[2], 10)}`;
+  return value.slice(0, 40);
+}
+
+// Pastilles en lecture seule (en-tête de fiche, graphe, atlas) - vide s'il n'y en a aucune.
+function fdlChipsHtml(fdls, { label = true } = {}) {
+  if (!fdls || !fdls.length) return "";
+  return `<span class="fdl-chips">${label ? `<span class="fdl-chips__label">FDL</span>` : ""}${fdls
+    .map((f) => `<span class="fdl-chip" title="Feuille de lancement ${escapeHtml(f)}">${escapeHtml(f)}</span>`)
+    .join("")}</span>`;
+}
+
+// Toutes les FDL des entités d'une expérience, chacune une fois.
+function fdlsOfTracking(tracking) {
+  const seen = [];
+  (tracking || []).forEach((entry) => (entry.fdl || []).forEach((f) => seen.includes(f) || seen.push(f)));
+  return seen;
+}
+
+/* Champ de saisie des FDL d'un wafer : taper le numéro puis Entrée (ou virgule, point-virgule, Tab)
+   l'empile en pastille ; coller « FDL-1, FDL-2 » en ajoute plusieurs ; × ou Retour arrière (champ
+   vide) retire la dernière. `datalistId` : l'autocomplétion des FDL déjà utilisées dans le µprojet.
+   Renvoie {get, set}. */
+function mountFdlField(container, { values = [], onChange = () => {}, datalistId = null, compact = false, label = "FDL" } = {}) {
+  let fdls = [];
+  container.classList.add("fdl-field");
+  if (compact) container.classList.add("fdl-field--compact");
+  container.innerHTML = `<span class="fdl-field__chips"></span><input class="fdl-field__input" type="text" autocomplete="off" spellcheck="false" placeholder="${fdls.length ? "" : "FDL-…"}" aria-label="${escapeHtml(label)} (Entrée pour ajouter)"${datalistId ? ` list="${datalistId}"` : ""}>`;
+  const chips = container.querySelector(".fdl-field__chips");
+  const input = container.querySelector("input");
+
+  function paint() {
+    chips.innerHTML = fdls
+      .map((f, i) => `<span class="fdl-chip">${escapeHtml(f)}<button type="button" class="fdl-chip__x" data-index="${i}" aria-label="Retirer ${escapeHtml(f)}">×</button></span>`)
+      .join("");
+    input.placeholder = fdls.length ? "+ FDL" : "FDL-…";
+  }
+  function add(text) {
+    let added = false;
+    String(text || "")
+      .split(/[,;\n]+|\s{2,}/)
+      .map(normalizeFdl)
+      .filter(Boolean)
+      .forEach((f) => {
+        if (!fdls.includes(f)) {
+          fdls.push(f);
+          added = true;
+        }
+      });
+    if (added) {
+      paint();
+      onChange(fdls.slice());
+    }
+  }
+  function commit() {
+    if (!input.value.trim()) return false;
+    add(input.value);
+    input.value = "";
+    return true;
+  }
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === "," || event.key === ";" || (event.key === "Tab" && input.value.trim())) {
+      if (commit() || event.key === "Enter") event.preventDefault();
+    } else if (event.key === "Backspace" && !input.value && fdls.length) {
+      fdls.pop();
+      paint();
+      onChange(fdls.slice());
+    }
+  });
+  // un numéro choisi dans l'autocomplétion s'empile tout de suite
+  input.addEventListener("input", (event) => {
+    if (event.inputType === "insertReplacementText" || (datalistId && event.inputType === undefined)) commit();
+  });
+  input.addEventListener("paste", (event) => {
+    const text = event.clipboardData && event.clipboardData.getData("text");
+    if (text && /[,;\n]/.test(text)) {
+      event.preventDefault();
+      add(text);
+    }
+  });
+  input.addEventListener("blur", commit);
+  chips.addEventListener("click", (event) => {
+    const btn = event.target.closest(".fdl-chip__x");
+    if (!btn) return;
+    fdls.splice(Number(btn.dataset.index), 1);
+    paint();
+    onChange(fdls.slice());
+    input.focus();
+  });
+  container.addEventListener("click", (event) => {
+    if (event.target === container || event.target === chips) input.focus();
+  });
+
+  fdls = (values || []).map(normalizeFdl).filter(Boolean);
+  paint();
+  return {
+    get() {
+      commit(); // ce qui est encore tapé compte aussi
+      return fdls.slice();
+    },
+    set(next) {
+      fdls = (next || []).map(normalizeFdl).filter(Boolean);
+      paint();
+    },
+  };
+}
+
+// La page d'une plaque (son parcours d'une étude à l'autre, voir plaque.html).
+function plateUrl(lasermark) {
+  return `/plaques/${encodeURIComponent(lasermark)}`;
+}
+
+/* « Données en base » : les requêtes PRISM (page Data) qui prennent des lasermarks, ouvertes sur
+   les plaques données - un clic, et la requête part avec ces wafers (donnees.js, ?wafers=). Rien
+   n'est affiché si PRISM n'a aucune requête de ce genre (ou s'il n'y a aucun lasermark). Utilisé par
+   la fiche d'expérience et la page d'une plaque. */
+let waferHooksPromise = null;
+function waferHooks() {
+  if (!waferHooksPromise) {
+    waferHooksPromise = api
+      .get("/api/donnees/hooks")
+      .then((data) => (data.hooks || []).filter((h) => h.status === "implemented" && (h.parameters || []).includes("wafer_names")))
+      .catch(() => []);
+  }
+  return waferHooksPromise;
+}
+
+async function renderWaferDbLinks(hosts, lasermarkList) {
+  const lasermarks = [...new Set((lasermarkList || []).filter(Boolean))];
+  const hooks = lasermarks.length ? await waferHooks() : [];
+  if (!hooks.length) {
+    hosts.forEach((h) => (h.innerHTML = ""));
+    return;
+  }
+  const wafers = encodeURIComponent(lasermarks.join(","));
+  const items = hooks
+    .map((h) => `<li><a href="/donnees/${encodeURIComponent(h.key)}?wafers=${wafers}" target="_blank" rel="noopener">${escapeHtml(h.title)}<span>${escapeHtml(h.category || "")}</span></a></li>`)
+    .join("");
+  const icon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>`;
+  hosts.forEach((host) => {
+    host.innerHTML = `
+      <details class="db-menu">
+        <summary class="btn btn-line db-menu__btn" title="Les données de ${lasermarks.length > 1 ? "ces plaques" : "cette plaque"} en base (PRISM)">${icon}Données en base</summary>
+        <div class="db-menu__pop">
+          <div class="db-menu__title">Ouvrir dans Data, pour ${escapeHtml(lasermarks.length > 3 ? `${lasermarks.length} plaques` : lasermarks.join(", "))}</div>
+          <ul>${items}</ul>
+        </div>
+      </details>`;
+  });
+}
+
+document.addEventListener("click", (event) => {
+  document.querySelectorAll(".db-menu[open]").forEach((menu) => {
+    if (!menu.contains(event.target)) menu.removeAttribute("open");
+  });
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  document.querySelectorAll(".db-menu[open]").forEach((menu) => {
+    menu.removeAttribute("open");
+    menu.querySelector("summary").focus();
+  });
+});
+
 // Recherche de µprojet dans la topbar, sur toutes les pages connectées : son numéro tel qu'on le
-// dit (« Nat 4 », « Nat_0004 », « nat4 ») ou un bout de son nom, avec des suggestions au fil de la
-// frappe (↑ ↓ pour choisir, Entrée pour ouvrir, Échap pour fermer). « / » ou Ctrl+K y place le
+// dit (« Nat 4 », « Nat_0004 », « nat4 ») ou un bout de son nom ; une plaque par son lasermark
+// (« W12-A3 », séparateurs et casse ignorés : sa page, toutes les études qui la suivent) ; et, dès
+// qu'on tape un chiffre, une FDL (« 1234 », « FDL-1234 ») : les expériences dont un wafer la porte. Suggestions au fil de
+// la frappe (↑ ↓ pour choisir, Entrée pour ouvrir, Échap pour fermer). « / » ou Ctrl+K y place le
 // curseur depuis n'importe où. Injectée ici plutôt que recopiée dans chaque page HTML.
 function initTopbarSearch() {
   const topbar = document.querySelector(".topbar");
@@ -236,10 +464,10 @@ function initTopbarSearch() {
   form.setAttribute("role", "search");
   form.innerHTML = `
     <svg class="topbar-search__icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input class="topbar-search__input" type="search" autocomplete="off" spellcheck="false" placeholder="µprojet : Nat 4, nom…"
-      aria-label="Aller au µprojet (numéro ou nom)" role="combobox" aria-expanded="false" aria-controls="topbar-search-list" aria-autocomplete="list">
+    <input class="topbar-search__input" type="search" autocomplete="off" spellcheck="false" placeholder="µprojet, plaque, FDL…"
+      aria-label="Aller à un µprojet (numéro ou nom), une plaque (lasermark) ou une FDL" role="combobox" aria-expanded="false" aria-controls="topbar-search-list" aria-autocomplete="list">
     <kbd class="topbar-search__key" aria-hidden="true" title="Raccourci : / ou Ctrl+K">/</kbd>
-    <ul class="topbar-search__list" id="topbar-search-list" role="listbox" aria-label="µprojets trouvés" hidden></ul>`;
+    <ul class="topbar-search__list" id="topbar-search-list" role="listbox" aria-label="Résultats de recherche" hidden></ul>`;
   topbar.insertBefore(form, actions);
 
   const input = form.querySelector("input");
@@ -249,9 +477,17 @@ function initTopbarSearch() {
   let timer = null;
   let seq = 0;
 
-  const open = (slug) => {
-    window.location.href = `/microprojets/${encodeURIComponent(slug)}`;
+  // un résultat : {type: "microproject", slug, code, name, management_area}, {type: "plate", sample_id,
+  // count, microprojects, latest} ou {type: "fdl", fdl, sample_id, experience, microproject}
+  const open = (hit) => {
+    window.location.href =
+      hit.type === "fdl"
+        ? `/microprojets/${encodeURIComponent(hit.microproject.slug)}/experiences/${encodeURIComponent(hit.experience.id)}`
+        : hit.type === "plate"
+          ? plateUrl(hit.sample_id)
+          : `/microprojets/${encodeURIComponent(hit.slug)}`;
   };
+  const GROUP_LABELS = { microproject: "µprojets", plate: "Plaques", fdl: "FDL" };
   const close = () => {
     list.hidden = true;
     input.setAttribute("aria-expanded", "false");
@@ -262,15 +498,28 @@ function initTopbarSearch() {
     if (!results.length) {
       list.innerHTML = message ? `<li class="topbar-search__empty">${escapeHtml(message)}</li>` : "";
     } else {
+      let previousType = null;
       list.innerHTML = results
-        .map(
-          (p, i) => `
+        .map((p, i) => {
+          const group = p.type !== previousType ? `<li class="topbar-search__group" role="presentation">${GROUP_LABELS[p.type]}</li>` : "";
+          previousType = p.type;
+          const body =
+            p.type === "fdl"
+              ? `<span class="topbar-search__code topbar-search__code--fdl">${escapeHtml(p.fdl)}</span>
+                 <span class="topbar-search__name">${escapeHtml(p.experience.title)}${p.sample_id ? ` · ${escapeHtml(p.sample_id)}` : ""}</span>
+                 <span class="topbar-search__area">${escapeHtml(p.microproject.code || p.microproject.name)}</span>`
+              : p.type === "plate"
+                ? `<span class="topbar-search__code topbar-search__code--plate">${escapeHtml(p.sample_id)}</span>
+                   <span class="topbar-search__name">${p.count > 1 ? `${p.count} études` : escapeHtml(p.latest.title)}</span>
+                   <span class="topbar-search__area">${escapeHtml(p.microprojects.slice(0, 2).join(", "))}${p.microprojects.length > 2 ? "…" : ""}</span>`
+                : `${p.code ? `<span class="topbar-search__code">${escapeHtml(p.code)}</span>` : ""}
+                 <span class="topbar-search__name">${escapeHtml(p.name)}</span>
+                 ${p.management_area ? `<span class="topbar-search__area">${escapeHtml(p.management_area.name)}</span>` : ""}`;
+          return `${group}
           <li class="topbar-search__item${i === active ? " is-active" : ""}" id="topbar-search-${i}" role="option" aria-selected="${i === active}" data-index="${i}">
-            ${p.code ? `<span class="topbar-search__code">${escapeHtml(p.code)}</span>` : ""}
-            <span class="topbar-search__name">${escapeHtml(p.name)}</span>
-            ${p.management_area ? `<span class="topbar-search__area">${escapeHtml(p.management_area.name)}</span>` : ""}
-          </li>`
-        )
+            ${body}
+          </li>`;
+        })
         .join("");
     }
     const show = Boolean(results.length || message);
@@ -288,11 +537,22 @@ function initTopbarSearch() {
       return;
     }
     try {
-      const found = await api.get(`/api/microprojets/recherche?q=${encodeURIComponent(query)}`);
+      const q = encodeURIComponent(query);
+      const [projects, plateHits, fdlHits] = await Promise.all([
+        api.get(`/api/microprojets/recherche?q=${q}`),
+        query.replace(/[\s_\-./#:]/g, "").length >= 2 ? api.get(`/api/plaques/recherche?q=${q}`).catch(() => []) : Promise.resolve([]),
+        /\d/.test(query) ? api.get(`/api/microprojets/recherche-fdl?q=${q}`).catch(() => []) : Promise.resolve([]),
+      ]);
       if (mine !== seq) return; // une frappe plus récente a déjà relancé la recherche
+      const projectHits = projects.map((p) => ({ ...p, type: "microproject" }));
+      const plateItems = plateHits.map((h) => ({ ...h, type: "plate" }));
+      const fdlItems = fdlHits.map((h) => ({ ...h, type: "fdl" }));
+      // « 1234 », « FDL 12 » : on cherche d'abord une FDL ; sinon les µprojets, puis les plaques
+      const fdlFirst = /^\s*(fdl)?[\s_\-#:]*\d+\s*$/i.test(query);
+      const found = fdlFirst ? [...fdlItems, ...plateItems, ...projectHits] : [...projectHits, ...plateItems, ...fdlItems];
       results = found;
       active = found.length ? 0 : -1;
-      paint(found.length ? "" : `Aucun µprojet pour « ${query} »`);
+      paint(found.length ? "" : `Rien pour « ${query} » (µprojet, plaque ou FDL)`);
     } catch (err) {
       if (mine === seq) {
         results = [];
@@ -325,14 +585,14 @@ function initTopbarSearch() {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     clearTimeout(timer);
-    if (results.length && active >= 0) return open(results[active].slug);
+    if (results.length && active >= 0) return open(results[active]);
     await fetchResults(); // Entrée avant que les suggestions n'arrivent : on cherche tout de suite
-    if (results.length) open(results[0].slug);
+    if (results.length) open(results[0]);
   });
   list.addEventListener("mousedown", (event) => {
     event.preventDefault(); // garde le focus dans le champ le temps du clic
     const item = event.target.closest("[data-index]");
-    if (item) open(results[Number(item.dataset.index)].slug);
+    if (item) open(results[Number(item.dataset.index)]);
   });
   input.addEventListener("blur", () => setTimeout(close, 120));
 

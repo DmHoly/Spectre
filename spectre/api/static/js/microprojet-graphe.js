@@ -15,7 +15,7 @@
 const NODE_RADIUS = 9;
 const COL_WIDTH = 130;
 const ROW_HEIGHT = 100;
-const MARGIN = 40;
+const MARGIN = 56; // assez pour les libellés centrés sous les nœuds des bords
 
 const svg = d3.select("#lineage-svg");
 const panel = document.getElementById("lineage-panel");
@@ -68,9 +68,11 @@ async function loadCard(nodeId, node) {
         ${statusBadgeHtml(detail.status, detail.conclusion.decision)}
       </div>
       <p class="help" style="margin-bottom:10px;">${escapeHtml(detail.intent)}</p>
+      ${fdlsOfTracking(detail.physical_tracking).length ? `<div style="margin-bottom:10px;">${fdlChipsHtml(fdlsOfTracking(detail.physical_tracking))}</div>` : ""}
       ${structureBlock}
       ${objectivesBlock}
       ${conclusionBlock}
+      ${node && node.started_at ? spanBlockHtml(node) : ""}
       <div style="font-size:12px;color:var(--text-faint);margin-top:12px;padding-top:10px;border-top:1px solid var(--border-soft);">
         ${escapeHtml(detail.author || "Auteur inconnu")} &middot; ${timeAgo(detail.created_at)}
       </div>
@@ -86,6 +88,19 @@ async function loadCard(nodeId, node) {
   } catch (err) {
     panel.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div>`;
   }
+}
+
+// Temps écoulé de l'expérience cliquée (même règle que sous le nœud, voir lineage-graph.js::lineageSpan).
+function spanBlockHtml(node) {
+  const span = lineageSpan(node);
+  const label = { ended: "Durée", continued: "Durée avant la suite", ongoing: "En cours depuis", hold: "Ouverte depuis" }[span.state];
+  const hold = lineageHoldLabel(node);
+  const duration = formatDuration((span.end ? new Date(span.end) : new Date()) - new Date(span.start));
+  return `<div style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;margin-top:12px;font-size:12.5px;color:var(--text-soft);">
+      <span class="section-title" style="font-size:11px;margin:0;">${label}</span>
+      <strong style="font-variant-numeric:tabular-nums;color:var(--text);">${escapeHtml(duration)}</strong>
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);">${escapeHtml(lineageDatesLabel(node))}</span>
+    </div>${hold ? `<div style="margin-top:4px;font-size:12.5px;font-weight:600;color:var(--hold);">${escapeHtml(hold)}</div>` : ""}`;
 }
 
 // Même carrousel (référence + chaque variante) que l'atlas et la fiche (voir common.js::
@@ -116,6 +131,13 @@ function render(nodes, edges) {
     .attr("class", "lineage-edge")
     .attr("d", (e) => lineageEdgePath(byId.get(e.parent), byId.get(e.child)));
 
+  function select(target, d) {
+    svg.selectAll(".lineage-node").classed("lineage-node-selected", false);
+    d3.select(target).classed("lineage-node-selected", true);
+    selectedId = d.id;
+    loadCard(d.id, d);
+  }
+
   const nodeGroups = svg
     .append("g")
     .selectAll("g")
@@ -124,15 +146,19 @@ function render(nodes, edges) {
     .attr("class", "lineage-node")
     .attr("transform", (d) => `translate(${d.x},${d.y})`)
     .attr("data-id", (d) => d.id)
-    .on("click", (event, d) => {
-      svg.selectAll(".lineage-node").classed("lineage-node-selected", false);
-      d3.select(event.currentTarget).classed("lineage-node-selected", true);
-      selectedId = d.id;
-      loadCard(d.id, d);
+    .attr("tabindex", 0)
+    .attr("role", "button")
+    .attr("aria-label", (d) => lineageNodeTooltip(d).replace(/\n/g, " · "))
+    .on("click", (event, d) => select(event.currentTarget, d))
+    .on("keydown", (event, d) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      select(event.currentTarget, d);
     });
 
   nodeGroups.each(function (d) {
     d3.select(this).html(lineageNodeShapeHtml(d, { radius: NODE_RADIUS }));
+    d3.select(this).append("title").text(lineageNodeTooltip(d));
   });
 
   nodeGroups
@@ -141,6 +167,14 @@ function render(nodes, edges) {
     .attr("y", NODE_RADIUS + 16)
     .attr("text-anchor", "middle")
     .text((d) => (d.title.length > 16 ? d.title.slice(0, 15) + "…" : d.title));
+
+  // Temps écoulé du début à la fin (ou à maintenant, « depuis… », tant qu'elle n'est pas terminée).
+  nodeGroups
+    .append("text")
+    .attr("class", (d) => `lineage-duration${{ ongoing: " is-ongoing", hold: " is-hold" }[lineageSpan(d).state] || ""}`)
+    .attr("y", NODE_RADIUS + 30)
+    .attr("text-anchor", "middle")
+    .text((d) => lineageElapsedLabel(d));
 
   if (selectedId && byId.has(selectedId)) {
     svg.select(`.lineage-node[data-id="${CSS.escape(selectedId)}"]`).classed("lineage-node-selected", true);

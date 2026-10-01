@@ -23,6 +23,10 @@ StructureForge), ou se donne simplement en **images** - un schéma collé depuis
 coupes TEM, une ou plusieurs dans l'ordre où les lire - modifiables à tout moment
 (`spectre.core.structures.StructureImage`, page `/microprojets/<slug>/structures/image`).
 
+Chaque wafer suivi porte ses **FDL** (feuilles de lancement JIRA, `spectre.core.fdl`) - plusieurs
+possibles, empilées - retrouvables depuis la barre de recherche ; une preuve peut porter des liens
+(dossier, présentation PowerPoint) et des images collées.
+
 ## Hiérarchie
 
 ```
@@ -114,6 +118,12 @@ Sans cette configuration Spectre fonctionne normalement ; seule l'exécution d'u
 la page Data renvoie « configuration de connexion incomplète ». Le cache par wafer de PRISM est
 rangé sous `<SPECTRE_DATA_DIR>/prism`. Pour ajouter ou corriger une donnée (requête, KPI), c'est
 dans le dépôt PRISM que ça se passe, plus dans Spectre.
+
+Le **cahier de données** de chaque fiche (onglet « Données ») passe par la même configuration : il
+charge les mesures des plaques de l'expérience via PRISM et les montre avec des composants de
+visualisation (`spectre/api/static/js/dataviz/`, un fichier par composant - voir la documentation
+d'architecture pour en ajouter un). Une instance de démonstration sans accès aux bases peut
+définir `SPECTRE_DEMO_DATA=1` pour utiliser des données synthétiques, signalées comme telles.
 
 ### Administrateur (couche Management)
 

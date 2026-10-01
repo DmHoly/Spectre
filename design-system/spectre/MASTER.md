@@ -34,7 +34,7 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 | Fond | `--bg` | `#f5f6fa` | |
 | Texte | `--text` / `--text-soft` / `--text-faint` | `#1b2440` / `#4a5470` / `#646e8c` | tous ≥ 4.5:1 sur blanc |
 | Émission InGaN | `--emit-red` `--emit-green` `--emit-blue` | `#ef5a5a` / `#3ecf7a` / `#4a8cff` | **uniquement** les schémas des technos (`js/tech-art.js`, fond navy) - jamais en UI |
-| Statuts | `--draft` `--running` `--done` `--abandoned` `--danger` | + `*-tint` | badges, graphe de filiation |
+| Statuts | `--draft` `--running` `--hold` `--done` `--continue` `--abandoned` `--danger` | + `*-tint` | badges, graphe de filiation, frise (`--continue` violet `#6f4fa3` = conclue « à poursuivre », distincte du bleu « en cours » ; `--hold` ambre `#9f5c00` = en pause) |
 
 ## Typographie
 
@@ -56,6 +56,14 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 - **KPI** : `.kpi > .kpi__value + .kpi__label` (valeur légère + libellé mono).
 - **Chargement** : `.skeleton` (réserve la place, pas de saut de mise en page).
 - **Onglets** `.tab.active` : souligné or · **bascule** `.view-toggle__btn.active` : pastille navy.
+- **Issue d'une expérience** : une seule clé (`experimentOutcome`, `common.js`) pour le badge, le
+  nœud du graphe et la frise d'une thématique. Nœud (`lineage-graph.js`) : **creux = pas terminée**
+  (brouillon anneau gris, en cours anneau bleu + point, en pause anneau ambre + ‖), **plein =
+  terminée ou reprise** avec pictogramme (⌄ continuée = brouillon repris par une version suivante,
+  ✓ concluante, → à poursuivre, – non concluante, × abandonnée) ; losange = fusion. Jamais la
+  couleur seule : toujours la légende `lineageLegendHtml()` à côté. « En pause » et « continuée »
+  sont propres à Spectre (Follow n'a que draft/running/concluded/abandoned) : voir
+  `spectre/core/microprojects.py::display_status`.
 - **Auth** : `.auth-shell` en deux colonnes - `.auth-hero` navy (logo, accroche, diagonale
   or/bleu de la charte) + carte formulaire ; le panneau se réduit à un bandeau sous 860px.
 

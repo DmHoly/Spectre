@@ -17,6 +17,8 @@
 const STATUS_COLOR = {
   draft: "var(--draft)",
   running: "var(--running)",
+  hold: "var(--hold)",
+  continued: "var(--draft)",
   concluded: "var(--done)",
   abandoned: "var(--abandoned)",
 };
@@ -239,11 +241,11 @@ async function loadMiniTree(d) {
         window.location.href = `/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(n.id)}`;
       });
     nodeGroups.each(function (n) {
-      d3.select(this).html(lineageNodeShapeHtml(n, { radius: n.id === d.id ? miniRadius + 1.5 : miniRadius }));
+      const current = n.id === d.id;
+      d3.select(this).html(lineageNodeShapeHtml(n, { radius: current ? miniRadius + 1.5 : miniRadius, selected: current }));
       d3.select(this)
-        .append("title") // pas la place pour un libellé texte à cette échelle - le titre au survol suffit
-        .text(n.title);
-      if (n.id === d.id) d3.select(this).select(".lineage-shape").attr("stroke", "var(--accent)").attr("stroke-width", 2);
+        .append("title") // pas la place pour un libellé texte à cette échelle - la bulle au survol suffit
+        .text(lineageNodeTooltip(n));
     });
   } catch (err) {
     if (document.getElementById("atlas-mini-tree")) container.innerHTML = `<p class="help">Arborescence indisponible.</p>`;
@@ -296,6 +298,7 @@ function renderEntityPanel(d) {
     <div class="section-title" style="margin-bottom:6px;">Entité physique</div>
     <h2 style="font-size:17px;margin:0 0 10px;">${escapeHtml(d.sample_id || "Échantillon sans identifiant")}</h2>
     ${d.location ? `<div style="font-size:13px;color:var(--text-soft);margin-bottom:14px;">Emplacement&nbsp;: ${escapeHtml(d.location)}</div>` : ""}
+    ${d.fdl && d.fdl.length ? `<div style="margin-bottom:14px;">${fdlChipsHtml(d.fdl)}</div>` : ""}
     <div class="help" style="margin-bottom:10px;">Suivie sur l'étude :</div>
     <div style="font-size:13.5px;font-weight:600;margin-bottom:10px;">${escapeHtml(d.experienceTitle)}</div>
     <a class="btn btn-line btn-block" href="/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.experienceId)}">Ouvrir la fiche &rarr;</a>
@@ -452,6 +455,7 @@ function build(atlas) {
           entityIndex: entity.index,
           sample_id: entity.sample_id,
           location: entity.location,
+          fdl: entity.fdl || [],
           x: anchor.x,
           y: anchor.y,
         });

@@ -4,7 +4,8 @@
    choisissant ; on les réordonne (← →), les remplace (bouton, ou fichier déposé sur l'image) ou les
    retire. Chaque image part aussitôt au serveur (POST /structures/images, voir
    spectre.api.structures) - la planche ne garde que son id. Partagée par la page « structure en
-   image » (nouvelle expérience, évolution) et la fenêtre « Modifier les images » de la fiche.
+   image » (nouvelle expérience, évolution), la fenêtre « Modifier les images » de la fiche et le
+   formulaire de preuve (sans type d'image, en version compacte - options withKind/compact).
    Coller marche partout dans la page (ou la fenêtre) tant que `isActive()` le permet : une image
    dans le presse-papiers ne se colle nulle part ailleurs, donc rien n'est volé à un champ texte.
    L'affichage d'une planche (structureBoardHtml, libellés des types) est dans common.js. */
@@ -13,10 +14,10 @@ const STRUCTURE_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/we
 const STRUCTURE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const STRUCTURE_IMAGE_MAX_COUNT = 12; // spectre.core.structures.MAX_STRUCTURE_IMAGES
 
-async function uploadStructureImage(slug, file) {
+async function uploadStructureImage(slug, file, url = null) {
   const form = new FormData();
   form.append("file", file, file.name || "image-collee.png");
-  const response = await fetch(`/api/microprojets/${encodeURIComponent(slug)}/structures/images`, {
+  const response = await fetch(url || `/api/microprojets/${encodeURIComponent(slug)}/structures/images`, {
     method: "POST",
     credentials: "same-origin",
     body: form,
@@ -70,20 +71,26 @@ function boardColumns(count) {
 
 /* Monte la planche dans `zone`. `onChange(images)` reçoit la liste à jour ({image_id, kind,
    caption}, images déjà enregistrées côté serveur seulement) ; `onError(err)` un souci d'envoi ou
-   de format. Renvoie {get, set, isUploading, add}. */
-function mountImageDrop(zone, { slug, onChange = () => {}, onError = () => {}, isActive = () => true, pasteTarget = document } = {}) {
+   de format. `uploadUrl` : où envoyer chaque image (par défaut /structures/images) ; `withKind` :
+   le choix du type (schéma, coupe...) sur chaque image ; `compact` : une planche plus basse, pour
+   un formulaire. Renvoie {get, set, isUploading, add}. */
+function mountImageDrop(
+  zone,
+  { slug, onChange = () => {}, onError = () => {}, isActive = () => true, pasteTarget = document, uploadUrl = null, withKind = true, compact = false } = {}
+) {
   let items = []; // {key, image_id, url, filename, kind, caption, uploading}
   let nextKey = 1;
   let replaceKey = null;
   let dragDepth = 0;
 
   zone.classList.add("img-board");
+  zone.classList.toggle("img-board--compact", compact);
   zone.innerHTML = `
     <input type="file" class="img-board__file" accept="${STRUCTURE_IMAGE_TYPES.join(",")}" multiple tabindex="-1" aria-hidden="true" hidden>
     <input type="file" class="img-board__file-one" accept="${STRUCTURE_IMAGE_TYPES.join(",")}" tabindex="-1" aria-hidden="true" hidden>
     <div class="img-board__empty">
       <span class="img-board__icon">${IMAGE_ICON}</span>
-      <p class="img-board__title">Collez l'image de votre structure</p>
+      <p class="img-board__title">${withKind ? "Collez l'image de votre structure" : "Collez une ou plusieurs images"}</p>
       <p class="img-board__keys"><kbd>Ctrl</kbd> + <kbd>V</kbd> n'importe où sur la page, ou glissez-déposez un ou plusieurs fichiers ici</p>
       <button type="button" class="btn btn-line img-board__add">Choisir des fichiers…</button>
       <p class="img-board__hint">Un schéma copié depuis PowerPoint (sélectionnez la forme ou la diapositive, Ctrl+C), des coupes TEM ou MEB, une photo - plusieurs images si une seule ne suffit pas. PNG, JPEG, GIF ou WebP, 10 Mo max par image.</p>
@@ -120,7 +127,7 @@ function mountImageDrop(zone, { slug, onChange = () => {}, onError = () => {}, i
       <figure class="img-tile${item.uploading ? " is-uploading" : ""}" data-key="${item.key}" role="listitem">
         <div class="img-tile__head">
           <span class="img-tile__num" aria-hidden="true">${num}</span>
-          <select class="img-tile__kind" aria-label="Type de l'image ${num}">${kindOptions}</select>
+          ${withKind ? `<select class="img-tile__kind" aria-label="Type de l'image ${num}">${kindOptions}</select>` : ""}
           <span class="img-tile__tools">
             ${n > 1 ? tool("left", `Placer l'image ${num} avant`, i === 0) + tool("right", `Placer l'image ${num} après`, i === n - 1) : ""}
             ${tool("replace", `Remplacer l'image ${num}`, item.uploading)}
@@ -142,7 +149,7 @@ function mountImageDrop(zone, { slug, onChange = () => {}, onError = () => {}, i
     const activeTile = active && zone.contains(active) ? active.closest(".img-tile") : null;
     const focusKey = activeTile ? activeTile.dataset.key : null;
     const focusSel = active && activeTile
-      ? active.dataset.act ? `[data-act="${active.dataset.act}"]` : active.classList.contains("img-tile__caption") ? ".img-tile__caption" : ".img-tile__kind"
+      ? active.dataset.act ? `[data-act="${active.dataset.act}"]` : active.classList.contains("img-tile__caption") ? ".img-tile__caption" : withKind ? ".img-tile__kind" : ".img-tile__caption"
       : null;
     const caret = active && active.classList && active.classList.contains("img-tile__caption") ? active.selectionStart : null;
 
@@ -169,7 +176,7 @@ function mountImageDrop(zone, { slug, onChange = () => {}, onError = () => {}, i
         // arrivée en bout de planche (« avant » devenu inactif...) : le bouton inverse, pour revenir
         const tile = grid.querySelector(`.img-tile[data-key="${focusKey}"]`);
         const opposite = { '[data-act="left"]': '[data-act="right"]', '[data-act="right"]': '[data-act="left"]' }[focusSel];
-        ((opposite && tile.querySelector(`${opposite}:not(:disabled)`)) || tile.querySelector(".img-tile__kind")).focus();
+        ((opposite && tile.querySelector(`${opposite}:not(:disabled)`)) || tile.querySelector(".img-tile__kind, .img-tile__caption")).focus();
       }
     }
   }
@@ -183,7 +190,7 @@ function mountImageDrop(zone, { slug, onChange = () => {}, onError = () => {}, i
     Object.assign(item, { url: localUrl, filename: file.name || "Image collée", uploading: true });
     render();
     try {
-      const result = await uploadStructureImage(slug, file);
+      const result = await uploadStructureImage(slug, file, uploadUrl);
       if (!items.includes(item)) return; // retirée entre-temps
       Object.assign(item, { image_id: result.image_id, url: result.url, filename: result.filename, uploading: false });
       render();
@@ -340,7 +347,7 @@ function mountImageDrop(zone, { slug, onChange = () => {}, onError = () => {}, i
 
   // -- coller : ajoute ---------------------------------------------------------------------------
   pasteTarget.addEventListener("paste", (event) => {
-    if (!isActive() || !event.clipboardData) return;
+    if (!zone.isConnected || !isActive() || !event.clipboardData) return; // une planche retirée de la page n'écoute plus
     const files = [...event.clipboardData.items].filter((i) => i.kind === "file" && i.type.startsWith("image/")).map((i) => i.getAsFile());
     if (!files.length) return; // du texte : on laisse le champ qui a le focus le recevoir
     event.preventDefault();

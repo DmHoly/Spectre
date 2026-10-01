@@ -36,6 +36,7 @@ class Microproject:
     management_area_id: int | None = None
     thematic_id: int | None = None  # one of that area's thématiques (spectre.core.management.Thematic), optional
     code: str | None = None  # « Nat_0004 » - see assign_code ; None while it sits in « Non classé »
+    created_at: str | None = None  # SQLite « YYYY-MM-DD HH:MM:SS », UTC
 
 
 def format_code(prefix: str, number: int) -> str:
@@ -58,6 +59,7 @@ def _microproject_from_row(row: sqlite3.Row) -> Microproject:
         management_area_id=row["management_area_id"] if "management_area_id" in keys else None,
         thematic_id=row["thematic_id"] if "thematic_id" in keys else None,
         code=code,
+        created_at=row["created_at"] if "created_at" in keys else None,
     )
 
 
@@ -256,6 +258,27 @@ def list_members(microproject_id: int) -> list[dict]:
             (microproject_id,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def owners_by_microproject(microproject_ids: list[int]) -> dict[int, list[dict]]:
+    """The owners (``{"id", "name"}``) of each µprojet, its creator first when still an owner -
+    what the cards and headers show as « Propriétaire »; one query for a whole list."""
+    if not microproject_ids:
+        return {}
+    placeholders = ",".join("?" * len(microproject_ids))
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT memberships.microproject_id, users.id, users.name FROM memberships "
+            "JOIN users ON users.id = memberships.user_id "
+            "JOIN microprojects ON microprojects.id = memberships.microproject_id "
+            f"WHERE memberships.role = 'owner' AND memberships.microproject_id IN ({placeholders}) "
+            "ORDER BY memberships.microproject_id, users.id != microprojects.created_by, users.name",
+            list(microproject_ids),
+        ).fetchall()
+    owners: dict[int, list[dict]] = {microproject_id: [] for microproject_id in microproject_ids}
+    for row in rows:
+        owners[row["microproject_id"]].append({"id": row["id"], "name": row["name"]})
+    return owners
 
 
 def add_member(microproject_id: int, microproject_name: str, email: str, role: str, *, invited_by: int) -> str:
@@ -467,6 +490,30 @@ def get_repository(slug: str):
 
 RUNNING_STATUSES = {"draft", "running"}
 CONCLUDED_STATUSES = {"concluded", "abandoned"}
+
+# Deux statuts propres à Spectre, en plus des quatre de Follow (draft, running, concluded, abandoned) :
+# - « hold » (en pause) : posé à la main (POST .../statut). L'étude garde son statut Follow (brouillon ou
+#   en cours - elle compte toujours comme non terminée) et porte metadata["hold"] = {since, by, reason} ;
+#   la reprendre, la conclure ou en dériver une nouvelle version retire la clé.
+# - « continued » (continuée) : déduit, jamais enregistré - un brouillon jamais conclu dont une version
+#   suivante a repris le travail (un enfant dans le graphe de filiation).
+HOLD_KEY = "hold"
+
+
+def hold_of(experiment) -> dict | None:
+    """The pause on an experiment still in progress (``{"since", "by", "reason"}``), if any."""
+    hold = experiment.metadata.get(HOLD_KEY)
+    return hold if hold and experiment.conclusion.status in RUNNING_STATUSES else None
+
+
+def display_status(experiment, *, continued: bool = False) -> str:
+    """The status Spectre shows for ``experiment``: Follow's own, « hold » while paused, or
+    « continued » for a draft a newer version took up (``continued`` - the caller knows the graph)."""
+    if continued and experiment.conclusion.status == "draft":
+        return "continued"
+    if hold_of(experiment):
+        return "hold"
+    return experiment.conclusion.status
 
 
 def branch_tips(repo) -> list:

@@ -47,7 +47,7 @@ def get_atlas(theme: str, user: User = Depends(get_current_user)) -> dict:
                 "title": exp.title,
                 "intent": exp.intent,
                 "branch": exp.branch,
-                "status": exp.conclusion.status,
+                "status": microprojects.display_status(exp),
                 "decision": exp.conclusion.decision,
                 "conclusion_summary": exp.conclusion.summary,
                 "objectives": atlas_core.objective_statuses(exp),

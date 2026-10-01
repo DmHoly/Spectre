@@ -48,14 +48,19 @@ def entities_for(experiment: Any) -> list[dict]:
     and pointing a link/attachment at the wrong sample.
     """
     return [
-        {"index": i, "sample_id": entry.get("sample_id"), "location": entry.get("location")}
+        {
+            "index": i,
+            "sample_id": entry.get("sample_id"),
+            "location": entry.get("location"),
+            **({"fdl": entry["fdl"]} if entry.get("fdl") else {}),
+        }
         for i, entry in enumerate(experiment.metadata.get("physical_tracking", []))
-        if entry.get("sample_id") or entry.get("location")
+        if entry.get("sample_id") or entry.get("location") or entry.get("fdl")
     ]
 
 
 def entity_history_for_microproject(repo: Any, tips: list[Any]) -> dict[str, list[str]]:
-    """Every distinct sample_id/location already used anywhere on the microproject's current branch
+    """Every distinct sample_id/location/FDL already used anywhere on the microproject's current branch
     tips - not the full commit history (a superseded intermediate version's entities don't
     surface), the same "current state, not every version" scope :func:`entities_for` already
     works at. Meant to feed an autocomplete on the physical-entities editor so a user typing a
@@ -64,13 +69,15 @@ def entity_history_for_microproject(repo: Any, tips: list[Any]) -> dict[str, lis
     """
     sample_ids: set[str] = set()
     locations: set[str] = set()
+    fdls: set[str] = set()
     for tip in tips:
         for entry in entities_for(tip):
             if entry["sample_id"]:
                 sample_ids.add(entry["sample_id"])
             if entry["location"]:
                 locations.add(entry["location"])
-    return {"sample_ids": sorted(sample_ids), "locations": sorted(locations)}
+            fdls.update(entry.get("fdl", []))
+    return {"sample_ids": sorted(sample_ids), "locations": sorted(locations), "fdls": sorted(fdls)}
 
 
 def objective_statuses(experiment: Any) -> list[dict]:

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thématique — Spectre</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+  <style>
+    .btn-sm { min-height:30px; padding:4px 10px; font-size:12.5px; }
+
+    /* -- en-tête + voyage entre les thématiques du projet -- */
+    .th-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
+    .th-head h1 { font-size:26px; margin-top:8px; }
+    .th-head p { color:var(--text-soft); font-size:14px; margin-top:4px; max-width:70ch; }
+    .th-head__actions { display:flex; gap:8px; flex:none; align-items:center; flex-wrap:wrap; }
+    .th-step { display:inline-flex; align-items:center; gap:6px; max-width:220px; }
+    .th-step span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .th-step[aria-disabled="true"] { opacity:.4; pointer-events:none; }
+    .th-travel { margin-bottom:22px; overflow-y:hidden; }
+    .th-travel .tab { display:inline-flex; align-items:baseline; gap:6px; color:var(--text-faint); }
+    .th-travel .tab:hover { color:var(--navy); }
+    .th-travel .tab.active { color:var(--navy); }
+    .tab__count { font-family:var(--font-mono); font-size:11px; font-weight:500; color:var(--text-faint); }
+
+    .th-kpis { display:flex; flex-wrap:wrap; gap:22px 34px; padding:14px 18px; border:1px solid var(--border-soft); border-radius:var(--radius); background:var(--surface); margin-bottom:28px; }
+    .th-section { margin-bottom:30px; }
+    .th-section__head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+    .th-section__head h2 { font-size:18px; margin-top:6px; }
+    .th-section__sub { font-size:13px; color:var(--text-soft); margin-top:2px; max-width:72ch; }
+
+    /* -- frise : une ligne par µprojet, ses expériences sur l'axe du temps, la zone « à venir » -- */
+    .frise-card { padding:14px 18px 12px; }
+    .frise-card .status-legend { padding-bottom:12px; margin-bottom:4px; border-bottom:1px solid var(--border-soft); }
+    .frise-scroll { position:relative; overflow-x:auto; }
+    .frise { position:relative; } /* largeur et --label-w posées par thematique.js */
+    .frise__row { display:grid; grid-template-columns:var(--label-w) minmax(0,1fr); border-top:1px solid var(--border-soft); }
+    .frise__row--axis { border-top:none; }
+    .frise__label { display:flex; flex-direction:column; justify-content:center; gap:3px; min-width:0; padding:8px 14px 8px 0; }
+    /* libellés collés à gauche quand la frise défile (petit écran) */
+    .frise__label, .frise__row--axis > div:first-child { position:sticky; left:0; z-index:2; background:var(--surface); }
+    .frise__title { display:flex; align-items:center; gap:8px; min-width:0; }
+    .frise__name { font-size:13.5px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    a.frise__name:hover { color:var(--link); }
+    .frise__meta { font-family:var(--font-mono); font-size:10.5px; color:var(--text-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .frise__label .owner-chip { font-size:12px; }
+    .frise__track { display:block; overflow:visible; }
+    .frise-axis text { font-family:var(--font-mono); font-size:10.5px; fill:var(--text-faint); }
+    .frise-axis .frise-axis__today { fill:var(--navy); font-weight:600; }
+    .frise-axis .frise-axis__future { fill:var(--gold-dark); font-weight:600; letter-spacing:.04em; }
+    .frise-grid { stroke:var(--border-soft); stroke-width:1; }
+    .frise-today { stroke:var(--navy); stroke-width:1.5; }
+    .frise-life { stroke:var(--border); stroke-width:2; stroke-linecap:round; }
+    .frise-empty { font-size:11.5px; fill:var(--text-faint); font-style:italic; }
+    .frise-bar { outline:none; }
+    .frise-bar[data-href] { cursor:pointer; }
+    .frise-bar .frise-hit { fill:transparent; stroke:none; }
+    .frise-bar:hover .frise-hit, .frise-bar:focus-visible .frise-hit { fill:var(--accent-tint); }
+    .frise-bar:focus-visible .frise-hit { stroke:var(--navy-500); stroke-width:1.5; }
+    .frise-future-note {
+      position:absolute; top:40px; bottom:0; display:flex; align-items:center; justify-content:center; pointer-events:none; padding:0 8px;
+    }
+    .frise-future-note span {
+      font-size:11.5px; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;
+      color:var(--gold-dark); background:var(--surface); border:1px dashed rgba(201,168,76,.6); border-radius:var(--radius-pill); padding:3px 10px;
+    }
+    .frise-tooltip { position:fixed; z-index:50; pointer-events:none; background:var(--navy); color:#fff; border-radius:var(--radius-sm); padding:8px 10px; box-shadow:var(--shadow-lift); font-size:12.5px; max-width:300px; }
+    .frise-tooltip__where { font-family:var(--font-mono); font-size:10.5px; color:var(--gold-light); }
+    .frise-tooltip__title { font-weight:700; margin:2px 0 4px; }
+    .frise-tooltip__dates { font-family:var(--font-mono); font-size:11px; color:rgba(255,255,255,.75); margin-top:4px; }
+    .frise-tooltip__hold { font-size:11.5px; color:var(--gold-light); margin-top:4px; white-space:normal; }
+    .frise-tooltip__hint { font-size:11px; color:rgba(255,255,255,.6); margin-top:4px; }
+    .frise-table { margin-top:10px; font-size:12.5px; }
+    .frise-table summary { cursor:pointer; font-weight:600; color:var(--link); padding:4px 0; }
+    .frise-table table { width:100%; border-collapse:collapse; margin-top:8px; }
+    .frise-table th { text-align:left; font-family:var(--font-mono); font-size:10.5px; font-weight:500; color:var(--text-faint); padding:6px 8px; border-bottom:1px solid var(--border); }
+    .frise-table td { padding:6px 8px; border-bottom:1px solid var(--border-soft); vertical-align:middle; }
+    .frise-table td.num { font-variant-numeric:tabular-nums; font-family:var(--font-mono); font-size:11.5px; white-space:nowrap; }
+
+    /* -- µprojets de la thématique -- */
+    .mp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
+    .mp-card { display:flex; flex-direction:column; gap:8px; color:inherit; }
+    .mp-card--locked { opacity:.78; }
+    .mp-code { font-family:var(--font-mono); font-size:11px; font-weight:600; color:var(--gold-dark); background:var(--gold-tint); border-radius:var(--radius-pill); padding:1px 8px; white-space:nowrap; }
+    .mp-card__stats { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:12px; color:var(--text-faint); padding-top:8px; border-top:1px solid var(--border-soft); }
+
+    /* -- perspectives : aperçu (placeholder) de l'évolution future -- */
+    .th-future { border:1px dashed var(--border); border-radius:var(--radius); background:var(--surface-2); padding:18px 20px; }
+    .th-future__grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-top:6px; }
+    .th-future__col { background:var(--surface); border:1px solid var(--border-soft); border-radius:var(--radius-md); padding:12px 14px; }
+    .th-future__col h3 { font-family:var(--font-mono); font-size:10.5px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--text-soft); margin-bottom:10px; }
+    .th-future__col ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+    .th-future__item { display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--text-faint); }
+    .th-future__when { flex:none; font-family:var(--font-mono); font-size:11px; color:var(--gold-dark); background:var(--gold-tint); border-radius:var(--radius-pill); padding:1px 8px; }
+    .th-future__ghost { flex:1; height:8px; border-radius:4px; background:repeating-linear-gradient(90deg, var(--border-soft) 0 10px, transparent 10px 14px); }
+    .th-future__note { font-size:12.5px; color:var(--text-soft); margin-top:12px; max-width:80ch; }
+    @media (max-width:860px) { .th-future__grid { grid-template-columns:1fr; } }
+    @media (max-width:560px) { .th-head h1 { font-size:22px; } .th-step { max-width:150px; } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar__brand">
+      <a href="/" class="topbar__home" aria-label="Spectre - accueil">
+        <img class="brand-logo" src="/static/img/aledia-logo.svg" alt="Aledia" width="71" height="28">
+        <span class="topbar__sep" aria-hidden="true"></span>
+        <span class="topbar__product">Spectre</span>
+      </a>
+      <span class="topbar__crumb" id="crumb"></span>
+    </div>
+    <nav class="topbar__nav" aria-label="Navigation principale">
+      <a href="/" class="topbar__link">Projets</a>
+      <a href="#" class="topbar__link" id="atlas-link">Atlas</a>
+      <a href="/bibliotheque" class="topbar__link">Bibliothèque</a>
+      <a href="/donnees" class="topbar__link">Data</a>
+      <a href="/docs" class="topbar__link">Documentation</a>
+    </nav>
+    <div class="topbar__actions">
+      <a href="/profil" class="topbar__user" title="Mon profil">
+        <span class="js-user-name topbar__user-name"></span>
+        <span class="avatar js-user-initials" aria-hidden="true"></span>
+      </a>
+      <a href="#" class="js-logout topbar__icon-btn" aria-label="Se déconnecter" title="Se déconnecter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></a>
+    </div>
+  </div>
+
+  <div class="page">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">Projets</a> / <a id="area-crumb" href="/">…</a> / <span id="thematic-crumb">…</span></p>
+
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+
+    <div class="th-head">
+      <div>
+        <div class="page-eyebrow" id="th-eyebrow">Thématique</div>
+        <h1 id="th-name"><span class="skeleton" style="display:inline-block;width:240px;height:30px;"></span></h1>
+        <p id="th-description"></p>
+      </div>
+      <div class="th-head__actions">
+        <a class="btn btn-line btn-sm th-step" id="th-prev" href="#" aria-disabled="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></svg><span>Précédente</span></a>
+        <a class="btn btn-line btn-sm th-step" id="th-next" href="#" aria-disabled="true"><span>Suivante</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></a>
+        <button type="button" class="btn btn-primary btn-sm" id="new-microprojet-btn">+ Nouveau µprojet</button>
+      </div>
+    </div>
+
+    <nav class="tabs th-travel" id="th-travel" aria-label="Thématiques du projet"></nav>
+
+    <div class="th-kpis" id="th-kpis" aria-busy="true"><div class="skeleton" style="height:40px;width:100%;"></div></div>
+
+    <section class="th-section" aria-labelledby="frise-title">
+      <div class="th-section__head">
+        <div>
+          <div class="page-eyebrow">Chronologie</div>
+          <h2 id="frise-title">Le parcours de la thématique</h2>
+          <p class="th-section__sub">Une ligne par µprojet. Chaque barre est une version d'expérience - un nœud de son graphe - de son lancement à sa conclusion, à sa suite, ou jusqu'à aujourd'hui. Survolez-la pour le détail, cliquez pour ouvrir sa fiche.</p>
+        </div>
+      </div>
+      <div class="card frise-card">
+        <div id="frise-legend"></div>
+        <div class="frise-scroll" id="frise-scroll">
+          <div class="skeleton" style="height:180px;margin-top:12px;"></div>
+        </div>
+        <details class="frise-table" id="frise-table"><summary>Voir la chronologie en tableau</summary><div id="frise-table-body"></div></details>
+      </div>
+    </section>
+
+    <section class="th-section" aria-labelledby="mp-title">
+      <div class="th-section__head">
+        <div>
+          <div class="page-eyebrow">Acteurs</div>
+          <h2 id="mp-title">µprojets de la thématique</h2>
+        </div>
+      </div>
+      <div id="th-microprojets" class="mp-grid"></div>
+    </section>
+
+    <section class="th-section th-future" aria-labelledby="future-title" id="th-future"></section>
+  </div>
+
+  <div class="frise-tooltip" id="frise-tooltip" role="tooltip" hidden></div>
+
+  <dialog id="microprojet-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
+    <div class="card-pad" style="width:min(400px,92vw);">
+      <h2 style="font-size:16px;margin-bottom:4px;">Nouveau µprojet</h2>
+      <p class="help" style="margin-bottom:14px;" id="mp-dialog-where"></p>
+      <form id="microprojet-form" class="field-group">
+        <div><label for="mp-name">Nom du µprojet</label><input class="field" id="mp-name" required></div>
+        <div><label for="mp-description">Description (optionnelle)</label><textarea class="field" id="mp-description" rows="2"></textarea></div>
+        <div style="display:flex;gap:10px;margin-top:8px;">
+          <button type="button" id="mp-cancel" class="btn btn-line btn-block">Annuler</button>
+          <button type="submit" class="btn btn-primary btn-block">Créer</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/vendor/d3.v7.9.0.min.js"></script>
+  <script src="/static/js/lineage-graph.js"></script>
+  <script src="/static/js/thematique.js"></script>
+</body>
+</html>

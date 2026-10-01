@@ -42,6 +42,7 @@ function microprojectCard(microproject) {
       </div>
       <div style="font-size:14px;font-weight:700;line-height:1.3;overflow-wrap:anywhere;">${escapeHtml(microproject.name)}</div>
       ${where ? `<div style="font-size:11.5px;color:var(--text-faint);font-family:var(--font-mono);">${escapeHtml(where)}</div>` : ""}
+      ${ownerChipHtml(microproject.owners)}
       <div style="font-size:12px;color:var(--text-faint);padding-top:6px;border-top:1px solid var(--border-soft);">
         ${microproject.running_count} en cours &middot; ${microproject.concluded_count} terminées
       </div>

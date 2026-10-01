@@ -355,6 +355,24 @@ async function renderHookPage(key) {
 
   renderRepresentativeChart(hook);
   wireRunner(hook);
+  runForWafersFromUrl(hook);
+}
+
+// « Données en base » depuis une fiche d'expérience (/donnees/<key>?wafers=W12-A3,W12-A4) : les
+// lasermarks de ses plaques sont préremplis et la requête part tout de suite - c'est un clic
+// explicite sur ce lien qui l'a demandée.
+function runForWafersFromUrl(hook) {
+  const wafers = new URLSearchParams(window.location.search).get("wafers");
+  const input = document.querySelector('.js-hook-param[data-param="wafer_names"]');
+  if (!wafers || !input || hook.status !== "implemented") return;
+  input.value = wafers
+    .split(",")
+    .map((w) => w.trim())
+    .filter(Boolean)
+    .join(", ");
+  const form = document.getElementById("hook-run-form");
+  form.scrollIntoView({ block: "center" });
+  form.requestSubmit();
 }
 
 async function init() {

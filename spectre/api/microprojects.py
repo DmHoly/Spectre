@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..core import atlas as atlas_core
-from ..core import management, microprojects
+from ..core import fdl, management, microprojects, plates
 from ..core.accounts import User
 from ..core.management import ManagementAreaNotFoundError, ThematicNotFoundError
 from ..core.permissions import require_admin, require_role
@@ -61,8 +61,11 @@ def _thematic_ref(thematic_id: int | None) -> dict | None:
     return {"slug": thematic.slug, "name": thematic.name}
 
 
-def _microproject_payload(microproject: Microproject, role: str) -> dict:
+def _microproject_payload(microproject: Microproject, role: str, owners: list[dict] | None = None) -> dict:
+    """``owners`` when the caller already batched them (:func:`microprojects.owners_by_microproject`)."""
     running, concluded = _experiment_counts(microproject.slug)
+    if owners is None:
+        owners = microprojects.owners_by_microproject([microproject.id])[microproject.id]
     return {
         "id": microproject.id,
         "slug": microproject.slug,
@@ -74,12 +77,15 @@ def _microproject_payload(microproject: Microproject, role: str) -> dict:
         "concluded_count": concluded,
         "management_area": _area_ref(microproject.management_area_id),
         "thematique": _thematic_ref(microproject.thematic_id),
+        "owners": owners,
     }
 
 
 @router.get("")
 def list_microprojects(user: User = Depends(get_current_user)) -> list[dict]:
-    return [_microproject_payload(microproject, role) for microproject, role in microprojects.list_for_user(user.id)]
+    mine = microprojects.list_for_user(user.id)
+    owners = microprojects.owners_by_microproject([microproject.id for microproject, _ in mine])
+    return [_microproject_payload(microproject, role, owners[microproject.id]) for microproject, role in mine]
 
 
 @router.post("", status_code=201)
@@ -118,6 +124,13 @@ def search_microprojects(q: str = Query("", max_length=80), user: User = Depends
         }
         for p in microprojects.search(q)
     ]
+
+
+@router.get("/recherche-fdl")
+def search_fdl(q: str = Query("", max_length=80), user: User = Depends(get_current_user)) -> list[dict]:
+    """The topbar search, FDL side: experiences whose wafers carry the FDL typed (« 1234 », « FDL-1234 »)
+    - only in the microprojects the caller is a member of, like any experience."""
+    return fdl.search(q, plates.visible_entries(user.id))
 
 
 @router.get("/tous")

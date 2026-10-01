@@ -38,20 +38,57 @@
     .lineage-node {
       cursor: pointer;
     }
-    .lineage-node .lineage-shape {
-      stroke: var(--surface);
-      stroke-width: 1.5px;
-      transition: stroke 0.1s, stroke-width 0.1s;
+    .lineage-node:focus-visible {
+      outline: none;
     }
-    .lineage-node-selected .lineage-shape {
-      stroke: var(--accent) !important;
-      stroke-width: 2.5px !important;
+    .lineage-node-selected .lineage-halo,
+    .lineage-node:hover .lineage-halo,
+    .lineage-node:focus-visible .lineage-halo {
+      visibility: visible;
+    }
+    .lineage-node:hover:not(.lineage-node-selected) .lineage-halo {
+      stroke: var(--border);
     }
     .lineage-label {
       font-family: var(--font-ui);
       font-size: 11px;
       fill: var(--text-soft);
       pointer-events: none;
+    }
+    .lineage-duration {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      fill: var(--text-faint);
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+    }
+    .lineage-duration.is-ongoing {
+      fill: var(--running);
+    }
+    .lineage-duration.is-hold {
+      fill: var(--hold);
+    }
+    .lineage-legend {
+      margin: auto -20px -20px; /* collée au bas de la carte, quelle que soit la hauteur du graphe */
+      padding: 10px 20px;
+      border-top: 1px solid var(--border-soft);
+      background: var(--surface-2);
+      border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    }
+    .lineage-canvas-wrap {
+      display: flex;
+      flex-direction: column;
+    }
+    .lineage-canvas-wrap > #lineage-svg {
+      flex: none;
+      margin-bottom: 16px;
+    }
+    .mp-head__meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      margin-top: 8px;
     }
     .lineage-panel {
       overflow-y: auto;
@@ -99,6 +136,7 @@
         <div id="microproject-code" class="page-eyebrow" style="display:none;" title="Numéro du µprojet - à citer pour y renvoyer (lien court : /p/…)"></div>
         <h1 id="microproject-name" style="font-size:22px;"></h1>
         <p id="microproject-description" style="color:var(--text-soft);font-size:14px;margin-top:4px;"></p>
+        <div class="mp-head__meta" id="microproject-owner"></div>
       </div>
       <div style="display:flex;gap:10px;">
         <button id="members-btn" class="btn btn-line" type="button">Membres</button>
@@ -116,6 +154,7 @@
           <p>Aucune expérience pour l'instant. « Nouvelle expérience » pour commencer.</p>
         </div>
         <svg id="lineage-svg"></svg>
+        <div class="lineage-legend" id="lineage-legend"></div>
       </div>
       <div class="card card-pad lineage-panel" id="lineage-panel">
         <p class="help">Cliquez un nœud pour voir la structure, l'objectif et la conclusion de cette expérience ici.</p>
@@ -436,7 +475,14 @@
           areaCrumb.textContent = "Non classé";
         }
         const thematic = microproject.thematique;
-        document.getElementById("thematic-crumb").textContent = thematic ? " / " + thematic.name : "";
+        const thematicCrumb = document.getElementById("thematic-crumb");
+        thematicCrumb.innerHTML =
+          thematic && area
+            ? ` / <a href="/management/${encodeURIComponent(area.slug)}/thematiques/${encodeURIComponent(thematic.slug)}">${escapeHtml(thematic.name)}</a>`
+            : thematic
+              ? ` / ${escapeHtml(thematic.name)}`
+              : "";
+        document.getElementById("microproject-owner").innerHTML = ownerChipHtml(microproject.owners);
         document.getElementById("crumb").textContent =
           "/ " + [area && area.name, thematic && thematic.name, microproject.code || microproject.name].filter(Boolean).join(" / ");
 
@@ -453,6 +499,7 @@
         return;
       }
 
+      document.getElementById("lineage-legend").innerHTML = lineageLegendHtml();
       loadLineage();
       loadMembers();
       loadInvitations();

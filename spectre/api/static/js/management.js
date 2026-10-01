@@ -41,6 +41,7 @@ let current = null;
 
 const ICON_EDIT = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 const ICON_CHECK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`;
+const ICON_ARROW = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>`;
 const ICON_FLAG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/></svg>`;
 
 function kpi(n, label) {
@@ -146,6 +147,7 @@ function microprojetCard(p) {
     </div>
     <div style="font-size:15px;font-weight:700;line-height:1.3;overflow-wrap:anywhere;">${escapeHtml(p.name)}</div>
     <div style="font-size:13px;color:var(--text-soft);min-height:16px;">${escapeHtml(p.description || "")}</div>
+    ${ownerChipHtml(p.owners)}
     <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--text-faint);padding-top:8px;border-top:1px solid var(--border-soft);">
       <span>${p.experiences} expériences</span><span>${p.running} en cours</span><span>${p.concluded} concluantes</span><span>${p.wafers} wafers</span>
     </div>`;
@@ -161,9 +163,11 @@ function thematicSection(t, items, admin) {
   const meta = none
     ? plural(items.length, "µprojet", "µprojets")
     : `${plural(s.microprojets, "µprojet", "µprojets")} · ${plural(s.experiences, "expérience", "expériences")} · ${s.running} en cours · ${s.wafers} wafers`;
+  const thematicUrl = none ? null : `/management/${encodeURIComponent(slug)}/thematiques/${encodeURIComponent(t.slug)}`;
   const actions = none
     ? ""
     : `<div class="thematic__actions">
+        <a class="btn btn-tint btn-sm" href="${thematicUrl}">Explorer la thématique ${ICON_ARROW}</a>
         <button type="button" class="btn btn-line btn-sm" data-new-mp="${escapeHtml(t.slug)}">+ µprojet</button>
         ${admin ? `<button type="button" class="btn btn-line btn-sm" data-edit-thematic="${escapeHtml(t.slug)}" aria-label="Modifier la thématique ${escapeHtml(t.name)}">${ICON_EDIT} Modifier</button>` : ""}
       </div>`;
@@ -174,7 +178,7 @@ function thematicSection(t, items, admin) {
     <section class="thematic${none ? " thematic--none" : ""}">
       <div class="thematic__head">
         <div>
-          <h3 class="thematic__name">${escapeHtml(name)}</h3>
+          <h3 class="thematic__name">${none ? escapeHtml(name) : `<a href="${thematicUrl}">${escapeHtml(name)}</a>`}</h3>
           ${!none && t.description ? `<div class="thematic__desc">${escapeHtml(t.description)}</div>` : ""}
           <div class="thematic__meta">${meta}</div>
         </div>

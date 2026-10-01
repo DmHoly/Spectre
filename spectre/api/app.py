@@ -28,6 +28,8 @@ from . import library as library_router
 from . import links as links_router
 from . import management as management_router
 from . import microprojects as microprojects_router
+from . import notebook as notebook_router
+from . import plates as plates_router
 from . import refs as refs_router
 from . import structures as structures_router
 
@@ -46,7 +48,10 @@ def create_app() -> FastAPI:
     app.include_router(auth_router.router)
     app.include_router(management_router.router)
     app.include_router(microprojects_router.router)
+    app.include_router(plates_router.router)
     app.include_router(structures_router.router)
+    # avant experiments : ses routes {ref:path}/cahier seraient sinon avalées par GET/DELETE {ref:path}
+    app.include_router(notebook_router.router)
     app.include_router(experiments_router.router)
     app.include_router(refs_router.router)
     app.include_router(intent_forms_router.router)
@@ -90,7 +95,9 @@ def create_app() -> FastAPI:
     app.get("/bibliotheque")(_page("bibliotheque.html"))
     app.get("/donnees")(_page("donnees.html"))
     app.get("/donnees/{key}")(_page("donnees.html"))
+    app.get("/plaques/{lasermark}")(_page("plaque.html"))
     app.get("/management/{slug}")(_page("management.html"))
+    app.get("/management/{slug}/thematiques/{thematique_slug}")(_page("thematique.html"))
     app.get("/microprojets/{slug}")(_page("projet.html"))
 
     @app.get("/p/{code}")

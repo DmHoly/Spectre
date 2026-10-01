@@ -14,6 +14,7 @@ from ..core.accounts import User
 from ..core.management import ManagementArea, ManagementAreaNotFoundError, ObjectiveNotFoundError, ThematicNotFoundError
 from ..core.permissions import require_admin
 from .deps import get_current_user
+from .experiments import lineage_graph
 from .microprojects import _experiment_counts
 
 router = APIRouter(prefix="/api/management", tags=["management"])
@@ -120,6 +121,7 @@ def _area_payload(area: ManagementArea, *, detailed: bool = False, user: User | 
     agg = {"microprojets": len(area_microprojects), "thematiques": len(thematics), **{k: 0 for k in _STAT_KEYS}}
     per_thematic = {t.id: {"microprojets": 0, **{k: 0 for k in _STAT_KEYS}} for t in thematics}
     slug_by_thematic = {t.id: t.slug for t in thematics}
+    owners = microprojects.owners_by_microproject([m.id for m in area_microprojects]) if detailed else {}
     microproject_rows = []
     for microproject in area_microprojects:
         stats = _microproject_stats(microproject.slug)
@@ -139,6 +141,7 @@ def _area_payload(area: ManagementArea, *, detailed: bool = False, user: User | 
                     "name": microproject.name,
                     "description": microproject.description,
                     "role": role,
+                    "owners": owners[microproject.id],
                     "thematique_slug": slug_by_thematic.get(microproject.thematic_id),
                     **stats,
                 }
@@ -246,6 +249,78 @@ def create_thematic(slug: str, body: ThematicRequest, user: User = Depends(requi
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _detailed(area, user)
+
+
+def _sqlite_utc_iso(value: str | None) -> str | None:
+    """SQLite's ``datetime('now')`` (« 2026-03-01 09:30:00 », UTC, no zone) as ISO 8601 with its
+    zone, so a browser doesn't read it as local time."""
+    return f"{value.replace(' ', 'T')}Z" if value else None
+
+
+def _frise_node(node: dict, *, member: bool) -> dict:
+    """One experiment of a µprojet on the thématique's frise - its dates and outcome for anyone (the
+    same company-wide visibility as the counts), its id and title only for the µprojet's members."""
+    point = {k: node[k] for k in ("started_at", "ended_at", "continued_at", "status", "decision", "is_merge", "is_tip")}
+    hold = node.get("hold")
+    point["hold"] = {"since": hold["since"]} if hold else None
+    if member:
+        point["id"] = node["id"]
+        point["title"] = node["title"]
+        if hold:
+            point["hold"]["reason"] = hold["reason"]
+    return point
+
+
+@router.get("/{slug}/thematiques/{thematique_slug}")
+def get_thematic(slug: str, thematique_slug: str, user: User = Depends(get_current_user)) -> dict:
+    """The thématique page: its µprojets (owners, counts) and each one's experiments laid out on a
+    time axis (the same nodes as the µprojet's filiation graph, see :func:`lineage_graph`), plus the
+    project's other thématiques to travel to."""
+    area = _get_area(slug)
+    thematic = _get_thematic(area, thematique_slug)
+    area_microprojects = microprojects.list_by_management_area(area.id)
+    members = [m for m in area_microprojects if m.thematic_id == thematic.id]
+    members.sort(key=lambda m: m.created_at or "")
+    owners = microprojects.owners_by_microproject([m.id for m in members])
+    agg = {"microprojets": len(members), **{k: 0 for k in _STAT_KEYS}}
+    rows = []
+    for microproject in members:
+        stats = _microproject_stats(microproject.slug)
+        for key in _STAT_KEYS:
+            agg[key] += stats[key]
+        role = microprojects.role_for(microproject.id, user.id)
+        graph = lineage_graph(microprojects.get_repository(microproject.slug))
+        frise = sorted((_frise_node(n, member=role is not None) for n in graph["nodes"]), key=lambda n: n["started_at"])
+        rows.append(
+            {
+                "slug": microproject.slug,
+                "code": microproject.code,
+                "name": microproject.name,
+                "description": microproject.description,
+                "created_at": _sqlite_utc_iso(microproject.created_at),
+                "role": role,
+                "owners": owners[microproject.id],
+                "frise": frise,
+                **stats,
+            }
+        )
+    count_by_thematic: dict[int, int] = {}
+    for microproject in area_microprojects:
+        if microproject.thematic_id is not None:
+            count_by_thematic[microproject.thematic_id] = count_by_thematic.get(microproject.thematic_id, 0) + 1
+    return {
+        "area": {"slug": area.slug, "name": area.name, "objectives_period": area.objectives_period},
+        "slug": thematic.slug,
+        "name": thematic.name,
+        "description": thematic.description,
+        "stats": agg,
+        "microprojets": rows,
+        "thematiques": [
+            {"slug": t.slug, "name": t.name, "microprojets": count_by_thematic.get(t.id, 0)}
+            for t in management.list_thematics(area.id)
+        ],
+        "is_admin": user.is_admin,
+    }
 
 
 @router.put("/{slug}/thematiques/{thematique_slug}")

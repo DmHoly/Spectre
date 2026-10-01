@@ -8,17 +8,76 @@
    tel quel (conflits de noms avec les propres constantes d'atlas.js).
 */
 
-const LINEAGE_CONCLUDED_DECISION_COLOR = {
-  promote: "var(--done)",
-  inconclusive: "var(--abandoned)",
-  branch: "var(--running)",
-  replicate: "var(--running)",
+// Code d'un nœud, par issue (experimentOutcome, common.js - la même clé que les badges) : jamais la
+// couleur seule. Creux = pas encore terminée (brouillon : anneau gris ; en cours : anneau bleu + point
+// central ; en pause : anneau ambre + ‖), plein = terminée ou reprise ailleurs, avec un pictogramme
+// blanc qui dit l'issue (continuée : chevron vers la suite, en dessous dans le graphe). Avant,
+// « à poursuivre » avait le bleu d'« en cours » et « non concluante » le brun d'« abandonnée ».
+const LINEAGE_OUTCOME_STYLE = {
+  draft: { color: "var(--draft)", filled: false, label: "Brouillon" },
+  continued: { color: "var(--draft)", filled: true, glyph: "chevron", label: "Continuée" },
+  running: { color: "var(--running)", filled: false, dot: true, label: "En cours" },
+  hold: { color: "var(--hold)", filled: false, glyph: "pause", label: "En pause" },
+  promote: { color: "var(--done)", filled: true, glyph: "check", label: "Concluante" },
+  concluded: { color: "var(--done)", filled: true, label: "Conclue" },
+  continue: { color: "var(--continue)", filled: true, glyph: "arrow", label: "À poursuivre" },
+  inconclusive: { color: "var(--abandoned)", filled: true, glyph: "dash", label: "Non concluante" },
+  abandoned: { color: "var(--abandoned)", filled: true, glyph: "cross", label: "Abandonnée" },
 };
-const LINEAGE_STATUS_COLOR = { draft: "var(--draft)", running: "var(--running)", abandoned: "var(--abandoned)" };
+const LINEAGE_GLYPH_PATH = {
+  check: "M-3.6,0.2 L-1.1,2.7 L3.7,-2.5",
+  arrow: "M-3.3,0 L3.1,0 M0.5,-2.8 L3.3,0 L0.5,2.8",
+  dash: "M-3.3,0 L3.3,0",
+  cross: "M-2.7,-2.7 L2.7,2.7 M2.7,-2.7 L-2.7,2.7",
+  chevron: "M-3.2,-1.5 L0,1.7 L3.2,-1.5",
+  pause: "M-1.7,-2.9 L-1.7,2.9 M1.7,-2.9 L1.7,2.9",
+};
 
-function lineageNodeColor({ status, decision }) {
-  if (status === "concluded") return LINEAGE_CONCLUDED_DECISION_COLOR[decision] || "var(--done)";
-  return LINEAGE_STATUS_COLOR[status] || LINEAGE_STATUS_COLOR.draft;
+function lineageOutcomeStyle({ status, decision }) {
+  return LINEAGE_OUTCOME_STYLE[experimentOutcome(status, decision)] || LINEAGE_OUTCOME_STYLE.draft;
+}
+
+function lineageNodeColor(node) {
+  return lineageOutcomeStyle(node).color;
+}
+
+// Début et fin d'une expérience, pour son temps écoulé (GET .../filiation : started_at, ended_at,
+// continued_at) : conclue ou abandonnée -> sa conclusion ; brouillon continué par une version
+// suivante -> le lancement de cette suite ; sinon pas terminée (fin = maintenant) - en pause compris.
+function lineageSpan(node) {
+  if (node.ended_at) return { start: node.started_at, end: node.ended_at, state: "ended" };
+  if (node.continued_at && (node.status === "continued" || node.status === "draft")) {
+    return { start: node.started_at, end: node.continued_at, state: "continued" };
+  }
+  return { start: node.started_at, end: null, state: node.status === "hold" ? "hold" : "ongoing" };
+}
+
+function lineageElapsedLabel(node) {
+  const span = lineageSpan(node);
+  return elapsedLabel(span.start, span.end);
+}
+
+// « 3 mars 2026 → 15 mars 2026 », « … → aujourd'hui », « … → 15 mars 2026 (continuée) ».
+function lineageDatesLabel(node) {
+  const span = lineageSpan(node);
+  if (!span.start) return "";
+  const end = span.end ? formatDate(span.end) : "aujourd'hui";
+  return `${formatDate(span.start)} → ${end}${span.state === "continued" ? " (continuée)" : ""}`;
+}
+
+// « En pause depuis le 3 mars 2026 (2 sem.) · Bâti en maintenance » - vide si elle n'est pas en pause.
+function lineageHoldLabel(node) {
+  if (node.status !== "hold" || !node.hold || !node.hold.since) return "";
+  const since = `En pause depuis le ${formatDate(node.hold.since)} (${formatDuration(new Date() - new Date(node.hold.since))})`;
+  return node.hold.reason ? `${since} · ${node.hold.reason}` : since;
+}
+
+// Bulle native au survol d'un nœud : titre, issue, temps écoulé, dates, pause.
+function lineageNodeTooltip(node) {
+  const style = lineageOutcomeStyle(node);
+  return [node.title, [style.label, lineageElapsedLabel(node)].filter(Boolean).join(" · "), lineageDatesLabel(node), lineageHoldLabel(node)]
+    .filter(Boolean)
+    .join("\n");
 }
 
 // Une rangée par profondeur (plus long chemin depuis une racine), les nœuds d'une même rangée
@@ -90,17 +149,54 @@ function lineageLayout(nodes, edges, { colWidth = 130, rowHeight = 100, margin =
   return { positioned, width: Math.max(width, 260), height: Math.max(height, 200) };
 }
 
-function lineageNodeShapeHtml(node, { radius = 9 } = {}) {
+function lineageNodeShapeHtml(node, { radius = 9, selected = false, tipRing = true } = {}) {
   // Une fusion (/combiner - README : "visible dans le graphe du projet comme un losange") reste
-  // un losange ici ; une pointe de piste actuelle porte un anneau accent pour rester repérable
-  // même une fois qu'on a cliqué ailleurs.
-  const color = lineageNodeColor(node);
-  const ring = node.is_tip ? `<circle r="${radius + 4}" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 2"></circle>` : "";
-  if (node.is_merge) {
-    const r = radius * 0.9;
-    return `${ring}<path class="lineage-shape" d="M0,-${r} L${r},0 L0,${r} L-${r},0 Z" fill="${color}"></path>`;
+  // un losange ici ; une pointe de piste actuelle porte un anneau accent pointillé pour rester
+  // repérable même une fois qu'on a cliqué ailleurs. Le halo `.lineage-halo` marque la sélection
+  // (visible avec `selected`, ou par la classe .lineage-node-selected du groupe - voir projet.html).
+  const style = lineageOutcomeStyle(node);
+  const k = radius / 9;
+  const halo = `<circle class="lineage-halo" r="${radius + 7}" fill="none" stroke="var(--accent)" stroke-width="2"${selected ? "" : ` visibility="hidden"`}></circle>`;
+  const ring =
+    tipRing && node.is_tip ? `<circle r="${radius + 4}" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 2"></circle>` : "";
+  // style="" plutôt que des attributs : une feuille de style (ex. .lineage-shape) ne peut pas l'écraser.
+  const paint = style.filled
+    ? `fill="${style.color}" style="stroke:var(--surface);stroke-width:1.5px"`
+    : `fill="var(--surface)" style="stroke:${style.color};stroke-width:${(2.2 * k).toFixed(2)}px"`;
+  const r = style.filled ? radius : radius - 1.1 * k;
+  const shape = node.is_merge
+    ? `<path class="lineage-shape" d="M0,${-r * 1.15} L${r * 1.15},0 L0,${r * 1.15} L${-r * 1.15},0 Z" ${paint}></path>`
+    : `<circle class="lineage-shape" r="${r}" ${paint}></circle>`;
+  const dot = style.dot ? `<circle r="${(radius * 0.36).toFixed(2)}" fill="${style.color}"></circle>` : "";
+  const glyph = style.glyph
+    ? `<path d="${LINEAGE_GLYPH_PATH[style.glyph]}" transform="scale(${k.toFixed(3)})" fill="none" stroke="${style.filled ? "var(--surface)" : style.color}" stroke-width="${style.filled ? 1.8 : 2}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></path>`
+    : "";
+  return `${halo}${ring}${shape}${dot}${glyph}`;
+}
+
+// Légende du code ci-dessus (une puce par issue + fusion + pointe de piste) - affichée sous le graphe
+// d'un µprojet et au-dessus de la frise d'une thématique, pour qu'aucune couleur ne reste à deviner.
+function lineageLegendHtml({ merge = true, tip = true } = {}) {
+  const icon = (node) =>
+    `<svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true">${lineageNodeShapeHtml(node, { radius: 6.5, tipRing: false })}</svg>`;
+  const items = [
+    ["draft", { status: "draft" }],
+    ["continued", { status: "continued" }],
+    ["running", { status: "running" }],
+    ["hold", { status: "hold" }],
+    ["promote", { status: "concluded", decision: "promote" }],
+    ["continue", { status: "concluded", decision: "branch" }],
+    ["inconclusive", { status: "concluded", decision: "inconclusive" }],
+    ["abandoned", { status: "abandoned" }],
+  ].map(([key, node]) => `<li>${icon(node)}${LINEAGE_OUTCOME_STYLE[key].label}</li>`);
+  if (merge || tip) items.push(`<li class="status-legend__sep" aria-hidden="true"></li>`);
+  if (merge) items.push(`<li>${icon({ status: "draft", is_merge: true })}Fusion de deux pistes</li>`);
+  if (tip) {
+    items.push(
+      `<li><svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true"><circle r="8.5" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 2"></circle><circle r="4.5" fill="var(--surface)" style="stroke:var(--draft);stroke-width:1.6px"></circle></svg>Dernière version d'une piste</li>`
+    );
   }
-  return `${ring}<circle class="lineage-shape" r="${radius}" fill="${color}"></circle>`;
+  return `<ul class="status-legend" aria-label="Légende des expériences">${items.join("")}</ul>`;
 }
 
 function lineageEdgePath(source, target) {

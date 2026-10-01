@@ -177,3 +177,102 @@ def test_non_member_cannot_see_lineage(client):
     client.post("/api/auth/register", json={"email": "stranger@example.com", "password": "supersecret", "name": "S"})
     response = client.get(f"/api/microprojets/{slug}/filiation")
     assert response.status_code == 403
+
+
+def test_lineage_nodes_carry_when_the_experiment_started_and_ended(client):
+    # the elapsed time shown under each node: from the experiment's creation to its conclusion,
+    # or no end yet (« depuis… ») while it is still a draft or running.
+    slug = _setup_microproject(client)
+    launched = client.post(
+        f"/api/microprojets/{slug}/experiences",
+        json={"substrate": _substrate(), "steps": _steps(), "title": "Essai", "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
+    ).json()
+    node = client.get(f"/api/microprojets/{slug}/filiation").json()["nodes"][0]
+    assert node["started_at"] == node["created_at"]
+    assert node["ended_at"] is None
+
+    concluded = client.post(
+        f"/api/microprojets/{slug}/experiences/{launched['id']}/conclure",
+        json={"status": "concluded", "decision": "promote", "summary": "OK"},
+    ).json()
+    node = client.get(f"/api/microprojets/{slug}/filiation").json()["nodes"][0]
+    assert node["id"] == concluded["id"]
+    assert node["started_at"] < node["created_at"]  # still the launch, not the conclusion commit
+    assert node["ended_at"] is not None and node["ended_at"] >= node["started_at"]
+
+
+def test_lineage_node_records_when_its_work_was_continued(client):
+    # a draft never concluded but evolved into a new structure stops counting time at its suite.
+    slug = _setup_microproject(client)
+    root = client.post(
+        f"/api/microprojets/{slug}/experiences",
+        json={"substrate": _substrate(), "steps": _steps(), "title": "Essai", "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
+    ).json()
+    child = client.post(
+        f"/api/microprojets/{slug}/experiences/{root['id']}/evoluer",
+        json={"substrate": _substrate(), "steps": _steps(thickness=40), "title": "Essai 2", "intent": "Plus epais", "objectives": []},
+    ).json()
+
+    nodes = {n["id"]: n for n in client.get(f"/api/microprojets/{slug}/filiation").json()["nodes"]}
+    assert nodes[root["id"]]["continued_at"] == nodes[child["id"]]["started_at"]
+    assert nodes[child["id"]]["continued_at"] is None
+
+
+def test_a_study_can_be_paused_and_resumed(client):
+    # « hold » is Spectre's own status: Follow keeps the study running, the pause rides in metadata.
+    slug = _setup_microproject(client)
+    launched = client.post(
+        f"/api/microprojets/{slug}/experiences",
+        json={"substrate": _substrate(), "steps": _steps(), "title": "Essai", "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
+    ).json()
+    running = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/statut", json={"status": "running"}).json()
+    held = client.post(
+        f"/api/microprojets/{slug}/experiences/{running['id']}/statut", json={"status": "hold", "reason": "Bâti MOCVD en maintenance"}
+    )
+    assert held.status_code == 201
+    held = held.json()
+
+    detail = client.get(f"/api/microprojets/{slug}/experiences/{held['id']}").json()
+    assert detail["status"] == "hold"
+    assert detail["hold"]["reason"] == "Bâti MOCVD en maintenance" and detail["hold"]["by"] == "Owner"
+    node = client.get(f"/api/microprojets/{slug}/filiation").json()["nodes"][0]
+    assert node["status"] == "hold" and node["hold"]["since"] and node["ended_at"] is None
+    listed = client.get(f"/api/microprojets/{slug}/experiences?status=running").json()["items"]
+    assert [e["status"] for e in listed] == ["hold"]  # still among the studies in progress
+
+    resumed = client.post(f"/api/microprojets/{slug}/experiences/{held['id']}/statut", json={"status": "running"}).json()
+    detail = client.get(f"/api/microprojets/{slug}/experiences/{resumed['id']}").json()
+    assert detail["status"] == "running" and detail["hold"] is None
+
+
+def test_a_concluded_study_cannot_be_paused_and_concluding_lifts_the_pause(client):
+    slug = _setup_microproject(client)
+    launched = client.post(
+        f"/api/microprojets/{slug}/experiences",
+        json={"substrate": _substrate(), "steps": _steps(), "title": "Essai", "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
+    ).json()
+    held = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/statut", json={"status": "hold"}).json()
+    concluded = client.post(
+        f"/api/microprojets/{slug}/experiences/{held['id']}/conclure", json={"status": "concluded", "decision": "promote"}
+    ).json()
+    detail = client.get(f"/api/microprojets/{slug}/experiences/{concluded['id']}").json()
+    assert detail["status"] == "concluded" and detail["hold"] is None
+    refused = client.post(f"/api/microprojets/{slug}/experiences/{concluded['id']}/statut", json={"status": "hold"})
+    assert refused.status_code == 422
+
+
+def test_a_draft_taken_up_by_a_new_version_is_continued(client):
+    slug = _setup_microproject(client)
+    root = client.post(
+        f"/api/microprojets/{slug}/experiences",
+        json={"substrate": _substrate(), "steps": _steps(), "title": "Essai", "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
+    ).json()
+    child = client.post(
+        f"/api/microprojets/{slug}/experiences/{root['id']}/evoluer",
+        json={"substrate": _substrate(), "steps": _steps(thickness=40), "title": "Essai 2", "intent": "Plus epais", "objectives": []},
+    ).json()
+
+    nodes = {n["id"]: n for n in client.get(f"/api/microprojets/{slug}/filiation").json()["nodes"]}
+    assert nodes[root["id"]]["status"] == "continued"
+    assert nodes[child["id"]]["status"] == "draft"
+    assert client.get(f"/api/microprojets/{slug}/experiences/{root['id']}").json()["status"] == "continued"

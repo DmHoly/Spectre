@@ -1,7 +1,9 @@
-/* Fiche d'identité d'une expérience : un en-tête (statut, titre, responsable, étiquettes), puis
-   trois onglets qui vivent chacun leur vie - « Structure & intention » (structure actuelle + diff,
-   en carrousel pour une campagne, intention, objectifs, versions, suivi physique, cartographie),
-   « Données » (données mesurées + preuves), « Conclusion » (ou le formulaire pour la rédiger).
+/* Fiche d'identité d'une expérience : un en-tête qui en est le super résumé (statut, version, qui
+   et quand, le contexte, ce qu'on veut démontrer et comment - les objectifs, avec le verdict en
+   badge -, les plaques suivies, leurs FDL et le lien vers leurs données en base), puis trois
+   onglets qui vivent chacun leur vie - « Structure & plaques » (structure actuelle + diff, en
+   carrousel pour une campagne, et à côté les plaques ; versions, cartographie), « Données »
+   (données mesurées + preuves), « Conclusion » (ou le formulaire pour la rédiger).
    L'onglet ouvert est dans l'adresse (#structure / #donnees / #conclusion) et survit aux actions
    qui enregistrent une nouvelle version (voir goToVersion). Le rapport téléchargé reprend les trois. */
 
@@ -118,7 +120,7 @@ showTab(window.location.hash.slice(1));
 
 // Repères sur les onglets : combien de données, et si l'étude est conclue.
 function updateTabBadges(detail) {
-  const count = (detail.evidence || []).length + (detail.data_items || []).length;
+  const count = (detail.evidence || []).length + (detail.data_items || []).length + (detail.data_notebook || []).length;
   document.getElementById("tab-donnees-count").textContent = count ? String(count) : "";
   const state = document.getElementById("tab-conclusion-state");
   const concluded = detail.status === "concluded" || detail.status === "abandoned";
@@ -135,23 +137,178 @@ function objectiveResultFor(detail, objectiveName) {
 function renderHeader(detail) {
   document.getElementById("status-badge").innerHTML = statusBadgeHtml(detail.status, detail.conclusion.decision);
   renderStatusActions(detail);
+  renderStatusNote(detail);
+  document.getElementById("hero-code").innerHTML = currentMicroprojectCode
+    ? `<a class="fiche-code" href="/microprojets/${encodeURIComponent(slug)}" title="µprojet ${escapeHtml(currentMicroprojectName || "")}">${escapeHtml(currentMicroprojectCode)}</a>`
+    : "";
   document.getElementById("exp-title").textContent = detail.title;
   document.getElementById("exp-intent").textContent = detail.intent;
   const hypothesis = document.getElementById("exp-hypothesis");
   hypothesis.style.display = detail.hypothesis ? "" : "none";
   hypothesis.innerHTML = detail.hypothesis ? `<strong>Hypothèse</strong> : ${escapeHtml(detail.hypothesis)}` : "";
-  document.getElementById("exp-meta").innerHTML = `
-    ${currentMicroprojectCode ? `<span class="fiche-code" title="Numéro du µprojet">${escapeHtml(currentMicroprojectCode)}</span> &middot; ` : ""}
-    Responsable&nbsp;: <span class="meta-value">${escapeHtml(detail.author || "inconnu")}</span>
-    &middot; Débutée le&nbsp;: <span class="meta-value">${formatDate(detail.created_at)}</span>
-  `;
+  document.getElementById("exp-meta").innerHTML = [
+    currentMicroprojectName ? `<span>${escapeHtml(currentMicroprojectName)}</span>` : "",
+    `<span>Responsable&nbsp;: <span class="meta-value">${escapeHtml(detail.author || "inconnu")}</span></span>`,
+    `<span id="hero-dates">Débutée le&nbsp;: <span class="meta-value">${formatDate(detail.created_at)}</span></span>`,
+  ]
+    .filter(Boolean)
+    .join('<span class="fiche-hero__dot" aria-hidden="true">·</span>');
+
+  // le contexte : une description sommaire qui remet l'expérience dans son histoire
+  const context = document.getElementById("hero-context");
+  if (detail.context) {
+    context.textContent = detail.context;
+    context.classList.remove("is-empty");
+    context.style.display = "";
+  } else if (isEditorRole()) {
+    context.innerHTML = `<button type="button" class="fiche-hero__add" data-report-hide>+ Ajouter un contexte : d'où part cette expérience, pourquoi maintenant</button>`;
+    context.classList.add("is-empty");
+    context.style.display = "";
+    context.querySelector("button").addEventListener("click", () => goToEvolve("intention"));
+  } else {
+    context.style.display = "none";
+  }
+
   document.getElementById("crumb").textContent = "/ " + (currentMicroprojectCode ? `${currentMicroprojectCode} / ` : "") + detail.title;
   document.title = `${detail.title} — Spectre`;
+  renderHeroPlates(detail);
+  renderVerdict(detail);
+  renderHeroConclusion(detail);
 }
 
-// Transitions de statut « en cours » (voir POST .../statut) : une étude nouvellement lancée est
-// « brouillon » ; ce bouton la passe « en cours ». Une étude conclue peut être rouverte pour
-// revoir sa conclusion. Chaque changement enregistre une nouvelle version (études immuables).
+// Les plaques suivies, en résumé : leurs lasermarks, puis toutes leurs FDL (feuilles de lancement JIRA).
+function renderHeroPlates(detail) {
+  const lasermarks = (detail.physical_tracking || []).map((e) => e.sample_id).filter(Boolean);
+  const shown = lasermarks.slice(0, 8);
+  document.getElementById("hero-wafers").innerHTML = lasermarks.length
+    ? shown.map((l) => `<a class="hero-wafer" href="${plateUrl(l)}" title="Le parcours de la plaque ${escapeHtml(l)}">${escapeHtml(l)}</a>`).join("") +
+      (lasermarks.length > shown.length ? `<span class="hero-wafer hero-wafer--more">+${lasermarks.length - shown.length}</span>` : "")
+    : `<span class="help" style="margin:0;">Aucun lasermark renseigné</span>`;
+  document.getElementById("fdl-row").innerHTML = fdlChipsHtml(fdlsOfTracking(detail.physical_tracking));
+}
+
+// Le verdict des objectifs, en badge : un anneau (un segment par objectif, coloré selon son
+// résultat) + une icône + un libellé - jamais la couleur seule.
+const VERDICT_SEGMENT_COLORS = {
+  met: "var(--done)",
+  partially_met: "var(--gold)",
+  not_met: "var(--danger)",
+  inconclusive: "var(--draft)",
+  pending: "var(--border)",
+};
+const VERDICT_ICONS = {
+  met: '<path d="M5 13l4 4L19 7"/>',
+  not_met: '<path d="M6 6l12 12M18 6L6 18"/>',
+  partial: '<path d="M12 3a9 9 0 1 0 0 18z" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/>',
+  inconclusive: '<path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  pending: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  none: '<path d="M5 12h14"/>',
+};
+
+function objectiveVerdict(detail) {
+  const objectives = detail.objectives || [];
+  const statuses = objectives.map((o) => {
+    const result = objectiveResultFor(detail, o.name);
+    return result ? result.status : "pending";
+  });
+  const count = (status) => statuses.filter((st) => st === status).length;
+  const n = statuses.length;
+  const met = count("met");
+  const pending = count("pending");
+  const concluded = detail.status === "concluded" || detail.status === "abandoned";
+  let state;
+  let label;
+  if (!n) [state, label] = ["none", "Aucun objectif défini"];
+  else if (pending === n) [state, label] = ["pending", concluded ? "Objectifs non évalués" : "En cours de vérification"];
+  else if (met === n) [state, label] = ["met", n > 1 ? "Objectifs atteints" : "Objectif atteint"];
+  else if (met === 0 && count("partially_met") === 0 && count("not_met") > 0) [state, label] = ["not_met", n > 1 ? "Objectifs non atteints" : "Objectif non atteint"];
+  else if (met === 0 && count("partially_met") === 0 && count("not_met") === 0) [state, label] = ["inconclusive", "Non concluant"];
+  else [state, label] = ["partial", "Partiellement atteint"];
+  return { state, label, statuses, met, n, pending };
+}
+
+function verdictRingSvg(statuses) {
+  const r = 19;
+  const c = 2 * Math.PI * r;
+  const n = statuses.length || 1;
+  const gap = n > 1 ? 3 : 0;
+  const seg = c / n;
+  const arcs = (statuses.length ? statuses : ["pending"])
+    .map((st, i) => {
+      const length = Math.max(seg - gap, 1);
+      return `<circle cx="24" cy="24" r="${r}" fill="none" stroke="${VERDICT_SEGMENT_COLORS[st] || VERDICT_SEGMENT_COLORS.pending}" stroke-width="6" stroke-dasharray="${length.toFixed(2)} ${(c - length).toFixed(2)}" stroke-dashoffset="${(-(i * seg) + c / 4).toFixed(2)}"/>`;
+    })
+    .join("");
+  return `<svg class="verdict__ring" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="${r}" fill="none" stroke="var(--border-soft)" stroke-width="6"/>${arcs}</svg>`;
+}
+
+function renderVerdict(detail) {
+  const v = objectiveVerdict(detail);
+  const sub = v.n
+    ? v.pending === v.n
+      ? `${v.n} objectif${v.n > 1 ? "s" : ""} à vérifier`
+      : `${v.met} sur ${v.n} atteint${v.met > 1 ? "s" : ""}`
+    : isEditorRole()
+      ? "Le « comment » se décrit avec des objectifs"
+      : "";
+  document.getElementById("hero-verdict").innerHTML = `
+    <div class="verdict verdict--${v.state}" role="status" aria-label="${escapeHtml(`${v.label}${sub ? " - " + sub : ""}`)}">
+      <div class="verdict__ring-wrap">
+        ${verdictRingSvg(v.statuses)}
+        <span class="verdict__count">${v.n ? `${v.met}/${v.n}` : "–"}</span>
+      </div>
+      <div class="verdict__text">
+        <div class="verdict__label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${VERDICT_ICONS[v.state]}</svg>${escapeHtml(v.label)}</div>
+        ${sub ? `<div class="verdict__sub">${escapeHtml(sub)}</div>` : ""}
+      </div>
+    </div>`;
+}
+
+// Une étude conclue : sa décision et son résumé, dès l'en-tête (le détail reste dans l'onglet Conclusion).
+function renderHeroConclusion(detail) {
+  const box = document.getElementById("hero-conclusion");
+  const c = detail.conclusion || {};
+  const concluded = detail.status === "concluded" || detail.status === "abandoned";
+  if (!concluded || (!c.summary && !c.decision)) {
+    box.style.display = "none";
+    return;
+  }
+  box.style.display = "";
+  box.innerHTML = `
+    <div class="fiche-hero__label">Conclusion</div>
+    ${c.decision ? `<div class="fiche-hero__decision">${escapeHtml(DECISION_LABELS[c.decision] || c.decision)}</div>` : ""}
+    ${c.summary ? `<p class="fiche-hero__summary">${escapeHtml(c.summary)}</p>` : ""}
+    <button type="button" class="fiche-hero__more" data-report-hide>Lire la conclusion &rarr;</button>`;
+  box.querySelector(".fiche-hero__more").addEventListener("click", () => {
+    showTab("conclusion", { focus: true });
+    document.querySelector(".fiche-tabs").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+// Transitions de statut (voir POST .../statut) : une étude nouvellement lancée est « brouillon » ;
+// elle passe « en cours », peut être mise « en pause » (hold, avec un motif) puis reprise. Une étude
+// conclue peut être rouverte pour revoir sa conclusion. Un brouillon « continuée » (repris par une
+// version suivante) se déduit du graphe : rien à faire pour l'obtenir. Chaque changement enregistre
+// une nouvelle version (études immuables).
+function renderStatusNote(detail) {
+  const note = document.getElementById("status-note");
+  note.className = "fiche-status-note";
+  if (detail.status === "hold" && detail.hold) {
+    const since = detail.hold.since;
+    note.classList.add("fiche-status-note--hold");
+    note.innerHTML = `<span>En pause depuis le ${escapeHtml(formatDate(since))} (${escapeHtml(formatDuration(new Date() - new Date(since)))})${detail.hold.by ? ` · par ${escapeHtml(detail.hold.by)}` : ""}</span>${
+      detail.hold.reason ? `<span class="fiche-status-note__reason">${escapeHtml(detail.hold.reason)}</span>` : ""
+    }`;
+    note.hidden = false;
+  } else if (detail.status === "continued" && detail.continued_at) {
+    note.innerHTML = `<span>Brouillon continué par une version suivante le ${escapeHtml(formatDate(detail.continued_at))} - <a href="/microprojets/${encodeURIComponent(slug)}">voir la suite dans le graphe</a></span>`;
+    note.hidden = false;
+  } else {
+    note.hidden = true;
+    note.innerHTML = "";
+  }
+}
+
 function renderStatusActions(detail) {
   const host = document.getElementById("status-actions");
   host.innerHTML = "";
@@ -164,16 +321,56 @@ function renderStatusActions(detail) {
     b.addEventListener("click", () => changeStatus(targetStatus, b));
     host.appendChild(b);
   };
-  if (detail.status === "draft") addBtn("Marquer « en cours »", "running", "btn-primary");
-  else if (detail.status === "running") addBtn("Repasser en brouillon", "draft", "btn-line");
-  else addBtn("Rouvrir pour revoir la conclusion", "running", "btn-line");
+  if (detail.status === "draft") {
+    addBtn("Marquer « en cours »", "running", "btn-primary");
+    addBtn("Mettre en pause", "hold", "btn-line");
+  } else if (detail.status === "continued") {
+    addBtn("Marquer « en cours »", "running", "btn-line");
+  } else if (detail.status === "running") {
+    addBtn("Mettre en pause", "hold", "btn-line");
+    addBtn("Repasser en brouillon", "draft", "btn-line");
+  } else if (detail.status === "hold") {
+    // reprendre = revenir au statut qu'elle avait avant la pause (brouillon ou en cours)
+    addBtn("Reprendre", detail.conclusion.status === "draft" ? "draft" : "running", "btn-primary");
+  } else {
+    addBtn("Rouvrir pour revoir la conclusion", "running", "btn-line");
+  }
 }
+
+// Le motif d'une mise en pause : null si la personne annule.
+function askHoldReason() {
+  const dialog = document.getElementById("hold-dialog");
+  const input = document.getElementById("hold-reason");
+  input.value = "";
+  return new Promise((resolve) => {
+    const done = (value) => {
+      dialog.removeEventListener("close", onClose);
+      resolve(value);
+    };
+    const onClose = () => done(dialog.returnValue === "ok" ? input.value.trim() : null);
+    dialog.addEventListener("close", onClose);
+    dialog.returnValue = ""; // Échap ne doit pas réutiliser le « ok » d'une fois précédente
+    dialog.showModal();
+    input.focus();
+  });
+}
+document.getElementById("hold-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  document.getElementById("hold-dialog").close("ok");
+});
+document.getElementById("hold-cancel").addEventListener("click", () => document.getElementById("hold-dialog").close("cancel"));
 
 async function changeStatus(targetStatus, btn) {
   clearError();
+  const body = { status: targetStatus };
+  if (targetStatus === "hold") {
+    const reason = await askHoldReason();
+    if (reason === null) return;
+    body.reason = reason || null;
+  }
   if (btn) btn.disabled = true;
   try {
-    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/statut`, { status: targetStatus });
+    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/statut`, body);
     goToVersion(result.id);
   } catch (err) {
     showError(err);
@@ -181,41 +378,46 @@ async function changeStatus(targetStatus, btn) {
   }
 }
 
+const OBJECTIVE_DIRECTION_TEXT = { observe: "observer", maximize: "maximiser", minimize: "minimiser", target: "cible" };
+
 function renderObjectives(detail) {
   const list = document.getElementById("objectives-list");
-  const summary = document.getElementById("objectives-summary");
   if (detail.objectives.length === 0) {
-    summary.style.display = "none";
-    list.innerHTML = `<div class="help">Aucun objectif défini.</div>`;
+    list.innerHTML = `<li class="hero-objectives__empty">Aucun objectif défini${
+      isEditorRole() ? ` - <button type="button" class="fiche-hero__add js-add-objectives" data-report-hide>ajouter les objectifs</button>` : ""
+    }.</li>`;
+    const add = list.querySelector(".js-add-objectives");
+    if (add) add.addEventListener("click", () => goToEvolve("intention"));
     return;
   }
-  const metCount = detail.objectives.filter((o) => {
-    const result = objectiveResultFor(detail, o.name);
-    return result && result.status === "met";
-  }).length;
-  summary.style.display = "";
-  summary.textContent = `${metCount} / ${detail.objectives.length} atteint${metCount > 1 ? "s" : ""}`;
+  const icons = {
+    met: '<path d="M5 13l4 4L19 7"/>',
+    not_met: '<path d="M6 6l12 12M18 6L6 18"/>',
+    partially_met: '<path d="M5 12h14"/>',
+    inconclusive: '<path d="M12 17h.01"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/>',
+    pending: '<circle cx="12" cy="12" r="3" fill="currentColor"/>',
+  };
   list.innerHTML = detail.objectives
     .map((o) => {
       const result = objectiveResultFor(detail, o.name);
-      const met = result && result.status === "met";
-      const iconBg = met ? "var(--done-tint)" : "var(--border-soft)";
-      const iconColor = met ? "var(--done)" : "var(--text-faint)";
-      const icon = met
-        ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>'
-        : '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>';
-      const statusText = result ? OBJECTIVE_STATUS_LABELS[result.status] || result.status : "En cours de vérification";
+      const status = result ? result.status : "pending";
+      const statusText = result ? OBJECTIVE_STATUS_LABELS[result.status] || result.status : "À vérifier";
       const verification = (detail.objective_verification || {})[o.name];
+      const how = [o.metric, OBJECTIVE_DIRECTION_TEXT[o.direction] || o.direction, o.target != null ? `cible ${o.target}` : ""].filter(Boolean).join(" · ");
+      const observed = result && result.observed ? `observé ${result.observed.value}${result.observed.unit ? " " + result.observed.unit : ""}` : "";
       return `
-        <div class="marked-card" style="display:flex;gap:10px;align-items:flex-start;">
-          <div style="width:18px;height:18px;border-radius:999px;background:${iconBg};color:${iconColor};display:flex;align-items:center;justify-content:center;flex:none;margin-top:1px;">${icon}</div>
-          <div>
-            <div style="font-size:13px;font-weight:600;">${escapeHtml(o.name)}</div>
-            <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(statusText)}</div>
-            ${o.rationale ? `<div style="font-size:11.5px;color:var(--text-soft);margin-top:3px;">${escapeHtml(o.rationale)}</div>` : ""}
-            ${verification ? `<div style="font-size:11px;color:var(--text-faint);margin-top:2px;font-style:italic;">Vérification&nbsp;: ${escapeHtml(verification)}</div>` : ""}
+        <li class="hero-objective hero-objective--${status}">
+          <span class="hero-objective__icon" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${icons[status] || icons.pending}</svg></span>
+          <div class="hero-objective__body">
+            <div class="hero-objective__head">
+              <span class="hero-objective__name">${escapeHtml(o.name)}</span>
+              <span class="hero-objective__status">${escapeHtml(statusText)}</span>
+            </div>
+            ${how || observed ? `<div class="hero-objective__how mono">${escapeHtml([how, observed].filter(Boolean).join(" — "))}</div>` : ""}
+            ${verification ? `<div class="hero-objective__verif">Vérification&nbsp;: ${escapeHtml(verification)}</div>` : ""}
+            ${o.rationale ? `<div class="hero-objective__why">Pourquoi&nbsp;: ${escapeHtml(o.rationale)}</div>` : ""}
           </div>
-        </div>`;
+        </li>`;
     })
     .join("");
 }
@@ -485,30 +687,56 @@ document.getElementById("layer-modal-close-btn").addEventListener("click", () =>
   document.getElementById("layer-modal").close();
 });
 
-// Rendu partagé d'une ligne "entité physique" (identifiant + emplacement), utilisé une fois pour
-// l'unique entité d'une expérience simple (renderPhysicalTracking) et une fois par variante d'un
-// lot (renderBatchMatrix, compact=true - tient sous une vignette plutôt qu'à côté). Les deux champs
-// portent une autocomplétion (list=, remplie depuis /entites/historique - voir populateEntityHistory)
-// et sont marqués data-report-hide + accompagnés d'un miroir texte .report-only, même mécanique que
-// partout ailleurs sur la fiche depuis la suppression du mode vue (voir generateReportHtml).
-function entityFieldsHtml(current, indexAttr, canEdit, compact) {
-  const sampleId = current.sample_id || "";
+// Les champs FDL (mountFdlField, common.js) de chaque plaque affichée, par index - remplis par
+// mountEntityFdlFields une fois le HTML posé, relus à l'enregistrement.
+let entityFdlFields = {};
+
+function mountEntityFdlFields(tracking) {
+  entityFdlFields = {};
+  document.querySelectorAll(".js-entity-fdl").forEach((el) => {
+    const index = Number(el.dataset.index);
+    entityFdlFields[index] = mountFdlField(el, {
+      values: (tracking[index] || {}).fdl || [],
+      datalistId: "entity-fdl-history",
+      label: `FDL de la plaque ${index + 1}`,
+    });
+  });
+}
+
+function entityFdlValues(index) {
+  return entityFdlFields[index] ? entityFdlFields[index].get() : [];
+}
+
+// Une plaque (entité physique) dans la carte « Plaques & entités physiques » : son lasermark, son
+// emplacement et ses FDL - en champs pour un éditeur, en lecture sinon. `label` : la variante
+// d'une campagne. Les champs portent une autocomplétion (list=, depuis /entites/historique) et
+// sont data-report-hide, avec un miroir texte .report-only pour le rapport (voir generateReportHtml).
+function plateRowHtml(current, index, canEdit, label) {
+  const lasermark = current.sample_id || "";
   const location = current.location || "";
-  const roText = sampleId || location
-    ? `${sampleId ? `Identifiant&nbsp;: <strong>${escapeHtml(sampleId)}</strong>` : ""}${location ? `${sampleId ? "<br>" : ""}Emplacement&nbsp;: <strong>${escapeHtml(location)}</strong>` : ""}`
-    : "";
-  if (!canEdit) {
-    return roText
-      ? `<div style="font-size:${compact ? "11px" : "13px"};">${roText}</div>`
-      : `<div class="help">Aucun suivi physique enregistré.</div>`;
-  }
-  const idInput = `<input class="field js-entity-sample-id" data-index="${indexAttr}" data-report-hide list="entity-sample-id-history" value="${escapeHtml(sampleId)}" placeholder="${compact ? "identifiant" : "ex : W12-A3"}" style="${compact ? "margin-top:6px;font-size:11px;padding:4px 6px;" : ""}">`;
-  const locInput = `<input class="field js-entity-location" data-index="${indexAttr}" data-report-hide list="entity-location-history" value="${escapeHtml(location)}" placeholder="${compact ? "emplacement" : "ex : congélateur B, tiroir 2"}" style="${compact ? "margin-top:4px;font-size:11px;padding:4px 6px;" : ""}">`;
-  const layout = compact
-    ? `${idInput}${locInput}`
-    : `<div class="field-row" style="margin-bottom:10px;"><div><label>Identifiant physique</label>${idInput}</div><div><label>Emplacement</label>${locInput}</div></div>`;
-  const roMirror = roText ? `<span class="report-only" style="font-size:${compact ? "11px" : "13px"};margin-top:4px;">${roText}</span>` : "";
-  return `${layout}${roMirror}`;
+  const fdls = current.fdl || [];
+  const head = label ? `<div class="plate-row__label">${escapeHtml(label)}</div>` : "";
+  const readonly = `
+    <div class="plate-row__ro">
+      ${
+        lasermark
+          ? `<a class="plate-row__lasermark" href="${plateUrl(lasermark)}" title="Le parcours de cette plaque">${escapeHtml(lasermark)}</a>`
+          : `<span class="plate-row__lasermark is-missing">lasermark non renseigné</span>`
+      }
+      ${location ? `<span class="plate-row__location">${escapeHtml(location)}</span>` : ""}
+      ${fdls.length ? `<span class="plate-row__fdl">${fdlChipsHtml(fdls, { label: false })}</span>` : ""}
+    </div>`;
+  if (!canEdit) return `<div class="plate-row">${head}${readonly}</div>`;
+  return `
+    <div class="plate-row">
+      ${head}
+      <div class="plate-row__fields" data-report-hide>
+        <div><label for="plate-lasermark-${index}">Lasermark${lasermark ? ` <a class="plate-row__trail" href="${plateUrl(lasermark)}">parcours &rarr;</a>` : ""}</label><input class="field mono js-entity-sample-id" id="plate-lasermark-${index}" data-index="${index}" list="entity-sample-id-history" value="${escapeHtml(lasermark)}" placeholder="ex : W12-A3" autocomplete="off"></div>
+        <div><label for="plate-location-${index}">Emplacement</label><input class="field js-entity-location" id="plate-location-${index}" data-index="${index}" list="entity-location-history" value="${escapeHtml(location)}" placeholder="ex : boîte B, tiroir 2" autocomplete="off"></div>
+        <div class="plate-row__fdl-field"><label>FDL</label><div class="js-entity-fdl" data-index="${index}"></div></div>
+      </div>
+      <div class="report-only">${readonly}</div>
+    </div>`;
 }
 
 async function renderBatchMatrix(detail) {
@@ -521,33 +749,20 @@ async function renderBatchMatrix(detail) {
   try {
     const variation = await getBatchVariation();
     const labels = variation.labels || variation.svgs.map((_, i) => `#${i + 1}`);
-    const canEdit = isEditorRole();
     const tracking = variation.physical_tracking || [];
 
     // Cartographie : une vignette par échantillon, la structure réelle telle que StructureForge
-    // l'a simulée - pas juste la référence, chaque variante. Identifiant + emplacement se posent
-    // juste en dessous (entityFieldsHtml, mode compact - voir sa doc plus haut).
+    // l'a simulée - pas juste la référence, chaque variante, avec le lasermark de sa plaque (qui se
+    // renseigne, avec ses FDL, dans la carte « Plaques » à côté de la structure).
     document.getElementById("atlas-content").innerHTML = `
       <div class="atlas-grid">
         ${variation.svgs
           .map((svg, i) => {
-            const idField = entityFieldsHtml(tracking[i] || {}, i, canEdit, true);
-            return `<div class="atlas-tile">${svg}<div class="atlas-label">${escapeHtml(labels[i])}</div>${idField}</div>`;
+            const lasermark = (tracking[i] || {}).sample_id;
+            return `<div class="atlas-tile">${svg}<div class="atlas-label">${escapeHtml(labels[i])}</div>${lasermark ? `<div class="atlas-tile__lasermark mono">${escapeHtml(lasermark)}</div>` : ""}</div>`;
           })
           .join("")}
-      </div>
-      ${canEdit ? `<button class="btn btn-line" id="save-atlas-tracking-btn" type="button" data-report-hide style="margin-top:10px;">Enregistrer les identifiants physiques</button>` : ""}`;
-
-    if (canEdit) {
-      document.getElementById("save-atlas-tracking-btn").addEventListener("click", () => {
-        const entities = variation.svgs.map((_, i) => {
-          const sampleInput = document.querySelector(`.js-entity-sample-id[data-index="${i}"]`);
-          const locInput = document.querySelector(`.js-entity-location[data-index="${i}"]`);
-          return { sample_id: sampleInput.value.trim() || null, location: locInput.value.trim() || null };
-        });
-        savePhysicalTracking(entities);
-      });
-    }
+      </div>`;
 
     const el = document.getElementById("matrix-content");
     const hasFactors = variation.factor_labels && variation.factor_labels.length > 0;
@@ -818,28 +1033,6 @@ document.getElementById("compare-btn").addEventListener("click", async () => {
   }
 });
 
-// Pièces jointes - même pattern que atlas.js:70-118 (panneau Atlas), porté ici pour les preuves de
-// type "image" plutôt que dupliqué tel quel : atlas.js liste des pièces jointes autonomes avec un
-// bouton de suppression, alors qu'ici une pièce jointe est propriété d'une preuve précise et ne se
-// supprime qu'en même temps qu'elle - pas besoin de deleteLinkButtonHtml.
-async function uploadFile(url, formData) {
-  const response = await fetch(url, { method: "POST", credentials: "same-origin", body: formData });
-  const text = await response.text();
-  let data = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      data = text;
-    }
-  }
-  if (!response.ok) {
-    const detail = data && typeof data === "object" ? data.detail : data;
-    throw new Error(typeof detail === "string" ? detail : "Une erreur est survenue.");
-  }
-  return data;
-}
-
 async function saveAnnotations(evidenceId, annotations) {
   clearError();
   try {
@@ -879,46 +1072,131 @@ function annotationMarkersSvg(annotations) {
     </svg>`;
 }
 
-function imageEvidenceHtml(detail, e) {
-  const attachment = (detail.attachments || []).find((a) => a.evidence_id === e.id);
-  if (!attachment) {
-    return `<div class="help" style="margin-top:8px;">Image en cours d'envoi ou absente.</div>`;
-  }
-  const url = `/api/microprojets/${encodeURIComponent(slug)}/pieces-jointes/${encodeURIComponent(attachment.id)}`;
+// Les images d'une preuve : ses pièces jointes images (collées dans le formulaire, ou l'image d'une
+// ancienne preuve « Image ») - affichées quel que soit le type de la preuve. Chacune porte ses
+// propres annotations (flèche / cadre), qui se posent en cliquant dessus.
+function evidenceImagesHtml(detail, e) {
+  const images = (detail.attachments || []).filter((a) => a.evidence_id === e.id && (a.content_type || "image/").startsWith("image/"));
+  if (!images.length) return e.kind === "image" ? `<div class="help" style="margin-top:8px;">Image en cours d'envoi ou absente.</div>` : "";
   const canEdit = isEditorRole();
-  const annotations = e.image_annotations || [];
-  const annotationsListHtml = annotations
-    .map(
-      (a, i) => `
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;padding:3px 0;">
-        <span>${a.type === "arrow" ? "Flèche" : "Cadre"}${a.label ? " — " + escapeHtml(a.label) : ""}</span>
+  const all = e.image_annotations || [];
+  return `<div class="evidence-images" data-count="${Math.min(images.length, 3)}">${images
+    .map((attachment) => {
+      const url = `/api/microprojets/${encodeURIComponent(slug)}/pieces-jointes/${encodeURIComponent(attachment.id)}`;
+      const mine = all.map((a, i) => ({ ...a, globalIndex: i })).filter((a) => !a.attachment_id || a.attachment_id === attachment.id);
+      const annotationsListHtml = mine
+        .map(
+          (a) => `
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;padding:3px 0;">
+            <span>${a.type === "arrow" ? "Flèche" : "Cadre"}${a.label ? " — " + escapeHtml(a.label) : ""}</span>
+            ${
+              canEdit
+                ? `<button type="button" class="js-remove-annotation" data-evidence-id="${e.id}" data-index="${a.globalIndex}" data-report-hide aria-label="Retirer l'annotation" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:14px;line-height:1;">&times;</button>`
+                : ""
+            }
+          </div>`
+        )
+        .join("");
+      return `
+      <figure class="evidence-image">
+        <div class="js-annotation-image" data-evidence-id="${e.id}" data-attachment-id="${attachment.id}" style="position:relative;display:inline-block;max-width:100%;cursor:${canEdit ? "crosshair" : "default"};">
+          <img src="${url}" alt="${escapeHtml(attachment.caption || attachment.filename || "Image de la preuve")}" style="max-width:100%;display:block;border-radius:var(--radius-sm);">
+          ${annotationMarkersSvg(mine)}
+        </div>
+        ${attachment.caption ? `<figcaption class="evidence-image__caption">${escapeHtml(attachment.caption)}</figcaption>` : ""}
+        ${annotationsListHtml ? `<div style="margin-top:4px;">${annotationsListHtml}</div>` : ""}
         ${
           canEdit
-            ? `<button type="button" class="js-remove-annotation" data-evidence-id="${e.id}" data-index="${i}" data-report-hide style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:14px;line-height:1;">&times;</button>`
+            ? `<div class="js-annotation-tools" data-evidence-id="${e.id}" data-attachment-id="${attachment.id}" data-report-hide style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                <button type="button" class="btn btn-line js-annotation-tool" data-tool="arrow" style="min-height:30px;padding:3px 9px;font-size:11.5px;">Flèche</button>
+                <button type="button" class="btn btn-line js-annotation-tool" data-tool="box" style="min-height:30px;padding:3px 9px;font-size:11.5px;">Cadre</button>
+                <button type="button" class="btn btn-primary js-annotation-save" style="min-height:30px;padding:3px 9px;font-size:11.5px;">Enregistrer les annotations</button>
+                <span class="help js-annotation-hint" style="margin:0;"></span>
+              </div>`
             : ""
         }
-      </div>`
-    )
-    .join("");
-  return `
-    <div style="margin-top:10px;">
-      <div class="js-annotation-image" data-evidence-id="${e.id}" data-attachment-id="${attachment.id}" style="position:relative;display:inline-block;max-width:100%;cursor:${canEdit ? "crosshair" : "default"};">
-        <img src="${url}" alt="${escapeHtml(attachment.filename)}" style="max-width:100%;display:block;border-radius:var(--radius-sm);">
-        ${annotationMarkersSvg(annotations)}
-      </div>
-      ${annotationsListHtml ? `<div style="margin-top:6px;">${annotationsListHtml}</div>` : ""}
-      ${
-        canEdit
-          ? `<div class="js-annotation-tools" data-evidence-id="${e.id}" data-report-hide style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-              <button type="button" class="btn btn-line js-annotation-tool" data-tool="arrow" style="padding:4px 10px;font-size:11.5px;">Flèche</button>
-              <button type="button" class="btn btn-line js-annotation-tool" data-tool="box" style="padding:4px 10px;font-size:11.5px;">Cadre</button>
-              <button type="button" class="btn btn-primary js-annotation-save" style="padding:4px 10px;font-size:11.5px;">Enregistrer les annotations</button>
-              <span class="help js-annotation-hint" style="margin:0;"></span>
-            </div>`
-          : ""
-      }
-    </div>`;
+      </figure>`;
+    })
+    .join("")}</div>`;
 }
+
+// Un lien de preuve : une adresse web (SharePoint, Teams...) s'ouvre dans un onglet ; un chemin
+// réseau ou disque (\\serveur\partage\..., S:\...) - que le navigateur refuse d'ouvrir depuis une
+// page web - se copie, pour le coller dans l'explorateur ou PowerPoint.
+const LINK_ICONS = {
+  folder: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`,
+  slides: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8"/><path d="M7 12l3-3 2 2 4-4"/></svg>`,
+  file: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>`,
+  web: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>`,
+};
+
+function describeEvidenceLink(link) {
+  const isWeb = /^https?:\/\//i.test(link);
+  let tail = link.replace(/[\\/]+$/, "");
+  if (isWeb) {
+    try {
+      const u = new URL(link);
+      tail = decodeURIComponent(u.pathname.replace(/\/+$/, "").split("/").pop() || u.hostname);
+    } catch (e) {
+      tail = link;
+    }
+  } else {
+    tail = tail.split(/[\\/]/).pop() || link;
+  }
+  const ext = (tail.match(/\.([a-z0-9]{2,5})$/i) || [])[1];
+  const lower = (ext || "").toLowerCase();
+  let kind = "file";
+  let label = "Fichier";
+  if (["ppt", "pptx", "pptm", "odp"].includes(lower)) [kind, label] = ["slides", "Présentation"];
+  else if (!ext) [kind, label] = isWeb ? ["web", "Page"] : ["folder", "Dossier"];
+  else if (lower === "pdf") label = "PDF";
+  else if (["xls", "xlsx", "xlsm", "csv"].includes(lower)) label = "Tableur";
+  else if (["doc", "docx"].includes(lower)) label = "Document";
+  return { isWeb, name: tail || link, kind, label };
+}
+
+function evidenceLinksHtml(links) {
+  if (!links || !links.length) return "";
+  return `<ul class="evidence-links">${links
+    .map((link) => {
+      const d = describeEvidenceLink(link);
+      const action = d.isWeb
+        ? `<a class="evidence-link__action" href="${escapeHtml(link)}" target="_blank" rel="noopener" aria-label="Ouvrir ${escapeHtml(d.name)} (nouvel onglet)">Ouvrir</a>`
+        : `<button type="button" class="evidence-link__action js-copy-link" data-link="${escapeHtml(link)}" data-report-hide aria-label="Copier le chemin de ${escapeHtml(d.name)}" title="Le navigateur ne peut pas ouvrir un chemin réseau : copiez-le, puis collez-le dans l'explorateur">Copier le chemin</button>`;
+      return `
+      <li class="evidence-link evidence-link--${d.kind}">
+        <span class="evidence-link__icon" title="${d.label}">${LINK_ICONS[d.kind]}</span>
+        <span class="evidence-link__text"><span class="evidence-link__name">${escapeHtml(d.name)}</span><span class="evidence-link__path">${escapeHtml(link)}</span></span>
+        ${action}
+      </li>`;
+    })
+    .join("")}</ul>`;
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.cssText = "position:fixed;opacity:0;";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  }
+}
+
+document.getElementById("evidence-list").addEventListener("click", async (event) => {
+  const btn = event.target.closest(".js-copy-link");
+  if (!btn) return;
+  const ok = await copyText(btn.dataset.link);
+  const label = btn.textContent;
+  btn.textContent = ok ? "Copié ✓" : "Copie impossible";
+  setTimeout(() => (btn.textContent = label), 1600);
+});
 
 function graphEvidenceHtml(e) {
   const cfg = e.graph_config || {};
@@ -991,9 +1269,6 @@ async function drawGraphFromUrl(mount) {
 }
 
 function evidenceFormFieldsHtml(kind) {
-  if (kind === "image") {
-    return `<div><label>Image</label><input class="field" type="file" id="evidence-image-input" accept="image/png,image/jpeg,image/gif,image/webp" required><div class="help">10 Mo maximum - une flèche ou un cadre pourront être ajoutés une fois la preuve créée.</div></div>`;
-  }
   if (kind === "graph") {
     return `
       <div><label>Source</label><input class="field" id="evidence-source" placeholder="lien, fichier ou référence"></div>
@@ -1015,12 +1290,35 @@ function evidenceFormFieldsHtml(kind) {
        </select></div>`
     : "";
   return `
-    <div><label>Source</label><input class="field" id="evidence-source" placeholder="lien, fichier ou référence" required></div>
+    <div><label for="evidence-links">Liens <span class="help" style="display:inline;margin:0;font-weight:400;">- un dossier, une présentation PowerPoint, une page SharePoint… un par ligne</span></label>
+      <textarea class="field" id="evidence-links" rows="2" placeholder="\\\\serveur\\partage\\Runs\\W42\\revue.pptx&#10;https://…sharepoint.com/…"></textarea></div>
+    <div><label>Images <span class="help" style="display:inline;margin:0;font-weight:400;">- collez (Ctrl+V), glissez-déposez ou choisissez une ou plusieurs images</span></label>
+      <div id="evidence-images-drop"></div></div>
+    <div><label for="evidence-source">Référence (optionnel)</label><input class="field" id="evidence-source" placeholder="appareil, fichier de mesure, référence…"></div>
     ${stepOptions}
     <div class="field-row">
       <input class="field" id="evidence-metric-name" placeholder="mesure (optionnel)">
       <input class="field" id="evidence-metric-value" type="number" placeholder="valeur">
     </div>`;
+}
+
+// La planche d'images du formulaire de preuve (image-drop.js, sans type d'image) - remontée à
+// chaque fois que les champs « standard » sont (re)posés.
+let evidenceImagesDrop = null;
+function mountEvidenceImagesDrop() {
+  const zone = document.getElementById("evidence-images-drop");
+  evidenceImagesDrop = zone
+    ? mountImageDrop(zone, {
+        slug,
+        uploadUrl: `/api/microprojets/${encodeURIComponent(slug)}/images`,
+        withKind: false,
+        compact: true,
+        onChange: () => clearError(),
+        onError: showError,
+        // coller une image ne vise ce formulaire que quand l'onglet Données est affiché
+        isActive: () => !document.querySelector("dialog[open]") && !document.getElementById("panel-donnees").hidden,
+      })
+    : null;
 }
 
 function renderEvidence(detail) {
@@ -1036,23 +1334,24 @@ function renderEvidence(detail) {
             e.step_index != null
               ? `<span class="badge badge-role" style="font-size:10.5px;margin-left:6px;">${escapeHtml(stepLabelFor(e.step_index))}</span>`
               : "";
-          const kindBadge = `<span class="badge badge-role" style="font-size:10.5px;margin-left:6px;">${EVIDENCE_KIND_LABELS[e.kind] || e.kind}</span>`;
+          const kindBadge =
+            e.kind && e.kind !== "standard" && EVIDENCE_KIND_LABELS[e.kind]
+              ? `<span class="badge badge-role" style="font-size:10.5px;margin-left:6px;">${EVIDENCE_KIND_LABELS[e.kind]}</span>`
+              : "";
+          const links = (detail.evidence_links || {})[e.id] || [];
           const objectiveLine = e.objective
             ? `<div style="font-size:12px;color:var(--text-soft);margin-top:4px;">Objectif visé&nbsp;: <strong>${escapeHtml(e.objective)}</strong></div>`
             : "";
           const interpretationBlock = e.interpretation
             ? `<div style="font-size:12.5px;color:var(--text-soft);margin-top:6px;line-height:1.5;font-style:italic;">${escapeHtml(e.interpretation)}</div>`
             : "";
-          let bodyHtml = "";
-          if (e.kind === "image") {
-            bodyHtml = imageEvidenceHtml(detail, e);
-          } else if (e.kind === "graph") {
-            bodyHtml = graphEvidenceHtml(e);
-          }
+          let bodyHtml = evidenceImagesHtml(detail, e);
+          if (e.kind === "graph") bodyHtml += graphEvidenceHtml(e);
           return `
             <div class="marked-card" style="margin-top:12px;">
               <div style="font-size:13px;font-weight:600;">${escapeHtml(e.description)}${stepBadge}${kindBadge}</div>
-              ${e.source ? `<div style="font-size:12px;color:var(--text-soft);margin-top:2px;word-break:break-all;">${e.source.startsWith("http") ? `<a href="${escapeHtml(e.source)}" target="_blank" rel="noopener">${escapeHtml(e.source)}</a>` : escapeHtml(e.source)}</div>` : ""}
+              ${e.source && !links.includes(e.source) ? `<div style="font-size:12px;color:var(--text-soft);margin-top:2px;word-break:break-all;">${e.source.startsWith("http") ? `<a href="${escapeHtml(e.source)}" target="_blank" rel="noopener">${escapeHtml(e.source)}</a>` : escapeHtml(e.source)}</div>` : ""}
+              ${evidenceLinksHtml(links)}
               ${metricText ? `<div class="mono" style="font-size:11.5px;color:var(--text-faint);margin-top:4px;">${metricText}</div>` : ""}
               ${objectiveLine}
               ${interpretationBlock}
@@ -1077,11 +1376,13 @@ function renderEvidence(detail) {
 
   document.querySelectorAll(".js-annotation-image").forEach((container) => {
     const evidenceId = container.dataset.evidenceId;
+    const attachmentId = container.dataset.attachmentId;
     const evidence = detail.evidence.find((ev) => ev.id === evidenceId);
-    const toolsBar = document.querySelector(`.js-annotation-tools[data-evidence-id="${evidenceId}"]`);
+    const toolsBar = document.querySelector(`.js-annotation-tools[data-attachment-id="${attachmentId}"]`);
     if (!evidence || !toolsBar) return;
     const hint = toolsBar.querySelector(".js-annotation-hint");
-    const localAnnotations = (evidence.image_annotations || []).map((a) => ({ ...a }));
+    const others = (evidence.image_annotations || []).filter((a) => a.attachment_id && a.attachment_id !== attachmentId);
+    const localAnnotations = (evidence.image_annotations || []).filter((a) => !a.attachment_id || a.attachment_id === attachmentId).map((a) => ({ ...a, attachment_id: attachmentId }));
     let tool = null;
     let dragStart = null;
 
@@ -1134,7 +1435,7 @@ function renderEvidence(detail) {
         dragStart = null;
       }
     });
-    toolsBar.querySelector(".js-annotation-save").addEventListener("click", () => saveAnnotations(evidenceId, localAnnotations));
+    toolsBar.querySelector(".js-annotation-save").addEventListener("click", () => saveAnnotations(evidenceId, [...others, ...localAnnotations]));
   });
 
   renderEvidenceCompareTool(detail);
@@ -1154,8 +1455,7 @@ function renderEvidence(detail) {
     <form id="evidence-form" class="field-group" data-report-hide style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
       <div><label>Type de preuve</label>
         <select class="field" id="evidence-kind-select">
-          <option value="standard">Standard</option>
-          <option value="image">Image</option>
+          <option value="standard">Mesure, document, images</option>
           <option value="graph">Graphique</option>
         </select>
       </div>
@@ -1165,8 +1465,10 @@ function renderEvidence(detail) {
       <div id="evidence-kind-fields">${evidenceFormFieldsHtml("standard")}</div>
       <button class="btn btn-line btn-block" type="submit">Ajouter la preuve</button>
     </form>`;
+  mountEvidenceImagesDrop();
   document.getElementById("evidence-kind-select").addEventListener("change", (event) => {
     document.getElementById("evidence-kind-fields").innerHTML = evidenceFormFieldsHtml(event.target.value);
+    mountEvidenceImagesDrop();
   });
   document.getElementById("evidence-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1176,13 +1478,10 @@ function renderEvidence(detail) {
     const interpretation = document.getElementById("evidence-interpretation").value.trim();
     let source = "";
     let graphConfig = null;
-    let imageFile = null;
+    let links = [];
+    let images = [];
     try {
-      if (kind === "image") {
-        imageFile = document.getElementById("evidence-image-input").files[0];
-        if (!imageFile) throw new Error("Choisissez une image.");
-        source = imageFile.name;
-      } else if (kind === "graph") {
+      if (kind === "graph") {
         source = document.getElementById("evidence-source").value.trim();
         graphConfig = {
           title: document.getElementById("evidence-description").value.trim(),
@@ -1192,7 +1491,10 @@ function renderEvidence(detail) {
           data_source_url: document.getElementById("evidence-graph-url").value.trim() || null,
         };
       } else {
-        source = document.getElementById("evidence-source").value;
+        source = document.getElementById("evidence-source").value.trim();
+        links = document.getElementById("evidence-links").value.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+        if (evidenceImagesDrop && evidenceImagesDrop.isUploading()) throw new Error("Une image est encore en cours d'envoi - un instant.");
+        images = evidenceImagesDrop ? evidenceImagesDrop.get().map((img) => ({ image_id: img.image_id, caption: (img.caption || "").trim() || null })) : [];
       }
       const metricNameEl = document.getElementById("evidence-metric-name");
       const metricValueEl = document.getElementById("evidence-metric-value");
@@ -1207,19 +1509,12 @@ function renderEvidence(detail) {
         metric_name: metricNameEl ? metricNameEl.value.trim() || null : null,
         metric_value: metricValueEl && metricValueEl.value ? parseFloat(metricValueEl.value) : null,
         step_index: stepSelect && stepSelect.value !== "" ? parseInt(stepSelect.value, 10) : null,
+        links,
+        images,
       });
-      // preuves records a new version carrying the evidence (experiences are immutable) - go to
-      // it, not back to this now-superseded version. For an image preuve, the upload itself
-      // records yet another version - navigate to that one instead once it's done.
-      let finalId = result.id;
-      if (kind === "image" && imageFile) {
-        const formData = new FormData();
-        formData.append("file", imageFile);
-        formData.append("evidence_id", result.evidence_id);
-        const uploadResult = await uploadFile(`/api/microprojets/${slug}/experiences/${result.id}/pieces-jointes`, formData);
-        finalId = uploadResult.id;
-      }
-      goToVersion(finalId);
+      // preuves records a new version carrying the evidence - its links and images included
+      // (experiences are immutable) - go to it, not back to this now-superseded version.
+      goToVersion(result.id);
     } catch (err) {
       showError(err);
     }
@@ -1440,13 +1735,10 @@ async function renderIntentFormInfo(detail) {
     .map(([name, value]) => {
       const field = fieldByName.get(name);
       const label = field ? field.label : name;
-      return `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:3px 0;">
-        <span style="color:var(--text-faint);">${escapeHtml(label)}</span>
-        <span style="font-weight:600;text-align:right;">${escapeHtml(formatIntentFormAnswer(field, value))}</span>
-      </div>`;
+      return `<div class="fiche-hero__answer"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(formatIntentFormAnswer(field, value))}</dd></div>`;
     })
     .join("");
-  box.innerHTML = `<div class="section-title" style="margin-bottom:6px;">${escapeHtml(activeForm ? activeForm.title : "Formulaire d'intention")}</div>${rows}`;
+  box.innerHTML = `<div class="fiche-hero__label">${escapeHtml(activeForm ? activeForm.title : "Formulaire d'intention")}</div><dl class="fiche-hero__answers-list">${rows}</dl>`;
   box.style.display = "block";
 }
 
@@ -1495,24 +1787,41 @@ async function savePhysicalTracking(entities) {
   }
 }
 
-function renderPhysicalTracking(detail) {
+async function renderPhysicalTracking(detail) {
   const card = document.getElementById("physical-tracking-content");
-  if (detail.is_batch) {
-    card.innerHTML = `<div class="help">Un identifiant physique par échantillon se pose juste sous chaque vignette de la cartographie des variantes, plus haut.</div>`;
-    return;
-  }
   const canEdit = isEditorRole();
-  const current = detail.physical_tracking[0] || {};
-  card.innerHTML = `
-    ${entityFieldsHtml(current, 0, canEdit, false)}
-    ${canEdit ? `<button class="btn btn-line" id="save-physical-tracking-btn" type="button" data-report-hide>Enregistrer</button>` : ""}`;
-  if (canEdit) {
-    document.getElementById("save-physical-tracking-btn").addEventListener("click", () => {
-      const sampleInput = document.querySelector('.js-entity-sample-id[data-index="0"]');
-      const locInput = document.querySelector('.js-entity-location[data-index="0"]');
-      savePhysicalTracking([{ sample_id: sampleInput.value.trim() || null, location: locInput.value.trim() || null }]);
-    });
+  const tracking = detail.physical_tracking || [];
+  let labels = null;
+  if (detail.is_batch) {
+    try {
+      const variation = await getBatchVariation();
+      labels = variation.labels || null;
+    } catch (err) {
+      labels = null;
+    }
   }
+  const rows = (tracking.length ? tracking : [{}]).map((entry, i) =>
+    plateRowHtml(entry, i, canEdit, detail.is_batch ? (labels && labels[i]) || `Variante ${i + 1}` : null)
+  );
+  card.innerHTML = `
+    <div class="plates-list${detail.is_batch ? " plates-list--batch" : ""}">${rows.join("")}</div>
+    ${canEdit ? `<button class="btn btn-line" id="save-physical-tracking-btn" type="button" data-report-hide style="margin-top:12px;">Enregistrer les plaques</button>` : ""}`;
+  if (!canEdit) return;
+  mountEntityFdlFields(tracking);
+  document.getElementById("save-physical-tracking-btn").addEventListener("click", () => {
+    const count = Math.max(tracking.length, 1);
+    const entities = Array.from({ length: count }, (_, i) => {
+      const sampleInput = document.querySelector(`.js-entity-sample-id[data-index="${i}"]`);
+      const locInput = document.querySelector(`.js-entity-location[data-index="${i}"]`);
+      return { sample_id: sampleInput.value.trim() || null, location: locInput.value.trim() || null, fdl: entityFdlValues(i) };
+    });
+    savePhysicalTracking(entities);
+  });
+}
+
+// « Données en base » (common.js::renderWaferDbLinks) : les requêtes PRISM ouvertes sur les plaques de l'expérience.
+function renderDbLinks(detail) {
+  renderWaferDbLinks(document.querySelectorAll(".js-db-link"), (detail.physical_tracking || []).map((e) => e.sample_id));
 }
 
 function renderReferences(detail) {
@@ -1536,7 +1845,7 @@ function renderReferences(detail) {
 // Le rapport est une capture de ce qui est affiché, purgée de tout ce qui n'a de sens que dans
 // l'appli vivante : chaque bloc est cloné puis débarrassé de tout nœud marqué data-report-hide (un
 // formulaire, un bouton d'action, un champ éditable, la barre d'onglets...) ; le miroir texte
-// .report-only qui l'accompagne parfois (cf. entityFieldsHtml) - invisible sur la fiche vivante -
+// .report-only qui l'accompagne parfois (cf. plateRowHtml) - invisible sur la fiche vivante -
 // est alors révélé pour porter la valeur à sa place. Les trois onglets y figurent tous, l'un après
 // l'autre sous leur titre, quel que soit celui qui est ouvert à l'écran (un onglet masqué est
 // dévoilé dans la copie) ; les flèches d'un carrousel de variantes disparaissent, la cartographie
@@ -1638,9 +1947,13 @@ async function downloadReport() {
   }
 }
 
-function goToEvolve() {
+// « Éditer la fiche » : l'éditeur de la fiche, prérempli - la page « structure en images » pour une
+// structure donnée en images, sinon le constructeur, ouvert sur l'écran « intention » (en-tête :
+// contexte, ce qu'on veut démontrer, objectifs) ou sur la structure (« Modifier la structure »).
+function goToEvolve(stage = null) {
   const mode = currentDetail && currentDetail.structure_images ? "evoluer-image" : "evoluer";
-  window.location.href = `/microprojets/${slug}/experiences/${experienceId}/${mode}`;
+  const query = stage && mode === "evoluer" ? `?etape=${encodeURIComponent(stage)}` : "";
+  window.location.href = `/microprojets/${slug}/experiences/${experienceId}/${mode}${query}`;
 }
 
 // --- structure en images : modifier la planche ---------------------------------------------------
@@ -1766,10 +2079,11 @@ async function init() {
     renderConclusion(currentDetail);
     renderBatchMatrix(currentDetail);
     renderPhysicalTracking(currentDetail);
+    renderDbLinks(currentDetail);
 
     if (isEditorRole()) {
-      document.getElementById("evolve-btn").addEventListener("click", goToEvolve);
-      document.getElementById("structure-evolve-link").addEventListener("click", goToEvolve);
+      document.getElementById("evolve-btn").addEventListener("click", () => goToEvolve("intention"));
+      document.getElementById("structure-evolve-link").addEventListener("click", () => goToEvolve());
       document.getElementById("structure-replace-btn").addEventListener("click", openReplaceDrawing);
       populateCombineSelect();
       wireDeleteExperience();
@@ -1783,18 +2097,32 @@ async function init() {
       currentDetail.has_editable_process
         ? api.get(`/api/microprojets/${slug}/experiences/${experienceId}/process`).catch(() => null)
         : Promise.resolve(null),
-      api.get(`/api/microprojets/${slug}/entites/historique`).catch(() => ({ sample_ids: [], locations: [] })),
+      api.get(`/api/microprojets/${slug}/entites/historique`).catch(() => ({ sample_ids: [], locations: [], fdls: [] })),
     ]);
     currentProcess = process;
     document.getElementById("entity-sample-id-history").innerHTML = entityHistory.sample_ids.map((v) => `<option value="${escapeHtml(v)}">`).join("");
     document.getElementById("entity-location-history").innerHTML = entityHistory.locations.map((v) => `<option value="${escapeHtml(v)}">`).join("");
+    document.getElementById("entity-fdl-history").innerHTML = (entityHistory.fdls || []).map((v) => `<option value="${escapeHtml(v)}">`).join("");
     // rejoués maintenant que currentProcess est connu - applyModeVisibility gère #structure-evolve-link,
     // renderEvidence le badge/select par étape et l'outil de comparaison (voir stepLabelFor).
     applyModeVisibility();
     renderEvidence(currentDetail);
     if (typeof renderDataGallery === "function") renderDataGallery(currentDetail);
+    if (typeof renderNotebook === "function") renderNotebook(currentDetail);
     renderTimeline(timeline.versions);
     renderFullHistory(timeline.items);
+    const current = timeline.items.find((item) => item.is_current);
+    document.getElementById("hero-version").textContent = current ? `v${current.version}` : "";
+    // « Débutée le » : le début de la version de structure actuelle (vX.Y.Z) - pas le commit qu'on
+    // regarde, puisque chaque édition, étiquette ou preuve en crée un ; ni le tout début de la filiation.
+    if (timeline.items.length) {
+      const latest = current || timeline.items[timeline.items.length - 1];
+      const started = timeline.items.find((item) => item.version === latest.version).created_at;
+      const updated = latest.created_at;
+      document.getElementById("hero-dates").innerHTML =
+        `Débutée le&nbsp;: <span class="meta-value">${formatDate(started)}</span>` +
+        (formatDate(updated) !== formatDate(started) ? ` &middot; modifiée le&nbsp;: <span class="meta-value">${formatDate(updated)}</span>` : "");
+    }
     renderStructure(currentDetail, diff);
     populateCompareMicroprojectSelect();
   } catch (err) {
