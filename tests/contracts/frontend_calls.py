@@ -8,6 +8,11 @@ Le chemin d'un appel est connu quand son URL commence par un littéral : chaque 
 opérande non littéral d'une concaténation) devient le segment générique :data:`PARAM`, la query
 string est retirée. Sinon - une variable, une expression - l'appel est « dynamique » : ``path`` vaut
 ``None``, et c'est à l'appelant de dire, par une liste explicite, quelle route il vise.
+
+Une URL rangée dans une variable (``const areaUrl = `/api/...```), passée en ``src`` ou renvoyée par
+une fonction n'est pas un appel : :func:`scan_urls` relève, elle, chaque URL ``/api/...`` écrite
+dans une chaîne ou un gabarit, où qu'elle soit, sans méthode. Un gabarit qui commence par une
+variable affectée d'une telle URL dans le même fichier (```${areaUrl}/objectifs```) est lu avec elle.
 """
 
 from __future__ import annotations
@@ -29,6 +34,12 @@ METHODS = {"get": "GET", "post": "POST", "put": "PUT", "patch": "PATCH", "del": 
 _CALL_RE = re.compile(r"(?<![\w$.])(?:api\s*\.\s*(get|post|put|patch|del|request)|fetch)\s*\(")
 _METHOD_OPTION_RE = re.compile(r"""\bmethod\s*:\s*["'`](\w+)["'`]""")
 _INLINE_SCRIPT_RE = re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE)
+# Une URL de l'API dans le texte d'un littéral : en tête, ou après un guillemet, un « = »... (le
+# ``src="/api/..."`` d'un gabarit HTML) ; un préfixe nu (``a[href^='/api/']``) n'en est pas une.
+_URL_IN_TEXT_RE = re.compile(r"(?<![\w$.}/])/api/[^\s\"'`<>?#()]+")
+# ``nom = <littéral>`` : une déclaration ou une affectation, pas une comparaison ni une flèche.
+_ASSIGNMENT_RE = re.compile(r"(?<![\w$.])([A-Za-z_$][\w$]*)\s*=(?![=>])\s*")
+_LEADING_NAME_RE = re.compile(r"`\$\{\s*([A-Za-z_$][\w$]*)\s*\}")
 # Après l'un de ces caractères, un « / » ouvre une expression régulière, pas une division.
 _REGEX_PRECEDERS = set("(,=:[!&|?{};+-*%<>~^")
 
@@ -45,20 +56,33 @@ class FrontendCall:
         return f"{self.file}:{self.line} {self.method} {self.path or self.expression}"
 
 
+@dataclass(frozen=True)
+class FrontendUrl:
+    file: str  # relatif au dossier scanné, en notation POSIX
+    line: int
+    path: str  # "/api/..." avec PARAM pour chaque partie variable, sans la query string
+
+    def __str__(self) -> str:
+        return f"{self.file}:{self.line} {self.path}"
+
+
 def scan(root: Path, excludes: Iterable[str] = DEFAULT_EXCLUDES) -> list[FrontendCall]:
     """Tous les appels vers l'API des fichiers ``.js`` et ``.html`` sous ``root``, sauf ceux des
     chemins (relatifs à ``root``) qui correspondent à l'un des motifs ``excludes``. Un appel dont
     l'URL littérale ne vise pas ``/api/`` (une feuille de style, une page) n'est pas retenu."""
     calls: list[FrontendCall] = []
-    for path in sorted([*root.rglob("*.js"), *root.rglob("*.html")]):
-        relative = path.relative_to(root).as_posix()
-        if any(fnmatch.fnmatch(relative, pattern) for pattern in excludes):
-            continue
-        source = path.read_text(encoding="utf-8")
-        if path.suffix == ".html":
-            source = _inline_scripts_only(source)
-        calls.extend(_calls_in(relative, _without_comments(source)))
+    for relative, code in _sources(root, excludes):
+        calls.extend(_calls_in(relative, code))
     return calls
+
+
+def scan_urls(root: Path, excludes: Iterable[str] = DEFAULT_EXCLUDES) -> list[FrontendUrl]:
+    """Chaque URL ``/api/...`` écrite dans une chaîne ou un gabarit des mêmes fichiers que
+    :func:`scan` - qu'elle serve à un appel, à une variable, à un ``src`` ou à un lien."""
+    urls: list[FrontendUrl] = []
+    for relative, code in _sources(root, excludes):
+        urls.extend(_urls_in(relative, code))
+    return urls
 
 
 def openapi_routes(app: Any) -> dict[str, set[str]]:
@@ -67,13 +91,14 @@ def openapi_routes(app: Any) -> dict[str, set[str]]:
     return {path: {method.upper() for method in operations} for path, operations in app.openapi()["paths"].items()}
 
 
-def matching_route(method: str, path: str, routes: dict[str, set[str]]) -> str | None:
-    """La route (un chemin d'``openapi_routes``) qu'un appel ``method path`` atteint, ou ``None``.
-    Un segment de route ``{nom}`` accepte n'importe quel segment ; un segment littéral doit être
-    identique, :data:`PARAM` compris (un segment variable du front n'atteint pas un littéral)."""
+def matching_route(method: str | None, path: str, routes: dict[str, set[str]]) -> str | None:
+    """La route (un chemin d'``openapi_routes``) qu'un appel ``method path`` atteint, ou ``None`` ;
+    ``method=None`` accepte n'importe quelle méthode. Un segment de route ``{nom}`` accepte
+    n'importe quel segment ; un segment littéral doit être identique, :data:`PARAM` compris (un
+    segment variable du front n'atteint pas un littéral)."""
     segments = path.strip("/").split("/")
     for route, methods in routes.items():
-        if method not in methods:
+        if method is not None and method not in methods:
             continue
         route_segments = route.strip("/").split("/")
         if len(route_segments) == len(segments) and all(
@@ -84,6 +109,19 @@ def matching_route(method: str, path: str, routes: dict[str, set[str]]) -> str |
 
 
 # -- lexeur ---------------------------------------------------------------------------------------
+
+
+def _sources(root: Path, excludes: Iterable[str]) -> Iterable[tuple[str, str]]:
+    """``(chemin relatif, code sans commentaires)`` de chaque ``.js`` et ``.html`` retenu sous
+    ``root`` - un HTML réduit à ses scripts en ligne."""
+    for path in sorted([*root.rglob("*.js"), *root.rglob("*.html")]):
+        relative = path.relative_to(root).as_posix()
+        if any(fnmatch.fnmatch(relative, pattern) for pattern in excludes):
+            continue
+        source = path.read_text(encoding="utf-8")
+        if path.suffix == ".html":
+            source = _inline_scripts_only(source)
+        yield relative, _without_comments(source)
 
 
 def _inline_scripts_only(html: str) -> str:
@@ -267,3 +305,82 @@ def _calls_in(relative: str, code: str) -> list[FrontendCall]:
             )
         )
     return calls
+
+
+def _literal_spans(code: str, start: int = 0, end: int | None = None) -> Iterable[tuple[int, int]]:
+    """``(début, fin)`` de chaque chaîne et de chaque gabarit de ``code[start:end]``, y compris ceux
+    écrits dans le ``${...}`` d'un gabarit (donnés juste après lui)."""
+    end = len(code) if end is None else end
+    i, last = start, ""
+    while i < end:
+        c = code[i]
+        if c in "\"'":
+            stop = _skip_string(code, i)
+            yield i, stop
+            i, last = stop, c
+        elif c == "`":
+            stop = _skip_template(code, i)
+            yield i, stop
+            j = i + 1
+            while j < stop:
+                if code[j] == "\\":
+                    j += 2
+                elif code.startswith("${", j):
+                    closing = _skip_code_to_closing_brace(code, j + 2)
+                    yield from _literal_spans(code, j + 2, closing - 1)
+                    j = closing
+                else:
+                    j += 1
+            i, last = stop, c
+        elif c == "/" and (not last or last in _REGEX_PRECEDERS):
+            i, last = _skip_regex(code, i), c
+        else:
+            if not c.isspace():
+                last = c
+            i += 1
+
+
+def _api_urls(code: str, start: int, end: int) -> list[tuple[int, str]]:
+    """``(ligne, chemin)`` de chaque URL ``/api/...`` du littéral ``code[start:end]``. Une URL qui
+    finit le littéral et qu'un ``+`` prolonge (autrement que par une query) se termine par
+    :data:`PARAM` : le chemin continue avec l'opérande suivant. Un :data:`PARAM` final collé à un
+    segment (```.../cahier${path}```, ``path`` vide ou ``"/<id>"``) est un suffixe inconnu : le
+    chemin s'arrête avant lui."""
+    text = _literal_text(code[start:end]) or ""
+    line = code.count("\n", 0, start) + 1
+    matches = list(_URL_IN_TEXT_RE.finditer(text))
+    urls = [(line + text.count("\n", 0, m.start()), m.group(0)) for m in matches]
+    if matches and matches[-1].end() == len(text):
+        rest = code[end:].lstrip()
+        following = rest[1:].lstrip() if rest.startswith("+") else None
+        if following is not None and not (following[:1] in "\"'`" and following[1:2] in ("?", "#")):
+            urls[-1] = (urls[-1][0], urls[-1][1] + PARAM)
+    return [(line, _without_glued_suffix(url)) for line, url in urls]
+
+
+def _without_glued_suffix(path: str) -> str:
+    if path.endswith(PARAM) and not path.endswith("/" + PARAM):
+        return path[: -len(PARAM)]
+    return path
+
+
+def _urls_in(relative: str, code: str) -> list[FrontendUrl]:
+    spans = dict(_literal_spans(code))
+    found = {start: _api_urls(code, start, end) for start, end in spans.items()}
+    # les variables affectées d'une URL de l'API (en tête du littéral), pour lire ```${nom}/suite```
+    assigned: dict[str, set[str]] = {}
+    for match in _ASSIGNMENT_RE.finditer(code):
+        start = match.end()
+        if found.get(start) and (_literal_text(code[start : spans[start]]) or "").startswith(API_PREFIX):
+            assigned.setdefault(match.group(1), set()).add(found[start][0][1])
+
+    urls = []
+    for start, end in spans.items():
+        urls += [FrontendUrl(relative, line, path) for line, path in found[start]]
+        leading = _LEADING_NAME_RE.match(code, start)
+        if leading and leading.group(1) in assigned:
+            rest = (_literal_text(code[start:end]) or "")[len(PARAM) :]
+            tail = re.match(r"[^\s\"'`<>?#()]*", rest).group(0)
+            line = code.count("\n", 0, start) + 1
+            urls += [FrontendUrl(relative, line, _without_glued_suffix(base + tail)) for base in sorted(assigned[leading.group(1)])]
+    return urls

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from spectre.core import datasets
+from spectre.core import datasets, microprojects
 
 from support.accounts import login, signup
 from support.experiments import get_experience, launch, timeline
@@ -74,10 +74,15 @@ def test_a_snapshot_freezes_the_data_of_the_plates(client, demo_data):
 
 def test_a_snapshot_id_cannot_reach_outside_the_attachments(client):
     slug, _ = _setup(client)
+    # de vrais fichiers JSON qu'un id non vérifié atteindrait : sans eux, un 404 « instantané
+    # introuvable » ne prouverait rien (il viendrait aussi d'un fichier simplement absent)
+    attachments = microprojects.attachments_dir(slug)
+    (attachments / "secret.json").write_text('{"secret": true}', encoding="utf-8")
+    (attachments.parent / "secret.json").write_text('{"secret": true}', encoding="utf-8")
     # an id still inside its own path segment reaches the handler, which refuses anything that isn't
     # a snapshot id (an encoded "../" never gets that far: the router has no route for it)
-    assert_handler_404(client.get(f"/api/microprojets/{slug}/donnees/instantanes/..spectre"), "instantané introuvable")
-    for snapshot_id in ("../secret", r"..\secret", "../../data/secret"):
+    assert_handler_404(client.get(f"/api/microprojets/{slug}/donnees/instantanes/secret"), "instantané introuvable")
+    for snapshot_id in ("secret", "../secret", r"..\secret", "../attachments/secret"):
         with pytest.raises(datasets.DataSourceError) as exc_info:
             datasets.load(slug, snapshot_id)
         assert exc_info.value.status_code == 404

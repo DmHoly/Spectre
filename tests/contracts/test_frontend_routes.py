@@ -6,14 +6,17 @@ répondre 404 qu'en production.
 Les appels dont l'URL est une variable ne se lisent pas tels quels : chacun est listé ci-dessous
 (fichier, méthode, expression telle qu'écrite) avec la ou les routes qu'il atteint, et la liste
 elle-même est vérifiée dans les deux sens - une entrée qui ne correspond plus à aucun appel, ou un
-nouvel appel dynamique qui n'y figure pas, fait échouer le test.
+nouvel appel dynamique qui n'y figure pas, fait échouer le test. Ce que DYNAMIC_CALLS affirme n'est
+pas lu dans le JS : c'est :func:`contracts.frontend_calls.scan_urls` qui vérifie, elle, chaque URL
+``/api/...`` écrite dans le front (une variable, un ``src``, un retour de fonction compris) - une
+route renommée dans DYNAMIC_CALLS mais pas dans le JS y fait échouer le test.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from contracts.frontend_calls import matching_route, openapi_routes, scan
+from contracts.frontend_calls import matching_route, openapi_routes, scan, scan_urls
 
 STATIC_DIR = Path(__file__).resolve().parents[2] / "spectre" / "api" / "static"
 
@@ -86,6 +89,15 @@ def test_every_literal_frontend_call_targets_an_existing_route(app):
     routes = openapi_routes(app)
     dead = [str(call) for call in scan(STATIC_DIR) if call.path and matching_route(call.method, call.path, routes) is None]
     assert not dead, "Appels du front vers une route qui n'existe pas :\n  " + "\n  ".join(dead)
+
+
+def test_every_api_url_written_in_the_frontend_targets_an_existing_route(app):
+    # sans méthode : une URL rangée dans une variable sert parfois à plusieurs (lotApi : GET, PUT, DELETE)
+    routes = openapi_routes(app)
+    urls = scan_urls(STATIC_DIR)
+    assert len(urls) > len([c for c in scan(STATIC_DIR) if c.path])  # garde-fou : celles des appels, et les autres
+    dead = [str(url) for url in urls if matching_route(None, url.path, routes) is None]
+    assert not dead, "URL du front vers une route qui n'existe pas :\n  " + "\n  ".join(dead)
 
 
 def test_every_dynamic_frontend_call_is_listed_and_targets_existing_routes(app):
