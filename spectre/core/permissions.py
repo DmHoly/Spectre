@@ -34,9 +34,13 @@ def require_role(min_role: str):
     """A FastAPI dependency: 403s unless the current user's role in this microproject is at least
     ``min_role`` (``viewer`` < ``editor`` < ``owner``). Returns the resolved :class:`Microproject` on
     success, so a route can depend on this alone instead of also depending on :func:`get_microproject`.
+
+    The caller is identified first (FastAPI resolves sub-dependencies in parameter order): an
+    anonymous request gets its 401 before the microproject is even looked up, rather than a 404
+    telling it which slugs exist.
     """
 
-    def dependency(microproject: Microproject = Depends(get_microproject), user: User = Depends(get_current_user)) -> Microproject:
+    def dependency(user: User = Depends(get_current_user), microproject: Microproject = Depends(get_microproject)) -> Microproject:
         role = role_for(microproject.id, user.id)
         if role is None or ROLE_ORDER[role] < ROLE_ORDER[min_role]:
             raise HTTPException(status_code=403, detail="vous n'avez pas les droits nécessaires pour cette action")

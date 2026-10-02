@@ -1,41 +1,25 @@
 from __future__ import annotations
 
+from support.accounts import signup
+from support.experiments import evolve, launch, tag
+from support.microprojects import signup_with_microproject
+from support.structures import steps
 
-def _setup_microproject(client, email="owner@example.com", name="Owner"):
-    client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
-    microproject = client.post("/api/microprojets", json={"name": "Salle blanche"}).json()
-    return microproject["slug"]
+
+def _owner_microproject(client):
+    return signup_with_microproject(client, "owner@example.com", "Salle blanche", name="Owner")
 
 
 def test_graph_html_on_empty_microproject(client):
-    slug = _setup_microproject(client)
+    slug = _owner_microproject(client)
     response = client.get(f"/api/microprojets/{slug}/graphe.html")
     assert response.status_code == 200
     assert "Aucune expérience" in response.text
 
 
 def test_graph_html_with_experiments(client):
-    slug = _setup_microproject(client)
-    substrate = {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-    steps = [
-        {
-            "kind": "deposition",
-            "name": "Oxyde",
-            "material": "SiO2",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": 20, "unit": "nm"},
-        }
-    ]
-    client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": substrate,
-            "steps": steps,
-            "title": "Essai",
-            "intent": "Verifier",
-            "entities": [{"sample_id": "W1"}],
-        },
-    )
+    slug = _owner_microproject(client)
+    launch(client, slug)
     response = client.get(f"/api/microprojets/{slug}/graphe.html")
     assert response.status_code == 200
     assert "plotly" in response.text.lower()
@@ -44,37 +28,22 @@ def test_graph_html_with_experiments(client):
 def test_graph_html_still_renders_with_a_tag_only_commit_collapsed_out(client):
     # the collapsing rules themselves (which commits are kept/removed) are unit-tested in
     # tests/test_versioning.py - this just proves the endpoint is wired up to them without crashing.
-    slug = _setup_microproject(client)
-    substrate = {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-    steps = [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={"substrate": substrate, "steps": steps, "title": "Essai", "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
-    ).json()
-    tagged = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/etiquettes", json={"tags": ["a-suivre"]}).json()
-    client.post(
-        f"/api/microprojets/{slug}/experiences/{tagged['id']}/evoluer",
-        json={
-            "substrate": substrate,
-            "steps": [{**steps[0], "thickness": {"value": 40, "unit": "nm"}}],
-            "title": "Essai",
-            "intent": "Doubler l'epaisseur",
-            "objectives": [],
-        },
-    )
+    slug = _owner_microproject(client)
+    launched = launch(client, slug)
+    tagged = tag(client, slug, launched["id"], ["a-suivre"])
+    evolve(client, slug, tagged["id"], intent="Doubler l'epaisseur", steps=steps(40), objectives=[])
     response = client.get(f"/api/microprojets/{slug}/graphe.html")
     assert response.status_code == 200
     assert "plotly" in response.text.lower()
 
 
 def test_graph_page_is_served(client):
-    slug = _setup_microproject(client)
+    slug = _owner_microproject(client)
     assert client.get(f"/microprojets/{slug}/graphe").status_code == 200
 
 
 def test_non_member_cannot_see_graph(client):
-    slug = _setup_microproject(client)
-    client.post("/api/auth/logout")
-    client.post("/api/auth/register", json={"email": "stranger@example.com", "password": "supersecret", "name": "S"})
+    slug = _owner_microproject(client)
+    signup(client, "stranger@example.com", name="S")
     response = client.get(f"/api/microprojets/{slug}/graphe.html")
     assert response.status_code == 403

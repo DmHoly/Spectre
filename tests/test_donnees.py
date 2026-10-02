@@ -13,10 +13,13 @@ import pandas as pd
 import prism
 import pytest
 
+from support.accounts import signup
+from support.http import assert_handler_404
+
 
 @pytest.fixture()
 def logged_in(client):
-    client.post("/api/auth/register", json={"email": "data@example.com", "password": "supersecret", "name": "Data"})
+    signup(client, "data@example.com", name="Data")
     return client
 
 
@@ -64,7 +67,7 @@ def test_categories_group_implemented_and_planned_hooks(logged_in):
 
 
 def test_unknown_hook_is_404(logged_in):
-    assert logged_in.get("/api/donnees/hooks/ceci_n_existe_pas").status_code == 404
+    assert_handler_404(logged_in.get("/api/donnees/hooks/ceci_n_existe_pas"))
 
 
 def test_run_hook_uses_prism_cache(logged_in, data_dir, monkeypatch):

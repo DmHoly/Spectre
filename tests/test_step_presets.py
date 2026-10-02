@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from support.microprojects import create_microproject, join_as, signup_with_microproject
+from support.structures import deposition, substrate
+
 
 def _deposition_payload():
     return {"kind": "deposition", "recipe": "CVD Conformal"}
@@ -9,13 +12,8 @@ def _etch_payload():
     return {"kind": "etch", "recipe": "Dry Oxide Etch"}
 
 
-def _register_and_microproject(client, email, microproject_name="Projet"):
-    client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": microproject_name}).json()["slug"]
-
-
 def test_create_a_microproject_scoped_deposition_preset(client):
-    slug = _register_and_microproject(client, "presetA@example.com")
+    slug = signup_with_microproject(client, "presetA@example.com")
 
     created = client.post(
         f"/api/microprojets/{slug}/presets-etapes",
@@ -28,7 +26,7 @@ def test_create_a_microproject_scoped_deposition_preset(client):
 
 
 def test_create_an_etch_preset(client):
-    slug = _register_and_microproject(client, "presetB@example.com")
+    slug = signup_with_microproject(client, "presetB@example.com")
 
     created = client.post(
         f"/api/microprojets/{slug}/presets-etapes",
@@ -40,20 +38,20 @@ def test_create_an_etch_preset(client):
 
 
 def test_shared_preset_is_visible_from_a_different_microproject(client):
-    slug_a = _register_and_microproject(client, "presetC@example.com")
+    slug_a = signup_with_microproject(client, "presetC@example.com")
     client.post(
         f"/api/microprojets/{slug_a}/presets-etapes",
         json={"name": "Base commune", "payload": _deposition_payload(), "partagee": True},
     )
 
-    slug_b = client.post("/api/microprojets", json={"name": "Autre projet"}).json()["slug"]
+    slug_b = create_microproject(client, "Autre projet")["slug"]
     listed = client.get(f"/api/microprojets/{slug_b}/presets-etapes").json()
     assert [p["name"] for p in listed["partagees"]] == ["Base commune"]
     assert listed["microprojet"] == []
 
 
 def test_duplicate_name_in_the_same_library_is_rejected(client):
-    slug = _register_and_microproject(client, "presetD@example.com")
+    slug = signup_with_microproject(client, "presetD@example.com")
     payload = {"name": "Preset X", "payload": _deposition_payload(), "partagee": False}
     first = client.post(f"/api/microprojets/{slug}/presets-etapes", json=payload)
     assert first.status_code == 201
@@ -62,7 +60,7 @@ def test_duplicate_name_in_the_same_library_is_rejected(client):
 
 
 def test_rename_a_preset_in_place(client):
-    slug = _register_and_microproject(client, "presetE@example.com")
+    slug = signup_with_microproject(client, "presetE@example.com")
     client.post(
         f"/api/microprojets/{slug}/presets-etapes",
         json={"name": "Nom initial", "payload": _deposition_payload(), "partagee": False},
@@ -77,7 +75,7 @@ def test_rename_a_preset_in_place(client):
 
 
 def test_delete_a_preset(client):
-    slug = _register_and_microproject(client, "presetF@example.com")
+    slug = signup_with_microproject(client, "presetF@example.com")
     client.post(
         f"/api/microprojets/{slug}/presets-etapes",
         json={"name": "A retirer", "payload": _deposition_payload(), "partagee": False},
@@ -88,7 +86,7 @@ def test_delete_a_preset(client):
 
 
 def test_builtin_presets_are_listed_and_usable_in_a_step(client):
-    slug = _register_and_microproject(client, "presetG@example.com")
+    slug = signup_with_microproject(client, "presetG@example.com")
 
     listed = client.get(f"/api/microprojets/{slug}/presets-etapes").json()
     presets = listed["presets"]
@@ -101,32 +99,14 @@ def test_builtin_presets_are_listed_and_usable_in_a_step(client):
     # a preset only pre-fills a step's own fields - it's never referenced by name at simulate time
     sim = client.post(
         f"/api/microprojets/{slug}/structures/simulate",
-        json={
-            "substrate": {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}},
-            "steps": [
-                {
-                    "kind": "deposition",
-                    "name": "GaN",
-                    "material": "GaN",
-                    "recipe": mocvd["payload"]["recipe"],
-                    "thickness": {"value": 10, "unit": "nm"},
-                }
-            ],
-        },
+        json={"substrate": substrate(), "steps": [deposition("GaN", "GaN", recipe=mocvd["payload"]["recipe"], thickness_nm=10)]},
     )
     assert sim.status_code == 200
 
 
 def test_viewer_cannot_create_a_preset(client):
-    slug = _register_and_microproject(client, "presetH-owner@example.com")
-    client.post("/api/auth/logout")
-    client.post("/api/auth/register", json={"email": "presetH-viewer@example.com", "password": "supersecret", "name": "V"})
-    client.post("/api/auth/logout")
-    client.post("/api/auth/login", json={"email": "presetH-owner@example.com", "password": "supersecret"})
-    client.post(f"/api/microprojets/{slug}/members", json={"email": "presetH-viewer@example.com", "role": "viewer"})
-
-    client.post("/api/auth/logout")
-    client.post("/api/auth/login", json={"email": "presetH-viewer@example.com", "password": "supersecret"})
+    slug = signup_with_microproject(client, "presetH-owner@example.com")
+    join_as(client, slug, "presetH-viewer@example.com", owner="presetH-owner@example.com", role="viewer")
     denied = client.post(
         f"/api/microprojets/{slug}/presets-etapes",
         json={"name": "Interdit", "payload": _deposition_payload(), "partagee": False},

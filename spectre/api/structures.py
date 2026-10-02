@@ -149,6 +149,15 @@ def _unique_branch(repo: "follow.Repository", title: str) -> str:
     return branch
 
 
+def require_branch_name(name: str | None) -> str | None:
+    """A piste name typed by the user (``new_branch``) - refused with a "/" in it, which would not
+    fit in the single ``{ref}`` path segment every experience route uses (see
+    :mod:`spectre.api.experiments`)."""
+    if name and "/" in name:
+        raise HTTPException(status_code=422, detail="Le nom de la piste ne peut pas contenir « / ».")
+    return name
+
+
 def _form_validation_error(exc: "follow.FormValidationError") -> HTTPException:
     """A commit form's own errors are already a list of specific, user-facing messages ("operator
     (Opérateur) est obligatoire") - meant, per its own docstring, to eventually drive a form UI
@@ -701,7 +710,7 @@ def launch_campaign(
             body.from_ref,
             title=body.title,
             intent=body.intent,
-            new_branch=body.new_branch or _unique_branch(repo, body.title),
+            new_branch=require_branch_name(body.new_branch) or _unique_branch(repo, body.title),
             structure=lot,
             carry_steps=False,
             carry_objectives=not body.objectives,

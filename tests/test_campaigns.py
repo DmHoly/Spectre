@@ -1,45 +1,12 @@
 from __future__ import annotations
 
-
-def _setup_microproject(client, email="owner@example.com", name="Owner"):
-    client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
-    microproject = client.post("/api/microprojets", json={"name": "Salle blanche"}).json()
-    return microproject["slug"]
-
-
-def _substrate():
-    return {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-
-
-def _steps():
-    return [
-        {
-            "kind": "deposition",
-            "name": "Oxyde",
-            "material": "SiO2",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": 20, "unit": "nm"},
-        }
-    ]
+from support.experiments import get_experience, launch
+from support.microprojects import signup_with_microproject
+from support.structures import deposition, lithography, steps, substrate
 
 
 def _steps_two():
-    return [
-        {
-            "kind": "deposition",
-            "name": "Oxyde",
-            "material": "SiO2",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": 20, "unit": "nm"},
-        },
-        {
-            "kind": "deposition",
-            "name": "Nitrure",
-            "material": "SiO2",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": 10, "unit": "nm"},
-        },
-    ]
+    return [deposition(), deposition("Nitrure", thickness_nm=10)]
 
 
 def _plan():
@@ -56,10 +23,10 @@ def _plan_two_factors():
 
 
 def test_preview_campaign_returns_svgs_and_variation(client):
-    slug = _setup_microproject(client)
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     response = client.post(
         f"/api/microprojets/{slug}/structures/variantes",
-        json={"substrate": _substrate(), "steps": _steps(), "plan": _plan()},
+        json={"substrate": substrate(), "steps": steps(), "plan": _plan()},
     )
     assert response.status_code == 200
     body = response.json()
@@ -73,20 +40,20 @@ def test_preview_campaign_returns_svgs_and_variation(client):
 
 
 def test_preview_campaign_rejects_numbers_for_a_name_field(client):
-    slug = _setup_microproject(client)
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     bad_plan = {"factors": [{"step_index": 0, "field": "material", "values": [1, 2]}]}
     response = client.post(
         f"/api/microprojets/{slug}/structures/variantes",
-        json={"substrate": _substrate(), "steps": _steps(), "plan": bad_plan},
+        json={"substrate": substrate(), "steps": steps(), "plan": bad_plan},
     )
     assert response.status_code == 422
 
 
 def test_preview_campaign_with_two_factors_is_fully_crossed(client):
-    slug = _setup_microproject(client)
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     response = client.post(
         f"/api/microprojets/{slug}/structures/variantes",
-        json={"substrate": _substrate(), "steps": _steps_two(), "plan": _plan_two_factors()},
+        json={"substrate": substrate(), "steps": _steps_two(), "plan": _plan_two_factors()},
     )
     assert response.status_code == 200
     body = response.json()
@@ -101,10 +68,10 @@ def test_preview_campaign_with_two_factors_is_fully_crossed(client):
 
 
 def test_launch_campaign_and_read_matrix(client):
-    slug = _setup_microproject(client)
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     body = {
-        "substrate": _substrate(),
-        "steps": _steps(),
+        "substrate": substrate(),
+        "steps": steps(),
         "plan": _plan(),
         "title": "Campagne epaisseur",
         "intent": "Explorer l'effet de l'epaisseur d'oxyde",
@@ -114,7 +81,7 @@ def test_launch_campaign_and_read_matrix(client):
     assert response.status_code == 201
     experiment_id = response.json()["id"]
 
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{experiment_id}").json()
+    detail = get_experience(client, slug, experiment_id)
     assert detail["is_batch"] is True
     assert "<svg" in detail["structure_svg"]
 
@@ -129,9 +96,9 @@ def test_launch_campaign_and_read_matrix(client):
 
 
 def test_launch_campaign_with_two_factors(client):
-    slug = _setup_microproject(client, email="two-factors@example.com")
+    slug = signup_with_microproject(client, "two-factors@example.com", "Salle blanche")
     body = {
-        "substrate": _substrate(),
+        "substrate": substrate(),
         "steps": _steps_two(),
         "plan": _plan_two_factors(),
         "title": "Campagne croisee",
@@ -150,43 +117,34 @@ def test_launch_campaign_with_two_factors(client):
 
 
 def test_matrice_endpoint_rejects_non_batch_experience(client):
-    slug = _setup_microproject(client)
-    single = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Essai simple",
-            "intent": "Verifier",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
+    single = launch(client, slug, title="Essai simple")
     response = client.get(f"/api/microprojets/{slug}/experiences/{single['id']}/matrice")
     assert response.status_code == 400
 
 
 def test_preview_campaign_rejects_an_unknown_field(client):
-    slug = _setup_microproject(client)
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     bad_plan = {"factors": [{"step_index": 0, "field": "vitesse_imaginaire", "values": [1, 2]}]}
     response = client.post(
         f"/api/microprojets/{slug}/structures/variantes",
-        json={"substrate": _substrate(), "steps": _steps(), "plan": bad_plan},
+        json={"substrate": substrate(), "steps": steps(), "plan": bad_plan},
     )
     assert response.status_code == 422
     assert "thickness" in response.json()["detail"]  # the message lists what can be varied instead
 
 
-def _preview(client, slug, steps, plan, declared_params=None, substrate=None):
+def _preview(client, slug, process_steps, plan, declared_params=None):
     return client.post(
         f"/api/microprojets/{slug}/structures/variantes",
-        json={"substrate": substrate or _substrate(), "steps": steps, "plan": plan, "declared_params": declared_params or {}},
+        json={"substrate": substrate(), "steps": process_steps, "plan": plan, "declared_params": declared_params or {}},
     )
 
 
 def test_campaign_can_vary_a_name_field_such_as_the_recipe(client):
-    slug = _setup_microproject(client)
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     plan = {"factors": [{"step_index": 0, "field": "recipe", "values": ["CVD Conformal", "Sputter Metal (normal)"], "scale": "list"}]}
-    response = _preview(client, slug, _steps(), plan)
+    response = _preview(client, slug, steps(), plan)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["labels"] == ["CVD Conformal", "Sputter Metal (normal)"]
@@ -194,8 +152,8 @@ def test_campaign_can_vary_a_name_field_such_as_the_recipe(client):
 
 
 def test_campaign_can_vary_a_plain_number_field(client):
-    slug = _setup_microproject(client)
-    steps = [
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
+    process_steps = [
         {
             "kind": "epitaxial_growth",
             "name": "Coquille",
@@ -207,16 +165,16 @@ def test_campaign_can_vary_a_plain_number_field(client):
         }
     ]
     plan = {"factors": [{"step_index": 0, "field": "angle_deg", "values": [20, 45]}]}
-    response = _preview(client, slug, steps, plan)
+    response = _preview(client, slug, process_steps, plan)
     assert response.status_code == 200, response.text
     assert response.json()["labels"] == ["20", "45"]
 
 
 def test_campaign_can_vary_the_indium_rate_of_a_graded_nitride(client):
-    slug = _setup_microproject(client)
-    steps = [{**_steps()[0], "name": "Puits", "material": "In0.20Ga0.80N", "recipe": "MOCVD Epitaxial"}]
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
+    process_steps = [deposition("Puits", "In0.20Ga0.80N", recipe="MOCVD Epitaxial")]
     plan = {"factors": [{"step_index": 0, "field": "material.fraction", "values": [10, 30]}]}
-    response = _preview(client, slug, steps, plan)
+    response = _preview(client, slug, process_steps, plan)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["factor_labels"] == ["Taux (%) — Puits"]
@@ -224,9 +182,9 @@ def test_campaign_can_vary_the_indium_rate_of_a_graded_nitride(client):
 
 
 def test_campaign_can_vary_the_substrate(client):
-    slug = _setup_microproject(client)
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     plan = {"factors": [{"step_index": -1, "field": "thickness", "values": [40, 80]}]}
-    response = _preview(client, slug, _steps(), plan)
+    response = _preview(client, slug, steps(), plan)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["factor_labels"] == ["Épaisseur — Substrat"]
@@ -234,31 +192,23 @@ def test_campaign_can_vary_the_substrate(client):
 
 
 def test_campaign_can_vary_a_lithography_pitch(client):
-    slug = _setup_microproject(client)
-    steps = [
-        {
-            "kind": "lithography",
-            "name": "Masque",
-            "resist_material": "Photoresist",
-            "thickness": {"value": 30, "unit": "nm"},
-            "openings": [[25, 55], [85, 115], [145, 175]],
-        }
-    ]
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
+    process_steps = [lithography("Masque", thickness_nm=30, openings=[[25, 55], [85, 115], [145, 175]])]
     plan = {"factors": [{"step_index": 0, "field": "openings.pitch", "values": [50, 60]}]}
-    response = _preview(client, slug, steps, plan)
+    response = _preview(client, slug, process_steps, plan)
     assert response.status_code == 200, response.text
     assert response.json()["factor_labels"] == ["Pas du réseau — Masque"]
 
     overlapping = {"factors": [{"step_index": 0, "field": "openings.pitch", "values": [20]}]}
-    assert _preview(client, slug, steps, overlapping).status_code == 422  # 30 nm openings on a 20 nm pitch
+    assert _preview(client, slug, process_steps, overlapping).status_code == 422  # 30 nm openings on a 20 nm pitch
 
 
 def test_campaign_varies_a_declared_parameter_on_a_log_scale_and_keeps_it(client):
-    slug = _setup_microproject(client)
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     declared = {"0": [{"name": "dopage", "value": 1e18, "obtention": {"precurseur": "Cp2Mg"}}]}
     plan = {"factors": [{"step_index": 0, "field": "declared:dopage", "values": [1e17, 1e18, 1e19], "scale": "log"}]}
 
-    preview = _preview(client, slug, _steps(), plan, declared)
+    preview = _preview(client, slug, steps(), plan, declared)
     assert preview.status_code == 200, preview.text
     assert preview.json()["labels"] == ["1e17", "1e18", "1e19"]  # never 100000000000000000
     assert preview.json()["factor_labels"] == ["dopage — Oxyde"]
@@ -266,8 +216,8 @@ def test_campaign_varies_a_declared_parameter_on_a_log_scale_and_keeps_it(client
     launched = client.post(
         f"/api/microprojets/{slug}/experiences/campagne",
         json={
-            "substrate": _substrate(),
-            "steps": _steps(),
+            "substrate": substrate(),
+            "steps": steps(),
             "plan": plan,
             "declared_params": declared,
             "title": "Campagne dopage",
@@ -288,27 +238,17 @@ def test_campaign_varies_a_declared_parameter_on_a_log_scale_and_keeps_it(client
 
 
 def test_declared_parameters_are_kept_on_launch_and_evolution(client):
-    slug = _setup_microproject(client)
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     declared = {"0": [{"name": "dopage", "value": 2.5e18, "obtention": {}}]}
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "declared_params": declared,
-            "title": "Essai dope",
-            "intent": "Verifier que le dopage est garde",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
+    launched = launch(client, slug, title="Essai dope", intent="Verifier que le dopage est garde", declared_params=declared)
     process = client.get(f"/api/microprojets/{slug}/experiences/{launched['id']}/process").json()
     assert process["declared_params"] == declared
 
     evolved = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/evoluer",
         json={
-            "substrate": _substrate(),
-            "steps": _steps(),
+            "substrate": substrate(),
+            "steps": steps(),
             "declared_params": {"0": [{"name": "dopage", "value": 5e18, "obtention": {}}]},
             "title": "Essai dope",
             "intent": "Doubler le dopage",
@@ -318,18 +258,15 @@ def test_declared_parameters_are_kept_on_launch_and_evolution(client):
     process = client.get(f"/api/microprojets/{slug}/experiences/{evolved.json()['id']}/process").json()
     assert process["declared_params"]["0"][0]["value"] == 5e18
 
-    plain = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={"substrate": _substrate(), "steps": _steps(), "title": "Sans", "intent": "x", "entities": [{"sample_id": "W2"}]},
-    ).json()
+    plain = launch(client, slug, title="Sans", intent="x", entities=[{"sample_id": "W2"}])
     assert "declared_params" not in client.get(f"/api/microprojets/{slug}/experiences/{plain['id']}/process").json()
 
 
 def test_campaign_varying_the_outline_shape_still_previews_and_launches(client):
     """A facet growth rate changes how many points each outline has - Follow's point-by-point
     split can't compare those, the campaign must still go through (compared layer by layer)."""
-    slug = _setup_microproject(client)
-    steps = [
+    slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
+    process_steps = [
         {
             "kind": "faceted_growth",
             "name": "Pointe",
@@ -343,11 +280,11 @@ def test_campaign_varying_the_outline_shape_still_previews_and_launches(client):
         }
     ]
     plan = {"factors": [{"step_index": 0, "field": "rate_sp", "values": [0.2, 0.9], "scale": "linear"}]}
-    preview = _preview(client, slug, steps, plan)
+    preview = _preview(client, slug, process_steps, plan)
     assert preview.status_code == 200, preview.text
     launched = client.post(
         f"/api/microprojets/{slug}/experiences/campagne",
-        json={"substrate": _substrate(), "steps": steps, "plan": plan, "title": "Facettes", "intent": "x", "entities": [{"sample_id": "W1"}]},
+        json={"substrate": substrate(), "steps": process_steps, "plan": plan, "title": "Facettes", "intent": "x", "entities": [{"sample_id": "W1"}]},
     )
     assert launched.status_code == 201, launched.text
     matrix = client.get(f"/api/microprojets/{slug}/experiences/{launched.json()['id']}/matrice")

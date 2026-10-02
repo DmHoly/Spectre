@@ -1,32 +1,18 @@
 from __future__ import annotations
 
-
-def _substrate():
-    return {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-
-
-def _steps(thickness=20):
-    return [
-        {
-            "kind": "deposition",
-            "name": "Oxyde",
-            "material": "SiO2",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": thickness, "unit": "nm"},
-        }
-    ]
+from support.experiments import conclude, evolve, get_experience, launch
+from support.microprojects import signup_with_microproject
+from support.structures import steps
 
 
 def test_launch_stores_rationale_and_verification_method(client):
-    client.post("/api/auth/register", json={"email": "obj@example.com", "password": "supersecret", "name": "O"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
+    slug = signup_with_microproject(client, "obj@example.com", name="O")
 
-    body = {
-        "substrate": _substrate(),
-        "steps": _steps(),
-        "title": "Essai",
-        "intent": "Verifier isolation",
-        "objectives": [
+    launched = launch(
+        client,
+        slug,
+        intent="Verifier isolation",
+        objectives=[
             {
                 "name": "Isolation",
                 "metric": "resistivity_ohm_cm",
@@ -36,55 +22,35 @@ def test_launch_stores_rationale_and_verification_method(client):
                 "verification_method": "mesure au profilometre",
             }
         ],
-        "entities": [{"sample_id": "W1"}],
-    }
-    launched = client.post(f"/api/microprojets/{slug}/experiences", json=body).json()
+    )
 
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{launched['id']}").json()
+    detail = get_experience(client, slug, launched["id"])
     assert detail["objectives"][0]["rationale"] == "condition pour passer en production"
     assert detail["objective_verification"] == {"Isolation": "mesure au profilometre"}
 
 
 def test_conclude_captures_reasoning_per_objective(client):
-    client.post("/api/auth/register", json={"email": "obj2@example.com", "password": "supersecret", "name": "O2"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    body = {
-        "substrate": _substrate(),
-        "steps": _steps(),
-        "title": "Essai",
-        "intent": "Verifier",
-        "objectives": [{"name": "Isolation", "metric": "r", "direction": "observe"}],
-        "entities": [{"sample_id": "W1"}],
-    }
-    launched = client.post(f"/api/microprojets/{slug}/experiences", json=body).json()
+    slug = signup_with_microproject(client, "obj2@example.com", name="O2")
+    launched = launch(client, slug, objectives=[{"name": "Isolation", "metric": "r", "direction": "observe"}])
 
-    conclude_body = {
-        "status": "concluded",
-        "objective_results": [{"objective": "Isolation", "status": "met", "reasoning": "Mesure conforme a 1.2e6"}],
-    }
-    concluded = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/conclure", json=conclude_body).json()
+    concluded = conclude(
+        client, slug, launched["id"], objective_results=[{"objective": "Isolation", "status": "met", "reasoning": "Mesure conforme a 1.2e6"}]
+    )
 
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{concluded['id']}").json()
+    detail = get_experience(client, slug, concluded["id"])
     assert detail["conclusion"]["objective_results"][0]["reasoning"] == "Mesure conforme a 1.2e6"
 
 
 def test_evolve_carries_verification_when_objectives_unchanged(client):
-    client.post("/api/auth/register", json={"email": "obj3@example.com", "password": "supersecret", "name": "O3"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    body = {
-        "substrate": _substrate(),
-        "steps": _steps(20),
-        "title": "Essai",
-        "intent": "Verifier",
-        "objectives": [
-            {"name": "Isolation", "metric": "r", "direction": "observe", "verification_method": "profilometre"}
-        ],
-        "entities": [{"sample_id": "W1"}],
-    }
-    launched = client.post(f"/api/microprojets/{slug}/experiences", json=body).json()
+    slug = signup_with_microproject(client, "obj3@example.com", name="O3")
+    launched = launch(
+        client,
+        slug,
+        steps=steps(20),
+        objectives=[{"name": "Isolation", "metric": "r", "direction": "observe", "verification_method": "profilometre"}],
+    )
 
-    evolve_body = {"substrate": _substrate(), "steps": _steps(10), "title": "Essai", "intent": "Reduire"}
-    evolved = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/evoluer", json=evolve_body).json()
+    evolved = evolve(client, slug, launched["id"], intent="Reduire", steps=steps(10))
 
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{evolved['id']}").json()
+    detail = get_experience(client, slug, evolved["id"])
     assert detail["objective_verification"] == {"Isolation": "profilometre"}

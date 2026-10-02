@@ -52,7 +52,8 @@ def create_app() -> FastAPI:
     app.include_router(plates_router.router)
     app.include_router(lots_router.router)
     app.include_router(structures_router.router)
-    # avant experiments : ses routes {ref:path}/cahier seraient sinon avalées par GET/DELETE {ref:path}
+    # L'ordre d'inclusion n'est pas une contrainte : {ref} est un segment simple (voir
+    # experiments.py), aucune route d'un routeur n'en avale une d'un autre.
     app.include_router(notebook_router.router)
     app.include_router(experiments_router.router)
     app.include_router(refs_router.router)

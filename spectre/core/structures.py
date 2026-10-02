@@ -28,6 +28,15 @@ from structureforge.presentation.svg import frame_to_svg
 from structureforge.process.simulate import Frame, SimulationError, simulate
 from structureforge.process.steps import ProcessStep
 
+# Clés de registre Follow de nos deux types de structure, figées sur leur valeur historique. Par
+# défaut Follow dérive la clé du module et du nom de la classe (``Structure.registry_key``), la
+# persiste dans ``structure_type`` de chaque expérience et la hache dans son id ; c'est aussi sous
+# cette clé que ``Structure.__init_subclass__`` enregistre la classe. Déplacer ces classes (vers un
+# plugin, par exemple) changerait donc la clé et rendrait illisibles les dépôts existants - d'où la
+# chaîne écrite en dur, à ne jamais modifier.
+PROCESS_LOT_KEY = "spectre.core.structures.ProcessLot"
+STRUCTURE_IMAGE_KEY = "spectre.core.structures.StructureImage"
+
 
 class ProcessLot(follow.Structure):
     """A Follow ``Structure`` holding several ``ProcessStructure`` variants (a DOE campaign's
@@ -38,6 +47,10 @@ class ProcessLot(follow.Structure):
     """
 
     entries: list[ProcessStructure]
+
+    @classmethod
+    def registry_key(cls) -> str:
+        return PROCESS_LOT_KEY
 
 
 class StructureImageItem(BaseModel):
@@ -67,6 +80,10 @@ class StructureImage(follow.Structure):
     """
 
     images: list[StructureImageItem] = Field(min_length=1, max_length=MAX_STRUCTURE_IMAGES)
+
+    @classmethod
+    def registry_key(cls) -> str:
+        return STRUCTURE_IMAGE_KEY
 
     @model_validator(mode="before")
     @classmethod

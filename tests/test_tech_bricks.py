@@ -7,30 +7,19 @@ link" philosophy this mirrors from the structure library and step presets.
 
 from __future__ import annotations
 
-
-def _steps():
-    return [
-        {
-            "kind": "deposition",
-            "name": "PGaN",
-            "material": "GaN",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": 50, "unit": "nm"},
-        }
-    ]
+from support.microprojects import create_microproject, join_as, signup_with_microproject
+from support.structures import deposition
 
 
-def _register_and_microproject(client, email, microproject_name="Projet"):
-    client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": microproject_name}).json()["slug"]
+PGAN_STEPS = [deposition("PGaN", "GaN", thickness_nm=50)]
 
 
 def test_create_a_microproject_scoped_tech_brick(client):
-    slug = _register_and_microproject(client, "brickA@example.com")
+    slug = signup_with_microproject(client, "brickA@example.com")
 
     created = client.post(
         f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "Masque + gravure RIE", "steps": _steps(), "partagee": False},
+        json={"name": "Masque + gravure RIE", "steps": PGAN_STEPS, "partagee": False},
     )
     assert created.status_code == 201
     body = created.json()
@@ -41,21 +30,21 @@ def test_create_a_microproject_scoped_tech_brick(client):
 
 
 def test_shared_tech_brick_is_visible_from_a_different_microproject(client):
-    slug_a = _register_and_microproject(client, "brickB@example.com")
+    slug_a = signup_with_microproject(client, "brickB@example.com")
     client.post(
         f"/api/microprojets/{slug_a}/briques-technologiques",
-        json={"name": "Brique commune", "steps": _steps(), "partagee": True},
+        json={"name": "Brique commune", "steps": PGAN_STEPS, "partagee": True},
     )
 
-    slug_b = client.post("/api/microprojets", json={"name": "Autre projet"}).json()["slug"]
+    slug_b = create_microproject(client, "Autre projet")["slug"]
     listed = client.get(f"/api/microprojets/{slug_b}/briques-technologiques").json()
     assert [b["name"] for b in listed["partagees"]] == ["Brique commune"]
     assert listed["microprojet"] == []
 
 
 def test_duplicate_name_in_the_same_library_is_rejected(client):
-    slug = _register_and_microproject(client, "brickC@example.com")
-    payload = {"name": "Brique X", "steps": _steps(), "partagee": False}
+    slug = signup_with_microproject(client, "brickC@example.com")
+    payload = {"name": "Brique X", "steps": PGAN_STEPS, "partagee": False}
     first = client.post(f"/api/microprojets/{slug}/briques-technologiques", json=payload)
     assert first.status_code == 201
     again = client.post(f"/api/microprojets/{slug}/briques-technologiques", json=payload)
@@ -63,15 +52,15 @@ def test_duplicate_name_in_the_same_library_is_rejected(client):
 
 
 def test_rename_a_tech_brick_in_place(client):
-    slug = _register_and_microproject(client, "brickD@example.com")
+    slug = signup_with_microproject(client, "brickD@example.com")
     client.post(
         f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "Nom initial", "steps": _steps(), "partagee": False},
+        json={"name": "Nom initial", "steps": PGAN_STEPS, "partagee": False},
     )
     renamed = client.put(
         f"/api/microprojets/{slug}/briques-technologiques/Nom initial",
         params={"partagee": False},
-        json={"name": "Nom corrige", "steps": _steps()},
+        json={"name": "Nom corrige", "steps": PGAN_STEPS},
     )
     assert renamed.status_code == 200
     names = [b["name"] for b in renamed.json()["microprojet"]]
@@ -79,10 +68,10 @@ def test_rename_a_tech_brick_in_place(client):
 
 
 def test_delete_a_tech_brick(client):
-    slug = _register_and_microproject(client, "brickE@example.com")
+    slug = signup_with_microproject(client, "brickE@example.com")
     client.post(
         f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "A retirer", "steps": _steps(), "partagee": False},
+        json={"name": "A retirer", "steps": PGAN_STEPS, "partagee": False},
     )
     deleted = client.delete(f"/api/microprojets/{slug}/briques-technologiques/A retirer", params={"partagee": False})
     assert deleted.status_code == 200
@@ -92,37 +81,30 @@ def test_delete_a_tech_brick(client):
 def test_a_tech_brick_needs_no_substrate_unlike_a_saved_structure(client):
     """The whole point of a brick vs. a saved structure: it's just a sequence of steps, with
     nothing substrate-shaped in its request/response shape at all."""
-    slug = _register_and_microproject(client, "brickF@example.com")
+    slug = signup_with_microproject(client, "brickF@example.com")
     created = client.post(
         f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "Sans substrat", "steps": _steps(), "partagee": False},
+        json={"name": "Sans substrat", "steps": PGAN_STEPS, "partagee": False},
     )
     assert created.status_code == 201
     assert "substrate" not in created.json()["microprojet"][0]
 
 
 def test_viewer_cannot_create_a_tech_brick(client):
-    slug = _register_and_microproject(client, "brickG-owner@example.com")
-    client.post("/api/auth/logout")
-    client.post("/api/auth/register", json={"email": "brickG-viewer@example.com", "password": "supersecret", "name": "V"})
-    client.post("/api/auth/logout")
-    client.post("/api/auth/login", json={"email": "brickG-owner@example.com", "password": "supersecret"})
-    client.post(f"/api/microprojets/{slug}/members", json={"email": "brickG-viewer@example.com", "role": "viewer"})
-
-    client.post("/api/auth/logout")
-    client.post("/api/auth/login", json={"email": "brickG-viewer@example.com", "password": "supersecret"})
+    slug = signup_with_microproject(client, "brickG-owner@example.com")
+    join_as(client, slug, "brickG-viewer@example.com", owner="brickG-owner@example.com", role="viewer")
     denied = client.post(
         f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "Interdit", "steps": _steps(), "partagee": False},
+        json={"name": "Interdit", "steps": PGAN_STEPS, "partagee": False},
     )
     assert denied.status_code == 403
 
 
 def test_a_tech_brick_keeps_its_declared_parameters(client):
-    slug = _register_and_microproject(client, "brickDeclared@example.com")
+    slug = signup_with_microproject(client, "brickDeclared@example.com")
     declared = {"0": [{"name": "dopage", "value": 3e18, "obtention": {}}]}
     body = client.post(
         f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "PGaN dope", "steps": _steps(), "declared_params": declared},
+        json={"name": "PGaN dope", "steps": PGAN_STEPS, "declared_params": declared},
     ).json()
     assert body["microprojet"][0]["declared_params"] == declared

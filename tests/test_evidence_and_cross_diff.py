@@ -1,37 +1,14 @@
 from __future__ import annotations
 
-
-def _substrate():
-    return {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-
-
-def _steps(thickness=20):
-    return [
-        {
-            "kind": "deposition",
-            "name": "Oxyde",
-            "material": "SiO2",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": thickness, "unit": "nm"},
-        }
-    ]
-
-
-def _launch(client, slug, title="Essai"):
-    body = {
-        "substrate": _substrate(),
-        "steps": _steps(),
-        "title": title,
-        "intent": "Verifier",
-        "entities": [{"sample_id": "W1"}],
-    }
-    return client.post(f"/api/microprojets/{slug}/experiences", json=body).json()
+from support.accounts import login, signup
+from support.experiments import add_evidence, conclude, evolve, get_experience, launch, tag
+from support.microprojects import create_microproject, join_as, signup_with_microproject
+from support.structures import steps
 
 
 def test_add_evidence_creates_a_new_version_and_carries_forward(client):
-    client.post("/api/auth/register", json={"email": "owner@example.com", "password": "supersecret", "name": "Owner"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    launched = _launch(client, slug)
+    slug = signup_with_microproject(client, "owner@example.com", name="Owner")
+    launched = launch(client, slug)
 
     body = {
         "description": "Mesure d'epaisseur au profilometre",
@@ -45,51 +22,33 @@ def test_add_evidence_creates_a_new_version_and_carries_forward(client):
     new_id = response.json()["id"]
     assert new_id != launched["id"]
 
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{new_id}").json()
+    detail = get_experience(client, slug, new_id)
     assert len(detail["evidence"]) == 1
     assert detail["evidence"][0]["description"] == "Mesure d'epaisseur au profilometre"
     assert detail["evidence"][0]["metrics"]["thickness_nm"]["value"] == 20.3
 
     # a second piece of evidence carries the first one forward
-    second = client.post(
-        f"/api/microprojets/{slug}/experiences/{new_id}/preuves",
-        json={"description": "Deuxieme mesure", "source": "https://labo.example/mesures/143"},
-    )
-    detail2 = client.get(f"/api/microprojets/{slug}/experiences/{second.json()['id']}").json()
-    assert len(detail2["evidence"]) == 2
+    second = add_evidence(client, slug, new_id, "Deuxieme mesure", source="https://labo.example/mesures/143")
+    assert len(get_experience(client, slug, second["id"])["evidence"]) == 2
 
 
 def test_concluding_an_experience_keeps_its_evidence(client):
-    client.post("/api/auth/register", json={"email": "owner-concl@example.com", "password": "supersecret", "name": "Owner"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    launched = _launch(client, slug)
+    slug = signup_with_microproject(client, "owner-concl@example.com", name="Owner")
+    launched = launch(client, slug)
 
-    with_evidence = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
-        json={"description": "Mesure d'epaisseur au profilometre", "source": "https://labo.example/mesures/142"},
-    ).json()["id"]
+    with_evidence = add_evidence(client, slug, launched["id"], "Mesure d'epaisseur au profilometre", source="https://labo.example/mesures/142")
+    concluded = conclude(client, slug, with_evidence["id"])
 
-    concluded = client.post(f"/api/microprojets/{slug}/experiences/{with_evidence}/conclure", json={"status": "concluded"})
-    assert concluded.status_code == 201
-
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{concluded.json()['id']}").json()
+    detail = get_experience(client, slug, concluded["id"])
     assert len(detail["evidence"]) == 1
     assert detail["evidence"][0]["description"] == "Mesure d'epaisseur au profilometre"
 
 
 def test_viewer_cannot_add_evidence(client):
-    client.post("/api/auth/register", json={"email": "owner2@example.com", "password": "supersecret", "name": "O"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    launched = _launch(client, slug)
+    slug = signup_with_microproject(client, "owner2@example.com", name="O")
+    launched = launch(client, slug)
 
-    client.post("/api/auth/logout")
-    client.post("/api/auth/register", json={"email": "viewer5@example.com", "password": "supersecret", "name": "V"})
-    client.post("/api/auth/logout")
-    client.post("/api/auth/login", json={"email": "owner2@example.com", "password": "supersecret"})
-    client.post(f"/api/microprojets/{slug}/members", json={"email": "viewer5@example.com", "role": "viewer"})
-
-    client.post("/api/auth/logout")
-    client.post("/api/auth/login", json={"email": "viewer5@example.com", "password": "supersecret"})
+    join_as(client, slug, "viewer5@example.com", owner="owner2@example.com", role="viewer")
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
         json={"description": "x", "source": "y"},
@@ -98,9 +57,8 @@ def test_viewer_cannot_add_evidence(client):
 
 
 def test_evidence_step_index_round_trips_and_is_labeled_in_the_process(client):
-    client.post("/api/auth/register", json={"email": "owner-step@example.com", "password": "supersecret", "name": "Owner"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    launched = _launch(client, slug)
+    slug = signup_with_microproject(client, "owner-step@example.com", name="Owner")
+    launched = launch(client, slug)
 
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
@@ -113,22 +71,16 @@ def test_evidence_step_index_round_trips_and_is_labeled_in_the_process(client):
         },
     )
     assert response.status_code == 201
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{response.json()['id']}").json()
-    assert detail["evidence"][0]["step_index"] == 0
+    assert get_experience(client, slug, response.json()["id"])["evidence"][0]["step_index"] == 0
 
     # omitting step_index still defaults to None (not tied to any step)
-    without_step = client.post(
-        f"/api/microprojets/{slug}/experiences/{response.json()['id']}/preuves",
-        json={"description": "Preuve generale", "source": "https://labo.example/mesures/2"},
-    ).json()
-    detail2 = client.get(f"/api/microprojets/{slug}/experiences/{without_step['id']}").json()
-    assert detail2["evidence"][-1]["step_index"] is None
+    without_step = add_evidence(client, slug, response.json()["id"], "Preuve generale", source="https://labo.example/mesures/2")
+    assert get_experience(client, slug, without_step["id"])["evidence"][-1]["step_index"] is None
 
 
 def test_evidence_step_index_must_be_within_process_bounds(client):
-    client.post("/api/auth/register", json={"email": "owner-bounds@example.com", "password": "supersecret", "name": "Owner"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    launched = _launch(client, slug)  # a single-step process (_steps() above)
+    slug = signup_with_microproject(client, "owner-bounds@example.com", name="Owner")
+    launched = launch(client, slug)  # a single-step process (support.structures.steps)
 
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
@@ -144,48 +96,26 @@ def test_evidence_step_index_must_be_within_process_bounds(client):
 
 
 def test_evolving_an_experience_preserves_its_evidence_and_tags(client):
-    client.post("/api/auth/register", json={"email": "owner-evolve@example.com", "password": "supersecret", "name": "Owner"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    launched = _launch(client, slug)
+    slug = signup_with_microproject(client, "owner-evolve@example.com", name="Owner")
+    launched = launch(client, slug)
 
-    with_evidence = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
-        json={"description": "Mesure avant evolution", "source": "https://labo.example/mesures/1"},
-    ).json()
-    with_tag = client.post(
-        f"/api/microprojets/{slug}/experiences/{with_evidence['id']}/etiquettes", json={"tags": ["important"]}
-    ).json()
+    with_evidence = add_evidence(client, slug, launched["id"], "Mesure avant evolution", source="https://labo.example/mesures/1")
+    with_tag = tag(client, slug, with_evidence["id"], ["important"])
+    evolved = evolve(client, slug, with_tag["id"], intent="Reduire l'epaisseur", steps=steps(thickness_nm=10), objectives=[])
 
-    evolve_body = {
-        "substrate": _substrate(),
-        "steps": _steps(thickness=10),
-        "title": "Essai",
-        "intent": "Reduire l'epaisseur",
-        "objectives": [],
-    }
-    evolved = client.post(f"/api/microprojets/{slug}/experiences/{with_tag['id']}/evoluer", json=evolve_body)
-    assert evolved.status_code == 201
-
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{evolved.json()['id']}").json()
+    detail = get_experience(client, slug, evolved["id"])
     assert len(detail["evidence"]) == 1
     assert detail["evidence"][0]["description"] == "Mesure avant evolution"
     assert detail["tags"] == ["important"]
 
 
 def test_cross_microproject_diff(client):
-    client.post("/api/auth/register", json={"email": "cross@example.com", "password": "supersecret", "name": "Cross"})
-    slug_a = client.post("/api/microprojets", json={"name": "Projet A"}).json()["slug"]
-    slug_b = client.post("/api/microprojets", json={"name": "Projet B"}).json()["slug"]
+    signup(client, "cross@example.com", name="Cross")
+    slug_a = create_microproject(client, "Projet A")["slug"]
+    slug_b = create_microproject(client, "Projet B")["slug"]
 
-    exp_a = _launch(client, slug_a, title="Essai A")
-    exp_b_body = {
-        "substrate": _substrate(),
-        "steps": _steps(thickness=40),
-        "title": "Essai B",
-        "intent": "Verifier",
-        "entities": [{"sample_id": "W2"}],
-    }
-    exp_b = client.post(f"/api/microprojets/{slug_b}/experiences", json=exp_b_body).json()
+    exp_a = launch(client, slug_a, title="Essai A")
+    exp_b = launch(client, slug_b, title="Essai B", steps=steps(thickness_nm=40), entities=[{"sample_id": "W2"}])
 
     response = client.get(
         f"/api/microprojets/{slug_a}/experiences/{exp_a['id']}/diff-externe"
@@ -199,17 +129,13 @@ def test_cross_microproject_diff(client):
 
 
 def test_cross_microproject_diff_requires_access_to_other_microproject(client):
-    client.post("/api/auth/register", json={"email": "ownerC@example.com", "password": "supersecret", "name": "C"})
-    slug_c = client.post("/api/microprojets", json={"name": "Projet C"}).json()["slug"]
-    exp_c = _launch(client, slug_c, title="Essai C")
+    slug_c = signup_with_microproject(client, "ownerC@example.com", "Projet C", name="C")
+    exp_c = launch(client, slug_c, title="Essai C")
 
-    client.post("/api/auth/logout")
-    client.post("/api/auth/register", json={"email": "ownerD@example.com", "password": "supersecret", "name": "D"})
-    slug_d = client.post("/api/microprojets", json={"name": "Projet D privé"}).json()["slug"]
-    exp_d = _launch(client, slug_d, title="Essai D")
+    slug_d = signup_with_microproject(client, "ownerD@example.com", "Projet D privé", name="D")
+    exp_d = launch(client, slug_d, title="Essai D")
 
-    client.post("/api/auth/logout")
-    client.post("/api/auth/login", json={"email": "ownerC@example.com", "password": "supersecret"})
+    login(client, "ownerC@example.com")
     response = client.get(
         f"/api/microprojets/{slug_c}/experiences/{exp_c['id']}/diff-externe"
         f"?autre_projet={slug_d}&autre_experience={exp_d['id']}"
@@ -218,19 +144,10 @@ def test_cross_microproject_diff_requires_access_to_other_microproject(client):
 
 
 def test_evidence_kind_objective_and_interpretation_round_trip(client):
-    client.post("/api/auth/register", json={"email": "owner-kind@example.com", "password": "supersecret", "name": "Owner"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Essai",
-            "intent": "Verifier",
-            "entities": [{"sample_id": "W1"}],
-            "objectives": [{"name": "Isolation", "metric": "resistivity_ohm_cm", "direction": "target", "target": 1e6}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, "owner-kind@example.com", name="Owner")
+    launched = launch(
+        client, slug, objectives=[{"name": "Isolation", "metric": "resistivity_ohm_cm", "direction": "target", "target": 1e6}]
+    )
 
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
@@ -244,18 +161,34 @@ def test_evidence_kind_objective_and_interpretation_round_trip(client):
         },
     )
     assert response.status_code == 201
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{response.json()['id']}").json()
-    evidence = detail["evidence"][0]
+    evidence = get_experience(client, slug, response.json()["id"])["evidence"][0]
     assert evidence["kind"] == "graph"
     assert evidence["objective"] == "Isolation"
     assert evidence["interpretation"].startswith("L'isolation")
     assert evidence["graph_config"]["query"] == "TODO"
 
 
+def test_evidence_own_fields_survive_lightweight_and_real_evolutions(client):
+    # Spectre's own preuve fields ride in the experience's metadata (not on follow.Evidence, whose
+    # fields depend on the installed Follow) - every later version must still show them.
+    slug = signup_with_microproject(client, "owner-kind-carry@example.com")
+    launched = launch(client, slug, objectives=[{"name": "Isolation", "metric": "r", "direction": "observe"}])
+    graph = add_evidence(client, slug, launched["id"], "Split vs PL", kind="graph", objective="Isolation", interpretation="Monte")
+    tagged = tag(client, slug, graph["id"], ["a-suivre"])
+    other = add_evidence(client, slug, tagged["id"], "Autre mesure")
+    concluded = conclude(client, slug, other["id"])
+    evolved = evolve(client, slug, concluded["id"], steps=steps(40))
+
+    for version in (tagged, other, concluded, evolved):
+        evidence = {e["id"]: e for e in get_experience(client, slug, version["id"])["evidence"]}
+        own = evidence[graph["evidence_id"]]
+        assert (own["kind"], own["objective"], own["interpretation"]) == ("graph", "Isolation", "Monte")
+    assert evidence[other["evidence_id"]]["kind"] == "standard"  # each preuve keeps its own fields
+
+
 def test_evidence_objective_must_exist_on_the_experience(client):
-    client.post("/api/auth/register", json={"email": "owner-badobj@example.com", "password": "supersecret", "name": "Owner"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    launched = _launch(client, slug)
+    slug = signup_with_microproject(client, "owner-badobj@example.com", name="Owner")
+    launched = launch(client, slug)
 
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
@@ -265,16 +198,15 @@ def test_evidence_objective_must_exist_on_the_experience(client):
 
 
 def test_evidence_kind_defaults_to_standard(client):
-    client.post("/api/auth/register", json={"email": "owner-default@example.com", "password": "supersecret", "name": "Owner"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
-    launched = _launch(client, slug)
+    slug = signup_with_microproject(client, "owner-default@example.com", name="Owner")
+    launched = launch(client, slug)
 
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
         json={"description": "x", "source": "y"},
     )
     assert response.status_code == 201
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{response.json()['id']}").json()
-    assert detail["evidence"][0]["kind"] == "standard"
-    assert detail["evidence"][0]["objective"] is None
-    assert detail["evidence"][0]["image_annotations"] == []
+    evidence = get_experience(client, slug, response.json()["id"])["evidence"][0]
+    assert evidence["kind"] == "standard"
+    assert evidence["objective"] is None
+    assert evidence["image_annotations"] == []

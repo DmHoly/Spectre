@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from support.accounts import signup
+
 
 def test_update_profile_name(client):
-    client.post("/api/auth/register", json={"email": "profile@example.com", "password": "supersecret", "name": "Ancien Nom"})
+    signup(client, "profile@example.com", name="Ancien Nom")
     response = client.request("PUT", "/api/auth/me", json={"name": "Nouveau Nom"})
     assert response.status_code == 200
     assert response.json()["name"] == "Nouveau Nom"
@@ -10,19 +12,19 @@ def test_update_profile_name(client):
 
 
 def test_update_profile_rejects_empty_name(client):
-    client.post("/api/auth/register", json={"email": "profile2@example.com", "password": "supersecret", "name": "X"})
+    signup(client, "profile2@example.com", name="X")
     response = client.request("PUT", "/api/auth/me", json={"name": "   "})
     assert response.status_code == 422
 
 
 def test_change_password_requires_current_password(client):
-    client.post("/api/auth/register", json={"email": "pw@example.com", "password": "supersecret", "name": "P"})
+    signup(client, "pw@example.com", name="P")
     response = client.post("/api/auth/mot-de-passe", json={"current_password": "wrong", "new_password": "nouveaumdp123"})
     assert response.status_code == 401
 
 
 def test_change_password_signs_out_everywhere(client):
-    client.post("/api/auth/register", json={"email": "pw2@example.com", "password": "supersecret", "name": "P2"})
+    signup(client, "pw2@example.com", name="P2")
     response = client.post("/api/auth/mot-de-passe", json={"current_password": "supersecret", "new_password": "nouveaumdp123"})
     assert response.status_code == 200
 

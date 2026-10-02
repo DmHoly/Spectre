@@ -1,31 +1,30 @@
 from __future__ import annotations
 
-import logging
+from support.accounts import link_token, logout, signup
 
 
-def test_forgot_password_always_returns_ok(client):
-    client.post("/api/auth/register", json={"email": "reset@example.com", "password": "supersecret", "name": "R"})
-    client.post("/api/auth/logout")
+def test_forgot_password_always_returns_ok(client, outbox):
+    signup(client, "reset@example.com", name="R")
+    logout(client)
 
-    # unknown address: still 200, no leak
+    # unknown address: still 200, no leak - and nothing sent
     response = client.post("/api/auth/mot-de-passe-oublie", json={"email": "unknown@example.com"})
     assert response.status_code == 200
+    assert outbox == []
 
     response = client.post("/api/auth/mot-de-passe-oublie", json={"email": "reset@example.com"})
     assert response.status_code == 200
+    assert [email.to for email in outbox] == ["reset@example.com"]
 
 
-def test_reset_password_flow(client, caplog):
-    client.post("/api/auth/register", json={"email": "reset2@example.com", "password": "supersecret", "name": "R2"})
-    client.post("/api/auth/logout")
+def test_reset_password_flow(client, outbox):
+    signup(client, "reset2@example.com", name="R2")
+    logout(client)
 
-    with caplog.at_level(logging.WARNING, logger="spectre.email"):
-        client.post("/api/auth/mot-de-passe-oublie", json={"email": "reset2@example.com"})
-
-    # dev-mode: no SMTP configured, so the reset link was logged instead of e-mailed
-    log_text = "\n".join(r.message for r in caplog.records)
-    assert "/reinitialiser?token=" in log_text
-    token = log_text.split("token=")[1].split()[0].strip()
+    client.post("/api/auth/mot-de-passe-oublie", json={"email": "reset2@example.com"})
+    [email] = outbox
+    assert "/reinitialiser?token=" in email.body
+    token = link_token(email.body, "token")
 
     response = client.post("/api/auth/reinitialiser", json={"token": token, "password": "nouveaumdp123"})
     assert response.status_code == 200
@@ -37,6 +36,15 @@ def test_reset_password_flow(client, caplog):
     # the token is one-time use
     response = client.post("/api/auth/reinitialiser", json={"token": token, "password": "encoreunautre123"})
     assert response.status_code == 400
+
+
+def test_without_smtp_the_message_is_logged_instead(client, caplog):
+    # no SPECTRE_SMTP_HOST (conftest clears it): dev mode logs the link rather than failing
+    signup(client, "reset3@example.com", name="R3")
+    logout(client)
+    with caplog.at_level("WARNING", logger="spectre.email"):
+        client.post("/api/auth/mot-de-passe-oublie", json={"email": "reset3@example.com"})
+    assert "/reinitialiser?token=" in "\n".join(r.message for r in caplog.records)
 
 
 def test_reset_password_rejects_invalid_token(client):

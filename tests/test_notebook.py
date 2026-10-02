@@ -10,35 +10,27 @@ import pytest
 
 from spectre.core import datasets
 
+from support.accounts import login, signup
+from support.experiments import get_experience, launch, timeline
+from support.http import assert_handler_404
+from support.microprojects import add_member, signup_with_microproject
+
 
 @pytest.fixture()
 def demo_data(monkeypatch):
     monkeypatch.setenv("SPECTRE_DEMO_DATA", "1")
 
 
-def _substrate():
-    return {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-
-
-def _steps():
-    return [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
-
-
 def _setup(client, email="notebook@example.com"):
-    client.post("/api/auth/logout")
-    client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "Chercheuse"})
-    slug = client.post("/api/microprojets", json={"name": "Lots EQE"}).json()["slug"]
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Pixélisation",
-            "intent": "Même directivité",
-            "objectives": [{"name": "EQE identique", "metric": "max_EQE"}],
-            "entities": [{"sample_id": "W12-A3"}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, email, "Lots EQE", name="Chercheuse")
+    launched = launch(
+        client,
+        slug,
+        title="Pixélisation",
+        intent="Même directivité",
+        objectives=[{"name": "EQE identique", "metric": "max_EQE"}],
+        entities=[{"sample_id": "W12-A3"}],
+    )
     return slug, launched["id"]
 
 
@@ -77,8 +69,19 @@ def test_a_snapshot_freezes_the_data_of_the_plates(client, demo_data):
     assert again["rows"] == snap["rows"]
     # même plaque, mêmes données de démo
     assert _snapshot(client, slug).json()["rows"] == snap["rows"]
-    assert client.get(f"/api/microprojets/{slug}/donnees/instantanes/snap_{'0' * 20}").status_code == 404
-    assert client.get(f"/api/microprojets/{slug}/donnees/instantanes/..%2Fspectre").status_code == 404
+    assert_handler_404(client.get(f"/api/microprojets/{slug}/donnees/instantanes/snap_{'0' * 20}"), "instantané introuvable")
+
+
+def test_a_snapshot_id_cannot_reach_outside_the_attachments(client):
+    slug, _ = _setup(client)
+    # an id still inside its own path segment reaches the handler, which refuses anything that isn't
+    # a snapshot id (an encoded "../" never gets that far: the router has no route for it)
+    assert_handler_404(client.get(f"/api/microprojets/{slug}/donnees/instantanes/..spectre"), "instantané introuvable")
+    for snapshot_id in ("../secret", r"..\secret", "../../data/secret"):
+        with pytest.raises(datasets.DataSourceError) as exc_info:
+            datasets.load(slug, snapshot_id)
+        assert exc_info.value.status_code == 404
+        assert not datasets.exists(slug, snapshot_id)
 
 
 def test_a_snapshot_needs_plates_and_a_known_type(client, demo_data):
@@ -119,7 +122,7 @@ def test_notebook_entries_are_versioned_with_their_notes(client, demo_data):
     )
     assert added.status_code == 201
     version = added.json()["id"]
-    entry = client.get(f"/api/microprojets/{slug}/experiences/{version}").json()["data_notebook"][0]
+    entry = get_experience(client, slug, version)["data_notebook"][0]
     assert entry["title"] == "EQE vs J" and entry["note"] == "Pas d'écart pixel / non pixel."
     assert entry["hook"] == "eqe" and entry["source"] == "demo" and entry["wafers"] == ["W12-A3", "W12-A4"]
     assert entry["created_by"] == "Chercheuse" and entry["in_report"] is True and entry["objective"] == "EQE identique"
@@ -133,16 +136,15 @@ def test_notebook_entries_are_versioned_with_their_notes(client, demo_data):
         f"/api/microprojets/{slug}/experiences/{second['id']}/cahier/{entry_id}",
         json={"note": "Conclusion : identique à 5 % près.", "move": 1, "in_report": False},
     ).json()
-    notebook = client.get(f"/api/microprojets/{slug}/experiences/{moved['id']}").json()["data_notebook"]
+    notebook = get_experience(client, slug, moved["id"])["data_notebook"]
     assert [e["title"] for e in notebook] == ["Carte EQE", "EQE vs J"]
     assert notebook[1]["note"] == "Conclusion : identique à 5 % près." and notebook[1]["in_report"] is False
 
     removed = client.delete(f"/api/microprojets/{slug}/experiences/{moved['id']}/cahier/{second['entry_id']}").json()
-    notebook = client.get(f"/api/microprojets/{slug}/experiences/{removed['id']}").json()["data_notebook"]
+    notebook = get_experience(client, slug, removed["id"])["data_notebook"]
     assert [e["title"] for e in notebook] == ["EQE vs J"]
     # l'historique garde chaque étape (cahier de labo)
-    items = client.get(f"/api/microprojets/{slug}/experiences/{removed['id']}/timeline").json()["items"]
-    assert len(items) == 5
+    assert len(timeline(client, slug, removed["id"])["items"]) == 5
 
 
 def test_entries_are_validated(client, demo_data):
@@ -154,16 +156,16 @@ def test_entries_are_validated(client, demo_data):
     assert client.post(url, json={**base, "snapshot_id": "snap_" + "1" * 20}).status_code == 422
     assert client.post(url, json={**base, "component": "<script>"}).status_code == 422
     assert client.post(url, json={**base, "objective": "inexistant"}).status_code == 422
-    assert client.put(f"{url}/nb_000000000000", json={"note": "x"}).status_code == 404
+    assert_handler_404(client.put(f"{url}/nb_000000000000", json={"note": "x"}), "introuvable")
+    assert_handler_404(client.delete(f"{url}/nb_000000000000"), "introuvable")
 
 
 def test_viewers_read_the_notebook_but_do_not_change_it(client, demo_data):
-    client.post("/api/auth/register", json={"email": "viewer-nb@example.com", "password": "supersecret", "name": "V"})
+    signup(client, "viewer-nb@example.com", name="V")
     slug, experience = _setup(client, "owner-nb@example.com")
     snap = _snapshot(client, slug).json()
-    assert client.post(f"/api/microprojets/{slug}/members", json={"email": "viewer-nb@example.com", "role": "viewer"}).status_code == 201
-    client.post("/api/auth/logout")
-    client.post("/api/auth/login", json={"email": "viewer-nb@example.com", "password": "supersecret"})
+    add_member(client, slug, "viewer-nb@example.com", "viewer")
+    login(client, "viewer-nb@example.com")
     assert client.get(f"/api/microprojets/{slug}/donnees/instantanes/{snap['snapshot_id']}").status_code == 200
     assert _snapshot(client, slug).status_code == 403
     assert client.post(

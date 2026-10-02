@@ -1,49 +1,14 @@
 from __future__ import annotations
 
-
-def _substrate():
-    return {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-
-
-def _steps(thickness=20):
-    return [
-        {
-            "kind": "deposition",
-            "name": "Oxyde",
-            "material": "SiO2",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": thickness, "unit": "nm"},
-        }
-    ]
-
-
-def _register_and_microproject(client, email):
-    client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
+from support.experiments import add_evidence, conclude, get_experience, launch, launch_campaign, tag
+from support.microprojects import signup_with_microproject
+from support.structures import steps
 
 
 def test_combine_two_experiences_keeps_the_base_structure_and_links_the_other(client):
-    slug = _register_and_microproject(client, "combine@example.com")
-    a = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(20),
-            "title": "Piste A",
-            "intent": "Depart A",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
-    b = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(40),
-            "title": "Piste B",
-            "intent": "Depart B",
-            "entities": [{"sample_id": "W2"}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, "combine@example.com")
+    a = launch(client, slug, title="Piste A", intent="Depart A", steps=steps(20))
+    b = launch(client, slug, title="Piste B", intent="Depart B", steps=steps(40), entities=[{"sample_id": "W2"}])
 
     combined = client.post(
         f"/api/microprojets/{slug}/experiences/{a['id']}/combiner",
@@ -52,7 +17,7 @@ def test_combine_two_experiences_keeps_the_base_structure_and_links_the_other(cl
     assert combined.status_code == 201
     combined_id = combined.json()["id"]
 
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{combined_id}").json()
+    detail = get_experience(client, slug, combined_id)
     assert sorted(detail["parents"]) == sorted([a["id"], b["id"]])
     assert detail["title"] == "Synthese A+B"
     # kept A's structure/steps (the default, conflict-free behaviour)
@@ -61,17 +26,8 @@ def test_combine_two_experiences_keeps_the_base_structure_and_links_the_other(cl
 
 
 def test_combine_rejects_combining_an_experience_with_itself(client):
-    slug = _register_and_microproject(client, "combineself@example.com")
-    a = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Solo",
-            "intent": "Depart",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, "combineself@example.com")
+    a = launch(client, slug, title="Solo", intent="Depart")
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{a['id']}/combiner",
         json={"other_id": a["id"], "title": "X", "intent": "Y"},
@@ -80,28 +36,9 @@ def test_combine_rejects_combining_an_experience_with_itself(client):
 
 
 def test_combine_rejects_a_single_experience_with_a_campaign(client):
-    slug = _register_and_microproject(client, "combinetypes@example.com")
-    single = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Solo",
-            "intent": "Depart",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
-    campaign = client.post(
-        f"/api/microprojets/{slug}/experiences/campagne",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "plan": {"factors": [{"step_index": 0, "field": "thickness", "values": [10, 20, 30]}]},
-            "title": "Campagne",
-            "intent": "Balayage",
-            "entities": [{"sample_id": "placeholder"}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, "combinetypes@example.com")
+    single = launch(client, slug, title="Solo", intent="Depart")
+    campaign = launch_campaign(client, slug, intent="Balayage", entities=[{"sample_id": "placeholder"}])
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{single['id']}/combiner",
         json={"other_id": campaign["id"], "title": "X", "intent": "Y"},
@@ -110,17 +47,8 @@ def test_combine_rejects_a_single_experience_with_a_campaign(client):
 
 
 def test_setting_and_removing_tags_records_a_new_version_and_preserves_status(client):
-    slug = _register_and_microproject(client, "tags@example.com")
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Reference",
-            "intent": "Depart",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, "tags@example.com")
+    launched = launch(client, slug, title="Reference", intent="Depart")
 
     tagged = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/etiquettes",
@@ -131,41 +59,23 @@ def test_setting_and_removing_tags_records_a_new_version_and_preserves_status(cl
     tagged_id = tagged.json()["id"]
     assert tagged_id != launched["id"]
 
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{tagged_id}").json()
+    detail = get_experience(client, slug, tagged_id)
     assert detail["tags"] == ["a valider", "prioritaire"]
     assert detail["status"] == "draft"  # tagging must not change the status
 
-    untagged = client.post(f"/api/microprojets/{slug}/experiences/{tagged_id}/etiquettes", json={"tags": ["prioritaire"]})
-    assert untagged.json()["tags"] == ["prioritaire"]
+    assert tag(client, slug, tagged_id, ["prioritaire"])["tags"] == ["prioritaire"]
 
 
 def test_adding_evidence_or_concluding_preserves_existing_tags(client):
-    slug = _register_and_microproject(client, "tagscarry@example.com")
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Reference",
-            "intent": "Depart",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
-    tagged = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/etiquettes", json={"tags": ["important"]}
-    ).json()
+    slug = signup_with_microproject(client, "tagscarry@example.com")
+    launched = launch(client, slug, title="Reference", intent="Depart")
+    tagged = tag(client, slug, launched["id"], ["important"])
 
-    with_evidence = client.post(
-        f"/api/microprojets/{slug}/experiences/{tagged['id']}/preuves",
-        json={"description": "Mesure", "source": "profilometre"},
-    ).json()
-    assert client.get(f"/api/microprojets/{slug}/experiences/{with_evidence['id']}").json()["tags"] == ["important"]
+    with_evidence = add_evidence(client, slug, tagged["id"], source="profilometre")
+    assert get_experience(client, slug, with_evidence["id"])["tags"] == ["important"]
 
-    concluded = client.post(
-        f"/api/microprojets/{slug}/experiences/{with_evidence['id']}/conclure",
-        json={"status": "concluded", "summary": "Fini", "objective_results": []},
-    ).json()
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{concluded['id']}").json()
+    concluded = conclude(client, slug, with_evidence["id"], summary="Fini", objective_results=[])
+    detail = get_experience(client, slug, concluded["id"])
     assert detail["tags"] == ["important"]
     assert detail["status"] == "concluded"
 
@@ -173,25 +83,10 @@ def test_adding_evidence_or_concluding_preserves_existing_tags(client):
 def test_concluding_does_not_reset_status_of_a_later_evidence_addition(client):
     # regression: add_evidence used to leave `conclusion` at its fresh default, silently
     # un-concluding an already-concluded experience the moment evidence was attached to it.
-    slug = _register_and_microproject(client, "statuscarry@example.com")
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Reference",
-            "intent": "Depart",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
-    concluded = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/conclure",
-        json={"status": "concluded", "summary": "Fini", "objective_results": []},
-    ).json()
-    assert client.get(f"/api/microprojets/{slug}/experiences/{concluded['id']}").json()["status"] == "concluded"
+    slug = signup_with_microproject(client, "statuscarry@example.com")
+    launched = launch(client, slug, title="Reference", intent="Depart")
+    concluded = conclude(client, slug, launched["id"], summary="Fini", objective_results=[])
+    assert get_experience(client, slug, concluded["id"])["status"] == "concluded"
 
-    with_evidence = client.post(
-        f"/api/microprojets/{slug}/experiences/{concluded['id']}/preuves",
-        json={"description": "Mesure tardive", "source": "profilometre"},
-    ).json()
-    assert client.get(f"/api/microprojets/{slug}/experiences/{with_evidence['id']}").json()["status"] == "concluded"
+    with_evidence = add_evidence(client, slug, concluded["id"], "Mesure tardive", source="profilometre")
+    assert get_experience(client, slug, with_evidence["id"])["status"] == "concluded"

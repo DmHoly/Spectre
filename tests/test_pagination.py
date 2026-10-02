@@ -1,37 +1,14 @@
 from __future__ import annotations
 
-
-def _substrate():
-    return {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-
-
-def _steps():
-    return [
-        {
-            "kind": "deposition",
-            "name": "Oxyde",
-            "material": "SiO2",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": 20, "unit": "nm"},
-        }
-    ]
+from support.experiments import launch
+from support.microprojects import signup_with_microproject
 
 
 def test_experiences_are_paginated(client):
-    client.post("/api/auth/register", json={"email": "page@example.com", "password": "supersecret", "name": "P"})
-    slug = client.post("/api/microprojets", json={"name": "Projet pagine"}).json()["slug"]
+    slug = signup_with_microproject(client, "page@example.com", "Projet pagine", name="P")
 
     for i in range(5):
-        client.post(
-            f"/api/microprojets/{slug}/experiences",
-            json={
-                "substrate": _substrate(),
-                "steps": _steps(),
-                "title": f"Essai {i}",
-                "intent": "x",
-                "entities": [{"sample_id": f"W{i}"}],
-            },
-        )
+        launch(client, slug, title=f"Essai {i}", intent="x", entities=[{"sample_id": f"W{i}"}])
 
     page1 = client.get(f"/api/microprojets/{slug}/experiences?status=all&offset=0&limit=2").json()
     assert len(page1["items"]) == 2
@@ -48,8 +25,7 @@ def test_experiences_are_paginated(client):
 
 
 def test_pagination_rejects_bad_params(client):
-    client.post("/api/auth/register", json={"email": "page2@example.com", "password": "supersecret", "name": "P2"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
+    slug = signup_with_microproject(client, "page2@example.com", name="P2")
 
     assert client.get(f"/api/microprojets/{slug}/experiences?offset=-1").status_code == 422
     assert client.get(f"/api/microprojets/{slug}/experiences?limit=0").status_code == 422

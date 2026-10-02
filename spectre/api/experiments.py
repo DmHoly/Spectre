@@ -8,17 +8,17 @@ in :mod:`spectre.core.versioning`, layered on top of Follow's plain commit chain
 otherwise only resolves which microproject's repository to use and translates errors into HTTP
 responses.
 
-Route order matters: ``{ref:path}`` is greedy (it matches slashes too - see
-``follow/api/app.py``'s own note on the same trick), so every route with a literal suffix after
-``{ref:path}`` (``/process``, ``/timeline``, ``/diff``, ``/evoluer``, ``/evoluer-image``, ``/dessin``,
-``/conclure``, ``/preuves``,
-``/combiner``, ``/etiquettes``, ``/entites``, ``/pieces-jointes``, ``/diff-externe``, ``/matrice``,
-``/ref``) is registered before the bare "get one experience" route below it - otherwise that
-catch-all would swallow them.
+``{ref}`` (an experiment id, a branch or a ref name - :meth:`follow.storage.repository.Repository.get`
+resolves all three) is a single path segment: none of them ever contains a "/" (refs and branch
+names typed by a user are refused with one, see :func:`spectre.core.refs.create_ref` and
+:func:`spectre.api.structures.require_branch_name`), so route order no longer matters - a
+literal suffix after ``{ref}`` (``/process``, ``/timeline``, ``/conclure``...) can never be
+swallowed by the bare "get one experience" route, whichever router registers it.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 import secrets
@@ -46,6 +46,7 @@ from .structures import (
     _unique_branch,
     apply_context,
     first_tracked_entity,
+    require_branch_name,
     require_title_and_intent,
     split_objectives,
     structure_image_from_input,
@@ -88,7 +89,7 @@ def _derive_branch(repo: "follow.Repository", parent: Any, requested: str | None
     reach a non-technical user.
     """
     if requested:
-        return requested
+        return require_branch_name(requested)
     if repo.branches.get(parent.branch) == parent.id:
         return None
     return _unique_branch(repo, parent.title)
@@ -170,6 +171,41 @@ class PhysicalTrackingRequest(BaseModel):
     entities: list[EntityTrackingInput]
 
 
+# Les champs de preuve propres à Spectre (type de preuve, objectif servi, interprétation, réglages du
+# graphe, annotations d'image) : rangés dans Experiment.metadata[EVIDENCE_EXTRA_KEY][evidence_id]
+# plutôt que sur follow.Evidence, dont les champs dépendent de la version de Follow installée (une
+# version qui ne les déclare pas les ignore sans rien dire) - la même raison que pour
+# metadata["evidence_links"]. Chaque évolution légère recopie metadata, donc ils suivent les preuves.
+EVIDENCE_EXTRA_KEY = "evidence_extra"
+EVIDENCE_EXTRA_DEFAULTS: dict[str, Any] = {
+    "kind": "standard",
+    "objective": None,
+    "interpretation": None,
+    "graph_config": None,
+    "image_annotations": [],
+}
+
+
+def _native_evidence_fields(fields: dict[str, Any]) -> dict[str, Any]:
+    """Those of ``fields`` the installed ``follow.Evidence`` declares itself - passed to it too, so
+    a Follow that carries them natively keeps them in sync with the metadata copy."""
+    return {name: value for name, value in fields.items() if name in follow.Evidence.model_fields}
+
+
+def evidence_payload(evidence: Any, extras: dict[str, dict[str, Any]]) -> dict:
+    """One preuve as the API shows it: Follow's own fields, plus Spectre's (see
+    :data:`EVIDENCE_EXTRA_KEY`) - read from the preuve itself when the installed Follow declares
+    the field and it was actually set there, otherwise from ``extras`` (the experience's
+    ``metadata[EVIDENCE_EXTRA_KEY]``), otherwise their default."""
+    payload = evidence.model_dump(mode="json")
+    stored = extras.get(evidence.id, {})
+    for name, default in EVIDENCE_EXTRA_DEFAULTS.items():
+        if name in follow.Evidence.model_fields and name in evidence.model_fields_set:
+            continue
+        payload[name] = stored.get(name, copy.deepcopy(default))
+    return payload
+
+
 def _not_found(exc: follow.ExperimentNotFoundError) -> HTTPException:
     return HTTPException(status_code=404, detail=str(exc.args[0]) if exc.args else "expérience introuvable")
 
@@ -230,7 +266,7 @@ def _detail(experiment: Any, repo: Any = None) -> dict:
         # shows each /pieces-jointes/{image_id} where a drawn structure shows structure_svg
         "structure_images": structures.structure_images(experiment.structure_type, experiment.structure),
         "has_editable_process": "structureforge_process" in experiment.metadata,
-        "evidence": [e.model_dump(mode="json") for e in experiment.evidence],
+        "evidence": [evidence_payload(e, experiment.metadata.get(EVIDENCE_EXTRA_KEY, {})) for e in experiment.evidence],
         "physical_tracking": experiment.metadata.get("physical_tracking", []),
         "attachments": experiment.metadata.get("attachments", []),
         # per preuve id: the links (folder, PowerPoint deck...) recorded with it - kept here rather
@@ -452,7 +488,7 @@ def microproject_graph_html(microproject: Microproject = Depends(require_role("v
     return figure.to_html(include_plotlyjs=True, full_html=True)
 
 
-@router.get("/{slug}/experiences/{ref:path}/process")
+@router.get("/{slug}/experiences/{ref}/process")
 def experience_process(ref: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     repo = microprojects.get_repository(microproject.slug)
     try:
@@ -465,7 +501,7 @@ def experience_process(ref: str, microproject: Microproject = Depends(require_ro
     return process
 
 
-@router.get("/{slug}/experiences/{ref:path}/timeline")
+@router.get("/{slug}/experiences/{ref}/timeline")
 def experience_timeline(ref: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """Two views of the same lineage. ``versions`` keeps only the commits that actually moved the
     process/structure forward (see :mod:`spectre.core.versioning`), each carrying its own X.Y.Z -
@@ -498,7 +534,7 @@ def experience_timeline(ref: str, microproject: Microproject = Depends(require_r
     return {"items": items, "versions": versions}
 
 
-@router.get("/{slug}/experiences/{ref:path}/diff")
+@router.get("/{slug}/experiences/{ref}/diff")
 def experience_diff(ref: str, against: str | None = None, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     repo = microprojects.get_repository(microproject.slug)
     try:
@@ -529,7 +565,7 @@ def experience_diff(ref: str, against: str | None = None, microproject: Micropro
     return payload
 
 
-@router.post("/{slug}/experiences/{ref:path}/evoluer", status_code=201)
+@router.post("/{slug}/experiences/{ref}/evoluer", status_code=201)
 def evolve_experience(
     ref: str,
     body: LaunchExperienceRequest,
@@ -604,7 +640,7 @@ def evolve_experience(
     return {"id": experiment.id, "branch": experiment.branch}
 
 
-@router.post("/{slug}/experiences/{ref:path}/evoluer-image", status_code=201)
+@router.post("/{slug}/experiences/{ref}/evoluer-image", status_code=201)
 def evolve_experience_with_image(
     ref: str,
     body: LaunchImageExperienceRequest,
@@ -678,7 +714,7 @@ def evolve_experience_with_image(
     return {"id": experiment.id, "branch": experiment.branch}
 
 
-@router.post("/{slug}/experiences/{ref:path}/dessin", status_code=201)
+@router.post("/{slug}/experiences/{ref}/dessin", status_code=201)
 def replace_structure_drawing(
     ref: str,
     body: StructureImagesInput,
@@ -729,7 +765,7 @@ def replace_structure_drawing(
     return {"id": experiment.id}
 
 
-@router.post("/{slug}/experiences/{ref:path}/conclure", status_code=201)
+@router.post("/{slug}/experiences/{ref}/conclure", status_code=201)
 def conclude_experience(
     ref: str,
     body: ConcludeRequest,
@@ -784,7 +820,7 @@ def conclude_experience(
     return {"id": experiment.id}
 
 
-@router.post("/{slug}/experiences/{ref:path}/preuves", status_code=201)
+@router.post("/{slug}/experiences/{ref}/preuves", status_code=201)
 def add_evidence(
     ref: str,
     body: EvidenceInput,
@@ -841,6 +877,8 @@ def add_evidence(
     evidence_id = secrets.token_hex(6)
     if links:
         builder.metadata["evidence_links"] = {**parent.metadata.get("evidence_links", {}), evidence_id: links}
+    extra = {"kind": kind, "objective": body.objective, "interpretation": body.interpretation, "graph_config": body.graph_config}
+    builder.metadata[EVIDENCE_EXTRA_KEY] = {**parent.metadata.get(EVIDENCE_EXTRA_KEY, {}), evidence_id: extra}
     if images:
         # the pasted images become the preuve's attachments in this same version (see upload_attachment
         # for the one-file-at-a-time route, which records a version per file)
@@ -865,10 +903,7 @@ def add_evidence(
         source=source,
         metrics=metric or {},
         step_index=body.step_index,
-        kind=kind,
-        objective=body.objective,
-        interpretation=body.interpretation,
-        graph_config=body.graph_config,
+        **_native_evidence_fields(extra),
     )
     try:
         experiment = builder.commit()
@@ -881,7 +916,7 @@ def add_evidence(
     return {"id": experiment.id, "evidence_id": evidence_id}
 
 
-@router.post("/{slug}/experiences/{ref:path}/combiner", status_code=201)
+@router.post("/{slug}/experiences/{ref}/combiner", status_code=201)
 def combine_experiences(
     ref: str,
     body: CombineRequest,
@@ -935,7 +970,7 @@ def combine_experiences(
     return {"id": experiment.id}
 
 
-@router.post("/{slug}/experiences/{ref:path}/etiquettes", status_code=201)
+@router.post("/{slug}/experiences/{ref}/etiquettes", status_code=201)
 def set_tags(
     ref: str,
     body: TagsRequest,
@@ -977,7 +1012,7 @@ def set_tags(
     return {"id": experiment.id, "tags": cleaned}
 
 
-@router.post("/{slug}/experiences/{ref:path}/statut", status_code=201)
+@router.post("/{slug}/experiences/{ref}/statut", status_code=201)
 def set_status(
     ref: str,
     body: StatusRequest,
@@ -1027,7 +1062,7 @@ def set_status(
     return {"id": experiment.id, "status": body.status}
 
 
-@router.post("/{slug}/experiences/{ref:path}/entites", status_code=201)
+@router.post("/{slug}/experiences/{ref}/entites", status_code=201)
 def set_physical_tracking(
     ref: str,
     body: PhysicalTrackingRequest,
@@ -1105,7 +1140,7 @@ def _safe_ascii_filename(name: str) -> str:
     return name.encode("ascii", "ignore").decode("ascii").strip() or "fichier"
 
 
-@router.post("/{slug}/experiences/{ref:path}/pieces-jointes", status_code=201)
+@router.post("/{slug}/experiences/{ref}/pieces-jointes", status_code=201)
 async def upload_attachment(
     ref: str,
     file: UploadFile = File(...),
@@ -1200,7 +1235,7 @@ async def upload_attachment(
     return {"id": experiment.id, "attachment": record}
 
 
-@router.delete("/{slug}/experiences/{ref:path}/pieces-jointes/{attachment_id}")
+@router.delete("/{slug}/experiences/{ref}/pieces-jointes/{attachment_id}")
 def remove_attachment(
     ref: str,
     attachment_id: str,
@@ -1243,7 +1278,7 @@ def remove_attachment(
     return {"id": experiment.id}
 
 
-@router.post("/{slug}/experiences/{ref:path}/preuves/{evidence_id}/annotations")
+@router.post("/{slug}/experiences/{ref}/preuves/{evidence_id}/annotations")
 def update_evidence_annotations(
     ref: str,
     evidence_id: str,
@@ -1272,15 +1307,17 @@ def update_evidence_annotations(
         if annotation.attachment_id not in attachment_ids:
             raise HTTPException(status_code=422, detail="pièce jointe introuvable sur cette preuve")
 
-    updated_evidence = [
-        e.model_copy(update={"image_annotations": [a.model_dump() for a in body.annotations]}) if e.id == evidence_id else e
-        for e in parent.evidence
-    ]
+    annotations = {"image_annotations": [a.model_dump() for a in body.annotations]}
+    native = _native_evidence_fields(annotations)
+    updated_evidence = [e.model_copy(update=native) if native and e.id == evidence_id else e for e in parent.evidence]
+    extras = dict(parent.metadata.get(EVIDENCE_EXTRA_KEY, {}))
+    extras[evidence_id] = {**extras.get(evidence_id, {}), **annotations}
 
     builder = repo.derive(
         ref, title=parent.title, intent=parent.intent, new_branch=_derive_branch(repo, parent, None), author=user.name
     )
     builder.metadata = dict(parent.metadata)
+    builder.metadata[EVIDENCE_EXTRA_KEY] = extras
     builder.form_answers = dict(parent.form_answers)
     builder.evidence = updated_evidence
     builder.tags = list(parent.tags)
@@ -1352,7 +1389,7 @@ def _validate_external_image_path(raw: str) -> "Path":
     return path.resolve()
 
 
-@router.post("/{slug}/experiences/{ref:path}/data", status_code=201)
+@router.post("/{slug}/experiences/{ref}/data", status_code=201)
 def create_data_item(
     ref: str,
     body: DataSetInput,
@@ -1420,7 +1457,7 @@ def create_data_item(
     return {"id": experiment.id, "data_item": record}
 
 
-@router.delete("/{slug}/experiences/{ref:path}/data/{data_id}")
+@router.delete("/{slug}/experiences/{ref}/data/{data_id}")
 def remove_data_item(
     ref: str,
     data_id: str,
@@ -1458,7 +1495,7 @@ def remove_data_item(
     return {"id": experiment.id}
 
 
-@router.patch("/{slug}/experiences/{ref:path}/data/{data_id}/epingle")
+@router.patch("/{slug}/experiences/{ref}/data/{data_id}/epingle")
 def pin_data_item(
     ref: str,
     data_id: str,
@@ -1537,7 +1574,7 @@ def data_image(chemin: str, microproject: Microproject = Depends(require_role("v
     return FileResponse(path, media_type=media_type or "application/octet-stream")
 
 
-@router.get("/{slug}/experiences/{ref:path}/diff-externe")
+@router.get("/{slug}/experiences/{ref}/diff-externe")
 def experience_diff_external(
     ref: str,
     autre_projet: str,
@@ -1576,7 +1613,7 @@ def experience_diff_external(
     return {**base, **diff.model_dump(mode="json")}
 
 
-@router.get("/{slug}/experiences/{ref:path}/matrice")
+@router.get("/{slug}/experiences/{ref}/matrice")
 def experience_batch(ref: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """The constant/varying split of a DOE campaign's variants (``follow.doe.batch.analyze_batch``,
     the same analysis Follow's own GUI calls "matrice de split") - only meaningful for an
@@ -1612,7 +1649,7 @@ def experience_batch(ref: str, microproject: Microproject = Depends(require_role
     return payload
 
 
-@router.post("/{slug}/experiences/{ref:path}/ref", status_code=201)
+@router.post("/{slug}/experiences/{ref}/ref", status_code=201)
 def create_ref(
     ref: str,
     body: CreateRefRequest,
@@ -1628,11 +1665,13 @@ def create_ref(
         return refs.create_ref(repo, ref, name=body.name)
     except follow.ExperimentNotFoundError as exc:
         raise _not_found(exc) from exc
+    except refs.InvalidRefNameError as exc:
+        raise HTTPException(status_code=422, detail="Le nom d'une ref ne peut pas contenir « / ».") from exc
     except refs.RefNameTakenError as exc:
         raise HTTPException(status_code=409, detail=f"Le nom « {exc.name} » est déjà pris par une autre version ou branche.") from exc
 
 
-@router.get("/{slug}/experiences/{ref:path}")
+@router.get("/{slug}/experiences/{ref}")
 def get_experience(ref: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     repo = microprojects.get_repository(microproject.slug)
     try:
@@ -1642,7 +1681,7 @@ def get_experience(ref: str, microproject: Microproject = Depends(require_role("
     return _detail(experiment, repo)
 
 
-@router.delete("/{slug}/experiences/{ref:path}")
+@router.delete("/{slug}/experiences/{ref}")
 def delete_experience(ref: str, microproject: Microproject = Depends(require_role("editor"))) -> dict:
     """Delete a whole line of work: this version and its earlier versions, back to the point where
     the lineage forks or another branch/ref still needs them. Follow has no delete of its own

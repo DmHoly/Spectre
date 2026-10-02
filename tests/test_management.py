@@ -1,20 +1,22 @@
 from __future__ import annotations
 
-
-def _register(client, email, name="T"):
-    client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": name})
+from support.accounts import signup
+from support.experiments import launch
+from support.http import assert_handler_404
+from support.management import create_area, create_thematique, move_microproject
+from support.microprojects import create_microproject
 
 
 def test_first_account_is_admin_and_others_are_not(client):
-    _register(client, "boss@example.com")
+    signup(client, "boss@example.com")
     assert client.get("/api/auth/me").json()["is_admin"] is True
-    _register(client, "hand@example.com")
+    signup(client, "hand@example.com")
     assert client.get("/api/auth/me").json()["is_admin"] is False
 
 
 def test_new_microprojet_lands_in_the_unclassified_area(client):
-    _register(client, "boss@example.com")
-    client.post("/api/microprojets", json={"name": "Contact ohmique"})
+    signup(client, "boss@example.com")
+    create_microproject(client, "Contact ohmique")
 
     listing = client.get("/api/management").json()
     slugs = {a["slug"] for a in listing["areas"]}
@@ -25,14 +27,14 @@ def test_new_microprojet_lands_in_the_unclassified_area(client):
 
 
 def test_flagship_themes_are_seeded_on_a_fresh_instance(client):
-    _register(client, "boss@example.com")
+    signup(client, "boss@example.com")
     names = {a["name"] for a in client.get("/api/management").json()["areas"]}
     assert {"VLC (microlink)", "Nova (PT1)", "Native (PT2)"} <= names
 
 
 def test_admin_creates_an_area_and_moves_a_microprojet_into_it(client):
-    _register(client, "boss@example.com")
-    client.post("/api/microprojets", json={"name": "Contact ohmique"})
+    signup(client, "boss@example.com")
+    create_microproject(client, "Contact ohmique")
 
     created = client.post("/api/management", json={"name": "Fiabilité", "strategy": "Réduire les retours"})
     assert created.status_code == 201
@@ -48,9 +50,9 @@ def test_admin_creates_an_area_and_moves_a_microprojet_into_it(client):
 
 
 def test_non_admin_reads_but_cannot_write_the_strategy_layer(client):
-    _register(client, "boss@example.com")
-    client.post("/api/management", json={"name": "Thème A"})
-    _register(client, "hand@example.com")
+    signup(client, "boss@example.com")
+    create_area(client, "Thème A")
+    signup(client, "hand@example.com")
 
     assert client.get("/api/management").status_code == 200
     assert client.post("/api/management", json={"name": "Thème B"}).status_code == 403
@@ -59,10 +61,10 @@ def test_non_admin_reads_but_cannot_write_the_strategy_layer(client):
 
 
 def test_deleting_an_area_returns_its_microprojets_to_unclassified(client):
-    _register(client, "boss@example.com")
-    client.post("/api/microprojets", json={"name": "P1"})
-    slug = client.post("/api/management", json={"name": "Temporaire"}).json()["slug"]
-    client.post(f"/api/management/{slug}/microprojets", json={"microproject_slug": "p1"})
+    signup(client, "boss@example.com")
+    create_microproject(client, "P1")
+    slug = create_area(client, "Temporaire")["slug"]
+    move_microproject(client, slug, "p1")
 
     assert client.delete(f"/api/management/{slug}").status_code == 200
     unclassified = next(a for a in client.get("/api/management").json()["areas"] if a["slug"] == "non-classe")
@@ -70,13 +72,13 @@ def test_deleting_an_area_returns_its_microprojets_to_unclassified(client):
 
 
 def test_unclassified_area_cannot_be_deleted(client):
-    _register(client, "boss@example.com")
+    signup(client, "boss@example.com")
     assert client.delete("/api/management/non-classe").status_code == 422
 
 
 def test_creating_a_microprojet_directly_in_a_theme(client):
-    _register(client, "boss@example.com")
-    slug = client.post("/api/management", json={"name": "Contacts"}).json()["slug"]
+    signup(client, "boss@example.com")
+    slug = create_area(client, "Contacts")["slug"]
 
     created = client.post("/api/microprojets", json={"name": "PGaN", "management_area_slug": slug})
     assert created.status_code == 201
@@ -84,23 +86,23 @@ def test_creating_a_microprojet_directly_in_a_theme(client):
     assert client.get("/api/microprojets/pgan").json()["management_area"]["name"] == "Contacts"
 
     bad = client.post("/api/microprojets", json={"name": "X", "management_area_slug": "inexistant"})
-    assert bad.status_code == 404
+    assert_handler_404(bad)
 
 
 def test_list_all_microprojets_is_admin_only(client):
-    _register(client, "boss@example.com")
-    client.post("/api/microprojets", json={"name": "A"})
+    signup(client, "boss@example.com")
+    create_microproject(client, "A")
     assert [p["slug"] for p in client.get("/api/microprojets/tous").json()] == ["a"]
 
-    _register(client, "hand@example.com")
+    signup(client, "hand@example.com")
     assert client.get("/api/microprojets/tous").status_code == 403
 
 
 def test_thematiques_group_microprojets_inside_a_corporate_project(client):
-    _register(client, "boss@example.com")
+    signup(client, "boss@example.com")
     area = client.post("/api/management/native-pt2/thematiques", json={"name": "Dopage PGaN"})
     assert area.status_code == 201
-    client.post("/api/management/native-pt2/thematiques", json={"name": "Double EBL"})
+    create_thematique(client, "native-pt2", "Double EBL")
     assert [t["slug"] for t in area.json()["thematiques"]] == ["dopage-pgan"]
 
     created = client.post(
@@ -110,7 +112,7 @@ def test_thematiques_group_microprojets_inside_a_corporate_project(client):
     assert created.status_code == 201
     assert created.json()["thematique"] == {"slug": "dopage-pgan", "name": "Dopage PGaN"}
 
-    client.post("/api/microprojets", json={"name": "Orphelin"})
+    create_microproject(client, "Orphelin")
     moved = client.post(
         "/api/management/native-pt2/microprojets", json={"microproject_slug": "orphelin", "thematique_slug": "double-ebl"}
     ).json()
@@ -121,7 +123,7 @@ def test_thematiques_group_microprojets_inside_a_corporate_project(client):
 
     # A thématique of another project is rejected.
     bad = client.post("/api/microprojets", json={"name": "X", "management_area_slug": "nova-pt1", "thematique_slug": "dopage-pgan"})
-    assert bad.status_code == 404
+    assert_handler_404(bad)
 
     # Deleting a thématique keeps its µprojets in the project, without thématique.
     after = client.delete("/api/management/native-pt2/thematiques/dopage-pgan").json()
@@ -129,7 +131,7 @@ def test_thematiques_group_microprojets_inside_a_corporate_project(client):
 
 
 def test_corporate_objectives_are_ranked_and_editable(client):
-    _register(client, "boss@example.com")
+    signup(client, "boss@example.com")
     base = "/api/management/nova-pt1/objectifs"
     client.post(base, json={"title": "Qualifier le procédé", "target": "T1 2027"})
     client.post(base, json={"title": "Transférer en prod"})
@@ -151,14 +153,14 @@ def test_corporate_objectives_are_ranked_and_editable(client):
     ).json()
     assert renamed["objectives_period"] == "S1 2027"
 
-    _register(client, "hand@example.com")
+    signup(client, "hand@example.com")
     assert client.get("/api/management/nova-pt1").json()["objectifs"]
     assert client.post(base, json={"title": "x"}).status_code == 403
     assert client.post("/api/management/nova-pt1/thematiques", json={"name": "x"}).status_code == 403
 
 
 def test_trend_kpis_are_listed_and_served_lazily(client):
-    _register(client, "boss@example.com")
+    signup(client, "boss@example.com")
     kpis = client.get("/api/management/native-pt2/tendances").json()["kpis"]
     by_key = {k["key"]: k for k in kpis}
     assert by_key["activite"]["status"] == "live" and by_key["eqe"]["status"] == "demo"
@@ -173,8 +175,8 @@ def test_trend_kpis_are_listed_and_served_lazily(client):
     placeholder = client.get("/api/management/native-pt2/tendances/pl").json()
     assert placeholder["status"] == "placeholder" and placeholder["points"] == [] and len(placeholder["periods"]) == 12
 
-    assert client.get("/api/management/native-pt2/tendances/inconnu").status_code == 404
-    assert client.get("/api/management/inconnu/tendances").status_code == 404
+    assert_handler_404(client.get("/api/management/native-pt2/tendances/inconnu"))
+    assert_handler_404(client.get("/api/management/inconnu/tendances"))
 
 
 def test_month_periods_cross_the_year_boundary():
@@ -186,7 +188,7 @@ def test_month_periods_cross_the_year_boundary():
 
 
 def test_objectives_record_a_bonus_percentage_and_the_microproject_that_validated_them(client):
-    _register(client, "boss@example.com")
+    signup(client, "boss@example.com")
     nova = "/api/management/nova-pt1/objectifs"
     client.post(nova, json={"title": "Réduire le coût", "weight": 5})
     client.post(nova, json={"title": "Sans pourcentage"})
@@ -199,7 +201,7 @@ def test_objectives_record_a_bonus_percentage_and_the_microproject_that_validate
     assert "effort" not in area and "effort_total" not in area  # un simple chiffre, rien de calculé
     assert all(o["achieved"] is False and o["validated_by"] is None for o in area["objectifs"])
 
-    microproject = client.post("/api/microprojets", json={"name": "Pilote procédé", "management_area_slug": "nova-pt1"}).json()
+    microproject = create_microproject(client, "Pilote procédé", management_area_slug="nova-pt1")
     objective_id = area["objectifs"][0]["id"]
     done = client.put(
         f"{nova}/{objective_id}",
@@ -215,7 +217,7 @@ def test_objectives_record_a_bonus_percentage_and_the_microproject_that_validate
 
 
 def test_microprojets_get_an_auto_incremented_number_from_their_corporate_project(client):
-    _register(client, "boss@example.com")
+    signup(client, "boss@example.com")
 
     def create(name, area=None):
         body = {"name": name, **({"management_area_slug": area} if area else {})}
@@ -227,8 +229,8 @@ def test_microprojets_get_an_auto_incremented_number_from_their_corporate_projec
     assert [nat1["code"], nat2["code"], nov1["code"], loose["code"]] == ["Nat_0001", "Nat_0002", "Nov_0001", None]
 
     # rattaché plus tard : numéroté à ce moment-là ; déplacé ensuite : garde son numéro
-    client.post("/api/management/datacom-vlc/microprojets", json={"microproject_slug": loose["slug"]})
-    client.post("/api/management/nova-pt1/microprojets", json={"microproject_slug": nat1["slug"]})
+    move_microproject(client, "datacom-vlc", loose["slug"])
+    move_microproject(client, "nova-pt1", nat1["slug"])
     codes = {p["slug"]: p["code"] for p in client.get("/api/microprojets/tous").json()}
     assert codes[loose["slug"]] == "VLC_0001" and codes[nat1["slug"]] == "Nat_0001"
     assert create("Dopage C", "native-pt2")["code"] == "Nat_0003"  # jamais de numéro réutilisé
@@ -236,11 +238,11 @@ def test_microprojets_get_an_auto_incremented_number_from_their_corporate_projec
     for typed in ("Nat_0002", "nat 2", "NAT2", "Nat-02"):
         found = client.get(f"/api/microprojets/code/{typed}")
         assert found.status_code == 200 and found.json()["slug"] == nat2["slug"], typed
-    assert client.get("/api/microprojets/code/Nat_0099").status_code == 404
+    assert_handler_404(client.get("/api/microprojets/code/Nat_0099"))
     redirect = client.get("/p/Nat_0002", follow_redirects=False)
     assert redirect.status_code == 302 and redirect.headers["location"] == f"/microprojets/{nat2['slug']}"
 
-    area = client.post("/api/management", json={"name": "Fiabilité"}).json()
+    area = create_area(client, "Fiabilité")
     assert area["code_prefix"] == "Fia"
     assert client.put(f"/api/management/{area['slug']}", json={"name": "Fiabilité", "code_prefix": "Nat"}).status_code == 422
     assert client.put(f"/api/management/{area['slug']}", json={"name": "Fiabilité", "code_prefix": "N4t"}).status_code == 422
@@ -251,29 +253,21 @@ def test_microprojets_get_an_auto_incremented_number_from_their_corporate_projec
 
 
 def test_activity_trend_counts_experiments_in_progress_and_their_wafers(client):
-    _register(client, "boss@example.com")
-    microproject = client.post(
-        "/api/microprojets", json={"name": "Suivi activite", "management_area_slug": "native-pt2"}
-    ).json()
-    substrate = {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-    steps = [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
+    signup(client, "boss@example.com")
+    microproject = create_microproject(client, "Suivi activite", management_area_slug="native-pt2")
     for title, wafers in (("Essai A", ["W1", "W2"]), ("Essai B", ["W3"])):
-        response = client.post(
-            f"/api/microprojets/{microproject['slug']}/experiences",
-            json={"substrate": substrate, "steps": steps, "title": title, "intent": "x", "entities": [{"sample_id": w} for w in wafers]},
-        )
-        assert response.status_code == 201, response.text
+        launch(client, microproject["slug"], title=title, intent="x", entities=[{"sample_id": w} for w in wafers])
 
     running = client.get("/api/management/native-pt2/tendances/activite?mois=3").json()
     assert [p["value"] for p in running["points"]][-1] == 2  # two studies in progress this month
     wafers = client.get("/api/management/native-pt2/tendances/activite?mois=3&variante=wafers").json()
     assert wafers["variant"] == "wafers" and wafers["unit"] == "wafers"
     assert [p["value"] for p in wafers["points"]][-1] == 3
-    assert client.get("/api/management/native-pt2/tendances/activite?variante=inconnue").status_code == 404
+    assert_handler_404(client.get("/api/management/native-pt2/tendances/activite?variante=inconnue"))
 
 
 def test_eqe_demo_trend_rises_and_opens_a_mock_study_fiche(client):
-    _register(client, "boss@example.com")
+    signup(client, "boss@example.com")
     eqe = client.get("/api/management/native-pt2/tendances/eqe?mois=12").json()
     assert eqe["status"] == "demo" and "fictives" in eqe["message"]
     values = [p["value"] for p in eqe["points"]]
@@ -287,8 +281,8 @@ def test_eqe_demo_trend_rises_and_opens_a_mock_study_fiche(client):
     assert fiche["objective"]["target"] == 10.0 and fiche["conclusion"]["summary"]
     assert any(node["state"] == "current" for node in fiche["tree"]["nodes"]) and fiche["tree"]["edges"]
 
-    assert client.get("/api/management/native-pt2/tendances/eqe/etudes/inconnue").status_code == 404
-    assert client.get("/api/management/native-pt2/tendances/activite/etudes/eqe-ref").status_code == 404
+    assert_handler_404(client.get("/api/management/native-pt2/tendances/eqe/etudes/inconnue"))
+    assert_handler_404(client.get("/api/management/native-pt2/tendances/activite/etudes/eqe-ref"))
 
 
 def test_activity_counts_a_study_in_every_month_it_was_in_progress():
@@ -307,9 +301,9 @@ def test_activity_counts_a_study_in_every_month_it_was_in_progress():
 
 
 def test_topbar_search_finds_microprojets_by_number_or_name(client):
-    _register(client, "boss@example.com")
+    signup(client, "boss@example.com")
     for name in ("Dopage PGaN", "Amélioration IQE", "Double EBL"):
-        client.post("/api/microprojets", json={"name": name, "management_area_slug": "native-pt2"})
+        create_microproject(client, name, management_area_slug="native-pt2")
 
     def names(q):
         return [p["name"] for p in client.get(f"/api/microprojets/recherche?q={q}").json()]
@@ -324,8 +318,8 @@ def test_topbar_search_finds_microprojets_by_number_or_name(client):
 
 
 def test_microprojet_payloads_name_their_owner(client):
-    _register(client, "boss@example.com", name="Alice Martin")
-    client.post("/api/microprojets", json={"name": "Recuit Mg", "management_area_slug": "native-pt2"})
+    signup(client, "boss@example.com", name="Alice Martin")
+    create_microproject(client, "Recuit Mg", management_area_slug="native-pt2")
 
     assert client.get("/api/microprojets/recuit-mg").json()["owners"] == [{"id": 1, "name": "Alice Martin"}]
     assert client.get("/api/microprojets").json()[0]["owners"][0]["name"] == "Alice Martin"
@@ -333,22 +327,13 @@ def test_microprojet_payloads_name_their_owner(client):
     assert row["owners"] == [{"id": 1, "name": "Alice Martin"}]
 
 
-def _launch(client, slug, title):
-    substrate = {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-    steps = [{"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": 20, "unit": "nm"}}]
-    return client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={"substrate": substrate, "steps": steps, "title": title, "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
-    ).json()
-
-
 def test_thematique_page_lists_its_microprojets_on_a_frise(client):
-    _register(client, "boss@example.com", name="Alice Martin")
-    client.post("/api/management/native-pt2/thematiques", json={"name": "Dopage PGaN", "description": "Mg"})
-    client.post("/api/management/native-pt2/thematiques", json={"name": "Double EBL"})
-    client.post("/api/microprojets", json={"name": "Recuit Mg", "management_area_slug": "native-pt2", "thematique_slug": "dopage-pgan"})
-    client.post("/api/microprojets", json={"name": "Ailleurs", "management_area_slug": "native-pt2", "thematique_slug": "double-ebl"})
-    launched = _launch(client, "recuit-mg", "Recuit 700 C")
+    signup(client, "boss@example.com", name="Alice Martin")
+    create_thematique(client, "native-pt2", "Dopage PGaN", description="Mg")
+    create_thematique(client, "native-pt2", "Double EBL")
+    create_microproject(client, "Recuit Mg", management_area_slug="native-pt2", thematique_slug="dopage-pgan")
+    create_microproject(client, "Ailleurs", management_area_slug="native-pt2", thematique_slug="double-ebl")
+    launched = launch(client, "recuit-mg", title="Recuit 700 C")
 
     page = client.get("/api/management/native-pt2/thematiques/dopage-pgan")
     assert page.status_code == 200
@@ -362,9 +347,9 @@ def test_thematique_page_lists_its_microprojets_on_a_frise(client):
     assert {t["slug"]: t["microprojets"] for t in body["thematiques"]} == {"dopage-pgan": 1, "double-ebl": 1}
 
     # Someone outside the µprojet sees its counts and dates, not what its experiments are.
-    _register(client, "hand@example.com")
+    signup(client, "hand@example.com")
     point = client.get("/api/management/native-pt2/thematiques/dopage-pgan").json()["microprojets"][0]["frise"][0]
     assert "title" not in point and "id" not in point and point["status"] == "draft"
 
-    assert client.get("/api/management/native-pt2/thematiques/inconnue").status_code == 404
+    assert_handler_404(client.get("/api/management/native-pt2/thematiques/inconnue"))
     assert client.get("/management/native-pt2/thematiques/dopage-pgan").status_code == 200  # the page itself

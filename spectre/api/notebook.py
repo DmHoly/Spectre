@@ -13,9 +13,6 @@ Une vue = un instantané + un composant de visualisation (``component``, une cl�
 ``DataViz`` côté page, ``js/dataviz/``) + ses réglages (``options``, libres : c'est le composant qui
 les lit) + des observations (``note``) et, au besoin, l'objectif qu'elle sert. Le serveur ne connaît
 pas les composants : ajouter une visualisation ne demande que d'écrire son fichier JS.
-
-Routes en ``{ref:path}/cahier`` : ce routeur est inclus avant celui des expériences (voir app.py),
-dont le ``GET``/``DELETE /{slug}/experiences/{ref:path}`` avalerait sinon ces adresses.
 """
 
 from __future__ import annotations
@@ -181,7 +178,7 @@ def _find(entries: list[dict], entry_id: str) -> int:
     raise HTTPException(status_code=404, detail="vue introuvable dans le cahier de cette version")
 
 
-@router.post("/{slug}/experiences/{ref:path}/cahier", status_code=201)
+@router.post("/{slug}/experiences/{ref}/cahier", status_code=201)
 def add_entry(
     ref: str,
     body: EntryInput,
@@ -217,7 +214,7 @@ def add_entry(
     return _commit(microproject, ref, user, mutate, "Impossible d'ajouter cette vue")
 
 
-@router.put("/{slug}/experiences/{ref:path}/cahier/{entry_id}")
+@router.put("/{slug}/experiences/{ref}/cahier/{entry_id}")
 def update_entry(
     ref: str,
     entry_id: str,
@@ -259,7 +256,7 @@ def update_entry(
     return _commit(microproject, ref, user, mutate, "Impossible d'enregistrer cette vue")
 
 
-@router.delete("/{slug}/experiences/{ref:path}/cahier/{entry_id}")
+@router.delete("/{slug}/experiences/{ref}/cahier/{entry_id}")
 def remove_entry(
     ref: str,
     entry_id: str,

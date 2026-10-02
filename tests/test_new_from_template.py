@@ -1,51 +1,28 @@
 from __future__ import annotations
 
-
-def _substrate():
-    return {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-
-
-def _steps(thickness=20):
-    return [
-        {
-            "kind": "deposition",
-            "name": "Oxyde",
-            "material": "SiO2",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": thickness, "unit": "nm"},
-        }
-    ]
+from support.experiments import get_experience, launch
+from support.microprojects import signup_with_microproject
+from support.structures import steps
 
 
 def test_reusing_a_structure_as_template_starts_a_fresh_lineage(client):
-    client.post("/api/auth/register", json={"email": "tmpl@example.com", "password": "supersecret", "name": "T"})
-    slug = client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
+    slug = signup_with_microproject(client, "tmpl@example.com")
 
-    source = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(20),
-            "title": "Reference",
-            "intent": "Depart",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
+    source = launch(client, slug, title="Reference", intent="Depart", steps=steps(20))
 
     # the structure builder fetches this to pre-fill, then POSTs a brand-new /experiences (not /evoluer)
     process = client.get(f"/api/microprojets/{slug}/experiences/{source['id']}/process").json()
-    fresh = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": process["substrate"],
-            "steps": process["steps"],
-            "title": "Nouvelle piste independante",
-            "intent": "Reprend la meme structure sans heriter de la lignee",
-            "entities": [{"sample_id": "W2"}],
-        },
-    ).json()
+    fresh = launch(
+        client,
+        slug,
+        substrate=process["substrate"],
+        steps=process["steps"],
+        title="Nouvelle piste independante",
+        intent="Reprend la meme structure sans heriter de la lignee",
+        entities=[{"sample_id": "W2"}],
+    )
 
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{fresh['id']}").json()
+    detail = get_experience(client, slug, fresh["id"])
     assert detail["parents"] == []
     assert detail["branch"] != source["branch"]
     # same structure content though (same process re-used)

@@ -6,42 +6,17 @@ even once concluded.
 
 from __future__ import annotations
 
-
-def _substrate():
-    return {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-
-
-def _steps(thickness=20):
-    return [
-        {"kind": "deposition", "name": "Oxyde", "material": "SiO2", "recipe": "CVD Conformal", "thickness": {"value": thickness, "unit": "nm"}}
-    ]
-
-
-def _register_and_microproject(client, email, microproject_name="Projet"):
-    client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": microproject_name}).json()["slug"]
+from support.experiments import add_evidence, conclude, evolve, launch
+from support.microprojects import signup_with_microproject
+from support.structures import steps
 
 
 def test_evidence_then_conclusion_only_shows_the_final_version_once(client):
-    slug = _register_and_microproject(client, "tips-a@example.com")
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Etude",
-            "intent": "Depart",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, "tips-a@example.com")
+    launched = launch(client, slug, title="Etude", intent="Depart")
 
-    with_evidence = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
-        json={"description": "Mesure", "source": "labo"},
-    ).json()
-    concluded = client.post(
-        f"/api/microprojets/{slug}/experiences/{with_evidence['id']}/conclure", json={"status": "concluded"}
-    ).json()
+    with_evidence = add_evidence(client, slug, launched["id"])
+    concluded = conclude(client, slug, with_evidence["id"])
 
     listed = client.get(f"/api/microprojets/{slug}/experiences?status=all&limit=50").json()
     matching = [item for item in listed["items"] if item["title"] == "Etude"]
@@ -56,21 +31,10 @@ def test_evidence_then_conclusion_only_shows_the_final_version_once(client):
 
 
 def test_microproject_counts_reflect_one_status_per_branch(client):
-    slug = _register_and_microproject(client, "tips-b@example.com")
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Etude",
-            "intent": "Depart",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
-    with_evidence = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves", json={"description": "Mesure", "source": "labo"}
-    ).json()
-    client.post(f"/api/microprojets/{slug}/experiences/{with_evidence['id']}/conclure", json={"status": "concluded"})
+    slug = signup_with_microproject(client, "tips-b@example.com")
+    launched = launch(client, slug, title="Etude", intent="Depart")
+    with_evidence = add_evidence(client, slug, launched["id"])
+    conclude(client, slug, with_evidence["id"])
 
     payload = client.get(f"/api/microprojets/{slug}").json()
     assert payload["running_count"] == 0
@@ -78,31 +42,10 @@ def test_microproject_counts_reflect_one_status_per_branch(client):
 
 
 def test_a_fork_still_shows_both_branches_once_each(client):
-    slug = _register_and_microproject(client, "tips-c@example.com")
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(20),
-            "title": "Reference",
-            "intent": "Depart",
-            "entities": [{"sample_id": "W1"}],
-        },
-    ).json()
-    continued = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/evoluer",
-        json={"substrate": _substrate(), "steps": _steps(15), "title": "Reference", "intent": "Suite"},
-    ).json()
-    forked = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/evoluer",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(30),
-            "title": "Piste epaisse",
-            "intent": "Variante",
-            "new_branch": "piste-epaisse",
-        },
-    ).json()
+    slug = signup_with_microproject(client, "tips-c@example.com")
+    launched = launch(client, slug, title="Reference", intent="Depart", steps=steps(20))
+    continued = evolve(client, slug, launched["id"], title="Reference", intent="Suite", steps=steps(15))
+    forked = evolve(client, slug, launched["id"], title="Piste epaisse", intent="Variante", steps=steps(30), new_branch="piste-epaisse")
 
     listed = client.get(f"/api/microprojets/{slug}/experiences?status=all&limit=50").json()
     ids = {item["id"] for item in listed["items"]}

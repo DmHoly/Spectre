@@ -39,6 +39,15 @@ class RefNameTakenError(Exception):
         super().__init__(name)
 
 
+class InvalidRefNameError(ValueError):
+    """``name`` contains a "/" - a ref is addressed as a single ``{ref}`` path segment (see
+    :mod:`spectre.api.experiments`), so a nickname with one could never be reached again."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        super().__init__(name)
+
+
 def _version_for(repo: "follow.Repository", experiment_id: str) -> str:
     history = list(reversed(repo.log(experiment_id)))
     return versioning.compute_branch_versions(history)[experiment_id]["version"]
@@ -70,10 +79,12 @@ def create_ref(repo: "follow.Repository", ref: str, *, name: str | None = None) 
     "omega", "banane"...), otherwise :func:`default_ref_name`. Raises
     :class:`follow.ExperimentNotFoundError` if ``ref`` doesn't resolve to anything, or
     :class:`RefNameTakenError` if an explicitly chosen ``name`` is already a different tag or a
-    branch.
+    branch, or :class:`InvalidRefNameError` if it contains a "/".
     """
     experiment = repo.get(ref)
     nickname = name.strip() if name else ""
+    if "/" in nickname:
+        raise InvalidRefNameError(nickname)
     final_name = nickname or _unique_default_name(repo, default_ref_name(repo, experiment.id), experiment.id)
     try:
         repo.tag(final_name, at=experiment.id)

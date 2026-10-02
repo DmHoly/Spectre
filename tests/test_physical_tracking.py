@@ -1,39 +1,16 @@
 from __future__ import annotations
 
-
-def _substrate():
-    return {"material": "Si", "domain_width": {"value": 200, "unit": "nm"}, "thickness": {"value": 50, "unit": "nm"}}
-
-
-def _steps():
-    return [
-        {
-            "kind": "deposition",
-            "name": "Oxyde",
-            "material": "SiO2",
-            "recipe": "CVD Conformal",
-            "thickness": {"value": 20, "unit": "nm"},
-        }
-    ]
+from support.experiments import add_evidence, get_experience, launch, launch_campaign, track_entities
+from support.microprojects import signup_with_microproject
 
 
-def _register_and_microproject(client, email):
-    client.post("/api/auth/register", json={"email": email, "password": "supersecret", "name": "T"})
-    return client.post("/api/microprojets", json={"name": "Projet"}).json()["slug"]
+def _launch_placeholder(client, slug):
+    return launch(client, slug, title="Reference", intent="Depart", entities=[{"sample_id": "placeholder"}])
 
 
 def test_setting_physical_tracking_on_a_single_experience(client):
-    slug = _register_and_microproject(client, "physical@example.com")
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Reference",
-            "intent": "Depart",
-            "entities": [{"sample_id": "placeholder"}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, "physical@example.com")
+    launched = _launch_placeholder(client, slug)
 
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/entites",
@@ -43,23 +20,14 @@ def test_setting_physical_tracking_on_a_single_experience(client):
     new_id = response.json()["id"]
     assert new_id != launched["id"]
 
-    detail = client.get(f"/api/microprojets/{slug}/experiences/{new_id}").json()
+    detail = get_experience(client, slug, new_id)
     assert detail["physical_tracking"] == [{"sample_id": "W12-A3", "location": "congelateur B"}]
     assert detail["status"] == "draft"  # bookkeeping only, doesn't touch status
 
 
 def test_physical_tracking_rejects_wrong_entity_count_for_a_single_experience(client):
-    slug = _register_and_microproject(client, "physicalcount@example.com")
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Reference",
-            "intent": "Depart",
-            "entities": [{"sample_id": "placeholder"}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, "physicalcount@example.com")
+    launched = _launch_placeholder(client, slug)
     response = client.post(
         f"/api/microprojets/{slug}/experiences/{launched['id']}/entites",
         json={"entities": [{"sample_id": "A"}, {"sample_id": "B"}]},
@@ -68,18 +36,8 @@ def test_physical_tracking_rejects_wrong_entity_count_for_a_single_experience(cl
 
 
 def test_physical_tracking_on_a_campaign_matches_entity_count(client):
-    slug = _register_and_microproject(client, "physicalcampaign@example.com")
-    campaign = client.post(
-        f"/api/microprojets/{slug}/experiences/campagne",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "plan": {"factors": [{"step_index": 0, "field": "thickness", "values": [10, 20, 30]}]},
-            "title": "Campagne",
-            "intent": "Balayage",
-            "entities": [{"sample_id": "placeholder"}],
-        },
-    ).json()
+    slug = signup_with_microproject(client, "physicalcampaign@example.com")
+    campaign = launch_campaign(client, slug, intent="Balayage", entities=[{"sample_id": "placeholder"}])
 
     too_few = client.post(
         f"/api/microprojets/{slug}/experiences/{campaign['id']}/entites",
@@ -98,26 +56,9 @@ def test_physical_tracking_on_a_campaign_matches_entity_count(client):
 
 
 def test_physical_tracking_carries_forward_through_evidence_and_conclude(client):
-    slug = _register_and_microproject(client, "physicalcarry@example.com")
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={
-            "substrate": _substrate(),
-            "steps": _steps(),
-            "title": "Reference",
-            "intent": "Depart",
-            "entities": [{"sample_id": "placeholder"}],
-        },
-    ).json()
-    tracked = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/entites",
-        json={"entities": [{"sample_id": "W1", "location": "boite 3"}]},
-    ).json()
+    slug = signup_with_microproject(client, "physicalcarry@example.com")
+    launched = _launch_placeholder(client, slug)
+    tracked = track_entities(client, slug, launched["id"], [{"sample_id": "W1", "location": "boite 3"}])
 
-    with_evidence = client.post(
-        f"/api/microprojets/{slug}/experiences/{tracked['id']}/preuves",
-        json={"description": "Mesure", "source": "profilometre"},
-    ).json()
-    assert client.get(f"/api/microprojets/{slug}/experiences/{with_evidence['id']}").json()["physical_tracking"] == [
-        {"sample_id": "W1", "location": "boite 3"}
-    ]
+    with_evidence = add_evidence(client, slug, tracked["id"], source="profilometre")
+    assert get_experience(client, slug, with_evidence["id"])["physical_tracking"] == [{"sample_id": "W1", "location": "boite 3"}]
