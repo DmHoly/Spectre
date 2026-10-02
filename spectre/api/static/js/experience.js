@@ -1610,7 +1610,7 @@ function renderForksNote(detail) {
     ${detail.children
       .map((c) => `<div style="font-size:13px;margin-bottom:4px;"><a href="/microprojets/${slug}/experiences/${c.id}">${escapeHtml(c.title)}</a></div>`)
       .join("")}
-    <a href="/microprojets/${slug}/graphe" style="font-size:12px;">Voir la vue d'ensemble &rarr;</a>`;
+    <a href="/microprojets/${slug}" style="font-size:12px;">Voir le µprojet &rarr;</a>`;
 }
 
 function renderTags(detail) {

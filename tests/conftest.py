@@ -33,7 +33,8 @@ def isolated_environment(tmp_path, monkeypatch):
 
     # Caches indexés par nom de fichier et mtime - or copytree conserve le mtime : sans les vider,
     # un test lirait le contenu qu'un test précédent a mis en cache pour le même fichier.
-    from spectre.core import plates, registry
+    from spectre.plugins.library import service as registry
+    from spectre.plugins.wafers import service as plates
 
     caches = (registry._CACHE, registry._MAPPING_CACHE, plates._CACHE)
     for cache in caches:
@@ -54,23 +55,23 @@ def data_dir(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def outbox(monkeypatch):
-    """Les e-mails que l'application aurait envoyés (:func:`spectre.core.email.send_email`), dans
+    """Les e-mails que l'application aurait envoyés (:func:`spectre.kernel.mail.send_email`), dans
     l'ordre - au lieu de les journaliser. Tous les appelants passent par l'attribut du module
-    (``email_module.send_email``), donc le remplacer là suffit."""
+    (``mail.send_email``), donc le remplacer là suffit."""
     sent: list[SentEmail] = []
 
     def capture(to: str, subject: str, body: str) -> None:
         sent.append(SentEmail(to, subject, body))
 
-    monkeypatch.setattr("spectre.core.email.send_email", capture)
+    monkeypatch.setattr("spectre.kernel.mail.send_email", capture)
     return sent
 
 
 @pytest.fixture()
 def app(data_dir):
-    # Imported inside the fixture so SPECTRE_DATA_DIR is already set before spectre.core.db is
+    # Imported inside the fixture so SPECTRE_DATA_DIR is already set before spectre.kernel.db is
     # ever asked for a connection.
-    from spectre.api.app import create_app
+    from spectre.kernel.app import create_app
 
     return create_app()
 

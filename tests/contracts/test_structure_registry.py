@@ -11,8 +11,8 @@ import follow
 from follow.core import structure as follow_structure
 from structureforge.adapters.follow_adapter import ProcessStructure
 
-from spectre.core import microprojects
-from spectre.core.structures import PROCESS_LOT_KEY, STRUCTURE_IMAGE_KEY, ProcessLot, StructureImage
+from spectre.plugins.experiments.repository import follow_repo_path, get_repository
+from spectre.plugins.structures.kinds import PROCESS_LOT_KEY, STRUCTURE_IMAGE_KEY, ProcessLot, StructureImage
 
 from support.experiments import launch_campaign
 from support.microprojects import signup_with_microproject
@@ -31,7 +31,7 @@ def test_a_stored_campaign_reloads_through_a_class_defined_elsewhere(client, mon
     slug = signup_with_microproject(client, "registry@example.com")
     campaign = launch_campaign(client, slug)
 
-    stored = json.loads((microprojects.follow_repo_path(slug) / "objects" / f"{campaign['id']}.json").read_text(encoding="utf-8"))
+    stored = json.loads((follow_repo_path(slug) / "objects" / f"{campaign['id']}.json").read_text(encoding="utf-8"))
     assert stored["structure_type"] == PROCESS_LOT_KEY
 
     # the same structure, as a plugin would define it from another module: registered under the
@@ -46,6 +46,6 @@ def test_a_stored_campaign_reloads_through_a_class_defined_elsewhere(client, mon
             return PROCESS_LOT_KEY
 
     assert MovedProcessLot.__module__ != ProcessLot.__module__
-    repo = microprojects.get_repository(slug)
+    repo = get_repository(slug)
     reloaded = repo.load_structure(repo.get(campaign["id"]))
     assert isinstance(reloaded, MovedProcessLot) and len(reloaded.entries) == 3

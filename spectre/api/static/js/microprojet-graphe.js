@@ -1,11 +1,11 @@
 /* Vue par défaut du µprojet : le graphe hiérarchique "git-like" de ses expériences (un nœud =
    une expérience, un trait = un lien de filiation classique), plus la carte contextuelle qui
-   s'ouvre au clic - voir GET /api/microprojets/{slug}/filiation (spectre.api.experiments::
+   s'ouvre au clic - voir GET /api/microprojets/{slug}/filiation (spectre.plugins.experiments.api::
    microproject_lineage). Un nœud n'est jamais une version parmi d'autres : seuls les racines, les
    fusions (/combiner) et les commits qui ont réellement fait avancer la structure sont gardés
-   (spectre.core.versioning) - "un µprojet = split de structure". Remplace l'ancienne vue
-   d'ensemble Plotly (toujours servie sur /graphe pour les anciens liens, mais plus la vue par
-   défaut) : rendu D3 pour un vrai contrôle du layout et du clic, dans le même esprit qu'atlas.js.
+   (spectre.plugins.experiments.versioning) - "un µprojet = split de structure". Remplace
+   l'ancienne vue d'ensemble Plotly, supprimée : rendu D3 pour un vrai contrôle du layout et du
+   clic, dans le même esprit qu'atlas.js.
 
    Le layout et le dessin d'un nœud/trait vivent dans lineage-graph.js (chargé avant ce fichier) -
    partagés avec le mini-arbre qu'atlas.js affiche au clic sur une étude, pour resituer son

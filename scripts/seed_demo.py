@@ -12,7 +12,7 @@ recette de gâteau) :
   mais avec plusieurs puits quantiques, une comparaison avec/sans couche bloqueuse d'électrons
   (EBL), puis un réglage fin du dopage P en aval.
 
-Les deux profitent des refs (:mod:`spectre.core.refs`) pour marquer les points de départ vraiment
+Les deux profitent des refs (:mod:`spectre.plugins.experiments.refs`) pour marquer les points de départ vraiment
 réutilisés plusieurs fois (l'épitaxie standard, la référence à puits simple, la référence
 MQW+EBL...) plutôt que de laisser cette notion complètement absente de la démo.
 
@@ -166,7 +166,7 @@ class Microproject:
         self.slug = slug
 
     def launch(self, session: Session, *, title, intent, hypothesis, substrate, steps, objectives, sample_id, location=None, days_ago) -> str:
-        # every experience needs a physical entity from the moment it's created (spectre.api.structures
+        # every experience needs a physical entity from the moment it's created (spectre.plugins.experiments.api
         # enforces this) - passed straight through rather than tracked as an afterthought.
         result = session.post(
             f"/api/microprojets/{self.slug}/experiences",
@@ -233,7 +233,7 @@ class Microproject:
         return record(result["id"], days_ago)
 
     def make_ref(self, session: Session, ref: str, *, name: str | None = None) -> str:
-        """Tag ``ref`` as a ref (:mod:`spectre.core.refs`) - unlike every other beat here, this
+        """Tag ``ref`` as a ref (:mod:`spectre.plugins.experiments.refs`) - unlike every other beat here, this
         doesn't create a new commit (a ref is just a name on an experience that already exists),
         so there's nothing to schedule for backdating."""
         result = session.post(f"/api/microprojets/{self.slug}/experiences/{ref}/ref", json={"name": name})
@@ -579,7 +579,7 @@ def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     def p_gan_cap(doping_label):
         # le dopage (concentration de Mg) n'est pas non plus un champ simulé - seul le nom de
         # l'étape change d'un essai à l'autre, ce qui illustre bien le niveau "correctif (Z)" de
-        # spectre.core.versioning : la géométrie simulée est identique, seul le libellé change.
+        # spectre.plugins.experiments.versioning : la géométrie simulée est identique, seul le libellé change.
         return deposition(f"Couche GaN dopée Mg (type p, {doping_label})", "GaN", recipe="MOCVD Epitaxial", thickness_nm=100)
 
     ebl_layer = deposition("Couche bloqueuse d'électrons AlGaN (EBL)", "AlGaN", recipe="MOCVD Epitaxial", thickness_nm=15)
@@ -722,7 +722,7 @@ def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     proj.make_ref(demo, c6, name="mqw-ebl-reference")
 
     # 7. Dopage P modéré - seul le libellé de la couche p change (correctif/patch pour
-    # spectre.core.versioning : même géométrie simulée).
+    # spectre.plugins.experiments.versioning : même géométrie simulée).
     c7 = proj.evolve(
         demo, c6,
         title="Dopage P modéré (Mg ~5e18 cm-3)",
@@ -846,7 +846,7 @@ def main() -> None:
 
     from fastapi.testclient import TestClient
 
-    from spectre.api.app import create_app
+    from spectre.kernel.app import create_app
 
     app = create_app()
 

@@ -1,6 +1,6 @@
 """``spectre`` CLI: ``spectre`` / ``spectre start`` runs the app with uvicorn (a thin convenience
 wrapper, not a service manager); ``spectre admin <email>`` promotes/demotes the strategy-layer
-admin who manages management areas (:mod:`spectre.core.management`).
+admin who manages management areas (:mod:`spectre.plugins.areas`).
 """
 
 from __future__ import annotations
@@ -12,15 +12,16 @@ import sys
 def _cmd_start(args: argparse.Namespace) -> int:
     import uvicorn
 
-    uvicorn.run("spectre.api.app:app", host=args.host, port=args.port, reload=args.reload)
+    uvicorn.run("spectre.kernel.app:create_app", factory=True, host=args.host, port=args.port, reload=args.reload)
     return 0
 
 
 def _cmd_admin(args: argparse.Namespace) -> int:
-    from .core import accounts
-    from .core.db import init_db
+    from .kernel.db import run_migrations
+    from .plugins import PLUGINS
+    from .plugins.accounts import service as accounts
 
-    init_db()
+    run_migrations(PLUGINS)
     try:
         user = accounts.set_admin(args.email, not args.revoke)
     except ValueError as exc:

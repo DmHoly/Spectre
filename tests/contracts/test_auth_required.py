@@ -27,11 +27,11 @@ PUBLIC_ROUTES = {
 
 def _api_operations() -> list[tuple[str, str]]:
     """Les (méthode, chemin) de l'API - appelé à la collecte, avant toute fixture : l'application
-    est construite sur un dossier de données jetable (importer spectre.api.app en construit déjà une)."""
+    est construite sur un dossier de données jetable (create_app() applique les migrations)."""
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp, pytest.MonkeyPatch.context() as env:
         env.setenv("SPECTRE_DATA_DIR", tmp)
         env.setenv("PRISM_DATA_DIR", tmp)
-        from spectre.api.app import create_app
+        from spectre.kernel.app import create_app
 
         paths = create_app().openapi()["paths"]
     return sorted(
@@ -51,7 +51,7 @@ def anonymous_client(tmp_path_factory):
     with pytest.MonkeyPatch.context() as env:
         env.setenv("SPECTRE_DATA_DIR", str(data))
         env.setenv("PRISM_DATA_DIR", str(data / "prism"))
-        from spectre.api.app import create_app
+        from spectre.kernel.app import create_app
 
         with TestClient(create_app()) as client:
             yield client

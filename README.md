@@ -21,9 +21,9 @@ par expérience.
 La structure d'une expérience se dessine étape par étape dans le constructeur (simulée par
 StructureForge), ou se donne simplement en **images** - un schéma collé depuis PowerPoint, des
 coupes TEM, une ou plusieurs dans l'ordre où les lire - modifiables à tout moment
-(`spectre.core.structures.StructureImage`, page `/microprojets/<slug>/structures/image`).
+(`spectre.plugins.structures.kinds.StructureImage`, page `/microprojets/<slug>/structures/image`).
 
-Chaque wafer suivi porte ses **FDL** (feuilles de lancement JIRA, `spectre.core.fdl`) - plusieurs
+Chaque wafer suivi porte ses **FDL** (feuilles de lancement JIRA, `spectre.plugins.wafers.fdl`) - plusieurs
 possibles, empilées - retrouvables depuis la barre de recherche ; une preuve peut porter des liens
 (dossier, présentation PowerPoint) et des images collées.
 
@@ -45,7 +45,7 @@ Projet corporate (Management)   Native (PT2), VLC (microlink), Nova (PT1)... - a
                                              se sauvegardent en préset d'étape
 ```
 
-- **Thèmes** (`spectre.core.management`) : visibles par tout utilisateur connecté (vue société
+- **Thèmes** (plugin `areas`) : visibles par tout utilisateur connecté (vue société
   transverse) ; seul un compte **administrateur** (`users.is_admin`) crée/renomme/supprime un thème
   ou y rattache un µprojet - voir `spectre admin` plus bas. Page d'accueil (`/`), un projet
   (`/management/{slug}` : objectifs classés, tendances des KPI, thématiques et µprojets).
@@ -153,7 +153,7 @@ bloqueuse d'électrons (EBL), puis affine le dopage P en aval. Les deux montrent
 des flux de filiation, pas seulement des évolutions linéaires : embranchements (déclinaisons de
 couleur, substrat SiC, avec/sans EBL), fusion de deux pistes indépendantes en une seule expérience
 (`/combiner`, visible dans le graphe du projet comme un losange), et des refs
-(`spectre.core.refs`) posées sur les points de départ vraiment réutilisés (l'épitaxie standard, la
+(`spectre.plugins.experiments.refs`) posées sur les points de départ vraiment réutilisés (l'épitaxie standard, la
 structure de référence...) plutôt que sur chaque version. Tout passe par les vraies routes HTTP,
 donc les données sont garanties valides ; seules les dates de création sont recalées après coup
 pour étaler l'historique sur l'année (voir le script pour le détail). Lancer sur un répertoire de
@@ -196,22 +196,26 @@ déployer reste une étape manuelle.
 
 ## Organisation
 
-- `spectre/core/` - accès aux données (comptes, sessions, µprojets, droits, thèmes de management)
-  et le pont vers StructureForge/Follow. Aucune logique de simulation, de diff ou de versioning
-  n'est réécrite ici : elle est importée depuis les bibliothèques. De même, aucune requête ni
-  formule KPI de caractérisation : `spectre/api/datahook.py` n'est que l'adaptateur HTTP de PRISM.
-  - `management.py` : les thèmes de pilotage stratégique (au-dessus des µprojets).
-  - `registry.py` : la bibliothèque racine éditable (`library/*.yml` - matériaux, présets,
-    briques, recettes), rechargée à chaud.
-- `spectre/api/` - l'application FastAPI (routes JSON + pages HTML/CSS/JS vanilla, une page par
-  écran). Un µprojet s'appelle `microproject` partout en interne (table SQLite `microprojects`,
-  dossier `data/microprojects/<slug>`, modules `spectre/core/microprojects.py` et
-  `spectre/api/microprojects.py`) ; le français « µprojet » est réservé à ce que voit
-  l'utilisateur - les URLs (`/microprojets/...`, `/api/microprojets/...`), les libellés, et la clé
-  de scope `"microprojet"` des payloads à trois niveaux. Les anciennes URLs `/projets/...`
+Le contrat d'architecture est [`ARCHITECTURE.md`](ARCHITECTURE.md) (le pourquoi : [`REVIEW.md`](REVIEW.md)).
+
+- `spectre/kernel/` - le noyau, sans métier : base SQLite et migrations versionnées par plugin
+  (`db.py`), manifeste d'un plugin (`plugin.py`), erreurs, verrous, e-mail, service des pages et
+  construction de l'application (`app.py`, `create_app()` lancé par uvicorn en mode factory).
+- `spectre/plugins/<plugin>/` - une fonctionnalité par plugin (comptes, projets corporate,
+  µprojets, structures, expériences, lots...), chacun avec ses routes (`api.py`), son domaine
+  (`service.py`...), ses tables (`migrations.py`) ; la liste ordonnée est `spectre/plugins/__init__.py`.
+  Aucune logique de simulation, de diff ou de versioning n'est réécrite : elle est importée depuis
+  StructureForge et Follow. De même, aucune requête ni formule KPI de caractérisation : le plugin
+  `characterization` n'est que l'adaptateur de PRISM.
+- `spectre/api/static/` - les pages HTML/CSS/JS vanilla (une page par écran), servies par les
+  plugins en attendant de rejoindre leurs dossiers `pages/` et `static/`. Un µprojet s'appelle
+  `microproject` partout en interne (table SQLite `microprojects`, dossier
+  `data/microprojects/<slug>`, plugin `microprojects`) ; le français « µprojet » est réservé à ce
+  que voit l'utilisateur - les URLs (`/microprojets/...`, `/api/microprojets/...`), les libellés, et
+  la clé de scope `"microprojet"` des payloads à trois niveaux. Les anciennes URLs `/projets/...`
   redirigent (308) vers `/microprojets/...`, et une installation antérieure au renommage se migre
-  toute seule au démarrage - tables, colonnes et dossier `data/projects/` compris (voir
-  `_rename_legacy_project_tables` dans `spectre/core/db.py`).
+  toute seule au démarrage - tables, colonnes et dossier `data/projects/` compris (première
+  migration du plugin `microprojects`).
 - `library/` - la bibliothèque racine (matériaux/présets/briques/recettes), voir son propre
   `README.md`.
 
@@ -236,30 +240,6 @@ node --test
 pytest --cov --cov-report=term-missing   # Python (pip install -e ".[dev]" installe pytest-cov)
 node --test --experimental-test-coverage # JavaScript
 ```
-
-Python, par module (`spectre/`, 109 tests, 91 % au total à la dernière mesure) :
-
-| Module | Couverture |
-|---|---|
-| `spectre/__init__.py` | 100 % |
-| `spectre/api/app.py` | 100 % |
-| `spectre/api/auth.py` | 96 % |
-| `spectre/api/deps.py` | 86 % |
-| `spectre/api/experiments.py` | 83 % |
-| `spectre/api/keyed_resource.py` | 100 % |
-| `spectre/api/microprojects.py` | 87 % |
-| `spectre/api/structures.py` | 95 % |
-| `spectre/cli.py` | 0 % *(point d'entrée `spectre --port`, non exercé par les tests HTTP)* |
-| `spectre/core/accounts.py` | 97 % |
-| `spectre/core/db.py` | 100 % |
-| `spectre/core/email.py` | 48 % *(l'envoi SMTP réel n'est pas simulé en test)* |
-| `spectre/core/keyed_store.py` | 100 % |
-| `spectre/core/permissions.py` | 100 % |
-| `spectre/core/microprojects.py` | 97 % |
-| `spectre/core/security.py` | 100 % |
-| `spectre/core/step_presets.py` | 100 % |
-| `spectre/core/structure_library.py` | 100 % |
-| `spectre/core/structures.py` | 95 % |
 
 JavaScript (`tests_js/`, `node --test` exécute les vrais fichiers de `spectre/api/static/js/
 structure-builder/` - voir `tests_js/helpers/load-structure-builder.js`) : encore partiel, seule
