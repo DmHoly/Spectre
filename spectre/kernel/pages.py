@@ -2,9 +2,6 @@
 fichier de ``plugins/<plugin>/pages/``, servi tel quel - sauf le marqueur ``<!-- spectre:topbar -->``,
 remplacé par la navigation principale construite à partir des :class:`~spectre.kernel.plugin.NavEntry`
 de tous les plugins actifs. Une page qui ne porte pas le marqueur garde sa propre barre du haut.
-
-Tant que les pages n'ont pas rejoint leur plugin, un fichier absent de ``pages/`` est cherché dans
-:data:`LEGACY_STATIC_DIR`, l'ancien dossier commun.
 """
 
 from __future__ import annotations
@@ -20,8 +17,6 @@ from .plugin import NavEntry
 TOPBAR_MARKER = "<!-- spectre:topbar -->"
 PLUGINS_DIR = Path(__file__).resolve().parents[1] / "plugins"
 KERNEL_STATIC_DIR = Path(__file__).resolve().parent / "static"
-# Repli transitoire : les pages et le front de tous les plugins, servis sous /static.
-LEGACY_STATIC_DIR = Path(__file__).resolve().parents[1] / "api" / "static"
 
 
 def plugin_dir(plugin_name: str) -> Path:
@@ -29,11 +24,11 @@ def plugin_dir(plugin_name: str) -> Path:
 
 
 def resolve_page(plugin_name: str, filename: str) -> Path:
-    """Le fichier d'une page : dans ``pages/`` du plugin, sinon dans :data:`LEGACY_STATIC_DIR`."""
-    for candidate in (plugin_dir(plugin_name) / "pages" / filename, LEGACY_STATIC_DIR / filename):
-        if candidate.is_file():
-            return candidate
-    raise FileNotFoundError(f"page {filename!r} du plugin {plugin_name!r} introuvable")
+    """Le fichier d'une page, dans ``pages/`` du plugin."""
+    path = plugin_dir(plugin_name) / "pages" / filename
+    if not path.is_file():
+        raise FileNotFoundError(f"page {filename!r} du plugin {plugin_name!r} introuvable")
+    return path
 
 
 def render_nav(entries: Iterable[NavEntry]) -> str:

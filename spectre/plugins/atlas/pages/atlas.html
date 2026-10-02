@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atlas — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+  <style>
+    /* Catégorielle par projet (une couleur ne suffit jamais seule à distinguer une identité - les
+       étiquettes de cluster, toujours visibles, portent l'essentiel ; la couleur ne fait que
+       renforcer). Ordre fixe, jamais recalculé dynamiquement. */
+    :root {
+      --atlas-cat-1: #2a78d6;
+      --atlas-cat-2: #eb6834;
+      --atlas-cat-3: #1baf7a;
+      --atlas-cat-4: #eda100;
+      --atlas-cat-5: #e87ba4;
+      --atlas-cat-6: #008300;
+      --atlas-cat-7: #4a3aa7;
+      --atlas-cat-8: #e34948;
+    }
+
+    /* Fills exactly what's left below the topbar, whatever its real height ends up being,
+       rather than a hardcoded pixel guess. */
+    html, body {
+      height: 100%;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+    .atlas-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .atlas-canvas-wrap {
+      position: relative;
+      flex: 1 1 auto;
+      min-width: 0;
+      background: var(--bg);
+    }
+
+    #atlas-svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+    #atlas-svg:active {
+      cursor: grabbing;
+    }
+
+    .atlas-node-experience {
+      stroke: var(--surface);
+      stroke-width: 1.5px;
+    }
+    .atlas-node-entity {
+      fill: var(--text-faint);
+      stroke: var(--surface);
+      stroke-width: 1px;
+    }
+    .atlas-edge {
+      stroke: var(--text-faint);
+      stroke-opacity: 0.35;
+      stroke-width: 1.2px;
+      fill: none;
+    }
+    .atlas-leash {
+      stroke: var(--border);
+      stroke-width: 1px;
+      fill: none;
+    }
+    .atlas-cluster-halo {
+      fill-opacity: 0.06;
+      stroke-opacity: 0.25;
+      stroke-width: 1px;
+    }
+    /* Cross-microproject links (spectre.core.links) - the one relationship allowed to reach across
+       clusters, so it's drawn distinctly (dashed, accent-colored) from filiation/containment. */
+    .atlas-microproject-link,
+    .atlas-entity-link {
+      stroke: var(--accent);
+      stroke-opacity: 0.55;
+      stroke-dasharray: 5 4;
+      fill: none;
+      pointer-events: none;
+    }
+    .atlas-microproject-link {
+      stroke-width: 1.5px;
+    }
+    .atlas-entity-link {
+      stroke-width: 1px;
+    }
+    .atlas-node-experience,
+    .atlas-node-entity,
+    .atlas-node-microproject {
+      cursor: pointer;
+    }
+
+    .atlas-label {
+      font-family: var(--font-ui);
+      fill: var(--text-soft);
+      pointer-events: none;
+      paint-order: stroke;
+      stroke: var(--bg);
+      stroke-width: 3px;
+      stroke-linejoin: round;
+    }
+    .atlas-label-microproject {
+      font-size: 13px;
+      font-weight: 700;
+      fill: var(--text);
+      pointer-events: auto; /* unlike the other two label kinds, this one IS the click target */
+    }
+    .atlas-label-experience {
+      font-size: 10.5px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .atlas-label-entity {
+      font-size: 9px;
+      fill: var(--text-faint);
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    #atlas-svg[data-zoom="mid"] .atlas-label-experience,
+    #atlas-svg[data-zoom="close"] .atlas-label-experience {
+      opacity: 1;
+    }
+    /* Contrairement au nom d'une étude, celui d'un échantillon (wafer) n'apparaît jamais tout
+       seul au zoom : à l'échelle d'un thème entier, ça faisait des dizaines d'étiquettes qui se
+       chevauchent dès qu'on zoomait, illisible - un clic sur l'étude révèle ses propres
+       échantillons un par un, voir .atlas-label-selected ci-dessous. */
+    .atlas-label-entity.atlas-label-selected {
+      opacity: 1;
+    }
+    .atlas-node-selected {
+      stroke: var(--accent) !important;
+      stroke-width: 2.5px !important;
+    }
+
+    .atlas-side-panel {
+      flex: 0 0 340px;
+      border-left: 1px solid var(--border-soft);
+      background: var(--surface);
+      overflow-y: auto;
+      padding: var(--space-5);
+    }
+
+    .atlas-legend {
+      position: absolute;
+      left: var(--space-4);
+      bottom: var(--space-4);
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 11.5px;
+      color: var(--text-faint);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .atlas-legend__row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .atlas-legend__dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      flex: none;
+    }
+    .atlas-legend__line {
+      width: 14px;
+      height: 0;
+      border-top: 2px dashed var(--accent);
+      flex: none;
+    }
+
+    .atlas-zoom-controls {
+      position: absolute;
+      right: var(--space-4);
+      top: var(--space-4);
+      display: flex;
+      gap: 6px;
+    }
+
+    .atlas-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-faint);
+      font-size: 13.5px;
+      text-align: center;
+      padding: 0 var(--space-6);
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar__brand">
+      <a href="/" class="topbar__home" aria-label="Spectre - accueil">
+        <img class="brand-logo" src="/static/kernel/img/aledia-logo.svg" alt="Aledia" width="71" height="28">
+        <span class="topbar__sep" aria-hidden="true"></span>
+        <span class="topbar__product">Spectre</span>
+      </a>
+      <span class="topbar__crumb" id="topbar-crumb">/ Atlas</span>
+    </div>
+    <nav class="topbar__nav" aria-label="Navigation principale">
+      <a href="/" class="topbar__link">Projets</a>
+      <a href="/bibliotheque" class="topbar__link">Bibliothèque</a>
+      <a href="/lots" class="topbar__link">Lots</a>
+      <a href="/donnees" class="topbar__link">Data</a>
+      <a href="/docs" class="topbar__link">Documentation</a>
+    </nav>
+    <div class="topbar__actions">
+      <a href="/profil" class="topbar__user" title="Mon profil">
+        <span class="js-user-name topbar__user-name"></span>
+        <span class="avatar js-user-initials" aria-hidden="true"></span>
+      </a>
+      <a href="#" class="js-logout topbar__icon-btn" aria-label="Se déconnecter" title="Se déconnecter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></a>
+    </div>
+  </div>
+
+  <div style="padding:10px 20px 0;color:var(--text-faint);font-size:13px;">
+    &larr; Retour au thème <a id="theme-link" href="/">…</a>
+  </div>
+
+  <div class="atlas-body">
+    <div class="atlas-canvas-wrap">
+      <svg id="atlas-svg" data-zoom="far"></svg>
+
+      <div class="atlas-zoom-controls">
+        <button class="btn btn-line" id="atlas-zoom-out" type="button" title="Zoom arrière" style="padding:4px 9px;font-size:13px;line-height:1;">&minus;</button>
+        <button class="btn btn-line" id="atlas-zoom-reset" type="button" title="Réinitialiser le zoom" style="padding:4px 9px;font-size:11.5px;">Réinitialiser</button>
+        <button class="btn btn-line" id="atlas-zoom-in" type="button" title="Zoom avant" style="padding:4px 9px;font-size:13px;line-height:1;">&plus;</button>
+      </div>
+
+      <div class="atlas-legend">
+        <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--draft);"></span>Brouillon</div>
+        <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--running);"></span>En cours</div>
+        <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--done);"></span>Conclue</div>
+        <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--abandoned);"></span>Abandonnée</div>
+        <div class="atlas-legend__row"><span class="atlas-legend__dot" style="background:var(--text-faint);"></span>Entité physique</div>
+        <div class="atlas-legend__row"><span class="atlas-legend__line"></span>Lien entre µprojets/entités</div>
+      </div>
+
+      <div class="atlas-empty" id="atlas-empty" style="display:none;">
+        Aucun µprojet à cartographier pour l'instant. <a href="/">Créer un µprojet</a> pour commencer.
+      </div>
+    </div>
+
+    <div class="atlas-side-panel">
+      <div id="panel-error" class="error" style="display:none;margin-bottom:12px;"></div>
+      <div id="atlas-panel">
+        <div class="section-title" style="margin-bottom:10px;">Atlas</div>
+        <p class="help">Chaque grande étiquette est un µprojet de ce thème. Autour, une bulle par étude toujours en cours ou conclue - la ligne de filiation la plus récente, pas chaque version - zoomez pour voir leur titre. Les petits points sont les échantillons physiques suivis, leur nom n'apparaît qu'au clic sur l'étude. Cliquez un élément pour le détail ici.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/common.js"></script>
+  <!-- D3 vendored locally (spectre/kernel/static/vendor/, ISC license - see D3-LICENSE there)
+       rather than loaded from a CDN: the rest of this app deliberately has no external JS
+       dependency (see style.css's own note on why Google Fonts is loaded async, for the same
+       "a lab/corporate network can block this" concern) - this page shouldn't be the exception. -->
+  <script src="/static/kernel/vendor/d3.v7.9.0.min.js"></script>
+  <script src="/static/experiments/lineage-graph.js"></script>
+  <script src="/static/atlas/atlas.js"></script>
+</body>
+</html>

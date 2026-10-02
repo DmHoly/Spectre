@@ -15,7 +15,7 @@ from typing import Any
 
 def objective_statuses(experiment: Any) -> list[dict]:
     """Each objective paired with its answer at conclude time, if any - the same lookup
-    ``objectiveResultFor`` does client-side on the fiche (``static/js/experience.js``),
+    ``objectiveResultFor`` does client-side on the fiche (``plugins/experiments/static/experiment.js``),
     computed here once so the atlas's node-click panel doesn't need a second round trip."""
     results_by_name = {result.objective: result for result in experiment.conclusion.objective_results}
     return [

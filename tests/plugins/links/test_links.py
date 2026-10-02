@@ -1,7 +1,7 @@
 """Cross-microproject links (spectre.plugins.links): linking two microprojects, or two
 physical entities tracked on (possibly different) microprojects' experiences - the one relationship
 allowed to reach across Follow repositories, since Follow itself refuses a same-repository-only
-ReferenceLink pointed at another microproject. See docs-architecture.html for why this needed its own
+ReferenceLink pointed at another microproject. See docs/pages/architecture.html for why this needed its own
 mechanism rather than reusing Follow's.
 """
 

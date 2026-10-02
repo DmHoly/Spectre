@@ -10,6 +10,6 @@ PLUGIN = Plugin(
     depends_on=("accounts", "areas"),
     router=router,
     page_router=page_router,
-    pages=(Page("/microprojets/{slug}", "projet.html"),),
+    pages=(Page("/microprojets/{slug}", "microproject.html"),),
     migrations=MIGRATIONS,
 )

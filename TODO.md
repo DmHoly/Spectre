@@ -7,7 +7,7 @@ faite, déplacer la ligne dans la section « Fait » du bas (ou simplement la re
 
 La Phase 1 (thèmes, hiérarchie, navigation) est livrée ; la page `/pilotage` (compteurs +
 leaderboard) a été retirée - la page d'un projet corporate porte désormais ses objectifs classés et
-un bloc de tendances à onglets (`spectre/core/trends.py`, `static/js/kpi-trend.js`). Reste :
+un bloc de tendances à onglets (`spectre/core/trends.py`, `plugins/kpis/static/kpi-trend.js`). Reste :
 
 - [ ] **Définir les indicateurs clés société** à suivre dans le temps : lesquelles des mesures
       d'objectif (`Objective.metric`) ou de preuve (`Evidence.metric_value`) comptent comme un
@@ -36,9 +36,9 @@ d'étapes (jugé trop lourd à saisir). Reste :
 ## Polish navigation / rename
 
 - [ ] Fils d'Ariane secondaires incomplets : `refs.html`, `graphe.html`,
-      `formulaire-intention.html` n'affichent que « ← Retour au µprojet » (un saut) plutôt que
+      `intent-forms.html` n'affichent que « ← Retour au µprojet » (un saut) plutôt que
       `Thèmes / <thème> / <µprojet>` comme la fiche projet et la fiche expérience.
-- [ ] Pages de documentation (`docs-guide.html`, `docs-exemples.html`, `docs-architecture.html`) :
+- [ ] Pages de documentation (`guide.html`, `examples.html`, `architecture.html`) :
       texte encore en « projet » (seul le lien de retour a été aligné) - à relire et mettre à jour
       pour la terminologie « µprojet » + la nouvelle hiérarchie Management.
 - [ ] `scripts/seed_demo.py` : les µprojets de démo ne sont rattachés à aucun thème (atterrissent

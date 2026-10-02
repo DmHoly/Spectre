@@ -121,7 +121,7 @@ dans le dépôt PRISM que ça se passe, plus dans Spectre.
 
 Le **cahier de données** de chaque fiche (onglet « Données ») passe par la même configuration : il
 charge les mesures des plaques de l'expérience via PRISM et les montre avec des composants de
-visualisation (`spectre/api/static/js/dataviz/`, un fichier par composant - voir la documentation
+visualisation (`spectre/plugins/notebook/static/dataviz/`, un fichier par composant - voir la documentation
 d'architecture pour en ajouter un). Une instance de démonstration sans accès aux bases peut
 définir `SPECTRE_DEMO_DATA=1` pour utiliser des données synthétiques, signalées comme telles.
 
@@ -200,15 +200,17 @@ Le contrat d'architecture est [`ARCHITECTURE.md`](ARCHITECTURE.md) (le pourquoi 
 
 - `spectre/kernel/` - le noyau, sans métier : base SQLite et migrations versionnées par plugin
   (`db.py`), manifeste d'un plugin (`plugin.py`), erreurs, verrous, e-mail, service des pages et
-  construction de l'application (`app.py`, `create_app()` lancé par uvicorn en mode factory).
+  construction de l'application (`app.py`, `create_app()` lancé par uvicorn en mode factory) ; son
+  front (`static/`, servi sous `/static/kernel/`) : client HTTP, `common.js`, `style.css`, logo et
+  bibliothèques embarquées (`vendor/`).
 - `spectre/plugins/<plugin>/` - une fonctionnalité par plugin (comptes, projets corporate,
   µprojets, structures, expériences, lots...), chacun avec ses routes (`api.py`), son domaine
-  (`service.py`...), ses tables (`migrations.py`) ; la liste ordonnée est `spectre/plugins/__init__.py`.
+  (`service.py`...), ses tables (`migrations.py`), ses pages HTML (`pages/`) et son front JS/CSS
+  vanilla (`static/`, servi sous `/static/<plugin>/`) ; la liste ordonnée est `spectre/plugins/__init__.py`.
   Aucune logique de simulation, de diff ou de versioning n'est réécrite : elle est importée depuis
   StructureForge et Follow. De même, aucune requête ni formule KPI de caractérisation : le plugin
   `characterization` n'est que l'adaptateur de PRISM.
-- `spectre/api/static/` - les pages HTML/CSS/JS vanilla (une page par écran), servies par les
-  plugins en attendant de rejoindre leurs dossiers `pages/` et `static/`. Un µprojet s'appelle
+- Les pages sont du HTML/CSS/JS vanilla, une page par écran. Un µprojet s'appelle
   `microproject` partout en interne (table SQLite `microprojects`, dossier
   `data/microprojects/<slug>`, plugin `microprojects`) ; le français « µprojet » est réservé à ce
   que voit l'utilisateur - les URLs (`/microprojets/...`, `/api/microprojets/...`), les libellés, et
@@ -225,7 +227,7 @@ Le contrat d'architecture est [`ARCHITECTURE.md`](ARCHITECTURE.md) (le pourquoi 
 pytest
 ```
 
-Le front-end (`spectre/api/static/js/`) reste des balises `<script>` classiques sans bundler, mais
+Le front-end (`spectre/kernel/static/`, `spectre/plugins/*/static/`) reste des balises `<script>` classiques sans bundler, mais
 la logique pure du constructeur de structure (génération du code Python, résumés d'étape...) a ses
 propres tests unitaires, sans aucune dépendance à installer - juste [Node.js](https://nodejs.org/)
 18+ et son test runner intégré :
@@ -241,8 +243,8 @@ pytest --cov --cov-report=term-missing   # Python (pip install -e ".[dev]" insta
 node --test --experimental-test-coverage # JavaScript
 ```
 
-JavaScript (`tests_js/`, `node --test` exécute les vrais fichiers de `spectre/api/static/js/
-structure-builder/` - voir `tests_js/helpers/load-structure-builder.js`) : encore partiel, seule
+JavaScript (`tests_js/`, `node --test` exécute les vrais fichiers de `spectre/plugins/
+structures/static/builder/` - voir `tests_js/helpers/load-structure-builder.js`) : encore partiel, seule
 la logique pure du registre `STEP_KIND_DEFS` est couverte pour l'instant, le reste du constructeur
 dépend du DOM et n'a que la vérification manuelle (Playwright) faite pendant le développement.
 

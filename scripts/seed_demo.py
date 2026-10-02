@@ -71,7 +71,7 @@ def record(experiment_id: str, days_ago: float) -> str:
 
 # --------------------------------------------------------------------------------------------
 # Petites fabriques pour rester lisible - un dict par type d'étape, la même forme que
-# structure-builder.js envoie (voir spectre/api/static/js/structure-builder/step-kinds.js).
+# structure-builder.js envoie (voir spectre/plugins/structures/static/builder/step-kinds.js).
 # --------------------------------------------------------------------------------------------
 
 

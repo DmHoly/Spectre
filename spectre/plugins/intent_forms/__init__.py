@@ -7,5 +7,5 @@ PLUGIN = Plugin(
     name="intent_forms",
     depends_on=("experiments", "microprojects"),
     router=router,
-    pages=(Page("/microprojets/{slug}/formulaire-intention", "formulaire-intention.html"),),
+    pages=(Page("/microprojets/{slug}/formulaire-intention", "intent-forms.html"),),
 )

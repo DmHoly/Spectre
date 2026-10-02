@@ -1,5 +1,5 @@
 """Fabriques de structures (plugin structures) : un dict par type d'étape, la même forme que
-structure-builder.js envoie (voir spectre/api/static/js/structure-builder/step-kinds.js) - comme
+structure-builder.js envoie (voir spectre/plugins/structures/static/builder/step-kinds.js) - comme
 les fabriques de scripts/seed_demo.py."""
 
 from __future__ import annotations

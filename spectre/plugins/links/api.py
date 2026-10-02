@@ -68,7 +68,7 @@ def _entity_link_payload(link: links.EntityLink) -> dict:
 @router.post("/liens-projets", status_code=201)
 def create_microproject_link(body: MicroprojectLinkRequest, user: User = Depends(current_user)) -> dict:
     # Editor on both sides, deliberately: creating a link is asserting something about two
-    # microprojects at once, not just your own - see docs-architecture.html for the reasoning.
+    # microprojects at once, not just your own - see docs/pages/architecture.html for the reasoning.
     microproject_a = _require_editor_by_slug(body.microproject_a, user)
     microproject_b = _require_editor_by_slug(body.microproject_b, user)
     try:

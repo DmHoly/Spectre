@@ -205,7 +205,7 @@ def list_experiences(
 @router.get("/{slug}/filiation")
 def microproject_lineage(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """The microproject's structural lineage as plain JSON - what the µprojet page's default
-    view (a D3 git-like graph, see ``spectre/api/static/js/microprojet-graphe.js``) draws instead
+    view (a D3 git-like graph, see ``spectre/plugins/experiments/static/lineage-view.js``) draws instead
     of embedding the older Plotly ``/graphe.html``. Unlike the fiche's own "versions" timeline
     (:func:`spectre.plugins.experiments.versioning.determine_keep_ids`, which also keeps every branch tip so
     "where things stand" is never hidden there), a branch tip is *not* kept here just for being

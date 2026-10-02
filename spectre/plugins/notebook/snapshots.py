@@ -8,7 +8,7 @@ Pour rester léger, un instantané écarte les colonnes 2D (un spectre par point
 ramène chaque vecteur à :data:`MAX_VECTOR_POINTS` points - en gardant les vecteurs d'une même ligne
 alignés (I, V et EQE sous-échantillonnés aux mêmes indices). Les colonnes et leur forme sont
 celles que renvoie PRISM, rien n'est renommé : ce sont les composants de visualisation (côté page,
-``js/dataviz/``) qui savent lire chaque type de données.
+``notebook/static/dataviz/``) qui savent lire chaque type de données.
 
 Données de démonstration : avec ``SPECTRE_DEMO_DATA=1`` (instance de démo sans accès aux bases),
 les instantanés viennent de :mod:`spectre.plugins.characterization.demo` au lieu de PRISM, et le

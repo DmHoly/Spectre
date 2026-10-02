@@ -1,5 +1,5 @@
 """Trend KPIs of a corporate project (management area) - one monthly time series per KPI, drawn by
-the reusable tabbed block on the project page (``static/js/kpi-trend.js``).
+the reusable tabbed block on the project page (``plugins/kpis/static/kpi-trend.js``).
 
 The point of this module is the *registry*: each KPI is a :class:`KpiDefinition` with a
 ``provider`` that turns (area, months) into monthly points. Adding a KPI = one ``register(...)``

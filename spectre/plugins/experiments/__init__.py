@@ -9,7 +9,7 @@ PLUGIN = Plugin(
     depends_on=("microprojects", "structures", "attachments"),
     router=router,
     pages=(
-        Page("/microprojets/{slug}/experiences/{experience_id}", "experience.html"),
+        Page("/microprojets/{slug}/experiences/{experience_id}", "experiment.html"),
         Page("/microprojets/{slug}/refs", "refs.html"),
     ),
 )

@@ -122,7 +122,7 @@ def registry_intention_form() -> dict[str, Any]:
 
 def _builtin_intention_form() -> dict[str, Any]:
     """Repli quand ``library/intention.yml`` est absent : la copie française telle qu'elle était
-    codée en dur jusqu'ici dans structure-builder.html.
+    codée en dur jusqu'ici dans builder.html.
     """
     return {
         "section_title": "Intention & objectifs",

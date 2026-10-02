@@ -1,7 +1,7 @@
 """Extraction statique des appels HTTP du front vers l'API : chaque ``api.get/post/put/patch/del``
-et ``api.request`` (``js/api.js``) et chaque ``fetch`` d'un dossier de pages (``spectre/api/static``
-aujourd'hui, celui d'un plugin demain), avec la méthode et le chemin qu'il vise - sans navigateur ni
-interpréteur JavaScript. Un petit lexeur sait seulement ce que sont un commentaire, une chaîne, un
+et ``api.request`` (``kernel/static/api.js``) et chaque ``fetch`` du front (``static/`` du noyau,
+``static/`` et ``pages/`` de chaque plugin), avec la méthode et le chemin qu'il vise - sans navigateur
+ni interpréteur JavaScript. Un petit lexeur sait seulement ce que sont un commentaire, une chaîne, un
 gabarit (`...${...}...`) et une expression régulière littérale : de quoi lire les arguments d'un appel.
 
 Le chemin d'un appel est connu quand son URL commence par un littéral : chaque ``${...}`` (et chaque
@@ -13,6 +13,7 @@ Une URL rangée dans une variable (``const areaUrl = `/api/...```), passée en `
 une fonction n'est pas un appel : :func:`scan_urls` relève, elle, chaque URL ``/api/...`` écrite
 dans une chaîne ou un gabarit, où qu'elle soit, sans méthode. Un gabarit qui commence par une
 variable affectée d'une telle URL dans le même fichier (```${areaUrl}/objectifs```) est lu avec elle.
+:func:`scan_static_urls` relève de même chaque chemin ``/static/...`` écrit en dur.
 """
 
 from __future__ import annotations
@@ -26,8 +27,11 @@ from typing import Any, Iterable
 PARAM = "{param}"
 API_PREFIX = "/api/"
 
-# Les bibliothèques embarquées et les pages de documentation (qui citent des appels en exemple).
-DEFAULT_EXCLUDES = ("js/vendor/*", "docs*.html")
+SPECTRE_DIR = Path(__file__).resolve().parents[2] / "spectre"
+# Le front, relatif à SPECTRE_DIR : celui du noyau, puis les statiques et les pages de chaque plugin.
+DEFAULT_INCLUDES = ("kernel/static/*", "plugins/*/static/*", "plugins/*/pages/*")
+# Les bibliothèques embarquées et le plugin docs (dont les pages citent des appels en exemple).
+DEFAULT_EXCLUDES = ("kernel/static/vendor/*", "plugins/docs/*")
 
 METHODS = {"get": "GET", "post": "POST", "put": "PUT", "patch": "PATCH", "del": "DELETE"}
 
@@ -37,6 +41,7 @@ _INLINE_SCRIPT_RE = re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>(.*?)</script>", 
 # Une URL de l'API dans le texte d'un littéral : en tête, ou après un guillemet, un « = »... (le
 # ``src="/api/..."`` d'un gabarit HTML) ; un préfixe nu (``a[href^='/api/']``) n'en est pas une.
 _URL_IN_TEXT_RE = re.compile(r"(?<![\w$.}/])/api/[^\s\"'`<>?#()]+")
+_STATIC_IN_TEXT_RE = re.compile(r"(?<![\w$.}/])/static/[^\s\"'`<>?#()]+")
 # ``nom = <littéral>`` : une déclaration ou une affectation, pas une comparaison ni une flèche.
 _ASSIGNMENT_RE = re.compile(r"(?<![\w$.])([A-Za-z_$][\w$]*)\s*=(?![=>])\s*")
 _LEADING_NAME_RE = re.compile(r"`\$\{\s*([A-Za-z_$][\w$]*)\s*\}")
@@ -46,7 +51,7 @@ _REGEX_PRECEDERS = set("(,=:[!&|?{};+-*%<>~^")
 
 @dataclass(frozen=True)
 class FrontendCall:
-    file: str  # relatif au dossier scanné, en notation POSIX
+    file: str  # relatif au dossier scanné (SPECTRE_DIR), en notation POSIX
     line: int
     method: str
     expression: str  # le premier argument tel qu'écrit (espaces réduits)
@@ -58,30 +63,55 @@ class FrontendCall:
 
 @dataclass(frozen=True)
 class FrontendUrl:
-    file: str  # relatif au dossier scanné, en notation POSIX
+    file: str  # relatif au dossier scanné (SPECTRE_DIR), en notation POSIX
     line: int
-    path: str  # "/api/..." avec PARAM pour chaque partie variable, sans la query string
+    path: str  # "/api/..." (ou "/static/...") avec PARAM pour chaque partie variable, sans la query string
 
     def __str__(self) -> str:
         return f"{self.file}:{self.line} {self.path}"
 
 
-def scan(root: Path, excludes: Iterable[str] = DEFAULT_EXCLUDES) -> list[FrontendCall]:
-    """Tous les appels vers l'API des fichiers ``.js`` et ``.html`` sous ``root``, sauf ceux des
-    chemins (relatifs à ``root``) qui correspondent à l'un des motifs ``excludes``. Un appel dont
-    l'URL littérale ne vise pas ``/api/`` (une feuille de style, une page) n'est pas retenu."""
+def scan(
+    root: Path = SPECTRE_DIR, includes: Iterable[str] = DEFAULT_INCLUDES, excludes: Iterable[str] = DEFAULT_EXCLUDES
+) -> list[FrontendCall]:
+    """Tous les appels vers l'API des fichiers ``.js`` et ``.html`` sous ``root`` dont le chemin
+    (relatif à ``root``) correspond à l'un des motifs ``includes`` et à aucun des motifs
+    ``excludes``. Un appel dont l'URL littérale ne vise pas ``/api/`` (une feuille de style, une
+    page) n'est pas retenu."""
     calls: list[FrontendCall] = []
-    for relative, code in _sources(root, excludes):
+    for relative, code in _sources(root, includes, excludes):
         calls.extend(_calls_in(relative, code))
     return calls
 
 
-def scan_urls(root: Path, excludes: Iterable[str] = DEFAULT_EXCLUDES) -> list[FrontendUrl]:
+def scan_urls(
+    root: Path = SPECTRE_DIR, includes: Iterable[str] = DEFAULT_INCLUDES, excludes: Iterable[str] = DEFAULT_EXCLUDES
+) -> list[FrontendUrl]:
     """Chaque URL ``/api/...`` écrite dans une chaîne ou un gabarit des mêmes fichiers que
     :func:`scan` - qu'elle serve à un appel, à une variable, à un ``src`` ou à un lien."""
     urls: list[FrontendUrl] = []
-    for relative, code in _sources(root, excludes):
+    for relative, code in _sources(root, includes, excludes):
         urls.extend(_urls_in(relative, code))
+    return urls
+
+
+def scan_static_urls(
+    root: Path = SPECTRE_DIR, includes: Iterable[str] = DEFAULT_INCLUDES, excludes: Iterable[str] = DEFAULT_EXCLUDES
+) -> list[FrontendUrl]:
+    """Chaque chemin ``/static/...`` écrit en dur dans une chaîne ou un gabarit des mêmes fichiers
+    que :func:`scan` (la feuille de style que le rapport d'une expérience embarque, par exemple).
+    Un chemin dont une partie est variable (``${...}``) n'est pas retenu : il ne désigne aucun
+    fichier précis."""
+    urls: list[FrontendUrl] = []
+    for relative, code in _sources(root, includes, excludes):
+        for start, end in _literal_spans(code):
+            text = _literal_text(code[start:end]) or ""
+            line = code.count("\n", 0, start) + 1
+            urls += [
+                FrontendUrl(relative, line + text.count("\n", 0, m.start()), m.group(0))
+                for m in _STATIC_IN_TEXT_RE.finditer(text)
+                if PARAM not in m.group(0)
+            ]
     return urls
 
 
@@ -111,11 +141,13 @@ def matching_route(method: str | None, path: str, routes: dict[str, set[str]]) -
 # -- lexeur ---------------------------------------------------------------------------------------
 
 
-def _sources(root: Path, excludes: Iterable[str]) -> Iterable[tuple[str, str]]:
+def _sources(root: Path, includes: Iterable[str], excludes: Iterable[str]) -> Iterable[tuple[str, str]]:
     """``(chemin relatif, code sans commentaires)`` de chaque ``.js`` et ``.html`` retenu sous
     ``root`` - un HTML réduit à ses scripts en ligne."""
     for path in sorted([*root.rglob("*.js"), *root.rglob("*.html")]):
         relative = path.relative_to(root).as_posix()
+        if not any(fnmatch.fnmatch(relative, pattern) for pattern in includes):
+            continue
         if any(fnmatch.fnmatch(relative, pattern) for pattern in excludes):
             continue
         source = path.read_text(encoding="utf-8")

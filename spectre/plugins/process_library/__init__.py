@@ -9,9 +9,9 @@ PLUGIN = Plugin(
     depends_on=("structures", "microprojects", "library"),
     router=router,
     pages=(
-        Page("/bibliotheque", "bibliotheque.html"),
-        Page("/microprojets/{slug}/presets-etapes", "presets.html"),
-        Page("/microprojets/{slug}/briques-technologiques", "briques.html"),
+        Page("/bibliotheque", "library-hub.html"),
+        Page("/microprojets/{slug}/presets-etapes", "step-presets.html"),
+        Page("/microprojets/{slug}/briques-technologiques", "tech-bricks.html"),
     ),
     nav=(NavEntry("Bibliothèque", "/bibliotheque", order=20, match=r"^/bibliotheque"),),
 )

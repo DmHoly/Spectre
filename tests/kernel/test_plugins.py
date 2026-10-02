@@ -106,7 +106,7 @@ def test_a_plugin_static_folder_is_served_under_its_name(showcase):
     assert showcase.get("/v/abc").json() == {"code": "abc"}
 
 
-def test_a_page_absent_from_both_folders_fails_at_start_up(tmp_path, monkeypatch, data_dir):
+def test_a_page_absent_from_its_plugin_fails_at_start_up(tmp_path, monkeypatch, data_dir):
     monkeypatch.setattr(pages, "PLUGINS_DIR", tmp_path / "plugins")
     with pytest.raises(FileNotFoundError, match="absente.html"):
         create_app([Plugin("vitrine", pages=(Page("/vitrine", "absente.html"),))])

@@ -5,10 +5,10 @@ from ...kernel.plugin import NavEntry, Page, Plugin
 PLUGIN = Plugin(
     name="docs",
     pages=(
-        Page("/docs", "docs.html"),
-        Page("/docs/guide", "docs-guide.html"),
-        Page("/docs/exemples", "docs-exemples.html"),
-        Page("/docs/architecture", "docs-architecture.html"),
+        Page("/docs", "index.html"),
+        Page("/docs/guide", "guide.html"),
+        Page("/docs/exemples", "examples.html"),
+        Page("/docs/architecture", "architecture.html"),
     ),
     nav=(NavEntry("Documentation", "/docs", order=50, match=r"^/docs"),),
 )

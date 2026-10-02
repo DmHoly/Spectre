@@ -1,6 +1,6 @@
 # Spectre — Design System (MASTER)
 
-Source de vérité UI/UX du front Spectre (`spectre/api/static/`). Généré à partir du skill
+Source de vérité UI/UX du front Spectre (`spectre/kernel/static/`, `pages/` et `static/` de chaque plugin). Généré à partir du skill
 **ui-ux-pro-max** (`.claude/skills/ui-ux-pro-max`, requête « scientific lab R&D data tool
 dashboard », densité 7, variance 3, mouvement 3), puis **surchargé par la charte Aledia** : la
 palette bleu/ambre et les polices Fira proposées par l'outil sont remplacées par celles de la
@@ -10,7 +10,7 @@ fichier).
 ## Contraintes
 
 - **Vanilla uniquement** : HTML + CSS + JS sans framework ni bundler (balises `<script>`).
-- Tout passe par les tokens de `css/style.css` (`:root`) - pas de hex en dur dans les pages/JS.
+- Tout passe par les tokens de `kernel/static/style.css` (`:root`) - pas de hex en dur dans les pages/JS.
   Les noms historiques (`--accent`, `--text-faint`, `--done`...) sont conservés : ils sont
   référencés par des centaines de styles inline.
 
@@ -33,7 +33,7 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 | Or lisible | `--gold-dark` | `#8a6d1f` | texte or sur fond clair (4.9:1) |
 | Fond | `--bg` | `#f5f6fa` | |
 | Texte | `--text` / `--text-soft` / `--text-faint` | `#1b2440` / `#4a5470` / `#646e8c` | tous ≥ 4.5:1 sur blanc |
-| Émission InGaN | `--emit-red` `--emit-green` `--emit-blue` | `#ef5a5a` / `#3ecf7a` / `#4a8cff` | **uniquement** les schémas des technos (`js/tech-art.js`, fond navy) - jamais en UI |
+| Émission InGaN | `--emit-red` `--emit-green` `--emit-blue` | `#ef5a5a` / `#3ecf7a` / `#4a8cff` | **uniquement** les schémas des technos (`areas/static/area-art.js`, fond navy) - jamais en UI |
 | Statuts | `--draft` `--running` `--hold` `--done` `--continue` `--abandoned` `--danger` | + `*-tint` | badges, graphe de filiation, frise (`--continue` violet `#6f4fa3` = conclue « à poursuivre », distincte du bleu « en cours » ; `--hold` ambre `#9f5c00` = en pause) |
 
 ## Typographie
@@ -46,7 +46,7 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 
 ## Composants clés (style.css)
 
-- **Topbar** commune (`.topbar`, sticky 60px) : logo Aledia (`/static/img/aledia-logo.svg`) |
+- **Topbar** commune (`.topbar`, sticky 60px) : logo Aledia (`/static/kernel/img/aledia-logo.svg`) |
   SPECTRE | fil d'Ariane · nav principale identique sur toutes les pages (Projets, Bibliothèque,
   Lots, Data, Documentation - plus Atlas sur un projet), état actif `aria-current="page"` posé par
   `common.js` (`NAV_SECTIONS`) ·
@@ -65,9 +65,9 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
   couleur seule : toujours la légende `lineageLegendHtml()` à côté. « En pause » et « continuée »
   sont propres à Spectre (Follow n'a que draft/running/concluded/abandoned) : voir
   `spectre/core/microprojects.py::display_status`.
-- **Vues chronologiques** : axe du temps partagé `js/timeline.js` (graduations sans chevauchement,
-  zone « à venir » hachurée or). Frise d'une thématique (`thematique.js`) et Gantt des lots
-  (`lots-common.js`, `.gantt*`) : colonne de libellés collante, le graphique défile dans sa carte
+- **Vues chronologiques** : axe du temps partagé `kernel/static/timeline.js` (graduations sans chevauchement,
+  zone « à venir » hachurée or). Frise d'une thématique (`thematic.js`) et Gantt des lots
+  (`lots-gantt.js`, `.gantt*`) : colonne de libellés collante, le graphique défile dans sa carte
   (jamais la page), infobulle `position: fixed`, vue tableau en repli. Un lot = une barre :
   écoulé = bleu plein (ambre si pause), restant jusqu'à la fin prévisionnelle = teinte pointillée,
   sorti = navy plein jusqu'à la fin déclarée, dépassement = rouge ; fin prévisionnelle = drapeau

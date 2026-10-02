@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Données — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+  <style>
+    .donnees-table-wrap { overflow: auto; max-height: 60vh; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); }
+    .donnees-table { border-collapse: collapse; font-size: 12.5px; width: 100%; white-space: nowrap; }
+    .donnees-table th, .donnees-table td { padding: 6px 10px; border-bottom: 1px solid var(--border-soft); text-align: left; }
+    .donnees-table th { position: sticky; top: 0; background: var(--surface); font-weight: 700; }
+    .donnees-table tr:nth-child(even) { background: var(--bg); }
+
+    .category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .hook-chip-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+    .hook-chip { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-soft); font-size: 13px; }
+    .hook-chip--implemented { background: #fff; }
+    .hook-chip--implemented:hover { border-color: var(--accent); }
+    .hook-chip--planned { background: var(--bg); color: var(--text-faint); }
+    .badge-planned { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--border-soft); padding: 2px 7px; border-radius: 999px; flex: none; }
+    .badge-level { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 7px; border-radius: 999px; flex: none; }
+    .badge-level--raw { color: #6c4a1e; background: #f6e9d8; }
+    .badge-level--kpi { color: var(--accent); background: var(--accent-tint); }
+
+    #wiki-chart svg { max-width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar__brand">
+      <a href="/" class="topbar__home" aria-label="Spectre - accueil">
+        <img class="brand-logo" src="/static/kernel/img/aledia-logo.svg" alt="Aledia" width="71" height="28">
+        <span class="topbar__sep" aria-hidden="true"></span>
+        <span class="topbar__product">Spectre</span>
+      </a>
+    </div>
+    <nav class="topbar__nav" aria-label="Navigation principale">
+      <a href="/" class="topbar__link">Projets</a>
+      <a href="/bibliotheque" class="topbar__link">Bibliothèque</a>
+      <a href="/lots" class="topbar__link">Lots</a>
+      <a href="/donnees" class="topbar__link">Data</a>
+      <a href="/docs" class="topbar__link">Documentation</a>
+    </nav>
+    <div class="topbar__actions">
+      <a href="/profil" class="topbar__user" title="Mon profil">
+        <span class="js-user-name topbar__user-name"></span>
+        <span class="avatar js-user-initials" aria-hidden="true"></span>
+      </a>
+      <a href="#" class="js-logout topbar__icon-btn" aria-label="Se déconnecter" title="Se déconnecter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></a>
+    </div>
+  </div>
+
+  <div class="page" style="max-width:1100px;">
+    <p id="breadcrumb" style="color:var(--text-faint);margin-bottom:8px;"></p>
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+    <div id="app-root"></div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/common.js"></script>
+  <script src="/static/kernel/vendor/d3.v7.9.0.min.js"></script>
+  <script src="/static/characterization/data-types.js"></script>
+</body>
+</html>

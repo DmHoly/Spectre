@@ -8,6 +8,6 @@ PLUGIN = Plugin(
     name="characterization",
     depends_on=("accounts",),
     router=router,
-    pages=(Page("/donnees", "donnees.html"), Page("/donnees/{key}", "donnees.html")),
+    pages=(Page("/donnees", "data-types.html"), Page("/donnees/{key}", "data-types.html")),
     nav=(NavEntry("Data", "/donnees", order=40, match=r"^/donnees"),),
 )

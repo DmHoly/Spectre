@@ -1,7 +1,7 @@
 """API de consultation du dictionnaire de données PRISM (paquet ``prism-aledia-datahook``, voir
 https://gitlab-it.aledia.com/sda/tools/soft/prism) - lister les hooks disponibles, voir la fiche de
 l'un d'eux (titre/description/paramètres attendus), et lancer sa requête pour voir ce qu'elle
-renvoie. Page associée : /donnees (voir static/donnees.html).
+renvoie. Page associée : /donnees (voir plugins/characterization/pages/data-types.html).
 
 Spectre ne porte plus aucune requête ni formule KPI : tout vit dans PRISM, partagé avec les autres
 projets. Ce module n'est que l'adaptateur HTTP. PRISM parle à de vraies bases externes (profils de
@@ -67,7 +67,7 @@ def list_hooks(user: User = Depends(current_user)) -> dict:
 
 @router.get("/categories")
 def list_categories(user: User = Depends(current_user)) -> dict:
-    """Le regroupement de la page wiki (voir static/donnees.html) : chaque catégorie ("Post EPI",
+    """Le regroupement de la page wiki (voir plugins/characterization/pages/data-types.html) : chaque catégorie ("Post EPI",
     "Structure"...) avec ses hooks, implémentés et "planned" (fiche documentaire seule) mêlés -
     c'est ``status`` sur chaque hook qui dit à la page s'il propose un bouton "lancer la requête".
     """

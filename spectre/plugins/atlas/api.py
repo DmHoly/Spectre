@@ -1,6 +1,6 @@
 """The atlas: one endpoint aggregating every microproject a user belongs to *within one management
 area* (grand thème) into the payload the client-side D3 force graph draws (see
-``static/js/atlas.js``). Unlike every other router, routes here are not scoped
+``plugins/atlas/static/atlas.js``). Unlike every other router, routes here are not scoped
 under ``/api/microprojets/{slug}`` - this is deliberately the one page that looks across several
 microprojects at once, not into a single one.
 

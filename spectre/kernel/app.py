@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .db import data_dir, run_migrations
 from .errors import install_error_handlers
-from .pages import KERNEL_STATIC_DIR, LEGACY_STATIC_DIR, page_handler, plugin_dir, render_nav, resolve_page
+from .pages import KERNEL_STATIC_DIR, page_handler, plugin_dir, render_nav, resolve_page
 from .plugin import Plugin, check_dependencies
 
 
@@ -45,15 +45,12 @@ def create_app(plugins: Sequence[Plugin] | None = None) -> FastAPI:
         if plugin.router is not None:
             app.include_router(plugin.router)
 
-    # Les dossiers les plus précis d'abord : /static/<plugin>/ avant le repli /static.
     if KERNEL_STATIC_DIR.is_dir():
         app.mount("/static/kernel", StaticFiles(directory=KERNEL_STATIC_DIR), name="static-kernel")
     for plugin in active:
         static_dir = plugin_dir(plugin.name) / "static"
         if static_dir.is_dir():
             app.mount(f"/static/{plugin.name}", StaticFiles(directory=static_dir), name=f"static-{plugin.name}")
-    if LEGACY_STATIC_DIR.is_dir():
-        app.mount("/static", StaticFiles(directory=LEGACY_STATIC_DIR), name="static")
 
     @app.middleware("http")
     async def _revalidate_pages_and_assets(request, call_next):

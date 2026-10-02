@@ -7,5 +7,5 @@ PLUGIN = Plugin(
     name="wafers",
     depends_on=("experiments",),
     router=router,
-    pages=(Page("/plaques/{lasermark}", "plaque.html"),),
+    pages=(Page("/plaques/{lasermark}", "wafer.html"),),
 )

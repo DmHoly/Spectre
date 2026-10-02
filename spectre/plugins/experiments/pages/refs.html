@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Refs — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar__brand">
+      <a href="/" class="topbar__home" aria-label="Spectre - accueil">
+        <img class="brand-logo" src="/static/kernel/img/aledia-logo.svg" alt="Aledia" width="71" height="28">
+        <span class="topbar__sep" aria-hidden="true"></span>
+        <span class="topbar__product">Spectre</span>
+      </a>
+      <span class="topbar__crumb" id="crumb"></span>
+    </div>
+    <nav class="topbar__nav" aria-label="Navigation principale">
+      <a href="/" class="topbar__link">Projets</a>
+      <a href="/bibliotheque" class="topbar__link">Bibliothèque</a>
+      <a href="/lots" class="topbar__link">Lots</a>
+      <a href="/donnees" class="topbar__link">Data</a>
+      <a href="/docs" class="topbar__link">Documentation</a>
+    </nav>
+    <div class="topbar__actions">
+      <a href="/profil" class="topbar__user" title="Mon profil">
+        <span class="js-user-name topbar__user-name"></span>
+        <span class="avatar js-user-initials" aria-hidden="true"></span>
+      </a>
+      <a href="#" class="js-logout topbar__icon-btn" aria-label="Se déconnecter" title="Se déconnecter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></a>
+    </div>
+  </div>
+
+  <div class="page" style="max-width:900px;">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a id="microproject-link" href="/">&larr; Retour au µprojet</a></p>
+    <h1 style="font-size:20px;margin-bottom:6px;">Refs</h1>
+    <p style="color:var(--text-soft);font-size:13.5px;margin-bottom:20px;max-width:65ch;">
+      Les points de départ réutilisables de ce µprojet : chaque nouvelle piste part généralement d'une ref plutôt que de repartir de zéro. Une ref garde le même nom (un surnom, ou par défaut « ref vX.Y.Z ») quel que soit le nombre de fois où on en dérive.
+    </p>
+
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+
+    <div id="empty-note" class="card card-pad" style="display:none;margin-bottom:20px;color:var(--text-soft);font-size:13.5px;">
+      Aucune ref pour l'instant. Ouvrez une expérience et utilisez « Faire de cette version une ref » pour en créer une.
+    </div>
+
+    <div id="ref-tree" class="card card-pad" style="display:none;"></div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/common.js"></script>
+  <script src="/static/experiments/refs.js"></script>
+</body>
+</html>

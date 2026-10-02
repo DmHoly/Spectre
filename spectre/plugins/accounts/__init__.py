@@ -8,11 +8,11 @@ PLUGIN = Plugin(
     name="accounts",
     router=router,
     pages=(
-        Page("/connexion", "connexion.html"),
-        Page("/inscription", "inscription.html"),
-        Page("/mot-de-passe-oublie", "mot-de-passe-oublie.html"),
-        Page("/reinitialiser", "reinitialiser.html"),
-        Page("/profil", "profil.html"),
+        Page("/connexion", "login.html"),
+        Page("/inscription", "signup.html"),
+        Page("/mot-de-passe-oublie", "password-forgot.html"),
+        Page("/reinitialiser", "password-reset.html"),
+        Page("/profil", "profile.html"),
     ),
     migrations=MIGRATIONS,
 )

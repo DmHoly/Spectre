@@ -9,9 +9,9 @@ PLUGIN = Plugin(
     depends_on=("accounts",),
     router=router,
     pages=(
-        Page("/", "index.html"),
-        Page("/management/{slug}", "management.html"),
-        Page("/management/{slug}/thematiques/{thematique_slug}", "thematique.html"),
+        Page("/", "home.html"),
+        Page("/management/{slug}", "area.html"),
+        Page("/management/{slug}/thematiques/{thematique_slug}", "thematic.html"),
     ),
     nav=(NavEntry("Projets", "/", order=10, match=r"^/(management|microprojets|$)"),),
     migrations=MIGRATIONS,

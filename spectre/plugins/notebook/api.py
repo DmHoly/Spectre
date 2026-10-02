@@ -10,7 +10,7 @@ quel dans son rapport.
   légère) - la traçabilité d'un cahier de labo, pour rien.
 
 Une vue = un instantané + un composant de visualisation (``component``, une clé du registre
-``DataViz`` côté page, ``js/dataviz/``) + ses réglages (``options``, libres : c'est le composant qui
+``DataViz`` côté page, ``notebook/static/dataviz/``) + ses réglages (``options``, libres : c'est le composant qui
 les lit) + des observations (``note``) et, au besoin, l'objectif qu'elle sert. Le serveur ne connaît
 pas les composants : ajouter une visualisation ne demande que d'écrire son fichier JS.
 """
