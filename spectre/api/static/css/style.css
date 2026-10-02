@@ -435,6 +435,10 @@ svg {
   color: var(--navy);
   background: var(--accent-tint);
 }
+.topbar-search__code--lot {
+  color: var(--surface);
+  background: var(--navy-500);
+}
 .topbar-search__code--plate {
   color: var(--text);
   background: var(--surface-2);
@@ -4856,4 +4860,395 @@ a.plate-row__lasermark {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* -- suivi de lots (/lots, /lots/{code} - js/lots-common.js) ------------------------------------
+   Gantt : une ligne par lot (début -> fin sur l'axe du temps), dépliable en une sous-ligne par
+   expérience liée. Écoulé = bleu plein (ambre si le lot est en pause), restant jusqu'à la fin
+   prévisionnelle = teinte pointillée, sorti = navy plein, dépassement de la prévision = rouge. */
+
+.gantt-scroll {
+  position: relative;
+  overflow-x: auto;
+}
+.gantt {
+  position: relative;
+}
+.gantt__row {
+  display: grid;
+  grid-template-columns: var(--gantt-label-w) minmax(0, 1fr);
+  border-top: 1px solid var(--border-soft);
+}
+.gantt__row--axis {
+  border-top: none;
+}
+.gantt__row--sub {
+  border-top: 1px dashed var(--border-soft);
+  background: var(--surface-2);
+}
+.gantt__label {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 12px 6px 0;
+  background: var(--surface);
+}
+.gantt__row--sub .gantt__label {
+  background: var(--surface-2);
+  padding: 3px 12px 3px 0;
+}
+.gantt__label-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gantt__label-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.gantt__code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+a.gantt__code:hover {
+  color: var(--link);
+  text-decoration: underline;
+}
+.gantt__where {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gantt__chips {
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+}
+.gantt__sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+.gantt__sub a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.gantt__sub a:hover {
+  color: var(--link);
+}
+.gantt__muted {
+  color: var(--text-faint);
+  font-style: italic;
+  white-space: nowrap;
+}
+.gantt__toggle,
+.gantt__toggle-spacer {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+.gantt__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.gantt__toggle:hover {
+  border-color: var(--border);
+  color: var(--navy);
+}
+.gantt__toggle svg {
+  transition: transform var(--dur) var(--ease);
+}
+.gantt__toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.gantt__track {
+  display: block;
+  overflow: visible;
+}
+.gantt__grid {
+  stroke: var(--border-soft);
+  stroke-width: 1;
+}
+.gantt__tick {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  fill: var(--text-faint);
+}
+.gantt__today {
+  stroke: var(--navy);
+  stroke-width: 1.5;
+}
+.gantt__today-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  fill: var(--navy);
+}
+.gantt__bar {
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+.gantt__bar.is-elapsed {
+  fill: var(--running);
+}
+.gantt__bar.is-elapsed.is-hold {
+  fill: var(--hold);
+}
+.gantt__bar.is-remaining {
+  fill: var(--accent-tint);
+  stroke: var(--navy-500);
+  stroke-opacity: 0.4;
+  stroke-dasharray: 3 2;
+}
+.gantt__bar.is-done {
+  fill: var(--navy-500);
+}
+.gantt__bar.is-overrun {
+  fill: var(--danger);
+  fill-opacity: 0.85;
+}
+.gantt__bar.is-cancelled {
+  fill: var(--border);
+}
+.gantt__bar[data-href] {
+  cursor: pointer;
+}
+.gantt__bar[data-href]:hover {
+  stroke: var(--navy);
+  stroke-width: 1.5;
+}
+.gantt__flag line {
+  stroke: var(--navy);
+  stroke-width: 1.5;
+}
+.gantt__flag path {
+  fill: var(--gold);
+  stroke: var(--navy);
+  stroke-width: 1;
+}
+.gantt__late line {
+  stroke: var(--danger);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+.gantt__late text {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  fill: var(--danger);
+}
+.gantt__clipped {
+  fill: none;
+  stroke: var(--text-faint);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.gantt__exit circle {
+  fill: var(--done);
+}
+.gantt__exit path {
+  stroke: var(--surface);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.gantt-tooltip {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  max-width: 320px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--navy);
+  color: var(--surface);
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: var(--shadow-lift);
+}
+.gantt-tooltip strong {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gold-light);
+}
+.gantt-tooltip[hidden] {
+  display: none;
+}
+
+/* priorité d'un lot (P10, P20... - la plus petite passe d'abord) */
+.lot-prio {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 7px;
+  min-height: 20px;
+  border: 1.5px solid var(--navy);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* puce (thématique d'un lot, wafer) */
+.lot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 160px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  color: var(--text-soft);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lot-chip--more {
+  font-family: var(--font-mono);
+}
+.lot-chip--declared {
+  background: var(--gold-tint);
+  color: var(--gold-dark);
+}
+a.lot-chip:hover {
+  background: var(--accent-tint-strong);
+  color: var(--navy);
+}
+
+
+/* « Ajouter au lot » depuis un µprojet (js/lot-assign.js) - panneau d'un nœud, fiche d'une expérience */
+.lot-assign {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.lot-assign label {
+  font-size: 12px;
+  margin: 0;
+}
+.lot-assign__current {
+  list-style: none;
+  margin: 0 0 2px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-faint);
+}
+.lot-assign__mark {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--navy);
+}
+.lot-assign__wafers {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+.lot-assign__wafers legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 2px;
+}
+.lot-assign__wafers label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+.lot-assign__row {
+  display: flex;
+  gap: 6px;
+}
+.lot-assign__row .field {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px 8px;
+  font-size: 12.5px;
+}
+.lot-assign__row .btn {
+  min-height: 34px;
+  padding: 4px 12px;
+  font-size: 12.5px;
+}
+.lot-assign__new {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px;
+  gap: 6px;
+}
+.lot-assign__new[hidden] {
+  display: none;
+}
+.lot-assign__new .field {
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 12.5px;
+}
+.lot-assign__new input[type="date"] {
+  grid-column: 1 / -1;
+}
+.lot-assign__msg {
+  min-height: 0;
+  color: var(--done);
+}
+.lot-assign__msg:empty {
+  display: none;
+}
+.lot-assign__msg.is-error {
+  color: var(--danger);
+}
+/* puce d'un lot (aussi utilisée hors du graphe d'un µprojet) */
+.lineage-lot-chip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--surface);
+  background: var(--navy-500);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+}
+.lineage-lot-chip:hover {
+  background: var(--navy);
+  color: var(--gold-light);
+}
+.plates-lot {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+  max-width: 420px;
 }

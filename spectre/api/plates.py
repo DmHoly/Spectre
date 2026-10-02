@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from ..core import plates
+from ..core import lots, plates
 from ..core.accounts import User
 from .deps import get_current_user
 
@@ -21,5 +21,8 @@ def search_plates(q: str = Query("", max_length=80), user: User = Depends(get_cu
 
 @router.get("/{lasermark}")
 def plate(lasermark: str, user: User = Depends(get_current_user)) -> dict:
-    """Une plaque et tout son parcours - vide (aucune étude) plutôt qu'une 404, la page l'explique."""
-    return plates.plate_history(lasermark, plates.visible_entries(user.id))
+    """Une plaque et tout son parcours - vide (aucune étude) plutôt qu'une 404, la page l'explique -
+    plus les lots (spectre.core.lots) qui la contiennent."""
+    history = plates.plate_history(lasermark, plates.visible_entries(user.id))
+    history["lots"] = lots.lots_for_lasermarks([lasermark])
+    return history

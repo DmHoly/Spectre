@@ -47,8 +47,9 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 ## Composants clés (style.css)
 
 - **Topbar** commune (`.topbar`, sticky 60px) : logo Aledia (`/static/img/aledia-logo.svg`) |
-  SPECTRE | fil d'Ariane · nav principale identique sur toutes les pages (Thèmes, Pilotage,
-  Bibliothèque, Data, Documentation), état actif `aria-current="page"` posé par `common.js` ·
+  SPECTRE | fil d'Ariane · nav principale identique sur toutes les pages (Projets, Bibliothèque,
+  Lots, Data, Documentation - plus Atlas sur un projet), état actif `aria-current="page"` posé par
+  `common.js` (`NAV_SECTIONS`) ·
   utilisateur + déconnexion (icône avec `aria-label`). Filet or dégradé sous le bandeau.
 - **Boutons** : `.btn-primary` navy (survol : filet or interne), `.btn-line`, `.btn-tint`,
   `.btn-danger` ; hauteur min 36px.
@@ -64,6 +65,14 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
   couleur seule : toujours la légende `lineageLegendHtml()` à côté. « En pause » et « continuée »
   sont propres à Spectre (Follow n'a que draft/running/concluded/abandoned) : voir
   `spectre/core/microprojects.py::display_status`.
+- **Vues chronologiques** : axe du temps partagé `js/timeline.js` (graduations sans chevauchement,
+  zone « à venir » hachurée or). Frise d'une thématique (`thematique.js`) et Gantt des lots
+  (`lots-common.js`, `.gantt*`) : colonne de libellés collante, le graphique défile dans sa carte
+  (jamais la page), infobulle `position: fixed`, vue tableau en repli. Un lot = une barre :
+  écoulé = bleu plein (ambre si pause), restant jusqu'à la fin prévisionnelle = teinte pointillée,
+  sorti = navy plein jusqu'à la fin déclarée, dépassement = rouge ; fin prévisionnelle = drapeau
+  or, fin déclarée = pastille verte cochée, retard = trait rouge pointillé + « +N j ». Priorité
+  (P10, P20…) = `.lot-prio`, cadre navy mono, devant le code du lot.
 - **Auth** : `.auth-shell` en deux colonnes - `.auth-hero` navy (logo, accroche, diagonale
   or/bleu de la charte) + carte formulaire ; le panneau se réduit à un bandeau sous 860px.
 

@@ -1805,8 +1805,18 @@ async function renderPhysicalTracking(detail) {
   );
   card.innerHTML = `
     <div class="plates-list${detail.is_batch ? " plates-list--batch" : ""}">${rows.join("")}</div>
-    ${canEdit ? `<button class="btn btn-line" id="save-physical-tracking-btn" type="button" data-report-hide style="margin-top:12px;">Enregistrer les plaques</button>` : ""}`;
+    ${canEdit ? `<button class="btn btn-line" id="save-physical-tracking-btn" type="button" data-report-hide style="margin-top:12px;">Enregistrer les plaques</button>` : ""}
+    ${
+      canEdit
+        ? `<div class="plates-lot" data-report-hide>
+            <div class="section-title" style="font-size:12px;margin-bottom:6px;">Lot de fabrication</div>
+            <div id="plates-lot-assign"></div>
+          </div>`
+        : ""
+    }`;
   if (!canEdit) return;
+  // mettre une plaque de l'expérience dans un lot (lot-assign.js) - les lasermarks enregistrés
+  mountLotAssign(document.getElementById("plates-lot-assign"), { lasermarks: tracking.map((e) => e.sample_id) });
   mountEntityFdlFields(tracking);
   document.getElementById("save-physical-tracking-btn").addEventListener("click", () => {
     const count = Math.max(tracking.length, 1);

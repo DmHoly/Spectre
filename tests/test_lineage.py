@@ -276,3 +276,14 @@ def test_a_draft_taken_up_by_a_new_version_is_continued(client):
     assert nodes[root["id"]]["status"] == "continued"
     assert nodes[child["id"]]["status"] == "draft"
     assert client.get(f"/api/microprojets/{slug}/experiences/{root['id']}").json()["status"] == "continued"
+
+
+def test_lineage_nodes_list_the_wafers_they_track(client):
+    # the « N wafers » badge left of each node: its tracked lasermarks, without duplicates
+    slug = _setup_microproject(client)
+    client.post(
+        f"/api/microprojets/{slug}/experiences",
+        json={"substrate": _substrate(), "steps": _steps(), "title": "Essai", "intent": "Verifier", "entities": [{"sample_id": "W1"}]},
+    )
+    node = client.get(f"/api/microprojets/{slug}/filiation").json()["nodes"][0]
+    assert node["wafers"] == ["W1"]

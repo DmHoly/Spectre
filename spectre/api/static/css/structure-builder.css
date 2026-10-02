@@ -404,7 +404,7 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
-  scroll-padding-inline: 156px 12px; /* la puce Substrat reste collée à gauche */
+  scroll-padding-inline: 12px;
   /* ombre à droite tant qu'il reste des étapes hors champ (masquée par un fond « local » en fin de piste) */
   background:
     linear-gradient(to left, var(--surface) 40%, transparent) right center / 48px 100% no-repeat local,
@@ -562,31 +562,11 @@
   border-radius: var(--radius-pill);
 }
 
+/* le substrat défile avec les étapes (il ne reste plus collé à gauche : figé, il masquait les étapes
+   et semblait toujours actif) */
 .sb-chip--substrate {
-  position: sticky;
-  left: 0;
-  z-index: 3;
   width: 140px;
   background: var(--surface-2);
-}
-/* cache ce qui défile sous la puce collante : la marge à sa gauche, et un fondu à sa droite */
-.sb-chip--substrate::before,
-.sb-chip--substrate::after {
-  content: "";
-  position: absolute;
-  top: -20px;
-  bottom: -12px;
-  pointer-events: none;
-}
-.sb-chip--substrate::before {
-  left: -9px;
-  width: 8px;
-  background: var(--surface);
-}
-.sb-chip--substrate::after {
-  right: -13px;
-  width: 12px;
-  background: linear-gradient(to right, var(--surface), transparent);
 }
 .sb-chip--substrate.is-selected {
   background: var(--accent-tint);

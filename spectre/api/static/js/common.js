@@ -464,8 +464,8 @@ function initTopbarSearch() {
   form.setAttribute("role", "search");
   form.innerHTML = `
     <svg class="topbar-search__icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input class="topbar-search__input" type="search" autocomplete="off" spellcheck="false" placeholder="µprojet, plaque, FDL…"
-      aria-label="Aller à un µprojet (numéro ou nom), une plaque (lasermark) ou une FDL" role="combobox" aria-expanded="false" aria-controls="topbar-search-list" aria-autocomplete="list">
+    <input class="topbar-search__input" type="search" autocomplete="off" spellcheck="false" placeholder="µprojet, lot, plaque, FDL…"
+      aria-label="Aller à un µprojet (numéro ou nom), un lot (code ou wafer), une plaque (lasermark) ou une FDL" role="combobox" aria-expanded="false" aria-controls="topbar-search-list" aria-autocomplete="list">
     <kbd class="topbar-search__key" aria-hidden="true" title="Raccourci : / ou Ctrl+K">/</kbd>
     <ul class="topbar-search__list" id="topbar-search-list" role="listbox" aria-label="Résultats de recherche" hidden></ul>`;
   topbar.insertBefore(form, actions);
@@ -477,17 +477,21 @@ function initTopbarSearch() {
   let timer = null;
   let seq = 0;
 
-  // un résultat : {type: "microproject", slug, code, name, management_area}, {type: "plate", sample_id,
-  // count, microprojects, latest} ou {type: "fdl", fdl, sample_id, experience, microproject}
+  // un résultat : {type: "microproject", slug, code, name, management_area}, {type: "lot", code, title,
+  // status, priority, wafer}, {type: "plate", sample_id, count, microprojects, latest} ou
+  // {type: "fdl", fdl, sample_id, experience, microproject}
   const open = (hit) => {
     window.location.href =
       hit.type === "fdl"
         ? `/microprojets/${encodeURIComponent(hit.microproject.slug)}/experiences/${encodeURIComponent(hit.experience.id)}`
         : hit.type === "plate"
           ? plateUrl(hit.sample_id)
-          : `/microprojets/${encodeURIComponent(hit.slug)}`;
+          : hit.type === "lot"
+            ? `/lots/${encodeURIComponent(hit.code)}`
+            : `/microprojets/${encodeURIComponent(hit.slug)}`;
   };
-  const GROUP_LABELS = { microproject: "µprojets", plate: "Plaques", fdl: "FDL" };
+  const GROUP_LABELS = { microproject: "µprojets", lot: "Lots", plate: "Plaques", fdl: "FDL" };
+  const LOT_WHERE = { planned: "en préparation", wip: "en cours", hold: "en pause", done: "sorti", cancelled: "annulé" };
   const close = () => {
     list.hidden = true;
     input.setAttribute("aria-expanded", "false");
@@ -508,6 +512,10 @@ function initTopbarSearch() {
               ? `<span class="topbar-search__code topbar-search__code--fdl">${escapeHtml(p.fdl)}</span>
                  <span class="topbar-search__name">${escapeHtml(p.experience.title)}${p.sample_id ? ` · ${escapeHtml(p.sample_id)}` : ""}</span>
                  <span class="topbar-search__area">${escapeHtml(p.microproject.code || p.microproject.name)}</span>`
+              : p.type === "lot"
+                ? `<span class="topbar-search__code topbar-search__code--lot">${escapeHtml(p.code)}</span>
+                   <span class="topbar-search__name">${escapeHtml(p.wafer ? `contient ${p.wafer}` : p.title || "Lot")}</span>
+                   <span class="topbar-search__area">${escapeHtml([p.priority, LOT_WHERE[p.status]].filter(Boolean).join(" · "))}</span>`
               : p.type === "plate"
                 ? `<span class="topbar-search__code topbar-search__code--plate">${escapeHtml(p.sample_id)}</span>
                    <span class="topbar-search__name">${p.count > 1 ? `${p.count} études` : escapeHtml(p.latest.title)}</span>
@@ -538,21 +546,26 @@ function initTopbarSearch() {
     }
     try {
       const q = encodeURIComponent(query);
-      const [projects, plateHits, fdlHits] = await Promise.all([
+      const longEnough = query.replace(/[\s_\-./#:]/g, "").length >= 2;
+      const [projects, plateHits, fdlHits, lotHits] = await Promise.all([
         api.get(`/api/microprojets/recherche?q=${q}`),
-        query.replace(/[\s_\-./#:]/g, "").length >= 2 ? api.get(`/api/plaques/recherche?q=${q}`).catch(() => []) : Promise.resolve([]),
+        longEnough ? api.get(`/api/plaques/recherche?q=${q}`).catch(() => []) : Promise.resolve([]),
         /\d/.test(query) ? api.get(`/api/microprojets/recherche-fdl?q=${q}`).catch(() => []) : Promise.resolve([]),
+        longEnough ? api.get(`/api/lots/recherche?q=${q}`).catch(() => []) : Promise.resolve([]),
       ]);
       if (mine !== seq) return; // une frappe plus récente a déjà relancé la recherche
       const projectHits = projects.map((p) => ({ ...p, type: "microproject" }));
       const plateItems = plateHits.map((h) => ({ ...h, type: "plate" }));
       const fdlItems = fdlHits.map((h) => ({ ...h, type: "fdl" }));
-      // « 1234 », « FDL 12 » : on cherche d'abord une FDL ; sinon les µprojets, puis les plaques
+      const lotItems = lotHits.map((h) => ({ ...h, type: "lot" }));
+      // « 1234 », « FDL 12 » : on cherche d'abord une FDL ; sinon les µprojets, les lots, puis les plaques
       const fdlFirst = /^\s*(fdl)?[\s_\-#:]*\d+\s*$/i.test(query);
-      const found = fdlFirst ? [...fdlItems, ...plateItems, ...projectHits] : [...projectHits, ...plateItems, ...fdlItems];
+      const found = fdlFirst
+        ? [...fdlItems, ...plateItems, ...lotItems, ...projectHits]
+        : [...projectHits, ...lotItems, ...plateItems, ...fdlItems];
       results = found;
       active = found.length ? 0 : -1;
-      paint(found.length ? "" : `Rien pour « ${query} » (µprojet, plaque ou FDL)`);
+      paint(found.length ? "" : `Rien pour « ${query} » (µprojet, lot, plaque ou FDL)`);
     } catch (err) {
       if (mine === seq) {
         results = [];
@@ -638,6 +651,7 @@ function initLogout() {
 // relève de « Projets » - sauf l'atlas d'un projet, qui a son propre lien sur la page du projet.
 const NAV_SECTIONS = [
   ["/bibliotheque", /^\/bibliotheque/],
+  ["/lots", /^\/lots/],
   ["/donnees", /^\/donnees/],
   ["/docs", /^\/docs/],
   ["/", /^\/(management|microprojets|$)/],

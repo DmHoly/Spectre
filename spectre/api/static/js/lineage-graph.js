@@ -176,7 +176,7 @@ function lineageNodeShapeHtml(node, { radius = 9, selected = false, tipRing = tr
 
 // Légende du code ci-dessus (une puce par issue + fusion + pointe de piste) - affichée sous le graphe
 // d'un µprojet et au-dessus de la frise d'une thématique, pour qu'aucune couleur ne reste à deviner.
-function lineageLegendHtml({ merge = true, tip = true } = {}) {
+function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = false } = {}) {
   const icon = (node) =>
     `<svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true">${lineageNodeShapeHtml(node, { radius: 6.5, tipRing: false })}</svg>`;
   const items = [
@@ -194,6 +194,18 @@ function lineageLegendHtml({ merge = true, tip = true } = {}) {
   if (tip) {
     items.push(
       `<li><svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true"><circle r="8.5" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 2"></circle><circle r="4.5" fill="var(--surface)" style="stroke:var(--draft);stroke-width:1.6px"></circle></svg>Dernière version d'une piste</li>`
+    );
+  }
+  if (wafers) {
+    // badge dessiné par microprojet-graphe.js (styles .lineage-wafers dans projet.html)
+    items.push(
+      `<li><svg width="30" height="16" viewBox="0 0 30 16" aria-hidden="true"><g class="lineage-wafers"><rect x="1" y="0.5" width="28" height="15" rx="7.5"></rect><path d="M6,9.9 A4,4 0 1 1 12,9.9 Z"></path><text x="17" y="11">3</text></g></svg>Wafers suivis</li>`
+    );
+  }
+  if (lot) {
+    // badge dessiné par microprojet-graphe.js (styles .lineage-lot dans projet.html)
+    items.push(
+      `<li><svg width="34" height="16" viewBox="0 0 34 16" aria-hidden="true"><g class="lineage-lot"><rect x="1" y="0.5" width="32" height="15" rx="7.5"></rect><text x="17" y="11" text-anchor="middle">LOT</text></g></svg>Dans un lot de fabrication</li>`
     );
   }
   return `<ul class="status-legend" aria-label="Légende des expériences">${items.join("")}</ul>`;

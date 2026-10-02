@@ -125,21 +125,9 @@ function horizonMonths(period) {
   return match ? Math.min(24, Math.max(1, Number(match[1]))) : 6;
 }
 
-function addMonths(date, months) {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
-
-function tickLabel(date, previous, monthly) {
-  if (!monthly) return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-  const showYear = !previous || previous.getFullYear() !== date.getFullYear() || date.getMonth() === 0;
-  return date.toLocaleDateString("fr-FR", showYear ? { month: "short", year: "numeric" } : { month: "short" });
-}
-
 function friseGeometry(t, width) {
   const now = new Date();
-  const futureEnd = addMonths(now, horizonMonths(t.area.objectives_period));
+  const futureEnd = timelineAddMonths(now, horizonMonths(t.area.objectives_period));
   const starts = t.microprojets.flatMap((p) => [p.created_at, ...p.frise.map((n) => n.started_at)]).filter(Boolean).map((d) => +new Date(d));
   let start = starts.length ? Math.min(...starts) : +now - 90 * DAY;
   start = Math.min(start, +now - 30 * DAY); // jamais un passé écrasé sur quelques pixels
@@ -157,15 +145,8 @@ function friseTicks(geo) {
   const monthly = pastTicks.every((d) => d.getDate() === 1);
   const future = [];
   for (let d = d3.timeMonth.ceil(new Date(+geo.now + DAY)); d <= geo.futureEnd; d = d3.timeMonth.offset(d, 1)) future.push(d);
-  const ticks = [];
-  let lastX = -Infinity;
-  for (const date of [...pastTicks, ...future]) {
-    const px = geo.x(date);
-    if (px - lastX < 62 || (px > geo.pastW - 110 && px < geo.pastW + 34)) continue; // ni chevauchement, ni sur « Aujourd'hui »
-    ticks.push({ date, px, label: tickLabel(date, ticks.length ? ticks[ticks.length - 1].date : null, monthly || date > geo.now) });
-    lastX = px;
-  }
-  return ticks;
+  // ni chevauchement, ni sur « Aujourd'hui » (timeline.js)
+  return timelineTicks(geo.x, [...pastTicks, ...future], { avoid: [[geo.pastW - 110, geo.pastW + 34]], monthly: (date) => monthly || date > geo.now });
 }
 
 function axisSvg(geo, ticks, t) {
@@ -275,12 +256,7 @@ function renderFrise(t) {
   const months = horizonMonths(t.area.objectives_period);
   scroll.innerHTML = `
     <div class="frise" style="width:${geo.labelW + geo.plotW}px;--label-w:${geo.labelW}px;">
-      <svg width="0" height="0" style="position:absolute;" aria-hidden="true"><defs>
-        <pattern id="frise-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <rect width="8" height="8" fill="var(--gold-tint)" fill-opacity="0.55"></rect>
-          <line x1="0" y1="0" x2="0" y2="8" stroke="var(--gold)" stroke-opacity="0.22" stroke-width="2"></line>
-        </pattern>
-      </defs></svg>
+      ${timelineHatchDefs("frise-hatch")}
       <div class="frise__row frise__row--axis"><div></div>${axisSvg(geo, ticks, t)}</div>
       ${friseLanes.map((lane, i) => `<div class="frise__row">${laneLabel(lane.p)}${laneSvg(lane, geo, ticks, i)}</div>`).join("")}
       <div class="frise-future-note" style="left:${geo.labelW + geo.pastW}px;width:${geo.plotW - geo.pastW}px;">
@@ -416,10 +392,10 @@ function renderFuture(t) {
   const months = horizonMonths(t.area.objectives_period);
   const quarters = [];
   for (let m = 1; m <= months && quarters.length < 3; m += 1) {
-    const label = quarterLabel(addMonths(now, m));
+    const label = quarterLabel(timelineAddMonths(now, m));
     if (!quarters.includes(label) && label !== quarterLabel(now)) quarters.push(label);
   }
-  if (!quarters.length) quarters.push(quarterLabel(addMonths(now, 3)));
+  if (!quarters.length) quarters.push(quarterLabel(timelineAddMonths(now, 3)));
   const ghost = (when) => `<li class="th-future__item"><span class="th-future__when">${escapeHtml(when)}</span><span class="th-future__ghost" aria-hidden="true"></span></li>`;
   document.getElementById("th-future").innerHTML = `
     <div class="th-section__head" style="margin-bottom:8px;">

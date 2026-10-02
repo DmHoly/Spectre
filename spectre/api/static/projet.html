@@ -68,6 +68,59 @@
     .lineage-duration.is-hold {
       fill: var(--hold);
     }
+    /* badge « N wafers » à gauche du nœud */
+    .lineage-wafers rect {
+      fill: var(--surface);
+      stroke: var(--border);
+      stroke-width: 1px;
+    }
+    .lineage-wafers path {
+      fill: none;
+      stroke: var(--text-soft);
+      stroke-width: 1.3px;
+    }
+    .lineage-wafers text {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 600;
+      fill: var(--text-soft);
+    }
+    /* badge « dans le lot … » à droite du nœud (suivi de lots) */
+    .lineage-lot rect {
+      fill: var(--navy-500);
+      stroke: var(--surface);
+      stroke-width: 1.5px;
+    }
+    .lineage-lot text {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 600;
+      fill: var(--surface);
+    }
+    .lineage-lot.is-past rect {
+      fill: var(--surface);
+      stroke: var(--navy-500);
+    }
+    .lineage-lot.is-past text {
+      fill: var(--navy-500);
+    }
+    .lineage-lot:hover rect,
+    .lineage-lot:focus-visible rect {
+      fill: var(--navy);
+      stroke: var(--gold);
+    }
+    .lineage-lot:hover text,
+    .lineage-lot:focus-visible text {
+      fill: var(--surface);
+    }
+    .lineage-lot:focus-visible {
+      outline: none;
+    }
+    .lineage-panel__lot {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border-soft);
+    }
     .lineage-legend {
       margin: auto -20px -20px; /* collée au bas de la carte, quelle que soit la hauteur du graphe */
       padding: 10px 20px;
@@ -113,6 +166,7 @@
     <nav class="topbar__nav" aria-label="Navigation principale">
       <a href="/" class="topbar__link">Projets</a>
       <a href="/bibliotheque" class="topbar__link">Bibliothèque</a>
+      <a href="/lots" class="topbar__link">Lots</a>
       <a href="/donnees" class="topbar__link">Data</a>
       <a href="/docs" class="topbar__link">Documentation</a>
     </nav>
@@ -248,6 +302,7 @@
   <!-- D3 vendored localement (voir spectre/api/static/js/vendor/D3-LICENSE) - même raison qu'atlas.js. -->
   <script src="/static/js/vendor/d3.v7.9.0.min.js"></script>
   <script src="/static/js/lineage-graph.js"></script>
+  <script src="/static/js/lot-assign.js"></script>
   <script src="/static/js/microprojet-graphe.js"></script>
   <script>
     const slug = window.location.pathname.split("/")[2];
@@ -499,7 +554,7 @@
         return;
       }
 
-      document.getElementById("lineage-legend").innerHTML = lineageLegendHtml();
+      document.getElementById("lineage-legend").innerHTML = lineageLegendHtml({ lot: true, wafers: true });
       loadLineage();
       loadMembers();
       loadInvitations();

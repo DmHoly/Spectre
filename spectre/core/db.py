@@ -159,6 +159,44 @@ CREATE TABLE IF NOT EXISTS entity_links (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Suivi de lots (spectre.core.lots) : un lot de fabrication = des wafers (par lasermark), une
+-- priorité (P10, P20...), un début, une fin prévisionnelle et une fin déclarée. Déclaratif pour
+-- l'instant (source = 'declaratif') ; des datahooks l'alimenteront ensuite. Ses expériences ne sont
+-- pas stockées ici : ce sont celles qui suivent ses wafers.
+CREATE TABLE IF NOT EXISTS lots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    priority TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'wip', 'hold', 'done', 'cancelled')),
+    started_on TEXT,
+    forecast_exit_on TEXT,
+    exited_on TEXT,
+    hold_reason TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'declaratif',
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS lot_wafers (
+    lot_id INTEGER NOT NULL REFERENCES lots(id) ON DELETE CASCADE,
+    lasermark TEXT NOT NULL,
+    lasermark_key TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (lot_id, lasermark_key)
+);
+
+CREATE TABLE IF NOT EXISTS lot_thematics (
+    lot_id INTEGER NOT NULL REFERENCES lots(id) ON DELETE CASCADE,
+    thematic_id INTEGER NOT NULL REFERENCES thematics(id) ON DELETE CASCADE,
+    PRIMARY KEY (lot_id, thematic_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_lots_code ON lots(code COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_lot_wafers_key ON lot_wafers(lasermark_key);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);
@@ -291,6 +329,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_microprojects_code ON microprojects(code_prefix, code_number) "
         "WHERE code_number IS NOT NULL"
     )
+    # un lot créé avec la toute première version du suivi de lots (parcours d'étapes, abandonné) :
+    # la priorité arrive ; la table lot_steps de cette version, si elle existe, n'est plus lue
+    if "priority" not in _column_names(conn, "lots"):
+        conn.execute("ALTER TABLE lots ADD COLUMN priority TEXT NOT NULL DEFAULT ''")
 
     if conn.execute("SELECT 1 FROM management_areas WHERE slug = ?", (UNCLASSIFIED_AREA_SLUG,)).fetchone() is None:
         conn.execute(

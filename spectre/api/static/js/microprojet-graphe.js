@@ -13,7 +13,7 @@
 */
 
 const NODE_RADIUS = 9;
-const COL_WIDTH = 130;
+const COL_WIDTH = 150; // place pour le badge wafers (à gauche) et le badge lot (à droite) d'un nœud
 const ROW_HEIGHT = 100;
 const MARGIN = 56; // assez pour les libellés centrés sous les nœuds des bords
 
@@ -69,10 +69,25 @@ async function loadCard(nodeId, node) {
       </div>
       <p class="help" style="margin-bottom:10px;">${escapeHtml(detail.intent)}</p>
       ${fdlsOfTracking(detail.physical_tracking).length ? `<div style="margin-bottom:10px;">${fdlChipsHtml(fdlsOfTracking(detail.physical_tracking))}</div>` : ""}
+      ${
+        node && node.lots && node.lots.length
+          ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;font-size:12px;color:var(--text-faint);">Dans le lot ${node.lots
+              .map((l) => `<a class="lineage-lot-chip" href="/lots/${encodeURIComponent(l.code)}">${escapeHtml(l.code)}</a>`)
+              .join("")}</div>`
+          : ""
+      }
       ${structureBlock}
       ${objectivesBlock}
       ${conclusionBlock}
       ${node && node.started_at ? spanBlockHtml(node) : ""}
+      ${
+        canEvolve
+          ? `<div class="lineage-panel__lot">
+              <div class="section-title" style="font-size:12px;margin-bottom:6px;">Lot de fabrication</div>
+              <div id="lineage-lot-assign"></div>
+            </div>`
+          : ""
+      }
       <div style="font-size:12px;color:var(--text-faint);margin-top:12px;padding-top:10px;border-top:1px solid var(--border-soft);">
         ${escapeHtml(detail.author || "Auteur inconnu")} &middot; ${timeAgo(detail.created_at)}
       </div>
@@ -85,6 +100,13 @@ async function loadCard(nodeId, node) {
         }
       </div>`;
     if (variation) renderLineageStructureCarousel(variation);
+    if (canEvolve) {
+      // mettre un wafer de l'expérience dans un lot (lot-assign.js) ; le badge suit dans le graphe
+      mountLotAssign(document.getElementById("lineage-lot-assign"), {
+        lasermarks: (detail.physical_tracking || []).map((e) => e.sample_id),
+        onChange: () => loadLineage(),
+      });
+    }
   } catch (err) {
     panel.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div>`;
   }
@@ -167,6 +189,47 @@ function render(nodes, edges) {
     .attr("y", NODE_RADIUS + 16)
     .attr("text-anchor", "middle")
     .text((d) => (d.title.length > 16 ? d.title.slice(0, 15) + "…" : d.title));
+
+  // Badge du lot (suivi de lots) à droite du nœud : l'expérience suit un wafer de ce lot. Lien
+  // vers le lot - un clic dessus ne sélectionne pas le nœud.
+  nodeGroups
+    .filter((d) => d.lots && d.lots.length)
+    .each(function (d) {
+      const first = d.lots[0];
+      const code = first.code.length > 11 ? `${first.code.slice(0, 10)}…` : first.code;
+      const text = d.lots.length > 1 ? `${code} +${d.lots.length - 1}` : code;
+      const width = text.length * 6 + 12;
+      const active = ["planned", "wip", "hold"].includes(first.status);
+      const badge = d3
+        .select(this)
+        .append("a")
+        .attr("class", `lineage-lot${active ? "" : " is-past"}`)
+        .attr("href", `/lots/${encodeURIComponent(first.code)}`)
+        .attr("transform", `translate(${NODE_RADIUS + 9},${-NODE_RADIUS - 6})`)
+        .on("click", (event) => event.stopPropagation())
+        .on("keydown", (event) => event.stopPropagation());
+      badge.append("title").text(`Dans le lot ${d.lots.map((l) => l.code).join(", ")} - ouvrir le suivi du lot`);
+      badge.append("rect").attr("width", width).attr("height", 15).attr("rx", 7.5);
+      badge.append("text").attr("x", width / 2).attr("y", 10.5).attr("text-anchor", "middle").text(text);
+    });
+
+  // Badge wafers à gauche du nœud : combien de wafers (lasermarks) l'expérience suit - la liste au survol.
+  nodeGroups
+    .filter((d) => d.wafers && d.wafers.length)
+    .each(function (d) {
+      const text = String(d.wafers.length);
+      const width = 22 + text.length * 6;
+      const badge = d3
+        .select(this)
+        .append("g")
+        .attr("class", "lineage-wafers")
+        .attr("transform", `translate(${-NODE_RADIUS - 9 - width},${-NODE_RADIUS - 6})`);
+      badge.append("title").text(`${d.wafers.length} wafer${d.wafers.length > 1 ? "s" : ""} : ${d.wafers.join(", ")}`);
+      badge.append("rect").attr("width", width).attr("height", 15).attr("rx", 7.5);
+      // un wafer : un disque au méplat
+      badge.append("path").attr("d", "M5,9.4 A4,4 0 1 1 11,9.4 Z");
+      badge.append("text").attr("x", 16).attr("y", 10.5).text(text);
+    });
 
   // Temps écoulé du début à la fin (ou à maintenant, « depuis… », tant qu'elle n'est pas terminée).
   nodeGroups

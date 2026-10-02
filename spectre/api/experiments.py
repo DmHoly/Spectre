@@ -31,7 +31,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from structureforge.adapters import follow_adapter
 
-from ..core import microprojects, refs, structures, versioning
+from ..core import lots, microprojects, plates, refs, structures, versioning
 from ..core.accounts import User
 from ..core.permissions import get_microproject as resolve_microproject
 from ..core.permissions import require_role
@@ -292,7 +292,8 @@ def microproject_lineage(microproject: Microproject = Depends(require_role("view
     Each node also carries ``started_at`` (when that structurally distinct experiment was
     created), ``ended_at`` (when it was concluded or abandoned, ``None`` while it is still a
     draft or running) and ``continued_at`` (when its first child started, if any) - the elapsed
-    time the graph shows under each node.
+    time the graph shows under each node -, plus its tracked ``wafers`` (lasermarks) and the
+    ``lots`` holding one of them: the two badges beside the node.
     """
     return lineage_graph(microprojects.get_repository(microproject.slug))
 
@@ -386,13 +387,24 @@ def lineage_graph(repo: Any) -> dict:
             edges.extend({"parent": display_id[exp_id], "child": tip_id} for tip_id in resolved_tips)
 
     # When the work moved on from a node: its first child's start - what ends the elapsed time of a
-    # draft that was never concluded but continued into a new version (« poursuivie »).
+    # draft that was never concluded but continued into a new version (« poursuivie »). And the lots
+    # (spectre.core.lots) holding one of the wafers it tracks - the badge beside its node.
     started = {node["id"]: node["started_at"] for node in nodes}
+    lots_index = lots.lots_by_wafer()
     for node in nodes:
         children = [started[edge["child"]] for edge in edges if edge["parent"] == node["id"]]
         node["continued_at"] = min(children) if children else None
         if node["continued_at"]:
             node["status"] = microprojects.display_status(experiments[node["id"]], continued=True)
+        tracked = [e.get("sample_id") for e in experiments[node["id"]].metadata.get("physical_tracking", []) if e.get("sample_id")]
+        # ses wafers (sans doublon, même règle que l'index des plaques) : le badge à gauche du nœud
+        seen: set[str] = set()
+        node["wafers"] = []
+        for lasermark in tracked:
+            if plates.compact(lasermark) not in seen:
+                seen.add(plates.compact(lasermark))
+                node["wafers"].append(lasermark)
+        node["lots"] = [{"code": lot["code"], "status": lot["status"]} for lot in lots.lots_for_lasermarks(tracked, lots_index)]
 
     return {"nodes": nodes, "edges": edges}
 

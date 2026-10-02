@@ -53,6 +53,10 @@ async function init() {
           .map((m) => `<a class="fiche-code" href="/microprojets/${encodeURIComponent(m.slug)}" title="${escapeHtml(m.name)}">${escapeHtml(m.code || m.name)}</a>`)
           .join(" ")
       : "—";
+    // le(s) lot(s) de fabrication qui la contiennent (suivi de lots, /lots)
+    document.getElementById("plate-lots").innerHTML = (plate.lots || []).length
+      ? plate.lots.map((l) => `<a class="fiche-code" href="/lots/${encodeURIComponent(l.code)}" title="${escapeHtml(l.title || "Lot")}">${escapeHtml(l.code)}</a>`).join(" ")
+      : "—";
     document.getElementById("plate-trail").innerHTML = n
       ? plate.occurrences.map(trailItemHtml).join("")
       : `<li class="help">Le lasermark se renseigne dans la carte « Plaques & entités physiques » d'une fiche, ou au lancement d'une expérience.</li>`;

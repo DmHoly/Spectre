@@ -19,6 +19,20 @@ un bloc de tendances à onglets (`spectre/core/trends.py`, `static/js/kpi-trend.
 - [ ] **« Hero perfs »** : mettre en avant les meilleures valeurs atteintes à date pour chaque
       indicateur clé (quel µprojet/expérience, quelle valeur, quand).
 
+## Suivi de lots — Phase 2 (données réelles)
+
+La Phase 1 (déclarative) est livrée : `/lots` (Gantt), `/lots/{code}`, recherche, badge de lot sur les
+nœuds d'un µprojet, lot rappelé sur la page d'une plaque (`spectre/core/lots.py`, `api/lots.py`). Un
+lot = priorité (P10, P20...), début, fin prévisionnelle, fin déclarée, wafers - pas de parcours
+d'étapes (jugé trop lourd à saisir). Reste :
+
+- [ ] **Brancher les champs sur la base de production** via des datahooks PRISM : priorité, début,
+      fin prévisionnelle et fin réelle, liste des wafers d'un lot. `lots.source` vaut `declaratif`
+      aujourd'hui - prévoir la valeur pour un lot alimenté par hook et ce qui reste saisissable à
+      la main (thématiques visées, notes).
+- [ ] La table `lot_steps` créée par la toute première version (parcours, abandonné) peut rester
+      dans une base existante : plus lue, à supprimer à l'occasion (`DROP TABLE lot_steps`).
+
 ## Polish navigation / rename
 
 - [ ] Fils d'Ariane secondaires incomplets : `refs.html`, `graphe.html`,
