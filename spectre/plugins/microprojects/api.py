@@ -1,6 +1,6 @@
 """Microprojects and membership: the only "who can see/do what" concept in Spectre. Every other
 router (structures, experiments) sits behind :func:`spectre.plugins.microprojects.deps.require_role`
-for a microproject resolved here. Also public: the invitation a signup link carries.
+for a microproject resolved here. The invitation a signup link carries: :mod:`.invitations_api`.
 
 The experiment counts on each µprojet, and the topbar's FDL search, read plugins listed above this
 one (experiments, wafers) through imports inside the functions that need them.
@@ -20,9 +20,11 @@ from ..areas import service as management
 from ..areas.service import ManagementAreaNotFoundError, ThematicNotFoundError
 from . import service as microprojects
 from .deps import require_role
+from .invitations_api import router as invitations_router
 from .service import Microproject
 
 router = APIRouter(prefix="/api", tags=["microprojects"])
+router.include_router(invitations_router)
 page_router = APIRouter()
 
 
@@ -213,14 +215,6 @@ def delete_microproject(confirm_name: str, microproject: Microproject = Depends(
         raise HTTPException(status_code=422, detail="le nom saisi ne correspond pas au nom du projet")
     microprojects.delete(microproject)
     return {"status": "ok"}
-
-
-@router.get("/auth/invitation/{token}")
-def get_invitation(token: str) -> dict:
-    invitation = microprojects.get_invitation(token)
-    if invitation is None:
-        raise HTTPException(status_code=404, detail="cette invitation est invalide ou a expiré")
-    return {"email": invitation["email"], "microproject_name": invitation["microproject_name"]}
 
 
 @page_router.get("/p/{code}")

@@ -1,7 +1,7 @@
 """Toute route de l'API exige une session : un appel anonyme reçoit 401, quelle que soit la route -
 lue dans ``app.openapi()``, donc une route ajoutée (ou renommée) est couverte d'office. Seules les
-routes publiques de ``/api/auth`` (créer un compte, se connecter...) sont exemptées, une à une
-ci-dessous.
+routes publiques des comptes (créer un compte, se connecter...) et la lecture d'une invitation sont
+exemptées, une à une ci-dessous.
 
 L'authentification doit passer avant tout le reste : un 404 (ressource introuvable) ou un 422
 (corps invalide) renvoyé à un anonyme dirait déjà quelque chose de ce qui existe.
@@ -16,12 +16,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 PUBLIC_ROUTES = {
-    ("POST", "/api/auth/register"): "créer un compte",
-    ("POST", "/api/auth/login"): "se connecter",
-    ("POST", "/api/auth/logout"): "se déconnecter (sans session : rien à fermer)",
-    ("POST", "/api/auth/mot-de-passe-oublie"): "demander un lien de réinitialisation",
-    ("POST", "/api/auth/reinitialiser"): "choisir un nouveau mot de passe avec ce lien",
-    ("GET", "/api/auth/invitation/{token}"): "la page d'inscription lit l'invitation reçue par e-mail",
+    ("POST", "/api/users"): "créer un compte",
+    ("POST", "/api/sessions"): "se connecter",
+    ("DELETE", "/api/sessions/current"): "se déconnecter (sans session : rien à fermer)",
+    ("POST", "/api/password-resets"): "demander un lien de réinitialisation",
+    ("POST", "/api/password-resets/completions"): "choisir un nouveau mot de passe avec ce lien",
+    ("GET", "/api/invitations/{token}"): "la page d'inscription lit l'invitation reçue par e-mail",
 }
 
 

@@ -136,12 +136,12 @@ class Session:
         self.client = client
         self.email = email
         if name is not None:
-            r = client.post("/api/auth/register", json={"email": email, "password": password, "name": name})
+            r = client.post("/api/users", json={"email": email, "password": password, "name": name})
             if r.status_code != 201:
                 raise RuntimeError(f"registration failed for {email}: {r.status_code} {r.text}")
         else:
-            r = client.post("/api/auth/login", json={"email": email, "password": password})
-            if r.status_code != 200:
+            r = client.post("/api/sessions", json={"email": email, "password": password})
+            if r.status_code != 201:
                 raise RuntimeError(f"login failed for {email}: {r.status_code} {r.text}")
 
     def post(self, path, **kw):

@@ -9,9 +9,9 @@ from support.microprojects import create_microproject
 
 def test_first_account_is_admin_and_others_are_not(client):
     signup(client, "boss@example.com")
-    assert client.get("/api/auth/me").json()["is_admin"] is True
+    assert client.get("/api/users/me").json()["is_admin"] is True
     signup(client, "hand@example.com")
-    assert client.get("/api/auth/me").json()["is_admin"] is False
+    assert client.get("/api/users/me").json()["is_admin"] is False
 
 
 def test_new_microprojet_lands_in_the_unclassified_area(client):

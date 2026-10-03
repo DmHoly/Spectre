@@ -1,44 +1,40 @@
-"""Account creation and sessions. Cookie-based (see :mod:`spectre.plugins.accounts.security`), not JWT - a
-session can be revoked server-side by deleting its row, which a stateless token can't offer
-without extra machinery this app doesn't need.
+"""Accounts, sessions and passwords over HTTP. Cookie-based (see :mod:`spectre.plugins.accounts.security`),
+not JWT - a session can be revoked server-side by deleting its row, which a stateless token can't
+offer without extra machinery this app doesn't need.
+
+Joining a microproject from an invitation is not part of signing up: the signup page creates the
+account (``POST /api/users``), then accepts the invitation (``POST /api/invitations/{token}/acceptance``,
+plugin microprojects).
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from pydantic import BaseModel
 
-from ...kernel import mail
 from . import service as accounts
 from .deps import current_user
-from .security import SESSION_COOKIE, SESSION_LIFETIME
+from .security import SESSION_COOKIE, SESSION_LIFETIME, session_cookie_secure
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/api", tags=["accounts"])
+
+ME = "/api/users/me"
+CURRENT_SESSION = "/api/sessions/current"
 
 
-class RegisterRequest(BaseModel):
+class CreateUserRequest(BaseModel):
     email: str
     password: str
     name: str = ""
-    invitation: str | None = None
 
 
-class LoginRequest(BaseModel):
+class CreateSessionRequest(BaseModel):
     email: str
     password: str
 
 
-class ForgotPasswordRequest(BaseModel):
-    email: str
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    password: str
-
-
-class UpdateProfileRequest(BaseModel):
-    name: str
+class UpdateMeRequest(BaseModel):
+    name: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -46,117 +42,98 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+class PasswordResetCompletion(BaseModel):
+    token: str
+    password: str
+
+
 def _user_payload(user: accounts.User) -> dict:
     return {"id": user.id, "email": user.email, "name": user.name, "is_admin": user.is_admin}
 
 
-def _set_session_cookie(response: Response, token: str) -> None:
+def _open_session(response: Response, user: accounts.User) -> str:
+    """Open a session for ``user`` and hand its cookie to the browser - returns its expiry."""
+    token, expires_at = accounts.create_session(user.id)
     response.set_cookie(
         SESSION_COOKIE,
         token,
         max_age=int(SESSION_LIFETIME.total_seconds()),
         httponly=True,
         samesite="lax",
+        secure=session_cookie_secure(),
     )
+    return expires_at
 
 
-@router.post("/register", status_code=201)
-def register(body: RegisterRequest, response: Response) -> dict:
-    try:
-        user = accounts.register(body.email, body.password, body.name)
-    except accounts.EmailAlreadyUsedError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    joined_microproject = None
-    if body.invitation:
-        from ..microprojects import service as microprojects_module
-
-        invitation = microprojects_module.get_invitation(body.invitation)
-        if microprojects_module.accept_invitation(body.invitation, user.id, user.email):
-            joined_microproject = invitation["microproject_name"]
-
-    _set_session_cookie(response, accounts.create_session(user.id))
-    payload = _user_payload(user)
-    payload["joined_microproject"] = joined_microproject
-    return payload
+def _clear_session_cookie(response: Response) -> None:
+    response.delete_cookie(SESSION_COOKIE, httponly=True, samesite="lax", secure=session_cookie_secure())
 
 
-@router.post("/login")
-def login(body: LoginRequest, response: Response) -> dict:
-    try:
-        user = accounts.authenticate(body.email, body.password)
-    except accounts.InvalidCredentialsError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
-    _set_session_cookie(response, accounts.create_session(user.id))
+@router.post("/users", status_code=201)
+def create_user(body: CreateUserRequest, response: Response) -> dict:
+    """Sign up - and sign in: the new account leaves with its session."""
+    user = accounts.register(body.email, body.password, body.name)
+    _open_session(response, user)
+    response.headers["Location"] = ME
     return _user_payload(user)
 
 
-@router.post("/logout")
-def logout(request: Request, response: Response) -> dict:
+@router.post("/sessions", status_code=201)
+def create_session(body: CreateSessionRequest, response: Response) -> dict:
+    user = accounts.authenticate(body.email, body.password)
+    expires_at = _open_session(response, user)
+    response.headers["Location"] = CURRENT_SESSION
+    return {"user": _user_payload(user), "expires_at": expires_at}
+
+
+@router.delete("/sessions/current", status_code=204)
+def delete_current_session(request: Request) -> Response:
+    """Public: without a session there is nothing to close, and the answer is the same."""
     token = request.cookies.get(SESSION_COOKIE)
     if token:
         accounts.delete_session(token)
-    response.delete_cookie(SESSION_COOKIE)
-    return {"status": "ok"}
+    response = Response(status_code=204)
+    _clear_session_cookie(response)
+    return response
 
 
-@router.get("/me")
-def me(user: accounts.User = Depends(current_user)) -> dict:
+@router.get("/users/me")
+def get_me(user: accounts.User = Depends(current_user)) -> dict:
     return _user_payload(user)
 
 
-@router.put("/me")
-def update_profile(body: UpdateProfileRequest, user: accounts.User = Depends(current_user)) -> dict:
-    try:
-        updated = accounts.update_name(user.id, body.name)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _user_payload(updated)
+@router.patch("/users/me")
+def update_me(body: UpdateMeRequest, user: accounts.User = Depends(current_user)) -> dict:
+    if body.name is not None:
+        user = accounts.update_name(user.id, body.name)
+    return _user_payload(user)
 
 
-@router.post("/mot-de-passe")
-def change_password(
-    body: ChangePasswordRequest, request: Request, response: Response, user: accounts.User = Depends(current_user)
-) -> dict:
-    try:
-        accounts.change_password(user.id, body.current_password, body.new_password)
-    except accounts.InvalidCredentialsError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+@router.put("/users/me/password", status_code=204)
+def change_password(body: ChangePasswordRequest, user: accounts.User = Depends(current_user)) -> Response:
+    accounts.change_password(user.id, body.current_password, body.new_password)
     # change_password() already deleted every session for this user, including the one making
     # this request - clear the now-dead cookie so the browser doesn't keep sending it.
-    response.delete_cookie(SESSION_COOKIE)
-    return {"status": "ok"}
+    response = Response(status_code=204)
+    _clear_session_cookie(response)
+    return response
 
 
-@router.post("/mot-de-passe-oublie")
-def forgot_password(body: ForgotPasswordRequest) -> dict:
-    """Always answers the same way whether or not the address has an account - confirming or
-    denying an account's existence to an anonymous caller is its own small information leak.
+@router.post("/password-resets", status_code=202)
+def request_password_reset(body: PasswordResetRequest, background: BackgroundTasks) -> Response:
+    """Always the same empty 202, whether or not the address has an account - confirming or
+    denying an account's existence to an anonymous caller is its own small information leak. The
+    lookup and the e-mail happen after the response, so its timing says nothing either.
     """
-    user = accounts.get_by_email(body.email)
-    if user is not None:
-        token = accounts.create_password_reset(user.id)
-        link = f"{mail.base_url()}/reinitialiser?token={token}"
-        mail.send_email(
-            user.email,
-            "Réinitialiser votre mot de passe Spectre",
-            f"Bonjour {user.name},\n\n"
-            f"Pour choisir un nouveau mot de passe, ouvrez ce lien (valable 1 heure) :\n{link}\n\n"
-            "Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.",
-        )
-    return {"status": "ok"}
+    background.add_task(accounts.send_password_reset, body.email)
+    return Response(status_code=202)
 
 
-@router.post("/reinitialiser")
-def reset_password(body: ResetPasswordRequest) -> dict:
-    try:
-        accounts.reset_password(body.token, body.password)
-    except accounts.InvalidCredentialsError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"status": "ok"}
+@router.post("/password-resets/completions", status_code=204)
+def complete_password_reset(body: PasswordResetCompletion) -> Response:
+    accounts.reset_password(body.token, body.password)
+    return Response(status_code=204)

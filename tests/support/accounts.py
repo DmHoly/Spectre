@@ -12,27 +12,33 @@ PASSWORD = "supersecret"
 
 
 def logout(client: Any) -> None:
-    client.post("/api/auth/logout")
+    response = client.delete("/api/sessions/current")
+    assert response.status_code == 204, f"{response.status_code} au lieu de 204 : {response.text}"
 
 
-def signup(client: Any, email: str, name: str = "T", password: str = PASSWORD, **fields: Any) -> dict:
+def signup(client: Any, email: str, name: str = "T", password: str = PASSWORD) -> dict:
     """Crée le compte ``email`` et laisse le client connecté dessus (la session en cours, s'il y
-    en a une, est d'abord fermée). ``fields`` : le reste du corps, ``invitation`` par exemple."""
+    en a une, est d'abord fermée) - renvoie le compte."""
     logout(client)
-    return assert_created(client.post("/api/auth/register", json={"email": email, "password": password, "name": name, **fields}))
+    return assert_created(client.post("/api/users", json={"email": email, "password": password, "name": name}))
 
 
 def login(client: Any, email: str, password: str = PASSWORD) -> dict:
+    """Ouvre une session sur ``email`` - renvoie le compte."""
     logout(client)
-    return assert_ok(client.post("/api/auth/login", json={"email": email, "password": password}))
+    return assert_created(client.post("/api/sessions", json={"email": email, "password": password}))["user"]
+
+
+def me(client: Any) -> dict:
+    return assert_ok(client.get("/api/users/me"))
 
 
 def switch_user(client: Any, email: str, name: str = "T", password: str = PASSWORD) -> dict:
     """Passe sur le compte ``email`` : s'y connecte s'il existe déjà, le crée sinon."""
     logout(client)
-    response = client.post("/api/auth/login", json={"email": email, "password": password})
-    if response.status_code == 200:
-        return response.json()
+    response = client.post("/api/sessions", json={"email": email, "password": password})
+    if response.status_code == 201:
+        return response.json()["user"]
     return signup(client, email, name=name, password=password)
 
 
