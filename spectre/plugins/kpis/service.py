@@ -3,7 +3,9 @@ the reusable tabbed block on the project page (``plugins/kpis/static/kpi-trend.j
 
 The point of this module is the *registry*: each KPI is a :class:`KpiDefinition` with a
 ``provider`` that turns (area, months) into monthly points. Adding a KPI = one ``register(...)``
-call; the API (:mod:`spectre.plugins.kpis.api`) and the front's tabs pick it up with no other change.
+call, from the plugin that owns its data; the API (:mod:`spectre.plugins.kpis.api`) and the front's
+tabs pick it up with no other change. The « activité » KPI is registered here (this plugin depends
+on experiments), the demo EQE by :mod:`spectre.plugins.kpis_demo.service`.
 
 A KPI without provider yet is a **placeholder**: it appears as a tab, says where its data will come
 from (typically a PRISM hook, see :mod:`spectre.plugins.characterization.api`), and returns no points. Wiring it
@@ -12,21 +14,28 @@ later means writing its provider - e.g. run the hook on the wafers tracked by th
 
 A KPI can also run on **demo** data (``demo=True``, see :mod:`spectre.plugins.kpis_demo.service`): fictitious
 but plausible numbers, always labelled as such on the page, to show what the view will look like
-before its real source is wired. A KPI can offer **variants** - the same trend counted differently
-(experiments in progress vs wafers engaged), switched by a toggle on the page.
+before its real source is wired - registered under the key of the placeholder it stands in for, and
+only in force while its ``enabled()`` holds (``SPECTRE_DEMO_DATA=1``). A KPI can offer **variants** -
+the same trend counted differently (experiments in progress vs wafers engaged), switched by a
+toggle on the page.
 """
 
 from __future__ import annotations
 
+import logging
 from bisect import bisect_left
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Callable, Literal
 
+from ...kernel.errors import InvalidInput, NotFound
 from ..areas.service import ManagementArea
+from ..experiments.insights import tracked_wafers
 from ..experiments.repository import RUNNING_STATUSES, get_repository
 from ..microprojects import service as microprojects
+
+log = logging.getLogger(__name__)
 
 Status = Literal["live", "placeholder", "demo", "error"]
 
@@ -71,7 +80,8 @@ class KpiDefinition:
     hook: str | None = None  # PRISM hook key the KPI is (or will be) computed from
     provider: Provider | None = None
     variants: tuple[KpiVariant, ...] = ()  # the first one is the default
-    demo: bool = False  # the provider serves fictitious demonstration data (see demo_trends)
+    demo: bool = False  # the provider serves fictitious demonstration data (see kpis_demo)
+    enabled: Callable[[], bool] = lambda: True  # while False, the definition registered before it under the same key stands
 
     @property
     def status(self) -> Status:
@@ -80,33 +90,37 @@ class KpiDefinition:
         return "demo" if self.demo else "live"
 
     def variant(self, key: str | None) -> KpiVariant | None:
-        """The variant ``key`` (the default one when ``None``); ``KeyError`` if unknown."""
-        if not self.variants:
-            if key:
-                raise KeyError(key)
-            return None
+        """The variant ``key`` (the default one when ``None``); :class:`InvalidInput` if unknown."""
         if key is None:
-            return self.variants[0]
+            return self.variants[0] if self.variants else None
         for variant in self.variants:
             if variant.key == key:
                 return variant
-        raise KeyError(key)
+        raise InvalidInput(f"variante {key!r} inconnue pour le KPI {self.key!r}")
 
 
-_REGISTRY: dict[str, KpiDefinition] = {}
+# Each key's definitions, in registration order: the last one enabled is the KPI.
+_REGISTRY: dict[str, list[KpiDefinition]] = {}
 
 
 def register(kpi: KpiDefinition) -> KpiDefinition:
-    _REGISTRY[kpi.key] = kpi
+    _REGISTRY.setdefault(kpi.key, []).append(kpi)
     return kpi
 
 
+def _current(definitions: list[KpiDefinition]) -> KpiDefinition | None:
+    return next((kpi for kpi in reversed(definitions) if kpi.enabled()), None)
+
+
 def list_kpis() -> list[KpiDefinition]:
-    return list(_REGISTRY.values())
+    return [kpi for kpi in map(_current, _REGISTRY.values()) if kpi is not None]
 
 
 def get_kpi(key: str) -> KpiDefinition:
-    return _REGISTRY[key]  # KeyError -> 404 in the API
+    kpi = _current(_REGISTRY.get(key, []))
+    if kpi is None:
+        raise NotFound(f"KPI {key!r} inconnu")
+    return kpi
 
 
 def month_periods(months: int, today: date | None = None) -> list[str]:
@@ -122,16 +136,15 @@ def month_periods(months: int, today: date | None = None) -> list[str]:
     return periods[::-1]
 
 
-def series(key: str, area: ManagementArea, months: int, variant: str | None = None) -> TrendResult:
-    """``variant`` must already be validated against the KPI (see :meth:`KpiDefinition.variant`)."""
-    kpi = get_kpi(key)
+def series(kpi: KpiDefinition, area: ManagementArea, months: int, variant: KpiVariant | None = None) -> TrendResult:
+    """``variant`` is one of the KPI's (see :meth:`KpiDefinition.variant`)."""
     if kpi.provider is None:
         return TrendResult(status="placeholder", message="Source de données pas encore branchée.")
-    chosen = kpi.variant(variant)
     try:
-        return kpi.provider(area, months, chosen.key if chosen else None)
-    except Exception as exc:  # a provider talks to Follow repos / PRISM - never a raw trace to the page
-        return TrendResult(status="error", message=f"calcul impossible : {exc}")
+        return kpi.provider(area, months, variant.key if variant else None)
+    except Exception:  # a provider talks to Follow repos / PRISM: the trace goes to the log, never to the page
+        log.exception("KPI %s du projet %s : calcul impossible", kpi.key, area.slug)
+        return TrendResult(status="error", message="Calcul impossible pour le moment : l'erreur a été journalisée sur le serveur.")
 
 
 # --- providers --------------------------------------------------------------------------------
@@ -149,10 +162,6 @@ def _month_bounds(periods: list[str]) -> list[tuple[datetime, datetime]]:
 
 def _aware(moment: datetime) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
-
-
-def _tracked_wafers(experiment) -> int:
-    return sum(1 for entry in experiment.metadata.get("physical_tracking", []) if entry.get("sample_id"))
 
 
 def _running_intervals(versions: list) -> list[tuple[datetime, datetime | None]]:
@@ -176,14 +185,14 @@ def _running_intervals(versions: list) -> list[tuple[datetime, datetime | None]]
 
 def _activity(area: ManagementArea, months: int, variant: str | None) -> TrendResult:
     """Experiments in progress during each month (``variant="running"``), or the real wafers they
-    track (``"wafers"``), across every µprojet of the area - computed from Spectre's own data (the
-    Follow repositories), no external base needed. An experiment is one line of study (a branch);
-    it counts for a month if it was in progress at some point of that month - launched before the
-    month ended, not yet concluded or abandoned when it began. A study of a few days thus still
-    shows, where a snapshot at each month's end would miss it."""
+    track (``"wafers"``, each wafer once - see :func:`tracked_wafers`), across every µprojet of the
+    area - computed from Spectre's own data (the Follow repositories), no external base needed. An
+    experiment is one line of study (a branch); it counts for a month if it was in progress at some
+    point of that month - launched before the month ended, not yet concluded or abandoned when it
+    began. A study of a few days thus still shows, where a snapshot at each month's end would miss it."""
     periods = month_periods(months)
     bounds = _month_bounds(periods)
-    values = [0] * len(periods)
+    in_progress: list[list] = [[] for _ in periods]  # per month, the last version known of each study in progress
     for microproject in microprojects.list_by_management_area(area.id):
         by_branch: dict[str, list] = defaultdict(list)
         for experiment in get_repository(microproject.slug):
@@ -193,20 +202,13 @@ def _activity(area: ManagementArea, months: int, variant: str | None) -> TrendRe
             created = [_aware(e.created_at) for e in versions]
             intervals = _running_intervals(versions)
             for i, (month_start, month_end) in enumerate(bounds):
-                if not any(start < month_end and (end is None or end > month_start) for start, end in intervals):
-                    continue
-                if variant == "wafers":
-                    state = versions[bisect_left(created, month_end) - 1]  # last version known that month
-                    values[i] += _tracked_wafers(state)
-                else:
-                    values[i] += 1
+                if any(start < month_end and (end is None or end > month_start) for start, end in intervals):
+                    in_progress[i].append(versions[bisect_left(created, month_end) - 1])
+    if variant == "wafers":
+        values = [len(tracked_wafers(states)) for states in in_progress]
+    else:
+        values = [len(states) for states in in_progress]
     return TrendResult(status="live", points=[TrendPoint(p, float(v)) for p, v in zip(periods, values)])
-
-
-def _eqe_demo(area: ManagementArea, months: int, variant: str | None) -> TrendResult:
-    from ..kpis_demo.service import eqe_demo_series
-
-    return eqe_demo_series(area, months)
 
 
 register(
@@ -234,7 +236,9 @@ register(
         ),
     )
 )
-register(
+# Sans provider tant que le hook PRISM eqe n'est pas branché ; une instance de démonstration le
+# remplace par des données fictives (spectre.plugins.kpis_demo.service).
+EQE = register(
     KpiDefinition(
         key="eqe",
         label="EQE",
@@ -243,10 +247,6 @@ register(
         better="up",
         source="PRISM · hook eqe",
         hook="eqe",
-        # Données fictives tant que le hook PRISM eqe n'est pas branché : remplacer par un vrai
-        # provider (et retirer demo=True) le moment venu - voir spectre.plugins.kpis_demo.service.
-        provider=_eqe_demo,
-        demo=True,
     )
 )
 register(

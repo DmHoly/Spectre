@@ -5,13 +5,20 @@ from __future__ import annotations
 from typing import Any
 
 from .accounts import login, signup, switch_user
-from .http import assert_created
+from .http import assert_created, assert_ok
 
 
 def create_microproject(client: Any, name: str = "Projet", **fields: Any) -> dict:
     """Un µprojet créé par le compte connecté (qui en devient propriétaire). ``fields`` :
     ``description``, ``management_area_slug``, ``thematique_slug``..."""
     return assert_created(client.post("/api/microprojets", json={"name": name, **fields}))
+
+
+def move_microproject(client: Any, area_slug: str, microproject_slug: str, thematic_slug: str | None = None) -> dict:
+    """Rattache un µprojet au projet corporate ``area_slug`` (et à l'une de ses thématiques) :
+    PATCH /api/microprojects/{microproject_slug} - renvoie le µprojet."""
+    body = {"area": area_slug, "thematic": thematic_slug}
+    return assert_ok(client.patch(f"/api/microprojects/{microproject_slug}", json=body))
 
 
 def signup_with_microproject(client: Any, email: str, microproject_name: str = "Projet", *, name: str = "T") -> str:

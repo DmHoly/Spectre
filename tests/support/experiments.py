@@ -114,3 +114,13 @@ def upload_attachment(client: Any, slug: str, ref: str, filename: str = "mesure.
 def upload_image(client: Any, slug: str, name: str = "mesure.png") -> str:
     """Une image collée dans le formulaire de preuve (POST .../attachments, purpose=evidence) - renvoie son id."""
     return upload_file(client, slug, "evidence", name)["id"]
+
+
+def experiment_stats(client: Any, **filters: Any) -> list[dict]:
+    """GET /api/experiment-stats (``area``, ``microproject``) - une ligne par µprojet."""
+    return assert_ok(client.get("/api/experiment-stats", params=filters))
+
+
+def experiment_timeline(client: Any, **filters: Any) -> list[dict]:
+    """GET /api/experiment-timeline (``area``, ``thematic``) - la frise, une ligne par µprojet."""
+    return assert_ok(client.get("/api/experiment-timeline", params=filters))

@@ -5,13 +5,14 @@
    objectifs sont classés par lui), et peut être marqué atteint, avec le µprojet qui l'a validé.
    Un admin édite tout (objectifs, thématiques, rattachements) ; chacun peut créer un µprojet.
    Chaque µprojet porte son numéro (Nat_0004) : la recherche de la topbar y mène directement.
-   Voir spectre.api.management. */
+   Le projet vient de areasApi, les µprojets et leurs compteurs de experimentsApi.stats, le droit
+   d'écrire de accountsApi.me (is_admin). */
 
 const { slug } = routeParams("/management/{slug}");
 document.getElementById("atlas-link").href = `/management/${encodeURIComponent(slug)}/atlas`;
 
 // Tendances, juste sous les objectifs : bloc KPI à onglets réutilisable (kpis/static/kpi-trend.js), un
-// onglet par KPI déclaré côté serveur (spectre/core/trends.py).
+// onglet par KPI déclaré côté serveur (spectre/plugins/kpis/service.py).
 KpiTrendBlock.mount(document.getElementById("trends"), {
   eyebrow: "Tendances",
   title: "Évolution des KPI",
@@ -19,8 +20,39 @@ KpiTrendBlock.mount(document.getElementById("trends"), {
   loadSeries: (key, months, variant) => kpisApi.series(slug, key, months, variant),
   storageKey: `spectre:tendances:${slug}`,
   // un point jalon (étude) d'une tendance -> sa fiche (aujourd'hui : données de démo EQE)
-  onPointClick: (point, series) => openStudy(series.key, point.study),
+  onPointClick: (point, series) => openDemoStudy(series.key, point.study),
 });
+
+// La fiche d'une étude derrière un point de tendance : seules les séries de démonstration en ont
+// (plugin kpis_demo, actif seulement avec SPECTRE_DEMO_DATA=1) - ses fichiers ne sont donc chargés
+// qu'au premier clic sur un tel point.
+function loadAsset(url) {
+  return new Promise((resolve, reject) => {
+    const el = url.endsWith(".css")
+      ? Object.assign(document.createElement("link"), { rel: "stylesheet", href: url })
+      : Object.assign(document.createElement("script"), { src: url });
+    el.onload = resolve;
+    el.onerror = () => reject(new Error("La fiche de l'étude n'a pas pu être chargée."));
+    document.head.appendChild(el);
+  });
+}
+
+let demoStudyReady = null;
+function openDemoStudy(kpiKey, studyId) {
+  if (!kpiKey || !studyId) return;
+  demoStudyReady =
+    demoStudyReady ||
+    Promise.all([loadAsset("/static/kpis_demo/kpis_demo.css"), loadAsset("/static/kpis_demo/client.js")]).then(() =>
+      loadAsset("/static/kpis_demo/study.js")
+    );
+  demoStudyReady.then(
+    () => KpisDemo.openStudy(slug, kpiKey, studyId),
+    (err) => {
+      demoStudyReady = null;
+      showError(err);
+    }
+  );
+}
 
 const errorBox = document.getElementById("error");
 const flashBox = document.getElementById("flash");
@@ -35,7 +67,9 @@ function flash(msg) {
   setTimeout(() => (flashBox.style.display = "none"), 3000);
 }
 
-let current = null;
+let current = null; // le projet (areasApi.get)
+let rows = []; // ses µprojets et leurs compteurs (experimentsApi.stats)
+let admin = false;
 
 const ICON_EDIT = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 const ICON_CHECK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`;
@@ -58,7 +92,7 @@ function percent(value) {
 
 // Toutes les cartes au même format : rang (ordre des pourcentages), pourcentage, intitulé,
 // précisions, échéance, et en pied l'état (atteint ou non) avec le µprojet qui l'a validé.
-function objectiveBlock(o, index, admin) {
+function objectiveBlock(o, index) {
   const tools = admin
     ? `<div class="obj__tools"><button type="button" class="obj__tool" data-edit-objective="${o.id}" aria-label="Modifier l'objectif « ${escapeHtml(o.title)} »" title="Modifier">${ICON_EDIT}</button></div>`
     : "";
@@ -90,15 +124,14 @@ function objectiveBlock(o, index, admin) {
 
 function renderObjectives(area) {
   const list = document.getElementById("objectives");
-  const admin = area.is_admin;
   document.getElementById("objectives-period").textContent = area.objectives_period || "6 prochains mois";
-  const objs = area.objectifs || [];
+  const objs = area.objectives;
   const achieved = objs.filter((o) => o.achieved).length;
   document.getElementById("objectives-summary").textContent = objs.length
     ? `${plural(objs.length, "objectif", "objectifs")} · ${achieved} atteint${achieved > 1 ? "s" : ""}`
     : "aucun objectif";
   list.innerHTML = objs.length
-    ? objs.map((o, i) => objectiveBlock(o, i, admin)).join("")
+    ? objs.map((o, i) => objectiveBlock(o, i)).join("")
     : `<li class="obj-empty" style="grid-column:1/-1;">${
         admin
           ? "Aucun objectif défini pour cette période. Ajoutez-les avec « + Objectif », chacun avec son pourcentage."
@@ -136,7 +169,8 @@ document.getElementById("objectives-toggle").addEventListener("click", () => {
 
 // --- thématiques & µprojets -------------------------------------------------------------------
 
-function microprojetCard(p) {
+function microprojetCard(row) {
+  const p = row.microproject;
   const roleBadge = p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role))}</span>` : "";
   const inner = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:22px;">
@@ -147,20 +181,20 @@ function microprojetCard(p) {
     <div style="font-size:13px;color:var(--text-soft);min-height:16px;">${escapeHtml(p.description || "")}</div>
     ${ownerChipHtml(p.owners)}
     <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--text-faint);padding-top:8px;border-top:1px solid var(--border-soft);">
-      <span>${p.experiences} expériences</span><span>${p.running} en cours</span><span>${p.concluded} concluantes</span><span>${p.wafers} wafers</span>
+      <span>${row.running + row.concluded + row.abandoned} expériences</span><span>${row.running} en cours</span><span>${row.concluded + row.abandoned} terminées</span><span>${row.wafers} wafers</span>
     </div>`;
   return p.role
     ? `<a href="/microprojets/${encodeURIComponent(p.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:8px;color:inherit;">${inner}</a>`
     : `<div class="card card-pad" style="display:flex;flex-direction:column;gap:8px;opacity:.75;">${inner}</div>`;
 }
 
-function thematicSection(t, items, admin) {
+function thematicSection(t, items) {
   const none = t === null;
   const name = none ? "Sans thématique" : t.name;
-  const s = none ? null : t.stats;
+  const s = experimentTotals(items);
   const meta = none
     ? plural(items.length, "µprojet", "µprojets")
-    : `${plural(s.microprojets, "µprojet", "µprojets")} · ${plural(s.experiences, "expérience", "expériences")} · ${s.running} en cours · ${s.wafers} wafers`;
+    : `${plural(s.microprojects, "µprojet", "µprojets")} · ${plural(s.experiments, "expérience", "expériences")} · ${s.running} en cours · ${s.wafers} wafers`;
   const thematicUrl = none ? null : `/management/${encodeURIComponent(slug)}/thematiques/${encodeURIComponent(t.slug)}`;
   const actions = none
     ? ""
@@ -187,33 +221,33 @@ function thematicSection(t, items, admin) {
 }
 
 function renderThematics(area) {
-  const admin = area.is_admin;
-  const byThematic = new Map(area.thematiques.map((t) => [t.slug, []]));
+  const byThematic = new Map(area.thematics.map((t) => [t.slug, []]));
   const orphans = [];
-  for (const p of area.microprojets) {
-    (byThematic.get(p.thematique_slug) || orphans).push(p);
+  for (const row of rows) {
+    const thematic = row.microproject.thematic;
+    (byThematic.get(thematic && thematic.slug) || orphans).push(row);
   }
-  const sections = area.thematiques.map((t) => thematicSection(t, byThematic.get(t.slug), admin));
-  if (orphans.length) sections.push(thematicSection(null, orphans, admin));
+  const sections = area.thematics.map((t) => thematicSection(t, byThematic.get(t.slug)));
+  if (orphans.length) sections.push(thematicSection(null, orphans));
   document.getElementById("thematics").innerHTML = sections.length
     ? sections.join("")
     : `<div class="empty-state card" style="margin-top:14px;"><div style="font-weight:600;color:var(--text-soft);">Aucune thématique ni µprojet dans ce projet</div>${
-        admin ? `<div style="font-size:13px;color:var(--text-faint);margin-top:4px;">Commencez par créer une thématique (ex : dopage PGaN, double EBL).</div>` : ""
+        admin && !area.is_system ? `<div style="font-size:13px;color:var(--text-faint);margin-top:4px;">Commencez par créer une thématique (ex : dopage PGaN, double EBL).</div>` : ""
       }</div>`;
 }
 
 function thematicOptions(selected) {
   return [`<option value="">— Sans thématique —</option>`]
     .concat(
-      current.thematiques.map(
+      current.thematics.map(
         (t) => `<option value="${escapeHtml(t.slug)}"${t.slug === selected ? " selected" : ""}>${escapeHtml(t.name)}</option>`
       )
     )
     .join("");
 }
 
-function render(area) {
-  current = area;
+function render() {
+  const area = current;
   document.title = `${area.name} — Spectre`;
   document.getElementById("crumb").textContent = "/ " + area.name;
   document.getElementById("area-name-crumb").textContent = area.name;
@@ -229,36 +263,49 @@ function render(area) {
   }
   renderObjectives(area);
 
-  const s = area.stats;
+  const s = experimentTotals(rows);
   document.getElementById("area-kpi").innerHTML = [
-    kpi(s.thematiques, "thématiques"),
-    kpi(s.microprojets, "µprojets"),
-    kpi(s.experiences, "expériences"),
+    kpi(area.thematics.length, "thématiques"),
+    kpi(s.microprojects, "µprojets"),
+    kpi(s.experiments, "expériences"),
     kpi(s.running, "en cours"),
-    kpi(s.concluded, "concluantes"),
+    kpi(s.done, "terminées"),
     kpi(s.wafers, "wafers"),
   ].join("");
   renderThematics(area);
 
-  const admin = area.is_admin;
-  for (const id of ["edit-area-btn", "attach-microprojet-btn", "new-thematic-btn", "new-objective-btn"]) {
-    document.getElementById(id).style.display = admin ? "" : "none";
-  }
-  document.getElementById("ea-delete").style.display = admin && area.slug !== "non-classe" ? "" : "none";
+  // le projet système (« Non classé ») ne porte ni thématique ni objectif : ses µprojets attendent d'être rangés
+  const shown = {
+    "edit-area-btn": admin,
+    "attach-microprojet-btn": admin,
+    "new-thematic-btn": admin && !area.is_system,
+    "new-objective-btn": admin && !area.is_system,
+  };
+  for (const [id, visible] of Object.entries(shown)) document.getElementById(id).style.display = visible ? "" : "none";
+  document.getElementById("ea-delete").style.display = admin && area.can_delete ? "" : "none";
 }
 
 async function load() {
   try {
-    render(await areasApi.get(slug));
+    const [me, area, stats] = await Promise.all([accountsApi.me(), areasApi.get(slug), experimentsApi.stats({ area: slug })]);
+    admin = me.is_admin;
+    current = area;
+    rows = stats;
+    render();
   } catch (err) {
     showError(err);
   }
 }
 
-/** Run a write that returns the refreshed project, re-render, close ``dialog``, flash ``msg``. */
-async function save(dialog, request, msg) {
+/** Run a write, re-read the project (and its µprojets' counts with ``withStats``, which re-reads
+    their repositories), re-render, close ``dialog``, flash ``msg``. */
+async function save(dialog, request, msg, { withStats = false } = {}) {
   try {
-    render(await request());
+    await request();
+    const [area, stats] = await Promise.all([areasApi.get(slug), withStats ? experimentsApi.stats({ area: slug }) : rows]);
+    current = area;
+    rows = stats;
+    render();
     if (dialog) dialog.close();
     if (msg) flash(msg);
   } catch (err) {
@@ -267,7 +314,7 @@ async function save(dialog, request, msg) {
   }
 }
 
-// --- objectifs : ajouter / modifier / supprimer / réordonner ----------------------------------
+// --- objectifs : ajouter / modifier / supprimer -----------------------------------------------
 
 const objDialog = document.getElementById("objective-dialog");
 let editingObjective = null;
@@ -281,7 +328,7 @@ function openObjectiveDialog(objective) {
   document.getElementById("obj-achieved").checked = Boolean(objective && objective.achieved);
   // le µprojet qui valide : un de ce projet (numéro + nom), ou celui déjà choisi s'il est ailleurs
   const validator = objective && objective.validated_by;
-  const choices = current.microprojets.map((p) => ({ slug: p.slug, code: p.code, name: p.name }));
+  const choices = rows.map(({ microproject: p }) => ({ slug: p.slug, code: p.code, name: p.name }));
   if (validator && !choices.some((p) => p.slug === validator.slug)) choices.unshift(validator);
   const select = document.getElementById("obj-validated-by");
   select.innerHTML =
@@ -319,7 +366,7 @@ document.getElementById("obj-delete").addEventListener("click", () => {
 
 document.getElementById("objectives").addEventListener("click", (event) => {
   const edit = event.target.closest("[data-edit-objective]");
-  if (edit) openObjectiveDialog(current.objectifs.find((o) => o.id === Number(edit.dataset.editObjective)));
+  if (edit) openObjectiveDialog(current.objectives.find((o) => o.id === Number(edit.dataset.editObjective)));
 });
 
 // --- thématiques ------------------------------------------------------------------------------
@@ -356,7 +403,7 @@ document.getElementById("thematics").addEventListener("click", (event) => {
   const newMp = event.target.closest("[data-new-mp]");
   if (newMp) return openMicroprojetDialog(newMp.dataset.newMp);
   const edit = event.target.closest("[data-edit-thematic]");
-  if (edit) openThematicDialog(current.thematiques.find((t) => t.slug === edit.dataset.editThematic));
+  if (edit) openThematicDialog(current.thematics.find((t) => t.slug === edit.dataset.editThematic));
 });
 
 // --- nouveau µprojet --------------------------------------------------------------------------
@@ -393,7 +440,7 @@ document.getElementById("edit-area-btn").addEventListener("click", () => {
   document.getElementById("ea-period").value = current.objectives_period || "";
   document.getElementById("ea-strategy").value = current.strategy || "";
   document.getElementById("ea-prefix").value = current.code_prefix || "";
-  document.getElementById("ea-prefix-wrap").style.display = current.slug === "non-classe" ? "none" : "";
+  document.getElementById("ea-prefix-wrap").style.display = current.is_system ? "none" : ""; // il ne numérote pas ses µprojets
   eaDialog.showModal();
 });
 document.getElementById("ea-cancel").addEventListener("click", () => eaDialog.close());
@@ -407,7 +454,7 @@ document.getElementById("edit-area-form").addEventListener("submit", (event) => 
         description: document.getElementById("ea-description").value,
         strategy: document.getElementById("ea-strategy").value,
         objectives_period: document.getElementById("ea-period").value,
-        code_prefix: current.slug === "non-classe" ? null : document.getElementById("ea-prefix").value,
+        ...(current.is_system ? {} : { code_prefix: document.getElementById("ea-prefix").value }),
       }),
     "Projet mis à jour."
   );
@@ -451,138 +498,13 @@ document.getElementById("attach-confirm").addEventListener("click", () => {
   save(
     attachDialog,
     () =>
-      areasApi.assignMicroproject(slug, {
-        microproject_slug: microprojectSlug,
-        thematique_slug: document.getElementById("attach-thematic").value || null,
+      microprojectsApi.update(microprojectSlug, {
+        area: slug,
+        thematic: document.getElementById("attach-thematic").value || null,
       }),
-    "µprojet rattaché."
+    "µprojet rattaché.",
+    { withStats: true }
   );
-});
-
-// --- fiche d'étude derrière un point de tendance (démo) -----------------------------------------
-
-const studyDialog = document.getElementById("study-dialog");
-const DIRECTION_LABELS = { maximize: "Maximiser", minimize: "Minimiser", target: "Cible précise", observe: "Observer" };
-
-// Vue symbolique de l'arbre d'expériences : la ligne principale des études (en haut), les pistes
-// secondaires en dessous ; le chemin jusqu'à l'étude affichée est tracé, la suite estompée.
-function studyTreeSvg(tree) {
-  const colW = 118;
-  const laneH = 58;
-  const pad = 52; // place pour les libellés centrés sous les nœuds des bords
-  const cols = Math.max(...tree.nodes.map((n) => n.col)) + 1;
-  const lanes = Math.max(...tree.nodes.map((n) => n.lane)) + 1;
-  const width = pad * 2 + (cols - 1) * colW;
-  const height = pad + (lanes - 1) * laneH + 34;
-  const pos = new Map(tree.nodes.map((n) => [n.id, { x: pad + n.col * colW, y: pad + n.lane * laneH, node: n }]));
-  const edges = tree.edges
-    .map(([from, to]) => {
-      const a = pos.get(from);
-      const b = pos.get(to);
-      const onPath = b.node.state !== "future" && a.node.state !== "future";
-      const d = a.y === b.y ? `M${a.x},${a.y} L${b.x},${b.y}` : `M${a.x},${a.y} C${a.x + colW * 0.55},${a.y} ${b.x - colW * 0.55},${b.y} ${b.x},${b.y}`;
-      return `<path class="tree-edge${onPath ? " is-path" : ""}" d="${d}"/>`;
-    })
-    .join("");
-  const nodes = tree.nodes
-    .map((n) => {
-      const { x, y } = pos.get(n.id);
-      const status = n.status === "abandoned" ? " is-abandoned" : n.status === "inconclusive" ? " is-inconclusive" : "";
-      const study = n.lane === 0 ? ` data-study="${escapeHtml(n.id)}" tabindex="0" role="button" aria-label="Ouvrir l'étude ${escapeHtml(n.title)}"` : "";
-      return `<g class="tree-node is-${n.state}${status}" transform="translate(${x},${y})"${study}>
-          <title>${escapeHtml(n.title)}</title>
-          <circle r="${n.state === "current" ? 10 : 8}"></circle>
-          <text y="24" text-anchor="middle">${escapeHtml(n.label)}</text>
-        </g>`;
-    })
-    .join("");
-  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Arbre des expériences de l'étude">${edges}${nodes}</svg>`;
-}
-
-function studyHtml(study) {
-  const r = study.result;
-  const delta = r.previous != null ? `<span class="study__result-delta">${r.value - r.previous >= 0 ? "+" : ""}${(r.value - r.previous).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} pt</span> vs étude précédente · ` : "";
-  const o = study.objective;
-  const [year, month] = study.period.split("-");
-  const when = new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
-  return `
-    <div class="study__head">
-      <div>
-        <div class="study__badges">
-          ${study.demo ? `<span class="study__demo">Démo · fiche fictive</span>` : ""}
-          <span class="study__where">${escapeHtml(study.project)} › ${escapeHtml(study.microproject)} · conclue en ${escapeHtml(when)}</span>
-        </div>
-        <h2 class="study__title" id="study-title">${escapeHtml(study.title)}</h2>
-        <p class="study__change">${escapeHtml(study.change)}</p>
-      </div>
-      <button type="button" class="btn btn-line btn-sm" id="study-close">Fermer</button>
-    </div>
-    <div class="study__grid">
-      <div class="study__panel">
-        <div class="study__panel-title">Structure</div>
-        <div class="study__svg">${study.structure_svg}</div>
-        <div class="study__legend">${study.materials.map((m) => `<span><i style="background:${escapeHtml(study.material_colors[m] || "var(--text-faint)")};"></i>${escapeHtml(m)}</span>`).join("")}</div>
-        <details class="study__steps"><summary>Procédé (${study.steps.length} étapes)</summary><ol>${study.steps.map((name) => `<li>${escapeHtml(name)}</li>`).join("")}</ol></details>
-      </div>
-      <div>
-        <div class="study__panel">
-          <div class="study__panel-title">Résultat</div>
-          <div class="study__result">
-            <span class="study__result-value">${escapeHtml(r.metric)} ${r.value.toLocaleString("fr-FR")} ${escapeHtml(r.unit)}</span>
-          </div>
-          <div class="study__result-meta">${delta}objectif ${r.target.toLocaleString("fr-FR")} ${escapeHtml(r.unit)}</div>
-        </div>
-        <div class="study__panel">
-          <div class="study__panel-title">Objectif</div>
-          <div class="study__objective-name">${escapeHtml(o.name)}</div>
-          <div class="study__meta">${escapeHtml(DIRECTION_LABELS[o.direction] || o.direction)} · cible ${o.target.toLocaleString("fr-FR")} % · <strong>${escapeHtml(o.status)}</strong></div>
-          <div class="study__meta">${escapeHtml(o.rationale)}</div>
-        </div>
-        <div class="study__panel">
-          <div class="study__panel-title">Conclusion</div>
-          ${statusBadgeHtml("concluded", study.conclusion.decision)}
-          <p class="study__conclusion">${escapeHtml(study.conclusion.summary)}</p>
-        </div>
-      </div>
-    </div>
-    <div class="study__panel study__tree">
-      <div class="study__panel-title">Arbre d'expériences</div>
-      ${studyTreeSvg(study.tree)}
-      <div class="tree-legend"><span>● étude de la ligne principale (cliquer pour l'ouvrir)</span><span>◌ piste abandonnée ou non concluante</span></div>
-    </div>`;
-}
-
-async function openStudy(kpiKey, studyId) {
-  if (!kpiKey || !studyId) return;
-  const box = document.getElementById("study-content");
-  if (!studyDialog.open) {
-    box.innerHTML = `<div class="skeleton" style="height:420px;"></div>`;
-    studyDialog.showModal();
-  }
-  try {
-    const study = await kpisDemoApi.study(slug, kpiKey, studyId);
-    box.innerHTML = studyHtml(study);
-    box.dataset.kpi = kpiKey;
-    document.getElementById("study-close").focus();
-  } catch (err) {
-    box.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div><button type="button" class="btn btn-line btn-sm" id="study-close" style="margin-top:12px;">Fermer</button>`;
-  }
-}
-
-document.getElementById("study-content").addEventListener("click", (event) => {
-  if (event.target.closest("#study-close")) return studyDialog.close();
-  const node = event.target.closest("[data-study]");
-  if (node) openStudy(document.getElementById("study-content").dataset.kpi, node.dataset.study);
-});
-document.getElementById("study-content").addEventListener("keydown", (event) => {
-  const node = event.target.closest && event.target.closest("[data-study]");
-  if (node && (event.key === "Enter" || event.key === " ")) {
-    event.preventDefault();
-    openStudy(document.getElementById("study-content").dataset.kpi, node.dataset.study);
-  }
-});
-studyDialog.addEventListener("click", (event) => {
-  if (event.target === studyDialog) studyDialog.close(); // clic sur le fond
 });
 
 load();

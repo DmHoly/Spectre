@@ -3,7 +3,7 @@
 const kpisDemoApi = {
   study(areaSlug, kpiKey, studyId) {
     return api.get(
-      `/api/management/${encodeURIComponent(areaSlug)}/tendances/${encodeURIComponent(kpiKey)}/etudes/${encodeURIComponent(studyId)}`
+      `/api/areas/${encodeURIComponent(areaSlug)}/kpis/${encodeURIComponent(kpiKey)}/studies/${encodeURIComponent(studyId)}`
     );
   },
 };

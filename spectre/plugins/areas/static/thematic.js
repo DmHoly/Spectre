@@ -4,7 +4,8 @@
    aujourd'hui), au même code que le graphe de filiation (lineage-graph.js : creux = en cours,
    plein = terminée, pictogramme = issue). À droite d'« aujourd'hui », la zone à venir et, plus
    bas, le bloc « Perspectives » - un aperçu (placeholder) de la future feuille de route.
-   Voir spectre.api.management::get_thematic. */
+   La thématique et son projet viennent de areasApi, la frise et les compteurs de experimentsApi
+   (timeline, stats - champs réservés aux membres d'un µprojet). */
 
 const { slug: areaSlug, thematique_slug: thematicSlug } = routeParams("/management/{slug}/thematiques/{thematique_slug}");
 const areaPath = `/management/${encodeURIComponent(areaSlug)}`;
@@ -57,11 +58,11 @@ function thematicHref(slug) {
 }
 
 function renderTravel(t) {
-  const index = t.thematiques.findIndex((x) => x.slug === t.slug);
-  document.getElementById("th-travel").innerHTML = t.thematiques
+  const index = t.thematics.findIndex((x) => x.slug === t.slug);
+  document.getElementById("th-travel").innerHTML = t.thematics
     .map((x) => {
       const active = x.slug === t.slug;
-      return `<a class="tab${active ? " active" : ""}" href="${thematicHref(x.slug)}"${active ? ` aria-current="page"` : ""}>${escapeHtml(x.name)}<span class="tab__count" aria-label="${plural(x.microprojets, "µprojet", "µprojets")}">${x.microprojets}</span></a>`;
+      return `<a class="tab${active ? " active" : ""}" href="${thematicHref(x.slug)}"${active ? ` aria-current="page"` : ""}>${escapeHtml(x.name)}<span class="tab__count" aria-label="${plural(x.microproject_count, "µprojet", "µprojets")}">${x.microproject_count}</span></a>`;
     })
     .join("");
   const step = (id, target, fallback) => {
@@ -76,26 +77,26 @@ function renderTravel(t) {
       link.setAttribute("aria-disabled", "true");
     }
   };
-  step("th-prev", index > 0 ? t.thematiques[index - 1] : null, "Précédente");
-  step("th-next", index >= 0 && index < t.thematiques.length - 1 ? t.thematiques[index + 1] : null, "Suivante");
+  step("th-prev", index > 0 ? t.thematics[index - 1] : null, "Précédente");
+  step("th-next", index >= 0 && index < t.thematics.length - 1 ? t.thematics[index + 1] : null, "Suivante");
   const active = document.querySelector("#th-travel .tab.active");
   if (active) active.scrollIntoView({ block: "nearest", inline: "center" });
 }
 
 function renderKpis(t) {
-  const s = t.stats;
+  const s = experimentTotals(t.microprojects);
   const now = new Date();
-  const done = t.microprojets.flatMap((p) => p.frise.filter((n) => n.ended_at)).map((n) => new Date(n.ended_at) - new Date(n.started_at));
+  const done = t.microprojects.flatMap((p) => p.nodes.filter((n) => n.ended_at)).map((n) => new Date(n.ended_at) - new Date(n.started_at));
   const typical = median(done);
-  const starts = t.microprojets.flatMap((p) => [p.created_at, ...p.frise.map((n) => n.started_at)]).filter(Boolean).map((d) => new Date(d));
+  const starts = t.microprojects.flatMap((p) => [p.created_at, ...p.nodes.map((n) => n.started_at)]).filter(Boolean).map((d) => new Date(d));
   const since = starts.length ? new Date(Math.min(...starts)) : null;
   const box = document.getElementById("th-kpis");
   box.innerHTML = [
-    kpi(s.microprojets, "µprojets"),
-    kpi(s.experiences, "expériences"),
+    kpi(s.microprojects, "µprojets"),
+    kpi(s.experiments, "expériences"),
     kpi(s.running, "en cours"),
-    kpi(t.microprojets.reduce((n, p) => n + p.frise.filter((x) => x.status === "hold").length, 0), "dont en pause"),
-    kpi(s.concluded, "terminées"),
+    kpi(t.microprojects.reduce((n, p) => n + p.nodes.filter((x) => x.status === "hold").length, 0), "dont en pause"),
+    kpi(s.done, "terminées"),
     kpi(s.wafers, "wafers"),
     kpi(typical == null ? "—" : escapeHtml(formatDuration(typical)), "durée médiane jusqu'à conclusion"),
     kpi(since ? escapeHtml(formatDuration(now - since)) : "—", "d'activité"),
@@ -115,16 +116,10 @@ const AXIS_H = 40;
 const PAST_SHARE = 0.8; // part de la largeur pour le passé ; le reste = la zone « à venir »
 const DAY = 86400000;
 
-// « 6 prochains mois » -> 6 (l'horizon des objectifs du projet donne la largeur de la zone à venir).
-function horizonMonths(period) {
-  const match = /(\d+)\s*(?:derniers?\s+|prochains?\s+)?mois/i.exec(period || "");
-  return match ? Math.min(24, Math.max(1, Number(match[1]))) : 6;
-}
-
 function friseGeometry(t, width) {
   const now = new Date();
-  const futureEnd = timelineAddMonths(now, horizonMonths(t.area.objectives_period));
-  const starts = t.microprojets.flatMap((p) => [p.created_at, ...p.frise.map((n) => n.started_at)]).filter(Boolean).map((d) => +new Date(d));
+  const futureEnd = timelineAddMonths(now, t.area.horizon_months);
+  const starts = t.microprojects.flatMap((p) => [p.created_at, ...p.nodes.map((n) => n.started_at)]).filter(Boolean).map((d) => +new Date(d));
   let start = starts.length ? Math.min(...starts) : +now - 90 * DAY;
   start = Math.min(start, +now - 30 * DAY); // jamais un passé écrasé sur quelques pixels
   start -= (+now - start) * 0.04;
@@ -146,7 +141,7 @@ function friseTicks(geo) {
 }
 
 function axisSvg(geo, ticks, t) {
-  const months = horizonMonths(t.area.objectives_period);
+  const months = t.area.horizon_months;
   const futureMid = (geo.pastW + geo.plotW) / 2;
   return `<svg class="frise__track frise-axis" width="${geo.plotW}" height="${AXIS_H}" viewBox="0 0 ${geo.plotW} ${AXIS_H}" aria-hidden="true">
       <rect x="${geo.pastW}" y="0" width="${geo.plotW - geo.pastW}" height="${AXIS_H}" fill="url(#frise-hatch)"></rect>
@@ -222,7 +217,7 @@ function laneLabel(p) {
   const name = p.role
     ? `<a class="frise__name" href="${microprojetUrl(p)}" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</a>`
     : `<span class="frise__name" title="${escapeHtml(p.name)} - vous n'êtes pas membre de ce µprojet">${escapeHtml(p.name)}</span>`;
-  const meta = [plural(p.frise.length, "version", "versions"), p.created_at ? `créé le ${formatDate(p.created_at)}` : ""].filter(Boolean).join(" · ");
+  const meta = [plural(p.nodes.length, "version", "versions"), p.created_at ? `créé le ${formatDate(p.created_at)}` : ""].filter(Boolean).join(" · ");
   return `<div class="frise__label">
       <div class="frise__title">${p.code ? `<span class="mp-code">${escapeHtml(p.code)}</span>` : ""}${name}</div>
       ${ownerChipHtml(p.owners, { label: false })}
@@ -234,22 +229,22 @@ let friseLanes = [];
 
 function renderFrise(t) {
   const scroll = document.getElementById("frise-scroll");
-  if (!t.microprojets.length) {
+  if (!t.microprojects.length) {
     scroll.innerHTML = `<div class="empty-state"><div style="font-weight:600;color:var(--text-soft);">Aucun µprojet dans cette thématique pour l'instant</div><div style="font-size:13px;">« + Nouveau µprojet » pour démarrer sa chronologie.</div></div>`;
     return;
   }
   const geo = friseGeometry(t, scroll.clientWidth || 1000);
   const ticks = friseTicks(geo);
-  friseLanes = t.microprojets.map((p) => ({
+  friseLanes = t.microprojects.map((p) => ({
     p,
-    items: p.frise
+    items: p.nodes
       .map((n) => {
         const span = lineageSpan(n);
         return { ...n, start: new Date(span.start), end: span.end ? new Date(span.end) : geo.now };
       })
       .sort((a, b) => a.start - b.start),
   }));
-  const months = horizonMonths(t.area.objectives_period);
+  const months = t.area.horizon_months;
   scroll.innerHTML = `
     <div class="frise" style="width:${geo.labelW + geo.plotW}px;--label-w:${geo.labelW}px;">
       ${timelineHatchDefs("frise-hatch")}
@@ -323,7 +318,7 @@ friseScroll.addEventListener("keydown", (event) => {
 let resizeTimer = null;
 new ResizeObserver(() => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => current && current.microprojets.length && renderFrise(current), 120);
+  resizeTimer = setTimeout(() => current && current.microprojects.length && renderFrise(current), 120);
 }).observe(friseScroll);
 
 // Vue tableau de la frise : les mêmes données, lisibles sans la couleur ni la souris.
@@ -348,7 +343,7 @@ function renderTable() {
 // --- µprojets ---------------------------------------------------------------------------------
 
 function lastActivity(p) {
-  const dates = [p.created_at, ...p.frise.flatMap((n) => [n.started_at, n.ended_at])].filter(Boolean).map((d) => +new Date(d));
+  const dates = [p.created_at, ...p.nodes.flatMap((n) => [n.started_at, n.ended_at])].filter(Boolean).map((d) => +new Date(d));
   return dates.length ? new Date(Math.max(...dates)).toISOString() : null;
 }
 
@@ -363,7 +358,7 @@ function microprojetCard(p) {
     <div style="font-size:13px;color:var(--text-soft);min-height:16px;">${escapeHtml(p.description || "")}</div>
     ${ownerChipHtml(p.owners)}
     <div class="mp-card__stats">
-      <span>${plural(p.experiences, "expérience", "expériences")}</span><span>${p.running} en cours</span><span>${p.concluded} terminées</span><span>${p.wafers} wafers</span>
+      <span>${plural(p.running + p.concluded + p.abandoned, "expérience", "expériences")}</span><span>${p.running} en cours</span><span>${p.concluded + p.abandoned} terminées</span><span>${p.wafers} wafers</span>
       ${last ? `<span style="flex-basis:100%;">Dernière activité ${escapeHtml(timeAgo(last))}</span>` : ""}
     </div>`;
   return p.role
@@ -372,8 +367,8 @@ function microprojetCard(p) {
 }
 
 function renderMicroprojets(t) {
-  document.getElementById("th-microprojets").innerHTML = t.microprojets.length
-    ? t.microprojets.map(microprojetCard).join("")
+  document.getElementById("th-microprojets").innerHTML = t.microprojects.length
+    ? t.microprojects.map(microprojetCard).join("")
     : `<div class="card empty-state" style="grid-column:1/-1;">Aucun µprojet dans cette thématique pour l'instant.</div>`;
 }
 
@@ -385,7 +380,7 @@ function quarterLabel(date) {
 
 function renderFuture(t) {
   const now = new Date();
-  const months = horizonMonths(t.area.objectives_period);
+  const months = t.area.horizon_months;
   const quarters = [];
   for (let m = 1; m <= months && quarters.length < 3; m += 1) {
     const label = quarterLabel(timelineAddMonths(now, m));
@@ -433,10 +428,35 @@ document.getElementById("microprojet-form").addEventListener("submit", async (ev
 
 // --- chargement -------------------------------------------------------------------------------
 
+// La page à partir de ses quatre lectures : la thématique et son projet (areasApi), la frise de ses
+// µprojets (experimentsApi.timeline) et les compteurs de tous ceux du projet (experimentsApi.stats),
+// qui donnent aussi le nombre de µprojets de chaque thématique.
+function pageData(thematic, area, timeline, stats) {
+  const counts = new Map(stats.map((row) => [row.microproject.slug, row]));
+  const microprojects = timeline.map(({ microproject, nodes }) => {
+    const { running = 0, concluded = 0, abandoned = 0, wafers = 0 } = counts.get(microproject.slug) || {};
+    return { ...microproject, nodes, running, concluded, abandoned, wafers };
+  });
+  const countIn = (t) => stats.filter((row) => row.microproject.thematic && row.microproject.thematic.slug === t.slug).length;
+  return {
+    ...thematic,
+    area: { ...thematic.area, objectives_period: area.objectives_period, horizon_months: area.horizon_months },
+    thematics: area.thematics.map((t) => ({ slug: t.slug, name: t.name, microproject_count: countIn(t) })),
+    microprojects,
+  };
+}
+
 async function load() {
   document.getElementById("frise-legend").innerHTML = lineageLegendHtml({ tip: false });
   try {
-    current = await areasApi.getThematic(areaSlug, thematicSlug);
+    current = pageData(
+      ...(await Promise.all([
+        areasApi.getThematic(areaSlug, thematicSlug),
+        areasApi.get(areaSlug),
+        experimentsApi.timeline({ area: areaSlug, thematic: thematicSlug }),
+        experimentsApi.stats({ area: areaSlug }),
+      ]))
+    );
   } catch (err) {
     showError(err);
     document.getElementById("th-name").textContent = "Thématique introuvable";

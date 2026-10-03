@@ -6,14 +6,19 @@ as demo data everywhere (status ``"demo"`` in :mod:`spectre.plugins.kpis.service
 
 The only real computation is the cross-section of each study's structure: its process is simulated
 by StructureForge, exactly like the structure builder does, so the mock fiche draws a genuine
-structure. Remove the ``demo`` provider from the EQE KPI in :mod:`spectre.plugins.kpis.service` once the
-PRISM hook feeds it.
+structure.
+
+The plugin is only active with ``SPECTRE_DEMO_DATA=1`` (:func:`enabled`): it then registers its EQE
+over the placeholder of :mod:`spectre.plugins.kpis.service` (``kpis.register``); without it, the
+EQE tab stays a placeholder and the study fiche route doesn't exist. Remove this plugin's EQE once
+the PRISM hook feeds the real one.
 """
 
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+import os
+from dataclasses import dataclass, field, replace
 from datetime import date
 from functools import lru_cache
 from typing import Any
@@ -22,10 +27,18 @@ from structureforge.presentation.svg import frame_to_svg
 from structureforge.process.steps import ProcessStep
 from pydantic import TypeAdapter
 
+from ...kernel.errors import NotFound
 from ..areas.service import ManagementArea
+from ..kpis import service as trends
+from ..kpis.service import TrendPoint, TrendResult, month_periods
 from ..structures.simulation import SubstrateSpec, run_simulation
 
 EQE_TARGET = 10.0  # % - the reference line on the chart ("objectif")
+
+
+def enabled() -> bool:
+    """A demonstration instance: ``SPECTRE_DEMO_DATA=1`` (read at each call - tests switch it)."""
+    return os.environ.get("SPECTRE_DEMO_DATA") == "1"
 
 _STEP_LIST = TypeAdapter(list[ProcessStep])
 
@@ -167,12 +180,10 @@ def _period_months_ago(period: str, today: date) -> int:
     return (today.year - year) * 12 + today.month - month
 
 
-def eqe_demo_series(area: ManagementArea, months: int, today: date | None = None):
-    """A rising EQE, month by month: each study lifts the level when it concludes, with a gentle
-    creep and a little noise in between; the months a study concluded carry it (``study``), so the
-    page can open its fiche from the chart."""
-    from ..kpis.service import TrendPoint, TrendResult, month_periods
-
+def eqe_demo_series(area: ManagementArea, months: int, variant: str | None = None, today: date | None = None) -> TrendResult:
+    """A rising EQE, month by month (a KPI provider - the EQE has no variant): each study lifts the
+    level when it concludes, with a gentle creep and a little noise in between; the months a study
+    concluded carry it (``study``), so the page can open its fiche from the chart."""
     today = today or date.today()
     points = []
     for period in month_periods(months, today):
@@ -234,9 +245,13 @@ def _tree(current: str) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges, "current": current}
 
 
-def demo_study(area: ManagementArea, study_id: str, today: date | None = None) -> dict[str, Any]:
-    """The mock fiche of one demo study; ``KeyError`` if unknown."""
-    study = _STUDY_BY_ID[study_id]
+def demo_study(area: ManagementArea, kpi_key: str, study_id: str, today: date | None = None) -> dict[str, Any]:
+    """The mock fiche of one study behind a point of the demo KPI ``kpi_key``."""
+    if not trends.get_kpi(kpi_key).demo:
+        raise NotFound(f"pas de fiche d'étude pour le KPI {kpi_key!r}")
+    study = _STUDY_BY_ID.get(study_id)
+    if study is None:
+        raise NotFound(f"étude {study_id!r} introuvable")
     today = today or date.today()
     year, month = today.year, today.month - study.months_ago
     while month <= 0:
@@ -268,3 +283,6 @@ def demo_study(area: ManagementArea, study_id: str, today: date | None = None) -
         "material_colors": dict(colors),
         "tree": _tree(study_id),
     }
+
+
+EQE_DEMO = trends.register(replace(trends.EQE, provider=eqe_demo_series, demo=True, enabled=enabled))

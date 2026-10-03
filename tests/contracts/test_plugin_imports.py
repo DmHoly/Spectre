@@ -5,7 +5,7 @@ en tête de fichier ou dans une fonction (un import paresseux reste une dépenda
 - le noyau n'importe aucun plugin ;
 - un plugin n'importe que les plugins de son ``depends_on`` (et ceux dont ils dépendent) ;
 - un plugin n'importe jamais le module ``api`` d'un autre ;
-- le domaine d'un plugin (tout module autre que ``api``, ``deps`` et ``schemas``) n'importe pas FastAPI.
+- le domaine d'un plugin (tout module autre que ``api``, ``*_api``, ``deps`` et ``schemas``) n'importe pas FastAPI.
 
 Les exceptions encore permises sont listées ici, chacune avec ce qui la fera disparaître ; une entrée
 qui ne correspond plus à aucun import fait échouer le test.
@@ -22,7 +22,8 @@ HTTP_MODULES = {"api", "deps", "schemas"}
 
 
 def _is_http_module(module: str) -> bool:
-    """``api``, ``deps``, ``schemas`` - ou un routeur annexe ``<sujet>_api`` (microprojects.invitations_api)."""
+    """``api``, ``deps``, ``schemas`` - ou un routeur annexe ``<sujet>_api`` inclus par l'``api`` du plugin
+    (microprojects.invitations_api, experiments.insights_api)."""
     name = module.rsplit(".", 1)[-1]
     return name in HTTP_MODULES or name.endswith("_api")
 
@@ -32,11 +33,6 @@ KERNEL_COMPOSITION_ROOT = ("spectre.kernel.app", "spectre.plugins")
 
 # (module qui importe, module importé) -> ce qui supprimera l'import.
 ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {
-    ("spectre.plugins.areas.api", "spectre.plugins.microprojects.service"): (
-        "GET /api/experiment-stats (agrégats par µprojet) et PATCH /api/microprojects/{mp} (rattachement)"
-    ),
-    ("spectre.plugins.areas.api", "spectre.plugins.experiments.repository"): "GET /api/experiment-stats?area=",
-    ("spectre.plugins.areas.api", "spectre.plugins.experiments.lineage"): "GET /api/experiment-timeline?area=&thematic=",
     ("spectre.plugins.microprojects.api", "spectre.plugins.experiments.repository"): "GET /api/experiment-stats?microproject=",
     ("spectre.plugins.microprojects.api", "spectre.plugins.wafers.fdl"): "GET /api/wafers?fdl=",
     ("spectre.plugins.microprojects.api", "spectre.plugins.wafers.service"): "GET /api/wafers?fdl=",
@@ -47,9 +43,6 @@ ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {
         "GET /api/microprojects/{mp}/lineage sans badge de lot : le front compose les badges via lotsApi"
     ),
     ("spectre.plugins.wafers.api", "spectre.plugins.lots.service"): "GET /api/wafers/{wafer_key} sans les lots : le front appelle GET /api/lots?wafer=",
-    ("spectre.plugins.kpis.service", "spectre.plugins.kpis_demo.service"): (
-        "GET /api/areas/{area_slug}/kpis/{kpi_key} : kpis_demo enregistre lui-même son KPI (kpis.register)"
-    ),
 }
 
 # Modules du domaine qui lèvent encore HTTPException -> ce qui la remplacera.
