@@ -92,7 +92,9 @@ def _detail(repo: follow.Repository, experiment_id: str, version: follow.Experim
         "parents": list(version.parents),
         # the versions derived from this one - more than one makes it a fork point
         "children": [
-            {"experiment_id": child.branch, "version_id": child.id, "title": child.title} for child in repo if version.id in child.parents
+            {"experiment_id": child.branch, "version_id": child.id, "title": child.title, "is_tip": repo.branches.get(child.branch) == child.id}
+            for child in repo
+            if version.id in child.parents
         ],
         "created_at": version.created_at.isoformat(),
         "author": version.author,

@@ -353,7 +353,7 @@ Droits d'écriture :
 | `POST …/experiences` | `POST /api/microprojects/{mp}/experiments` `{…, structure: {kind: "process", …}}` → 201 |
 | `POST …/experiences/image` | idem, avec `structure: {kind: "images", images: [...]}` |
 | `POST …/experiences/campagne` | idem, avec `structure: {kind: "campaign", …, plan}` ; `from_version` pour partir d'une version existante |
-| `GET …/experiences/{ref}` | `GET /api/microprojects/{mp}/experiments/{exp}` (dernière version, `ETag`) ; le détail porte `id` (la piste), `version_id`, `is_tip`, `children` `[{experiment_id, version_id, title}]` et `continued_at` (première suite structurelle) |
+| `GET …/experiences/{ref}` | `GET /api/microprojects/{mp}/experiments/{exp}` (dernière version, `ETag`) ; le détail porte `id` (la piste), `version_id`, `is_tip`, `children` `[{experiment_id, version_id, title, is_tip}]` et `continued_at` (première suite structurelle) |
 | `GET …/experiences/{ref}/timeline` | `GET …/experiments/{exp}/versions` → tableau, de la première version à la pointe : `{version_id, experiment_id, title, intent, created_at, author, is_tip, version, change_level}` (la frise des structures : `change_level != "none"`) |
 | *(nouveau)* | `GET …/experiments/{exp}/versions/{version_id}` (une version de l'histoire de la piste, `ETag`) |
 | `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 + `Location` vers la version ; **200 sans `Location`** si rien n'a changé (§ 4) ; une campagne y est refusée (422 `campaign_is_a_new_line`) : elle se lance avec `from_version` |
@@ -518,10 +518,12 @@ Supprimée : `/microprojets/{slug}/graphe`.
   modifiée entre-temps » avec « Recharger », la saisie restant en place ; un autre refus s'affiche
   tel quel (le `409 has_descendants` d'une suppression, par exemple : le client ne recalcule pas les
   préconditions du serveur).
-- Une version passée (`?version=`, ou pas la pointe) se lit seule : aucun contrôle d'édition, un
-  bandeau « Version du … - voir la version actuelle » et, pour un éditeur, « Partir de cette
-  version », qui ouvre l'éditeur sur `?version=` : il enregistre une nouvelle piste
-  (`POST /experiments` avec `from_version`).
+- Une version passée (`?version=` d'une version qui n'est pas la pointe) se lit seule : aucun
+  contrôle d'édition, un bandeau « Version du … - voir la version actuelle » et, pour un éditeur,
+  « Partir de cette version », qui ouvre l'éditeur sur `?version=` : il enregistre une nouvelle piste
+  (`POST /experiments` avec `from_version`). Un `?version=` qui désigne la pointe (lien d'une ref,
+  par exemple) ouvre la fiche actuelle et le paramètre est retiré de l'adresse (`replaceState`) ;
+  les liens construits par la fiche l'omettent déjà grâce à `is_tip` (frise, `children`).
 - Le vocabulaire d'une étude (types d'étape et leurs paramètres, décisions, résultats d'un objectif)
   est dans `experiments/static/vocabulary.js` (global `ExperimentVocabulary`), chargé par la fiche
   et l'atlas.

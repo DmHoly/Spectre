@@ -4,10 +4,11 @@ une étiquette, une preuve, un statut, une conclusion... dérivaient la nouvelle
 l'hypothèse de la précédente).
 
 Pour chaque piste de chaque µprojet dont la dernière version n'a pas d'hypothèse, le script
-cherche dans son historique (de la plus récente à la plus ancienne) la dernière hypothèse non
-vide, et la reporte sur une nouvelle version de la piste par ``experiments.service.amend`` - le
-seul chemin d'écriture, qui reporte tout le reste tel quel et refuse d'écrire si la piste a bougé
-entre la lecture et l'écriture.
+cherche parmi ses propres versions (de la plus récente à la plus ancienne, sans franchir le point
+de fourche d'une piste née d'une autre) la dernière hypothèse non vide, et la reporte sur une
+nouvelle version de la piste par ``experiments.service.amend`` - le seul chemin d'écriture, qui
+reporte tout le reste tel quel et refuse d'écrire si la piste a bougé entre la lecture et
+l'écriture.
 
 À blanc par défaut : le script affiche ce qu'il ferait, sans rien écrire. ``--apply`` écrit.
 Relisez le rapport avant : une hypothèse retirée volontairement lors d'une vraie évolution
@@ -23,6 +24,7 @@ Par défaut, lit ``SPECTRE_DATA_DIR`` (ou ``./data`` si absent). Arrêtez le ser
 from __future__ import annotations
 
 import argparse
+import itertools
 import os
 import sys
 from dataclasses import dataclass
@@ -52,10 +54,12 @@ def find_repairs(data_dir: Path, only: str | None = None) -> list[Repair]:
             continue
         repo = follow.Repository(follow_dir)
         for experiment_id, tip_id in sorted(repo.branches.items()):
-            history = repo.log(tip_id)  # de la pointe à la première version
-            if (history[0].hypothesis or "").strip():
+            # de la pointe à la première version de la piste : ``log`` suit le premier parent au-delà
+            # du point de fourche, dans la piste d'origine, dont l'hypothèse n'est pas celle-ci
+            own = list(itertools.takewhile(lambda version: version.branch == experiment_id, repo.log(tip_id)))
+            if not own or (own[0].hypothesis or "").strip():
                 continue
-            source = next((version for version in history[1:] if (version.hypothesis or "").strip()), None)
+            source = next((version for version in own[1:] if (version.hypothesis or "").strip()), None)
             if source is not None:
                 repairs.append(
                     Repair(slug, experiment_id, tip_id, source.id, source.created_at.date().isoformat(), source.hypothesis.strip())

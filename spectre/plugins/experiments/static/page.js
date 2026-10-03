@@ -26,7 +26,7 @@
 
 const ExperiencePage = (() => {
   const { slug: microprojectSlug, experiment_id: experimentId } = routeParams("/microprojets/{slug}/experiences/{experiment_id}");
-  const requestedVersion = new URLSearchParams(window.location.search).get("version");
+  let requestedVersion = new URLSearchParams(window.location.search).get("version");
   const panels = [];
   const errorBox = document.getElementById("error");
   const conflictBanner = document.getElementById("conflict-banner");
@@ -207,7 +207,13 @@ const ExperiencePage = (() => {
       detail.has_editable_process ? experimentsApi.process(microprojectSlug, experimentId, detail.version_id).catch(() => null) : null,
     ]);
     if (seq !== loads) return; // un rechargement plus récent est en route
-    const isTip = detail.is_tip && !requestedVersion;
+    if (requestedVersion && detail.is_tip) {
+      // ?version= désigne la pointe (lien d'une ref, d'une version enfant...) : la fiche actuelle,
+      // à son adresse de pointe, que les rechargements après écriture relisent
+      requestedVersion = null;
+      history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
+    }
+    const isTip = detail.is_tip;
     Object.assign(ctx, {
       detail,
       microproject,

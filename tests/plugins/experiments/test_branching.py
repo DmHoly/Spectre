@@ -51,6 +51,12 @@ def test_fork_creates_a_new_line_and_is_visible_as_a_child(client):
     assert continued["parents"] == [launched["version_id"]]
     assert forked["parents"] == [launched["version_id"]]
 
+    # chaque enfant dit s'il est la pointe de sa piste : la fiche le lie sans ?version=
+    assert {c["experiment_id"]: c["is_tip"] for c in first["children"]} == {"reference": True, "piste-epaisse": True}
+    evolve(client, slug, "reference", title="Reference", intent="Reduire encore", steps=steps(10))
+    first = get_version(client, slug, "reference", launched["version_id"])
+    assert {c["experiment_id"]: c["is_tip"] for c in first["children"]} == {"reference": False, "piste-epaisse": True}
+
 
 def test_forking_onto_an_existing_line_name_is_refused(client):
     slug = signup_with_microproject(client, "fork2@example.com", name="F2")

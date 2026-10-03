@@ -61,3 +61,24 @@ def test_the_script_reports_then_restores_lost_hypotheses(client, data_dir, scri
     capsys.readouterr()
     assert script.main(["--data-dir", str(data_dir), "--apply"]) == 0
     assert "Aucune hypothèse à restaurer." in capsys.readouterr().out
+
+
+def test_a_fork_does_not_take_the_hypothesis_of_the_track_it_left(client, data_dir, script, capsys):
+    """``log`` descend au-delà du point de fourche : la piste d'origine a son hypothèse, pas la fourche."""
+    slug = signup_with_microproject(client, "fork@example.com")
+    origin = launch(client, slug, title="Origine", hypothesis="Trois périodes suffisent")
+    fork = launch(
+        client,
+        slug,
+        title="Fourche",
+        entities=[{"sample_id": "W2"}],
+        branch="fourche",
+        from_version={"experiment_id": origin["id"], "version_id": origin["version_id"]},
+    )
+    tag(client, slug, fork["id"], ["sans-hypothese"])
+    count = len(versions(client, slug, fork["id"]))
+
+    assert script.main(["--data-dir", str(data_dir), "--apply"]) == 0
+    assert "Aucune hypothèse à restaurer." in capsys.readouterr().out
+    assert get_experiment(client, slug, fork["id"])["hypothesis"] is None
+    assert len(versions(client, slug, fork["id"])) == count
