@@ -43,7 +43,7 @@ Le noyau ne connaît **aucune** fonctionnalité métier. Il fournit :
 | `plugin.py` | `Plugin`, `Page`, `NavEntry`, `Migration` (dataclasses figées), et `check_dependencies(plugins)`, qui vérifie l'ordre topologique au démarrage |
 | `app.py` | `create_app(plugins=PLUGINS)` : migrations, `include_router` de chaque plugin, routes de pages, montage de `/static/<plugin>/` et `/static/kernel/`, exception handlers, middleware `Cache-Control: no-cache` |
 | `db.py` | `data_dir()`, `connect()`, `get_conn()`, exécuteur de migrations versionnées (table `schema_migrations(plugin, migration_id, applied_at)`), `rebuild_table()` pour les changements non additifs (CHECK, NOT NULL) |
-| `errors.py` | `DomainError` → `NotFound` (404), `Forbidden` (403), `Conflict` (409), `PreconditionFailed` (412), `InvalidInput` (422), `UpstreamError` (502), `Unavailable` (503) ; un handler unique renvoie `{"detail": str, "code": str}` |
+| `errors.py` | `DomainError` → `NotFound` (404), `Forbidden` (403), `Conflict` (409), `PreconditionFailed` (412), `InvalidInput` (422), `UpstreamError` (502), `Unavailable` (503) ; un handler unique renvoie `{"detail": str, "code": str}`. Un plugin peut sous-classer `DomainError` pour un statut qui lui est propre (`attachments.store.TooLarge` : 413, `too_large`), le même handler s'en charge |
 | `locks.py` | `keyed_lock(namespace, key)` : un `threading.Lock` par clé (le serveur tourne en un seul processus) |
 | `mail.py` | `send_email(to, subject, body)` : SMTP si `SPECTRE_SMTP_HOST`, sinon journalisation **sans le corps** hors `SPECTRE_EMAIL_DEBUG=1` |
 | `pages.py` | Service des pages HTML d'un plugin, avec la barre du haut commune à la place du marqueur `<!-- spectre:topbar -->` (fil d'Ariane déclaré dans le marqueur : `crumb-id`, `crumb-text`) : marque, navigation construite à partir des `NavEntry` de tous les plugins (une entrée peut être réservée à certaines pages : `NavEntry.pages`), place de la session |
@@ -108,6 +108,8 @@ de `microprojects` et de `areas`.
 spectre/plugins/<plugin>/
   __init__.py     # PLUGIN = Plugin(...)  — le manifeste, rien d'autre
   api.py          # APIRouter : HTTP uniquement
+  <sujet>_api.py  # routeur annexe inclus par api.py, HTTP lui aussi (microprojects/invitations_api.py,
+                  # experiments/insights_api.py) ; un autre plugin ne l'importe pas plus que api.py
   schemas.py      # modèles Pydantic des requêtes et réponses
   service.py      # domaine (ou store.py + models.py) — sans FastAPI
   migrations.py   # MIGRATIONS = (Migration("0001_initial", ...), ...)
@@ -120,10 +122,10 @@ spectre/plugins/<plugin>/
 
 | Extension | Où | Implémentations réelles |
 |---|---|---|
-| `StructureKind` (Protocol : `key`, `parse`, `render_svg`, `entity_count`) | `structures/kinds.py` | process, campaign, images |
-| `DataSource` (Protocol : `list_types`, `fetch`) | `characterization/source.py` | PRISM, démo |
+| `StructureKind` (Protocol : `key`, `render_svg`, `entity_count` ; `KINDS` indexé par les clés figées). Le corps reçu est lu par l'union `structures.schemas.StructurePayload`, discriminée par `kind` | `structures/kinds.py` | process, campaign, images |
+| `DataSource` (Protocol : `list_types`, `describe`, `query`, `chart`), choisie à un seul endroit (`characterization.service.current_source()`, `SPECTRE_DEMO_DATA`) | `characterization/source.py` | PRISM (`prism_source.py`), démo (`demo.py`) |
 | `register_provider(SearchProvider)` | `search` | microprojects, wafers (lasermark, FDL), lots |
-| `register_library_file(LibraryFile)` | `library` | structures (matériaux, recettes), process_library (présets, briques), experiments (textes de la section intention) |
+| `register_library_file(LibraryFile)` : clé en kebab-case anglais (le nom du fichier YAML reste le nom historique), `parse` (mapping YAML → contenu, `ValueError` si invalide : sert à valider avant l'écriture et à charger) et `fallback` (contenu quand le fichier est absent ou invalide) | `library` | structures (matériaux, recettes), process_library (présets, briques), library (textes de la section intention, servis par `GET /api/ui-texts/intention`) |
 | `register(KpiDefinition)` | `kpis` | activité, wafers, démo EQE |
 | `DataViz.register(component)` | `notebook/static/dataviz/core.js` | table, carte de wafer, distribution, nuage de points, courbes… |
 | `ExperiencePage.registerPanel({key, mount(ctx)})` | `experiments/static/page.js` | evidence, notebook, external_images, lots |
@@ -153,7 +155,8 @@ déplacement de classe ne doit jamais la changer.
   | Introuvable | `404` |
   | Conflit d'état ou doublon | `409` |
   | `If-Match` périmé | `412` |
-  | Saisie invalide | `422` |
+  | Fichier téléversé trop gros | `413` |
+  | Saisie invalide (y compris des identifiants de connexion refusés) | `422` |
 
   Une modification sans effet renvoie `200` et ne crée pas de version.
 - **Recherche et filtres** : par query params sur la collection (`?q=`, `?status=`, `?code=`).
@@ -195,15 +198,15 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 | Avant | Après |
 |---|---|
 | `POST /api/auth/register` | `POST /api/users` → 201 + session |
-| `POST /api/auth/login` | `POST /api/sessions` → 201 |
+| `POST /api/auth/login` | `POST /api/sessions` → 201 `{user, expires_at}` ; identifiants refusés → 422 `invalid_credentials` (401 reste réservé à l'absence de session) |
 | `POST /api/auth/logout` | `DELETE /api/sessions/current` → 204 |
 | `GET /api/auth/me` | `GET /api/users/me` |
 | `PUT /api/auth/me` | `PATCH /api/users/me` |
 | `POST /api/auth/mot-de-passe` | `PUT /api/users/me/password` → 204 (mot de passe actuel faux → 422, jamais 401) |
 | `POST /api/auth/mot-de-passe-oublie` | `POST /api/password-resets` → 202 |
 | `POST /api/auth/reinitialiser` | `POST /api/password-resets/completions` `{token, password}` → 204 |
-| `GET /api/auth/invitation/{token}` | `GET /api/invitations/{token}` (plugin microprojects, public) |
-| *(register avec invitation)* | `POST /api/invitations/{token}/acceptance` (connecté, même e-mail) → 201 |
+| `GET /api/auth/invitation/{token}` | `GET /api/invitations/{token}` (plugin microprojects, public ; `account_exists` pour proposer la connexion plutôt que l'inscription) |
+| *(register avec invitation)* | `POST /api/invitations/{token}/acceptance` (connecté, même e-mail, sinon 403 `email_mismatch`) → 201 `{microproject: {slug, name}, role}` + `Location` vers l'adhésion `/api/microprojects/{mp}/members/{user_id}` |
 
 ### search
 
@@ -215,7 +218,7 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 
 | Avant | Après |
 |---|---|
-| `GET /api/management` | `GET /api/areas` (chaque projet expose `is_system`, `can_delete`) |
+| `GET /api/management` | `GET /api/areas` (chaque projet expose `is_system`, `can_delete`, `horizon_months` calculé par le serveur) |
 | `POST /api/management` | `POST /api/areas` → 201 |
 | `GET /api/management/{slug}` | `GET /api/areas/{area_slug}` (projet, thématiques, objectifs) |
 | `PUT /api/management/{slug}` | `PATCH /api/areas/{area_slug}` |
@@ -272,7 +275,7 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 | Avant | Après |
 |---|---|
 | `GET /api/microprojets/{slug}/materials` | `GET /api/materials` |
-| `GET /api/microprojets/{slug}/recettes` | `GET /api/recipes` |
+| `GET /api/microprojets/{slug}/recettes` | `GET /api/recipes` → `{deposition: [...], etch: [...]}` (exception à « les autres sont un tableau » : le constructeur lit les recettes par sorte d'étape) |
 | `POST /api/microprojets/{slug}/structures/simulate` | `POST /api/simulations` → 200 (calcul, rien n'est stocké) |
 | `POST /api/microprojets/{slug}/structures/variantes` | `POST /api/campaign-previews` → 200 (plafond `MAX_CAMPAIGN_ENTITIES`, 422 au-delà) |
 | `GET /api/microprojets/{slug}/structures/intention-form` | `GET /api/ui-texts/intention` (plugin library) |
@@ -282,9 +285,14 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 
 ### process_library
 
-Chaque collection est **à plat** : chaque élément porte `id` (opaque), `name`, `scope`
-(`builtin` / `shared` / `microproject`), `microproject`, `created_by` et `updated_by`. Le nom n'est
-qu'un champ : on renomme avec un `PATCH`, et un renommage vers un nom déjà pris renvoie 409.
+Chaque collection est **à plat** : chaque élément porte `id` (opaque ; `builtin-<empreinte du nom>`
+pour un élément intégré), `name`, `scope` (`builtin` / `shared` / `microproject`), `microproject`,
+`created_by` et `updated_by` (`{id, name}`, ou `null` pour un élément intégré ou antérieur à cette
+trace) et `can_edit`, calculé par le serveur. Le nom n'est qu'un champ, unique par portée (et par
+µprojet) : on renomme avec un `PATCH`, et un renommage vers un nom déjà pris renvoie 409.
+
+Lecture : un élément d'un µprojet dont on n'est pas membre répond 404 ; `?microproject=` d'un tel
+µprojet répond 403 ; `scope=microproject` sans µprojet répond 422.
 
 Droits d'écriture :
 - `builtin` : lecture seule (on le modifie par les fichiers YAML de `library`) ;
@@ -355,13 +363,22 @@ Droits d'écriture :
 
 ### intent_forms
 
+Même forme et mêmes droits d'écriture que les collections de process_library (portées `shared` et
+`microproject`, sans élément intégré), plus `created_at`, `updated_at` et `form`. Le `PATCH`
+n'accepte que `name` et `yaml` : la portée d'une entrée est fixée à sa création.
+
+Le formulaire actif est une **copie** : son origine `{form_id, name}` est écrite en commentaire
+sur la première ligne de `commit_form.yml` (Follow ignore les commentaires). Modifier ou supprimer
+l'entrée ne touche pas la copie ; `outdated` vaut `true` quand les questions de l'entrée diffèrent
+de la copie (un simple renommage ne compte pas, une entrée supprimée non plus).
+
 | Avant | Après |
 |---|---|
 | `GET /api/microprojets/{slug}/formulaires-intention` | `GET /api/intent-forms?microproject={mp}` (à plat, avec `scope`) |
 | `POST …` | `POST /api/intent-forms` → 201 |
 | `PUT …/{name}` | `PATCH /api/intent-forms/{form_id}` |
 | `DELETE …/{name}?partagee=` | `DELETE /api/intent-forms/{form_id}` → 204 |
-| `GET …/formulaire-actif` | `GET /api/microprojects/{mp}/active-intent-form` (404 si aucun) — lu depuis `commit_form.yml`, la seule vérité |
+| `GET …/formulaire-actif` | `GET /api/microprojects/{mp}/active-intent-form` → `{form, origin, outdated}` (404 `no_active_intent_form` si aucun) — lu depuis `commit_form.yml`, la seule vérité |
 | `POST …/formulaire-actif` `{name}` / `{name: null}` | `PUT …/active-intent-form` `{intent_form_id}` / `DELETE` → 204 |
 
 ### wafers · lots · links
@@ -394,6 +411,11 @@ Droits d'écriture :
 | `GET /api/donnees/hooks/{key}` | `GET /api/characterization/data-types/{data_type_key}` |
 | `POST /api/donnees/hooks/{key}/executer` | `POST /api/characterization/data-types/{data_type_key}/queries` `{parameters, refresh}` → 200 (plafond de wafers commun) |
 | `GET /api/donnees/hooks/{key}/graphiques/{chart}` | `GET /api/characterization/data-types/{data_type_key}/charts/{chart_key}` |
+
+Codes, pour les deux sources : type inconnu (ou que la démo ne sait pas servir) 404 ; type à venir
+422 `not_implemented` ; paramètres invalides ou plus de `MAX_WAFERS` plaques 422 ; configuration
+PRISM absente 503 ; connexion, requête ou fiche `hook.yml` invalide 502 (une fiche invalide est
+écartée du catalogue et journalisée, sans faire tomber `/categories`).
 
 ### Pages (URL françaises, inchangées sauf mention)
 
@@ -443,4 +465,5 @@ Supprimée : `/microprojets/{slug}/graphe`.
 | `tests/integration/` | parcours qui traversent plusieurs plugins |
 
 `conftest.py` isole `SPECTRE_DATA_DIR`, `PRISM_DATA_DIR`, `SPECTRE_LIBRARY_DIR`, le SMTP et le mode
-démo.
+démo. L'application des contrats (`tests/contracts/conftest.py`) active les plugins optionnels
+(`SPECTRE_DEMO_DATA=1`) pour vérifier aussi leurs routes, leurs fichiers et leur 401.
