@@ -1,135 +1,57 @@
-"""Cross-microproject links: the JSON API for :mod:`spectre.plugins.links.service` - create/list/delete a link
-between two microprojects, or between two physical entities tracked on (possibly different) microprojects'
-experiences. Deliberately top-level like :mod:`spectre.plugins.atlas.api` rather than nested under
-``/api/microprojets/{slug}`` - a link names two sides, neither one more "the" microproject than the other,
-and the atlas (the one screen that shows these) already looks across every microproject at once.
+"""Cross-microproject links over HTTP (:mod:`spectre.plugins.links.service`): ``/api/microproject-links``
+and ``/api/entity-links``. Top-level rather than nested under a microproject - a link names two sides,
+neither one more "the" microproject than the other. Each collection reads ``?microproject=`` and
+``?area=`` (slugs): the links touching that microproject, or a microproject of that corporate project.
+
+A link has no route of its own to read it back (it is read in its collection): a creation answers
+201 and the link, without ``Location``.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from dataclasses import asdict
+
+from fastapi import APIRouter, Depends, Response
 
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from ..microprojects import service as microprojects
 from . import service as links
+from .schemas import EntityLinkCreate, EntityRefInput, MicroprojectLinkCreate
 
 router = APIRouter(prefix="/api", tags=["links"])
 
 
-def _require_editor_by_slug(slug: str, user: User) -> microprojects.Microproject:
-    try:
-        microproject = microprojects.get_by_slug(slug)
-    except microprojects.MicroprojectNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"projet {slug!r} introuvable") from exc
-    _check_editor(microproject, user)
-    return microproject
+def _entity(ref: EntityRefInput) -> links.EntityRef:
+    return links.EntityRef(ref.microproject, ref.experiment_id, ref.entity_index)
 
 
-def _check_editor(microproject: microprojects.Microproject, user: User) -> None:
-    role = microprojects.role_for(microproject.id, user.id)
-    if role is None or microprojects.ROLE_ORDER[role] < microprojects.ROLE_ORDER["editor"]:
-        raise HTTPException(status_code=403, detail="vous n'avez pas les droits nécessaires pour cette action")
+@router.get("/microproject-links")
+def list_microproject_links(microproject: str | None = None, area: str | None = None, user: User = Depends(current_user)) -> list[dict]:
+    return [asdict(link) for link in links.list_microproject_links(user.id, microproject=microproject, area=area)]
 
 
-class MicroprojectLinkRequest(BaseModel):
-    microproject_a: str
-    microproject_b: str
-    note: str = ""
+@router.post("/microproject-links", status_code=201)
+def create_microproject_link(body: MicroprojectLinkCreate, user: User = Depends(current_user)) -> dict:
+    return asdict(links.create_microproject_link(user.id, body.a, body.b, note=body.note))
 
 
-class EntityRefInput(BaseModel):
-    microproject_slug: str
-    experience_id: str
-    entity_index: int
+@router.delete("/microproject-links/{link_id}", status_code=204)
+def delete_microproject_link(link_id: int, user: User = Depends(current_user)) -> Response:
+    links.delete_microproject_link(user.id, link_id)
+    return Response(status_code=204)
 
 
-class EntityLinkRequest(BaseModel):
-    a: EntityRefInput
-    b: EntityRefInput
-    note: str = ""
+@router.get("/entity-links")
+def list_entity_links(microproject: str | None = None, area: str | None = None, user: User = Depends(current_user)) -> list[dict]:
+    return [asdict(link) for link in links.list_entity_links(user.id, microproject=microproject, area=area)]
 
 
-def _microproject_link_payload(link: links.MicroprojectLink) -> dict:
-    return {"id": link.id, "microproject_a_id": link.microproject_a_id, "microproject_b_id": link.microproject_b_id, "note": link.note, "created_at": link.created_at}
+@router.post("/entity-links", status_code=201)
+def create_entity_link(body: EntityLinkCreate, user: User = Depends(current_user)) -> dict:
+    return asdict(links.create_entity_link(user.id, _entity(body.a), _entity(body.b), note=body.note))
 
 
-def _entity_link_payload(link: links.EntityLink) -> dict:
-    return {
-        "id": link.id,
-        "a": {"microproject_slug": link.a.microproject_slug, "experience_id": link.a.experience_id, "entity_index": link.a.entity_index},
-        "b": {"microproject_slug": link.b.microproject_slug, "experience_id": link.b.experience_id, "entity_index": link.b.entity_index},
-        "note": link.note,
-        "created_at": link.created_at,
-    }
-
-
-@router.post("/liens-projets", status_code=201)
-def create_microproject_link(body: MicroprojectLinkRequest, user: User = Depends(current_user)) -> dict:
-    # Editor on both sides, deliberately: creating a link is asserting something about two
-    # microprojects at once, not just your own - see docs/pages/architecture.html for the reasoning.
-    microproject_a = _require_editor_by_slug(body.microproject_a, user)
-    microproject_b = _require_editor_by_slug(body.microproject_b, user)
-    try:
-        link = links.create_microproject_link(microproject_a.id, microproject_b.id, note=body.note, created_by=user.id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _microproject_link_payload(link)
-
-
-@router.delete("/liens-projets/{link_id}")
-def delete_microproject_link(link_id: int, user: User = Depends(current_user)) -> dict:
-    link = links.get_microproject_link(link_id)
-    if link is None:
-        raise HTTPException(status_code=404, detail="lien introuvable")
-    # Editor on either side is enough to retract a link - unlike creating one, this doesn't assert
-    # anything new about the other microproject, and requiring both would strand a link if the user
-    # only ever had access to one side (e.g. removed as a member of the other microproject since).
-    # microproject_a_id/microproject_b_id are FK ON DELETE CASCADE (migrations.py), so both microprojects existing here
-    # is guaranteed - get_microproject_link would already have returned None otherwise.
-    microproject_a = microprojects.get_by_id(link.microproject_a_id)
-    microproject_b = microprojects.get_by_id(link.microproject_b_id)
-    role_a = microprojects.role_for(microproject_a.id, user.id)
-    role_b = microprojects.role_for(microproject_b.id, user.id)
-    can_delete = (role_a is not None and microprojects.ROLE_ORDER[role_a] >= microprojects.ROLE_ORDER["editor"]) or (
-        role_b is not None and microprojects.ROLE_ORDER[role_b] >= microprojects.ROLE_ORDER["editor"]
-    )
-    if not can_delete:
-        raise HTTPException(status_code=403, detail="vous n'avez pas les droits nécessaires pour cette action")
-    links.delete_microproject_link(link_id)
-    return {"status": "ok"}
-
-
-@router.post("/liens-entites", status_code=201)
-def create_entity_link(body: EntityLinkRequest, user: User = Depends(current_user)) -> dict:
-    _require_editor_by_slug(body.a.microproject_slug, user)
-    _require_editor_by_slug(body.b.microproject_slug, user)
-    a = links.EntityRef(body.a.microproject_slug, body.a.experience_id, body.a.entity_index)
-    b = links.EntityRef(body.b.microproject_slug, body.b.experience_id, body.b.entity_index)
-    try:
-        link = links.create_entity_link(a, b, note=body.note, created_by=user.id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _entity_link_payload(link)
-
-
-@router.delete("/liens-entites/{link_id}")
-def delete_entity_link(link_id: int, user: User = Depends(current_user)) -> dict:
-    link = links.get_entity_link(link_id)
-    if link is None:
-        raise HTTPException(status_code=404, detail="lien introuvable")
-    can_delete = False
-    for slug in (link.a.microproject_slug, link.b.microproject_slug):
-        try:
-            microproject = microprojects.get_by_slug(slug)
-        except microprojects.MicroprojectNotFoundError:
-            continue
-        role = microprojects.role_for(microproject.id, user.id)
-        if role is not None and microprojects.ROLE_ORDER[role] >= microprojects.ROLE_ORDER["editor"]:
-            can_delete = True
-            break
-    if not can_delete:
-        raise HTTPException(status_code=403, detail="vous n'avez pas les droits nécessaires pour cette action")
-    links.delete_entity_link(link_id)
-    return {"status": "ok"}
+@router.delete("/entity-links/{link_id}", status_code=204)
+def delete_entity_link(link_id: int, user: User = Depends(current_user)) -> Response:
+    links.delete_entity_link(user.id, link_id)
+    return Response(status_code=204)

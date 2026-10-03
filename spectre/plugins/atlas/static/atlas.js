@@ -1,17 +1,16 @@
-/* Atlas : vue d'ensemble multi-projets - un cluster par projet, une bulle par étude (la pointe de
-   chaque ligne de filiation, pas chaque version - voir GET /api/atlas / spectre.core.atlas), un
-   petit point par échantillon physique suivi. Force-layout D3 plutôt que Plotly pour un vrai
-   contrôle du zoom (affichage progressif des noms) et du clic (panneau contextuel) - voir la
-   conversation de conception pour le pourquoi.
+/* Atlas d'un projet corporate : un cluster par µprojet, une bulle par piste d'étude (montrée à sa
+   pointe, pas chaque version - voir atlas/service.py), un petit point par échantillon physique suivi.
+   Force-layout D3 pour un vrai contrôle du zoom (affichage progressif des noms) et du clic (panneau
+   contextuel).
 
-   Liens inter-projets (spectre.core.links) : la seule relation qui traverse deux µprojets - Follow
-   refuse une référence pointée hors de son propre dépôt, donc ça ne pouvait pas vivre là. Dessinés
-   en tirets accent par-dessus les clusters, créés/retirés depuis le panneau contextuel d'un µprojet
-   ou d'une entité.
+   Une étude est désignée par sa piste (`experiment_id`), une entité par (µprojet, piste, index) :
+   c'est l'adressage des liens d'entités, qui survivent ainsi à toute écriture sur l'une des deux
+   études. Les noms de piste ne sont uniques qu'à l'intérieur d'un µprojet, d'où le slug dans les clés.
 
-   Pièces jointes : retirées du panneau contextuel pour l'instant (gestion depuis la fiche
-   d'expérience uniquement, spectre/plugins/evidence/static/evidence-panel.js) - cette partie doit être revue en
-   entier, pas seulement republiée telle quelle ici.
+   Liens entre µprojets et entre entités (plugin links) : la seule relation qui traverse deux
+   µprojets. Dessinés en tirets accent par-dessus les clusters, créés et retirés depuis le panneau
+   contextuel d'un µprojet ou d'une entité via linksApi ; après une écriture, seuls les liens sont
+   relus et redessinés - la disposition des nœuds ne bouge pas.
 */
 
 const STATUS_COLOR = {
@@ -31,19 +30,33 @@ const svg = d3.select("#atlas-svg");
 const panel = document.getElementById("atlas-panel");
 const panelErrorBox = document.getElementById("panel-error");
 let selection = null; // the currently-clicked node's datum, for the side panel
-let currentAtlas = null; // the raw /api/atlas payload, for building link lists/pickers
-let nodesById = new Map(); // rebuilt on every build() - microproject:*/experience-id/entity:*:* -> node
+let currentAtlas = null; // l'atlas reçu (ses liens relus après chaque écriture), pour les listes et les sélecteurs
+let nodesById = new Map(); // microproject:<slug> / experiment:<slug>:<piste> / entity:<slug>:<piste>:<index> -> nœud
+let canvas = null; // le <g> que le zoom transforme
+let microprojectBySlug = new Map();
+let crossLinkLayer = null;
+let entityLinkSelection = null;
 
 function microprojectColor(index) {
   return `var(--atlas-cat-${(index % 8) + 1})`;
 }
 
-function entityKey(ref) {
-  return `entity:${ref.experience_id}:${ref.entity_index}`;
+function experimentKey(microprojectSlug, experimentId) {
+  return `experiment:${microprojectSlug}:${experimentId}`;
 }
 
-function matchesEntity(ref, d) {
-  return ref.microproject_slug === d.microprojectSlug && ref.experience_id === d.experienceId && ref.entity_index === d.entityIndex;
+// ref : un bout de lien d'entité, { microproject, experiment_id, entity_index }
+function entityKey(ref) {
+  return `entity:${ref.microproject}:${ref.experiment_id}:${ref.entity_index}`;
+}
+
+function entityRef(d) {
+  return { microproject: d.microprojectSlug, experiment_id: d.experimentId, entity_index: d.entityIndex };
+}
+
+function microprojectName(slug) {
+  const microproject = currentAtlas.microprojects.find((p) => p.slug === slug);
+  return microproject ? microproject.name : slug;
 }
 
 function showPanelError(err) {
@@ -66,9 +79,9 @@ function deleteLinkButtonHtml(cls, id) {
 }
 
 function renderMicroprojectPanel(d) {
-  const experienceCount = d.experiences.length;
-  const entityCount = d.experiences.reduce((n, e) => n + e.entities.length, 0);
-  const myLinks = (currentAtlas.microproject_links || []).filter((l) => l.a.slug === d.slug || l.b.slug === d.slug);
+  const experienceCount = d.experiments.length;
+  const entityCount = d.experiments.reduce((n, e) => n + e.entities.length, 0);
+  const myLinks = currentAtlas.microproject_links.filter((l) => l.a.slug === d.slug || l.b.slug === d.slug);
   const otherMicroprojects = currentAtlas.microprojects.filter((p) => p.slug !== d.slug);
 
   const linksHtml = myLinks
@@ -115,11 +128,11 @@ function renderMicroprojectPanel(d) {
       clearPanelError();
       try {
         await linksApi.createMicroprojectLink({
-          microproject_a: d.slug,
-          microproject_b: document.getElementById("microproject-link-select").value,
+          a: d.slug,
+          b: document.getElementById("microproject-link-select").value,
           note: document.getElementById("microproject-link-note").value.trim(),
         });
-        await refresh(`microproject:${d.slug}`);
+        await refreshLinks();
       } catch (err) {
         showPanelError(err);
       }
@@ -130,7 +143,7 @@ function renderMicroprojectPanel(d) {
       clearPanelError();
       try {
         await linksApi.removeMicroprojectLink(btn.dataset.id);
-        await refresh(`microproject:${d.slug}`);
+        await refreshLinks();
       } catch (err) {
         showPanelError(err);
       }
@@ -236,7 +249,7 @@ async function loadMiniTree(d) {
         window.location.href = n.is_tip ? page : `${page}?version=${encodeURIComponent(n.version_id)}`;
       });
     nodeGroups.each(function (n) {
-      const current = n.id === d.id;
+      const current = n.version_id === d.versionId;
       d3.select(this).html(lineageNodeShapeHtml(n, { radius: current ? miniRadius + 1.5 : miniRadius, selected: current }));
       d3.select(this)
         .append("title") // pas la place pour un libellé texte à cette échelle - la bulle au survol suffit
@@ -250,10 +263,10 @@ async function loadMiniTree(d) {
 function populateEntityLinkExperienceSelect() {
   const projSlug = document.getElementById("entity-link-microproject-select").value;
   const proj = currentAtlas.microprojects.find((p) => p.slug === projSlug);
-  const withEntities = (proj ? proj.experiences : []).filter((e) => e.entities.length > 0);
+  const withEntities = (proj ? proj.experiments : []).filter((e) => e.entities.length > 0);
   const select = document.getElementById("entity-link-experience-select");
   select.innerHTML = withEntities.length
-    ? withEntities.map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.title)}</option>`).join("")
+    ? withEntities.map((e) => `<option value="${escapeHtml(e.experiment_id)}">${escapeHtml(e.title)}</option>`).join("")
     : `<option value="">Aucune étude avec entité suivie</option>`;
   populateEntityLinkEntitySelect();
 }
@@ -262,7 +275,7 @@ function populateEntityLinkEntitySelect() {
   const projSlug = document.getElementById("entity-link-microproject-select").value;
   const expId = document.getElementById("entity-link-experience-select").value;
   const proj = currentAtlas.microprojects.find((p) => p.slug === projSlug);
-  const exp = proj ? proj.experiences.find((e) => e.id === expId) : null;
+  const exp = proj ? proj.experiments.find((e) => e.experiment_id === expId) : null;
   const select = document.getElementById("entity-link-entity-select");
   select.innerHTML = exp
     ? exp.entities.map((ent) => `<option value="${ent.index}">${escapeHtml(ent.sample_id || ent.location || "Échantillon " + (ent.index + 1))}</option>`).join("")
@@ -270,24 +283,25 @@ function populateEntityLinkEntitySelect() {
 }
 
 function renderEntityPanel(d) {
-  const myLinks = (currentAtlas.entity_links || []).filter((l) => matchesEntity(l.a, d) || matchesEntity(l.b, d));
+  const ownKey = entityKey(entityRef(d));
+  const myLinks = currentAtlas.entity_links.filter((l) => entityKey(l.a) === ownKey || entityKey(l.b) === ownKey);
   const linksHtml = myLinks
     .map((l) => {
-      const other = matchesEntity(l.a, d) ? l.b : l.a;
+      const other = entityKey(l.a) === ownKey ? l.b : l.a;
       const otherNode = nodesById.get(entityKey(other));
       const label = otherNode ? otherNode.sample_id || otherNode.location || "Échantillon" : "Échantillon";
       return `
         <div style="padding:8px 0;border-top:1px solid var(--border-soft);font-size:12.5px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
           <div>
             <span style="font-weight:600;">${escapeHtml(label)}</span>
-            <div style="color:var(--text-faint);margin-top:2px;">${escapeHtml(other.microproject_slug)}${l.note ? " — " + escapeHtml(l.note) : ""}</div>
+            <div style="color:var(--text-faint);margin-top:2px;">${escapeHtml(microprojectName(other.microproject))}${l.note ? " — " + escapeHtml(l.note) : ""}</div>
           </div>
           ${deleteLinkButtonHtml("js-delete-entity-link", l.id)}
         </div>`;
     })
     .join("");
 
-  const hasAnyEntityElsewhere = currentAtlas.microprojects.some((p) => p.experiences.some((e) => e.entities.length > 0));
+  const hasAnyEntityElsewhere = currentAtlas.microprojects.some((p) => p.experiments.some((e) => e.entities.length > 0));
 
   panel.innerHTML = `
     <div class="section-title" style="margin-bottom:6px;">Entité physique</div>
@@ -319,7 +333,7 @@ function renderEntityPanel(d) {
           </form>`
         : `<div class="help" style="margin-top:10px;">Aucune autre entité suivie à lier pour l'instant.</div>`
     }`;
-  loadMiniTree({ microprojectSlug: d.microprojectSlug, id: d.experienceId });
+  loadMiniTree({ microprojectSlug: d.microprojectSlug, versionId: d.versionId });
 
   const microprojectSelect = document.getElementById("entity-link-microproject-select");
   if (microprojectSelect) {
@@ -331,19 +345,19 @@ function renderEntityPanel(d) {
       event.preventDefault();
       clearPanelError();
       const bMicroprojectSlug = microprojectSelect.value;
-      const bExperienceId = document.getElementById("entity-link-experience-select").value;
+      const bExperimentId = document.getElementById("entity-link-experience-select").value;
       const bEntityIndexRaw = document.getElementById("entity-link-entity-select").value;
-      if (!bExperienceId || bEntityIndexRaw === "") {
+      if (!bExperimentId || bEntityIndexRaw === "") {
         showPanelError(new Error("Choisissez une étude et une entité à lier."));
         return;
       }
       try {
         await linksApi.createEntityLink({
-          a: { microproject_slug: d.microprojectSlug, experience_id: d.experienceId, entity_index: d.entityIndex },
-          b: { microproject_slug: bMicroprojectSlug, experience_id: bExperienceId, entity_index: parseInt(bEntityIndexRaw, 10) },
+          a: entityRef(d),
+          b: { microproject: bMicroprojectSlug, experiment_id: bExperimentId, entity_index: parseInt(bEntityIndexRaw, 10) },
           note: document.getElementById("entity-link-note").value.trim(),
         });
-        await refresh(entityKey({ experience_id: d.experienceId, entity_index: d.entityIndex }));
+        await refreshLinks();
       } catch (err) {
         showPanelError(err);
       }
@@ -354,7 +368,7 @@ function renderEntityPanel(d) {
       clearPanelError();
       try {
         await linksApi.removeEntityLink(btn.dataset.id);
-        await refresh(entityKey({ experience_id: d.experienceId, entity_index: d.entityIndex }));
+        await refreshLinks();
       } catch (err) {
         showPanelError(err);
       }
@@ -362,21 +376,7 @@ function renderEntityPanel(d) {
   });
 }
 
-function select(datum, element) {
-  selection = datum;
-  clearPanelError();
-  svg.selectAll(".atlas-node-selected").classed("atlas-node-selected", false);
-  if (element) d3.select(element).classed("atlas-node-selected", true);
-
-  // Le nom d'un échantillon (wafer) ne s'affiche que pour l'étude sélectionnée - le montrer pour
-  // toutes en même temps redevient illisible dès qu'un cluster en a plus de quelques-unes.
-  const revealedExperienceId = !datum ? null : datum.type === "experience" ? datum.id : datum.type === "entity" ? datum.experienceId : null;
-  svg
-    .selectAll(".atlas-label-entity")
-    .classed("atlas-label-selected", function () {
-      return revealedExperienceId !== null && this.getAttribute("data-experience-id") === revealedExperienceId;
-    });
-
+function renderPanel(datum) {
   if (!datum) {
     panel.innerHTML = panelEmptyState();
   } else if (datum.type === "microproject") {
@@ -388,9 +388,76 @@ function select(datum, element) {
   }
 }
 
+function select(datum, element) {
+  selection = datum;
+  clearPanelError();
+  svg.selectAll(".atlas-node-selected").classed("atlas-node-selected", false);
+  if (element) d3.select(element).classed("atlas-node-selected", true);
+
+  // Le nom d'un échantillon (wafer) ne s'affiche que pour l'étude sélectionnée - le montrer pour
+  // toutes en même temps redevient illisible dès qu'un cluster en a plus de quelques-unes.
+  const revealedKey = !datum ? null : datum.type === "experience" ? datum.id : datum.type === "entity" ? datum.experimentKey : null;
+  svg
+    .selectAll(".atlas-label-entity")
+    .classed("atlas-label-selected", function () {
+      return revealedKey !== null && this.getAttribute("data-experiment-key") === revealedKey;
+    });
+
+  renderPanel(datum);
+}
+
+// Les liens entre µprojets et entre entités, par-dessus les clusters. Ceux dont un bout n'est pas
+// affiché (un µprojet d'un autre projet corporate, une entité qui n'est plus suivie) restent dans les
+// listes du panneau mais ne sont pas tracés.
+function drawLinks() {
+  const microprojectLinks = currentAtlas.microproject_links.filter((l) => microprojectBySlug.has(l.a.slug) && microprojectBySlug.has(l.b.slug));
+  const entityLinks = currentAtlas.entity_links.filter((l) => nodesById.has(entityKey(l.a)) && nodesById.has(entityKey(l.b)));
+
+  crossLinkLayer
+    .selectAll("line.atlas-microproject-link")
+    .data(microprojectLinks, (l) => l.id)
+    .join("line")
+    .attr("class", "atlas-microproject-link")
+    .attr("x1", (l) => microprojectBySlug.get(l.a.slug).fx)
+    .attr("y1", (l) => microprojectBySlug.get(l.a.slug).fy)
+    .attr("x2", (l) => microprojectBySlug.get(l.b.slug).fx)
+    .attr("y2", (l) => microprojectBySlug.get(l.b.slug).fy);
+
+  entityLinkSelection = crossLinkLayer
+    .selectAll("line.atlas-entity-link")
+    .data(entityLinks, (l) => l.id)
+    .join("line")
+    .attr("class", "atlas-entity-link");
+  placeEntityLinks();
+}
+
+// Les liens d'entités ne sont pas dans la simulation (leurs bouts appartiennent souvent à deux
+// clusters sans rapport - les rapprocher contrarierait le regroupement par µprojet) : leurs
+// extrémités suivent les nœuds qu'ils désignent.
+function placeEntityLinks() {
+  entityLinkSelection
+    .attr("x1", (l) => nodesById.get(entityKey(l.a)).x)
+    .attr("y1", (l) => nodesById.get(entityKey(l.a)).y)
+    .attr("x2", (l) => nodesById.get(entityKey(l.b)).x)
+    .attr("y2", (l) => nodesById.get(entityKey(l.b)).y);
+}
+
+// Après une création ou un retrait : seuls les liens sont relus, puis redessinés avec le panneau.
+async function refreshLinks() {
+  const [microprojectLinks, entityLinks] = await Promise.all([
+    linksApi.listMicroprojectLinks({ area: areaSlug }),
+    linksApi.listEntityLinks({ area: areaSlug }),
+  ]);
+  currentAtlas.microproject_links = microprojectLinks;
+  currentAtlas.entity_links = entityLinks;
+  drawLinks();
+  renderPanel(selection);
+}
+
 function build(atlas) {
   svg.selectAll("*").remove();
   nodesById = new Map();
+  canvas = null;
 
   const microprojects = atlas.microprojects;
   if (microprojects.length === 0) {
@@ -411,20 +478,22 @@ function build(atlas) {
   const microprojectNodes = microprojects.map((p, i) => {
     const angle = (2 * Math.PI * i) / microprojects.length;
     const anchor = microprojects.length === 1 ? center : { x: center.x + radiusX * Math.cos(angle), y: center.y + radiusY * Math.sin(angle) };
-    return { id: `microproject:${p.slug}`, type: "microproject", slug: p.slug, name: p.name, description: p.description, role: p.role, experiences: p.experiences, color: microprojectColor(i), fx: anchor.x, fy: anchor.y, x: anchor.x, y: anchor.y };
+    return { id: `microproject:${p.slug}`, type: "microproject", slug: p.slug, name: p.name, description: p.description, role: p.role, experiments: p.experiments, color: microprojectColor(i), fx: anchor.x, fy: anchor.y, x: anchor.x, y: anchor.y };
   });
-  const microprojectBySlug = new Map(microprojectNodes.map((n) => [n.slug, n]));
+  microprojectBySlug = new Map(microprojectNodes.map((n) => [n.slug, n]));
 
   const experienceNodes = [];
   const entityNodes = [];
   const links = [];
 
   microprojects.forEach((p) => {
-    p.experiences.forEach((exp) => {
+    p.experiments.forEach((exp) => {
       const anchor = microprojectBySlug.get(p.slug);
+      const experimentNodeId = experimentKey(p.slug, exp.experiment_id);
       experienceNodes.push({
-        id: exp.id,
+        id: experimentNodeId,
         experimentId: exp.experiment_id,
+        versionId: exp.version_id,
         type: "experience",
         microprojectSlug: p.slug,
         title: exp.title,
@@ -438,16 +507,17 @@ function build(atlas) {
         y: anchor.y + (Math.random() - 0.5) * 20,
       });
       exp.entities.forEach((entity) => {
-        // entity.index is its position in the *raw* physical_tracking list (spectre.core.atlas's
-        // entities_for()), not in this already-filtered array - the addressing links use, so it
-        // has to survive some campaign variants being untracked.
-        const entityId = `entity:${exp.id}:${entity.index}`;
+        // entity.index is its position in the *raw* physical_tracking list (experiments' entities_for()),
+        // not in this already-filtered array - the addressing links use, so it has to survive some
+        // campaign variants being untracked.
+        const entityId = entityKey({ microproject: p.slug, experiment_id: exp.experiment_id, entity_index: entity.index });
         entityNodes.push({
           id: entityId,
           type: "entity",
           microprojectSlug: p.slug,
-          experienceId: exp.id,
+          experimentKey: experimentNodeId,
           experimentId: exp.experiment_id,
+          versionId: exp.version_id,
           experienceTitle: exp.title,
           entityIndex: entity.index,
           sample_id: entity.sample_id,
@@ -456,24 +526,21 @@ function build(atlas) {
           x: anchor.x,
           y: anchor.y,
         });
-        links.push({ source: entityId, target: exp.id, kind: "leash" });
+        links.push({ source: entityId, target: experimentNodeId, kind: "leash" });
       });
     });
-    p.edges.forEach((e) => links.push({ source: e.from, target: e.to, kind: "derivation" }));
+    p.edges.forEach((e) => links.push({ source: experimentKey(p.slug, e.from), target: experimentKey(p.slug, e.to), kind: "derivation" }));
   });
 
   const allNodes = [...microprojectNodes, ...experienceNodes, ...entityNodes];
   allNodes.forEach((n) => nodesById.set(n.id, n));
 
-  const resolvableEntityLinks = (atlas.entity_links || []).filter((l) => nodesById.has(entityKey(l.a)) && nodesById.has(entityKey(l.b)));
-  const resolvableMicroprojectLinks = (atlas.microproject_links || []).filter((l) => microprojectBySlug.has(l.a.slug) && microprojectBySlug.has(l.b.slug));
-
-  const g = svg.append("g");
-  const haloLayer = g.append("g");
-  const edgeLayer = g.append("g");
-  const crossLinkLayer = g.append("g");
-  const nodeLayer = g.append("g");
-  const labelLayer = g.append("g");
+  canvas = svg.append("g");
+  const haloLayer = canvas.append("g");
+  const edgeLayer = canvas.append("g");
+  crossLinkLayer = canvas.append("g");
+  const nodeLayer = canvas.append("g");
+  const labelLayer = canvas.append("g");
 
   const edgeSelection = edgeLayer
     .selectAll("path")
@@ -487,21 +554,7 @@ function build(atlas) {
     .join("line")
     .attr("class", "atlas-leash");
 
-  const microprojectLinkSelection = crossLinkLayer
-    .selectAll("line.atlas-microproject-link")
-    .data(resolvableMicroprojectLinks)
-    .join("line")
-    .attr("class", "atlas-microproject-link")
-    .attr("x1", (l) => microprojectBySlug.get(l.a.slug).fx)
-    .attr("y1", (l) => microprojectBySlug.get(l.a.slug).fy)
-    .attr("x2", (l) => microprojectBySlug.get(l.b.slug).fx)
-    .attr("y2", (l) => microprojectBySlug.get(l.b.slug).fy);
-
-  const entityLinkSelection = crossLinkLayer
-    .selectAll("line.atlas-entity-link")
-    .data(resolvableEntityLinks)
-    .join("line")
-    .attr("class", "atlas-entity-link");
+  drawLinks();
 
   const haloSelection = haloLayer
     .selectAll("circle")
@@ -567,14 +620,10 @@ function build(atlas) {
     .data(entityNodes)
     .join("text")
     .attr("class", "atlas-label atlas-label-entity")
-    .attr("data-experience-id", (d) => d.experienceId)
+    .attr("data-experiment-key", (d) => d.experimentKey)
     .attr("dy", -ENTITY_RADIUS - 3)
     .attr("text-anchor", "middle")
     .text((d) => d.sample_id || d.location || "");
-
-  svg.on("click", (event) => {
-    if (event.target === svg.node()) select(null, null);
-  });
 
   const simulation = d3
     .forceSimulation(allNodes)
@@ -615,14 +664,7 @@ function build(atlas) {
       .attr("y2", (d) => d.target.y);
     edgeSelection.attr("d", (d) => `M${d.source.x},${d.source.y} L${d.target.x},${d.target.y}`);
 
-    // Cross-microproject entity links aren't part of the force simulation (their two ends can belong
-    // to unrelated clusters - pulling them together would fight the per-microproject clustering), so
-    // their endpoints are just read live from whichever node they reference.
-    entityLinkSelection
-      .attr("x1", (l) => nodesById.get(entityKey(l.a)).x)
-      .attr("y1", (l) => nodesById.get(entityKey(l.a)).y)
-      .attr("x2", (l) => nodesById.get(entityKey(l.b)).x)
-      .attr("y2", (l) => nodesById.get(entityKey(l.b)).y);
+    placeEntityLinks();
 
     // The halo is sized to whatever currently sits farthest from its microproject's anchor, so it
     // keeps enclosing the cluster as the simulation settles rather than a guessed fixed radius.
@@ -637,44 +679,38 @@ function build(atlas) {
     });
   }
 
-  const zoom = d3
-    .zoom()
-    .scaleExtent([0.25, 6])
-    .on("zoom", (event) => {
-      g.attr("transform", event.transform);
-      const k = event.transform.k;
-      svg.attr("data-zoom", k >= 2.2 ? "close" : k >= 0.9 ? "mid" : "far");
-    });
-  svg.call(zoom);
-
-  document.getElementById("atlas-zoom-in").addEventListener("click", () => svg.transition().duration(200).call(zoom.scaleBy, 1.4));
-  document.getElementById("atlas-zoom-out").addEventListener("click", () => svg.transition().duration(200).call(zoom.scaleBy, 1 / 1.4));
-  document.getElementById("atlas-zoom-reset").addEventListener("click", () => svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity));
 }
 
-// /management/{slug}/atlas - un atlas par thème (voir spectre/api/atlas.py::get_atlas), pas un
-// atlas transverse à toute la société : mélanger des µprojets de thèmes stratégiques sans rapport
-// dans une seule bulle de force-layout n'était lisible pour personne.
-const { slug: themeSlug } = routeParams("/management/{slug}/atlas");
+// Le zoom et ses boutons, branchés une seule fois : le zoom transforme le <g> de l'atlas affiché.
+const zoom = d3
+  .zoom()
+  .scaleExtent([0.25, 6])
+  .on("zoom", (event) => {
+    if (canvas) canvas.attr("transform", event.transform);
+    const k = event.transform.k;
+    svg.attr("data-zoom", k >= 2.2 ? "close" : k >= 0.9 ? "mid" : "far");
+  });
+svg.call(zoom);
+svg.on("click", (event) => {
+  if (event.target === svg.node()) select(null, null);
+});
+document.getElementById("atlas-zoom-in").addEventListener("click", () => svg.transition().duration(200).call(zoom.scaleBy, 1.4));
+document.getElementById("atlas-zoom-out").addEventListener("click", () => svg.transition().duration(200).call(zoom.scaleBy, 1 / 1.4));
+document.getElementById("atlas-zoom-reset").addEventListener("click", () => svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity));
 
-async function refresh(reselectId) {
-  const atlas = await atlasApi.get(themeSlug);
-  currentAtlas = atlas;
-  document.getElementById("theme-link").href = `/management/${encodeURIComponent(themeSlug)}`;
-  document.getElementById("theme-link").textContent = atlas.theme.name;
-  document.getElementById("topbar-crumb").textContent = `/ ${atlas.theme.name} / Atlas`;
-  build(atlas);
-  if (reselectId && nodesById.has(reselectId)) {
-    select(nodesById.get(reselectId), null);
-  } else {
-    select(null, null);
-  }
-}
+// /management/{slug}/atlas - un atlas par projet corporate, pas un atlas transverse à toute la
+// société : mélanger des µprojets d'efforts stratégiques sans rapport dans une seule bulle de
+// force-layout n'était lisible pour personne.
+const { slug: areaSlug } = routeParams("/management/{slug}/atlas");
 
 async function init() {
   select(null, null);
   try {
-    await refresh(null);
+    currentAtlas = await atlasApi.get(areaSlug);
+    document.getElementById("theme-link").href = `/management/${encodeURIComponent(areaSlug)}`;
+    document.getElementById("theme-link").textContent = currentAtlas.area.name;
+    document.getElementById("topbar-crumb").textContent = `/ ${currentAtlas.area.name} / Atlas`;
+    build(currentAtlas);
   } catch (err) {
     panel.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div>`;
   }

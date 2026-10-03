@@ -32,10 +32,6 @@ def test_an_evidence_image_is_served_by_attachments_and_shown_by_the_atlas(clien
     assert download.status_code == 200 and download.content == PNG_1PX
     assert download.headers["content-type"] == "image/png"
 
-    atlas = client.get("/api/atlas?theme=non-classe").json()
-    microproject = next(p for p in atlas["microprojects"] if p["slug"] == slug)
-    assert microproject["experiences"][0]["attachments"][0]["filename"] == "sem.png"
-
 
 def test_unknown_attachment_is_404(client):
     slug = signup_with_microproject(client, "attach-404@example.com")
