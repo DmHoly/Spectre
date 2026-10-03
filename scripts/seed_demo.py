@@ -844,7 +844,8 @@ def backdate_microprojects(data_dir: Path, slugs: list[str], days_ago: float) ->
     try:
         conn.execute(
             f"UPDATE microprojects SET created_at = ? WHERE slug IN ({','.join('?' * len(slugs))})",
-            [when(days_ago).isoformat(), *slugs],
+            # le format de la colonne (datetime('now') de SQLite, UTC sans zone), que lisent les payloads
+            [when(days_ago).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), *slugs],
         )
         conn.commit()
     finally:

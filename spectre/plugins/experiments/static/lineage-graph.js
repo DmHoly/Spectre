@@ -1,5 +1,5 @@
 /* Rendu partagé d'un graphe de filiation "git-like" (un nœud = une expérience structurellement
-   distincte, voir GET /api/microprojets/{slug}/filiation) : le layout en couches et le dessin
+   distincte, voir GET /api/microprojects/{microproject_slug}/lineage) : le layout en couches et le dessin
    d'un nœud/trait, utilisés à la fois par lineage-view.js (la vue par défaut d'un µprojet,
    pleine taille) et atlas.js (l'arbre miniature affiché au clic sur une étude, pour resituer son
    contexte sans quitter l'atlas). Tout est fonction pure (aucun accès au DOM ni à `state`) pour
