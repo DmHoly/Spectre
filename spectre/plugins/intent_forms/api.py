@@ -1,123 +1,99 @@
-"""Formulaires d'intention : la bibliothèque (spectre.plugins.intent_forms.service) et laquelle est
-active pour un projet. Comme les présets d'étapes/structures sauvegardées/briques technologiques, deux
-étagères par bibliothèque (partagée entre projets, propre au projet) plus les mêmes trois routes de
-lecture/écriture (spectre.kernel.scoped) - la seule différence est qu'un projet choisit aussi une
-entrée comme *active*, ce qui matérialise son contenu dans le dépôt Follow du projet
-(``commit_form.yml`` - voir spectre.plugins.intent_forms.service.activate_intent_form) plutôt que de
-rester une simple entrée de bibliothèque parmi d'autres.
+"""Routes des formulaires d'intention : la bibliothèque (``/api/intent-forms``, à plat, avec la
+portée de chaque entrée) et le formulaire actif d'un µprojet
+(``/api/microprojects/{microproject_slug}/active-intent-form``, lu dans ``commit_form.yml``). Le
+domaine et les droits sont dans :mod:`spectre.plugins.intent_forms.service`.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-from fastapi import APIRouter, Depends, HTTPException
-from follow.storage.commit_form import CommitForm
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
-from ...kernel.scoped import list_three_buckets, reject_duplicate, require_existing
-from ..microprojects.deps import require_role
-from ..microprojects.service import Microproject
+from ..accounts.deps import current_user
+from ..accounts.service import User
 from . import service as intent_forms
-from .service import IntentForm, parse_yaml_form
+from .service import ActiveForm, LibraryEntry
 
-router = APIRouter(prefix="/api/microprojets", tags=["intent-forms"])
+router = APIRouter(prefix="/api", tags=["intent-forms"])
 
 
-class IntentFormInput(BaseModel):
+class CreateIntentFormRequest(BaseModel):
     name: str
     yaml: str
-    partagee: bool = False
+    scope: str  # shared | microproject
+    microproject: str | None = None
 
 
-def _intent_form_store(microproject: Microproject, partagee: bool):
-    return intent_forms.get_shared_intent_form_store() if partagee else intent_forms.get_intent_form_store(microproject.slug)
-
-
-def _intent_form_payload(entry: IntentForm, scope: str) -> dict:
-    return {
-        "name": entry.name,
-        "form": entry.form.model_dump(mode="json"),
-        "created_at": entry.created_at,
-        "scope": scope,
-    }
-
-
-def _parse_or_422(text: str) -> CommitForm:
-    try:
-        return parse_yaml_form(text)
-    except Exception as exc:  # invalid YAML, or a CommitForm/FormField that fails validation
-        raise HTTPException(status_code=422, detail=f"Fichier de formulaire invalide : {exc}") from exc
-
-
-@router.get("/{slug}/formulaires-intention")
-def list_intent_forms(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    return list_three_buckets(
-        intent_forms.get_intent_form_store(microproject.slug),
-        intent_forms.get_shared_intent_form_store(),
-        {},  # no built-in intent forms - a team's questions are always its own
-        _intent_form_payload,
-    )
-
-
-@router.post("/{slug}/formulaires-intention", status_code=201)
-def create_intent_form(body: IntentFormInput, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    form = _parse_or_422(body.yaml)
-    store = _intent_form_store(microproject, body.partagee)
-    reject_duplicate(store, body.name, message=f"Un formulaire nommé {body.name!r} existe déjà dans cette bibliothèque.")
-    entry = IntentForm(name=body.name, form=form, created_at=datetime.now(timezone.utc).isoformat())
-    store.upsert(entry)
-    return list_intent_forms(microproject)
-
-
-@router.put("/{slug}/formulaires-intention/{name}")
-def update_intent_form(
-    name: str, body: IntentFormInput, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))
-) -> dict:
-    form = _parse_or_422(body.yaml)
-    store = _intent_form_store(microproject, partagee)
-    existing = require_existing(store, name, message=f"Formulaire {name!r} introuvable.")
-    entry = IntentForm(name=body.name, form=form, created_at=existing.created_at)
-    store.rename(name, entry)
-    return list_intent_forms(microproject)
-
-
-@router.delete("/{slug}/formulaires-intention/{name}")
-def delete_intent_form(name: str, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    _intent_form_store(microproject, partagee).remove(name)
-    active = intent_forms.get_active_intent_form(microproject.slug)
-    if active is not None and active["name"] == name and active["partagee"] == partagee:
-        # the form this microproject was actively requiring just disappeared from the library it came
-        # from - deactivate rather than leave commit_form.yml pointing at a name nothing lists
-        # anymore (the file itself stays valid either way, but the settings page couldn't offer
-        # "edit this" or explain where it came from once its library entry is gone).
-        intent_forms.deactivate_intent_form(microproject.slug)
-    return list_intent_forms(microproject)
-
-
-@router.get("/{slug}/formulaire-actif")
-def get_active_intent_form(microproject: Microproject = Depends(require_role("viewer"))) -> dict | None:
-    active = intent_forms.get_active_intent_form(microproject.slug)
-    if active is None:
-        return None
-    store = intent_forms.get_shared_intent_form_store() if active["partagee"] else intent_forms.get_intent_form_store(microproject.slug)
-    entry = store.load_items().get(active["name"])
-    if entry is None:
-        return None
-    return _intent_form_payload(entry, "partagee" if active["partagee"] else "microprojet")
+class UpdateIntentFormRequest(BaseModel):
+    name: str | None = None
+    yaml: str | None = None
 
 
 class ActivateIntentFormRequest(BaseModel):
-    name: str | None = None
-    partagee: bool = False
+    intent_form_id: str
 
 
-@router.post("/{slug}/formulaire-actif")
-def set_active_intent_form(body: ActivateIntentFormRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict | None:
-    if body.name is None:
-        intent_forms.deactivate_intent_form(microproject.slug)
-        return None
-    store = _intent_form_store(microproject, body.partagee)
-    entry = require_existing(store, body.name, message=f"Formulaire {body.name!r} introuvable.")
-    intent_forms.activate_intent_form(microproject.slug, name=entry.name, partagee=body.partagee, form=entry.form)
-    return _intent_form_payload(entry, "partagee" if body.partagee else "microprojet")
+def _entry_payload(entry: LibraryEntry, user: User) -> dict:
+    item = entry.item
+    return {
+        "id": item.id,
+        "name": item.name,
+        "scope": entry.scope,
+        "microproject": entry.microproject,
+        "created_by": item.created_by,
+        "updated_by": item.updated_by,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "can_edit": intent_forms.can_edit(user, entry),
+        "form": item.form.model_dump(mode="json"),
+    }
+
+
+def _active_payload(active: ActiveForm) -> dict:
+    return {"form": active.form.model_dump(mode="json"), "origin": active.origin, "outdated": active.outdated}
+
+
+@router.get("/intent-forms")
+def list_intent_forms(microproject: str | None = None, scope: str | None = None, user: User = Depends(current_user)) -> list[dict]:
+    return [_entry_payload(entry, user) for entry in intent_forms.list_forms(user, microproject=microproject, scope=scope)]
+
+
+@router.post("/intent-forms", status_code=201)
+def create_intent_form(body: CreateIntentFormRequest, response: Response, user: User = Depends(current_user)) -> dict:
+    entry = intent_forms.create_form(user, name=body.name, yaml_text=body.yaml, scope=body.scope, microproject=body.microproject)
+    response.headers["Location"] = f"/api/intent-forms/{entry.item.id}"
+    return _entry_payload(entry, user)
+
+
+@router.get("/intent-forms/{form_id}")
+def get_intent_form(form_id: str, user: User = Depends(current_user)) -> dict:
+    return _entry_payload(intent_forms.get_form(user, form_id), user)
+
+
+@router.patch("/intent-forms/{form_id}")
+def update_intent_form(form_id: str, body: UpdateIntentFormRequest, user: User = Depends(current_user)) -> dict:
+    changes = body.model_dump(exclude_unset=True)
+    entry = intent_forms.update_form(user, form_id, name=changes.get("name"), yaml_text=changes.get("yaml"))
+    return _entry_payload(entry, user)
+
+
+@router.delete("/intent-forms/{form_id}", status_code=204)
+def delete_intent_form(form_id: str, user: User = Depends(current_user)) -> Response:
+    intent_forms.delete_form(user, form_id)
+    return Response(status_code=204)
+
+
+@router.get("/microprojects/{microproject_slug}/active-intent-form")
+def get_active_intent_form(microproject_slug: str, user: User = Depends(current_user)) -> dict:
+    return _active_payload(intent_forms.get_active(user, microproject_slug))
+
+
+@router.put("/microprojects/{microproject_slug}/active-intent-form")
+def set_active_intent_form(microproject_slug: str, body: ActivateIntentFormRequest, user: User = Depends(current_user)) -> dict:
+    return _active_payload(intent_forms.activate(user, microproject_slug, body.intent_form_id))
+
+
+@router.delete("/microprojects/{microproject_slug}/active-intent-form", status_code=204)
+def delete_active_intent_form(microproject_slug: str, user: User = Depends(current_user)) -> Response:
+    intent_forms.deactivate(user, microproject_slug)
+    return Response(status_code=204)

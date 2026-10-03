@@ -6,8 +6,8 @@
    - /microprojets/{slug}/experiences/{id}/evoluer-image : continuer une expérience (dessinée ou
      en images) avec de nouvelles images (POST /experiences/{id}/evoluer-image), préremplie depuis
      la version de départ.
-   objectives.js / intention-copy.js / intent-form.js du constructeur sont repris tels quels : ils
-   lisent `slug` et `state`, définis ici. */
+   objectives.js / intention-copy.js du constructeur sont repris tels quels : ils lisent `slug` et
+   `state`, définis ici. Le formulaire d'intention est monté par mountIntentFormSection (intent_forms). */
 
 const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experience_id}/evoluer-image");
 const { slug } = evolveRoute || routeParams("/microprojets/{slug}/structures/image");
@@ -16,6 +16,7 @@ const state = { objectives: [] };
 
 let imageDrop = null;
 let entityFdlField = null;
+let intentFormSection = null; // intent_forms/static/intent-form-section.js
 
 const errorBox = document.getElementById("error");
 function showError(err) {
@@ -54,7 +55,7 @@ async function loadParent() {
   const verification = detail.objective_verification || {};
   state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
   renderObjectives();
-  fillIntentFormAnswers(detail.form_answers);
+  intentFormSection.fill(detail.form_answers);
 
   const entity = (detail.physical_tracking || []).find((e) => e.sample_id) || {};
   document.getElementById("exp-entity-sample-id").value = entity.sample_id || "";
@@ -94,7 +95,7 @@ function collectPayload() {
     context: document.getElementById("exp-context").value,
     objectives: state.objectives,
     entities: sampleId ? [{ sample_id: sampleId, location: document.getElementById("exp-entity-location").value.trim() || null, fdl: entityFdlField.get() }] : [],
-    form_answers: collectIntentFormAnswers(),
+    form_answers: intentFormSection ? intentFormSection.collect() : {},
   };
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
     const branchName = document.getElementById("new-branch-name").value.trim();
@@ -120,7 +121,7 @@ async function launch() {
       : await experimentsApi.launchImage(slug, payload);
     window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
   } catch (err) {
-    const formMessage = intentFormErrorMessage(err);
+    const formMessage = intentFormSection && intentFormSection.errorMessage(err);
     showError(formMessage ? new Error(formMessage) : err);
     button.disabled = false;
   }
@@ -182,7 +183,7 @@ async function initStructureImagePage() {
     }
     const label = microproject.code ? `${microproject.code} · ${microproject.name}` : microproject.name;
     document.getElementById("crumb").innerHTML = `/ <a href="/microprojets/${encodeURIComponent(slug)}">${escapeHtml(label)}</a> / ${escapeHtml(document.getElementById("page-title").textContent)}`;
-    await loadIntentForm();
+    intentFormSection = await mountIntentFormSection(document.getElementById("intent-form-box"), { microprojectSlug: slug, onError: showError });
     if (evolveExperienceId) await loadParent();
   } catch (err) {
     showError(err);
@@ -191,5 +192,5 @@ async function initStructureImagePage() {
 }
 
 // la page s'initialise une fois les modules du constructeur chargés (objectives.js, intention-copy.js,
-// intent-form.js : après ce fichier, voir image-structure.html)
+// intent-form-section.js : après ce fichier, voir image-structure.html)
 document.addEventListener("DOMContentLoaded", initStructureImagePage);

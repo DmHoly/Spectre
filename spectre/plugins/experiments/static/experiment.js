@@ -1722,7 +1722,7 @@ async function renderIntentFormInfo(detail) {
   }
   let activeForm = null;
   try {
-    const active = await intentFormsApi.active(slug);
+    const active = await intentFormsApi.getActive(slug);
     activeForm = active ? active.form : null;
   } catch (err) {
     // pas bloquant : on retombe sur les noms de champs bruts
