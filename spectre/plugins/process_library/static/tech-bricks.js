@@ -1,11 +1,11 @@
-/* Page dédiée aux briques technologiques : liste (préréglées / partagées / projet) uniquement -
+/* Page dédiée aux briques technologiques : liste (intégrées / partagées / µprojet) uniquement -
    la composition elle-même se fait dans le constructeur de structure, en "mode brique" (voir
-   structure-builder/brick-mode.js), pas ici. */
+   structures/static/builder/brick-mode.js), pas ici. */
 
 const { slug } = routeParams("/microprojets/{slug}/briques-technologiques");
 
 const state = {
-  bricks: { presets: [], partagees: [], projet: [] },
+  bricks: [],
   currentRole: null,
 };
 
@@ -23,15 +23,14 @@ function showFlash(message) {
 }
 
 function scopeSuffix(scope) {
-  if (scope === "preset") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· préset, disponible dans tous les µprojets</span>`;
-  if (scope === "partagee") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les µprojets</span>`;
+  if (scope === "builtin") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· intégrée, disponible dans tous les µprojets</span>`;
+  if (scope === "shared") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les µprojets</span>`;
   return "";
 }
 
 function brickRow(brick) {
-  const canManage = state.currentRole === "editor" || state.currentRole === "owner";
-  const isPreset = brick.scope === "preset";
-  const editHref = `/microprojets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/${encodeURIComponent(brick.name)}?scope=${brick.scope}`;
+  const canCreate = state.currentRole === "editor" || state.currentRole === "owner";
+  const editHref = `/microprojets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/${encodeURIComponent(brick.id)}`;
   return `
     <div class="step-row" style="align-items:flex-start;">
       <div style="flex:1;min-width:0;">
@@ -40,38 +39,45 @@ function brickRow(brick) {
         ${brick.notes ? `<div style="font-size:12px;color:var(--text-soft);margin-top:3px;max-width:56ch;">${escapeHtml(brick.notes)}</div>` : ""}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
-        ${canManage ? `<a class="btn btn-line" href="${editHref}&dupliquer=1" style="padding:5px 10px;font-size:12px;">Dupliquer</a>` : ""}
-        ${canManage && !isPreset ? `<a class="btn btn-line" href="${editHref}" style="padding:5px 10px;font-size:12px;">Modifier</a>` : ""}
+        ${canCreate ? `<a class="btn btn-line" href="${editHref}?dupliquer=1" style="padding:5px 10px;font-size:12px;">Dupliquer</a>` : ""}
+        ${brick.can_edit ? `<a class="btn btn-line" href="${editHref}" style="padding:5px 10px;font-size:12px;">Modifier</a>` : ""}
         ${
-          canManage && !isPreset
-            ? `<button class="btn btn-line js-remove" data-name="${escapeHtml(brick.name)}" data-scope="${brick.scope}" type="button" style="padding:5px 10px;font-size:12px;color:var(--danger);">Supprimer</button>`
+          brick.can_edit
+            ? `<button class="btn btn-line js-remove" data-id="${escapeHtml(brick.id)}" type="button" style="padding:5px 10px;font-size:12px;color:var(--danger);">Supprimer</button>`
             : ""
         }
       </div>
     </div>`;
 }
 
+function confirmRemoval(brick) {
+  const shared = brick.scope === "shared" ? " Elle est partagée : elle disparaîtra de tous les µprojets." : "";
+  return window.confirm(`Supprimer la brique « ${brick.name} » ?${shared}`);
+}
+
 function renderList() {
-  const entries = [
-    ...state.bricks.presets.map((b) => ({ ...b, scope: "preset" })),
-    ...state.bricks.partagees.map((b) => ({ ...b, scope: "partagee" })),
-    ...state.bricks.microprojet.map((b) => ({ ...b, scope: "microprojet" })),
-  ];
-  document.getElementById("bricks-list").innerHTML = entries.length
-    ? entries.map(brickRow).join("")
+  document.getElementById("bricks-list").innerHTML = state.bricks.length
+    ? state.bricks.map(brickRow).join("")
     : `<div class="help">Aucune brique pour l'instant.</div>`;
 
   document.querySelectorAll(".js-remove").forEach((btn) => {
     btn.addEventListener("click", async () => {
+      const brick = state.bricks.find((b) => b.id === btn.dataset.id);
+      if (!brick || !confirmRemoval(brick)) return;
       try {
-        state.bricks = await processLibraryApi.removeTechBrick(slug, btn.dataset.name, btn.dataset.scope === "partagee");
-        renderList();
+        await processLibraryApi.deleteTechBrick(brick.id);
+        await loadBricks();
         showFlash("Brique supprimée.");
       } catch (err) {
         showError(err);
       }
     });
   });
+}
+
+async function loadBricks() {
+  state.bricks = await processLibraryApi.techBricks({ microproject: slug });
+  renderList();
 }
 
 async function init() {
@@ -89,8 +95,7 @@ async function init() {
     return;
   }
   try {
-    state.bricks = await processLibraryApi.techBricks(slug);
-    renderList();
+    await loadBricks();
   } catch (err) {
     showError(err);
   }

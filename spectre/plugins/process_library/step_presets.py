@@ -2,23 +2,21 @@
 recipes (see :mod:`structureforge.core.recipes`), persisted independently of any structure - handy
 for a team's own vocabulary ("notre gravure standard") on top of the recipe library's own names.
 
-Two stores per Spectre instance, the same split as
-:mod:`spectre.plugins.process_library.structure_library`: one shared across every microproject, one
-private to a single microproject - see
-:func:`spectre.plugins.process_library.stores.get_shared_step_preset_store`/``get_step_preset_store``. Applying a preset only pre-fills a step's
-form fields client-side (see ``structure-builder.js``); once added, a step carries its own
+Like every library item (:mod:`spectre.plugins.process_library.service`), a preset is built in,
+shared across every microproject, or private to one. Applying a preset only pre-fills a step's
+form fields client-side (see ``structures/static/builder/form-widgets.js``); once added, a step carries its own
 ``recipe`` independently, the same "point of departure, not a live link" relationship the
 structure library already has between a preset structure and the experience derived from it.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Annotated, Literal, Union
+from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, Field
 
-from ...kernel.json_store import KeyedJsonStore
+from ..library.service import load
+from .models import LibraryItem
 
 
 class DepositionPreset(BaseModel):
@@ -34,35 +32,33 @@ class EtchPreset(BaseModel):
 StepPresetPayload = Annotated[Union[DepositionPreset, EtchPreset], Field(discriminator="kind")]
 
 
-class StepPreset(BaseModel):
-    name: str
+class StepPreset(LibraryItem):
     payload: StepPresetPayload
     notes: str | None = None
-    created_at: str
-
-
-class StepPresetLibrary(BaseModel):
-    presets: dict[str, StepPreset] = Field(default_factory=dict)
-
-
-def StepPresetStore(path: str | Path) -> KeyedJsonStore[StepPresetLibrary, StepPreset]:
-    return KeyedJsonStore(path, StepPresetLibrary, "presets")
 
 
 def default_step_presets() -> dict[str, StepPreset]:
-    """The preset library's ``"preset"`` scope: the editable root library
-    (``library/presets.yml`` via :mod:`spectre.plugins.library.service`) when it exists, otherwise
-    the built-in set below. Always available from every microproject, never written to a JSON store
-    (only the shared/microproject stores are). Imported lazily: the library imports this module for
-    its models.
+    """The built-in presets: the root library's ``presets.yml`` (declared in
+    :mod:`spectre.plugins.process_library.library_files`), or the set below when it is missing or
+    invalid. Always available, never written to a JSON store.
     """
-    from ..library.service import registry_step_presets
-
-    return registry_step_presets()
+    return load("step-presets")
 
 
-def _builtin_step_presets() -> dict[str, StepPreset]:
-    """Fallback preset set when ``library/presets.yml`` is missing - a nitride/semiconductor-
+def step_preset_from_entry(entry: dict[str, Any]) -> StepPreset:
+    """One entry of ``presets.yml`` (``name``, ``kind``, ``recipe``, ``notes``)."""
+    kind = entry["kind"]
+    if kind == "deposition":
+        payload: DepositionPreset | EtchPreset = DepositionPreset(recipe=entry["recipe"])
+    elif kind == "etch":
+        payload = EtchPreset(recipe=entry["recipe"])
+    else:
+        raise ValueError(f"type de préset inconnu : {kind!r} (attendu deposition ou etch)")
+    return StepPreset(name=entry["name"], payload=payload, notes=entry.get("notes"), created_at="preset")
+
+
+def builtin_step_presets() -> dict[str, StepPreset]:
+    """Fallback preset set when ``presets.yml`` is missing - a nitride/semiconductor-
     oriented subset (III-N epitaxy, passivation dielectrics, contact metals, the etches that go
     with them). The shipped YAML file mirrors this list; edit that file to grow it.
     """

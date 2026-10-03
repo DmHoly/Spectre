@@ -50,19 +50,19 @@ class DeclaredParam(BaseModel):
 
 def picker_materials() -> list[Material]:
     """The (deliberately short) list offered in the structure-builder's material dropdown - the
-    editable root library (:func:`spectre.plugins.library.service.registry_materials`,
+    editable root library (:func:`spectre.plugins.structures.library_files.materials`,
     ``library/materiaux.yml``), nitride/semiconductor-oriented, not StructureForge's full ~46. The
     simulation still resolves *any* name (see :func:`materials_library`), so a structure that
     references a material later dropped from the picker keeps simulating.
     """
-    from ..library.service import registry_materials
+    from .library_files import materials
 
-    return registry_materials()
+    return materials()
 
 
 def materials_library(*extra_names: str) -> MaterialLibrary:
     """StructureForge's full default library, with the editable root library
-    (:func:`spectre.plugins.library.service.registry_materials`) merged on top - so a root entry can add a
+    (:func:`spectre.plugins.structures.library_files.materials`) merged on top - so a root entry can add a
     material StructureForge lacks (GZO, AlCu) or recolor one - plus any dynamically-composed III-N
     material (``In{x:.2f}Ga{1-x:.2f}N`` / ``Al{y:.2f}Ga{1-y:.2f}N`` - see
     :func:`_graded_nitride_material`) named in ``extra_names``. A graded composition, picked via the
@@ -73,9 +73,9 @@ def materials_library(*extra_names: str) -> MaterialLibrary:
     still fails simulation the same way it always has - only names matching the graded-composition
     pattern are synthesized.
     """
-    from ..library.service import registry_materials
+    from .library_files import materials
 
-    library = default_library().with_materials(*registry_materials())
+    library = default_library().with_materials(*materials())
     graded = [_graded_nitride_material(name) for name in extra_names if name not in library]
     resolved = [material for material in graded if material is not None]
     return library.with_materials(*resolved) if resolved else library
@@ -162,13 +162,13 @@ def _expand_seed_material_aliases(steps: list[ProcessStep], substrate_material: 
 
 def recipes_library() -> RecipeLibrary:
     """StructureForge's default recipes plus any extra ones from the editable root library
-    (``library/recettes.yml`` via :func:`spectre.plugins.library.service.registry_recipes`) - where a
+    (``library/recettes.yml`` via :func:`spectre.plugins.structures.library_files.recipes`) - where a
     selective etch (etch only Al2O3, say) is defined, since a recipe carries the whole
     selectivity table and a step/preset only names one.
     """
-    from ..library.service import registry_recipes
+    from .library_files import recipes
 
-    deposition, etch = registry_recipes()
+    deposition, etch = recipes()
     base = default_recipes()
     return base.with_recipes(deposition=deposition, etch=etch) if (deposition or etch) else base
 

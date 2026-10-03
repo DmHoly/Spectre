@@ -8,26 +8,24 @@ const brickRoute = routeParams("/microprojets/{slug}/briques-technologiques/bibl
 const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experience_id}/evoluer");
 const { slug } = libraryRoute || brickRoute || evolveRoute || routeParams("/microprojets/{slug}/structures/nouvelle");
 const isLibraryMode = Boolean(libraryRoute);
-const libraryStructureName = isLibraryMode && libraryRoute.name !== "nouvelle" ? libraryRoute.name : null;
+const libraryStructureId = isLibraryMode && libraryRoute.name !== "nouvelle" ? libraryRoute.name : null; // l'id de la structure
 // Mode brique : réutilise ce même constructeur pour composer/éditer une brique technologique (une
 // séquence d'étapes réutilisable, sans substrat propre - voir brick-mode.js). Mutuellement exclusif
-// avec le mode bibliothèque, mêmes conventions d'URL (bibliotheque/{nom|nouvelle}, ?scope=/?dupliquer=1).
+// avec le mode bibliothèque, mêmes conventions d'URL (bibliotheque/{id|nouvelle}, ?dupliquer=1).
 const isBrickMode = Boolean(brickRoute);
-const brickName = isBrickMode && brickRoute.name !== "nouvelle" ? brickRoute.name : null;
+const brickId = isBrickMode && brickRoute.name !== "nouvelle" ? brickRoute.name : null;
 const queryParams = new URLSearchParams(window.location.search);
-const librarySourceScope = queryParams.get("scope") || "microprojet";
 const libraryDuplicateMode = queryParams.get("dupliquer") === "1";
 const evolveExperienceId = evolveRoute ? evolveRoute.experience_id : null;
 const templateExperienceId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("depuis") : null;
-const chosenStructureName = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("structure") : null;
-const chosenStructureScope = queryParams.get("scope") || "microprojet";
+const chosenStructureId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("structure") : null;
 const returnTo = queryParams.get("retour"); // where "Enregistrer" in library/brick mode sends you back to
 
 const state = {
   materials: [],
   recipes: { deposition: [], etch: [] },
-  stepPresets: { presets: [], partagees: [], projet: [] },
-  techBricks: { presets: [], partagees: [], projet: [] },
+  stepPresets: [], // à plat : intégrés, partagés et ceux du µprojet (champ scope)
+  techBricks: [],
   steps: [],
   objectives: [],
   frames: null,
@@ -50,10 +48,8 @@ const state = {
   frameLock: null, // image gardée à l'écran quand on sélectionne une étape en cliquant une couche du dessin (sinon la vue sauterait à cette étape)
   layerOrigins: null, // par image, l'étape d'origine de chaque couche (voir computeLayerOrigins, simulation.js)
   derivedFrom: null, // library mode only: name of the structure this one was derived from, if any
-  editingLibraryName: null, // library mode only: name of the saved structure being edited in place (null = new)
-  editingLibraryScope: null, // library mode only: "microprojet" or "partagee", matching editingLibraryName
-  editingBrickName: null, // brick mode only: name of the tech brick being edited in place (null = new)
-  editingBrickScope: null, // brick mode only: "microprojet" or "partagee", matching editingBrickName
+  editingLibraryId: null, // library mode only: id of the saved structure being edited in place (null = new)
+  editingBrickId: null, // brick mode only: id of the tech brick being edited in place (null = new)
   zoom: 1, // 1 = ajusté à la zone de dessin
 };
 

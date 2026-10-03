@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/kernel/kernel.css">
   <link rel="stylesheet" href="/static/search/search.css">
   <link rel="stylesheet" href="/static/docs/docs.css">
+  <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -35,9 +36,9 @@
     <div id="work-microproject-row" class="card card-pad" style="max-width:900px;margin-bottom:22px;display:none;">
       <label for="work-microproject" style="font-size:12px;">µprojet de travail</label>
       <select class="field" id="work-microproject" style="margin-top:4px;max-width:360px;"></select>
-      <p class="help" style="margin:8px 0 0;">Les présets, briques et structures créés en « partagé » sont visibles depuis tous vos µprojets. Ce choix sert seulement à ouvrir l'éditeur (la simulation a besoin d'un µprojet).</p>
+      <p class="help" style="margin:8px 0 0;">Les présets, briques et structures créés en « partagé » sont visibles depuis tous vos µprojets. Ce choix sert seulement à ouvrir le constructeur (la simulation a besoin d'un µprojet).</p>
     </div>
-    <p id="no-microproject-msg" class="help" style="display:none;margin-bottom:22px;">Créez d'abord un µprojet pour ajouter des éléments à la bibliothèque.</p>
+    <p id="no-microproject-msg" class="help" style="display:none;margin-bottom:22px;">Créez d'abord un µprojet pour composer de nouveaux éléments dans le constructeur.</p>
 
     <div class="docs-hub-grid">
       <div class="card card-pad" style="display:flex;flex-direction:column;gap:10px;">
@@ -47,8 +48,7 @@
           point de départ d'une nouvelle expérience.
         </div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
-          <a id="new-structure-link" href="#" class="js-editor-only" style="color:var(--accent-dark);">+ Nouvelle structure</a>
-          <a id="manage-structures-link" href="#" style="color:var(--accent-dark);">Voir les structures du µprojet &rarr;</a>
+          <a id="new-structure-link" href="#" class="js-needs-microproject" style="color:var(--accent-dark);">+ Nouvelle structure</a>
         </div>
       </div>
 
@@ -59,7 +59,7 @@
           la retrouver en un clic dans le formulaire d'étape.
         </div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
-          <a id="presets-link" href="#" style="color:var(--accent-dark);">Gérer / créer un préset &rarr;</a>
+          <a id="presets-link" href="#" class="js-needs-microproject" style="color:var(--accent-dark);">Gérer / créer un préset &rarr;</a>
         </div>
       </div>
 
@@ -70,19 +70,38 @@
           croissance…) à insérer d'un bloc dans une structure.
         </div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
-          <a id="new-brick-link" href="#" class="js-editor-only" style="color:var(--accent-dark);">+ Nouvelle brique</a>
-          <a id="manage-bricks-link" href="#" style="color:var(--accent-dark);">Gérer les briques &rarr;</a>
+          <a id="new-brick-link" href="#" class="js-needs-microproject" style="color:var(--accent-dark);">+ Nouvelle brique</a>
         </div>
       </div>
 
     </div>
 
+    <div class="section-title" style="margin:28px 0 10px;">Éléments intégrés et partagés</div>
+    <p style="color:var(--text-soft);font-size:13.5px;margin-bottom:14px;max-width:64ch;">
+      Visibles depuis tous les µprojets. Un élément partagé ne se renomme, ne se modifie et ne se
+      supprime que par son auteur ou un administrateur ; un élément intégré se change dans les
+      fichiers YAML ci-dessous.
+    </p>
+    <div class="card card-pad" style="margin-bottom:14px;">
+      <div class="section-title" style="margin-bottom:10px;">Structures sauvegardées</div>
+      <div id="shared-structures" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:14px;">
+      <div class="section-title" style="margin-bottom:10px;">Présets d'étape</div>
+      <div id="shared-presets" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+    <div class="card card-pad">
+      <div class="section-title" style="margin-bottom:10px;">Briques technologiques</div>
+      <div id="shared-bricks" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+
     <div class="section-title" style="margin:28px 0 10px;">Bibliothèque racine (fichiers YAML)</div>
     <p style="color:var(--text-soft);font-size:13.5px;margin-bottom:14px;max-width:64ch;">
       Le vocabulaire par défaut de cette installation, commun à tous les µprojets - un fichier YAML
-      par famille. Modifiable ici directement (réservé aux administrateurs) ou à la main sur le
-      serveur (voir <code>library/README.md</code>) ; un enregistrement est rechargé automatiquement,
-      sans redémarrage.
+      par famille. Modifiable ici directement (réservé aux administrateurs) ou à la main dans le
+      dossier <code>library</code> des données du serveur (voir
+      <code>spectre/plugins/library/defaults/README.md</code>) ; un enregistrement est rechargé
+      automatiquement, sans redémarrage.
     </p>
     <div id="library-files-error" class="error" style="display:none;margin-bottom:16px;"></div>
     <div id="library-files-list" class="docs-hub-grid"></div>
@@ -117,6 +136,7 @@
   <script src="/static/wafers/client.js"></script>
   <script src="/static/lots/client.js"></script>
   <script src="/static/library/client.js"></script>
+  <script src="/static/process_library/client.js"></script>
   <script src="/static/kernel/vendor/codemirror.min.js"></script>
   <script src="/static/kernel/vendor/codemirror-yaml.min.js"></script>
   <script src="/static/process_library/library-hub.js"></script>

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
+from spectre.plugins.library.service import library_dir
 from spectre.plugins.structures import campaigns
 from support.accounts import signup
 from support.microprojects import join_as, signup_with_microproject
@@ -92,7 +90,7 @@ def test_a_material_named_with_html_is_escaped_in_the_svg(client):
     # le nom d'un matériau de la bibliothèque éditable finit dans le <title> du SVG, que la page
     # insère par innerHTML
     hostile = '<img src=x onerror="alert(1)">'
-    library = Path(os.environ["SPECTRE_LIBRARY_DIR"]) / "materiaux.yml"
+    library = library_dir() / "materiaux.yml"  # le dossier du test, initialisé depuis les fichiers livrés
     with library.open("a", encoding="utf-8") as out:
         out.write(f"\n  - name: '{hostile}'\n    category: other\n    color: \"#123456\"\n")
     _owner_microproject(client)

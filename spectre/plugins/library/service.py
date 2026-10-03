@@ -1,129 +1,179 @@
-"""Bibliothèque racine éditable (« registry ») : les matériaux, présets d'étape et briques
-technologiques *par défaut* de cette instance Spectre, définis dans des fichiers YAML à la racine
-du dépôt (``library/``) plutôt qu'en dur dans le code.
+"""Bibliothèque racine éditable de l'instance : le vocabulaire *par défaut* (matériaux, recettes,
+présets d'étape, briques, textes d'interface) en fichiers YAML plutôt qu'en dur dans le code, pour
+qu'une équipe le fasse évoluer sans toucher au code ni redémarrer le serveur.
 
-Le but : qu'une équipe fasse évoluer son vocabulaire (une liste de matériaux resserrée sur les
-nitrures, ses présets de gravure maison, ses briques récurrentes...) en éditant un fichier texte,
-sans toucher au code ni redémarrer le serveur.
-
-- **Emplacement** : ``$SPECTRE_LIBRARY_DIR`` si la variable est définie, sinon ``<racine du
-  dépôt>/library``.
-- **Fichiers** : ``materiaux.yml``, ``presets.yml``, ``briques.yml`` — chacun optionnel. Absent ou
-  illisible → on retombe sur le jeu intégré (voir ``_builtin_*``), en journalisant un avertissement.
-- **Rechargement à chaud** : le contenu est mis en cache par fichier et réévalué dès que le fichier
-  change (mtime), donc une modification est visible au prochain rafraîchissement de page.
-
-Ces trois collections alimentent le *scope « preset »* des trois-buckets (intégré / partagé /
-projet) déjà en place — voir :func:`spectre.kernel.scoped.list_three_buckets`. Rien ici n'est
-écrit : les stores JSON par projet/partagés restent le seul endroit modifiable depuis l'app.
-
-Les modèles des présets et des briques appartiennent au plugin process_library, listé après
-celui-ci : ils sont importés dans les fonctions qui en ont besoin.
+- **Emplacement** : ``$SPECTRE_LIBRARY_DIR`` si la variable est définie, sinon ``<données>/library``.
+  Un dossier absent est créé une fois, à la première lecture, depuis les fichiers livrés
+  (``spectre/plugins/library/defaults/``) ; il appartient ensuite à l'instance : une édition ne
+  touche pas au dépôt, et une mise à jour du code n'écrase pas les éditions.
+- **Registre** : cette bibliothèque ne connaît aucun type métier. Chaque plugin propriétaire déclare
+  ses fichiers (:func:`register_library_file`) avec la fonction qui en interprète le contenu - et
+  lève ``ValueError`` s'il est invalide - et son repli intégré.
+- **Lecture** (:func:`load`) : le contenu interprété, en cache tant que le fichier ne change pas.
+  Un fichier absent ou invalide donne le repli, avec un avertissement dans le journal : une édition
+  à la main ratée ne casse jamais l'application.
+- **Écriture** (:func:`save`) : le texte est interprété par la même fonction *avant* d'être écrit ;
+  invalide, il est refusé avec le message de l'erreur.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import shutil
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any, Callable
 
 import yaml
-from structureforge.core.materials import Material, MaterialCategory
-from structureforge.core.recipes import DepositionRecipe, EtchRecipe
 
-if TYPE_CHECKING:
-    from ..process_library.step_presets import StepPreset
-    from ..process_library.tech_bricks import TechBrick
+from ...kernel.db import data_dir
+from ...kernel.errors import InvalidInput, NotFound
+from ...kernel.locks import keyed_lock
 
 logger = logging.getLogger(__name__)
 
-# Par (fichier, clé) : (mtime au dernier chargement, liste de dicts bruts) - voir _raw_entries.
-_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+DEFAULTS_DIR = Path(__file__).resolve().parent / "defaults"
 
-# Par fichier : (mtime au dernier chargement, dict brut) - voir _raw_mapping (fichiers qui sont un
-# seul objet de config, pas une collection de {key: [...]}).
-_MAPPING_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
+@dataclass(frozen=True)
+class LibraryFile:
+    """Un fichier de la bibliothèque, déclaré par le plugin qui en possède le contenu."""
+
+    key: str  # son identifiant dans l'API : /api/library/files/{file_key}
+    filename: str  # dans le dossier de la bibliothèque
+    title: str
+    description: str  # une ligne, affichée sur sa carte
+    parse: Callable[[dict[str, Any]], Any]  # le mapping YAML lu -> le contenu interprété ; ValueError si invalide
+    fallback: Callable[[], Any]  # le contenu quand le fichier est absent ou invalide
+    order: int = 100  # ordre d'affichage
+
+
+_FILES: dict[str, LibraryFile] = {}
+
+# Par chemin : ((mtime_ns, taille) au dernier chargement, contenu interprété).
+_CACHE: dict[str, tuple[tuple[int, int], Any]] = {}
+
+
+def register_library_file(file: LibraryFile) -> None:
+    _FILES[file.key] = file
+
+
+def library_files() -> list[LibraryFile]:
+    return sorted(_FILES.values(), key=lambda file: (file.order, file.key))
+
+
+def get_library_file(key: str) -> LibraryFile:
+    file = _FILES.get(key)
+    if file is None:
+        raise NotFound(f"Fichier de bibliothèque inconnu : {key!r}.")
+    return file
 
 
 def library_dir() -> Path:
-    """Le dossier de la bibliothèque racine - ``$SPECTRE_LIBRARY_DIR`` ou ``<dépôt>/library``.
-    Ancré sur l'emplacement de ce fichier (``spectre/plugins/library/service.py``) et non sur le
-    répertoire courant, pour que les tests et un lancement depuis n'importe où trouvent le même dossier.
-    """
+    """Le dossier de la bibliothèque, créé depuis les fichiers livrés s'il n'existe pas encore."""
     override = os.environ.get("SPECTRE_LIBRARY_DIR")
-    if override:
-        return Path(override).resolve()
-    return Path(__file__).resolve().parents[3] / "library"
+    path = Path(override).resolve() if override else data_dir() / "library"
+    if not path.exists():
+        with keyed_lock("library", "init"):
+            if not path.exists():
+                shutil.copytree(DEFAULTS_DIR, path, ignore=shutil.ignore_patterns("*.md"))
+    return path
 
 
-def _raw_entries(filename: str, key: str) -> list[dict[str, Any]] | None:
-    """La liste sous ``key`` dans ``library/<filename>``, ou ``None`` si le fichier est absent ou
-    illisible (l'appelant retombe alors sur son jeu intégré). Mise en cache tant que le mtime du
-    fichier ne bouge pas.
-    """
-    path = library_dir() / filename
-    cache_key = f"{filename}:{key}"
+def read_text(file: LibraryFile) -> str | None:
+    """Le texte du fichier, ou ``None`` s'il n'existe pas (ou plus)."""
     try:
-        mtime = path.stat().st_mtime
+        return (library_dir() / file.filename).read_text(encoding="utf-8")
     except OSError:
         return None
-    cached = _CACHE.get(cache_key)
-    if cached is not None and cached[0] == mtime:
-        return cached[1]
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        entries = list(data.get(key) or [])
-    except (yaml.YAMLError, OSError) as exc:
-        logger.warning("Bibliothèque racine : %s illisible (%s) - jeu intégré utilisé.", path, exc)
-        return None
-    _CACHE[cache_key] = (mtime, entries)
-    return entries
 
 
-def _raw_mapping(filename: str) -> dict[str, Any] | None:
-    """Le contenu de ``library/<filename>`` comme un dict brut (fichier qui *est* un seul objet de
-    config, pas une collection de ``{key: [...]}`` comme ``_raw_entries``). ``None`` si le fichier
-    est absent ou illisible - l'appelant retombe alors sur son jeu intégré. Mise en cache tant que
-    le mtime du fichier ne bouge pas.
-    """
-    path = library_dir() / filename
+def parse_text(file: LibraryFile, text: str) -> Any:
+    """Le contenu interprété de ``text`` ; ``ValueError`` avec un message qui dit quoi corriger."""
     try:
-        mtime = path.stat().st_mtime
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"YAML invalide : {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"le fichier doit être un mapping YAML (clé: valeur), reçu {type(data).__name__}")
+    return file.parse(data)
+
+
+def load(key: str) -> Any:
+    """Le contenu interprété du fichier ``key`` - son repli s'il est absent ou invalide."""
+    file = get_library_file(key)
+    path = library_dir() / file.filename
+    try:
+        stat = path.stat()
     except OSError:
-        return None
-    cached = _MAPPING_CACHE.get(filename)
-    if cached is not None and cached[0] == mtime:
+        return file.fallback()
+    signature = (stat.st_mtime_ns, stat.st_size)
+    cached = _CACHE.get(str(path))
+    if cached is not None and cached[0] == signature:
         return cached[1]
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        if not isinstance(data, dict):
-            raise TypeError(f"attendu un mapping, reçu {type(data).__name__}")
-    except (yaml.YAMLError, OSError, TypeError) as exc:
-        logger.warning("Bibliothèque racine : %s illisible (%s) - jeu intégré utilisé.", path, exc)
-        return None
-    _MAPPING_CACHE[filename] = (mtime, data)
-    return data
+        content = parse_text(file, path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("Bibliothèque racine : %s invalide (%s) - jeu intégré utilisé.", path, exc)
+        content = file.fallback()
+    _CACHE[str(path)] = (signature, content)
+    return content
 
 
-def registry_intention_form() -> dict[str, Any]:
-    """La copie (libellés/placeholders/aides) de la section « Objectifs et intention » du
-    constructeur de structure - ``library/intention.yml`` si présent, sinon
-    :func:`_builtin_intention_form`. Fusionnée par-dessus le jeu intégré clé par clé, pour qu'un
-    fichier partiel (qui n'override que quelques libellés) reste valide.
-    """
-    data = _raw_mapping("intention.yml")
-    builtin = _builtin_intention_form()
-    if data is None:
-        return builtin
-    merged = {**builtin, **data}
-    return merged
+def save(key: str, text: str) -> None:
+    """Valide ``text`` puis remplace le fichier ``key`` (écriture atomique) ; ``InvalidInput`` si
+    le contenu est invalide - rien n'est alors écrit."""
+    file = get_library_file(key)
+    try:
+        parse_text(file, text)
+    except ValueError as exc:
+        raise InvalidInput(str(exc), code="invalid_library_file") from exc
+    path = library_dir() / file.filename
+    with keyed_lock("library", file.filename):
+        fd, tmp = tempfile.mkstemp(prefix=f".{file.filename}.", suffix=".tmp", dir=path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+                handle.write(text)
+            os.replace(tmp, path)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
 
 
-def _builtin_intention_form() -> dict[str, Any]:
-    """Repli quand ``library/intention.yml`` est absent : la copie française telle qu'elle était
-    codée en dur jusqu'ici dans builder.html.
-    """
+def parse_entries(data: dict[str, Any], key: str, parse_entry: Callable[[dict[str, Any]], Any], *, required: bool = True) -> list[Any]:
+    """Les éléments de la liste ``data[key]``, chacun interprété par ``parse_entry`` - l'outil des
+    fichiers qui sont une collection (``materials: [...]``). ``ValueError`` qui nomme l'élément fautif."""
+    entries = data.get(key)
+    if entries is None and not required:
+        return []
+    if not isinstance(entries, list):
+        raise ValueError(f"le fichier doit contenir une clé '{key}' avec une liste")
+    parsed = []
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"{key}[{i}] invalide : attendu un mapping (clé: valeur)")
+        try:
+            parsed.append(parse_entry(entry))
+        except KeyError as exc:
+            raise ValueError(f"{key}[{i}] invalide : champ obligatoire manquant {exc}") from exc
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{key}[{i}] invalide : {exc}") from exc
+    return parsed
+
+
+# -- textes d'interface ----------------------------------------------------------------------------
+
+
+def _intention_texts(data: dict[str, Any]) -> dict[str, Any]:
+    """Un fichier partiel (qui ne redéfinit que quelques libellés) reste valide : il est fusionné
+    par-dessus le jeu intégré, clé par clé."""
+    return {**_builtin_intention_texts(), **data}
+
+
+def _builtin_intention_texts() -> dict[str, Any]:
+    """Repli quand ``intention.yml`` est absent : la copie française d'origine du constructeur."""
     return {
         "section_title": "Intention & objectifs",
         "section_subtitle": (
@@ -170,187 +220,16 @@ def _builtin_intention_form() -> dict[str, Any]:
     }
 
 
-def registry_materials() -> list[Material]:
-    """Les matériaux proposés dans le sélecteur du constructeur de structure - la liste éditable
-    ``library/materiaux.yml`` si elle existe, sinon :func:`_builtin_materials`. L'ordre du fichier
-    est conservé (il pilote l'ordre du menu déroulant). La simulation, elle, résout toujours
-    n'importe quel nom (voir :func:`spectre.plugins.structures.simulation.materials_library`).
-    """
-    entries = _raw_entries("materiaux.yml", "materials")
-    if entries is None:
-        return _builtin_materials()
-    try:
-        return [_material_from_entry(e) for e in entries]
-    except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Bibliothèque racine : materiaux.yml invalide (%s) - jeu intégré utilisé.", exc)
-        return _builtin_materials()
-
-
-def registry_step_presets() -> dict[str, StepPreset]:
-    """Présets d'étape par défaut - ``library/presets.yml`` si présent, sinon
-    :func:`spectre.plugins.process_library.step_presets._builtin_step_presets`.
-    """
-    from ..process_library.step_presets import _builtin_step_presets
-
-    entries = _raw_entries("presets.yml", "presets")
-    if entries is None:
-        return _builtin_step_presets()
-    try:
-        presets = [_step_preset_from_entry(e) for e in entries]
-    except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Bibliothèque racine : presets.yml invalide (%s) - jeu intégré utilisé.", exc)
-        return _builtin_step_presets()
-    return {p.name: p for p in presets}
-
-
-def registry_tech_bricks() -> dict[str, TechBrick]:
-    """Briques technologiques par défaut - ``library/briques.yml`` si présent, sinon
-    :func:`spectre.plugins.process_library.tech_bricks._builtin_tech_bricks` (vide à ce jour).
-    """
-    from ..process_library.tech_bricks import _builtin_tech_bricks
-
-    entries = _raw_entries("briques.yml", "bricks")
-    if entries is None:
-        return _builtin_tech_bricks()
-    try:
-        bricks = [_tech_brick_from_entry(e) for e in entries]
-    except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Bibliothèque racine : briques.yml invalide (%s) - jeu intégré utilisé.", exc)
-        return _builtin_tech_bricks()
-    return {b.name: b for b in bricks}
-
-
-def registry_recipes() -> tuple[list[DepositionRecipe], list[EtchRecipe]]:
-    """Recettes de dépôt / gravure *supplémentaires* définies dans ``library/recettes.yml`` (clés
-    ``deposition:`` et ``etch:``), fusionnées par-dessus celles de StructureForge - c'est ici, et
-    pas dans un préset, que vit une gravure sélective (``selectivity_by_material`` /
-    ``selectivity_by_category`` / ``default_factor``). Fichier absent ou invalide → ``([], [])`` :
-    on garde alors uniquement les recettes intégrées de StructureForge.
-    """
-    dep_entries = _raw_entries("recettes.yml", "deposition")
-    etch_entries = _raw_entries("recettes.yml", "etch")
-    if dep_entries is None and etch_entries is None:
-        return [], []
-    try:
-        deposition = [DepositionRecipe(**_drop_none(e)) for e in (dep_entries or [])]
-        etches = [EtchRecipe(**_drop_none(e)) for e in (etch_entries or [])]
-    except (TypeError, ValueError) as exc:
-        logger.warning("Bibliothèque racine : recettes.yml invalide (%s) - recettes intégrées seules.", exc)
-        return [], []
-    return deposition, etches
-
-
-def _drop_none(entry: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in entry.items() if v is not None}
-
-
-def validate_library_yaml(filename: str, text: str) -> None:
-    """Valide le contenu ``text`` comme un ``library/<filename>`` acceptable, ou lève
-    ``ValueError`` avec un message expliquant quoi corriger. N'écrit rien sur disque - c'est
-    l'appelant (l'endpoint d'édition) qui s'en charge une fois cette fonction passée sans lever.
-    """
-    try:
-        data = yaml.safe_load(text) or {}
-    except yaml.YAMLError as exc:
-        raise ValueError(f"YAML invalide : {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError(f"le fichier doit être un mapping YAML (clé: valeur), reçu {type(data).__name__}")
-
-    if filename == "intention.yml":
-        return  # mapping plat, fusionné clé par clé - toute clé/valeur est acceptable ici
-
-    if filename == "recettes.yml":
-        for key, factory in (("deposition", DepositionRecipe), ("etch", EtchRecipe)):
-            entries = data.get(key) or []
-            if not isinstance(entries, list):
-                raise ValueError(f"'{key}' doit être une liste")
-            for i, entry in enumerate(entries):
-                try:
-                    factory(**_drop_none(entry))
-                except (TypeError, ValueError) as exc:
-                    raise ValueError(f"{key}[{i}] invalide : {exc}") from exc
-        return
-
-    key, factory = _VALIDATORS.get(filename, (None, None))
-    if key is None:
-        raise ValueError(f"fichier de bibliothèque inconnu : {filename!r}")
-    entries = data.get(key)
-    if not isinstance(entries, list):
-        raise ValueError(f"le fichier doit contenir une clé '{key}' avec une liste")
-    for i, entry in enumerate(entries):
-        try:
-            factory(entry)
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(f"{key}[{i}] invalide : {exc}") from exc
-
-
-def _material_from_entry(entry: dict[str, Any]) -> Material:
-    category = entry.get("category", "other")
-    if category not in {c.value for c in MaterialCategory}:
-        raise ValueError(f"catégorie de matériau inconnue : {category!r}")
-    fields = {"name": entry["name"], "category": category}
-    for optional in ("color", "density_g_cm3", "refractive_index", "notes"):
-        if entry.get(optional) is not None:
-            fields[optional] = entry[optional]
-    return Material(**fields)
-
-
-def _step_preset_from_entry(entry: dict[str, Any]) -> StepPreset:
-    from ..process_library.step_presets import DepositionPreset, EtchPreset, StepPreset
-
-    kind = entry["kind"]
-    if kind == "deposition":
-        payload: DepositionPreset | EtchPreset = DepositionPreset(recipe=entry["recipe"])
-    elif kind == "etch":
-        payload = EtchPreset(recipe=entry["recipe"])
-    else:
-        raise ValueError(f"type de préset inconnu : {kind!r} (attendu deposition ou etch)")
-    return StepPreset(name=entry["name"], payload=payload, notes=entry.get("notes"), created_at="preset")
-
-
-def _tech_brick_from_entry(entry: dict[str, Any]) -> TechBrick:
-    from ..process_library.tech_bricks import TechBrick
-
-    return TechBrick.model_validate(
-        {"name": entry["name"], "notes": entry.get("notes"), "steps": entry.get("steps") or [], "created_at": "preset"}
+# Les textes de la section « Objectifs et intention » du constructeur, servis par
+# GET /api/ui-texts/intention.
+register_library_file(
+    LibraryFile(
+        key="intention",
+        filename="intention.yml",
+        title="Formulaire d'intention",
+        description="Les libellés, placeholders et couleurs de la section « Objectifs et intention » du constructeur de structure.",
+        parse=_intention_texts,
+        fallback=_builtin_intention_texts,
+        order=50,
     )
-
-
-# Un fichier -> (la clé "collection" attendue, la fonction qui valide chaque entrée - jetée si
-# invalide). Utilisé par validate_library_yaml() ci-dessus - la seule porte d'entrée pour un "save"
-# côté bibliothèque éditable en ligne (voir spectre.plugins.library.api) : contrairement aux registry_*()
-# plus haut, qui retombent silencieusement sur le jeu intégré si le fichier est invalide
-# (comportement voulu pour ne jamais casser l'appli sur un fichier mal édité à la main), on doit ici
-# pouvoir dire *pourquoi* c'est invalide avant d'écrire quoi que ce soit sur disque.
-_VALIDATORS: dict[str, tuple[str, Any]] = {
-    "materiaux.yml": ("materials", _material_from_entry),
-    "presets.yml": ("presets", _step_preset_from_entry),
-    "briques.yml": ("bricks", _tech_brick_from_entry),
-}
-
-
-def _builtin_materials() -> list[Material]:
-    """Repli quand ``library/materiaux.yml`` est absent : une liste resserrée orientée nitrures /
-    semi-conducteurs (mêmes couleurs que la bibliothèque StructureForge d'origine pour que le rendu
-    ne change pas), plus deux oxydes conducteurs / alliages absents de StructureForge (GZO, AlCu).
-    AlGaN / InGaN ne sont pas listés : ce sont toujours des compositions à taux précis, composées à
-    la volée depuis le champ matériau. Le fichier YAML livré reprend exactement cette liste.
-    """
-    m = MaterialCategory
-    entries: list[tuple[str, MaterialCategory, str]] = [
-        ("Si", m.substrate, "#5b5f66"),
-        ("Sapphire", m.substrate, "#dbe4ee"),
-        ("SiC", m.substrate, "#4a5259"),
-        ("GaN", m.semiconductor, "#7b6d8d"),
-        ("SiO2", m.dielectric, "#8ecae6"),
-        ("Al2O3", m.dielectric, "#a3cef1"),
-        ("TiO2", m.dielectric, "#4f7396"),
-        ("ITO", m.metal, "#bcd4d8"),
-        ("GZO", m.metal, "#b8d0c8"),
-        ("Al", m.metal, "#ced4da"),
-        ("AlCu", m.metal, "#c6a892"),
-        ("Ti", m.metal, "#6c757d"),
-        ("Ni", m.metal, "#8a8478"),
-        ("Photoresist", m.resist, "#f4a261"),
-    ]
-    return [Material(name=name, category=category, color=color) for name, category, color in entries]
+)

@@ -2,6 +2,7 @@
 de structure (``kinds``). Pages du constructeur."""
 
 from ...kernel.plugin import Page, Plugin
+from . import library_files  # noqa: F401 - déclare materiaux.yml et recettes.yml à la bibliothèque
 from .api import router
 
 PLUGIN = Plugin(

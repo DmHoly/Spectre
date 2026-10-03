@@ -1,6 +1,6 @@
 # Copie éditable de la section « Objectifs et intention » du constructeur de structure
-# (structure-builder.html). Rechargée à chaud (voir spectre/core/registry.py,
-# registry_intention_form) - éditez, rafraîchissez la page, pas besoin de redémarrer le serveur.
+# (structures/pages/builder.html). Rechargée à chaud (voir spectre/plugins/library/service.py,
+# _intention_texts) - éditez, rafraîchissez la page, pas besoin de redémarrer le serveur.
 #
 # Toutes les clés sont des chaînes simples sauf `objective_directions`, qui liste les 4 options
 # du menu « Sens » d'un objectif, chacune avec sa couleur d'accent (utilisée pour le badge coloré

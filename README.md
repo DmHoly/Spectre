@@ -52,8 +52,10 @@ Projet corporate (Management)   Native (PT2), VLC (microlink), Nova (PT1)... - a
 - **µprojets** gardent leurs droits par membre (`viewer`/`editor`/`owner`) exactement comme avant -
   la couche Management n'y change rien, elle ne fait que les regrouper.
 - **Bibliothèque** (`/bibliotheque`) : structures/présets/briques réutilisables entre µprojets, plus
-  la bibliothèque de matériaux/recettes de l'installation, éditable dans `library/*.yml` à la racine
-  du dépôt (voir `library/README.md`) - inutile de redémarrer, rechargée à chaud.
+  la bibliothèque de matériaux/recettes de l'installation : des fichiers YAML dans le dossier
+  `library` des données (copiés au premier démarrage depuis `spectre/plugins/library/defaults/`,
+  voir son `README.md`), éditables depuis la page par un administrateur - inutile de redémarrer,
+  rechargée à chaud.
 
 ## Démarrer en local
 
@@ -223,8 +225,8 @@ Le contrat d'architecture est [`ARCHITECTURE.md`](ARCHITECTURE.md) (le pourquoi 
   redirigent (308) vers `/microprojets/...`, et une installation antérieure au renommage se migre
   toute seule au démarrage - tables, colonnes et dossier `data/projects/` compris (première
   migration du plugin `microprojects`).
-- `library/` - la bibliothèque racine (matériaux/présets/briques/recettes), voir son propre
-  `README.md`.
+- `spectre/plugins/library/defaults/` - les fichiers livrés de la bibliothèque racine
+  (matériaux/présets/briques/recettes), voir son propre `README.md`.
 
 ## Tests
 

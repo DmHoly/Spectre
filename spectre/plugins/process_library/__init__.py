@@ -2,7 +2,9 @@
 à un µprojet). Pages bibliothèque, présets et briques."""
 
 from ...kernel.plugin import NavEntry, Page, Plugin
+from . import library_files  # noqa: F401 - déclare presets.yml et briques.yml à la bibliothèque
 from .api import router
+from .migrations import MIGRATIONS
 
 PLUGIN = Plugin(
     name="process_library",
@@ -14,4 +16,5 @@ PLUGIN = Plugin(
         Page("/microprojets/{slug}/briques-technologiques", "tech-bricks.html"),
     ),
     nav=(NavEntry("Bibliothèque", "/bibliotheque", order=20, match=r"^/bibliotheque"),),
+    migrations=MIGRATIONS,
 )

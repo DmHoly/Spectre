@@ -1,110 +1,77 @@
-"""Tech bricks (spectre.plugins.process_library.api's briques-technologiques routes): a named, reusable
-sequence of process steps, with no substrate of its own - the "sequence" analog of a single-step
-StepPreset, the same way a SavedStructure is the "sequence + substrate" one. See
-spectre.plugins.process_library.tech_bricks for the module docstring explaining the "point of departure, not a live
-link" philosophy this mirrors from the structure library and step presets.
+"""Tech bricks (``/api/tech-bricks``): a named, reusable sequence of process steps, with no
+substrate of its own - the "sequence" analog of a single-step StepPreset, the same way a
+SavedStructure is the "sequence + substrate" one. See spectre.plugins.process_library.tech_bricks
+for the module docstring explaining the "point of departure, not a live link" philosophy this
+mirrors from the structure library and step presets.
 """
 
 from __future__ import annotations
 
 from support.microprojects import create_microproject, join_as, signup_with_microproject
-from support.structures import deposition
-
-
-PGAN_STEPS = [deposition("PGaN", "GaN", thickness_nm=50)]
+from support.process_library import create_item, delete_item, list_items, names, tech_brick, update_item
 
 
 def test_create_a_microproject_scoped_tech_brick(client):
     slug = signup_with_microproject(client, "brickA@example.com")
 
-    created = client.post(
-        f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "Masque + gravure RIE", "steps": PGAN_STEPS, "partagee": False},
-    )
-    assert created.status_code == 201
-    body = created.json()
-    assert [b["name"] for b in body["microprojet"]] == ["Masque + gravure RIE"]
-    assert body["partagees"] == []
-    assert len(body["microprojet"][0]["steps"]) == 1
-    assert body["microprojet"][0]["steps"][0]["material"] == "GaN"
+    created = create_item(client, "tech-bricks", tech_brick("Masque + gravure RIE"), microproject=slug)
+    assert len(created["steps"]) == 1
+    assert created["steps"][0]["material"] == "GaN"
+    listed = list_items(client, "tech-bricks", microproject=slug)
+    assert names(listed, "microproject") == ["Masque + gravure RIE"]
+    assert names(listed, "shared") == []
 
 
 def test_shared_tech_brick_is_visible_from_a_different_microproject(client):
-    slug_a = signup_with_microproject(client, "brickB@example.com")
-    client.post(
-        f"/api/microprojets/{slug_a}/briques-technologiques",
-        json={"name": "Brique commune", "steps": PGAN_STEPS, "partagee": True},
-    )
+    signup_with_microproject(client, "brickB@example.com")
+    create_item(client, "tech-bricks", tech_brick("Brique commune"), scope="shared")
 
     slug_b = create_microproject(client, "Autre projet")["slug"]
-    listed = client.get(f"/api/microprojets/{slug_b}/briques-technologiques").json()
-    assert [b["name"] for b in listed["partagees"]] == ["Brique commune"]
-    assert listed["microprojet"] == []
+    listed = list_items(client, "tech-bricks", microproject=slug_b)
+    assert names(listed, "shared") == ["Brique commune"]
+    assert names(listed, "microproject") == []
 
 
 def test_duplicate_name_in_the_same_library_is_rejected(client):
     slug = signup_with_microproject(client, "brickC@example.com")
-    payload = {"name": "Brique X", "steps": PGAN_STEPS, "partagee": False}
-    first = client.post(f"/api/microprojets/{slug}/briques-technologiques", json=payload)
-    assert first.status_code == 201
-    again = client.post(f"/api/microprojets/{slug}/briques-technologiques", json=payload)
+    create_item(client, "tech-bricks", tech_brick("Brique X"), microproject=slug)
+    again = client.post("/api/tech-bricks", json={**tech_brick("Brique X"), "scope": "microproject", "microproject": slug})
     assert again.status_code == 409
 
 
 def test_rename_a_tech_brick_in_place(client):
     slug = signup_with_microproject(client, "brickD@example.com")
-    client.post(
-        f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "Nom initial", "steps": PGAN_STEPS, "partagee": False},
-    )
-    renamed = client.put(
-        f"/api/microprojets/{slug}/briques-technologiques/Nom initial",
-        params={"partagee": False},
-        json={"name": "Nom corrige", "steps": PGAN_STEPS},
-    )
-    assert renamed.status_code == 200
-    names = [b["name"] for b in renamed.json()["microprojet"]]
-    assert names == ["Nom corrige"]
+    brick = create_item(client, "tech-bricks", tech_brick("Nom initial"), microproject=slug)
+
+    update_item(client, "tech-bricks", brick["id"], name="Nom corrige")
+    assert names(list_items(client, "tech-bricks", microproject=slug), "microproject") == ["Nom corrige"]
 
 
 def test_delete_a_tech_brick(client):
     slug = signup_with_microproject(client, "brickE@example.com")
-    client.post(
-        f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "A retirer", "steps": PGAN_STEPS, "partagee": False},
-    )
-    deleted = client.delete(f"/api/microprojets/{slug}/briques-technologiques/A retirer", params={"partagee": False})
-    assert deleted.status_code == 200
-    assert deleted.json()["microprojet"] == []
+    brick = create_item(client, "tech-bricks", tech_brick("A retirer"), microproject=slug)
+
+    delete_item(client, "tech-bricks", brick["id"])
+    assert names(list_items(client, "tech-bricks", microproject=slug), "microproject") == []
 
 
 def test_a_tech_brick_needs_no_substrate_unlike_a_saved_structure(client):
     """The whole point of a brick vs. a saved structure: it's just a sequence of steps, with
     nothing substrate-shaped in its request/response shape at all."""
     slug = signup_with_microproject(client, "brickF@example.com")
-    created = client.post(
-        f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "Sans substrat", "steps": PGAN_STEPS, "partagee": False},
-    )
-    assert created.status_code == 201
-    assert "substrate" not in created.json()["microprojet"][0]
+    created = create_item(client, "tech-bricks", tech_brick("Sans substrat"), microproject=slug)
+    assert "substrate" not in created
 
 
 def test_viewer_cannot_create_a_tech_brick(client):
     slug = signup_with_microproject(client, "brickG-owner@example.com")
     join_as(client, slug, "brickG-viewer@example.com", owner="brickG-owner@example.com", role="viewer")
-    denied = client.post(
-        f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "Interdit", "steps": PGAN_STEPS, "partagee": False},
-    )
+    denied = client.post("/api/tech-bricks", json={**tech_brick("Interdit"), "scope": "microproject", "microproject": slug})
     assert denied.status_code == 403
 
 
 def test_a_tech_brick_keeps_its_declared_parameters(client):
     slug = signup_with_microproject(client, "brickDeclared@example.com")
     declared = {"0": [{"name": "dopage", "value": 3e18, "obtention": {}}]}
-    body = client.post(
-        f"/api/microprojets/{slug}/briques-technologiques",
-        json={"name": "PGaN dope", "steps": PGAN_STEPS, "declared_params": declared},
-    ).json()
-    assert body["microprojet"][0]["declared_params"] == declared
+    created = create_item(client, "tech-bricks", tech_brick("PGaN dope", declared_params=declared), microproject=slug)
+    assert created["declared_params"] == declared

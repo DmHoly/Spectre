@@ -1,45 +1,50 @@
-/* Client de l'API du plugin process_library : présets d'étape, structures enregistrées et briques
-   technologiques d'un µprojet. `shared` (booléen) : l'élément de la bibliothèque partagée plutôt
-   que celui du µprojet. */
+/* Client de l'API du plugin process_library : structures enregistrées, présets d'étape et briques
+   technologiques, en collections à plat. Chaque élément porte `id`, `name`, `scope` ("builtin",
+   "shared" ou "microproject"), `microproject`, `created_by`, `updated_by` et `can_edit`.
+   `filters` : `{microproject, scope}` - sans µprojet, la liste ne contient que les éléments intégrés
+   et partagés. */
 
 const processLibraryApi = {
-  stepPresets(microprojectSlug) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/presets-etapes`);
+  savedStructures(filters) {
+    return api.get(api.withQuery("/api/saved-structures", filters));
   },
-  createStepPreset(microprojectSlug, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/presets-etapes`, body);
+  savedStructure(structureId) {
+    return api.get(`/api/saved-structures/${encodeURIComponent(structureId)}`);
   },
-  updateStepPreset(microprojectSlug, name, shared, body) {
-    return api.put(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/presets-etapes/${encodeURIComponent(name)}?partagee=${Boolean(shared)}`, body);
+  createSavedStructure(body) {
+    return api.post("/api/saved-structures", body);
   },
-  removeStepPreset(microprojectSlug, name, shared) {
-    return api.del(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/presets-etapes/${encodeURIComponent(name)}?partagee=${Boolean(shared)}`);
+  updateSavedStructure(structureId, changes) {
+    return api.patch(`/api/saved-structures/${encodeURIComponent(structureId)}`, changes);
   },
-  savedStructures(microprojectSlug) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/structures-sauvegardees`);
+  deleteSavedStructure(structureId) {
+    return api.del(`/api/saved-structures/${encodeURIComponent(structureId)}`);
   },
-  createSavedStructure(microprojectSlug, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/structures-sauvegardees`, body);
+  stepPresets(filters) {
+    return api.get(api.withQuery("/api/step-presets", filters));
   },
-  updateSavedStructure(microprojectSlug, name, shared, body) {
-    return api.put(
-      `/api/microprojets/${encodeURIComponent(microprojectSlug)}/structures-sauvegardees/${encodeURIComponent(name)}?partagee=${Boolean(shared)}`,
-      body
-    );
+  createStepPreset(body) {
+    return api.post("/api/step-presets", body);
   },
-  techBricks(microprojectSlug) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/briques-technologiques`);
+  updateStepPreset(presetId, changes) {
+    return api.patch(`/api/step-presets/${encodeURIComponent(presetId)}`, changes);
   },
-  createTechBrick(microprojectSlug, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/briques-technologiques`, body);
+  deleteStepPreset(presetId) {
+    return api.del(`/api/step-presets/${encodeURIComponent(presetId)}`);
   },
-  updateTechBrick(microprojectSlug, name, shared, body) {
-    return api.put(
-      `/api/microprojets/${encodeURIComponent(microprojectSlug)}/briques-technologiques/${encodeURIComponent(name)}?partagee=${Boolean(shared)}`,
-      body
-    );
+  techBricks(filters) {
+    return api.get(api.withQuery("/api/tech-bricks", filters));
   },
-  removeTechBrick(microprojectSlug, name, shared) {
-    return api.del(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/briques-technologiques/${encodeURIComponent(name)}?partagee=${Boolean(shared)}`);
+  techBrick(brickId) {
+    return api.get(`/api/tech-bricks/${encodeURIComponent(brickId)}`);
+  },
+  createTechBrick(body) {
+    return api.post("/api/tech-bricks", body);
+  },
+  updateTechBrick(brickId, changes) {
+    return api.patch(`/api/tech-bricks/${encodeURIComponent(brickId)}`, changes);
+  },
+  deleteTechBrick(brickId) {
+    return api.del(`/api/tech-bricks/${encodeURIComponent(brickId)}`);
   },
 };

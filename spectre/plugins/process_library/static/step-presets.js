@@ -1,4 +1,4 @@
-/* Page dédiée aux présets d'étape : liste (présets intégrés / partagés / projet) + formulaire de
+/* Page dédiée aux présets d'étape : liste (intégrés / partagés / µprojet) + formulaire de
    création/édition. Un préset ne fait que préremplir une recette (voir structureforge.core.
    recipes) dans le formulaire d'étape du constructeur (structures/static/builder/) - il n'est jamais
    référencé par nom au moment de la simulation. */
@@ -8,9 +8,9 @@ const { slug } = routeParams("/microprojets/{slug}/presets-etapes");
 const MODE_LABELS = { conformal: "conforme", directional: "directionnel", isotropic: "isotrope" };
 
 const state = {
-  presets: { presets: [], partagees: [], projet: [] },
+  presets: [],
   recipes: { deposition: [], etch: [] },
-  editing: null, // { name, partagee } of the preset currently being edited, or null = creating
+  editing: null, // le préset en cours de modification, ou null = création
 };
 
 const errorBox = document.getElementById("error");
@@ -64,26 +64,25 @@ function resetForm() {
   document.getElementById("cancel-edit-btn").style.display = "none";
   // Arrivée depuis le hub /bibliotheque (?partagee=1) : préset partagé par défaut.
   if (new URLSearchParams(window.location.search).get("partagee") === "1") {
-    document.getElementById("f-partagee").value = "true";
+    document.getElementById("f-scope").value = "shared";
   }
 }
 
 document.getElementById("cancel-edit-btn").addEventListener("click", resetForm);
 
 function scopeSuffix(scope) {
-  if (scope === "preset") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· préset, disponible dans tous les µprojets</span>`;
-  if (scope === "partagee") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagée, visible dans tous les µprojets</span>`;
+  if (scope === "builtin") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· intégré, disponible dans tous les µprojets</span>`;
+  if (scope === "shared") return `<span style="font-weight:400;font-size:11px;color:var(--text-faint);">· partagé, visible dans tous les µprojets</span>`;
   return "";
 }
 
 function recipeSummary(payload) {
   const kindLabel = payload.kind === "etch" ? "Gravure" : "Dépôt";
-  return `${kindLabel} · ${payload.recipe}`;
+  return `${kindLabel} · ${escapeHtml(payload.recipe)}`;
 }
 
 function presetRow(preset) {
-  const canManage = state.currentRole === "editor" || state.currentRole === "owner";
-  const isPreset = preset.scope === "preset";
+  const canCreate = state.currentRole === "editor" || state.currentRole === "owner";
   return `
     <div class="step-row" style="align-items:flex-start;">
       <div style="flex:1;min-width:0;">
@@ -92,24 +91,23 @@ function presetRow(preset) {
         ${preset.notes ? `<div style="font-size:12px;color:var(--text-soft);margin-top:3px;max-width:56ch;">${escapeHtml(preset.notes)}</div>` : ""}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
-        ${canManage ? `<button class="btn btn-line js-duplicate" data-name="${escapeHtml(preset.name)}" data-scope="${preset.scope}" type="button" style="padding:5px 10px;font-size:12px;">Dupliquer</button>` : ""}
+        ${canCreate ? `<button class="btn btn-line js-duplicate" data-id="${escapeHtml(preset.id)}" type="button" style="padding:5px 10px;font-size:12px;">Dupliquer</button>` : ""}
         ${
-          canManage && !isPreset
-            ? `<button class="btn btn-line js-edit" data-name="${escapeHtml(preset.name)}" data-scope="${preset.scope}" type="button" style="padding:5px 10px;font-size:12px;">Modifier</button>`
+          preset.can_edit
+            ? `<button class="btn btn-line js-edit" data-id="${escapeHtml(preset.id)}" type="button" style="padding:5px 10px;font-size:12px;">Modifier</button>`
             : ""
         }
         ${
-          canManage && !isPreset
-            ? `<button class="btn btn-line js-remove" data-name="${escapeHtml(preset.name)}" data-scope="${preset.scope}" type="button" style="padding:5px 10px;font-size:12px;color:var(--danger);">Supprimer</button>`
+          preset.can_edit
+            ? `<button class="btn btn-line js-remove" data-id="${escapeHtml(preset.id)}" type="button" style="padding:5px 10px;font-size:12px;color:var(--danger);">Supprimer</button>`
             : ""
         }
       </div>
     </div>`;
 }
 
-function findPreset(scope, name) {
-  const bucket = scope === "preset" ? state.presets.presets : scope === "partagee" ? state.presets.partagees : state.presets.microprojet;
-  return (bucket || []).find((p) => p.name === name) || null;
+function findPreset(id) {
+  return state.presets.find((p) => p.id === id) || null;
 }
 
 function fillFormFrom(preset, { asDuplicate } = {}) {
@@ -119,23 +117,23 @@ function fillFormFrom(preset, { asDuplicate } = {}) {
   document.getElementById("f-recipe").value = preset.payload.recipe;
   updateRecipeHint();
   document.getElementById("f-notes").value = preset.notes || "";
-  document.getElementById("f-partagee").value = asDuplicate ? "false" : preset.scope === "partagee" ? "true" : "false";
+  document.getElementById("f-scope").value = !asDuplicate && preset.scope === "shared" ? "shared" : "microproject";
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function confirmRemoval(preset) {
+  const shared = preset.scope === "shared" ? " Il est partagé : il disparaîtra de tous les µprojets." : "";
+  return window.confirm(`Supprimer le préset « ${preset.name} » ?${shared}`);
+}
+
 function renderList() {
-  const entries = [
-    ...state.presets.presets.map((p) => ({ ...p, scope: "preset" })),
-    ...state.presets.partagees.map((p) => ({ ...p, scope: "partagee" })),
-    ...state.presets.microprojet.map((p) => ({ ...p, scope: "microprojet" })),
-  ];
-  document.getElementById("presets-list").innerHTML = entries.length
-    ? entries.map(presetRow).join("")
+  document.getElementById("presets-list").innerHTML = state.presets.length
+    ? state.presets.map(presetRow).join("")
     : `<div class="help">Aucun préset pour l'instant.</div>`;
 
   document.querySelectorAll(".js-duplicate").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const preset = findPreset(btn.dataset.scope, btn.dataset.name);
+      const preset = findPreset(btn.dataset.id);
       if (!preset) return;
       resetForm();
       fillFormFrom(preset, { asDuplicate: true });
@@ -143,9 +141,10 @@ function renderList() {
   });
   document.querySelectorAll(".js-edit").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const preset = findPreset(btn.dataset.scope, btn.dataset.name);
+      const preset = findPreset(btn.dataset.id);
       if (!preset) return;
-      state.editing = { name: preset.name, partagee: btn.dataset.scope === "partagee" };
+      state.editing = preset;
+      document.querySelector(".card.card-pad").style.display = "";
       fillFormFrom(preset, { asDuplicate: false });
       document.getElementById("form-title").textContent = "Modifier le préset";
       document.getElementById("submit-btn").textContent = "Enregistrer les modifications";
@@ -154,10 +153,12 @@ function renderList() {
   });
   document.querySelectorAll(".js-remove").forEach((btn) => {
     btn.addEventListener("click", async () => {
+      const preset = findPreset(btn.dataset.id);
+      if (!preset || !confirmRemoval(preset)) return;
       try {
-        state.presets = await processLibraryApi.removeStepPreset(slug, btn.dataset.name, btn.dataset.scope === "partagee");
-        if (state.editing && state.editing.name === btn.dataset.name) resetForm();
-        renderList();
+        await processLibraryApi.deleteStepPreset(preset.id);
+        if (state.editing && state.editing.id === preset.id) resetForm();
+        await loadPresets();
         showFlash("Préset supprimé.");
       } catch (err) {
         showError(err);
@@ -167,7 +168,7 @@ function renderList() {
 }
 
 async function loadPresets() {
-  state.presets = await processLibraryApi.stepPresets(slug);
+  state.presets = await processLibraryApi.stepPresets({ microproject: slug });
   renderList();
 }
 
@@ -175,23 +176,23 @@ document.getElementById("preset-form").addEventListener("submit", async (event) 
   event.preventDefault();
   clearMessages();
   const kind = document.getElementById("f-kind").value;
-  const payload = { kind, recipe: document.getElementById("f-recipe").value };
   const body = {
     name: document.getElementById("f-name").value.trim(),
-    payload,
+    payload: { kind, recipe: document.getElementById("f-recipe").value },
     notes: document.getElementById("f-notes").value.trim() || null,
-    partagee: document.getElementById("f-partagee").value === "true",
+    scope: document.getElementById("f-scope").value,
+    microproject: slug,
   };
   try {
     if (state.editing) {
-      state.presets = await processLibraryApi.updateStepPreset(slug, state.editing.name, state.editing.partagee, body);
+      await processLibraryApi.updateStepPreset(state.editing.id, body);
       showFlash("Préset mis à jour.");
     } else {
-      state.presets = await processLibraryApi.createStepPreset(slug, body);
+      await processLibraryApi.createStepPreset(body);
       showFlash("Préset créé.");
     }
     resetForm();
-    renderList();
+    await loadPresets();
   } catch (err) {
     showError(err);
   }
@@ -216,7 +217,11 @@ async function init() {
     state.recipes = { deposition: [], etch: [] };
   }
   renderRecipeOptions();
-  loadPresets();
+  try {
+    await loadPresets();
+  } catch (err) {
+    showError(err);
+  }
 }
 
 init();

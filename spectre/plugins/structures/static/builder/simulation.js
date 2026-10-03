@@ -1,4 +1,4 @@
-/* Aperçu simulé : l'appel à /structures/simulate (StructureForge fait le calcul, cette page
+/* Aperçu simulé : l'appel à POST /api/simulations (StructureForge fait le calcul, cette page
    assemble la requête et affiche ce qui revient), et la zone de dessin de l'atelier - l'image
    affichée suit la sélection du process flow (la structure *après* l'étape sélectionnée, ou la
    structure finale), zoom ajusté/molette/déplacement, et le lien couche <-> étape dans les deux

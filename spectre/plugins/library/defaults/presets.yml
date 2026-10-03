@@ -3,10 +3,10 @@
 # l'étape ajoutée elle porte sa propre recette (pas de lien vivant).
 #
 # Rechargé automatiquement quand le fichier change. Vide/invalide → jeu intégré de repli
-# (spectre/core/step_presets.py, _builtin_step_presets).
+# (spectre/plugins/process_library/step_presets.py, builtin_step_presets).
 #
 # Champs : name (obligatoire), kind (deposition | etch), recipe (nom exact d'une recette —
-# celles de StructureForge ci-dessous, OU une recette maison définie dans library/recettes.yml,
+# celles de StructureForge ci-dessous, OU une recette maison définie dans recettes.yml,
 # par ex. une gravure sélective), notes (optionnel).
 #
 # Recettes de dépôt StructureForge : ALD Conformal, CVD Conformal, PVD Sputter (tilted),
@@ -15,7 +15,7 @@
 # Recettes de gravure StructureForge : Dry Oxide Etch, Wet HF Dip, Anisotropic RIE, Ion Mill (tilted),
 #   KOH Anisotropic Wet Etch, Cl2 ICP-RIE (III-N), TMAH Anisotropic Wet Etch, SF6 Deep RIE (Si),
 #   Wet Metal Etch
-# + toute recette de library/recettes.yml (ex. « Gravure sélective Al2O3 »).
+# + toute recette de recettes.yml (ex. « Gravure sélective Al2O3 »).
 
 presets:
   # -- dépôts -----------------------------------------------------------
@@ -67,7 +67,7 @@ presets:
     notes: Bain humide générique pour graver un métal — sous-grave comme toute gravure isotrope.
   - name: Gravure sélective Al2O3
     kind: etch
-    recipe: Gravure sélective Al2O3   # recette maison, voir library/recettes.yml
+    recipe: Gravure sélective Al2O3   # recette maison, voir recettes.yml
     notes: Ne grave que l'Al2O3 — tout le reste (GaN, SiO2, métaux, résine) sert de couche d'arrêt.
 
   # -- retirés du jeu « nitrures » — décommentez pour les réactiver -------

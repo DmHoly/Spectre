@@ -134,20 +134,15 @@ function fillGradedMaterialField(id, materialName) {
 }
 
 function presetOptionsHtml(kind) {
-  const entries = [
-    ...state.stepPresets.presets.map((p) => ({ ...p, scope: "preset" })),
-    ...state.stepPresets.partagees.map((p) => ({ ...p, scope: "partagee" })),
-    ...state.stepPresets.microprojet.map((p) => ({ ...p, scope: "microprojet" })),
-  ].filter((p) => p.payload.kind === kind);
-  const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", microprojet: "" };
-  return entries
-    .map((p) => `<option value="${p.scope}::${encodeURIComponent(p.name)}">${escapeHtml(p.name)}${scopeSuffix[p.scope] || ""}</option>`)
+  const scopeSuffix = { builtin: " (intégré)", shared: " (partagé)", microproject: "" };
+  return state.stepPresets
+    .filter((p) => p.payload.kind === kind)
+    .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}${scopeSuffix[p.scope] || ""}</option>`)
     .join("");
 }
 
-function findStepPreset(scope, name) {
-  const bucket = scope === "preset" ? state.stepPresets.presets : scope === "partagee" ? state.stepPresets.partagees : state.stepPresets.microprojet;
-  return (bucket || []).find((p) => p.name === name) || null;
+function findStepPreset(id) {
+  return state.stepPresets.find((p) => p.id === id) || null;
 }
 
 function recipeOptions(kind, selectedValue) {
@@ -177,8 +172,7 @@ function wireRecipeField(kind) {
   document.getElementById("f-preset").addEventListener("change", (e) => {
     const value = e.target.value;
     if (!value) return;
-    const [scope, name] = value.split("::");
-    const preset = findStepPreset(scope, decodeURIComponent(name));
+    const preset = findStepPreset(value);
     if (!preset) return;
     recipeSelect.value = preset.payload.recipe;
     update();

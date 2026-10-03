@@ -1,211 +1,205 @@
-"""The process library: saved structures, step presets and technology bricks - each in three
-buckets (built-in, shared between microprojects, a microproject's own), with the same list/create/
-update/delete routes over a :class:`~spectre.kernel.json_store.KeyedJsonStore`
-(:mod:`spectre.kernel.scoped`).
-"""
+"""Les trois bibliothèques, en collections à plat : ``/api/saved-structures``, ``/api/step-presets``
+et ``/api/tech-bricks`` (lister, créer, lire, modifier, supprimer). Des routes explicites par
+ressource - leurs modèles diffèrent - qui délèguent au service commun (:mod:`.service`)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 from structureforge.process.steps import ProcessStep
 
-from ...kernel.scoped import list_three_buckets, reject_duplicate, require_existing
-from ..microprojects.deps import require_role
-from ..microprojects.service import Microproject
+from ..accounts import service as accounts
+from ..accounts.deps import current_user
+from ..accounts.service import User
 from ..structures import simulation
-from . import stores
-from .step_presets import StepPreset, StepPresetPayload, default_step_presets
-from .structure_library import SavedStructure, default_structure_presets
-from .tech_bricks import TechBrick, default_tech_bricks
+from . import service
+from .service import SAVED_STRUCTURES, STEP_PRESETS, TECH_BRICKS, Collection, Entry
+from .step_presets import StepPresetPayload
 
-router = APIRouter(prefix="/api/microprojets", tags=["process-library"])
+router = APIRouter(prefix="/api", tags=["process-library"])
+
+WritableScope = Literal["shared", "microproject"]
 
 
-class StepPresetInput(BaseModel):
+class _NewItem(BaseModel):
     name: str
-    payload: StepPresetPayload
-    notes: str | None = None
-    partagee: bool = False
+    scope: WritableScope
+    microproject: str | None = None
 
 
-def _step_preset_store(microproject: Microproject, partagee: bool):
-    return stores.get_shared_step_preset_store() if partagee else stores.get_step_preset_store(microproject.slug)
+class _ItemChanges(BaseModel):
+    name: str | None = None
+    scope: WritableScope | None = None
+    microproject: str | None = None
 
 
-def _step_preset_payload(preset: StepPreset, scope: str) -> dict:
-    return {**preset.model_dump(mode="json"), "scope": scope}
-
-
-@router.get("/{slug}/presets-etapes")
-def list_step_presets(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    return list_three_buckets(
-        stores.get_step_preset_store(microproject.slug),
-        stores.get_shared_step_preset_store(),
-        default_step_presets(),
-        _step_preset_payload,
-    )
-
-
-@router.post("/{slug}/presets-etapes", status_code=201)
-def create_step_preset(body: StepPresetInput, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    store = _step_preset_store(microproject, body.partagee)
-    reject_duplicate(store, body.name, message=f"Un préset nommé {body.name!r} existe déjà dans cette bibliothèque.")
-    preset = StepPreset(
-        name=body.name,
-        payload=body.payload,
-        notes=body.notes,
-        created_at=datetime.now(timezone.utc).isoformat(),
-    )
-    store.upsert(preset)
-    return list_step_presets(microproject)
-
-
-@router.put("/{slug}/presets-etapes/{name}")
-def update_step_preset(
-    name: str, body: StepPresetInput, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))
-) -> dict:
-    store = _step_preset_store(microproject, partagee)
-    existing = require_existing(store, name, message=f"Préset {name!r} introuvable.")
-    preset = StepPreset(name=body.name, payload=body.payload, notes=body.notes, created_at=existing.created_at)
-    store.rename(name, preset)
-    return list_step_presets(microproject)
-
-
-@router.delete("/{slug}/presets-etapes/{name}")
-def delete_step_preset(name: str, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    _step_preset_store(microproject, partagee).remove(name)
-    return list_step_presets(microproject)
-
-
-class SavedStructureInput(BaseModel):
-    name: str
+class NewSavedStructure(_NewItem):
     substrate: simulation.SubstrateSpec
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
     derived_from: str | None = None
-    partagee: bool = False
 
 
-def _saved_structure_store(microproject: Microproject, partagee: bool):
-    return stores.get_shared_structure_store() if partagee else stores.get_structure_store(microproject.slug)
+class SavedStructureChanges(_ItemChanges):
+    substrate: simulation.SubstrateSpec | None = None
+    steps: list[ProcessStep] | None = None
+    declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
 
 
-def _saved_structure_payload(structure: SavedStructure, scope: str) -> dict:
-    return {**structure.model_dump(mode="json"), "scope": scope}
+class NewStepPreset(_NewItem):
+    payload: StepPresetPayload
+    notes: str | None = None
 
 
-@router.get("/{slug}/structures-sauvegardees")
-def list_saved_structures(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    return list_three_buckets(
-        stores.get_structure_store(microproject.slug),
-        stores.get_shared_structure_store(),
-        default_structure_presets(),
-        _saved_structure_payload,
-    )
+class StepPresetChanges(_ItemChanges):
+    payload: StepPresetPayload | None = None
+    notes: str | None = None
 
 
-@router.post("/{slug}/structures-sauvegardees", status_code=201)
-def create_saved_structure(body: SavedStructureInput, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    store = _saved_structure_store(microproject, body.partagee)
-    reject_duplicate(store, body.name, message=f"Une structure nommée {body.name!r} existe déjà dans cette bibliothèque.")
-    saved = SavedStructure(
-        name=body.name,
-        substrate=body.substrate,
-        steps=body.steps,
-        declared_params=simulation.declared_params_json(simulation.declared_params_by_index(body.declared_params)),
-        derived_from=body.derived_from,
-        created_at=datetime.now(timezone.utc).isoformat(),
-    )
-    store.upsert(saved)
-    return list_saved_structures(microproject)
-
-
-@router.put("/{slug}/structures-sauvegardees/{name}")
-def update_saved_structure(
-    name: str, body: SavedStructureInput, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))
-) -> dict:
-    store = _saved_structure_store(microproject, partagee)
-    existing = require_existing(store, name, message=f"Structure {name!r} introuvable.")
-    saved = SavedStructure(
-        name=body.name,
-        substrate=body.substrate,
-        steps=body.steps,
-        declared_params=simulation.declared_params_json(simulation.declared_params_by_index(body.declared_params)),
-        derived_from=existing.derived_from,
-        created_at=existing.created_at,
-    )
-    store.rename(name, saved)
-    return list_saved_structures(microproject)
-
-
-@router.delete("/{slug}/structures-sauvegardees/{name}")
-def delete_saved_structure(name: str, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    _saved_structure_store(microproject, partagee).remove(name)
-    return list_saved_structures(microproject)
-
-
-class TechBrickInput(BaseModel):
-    name: str
+class NewTechBrick(_NewItem):
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
     notes: str | None = None
-    partagee: bool = False
 
 
-def _tech_brick_store(microproject: Microproject, partagee: bool):
-    return stores.get_shared_tech_brick_store() if partagee else stores.get_tech_brick_store(microproject.slug)
+class TechBrickChanges(_ItemChanges):
+    steps: list[ProcessStep] | None = None
+    declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
+    notes: str | None = None
 
 
-def _tech_brick_payload(brick: TechBrick, scope: str) -> dict:
-    return {**brick.model_dump(mode="json"), "scope": scope}
+def _content(body: BaseModel) -> dict[str, Any]:
+    """Les champs envoyés, sans la portée ; les paramètres déclarés rangés par indice d'étape."""
+    fields = body.model_dump(mode="json", exclude_unset=True, exclude={"scope", "microproject"})
+    declared = getattr(body, "declared_params", None)
+    if declared is not None:
+        fields["declared_params"] = simulation.declared_params_json(simulation.declared_params_by_index(declared))
+    return fields
 
 
-@router.get("/{slug}/briques-technologiques")
-def list_tech_bricks(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    return list_three_buckets(
-        stores.get_tech_brick_store(microproject.slug),
-        stores.get_shared_tech_brick_store(),
-        default_tech_bricks(),
-        _tech_brick_payload,
-    )
+def _changes(body: _ItemChanges) -> dict[str, Any]:
+    return {**_content(body), **body.model_dump(exclude_unset=True, include={"scope", "microproject"})}
 
 
-@router.post("/{slug}/briques-technologiques", status_code=201)
-def create_tech_brick(body: TechBrickInput, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    store = _tech_brick_store(microproject, body.partagee)
-    reject_duplicate(store, body.name, message=f"Une brique nommée {body.name!r} existe déjà dans cette bibliothèque.")
-    brick = TechBrick(
-        name=body.name,
-        steps=body.steps,
-        declared_params=simulation.declared_params_json(simulation.declared_params_by_index(body.declared_params)),
-        notes=body.notes,
-        created_at=datetime.now(timezone.utc).isoformat(),
-    )
-    store.upsert(brick)
-    return list_tech_bricks(microproject)
+class _Serializer:
+    """Un élément tel que l'API le rend : ses champs, sa portée, ses auteurs (id et nom) et si le
+    demandeur peut le modifier. Les noms des comptes sont lus une fois par réponse."""
+
+    def __init__(self, user: User):
+        self.user = user
+        self._names: dict[int, str | None] = {}
+
+    def _account(self, user_id: int | None) -> dict[str, Any] | None:
+        if user_id is None:
+            return None
+        if user_id not in self._names:
+            account = accounts.get_by_id(user_id)
+            self._names[user_id] = account.name if account else None
+        return {"id": user_id, "name": self._names[user_id]}
+
+    def __call__(self, entry: Entry) -> dict[str, Any]:
+        return {
+            **entry.item.model_dump(mode="json"),
+            "scope": entry.scope,
+            "microproject": entry.microproject.slug if entry.microproject else None,
+            "created_by": self._account(entry.item.created_by),
+            "updated_by": self._account(entry.item.updated_by),
+            "can_edit": service.can_edit(entry, self.user),
+        }
 
 
-@router.put("/{slug}/briques-technologiques/{name}")
-def update_tech_brick(
-    name: str, body: TechBrickInput, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))
-) -> dict:
-    store = _tech_brick_store(microproject, partagee)
-    existing = require_existing(store, name, message=f"Brique {name!r} introuvable.")
-    brick = TechBrick(
-        name=body.name,
-        steps=body.steps,
-        declared_params=simulation.declared_params_json(simulation.declared_params_by_index(body.declared_params)),
-        notes=body.notes,
-        created_at=existing.created_at,
-    )
-    store.rename(name, brick)
-    return list_tech_bricks(microproject)
+def _list(collection: Collection, user: User, microproject: str | None, scope: str | None) -> list[dict[str, Any]]:
+    serialize = _Serializer(user)
+    return [serialize(entry) for entry in service.list_items(collection, user, microproject_slug=microproject, scope=scope)]
 
 
-@router.delete("/{slug}/briques-technologiques/{name}")
-def delete_tech_brick(name: str, partagee: bool = False, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    _tech_brick_store(microproject, partagee).remove(name)
-    return list_tech_bricks(microproject)
+def _create(collection: Collection, body: _NewItem, user: User, response: Response) -> dict[str, Any]:
+    entry = service.create_item(collection, user, _content(body), scope=body.scope, microproject_slug=body.microproject)
+    response.headers["Location"] = f"/api/{collection.key}/{entry.item.id}"
+    return _Serializer(user)(entry)
+
+
+# -- structures enregistrées -----------------------------------------------------------------------
+
+
+@router.get("/saved-structures")
+def list_saved_structures(microproject: str | None = None, scope: str | None = None, user: User = Depends(current_user)) -> list[dict[str, Any]]:
+    return _list(SAVED_STRUCTURES, user, microproject, scope)
+
+
+@router.post("/saved-structures", status_code=201)
+def create_saved_structure(body: NewSavedStructure, response: Response, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _create(SAVED_STRUCTURES, body, user, response)
+
+
+@router.get("/saved-structures/{structure_id}")
+def get_saved_structure(structure_id: str, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _Serializer(user)(service.get_item(SAVED_STRUCTURES, user, structure_id))
+
+
+@router.patch("/saved-structures/{structure_id}")
+def update_saved_structure(structure_id: str, body: SavedStructureChanges, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _Serializer(user)(service.update_item(SAVED_STRUCTURES, user, structure_id, _changes(body)))
+
+
+@router.delete("/saved-structures/{structure_id}", status_code=204, response_class=Response)
+def delete_saved_structure(structure_id: str, user: User = Depends(current_user)) -> None:
+    service.delete_item(SAVED_STRUCTURES, user, structure_id)
+
+
+# -- présets d'étape -------------------------------------------------------------------------------
+
+
+@router.get("/step-presets")
+def list_step_presets(microproject: str | None = None, scope: str | None = None, user: User = Depends(current_user)) -> list[dict[str, Any]]:
+    return _list(STEP_PRESETS, user, microproject, scope)
+
+
+@router.post("/step-presets", status_code=201)
+def create_step_preset(body: NewStepPreset, response: Response, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _create(STEP_PRESETS, body, user, response)
+
+
+@router.get("/step-presets/{preset_id}")
+def get_step_preset(preset_id: str, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _Serializer(user)(service.get_item(STEP_PRESETS, user, preset_id))
+
+
+@router.patch("/step-presets/{preset_id}")
+def update_step_preset(preset_id: str, body: StepPresetChanges, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _Serializer(user)(service.update_item(STEP_PRESETS, user, preset_id, _changes(body)))
+
+
+@router.delete("/step-presets/{preset_id}", status_code=204, response_class=Response)
+def delete_step_preset(preset_id: str, user: User = Depends(current_user)) -> None:
+    service.delete_item(STEP_PRESETS, user, preset_id)
+
+
+# -- briques technologiques ------------------------------------------------------------------------
+
+
+@router.get("/tech-bricks")
+def list_tech_bricks(microproject: str | None = None, scope: str | None = None, user: User = Depends(current_user)) -> list[dict[str, Any]]:
+    return _list(TECH_BRICKS, user, microproject, scope)
+
+
+@router.post("/tech-bricks", status_code=201)
+def create_tech_brick(body: NewTechBrick, response: Response, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _create(TECH_BRICKS, body, user, response)
+
+
+@router.get("/tech-bricks/{brick_id}")
+def get_tech_brick(brick_id: str, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _Serializer(user)(service.get_item(TECH_BRICKS, user, brick_id))
+
+
+@router.patch("/tech-bricks/{brick_id}")
+def update_tech_brick(brick_id: str, body: TechBrickChanges, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _Serializer(user)(service.update_item(TECH_BRICKS, user, brick_id, _changes(body)))
+
+
+@router.delete("/tech-bricks/{brick_id}", status_code=204, response_class=Response)
+def delete_tech_brick(brick_id: str, user: User = Depends(current_user)) -> None:
+    service.delete_item(TECH_BRICKS, user, brick_id)

@@ -344,12 +344,14 @@ async function groupSelectionIntoBrick() {
   }
   try {
     const selectedSteps = indices.map((idx) => stripBrickTag(state.steps[idx]));
-    state.techBricks = await processLibraryApi.createTechBrick(slug, {
+    const created = await processLibraryApi.createTechBrick({
       name,
       steps: selectedSteps,
       declared_params: declaredParamsPayload(selectedSteps),
-      partagee: false,
+      scope: "microproject",
+      microproject: slug,
     });
+    state.techBricks = [...state.techBricks, created];
     const groupId = generateBrickGroupId();
     indices.forEach((idx) => {
       state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name };
