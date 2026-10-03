@@ -2,7 +2,7 @@
    coupe TEM d'ensemble, un zoom...), dans l'ordre où les lire, chacune avec son type et sa légende.
    On en ajoute en collant (Ctrl+V), en glissant-déposant (un ou plusieurs fichiers) ou en les
    choisissant ; on les réordonne (← →), les remplace (bouton, ou fichier déposé sur l'image) ou les
-   retire. Chaque image part aussitôt au serveur (attachmentsApi.uploadStructureImage, voir
+   retire. Chaque image part aussitôt au serveur (attachmentsApi.upload, voir
    attachments/static/client.js) - la planche ne garde que son id. Partagée par la page « structure en
    image » (nouvelle expérience, évolution), la fenêtre « Modifier les images » de la fiche et le
    formulaire de preuve (sans type d'image, en version compacte - options withKind/compact).
@@ -13,14 +13,15 @@
 
 const STRUCTURE_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 const STRUCTURE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
-const STRUCTURE_IMAGE_MAX_COUNT = 12; // spectre.core.structures.MAX_STRUCTURE_IMAGES
+const STRUCTURE_IMAGE_MAX_COUNT = 12; // spectre.plugins.structures.kinds.MAX_STRUCTURE_IMAGES
 
 // `purpose` : "structure" (une image de structure) ou "evidence" (une image collée dans une preuve).
 async function uploadStructureImage(slug, file, purpose = "structure") {
   const form = new FormData();
   form.append("file", file, file.name || "image-collee.png");
+  form.append("purpose", purpose);
   try {
-    return purpose === "evidence" ? await attachmentsApi.uploadImage(slug, form) : await attachmentsApi.uploadStructureImage(slug, form);
+    return await attachmentsApi.upload(slug, form);
   } catch (err) {
     const detail = err.data && err.data.detail;
     if (!detail) err.message = "L'envoi de l'image a échoué.";
@@ -181,7 +182,7 @@ function mountImageDrop(
     try {
       const result = await uploadStructureImage(slug, file, purpose);
       if (!items.includes(item)) return; // retirée entre-temps
-      Object.assign(item, { image_id: result.image_id, url: result.url, filename: result.filename, uploading: false });
+      Object.assign(item, { image_id: result.id, url: result.url, filename: result.filename, uploading: false });
       render();
       changed();
     } catch (err) {

@@ -319,7 +319,7 @@ def evolve_experience(
     user: User = Depends(current_user),
 ) -> dict:
     try:
-        geometry, _frames, _materials = simulation.run_simulation(microproject.slug, body.substrate, body.steps)
+        geometry, _frames, _materials = simulation.run_simulation(body.substrate, body.steps)
     except simulation.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -1064,7 +1064,7 @@ def launch_experience(
         )
 
     try:
-        geometry, _frames, _materials = simulation.run_simulation(microproject.slug, body.substrate, body.steps)
+        geometry, _frames, _materials = simulation.run_simulation(body.substrate, body.steps)
     except simulation.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -1168,7 +1168,7 @@ def launch_campaign(
 
     declared_params = simulation.declared_params_by_index(body.declared_params)
     try:
-        result = campaigns.generate_campaign_variants(microproject.slug, body.substrate, body.steps, body.plan, declared_params)
+        result = campaigns.generate_campaign_variants(body.substrate, body.steps, body.plan, declared_params)
     except simulation.SimulationFailedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

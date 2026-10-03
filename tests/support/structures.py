@@ -6,7 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .http import PNG_1PX, assert_created
+from .attachments import upload_file
+from .http import assert_ok
 
 
 def length(value: float, unit: str = "nm") -> dict:
@@ -39,7 +40,24 @@ def campaign_plan(values: list, *, step_index: int = 0, field: str = "thickness"
     return {"factors": [{"step_index": step_index, "field": field, "values": list(values), **factor}]}
 
 
+def simulate(client: Any, body: dict) -> Any:
+    """POST /api/simulations, tel quel (la réponse, pour en vérifier un refus)."""
+    return client.post("/api/simulations", json=body)
+
+
+def preview_campaign(client: Any, body: dict) -> Any:
+    """POST /api/campaign-previews, tel quel (la réponse, pour en vérifier un refus)."""
+    return client.post("/api/campaign-previews", json=body)
+
+
+def list_materials(client: Any) -> list[dict]:
+    return assert_ok(client.get("/api/materials"))
+
+
+def list_recipes(client: Any) -> dict:
+    return assert_ok(client.get("/api/recipes"))
+
+
 def upload_structure_image(client: Any, slug: str, name: str = "schema.png") -> str:
-    """Envoie une image de structure (POST /structures/images) - renvoie son ``image_id``."""
-    response = client.post(f"/api/microprojets/{slug}/structures/images", files={"file": (name, PNG_1PX, "image/png")})
-    return assert_created(response)["image_id"]
+    """Envoie une image de structure (POST .../attachments, purpose=structure) - renvoie son id."""
+    return upload_file(client, slug, "structure", name)["id"]

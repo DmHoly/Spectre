@@ -1,10 +1,11 @@
-"""SVG of a structure, always drawn by StructureForge (``structureforge.presentation.svg.frame_to_svg``):
-the simulated frames the builder previews, and a committed structure redrawn from its stored,
-already-flattened layers.
+"""SVG of a structure, always drawn by StructureForge (``structureforge.presentation.svg.frame_to_svg``,
+through :func:`frame_svg`): the simulated frames the builder previews, and a committed structure
+redrawn from its stored, already-flattened layers.
 """
 
 from __future__ import annotations
 
+import html
 import itertools
 import re
 from typing import Any
@@ -28,6 +29,21 @@ def _tag_layer_indices(svg: str) -> str:
     return _PATH_TAG_RE.sub(lambda _m: f'<path data-layer-index="{next(counter)}" ', svg)
 
 
+def frame_svg(frame: Frame, material_colors: dict[str, str]) -> str:
+    """``frame_to_svg`` with every material name and colour escaped: StructureForge writes them as
+    they are, the name in a ``<title>`` and the colour in an attribute, and a page shows the SVG
+    through ``innerHTML`` - so a material named with HTML in the editable library would run in
+    every page that draws it."""
+    escaped = Frame(
+        step_index=frame.step_index,
+        step_kind=frame.step_kind,
+        step_name=frame.step_name,
+        layers=[_RenderableLayer(html.escape(layer.material), layer.rings()) for layer in frame.layers],
+        domain_width_nm=frame.domain_width_nm,
+    )
+    return frame_to_svg(escaped, {html.escape(name): html.escape(color) for name, color in material_colors.items()})
+
+
 def frames_payload(frames: list[Frame], materials: MaterialLibrary) -> dict[str, Any]:
     material_colors = {m.name: m.color for m in materials}
     return {
@@ -36,7 +52,7 @@ def frames_payload(frames: list[Frame], materials: MaterialLibrary) -> dict[str,
                 "step_index": frame.step_index,
                 "step_kind": frame.step_kind,
                 "step_name": frame.step_name,
-                "svg": _tag_layer_indices(frame_to_svg(frame, material_colors)),
+                "svg": _tag_layer_indices(frame_svg(frame, material_colors)),
                 # only the materials this particular frame actually shows - material_colors below
                 # is the whole library (40+ entries), which would make a poor legend on its own.
                 "materials": sorted({layer.material for layer in frame.layers}),
@@ -82,4 +98,4 @@ def svg_for_process_structure(process_structure: ProcessStructure, material_colo
         layers=[_RenderableLayer(layer.material, layer.rings) for layer in process_structure.layers],
         domain_width_nm=process_structure.domain_width_nm,
     )
-    return frame_to_svg(frame, material_colors)
+    return frame_svg(frame, material_colors)

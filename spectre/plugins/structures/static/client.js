@@ -1,17 +1,20 @@
 /* Client de l'API du plugin structures : matériaux, recettes, simulation d'une structure et aperçu
-   des variantes d'une campagne. */
+   des variantes d'une campagne (des calculs : rien n'est enregistré). */
 
 const structuresApi = {
-  materials(microprojectSlug) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/materials`);
+  listMaterials() {
+    return api.get("/api/materials");
   },
-  recipes(microprojectSlug) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/recettes`);
+  // {deposition: [...], etch: [...]}
+  listRecipes() {
+    return api.get("/api/recipes");
   },
-  simulate(microprojectSlug, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/structures/simulate`, body);
+  // body : {substrate, steps, declared_params}
+  simulate(body) {
+    return api.post("/api/simulations", body);
   },
-  previewCampaign(microprojectSlug, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/structures/variantes`, body);
+  // body : {substrate, steps, declared_params, plan}
+  previewCampaign(body) {
+    return api.post("/api/campaign-previews", body);
   },
 };

@@ -4,8 +4,8 @@
 
 async function loadPickers() {
   [state.materials, state.recipes, state.stepPresets, state.techBricks] = await Promise.all([
-    structuresApi.materials(slug),
-    structuresApi.recipes(slug),
+    structuresApi.listMaterials(),
+    structuresApi.listRecipes(),
     processLibraryApi.stepPresets(slug),
     processLibraryApi.techBricks(slug),
   ]);

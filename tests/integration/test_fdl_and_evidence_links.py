@@ -115,7 +115,7 @@ def test_a_preuve_with_links_and_pasted_images_is_one_version(client):
     assert evidence["kind"] == "image"  # des images collées font une preuve image
     images = [a for a in detail["attachments"] if a["evidence_id"] == evidence_id]
     assert [(a["id"], a["caption"]) for a in images] == [(first, "Vue d'ensemble"), (second, None)]
-    assert client.get(f"/api/microprojets/{slug}/pieces-jointes/{first}").status_code == 200
+    assert client.get(f"/api/microprojects/{slug}/attachments/{first}/content").status_code == 200
     # tout en une seule version (plus une par image)
     assert len(timeline(client, slug, response.json()["id"])["items"]) == before + 1
 

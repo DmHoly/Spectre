@@ -564,7 +564,7 @@ async function refreshVariationTable() {
     factors: state.variationFactors.map(({ step_index, field, values, scale, field_label }) => ({ step_index, field, values, scale: scale || "linear", label: field_label })),
   };
   try {
-    const result = await structuresApi.previewCampaign(slug, {
+    const result = await structuresApi.previewCampaign({
       substrate: substrateSpec(),
       steps: state.steps,
       declared_params: declaredParamsPayload(state.steps),

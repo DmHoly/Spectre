@@ -1,8 +1,9 @@
-"""Pièces jointes (spectre.plugins.experiments.api's pieces-jointes routes, spectre.plugins.attachments): attaching a file to an
-experience, or to one of the physical entities it tracks. Like tags/physical_tracking, uploading
-or removing one records a new Follow version rather than mutating anything in place - the
-uploaded bytes themselves live on disk (spectre.plugins.attachments.store.attachments_dir), addressed by a
-generated id, never the caller-supplied filename.
+"""Pièces jointes d'une expérience (routes pieces-jointes du plugin experiments, octets servis par
+spectre.plugins.attachments) : attaching a file to an experience, or to one of the physical
+entities it tracks. Like tags/physical_tracking, uploading or removing one records a new Follow
+version rather than mutating anything in place - the uploaded bytes themselves live on disk
+(spectre.plugins.attachments.store.attachments_dir), addressed by a generated id, never the
+caller-supplied filename. The direct upload (POST .../attachments) is tested in test_uploads.py.
 """
 
 from __future__ import annotations
@@ -44,7 +45,7 @@ def test_uploaded_file_downloads_with_the_right_bytes_and_type(client):
     upload = upload_attachment(client, slug, launched["id"], "wafer.png")
     attachment_id = upload["attachment"]["id"]
 
-    download = client.get(f"/api/microprojets/{slug}/pieces-jointes/{attachment_id}")
+    download = client.get(f"/api/microprojects/{slug}/attachments/{attachment_id}/content")
     assert download.status_code == 200
     assert download.content == PNG_1PX
     assert download.headers["content-type"] == "image/png"
@@ -54,8 +55,9 @@ def test_uploaded_file_downloads_with_the_right_bytes_and_type(client):
 
 def test_unknown_attachment_is_404(client):
     slug = signup_with_microproject(client, "attach-unknown@example.com")
-    assert_handler_404(client.get(f"/api/microprojets/{slug}/pieces-jointes/att_{'0' * 20}"))
-    assert_handler_404(client.get(f"/api/microprojets/{slug}/pieces-jointes/..secret"))  # not an attachment id
+    for suffix in ("", "/content"):
+        assert_handler_404(client.get(f"/api/microprojects/{slug}/attachments/att_{'0' * 20}{suffix}"))
+        assert_handler_404(client.get(f"/api/microprojects/{slug}/attachments/..secret{suffix}"))  # not an attachment id
 
 
 def test_upload_rejects_disallowed_content_type(client):
@@ -116,7 +118,7 @@ def test_removing_an_attachment_records_a_new_version_without_it(client):
 
     # the file itself is left on disk (an older, still-immutable version still lists it) and
     # remains downloadable
-    download = client.get(f"/api/microprojets/{slug}/pieces-jointes/{attachment_id}")
+    download = client.get(f"/api/microprojects/{slug}/attachments/{attachment_id}/content")
     assert download.status_code == 200
 
     # but there is nothing left to remove from the new version

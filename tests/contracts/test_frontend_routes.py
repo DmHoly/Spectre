@@ -24,7 +24,7 @@ from contracts.frontend_calls import matching_route, openapi_routes, scan, scan_
 DYNAMIC_CALLS: dict[tuple[str, str, str], tuple[str, ...]] = {
     # le rapport embarque ses images (attachmentsApi.contentUrl, externalImagesApi.imageUrl)
     ("plugins/experiments/static/experiment.js", "GET", "src"): (
-        "/api/microprojets/{slug}/pieces-jointes/{attachment_id}",
+        "/api/microprojects/{microproject_slug}/attachments/{attachment_id}/content",
         "/api/microprojets/{slug}/data/image",
     ),
 }
