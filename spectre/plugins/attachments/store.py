@@ -12,7 +12,6 @@ C'est l'usage qui fixe les types et la taille acceptés. Les sidecars plus ancie
 from __future__ import annotations
 
 import json
-import os
 import re
 import secrets
 from dataclasses import asdict, dataclass
@@ -20,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, BinaryIO
 
+from ...kernel import fs
 from ...kernel.errors import DomainError, InvalidInput, NotFound
 from ..microprojects.service import microproject_dir
 
@@ -122,7 +122,7 @@ def save(slug: str, stream: BinaryIO, *, filename: str | None, content_type: str
                 out.write(chunk)
         if not size:
             raise InvalidInput("Fichier vide.")
-        os.replace(partial, blob_path)
+        fs.replace(partial, blob_path)
     finally:
         partial.unlink(missing_ok=True)
 

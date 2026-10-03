@@ -68,10 +68,17 @@ def test_launch_an_experiment_with_several_pictures(client):
     launched = _launch_response(client, slug, [{"image_id": image["id"], "kind": "schema"}, overview])
     assert launched.status_code == 201
     detail = launched.json()
+    # chaque image porte l'url de ses octets : le front ne la construit pas
     assert detail["structure_images"] == [
-        {"image_id": image["id"], "kind": "schema", "caption": None},
-        {"image_id": overview["image_id"], "kind": "coupe", "caption": "Coupe FIB du wafer W7"},
+        {"image_id": image["id"], "kind": "schema", "caption": None, "url": image["url"]},
+        {
+            "image_id": overview["image_id"],
+            "kind": "coupe",
+            "caption": "Coupe FIB du wafer W7",
+            "url": f"/api/microprojects/{slug}/attachments/{overview['image_id']}/content",
+        },
     ]
+    assert client.get(detail["structure_images"][1]["url"]).status_code == 200
     assert detail["structure_svg"] is None and detail["is_batch"] is False and detail["has_editable_process"] is False
     assert detail["physical_tracking"] == [{"sample_id": "W7", "location": "boîte 3"}]
     assert detail["ref_names"]  # la toute première expérience du µprojet devient sa première ref
@@ -148,6 +155,7 @@ def test_changing_the_pictures_keeps_the_structure_version_and_the_graph_node(cl
     # l'ancienne version garde ses images
     first = get_version(client, slug, line, launched["version_id"])
     assert [img["image_id"] for img in first["structure_images"]] == [schema["image_id"]]
+    assert first["structure_images"][0]["url"] == f"/api/microprojects/{slug}/attachments/{schema['image_id']}/content"
 
     history = versions(client, slug, line)
     assert _structural_versions(client, slug, line) == [("1.0.0", "initial")]  # même structure, autres images

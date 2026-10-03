@@ -17,6 +17,7 @@ from support.intent_forms import (
     activate_intent_form,
     activate_simple_form,
     active_path,
+    assert_no_active_intent_form,
     create_intent_form,
     deactivate_intent_form,
     delete_intent_form,
@@ -206,9 +207,7 @@ def test_another_microprojects_entry_cannot_be_activated(client):
 def test_launching_without_an_active_form_needs_no_answers(client):
     slug = signup_with_microproject(client, "forms-none@example.com")
     launch(client, slug)
-    response = client.get(active_path(slug))
-    assert_handler_404(response, "Aucun formulaire")
-    assert response.json()["code"] == "no_active_intent_form"
+    assert_no_active_intent_form(client, slug)
 
 
 def test_activating_a_form_requires_its_fields_on_launch(client):
@@ -300,7 +299,7 @@ def test_deactivating_a_form_stops_requiring_it(client):
     activate_simple_form(client, slug)
 
     deactivate_intent_form(client, slug)
-    assert_handler_404(client.get(active_path(slug)))
+    assert_no_active_intent_form(client, slug)
     deactivate_intent_form(client, slug)  # sans formulaire actif : rien à retirer, toujours 204
 
     launch(client, slug)
@@ -320,7 +319,7 @@ def test_commit_form_yml_is_the_only_truth(client, data_dir):
     assert "lot" in _rejected(launch, client, slug, form_answers={"operateur": "Alice"})
 
     commit_form.unlink()
-    assert_handler_404(client.get(active_path(slug)))
+    assert_no_active_intent_form(client, slug)
     assert activated["origin"]["form_id"] in [item["id"] for item in list_intent_forms(client, microproject=slug)]
 
 

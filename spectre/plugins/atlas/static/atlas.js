@@ -187,7 +187,7 @@ async function loadStructurePreview(d) {
     const detail = await experimentsApi.get(d.microprojectSlug, d.experimentId);
     if (!document.getElementById("atlas-structure-preview")) return; // sélection déjà changée entre-temps
     if (detail.structure_images) {
-      container.innerHTML = structureBoardHtml(d.microprojectSlug, detail.structure_images, { compact: true });
+      container.innerHTML = structureBoardHtml(detail.structure_images, { compact: true });
       return;
     }
     if (!detail.is_batch) {

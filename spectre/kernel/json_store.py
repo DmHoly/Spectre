@@ -1,6 +1,6 @@
 """Persistance des bibliothèques en fichiers JSON : un fichier par collection, lu et écrit sous un
 verrou par chemin (:func:`spectre.kernel.locks.keyed_lock`), écrit de façon atomique (fichier
-temporaire du même dossier, puis ``os.replace``) - un lecteur voit l'ancien contenu ou le nouveau,
+temporaire du même dossier, puis :func:`spectre.kernel.fs.replace`) - un lecteur voit l'ancien contenu ou le nouveau,
 jamais un fichier à moitié écrit.
 
 Chaque élément est validé seul : un élément illisible est signalé dans le journal et laissé de côté
@@ -24,6 +24,7 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from . import fs
 from .errors import Unavailable
 from .locks import keyed_lock
 
@@ -59,13 +60,13 @@ def read_json(path: Path, *, strict: bool) -> dict[str, Any]:
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
-    """Remplace ``path`` par ``data`` : fichier temporaire du même dossier, puis ``os.replace``."""
+    """Remplace ``path`` par ``data`` : fichier temporaire du même dossier, puis :func:`~spectre.kernel.fs.replace`."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(data, handle, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+        fs.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise

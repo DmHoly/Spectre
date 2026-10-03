@@ -23,7 +23,6 @@ admin ; une entrée de µprojet, comme le formulaire actif, demande le rôle ``e
 from __future__ import annotations
 
 import json
-import os
 import secrets
 import sqlite3
 from dataclasses import dataclass
@@ -34,6 +33,7 @@ import yaml
 from follow.storage.commit_form import CommitForm
 from pydantic import BaseModel, Field, ValidationError
 
+from ...kernel import fs
 from ...kernel.db import data_dir
 from ...kernel.errors import Conflict, Forbidden, InvalidInput, NotFound
 from ...kernel.locks import keyed_lock
@@ -107,7 +107,7 @@ def _write_atomically(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    fs.replace(tmp, path)
 
 
 # --- étagères ---------------------------------------------------------------------------------
@@ -330,12 +330,10 @@ def _read_active(slug: str) -> ActiveForm | None:
     return ActiveForm(form, origin, outdated)
 
 
-def get_active(user: User, slug: str) -> ActiveForm:
+def get_active(user: User, slug: str) -> ActiveForm | None:
+    """Le formulaire actif du µprojet, ou ``None`` s'il n'en a pas - ce n'est pas une erreur."""
     require_role(user, slug, "viewer")
-    active = _read_active(slug)
-    if active is None:
-        raise NotFound("Aucun formulaire d'intention actif sur ce µprojet.", code="no_active_intent_form")
-    return active
+    return _read_active(slug)
 
 
 def activate(user: User, slug: str, form_id: str) -> ActiveForm:

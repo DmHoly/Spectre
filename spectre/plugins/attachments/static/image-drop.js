@@ -351,7 +351,7 @@ function mountImageDrop(
       items = (images || []).map((image) => ({
         key: nextKey++,
         image_id: image.image_id,
-        url: image.url || structureImageUrl(slug, image.image_id),
+        url: image.url,
         filename: image.filename || "Image actuelle",
         kind: image.kind || "schema",
         caption: image.caption || "",

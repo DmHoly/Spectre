@@ -30,6 +30,7 @@ from typing import Any, Callable
 
 import yaml
 
+from ...kernel import fs
 from ...kernel.db import data_dir
 from ...kernel.errors import InvalidInput, NotFound
 from ...kernel.locks import keyed_lock
@@ -156,7 +157,7 @@ def save(key: str, text: str) -> None:
         try:
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
                 handle.write(text)
-            os.replace(tmp, path)
+            fs.replace(tmp, path)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise

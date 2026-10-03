@@ -35,7 +35,7 @@
       document.getElementById("structure-title").textContent =
         images.length > 1 ? `Structure · ${images.length} images` : `Structure · ${STRUCTURE_IMAGE_KIND_LABELS[images[0].kind] || "Image"}`;
       container.className = "";
-      container.innerHTML = structureBoardHtml(ctx.microprojectSlug, images);
+      container.innerHTML = structureBoardHtml(images);
       hint.style.display = "none";
     } else if (detail.is_batch) {
       // une campagne : un carrousel (référence + chaque variante, avec ses paramètres variés)

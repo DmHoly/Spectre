@@ -70,7 +70,7 @@ def _summary(tip: follow.Experiment) -> dict:
     }
 
 
-def _detail(repo: follow.Repository, experiment_id: str, version: follow.Experiment) -> dict:
+def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: follow.Experiment) -> dict:
     continued_at = service.continued_at(repo, version)
     return {
         "id": experiment_id,
@@ -100,8 +100,8 @@ def _detail(repo: follow.Repository, experiment_id: str, version: follow.Experim
         "ref_names": refs.ref_names_for(repo, version.id),
         "structure_svg": kinds.render_structure_svg(version.structure_type, version.structure),
         "is_batch": version.structure_type == kinds.ProcessLot.registry_key(),
-        # a structure given as pictures: [{image_id, kind, caption}, ...] in reading order
-        "structure_images": kinds.structure_images(version.structure_type, version.structure),
+        # a structure given as pictures: [{image_id, kind, caption, url}, ...] in reading order
+        "structure_images": kinds.structure_images_payload(slug, version.structure_type, version.structure),
         "has_editable_process": "structureforge_process" in version.metadata,
         "evidence_count": len(version.evidence),
         "physical_tracking": version.metadata.get("physical_tracking", []),
@@ -114,7 +114,7 @@ def _respond(response: Response, slug: str, experiment_id: str, version_id: str)
     repo = get_repository(slug)
     version = repo.get(version_id)
     response.headers["ETag"] = etag(version.id)
-    return _detail(repo, experiment_id, version)
+    return _detail(slug, repo, experiment_id, version)
 
 
 def _written(response: Response, slug: str, experiment_id: str, before: str | None, after: follow.Experiment) -> dict:
@@ -190,7 +190,7 @@ def get_experiment(experiment_id: str, response: Response, microproject: Micropr
     repo = get_repository(microproject.slug)
     tip = service.tip_of(repo, experiment_id)
     response.headers["ETag"] = etag(tip.id)
-    return _detail(repo, experiment_id, tip)
+    return _detail(microproject.slug, repo, experiment_id, tip)
 
 
 @router.delete("/experiments/{experiment_id}", status_code=204)
@@ -247,7 +247,7 @@ def get_version(experiment_id: str, version_id: str, response: Response, micropr
     repo = get_repository(microproject.slug)
     version = service.version_of(repo, experiment_id, version_id)
     response.headers["ETag"] = etag(version.id)
-    return _detail(repo, experiment_id, version)
+    return _detail(microproject.slug, repo, experiment_id, version)
 
 
 @router.put("/experiments/{experiment_id}/structure-images")

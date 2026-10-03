@@ -60,7 +60,7 @@ function galleryVariants() {
 
 async function structureCompareHtml(detail, item) {
   if (detail.structure_images) {
-    return `${structureBoardHtml(galleryCtx.microprojectSlug, detail.structure_images, { compact: true })}<div class="help ext-caption">Structure (images)</div>`;
+    return `${structureBoardHtml(detail.structure_images, { compact: true })}<div class="help ext-caption">Structure (images)</div>`;
   }
   if (item.entity_index == null) {
     return `${detail.structure_svg || ""}<div class="help ext-caption">Structure simulée</div>`;

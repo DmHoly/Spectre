@@ -58,6 +58,13 @@ def get_active_intent_form(client: Any, slug: str) -> dict:
     return assert_ok(client.get(active_path(slug)))
 
 
+def assert_no_active_intent_form(client: Any, slug: str) -> None:
+    """Sans formulaire actif, la lecture répond 204 sans corps : un singleton absent n'est pas une erreur."""
+    response = client.get(active_path(slug))
+    assert response.status_code == 204, f"{response.status_code} au lieu de 204 : {response.text}"
+    assert response.content == b""
+
+
 def activate_intent_form(client: Any, slug: str, form_id: str) -> dict:
     return assert_ok(client.put(active_path(slug), json={"intent_form_id": form_id}))
 

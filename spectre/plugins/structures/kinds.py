@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from structureforge.adapters.follow_adapter import ProcessStructure
 
 from ...kernel.errors import InvalidInput
-from ..attachments.store import uploaded_image
+from ..attachments.store import content_url, uploaded_image
 from .rendering import svg_for_process_structure
 from .schemas import StructureImageInput
 from .simulation import material_names_in_layers, materials_library
@@ -170,6 +170,15 @@ def structure_images(structure_type: str, structure_data: dict[str, Any]) -> lis
     if not is_image_structure(structure_type):
         return None
     return [item.model_dump() for item in StructureImage.model_validate(structure_data).images]
+
+
+def structure_images_payload(slug: str, structure_type: str, structure_data: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """:func:`structure_images` tel que l'API le renvoie : chaque image porte l'``url`` de ses
+    octets - le front ne la construit pas."""
+    images = structure_images(structure_type, structure_data)
+    if images is None:
+        return None
+    return [{**image, "url": content_url(slug, image["image_id"])} for image in images]
 
 
 def describe_image_changes(

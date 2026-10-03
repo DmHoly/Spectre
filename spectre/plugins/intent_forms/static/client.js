@@ -18,12 +18,9 @@ const intentFormsApi = {
   remove(formId) {
     return api.del(`/api/intent-forms/${encodeURIComponent(formId)}`);
   },
-  // Le formulaire actif {form, origin, outdated}, ou null si le µprojet n'en a pas (404).
+  // Le formulaire actif {form, origin, outdated}, ou null si le µprojet n'en a pas (204 sans corps).
   getActive(microprojectSlug) {
-    return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/active-intent-form`).catch((err) => {
-      if (err.status === 404 && err.data && err.data.code === "no_active_intent_form") return null;
-      throw err;
-    });
+    return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/active-intent-form`);
   },
   activate(microprojectSlug, intentFormId) {
     return api.put(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/active-intent-form`, { intent_form_id: intentFormId });

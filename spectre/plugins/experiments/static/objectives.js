@@ -61,9 +61,10 @@
     }
     let activeForm = null;
     try {
-      activeForm = (await intentFormsApi.getActive(ctx.microprojectSlug)).form;
+      const active = await intentFormsApi.getActive(ctx.microprojectSlug);
+      activeForm = active ? active.form : null; // aucun formulaire actif : les noms de champs bruts
     } catch (err) {
-      // aucun formulaire actif (404) ou indisponible : les noms de champs bruts
+      // formulaire actif indisponible : les noms de champs bruts
     }
     const fieldByName = new Map((activeForm ? activeForm.fields : []).map((f) => [f.name, f]));
     const rows = Object.entries(answers)

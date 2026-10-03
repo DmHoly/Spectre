@@ -22,7 +22,8 @@ from contracts.frontend_calls import matching_route, openapi_routes, scan, scan_
 # Les URL de l'API sont littérales dans les client.js : il ne reste que l'URL d'une ressource que la
 # page a déjà affichée.
 DYNAMIC_CALLS: dict[tuple[str, str, str], tuple[str, ...]] = {
-    # le rapport embarque ses images (attachmentsApi.contentUrl, l'`url` des images d'un jeu d'external_images)
+    # le rapport embarque ses images : l'`url` que portent celles d'une structure en images et
+    # celles d'un jeu d'external_images
     ("plugins/experiments/static/report.js", "GET", "src"): (
         "/api/microprojects/{microproject_slug}/attachments/{attachment_id}/content",
         "/api/microprojects/{microproject_slug}/experiments/{experiment_id}/image-sets/{set_id}/images/{index}",
@@ -52,7 +53,9 @@ def test_every_api_url_written_in_the_frontend_targets_an_existing_route(app):
     # sans méthode : une URL rangée dans une variable sert parfois à plusieurs (lotApi : GET, PUT, DELETE)
     routes = openapi_routes(app)
     urls = scan_urls()
-    assert len(urls) > len([c for c in scan() if c.path])  # garde-fou : celles des appels, et les autres
+    # garde-fou : au moins celles des appels - aucune autre aujourd'hui, une ressource binaire arrivant
+    # avec son `url` ; une URL rangée dans une variable serait vérifiée ici
+    assert len(urls) >= len([c for c in scan() if c.path]) > 100
     dead = [str(url) for url in urls if matching_route(None, url.path, routes) is None]
     assert not dead, "URL du front vers une route qui n'existe pas :\n  " + "\n  ".join(dead)
 

@@ -57,7 +57,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
           structureBlock = "";
         }
       } else if (detail.structure_images) {
-        structureBlock = structureBoardHtml(slug, detail.structure_images, { compact: true });
+        structureBlock = structureBoardHtml(detail.structure_images, { compact: true });
       } else if (detail.structure_svg) {
         structureBlock = `<div class="builder-canvas-svg" style="height:150px;">${detail.structure_svg}</div>`;
       } else {

@@ -88,9 +88,14 @@ def delete_intent_form(form_id: str, user: User = Depends(current_user)) -> Resp
     return Response(status_code=204)
 
 
-@router.get("/microprojects/{microproject_slug}/active-intent-form")
-def get_active_intent_form(microproject_slug: str, user: User = Depends(current_user)) -> dict:
-    return _active_payload(intent_forms.get_active(user, microproject_slug))
+@router.get("/microprojects/{microproject_slug}/active-intent-form", response_model=None, responses={204: {"description": "Aucun formulaire actif"}})
+def get_active_intent_form(microproject_slug: str, user: User = Depends(current_user)) -> dict | Response:
+    """Le formulaire actif ; ``204`` sans corps si le µprojet n'en a pas : un singleton absent est
+    un état normal, pas une erreur (``ARCHITECTURE.md`` § 5)."""
+    active = intent_forms.get_active(user, microproject_slug)
+    if active is None:
+        return Response(status_code=204)
+    return _active_payload(active)
 
 
 @router.put("/microprojects/{microproject_slug}/active-intent-form")

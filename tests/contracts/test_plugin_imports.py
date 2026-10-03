@@ -7,8 +7,9 @@ en tête de fichier ou dans une fonction (un import paresseux reste une dépenda
 - un plugin n'importe jamais le module ``api`` d'un autre ;
 - le domaine d'un plugin (tout module autre que ``api``, ``*_api``, ``deps`` et ``schemas``) n'importe pas FastAPI.
 
-Les exceptions encore permises sont listées ici, chacune avec ce qui la fera disparaître ; une entrée
-qui ne correspond plus à aucun import fait échouer le test.
+Il n'en reste aucune : ``ALLOWED_TRANSITIONAL`` et ``ALLOWED_FASTAPI`` sont vides. Une exception à
+venir s'y liste, chacune avec ce qui la fera disparaître ; une entrée qui ne correspond plus à aucun
+import fait échouer le test.
 """
 
 from __future__ import annotations

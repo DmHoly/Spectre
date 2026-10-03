@@ -45,6 +45,7 @@ Le noyau ne connaît **aucune** fonctionnalité métier. Il fournit :
 | `db.py` | `data_dir()`, `connect()`, `get_conn()`, exécuteur de migrations versionnées (table `schema_migrations(plugin, migration_id, applied_at)`), `rebuild_table()` pour les changements non additifs (CHECK, NOT NULL) |
 | `errors.py` | `DomainError` → `NotFound` (404), `Forbidden` (403), `Conflict` (409), `PreconditionFailed` (412), `InvalidInput` (422), `UpstreamError` (502), `Unavailable` (503) ; un handler unique renvoie `{"detail": str, "code": str}`. Un plugin peut sous-classer `DomainError` pour un statut qui lui est propre (`attachments.store.TooLarge` : 413, `too_large`), le même handler s'en charge |
 | `locks.py` | `keyed_lock(namespace, key)` : un `threading.Lock` par clé (le serveur tourne en un seul processus) |
+| `fs.py` | `replace(src, dst)` : le `os.replace` de toute écriture atomique (fichier temporaire du même dossier, puis remplacement), réessayé quelques fois sur `PermissionError` - sous Windows, un antivirus ou un lecteur tient la cible un instant |
 | `mail.py` | `send_email(to, subject, body)` : SMTP si `SPECTRE_SMTP_HOST`, sinon journalisation **sans le corps** hors `SPECTRE_EMAIL_DEBUG=1` |
 | `pages.py` | Service des pages HTML d'un plugin, avec la barre du haut commune à la place du marqueur `<!-- spectre:topbar -->` (fil d'Ariane déclaré dans le marqueur : `crumb-id`, `crumb-text`) : marque, navigation construite à partir des `NavEntry` de tous les plugins (une entrée peut être réservée à certaines pages : `NavEntry.pages`), place de la session |
 | `http.py` | Petits helpers HTTP : `created(response, location)`, conversion `ETag` / `If-Match` |
@@ -427,7 +428,7 @@ de la copie (un simple renommage ne compte pas, une entrée supprimée non plus)
 | `POST …` | `POST /api/intent-forms` → 201 |
 | `PUT …/{name}` | `PATCH /api/intent-forms/{form_id}` |
 | `DELETE …/{name}?partagee=` | `DELETE /api/intent-forms/{form_id}` → 204 |
-| `GET …/formulaire-actif` | `GET /api/microprojects/{mp}/active-intent-form` → `{form, origin, outdated}` (404 `no_active_intent_form` si aucun) — lu depuis `commit_form.yml`, la seule vérité |
+| `GET …/formulaire-actif` | `GET /api/microprojects/{mp}/active-intent-form` → `{form, origin, outdated}`, ou 204 sans corps si aucun (un singleton absent est un état normal, pas une erreur : un 404 s'afficherait en rouge dans la console à chaque page qui le lit) — lu depuis `commit_form.yml`, la seule vérité |
 | `POST …/formulaire-actif` `{name}` / `{name: null}` | `PUT …/active-intent-form` `{intent_form_id}` / `DELETE` → 204 |
 
 ### wafers · lots · links

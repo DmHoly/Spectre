@@ -1,7 +1,8 @@
 """Le front passe par l'API, et par elle seule, au travers d'un client par plugin (``ARCHITECTURE.md``
 § 1 et § 6) : ``spectre/plugins/<plugin>/static/client.js`` déclare un seul global, ``<plugin>Api``
-(camelCase), avec une fonction par appel réseau (ou par URL de ressource binaire). Vérifié sans
-navigateur, sur le texte du front (voir :mod:`contracts.frontend_calls`) :
+(camelCase), avec une fonction par appel réseau - jamais une URL à construire : une ressource
+binaire arrive avec son ``url`` (§ 4). Vérifié sans navigateur, sur le texte du front (voir
+:mod:`contracts.frontend_calls`) :
 
 - chaque fonction d'un client vise une route qui existe, avec sa méthode : renommer une URL dans un
   client.js, ou une route côté serveur, fait échouer le test ;
