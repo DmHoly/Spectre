@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request
 
+from ...kernel.errors import Forbidden
 from . import service as accounts
 from .security import SESSION_COOKIE
 from .service import User
 
 
 def current_user(request: Request) -> User:
+    """The signed-in user - 401 otherwise, the one status reserved for « no session »."""
     token = request.cookies.get(SESSION_COOKIE)
     user = accounts.user_for_session(token) if token else None
     if user is None:
@@ -26,5 +28,5 @@ def require_admin(user: User = Depends(current_user)) -> User:
     microproject-scoped through :func:`spectre.plugins.microprojects.deps.require_role`.
     """
     if not user.is_admin:
-        raise HTTPException(status_code=403, detail="action réservée à un administrateur")
+        raise Forbidden("action réservée à un administrateur")
     return user

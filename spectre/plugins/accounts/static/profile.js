@@ -18,7 +18,7 @@ document.getElementById("profile-form").addEventListener("submit", async (event)
   profileError.style.display = "none";
   profileSuccess.style.display = "none";
   try {
-    await accountsApi.updateProfile({ name: document.getElementById("profile-name").value });
+    await accountsApi.updateMe({ name: document.getElementById("profile-name").value });
     profileSuccess.style.display = "block";
     mountUserBadge();
   } catch (err) {

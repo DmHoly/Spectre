@@ -20,14 +20,18 @@ ROOT = Path(__file__).resolve().parents[2]
 SCANNED = (ROOT / "spectre" / "kernel", ROOT / "spectre" / "plugins")
 HTTP_MODULES = {"api", "deps", "schemas"}
 
+
+def _is_http_module(module: str) -> bool:
+    """``api``, ``deps``, ``schemas`` - ou un routeur annexe ``<sujet>_api`` (microprojects.invitations_api)."""
+    name = module.rsplit(".", 1)[-1]
+    return name in HTTP_MODULES or name.endswith("_api")
+
+
 # La racine de composition : create_app() lit la liste des plugins quand on ne lui en passe pas.
 KERNEL_COMPOSITION_ROOT = ("spectre.kernel.app", "spectre.plugins")
 
 # (module qui importe, module importé) -> ce qui supprimera l'import.
 ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {
-    ("spectre.plugins.accounts.api", "spectre.plugins.microprojects.service"): (
-        "POST /api/invitations/{token}/acceptance : l'inscription n'accepte plus d'invitation"
-    ),
     ("spectre.plugins.library.api", "spectre.plugins.microprojects.deps"): "GET /api/ui-texts/intention (sans µprojet)",
     ("spectre.plugins.library.api", "spectre.plugins.microprojects.service"): "GET /api/ui-texts/intention (sans µprojet)",
     ("spectre.plugins.library.service", "spectre.plugins.process_library.step_presets"): (
@@ -161,7 +165,7 @@ def test_no_plugin_imports_another_plugins_api():
     crossing = [
         f"{module} -> {target}"
         for module, target in _graph()
-        if _plugin_of(module) and _plugin_of(target) not in (None, _plugin_of(module)) and target.split(".")[3:4] == ["api"]
+        if _plugin_of(module) and _plugin_of(target) not in (None, _plugin_of(module)) and (target.split(".")[3:4] == ["api"] or target.endswith("_api"))
     ]
     assert not crossing, "Un plugin importe l'api d'un autre :\n  " + "\n  ".join(crossing)
 
@@ -170,7 +174,7 @@ def test_the_domain_of_a_plugin_does_not_know_http():
     importing = {
         module
         for module, target in _graph()
-        if _plugin_of(module) and module.rsplit(".", 1)[-1] not in HTTP_MODULES and target.split(".")[0] in ("fastapi", "starlette")
+        if _plugin_of(module) and not _is_http_module(module) and target.split(".")[0] in ("fastapi", "starlette")
     }
     unexpected = sorted(importing - ALLOWED_FASTAPI.keys())
     stale = sorted(ALLOWED_FASTAPI.keys() - importing)

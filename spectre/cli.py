@@ -18,13 +18,14 @@ def _cmd_start(args: argparse.Namespace) -> int:
 
 def _cmd_admin(args: argparse.Namespace) -> int:
     from .kernel.db import run_migrations
+    from .kernel.errors import DomainError
     from .plugins import PLUGINS
     from .plugins.accounts import service as accounts
 
     run_migrations(PLUGINS)
     try:
         user = accounts.set_admin(args.email, not args.revoke)
-    except ValueError as exc:
+    except DomainError as exc:
         print(f"erreur : {exc}", file=sys.stderr)
         return 1
     state = "n'est plus administrateur" if args.revoke else "est administrateur"

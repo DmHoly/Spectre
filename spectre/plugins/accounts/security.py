@@ -1,12 +1,19 @@
 """Password hashing and session tokens - stdlib only (``hashlib.pbkdf2_hmac`` + ``secrets``), no
 extra dependency such as passlib, bcrypt or PyJWT for what is a small, self-hosted user base.
+
+A session or password-reset token travels in clear (cookie, e-mailed link) but is stored only as
+its SHA-256 (:func:`hash_token`): a copy of the database opens no session. A plain hash is enough -
+the token is 256 random bits, nothing to brute-force, unlike a password.
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
+
+from ...kernel import mail
 
 SESSION_COOKIE = "spectre_session"
 SESSION_LIFETIME = timedelta(days=14)
@@ -31,6 +38,23 @@ def verify_password(password: str, password_hash: str, salt: str) -> bool:
 
 def new_session_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def hash_token(token: str) -> str:
+    """What the database keeps of a session or password-reset token."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def session_cookie_secure() -> bool:
+    """Whether the session cookie carries ``Secure`` (sent over HTTPS only): ``SPECTRE_COOKIE_SECURE``
+    when set (``1``/``true``/``yes``/``on``, anything else turns it off), otherwise whenever
+    ``SPECTRE_BASE_URL`` is an ``https://`` address. Off by default - a local ``http://``
+    instance would otherwise never keep its session.
+    """
+    explicit = os.environ.get("SPECTRE_COOKIE_SECURE")
+    if explicit is not None:
+        return explicit.strip().lower() in ("1", "true", "yes", "on")
+    return mail.base_url().lower().startswith("https://")
 
 
 def utcnow() -> datetime:

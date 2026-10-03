@@ -6,7 +6,7 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   errorBox.style.display = "none";
   try {
-    await accountsApi.forgotPassword({ email: document.getElementById("email").value }, { redirectOn401: false });
+    await accountsApi.requestPasswordReset({ email: document.getElementById("email").value }, { redirectOn401: false });
     successBox.style.display = "block";
     form.style.display = "none";
   } catch (err) {

@@ -183,7 +183,9 @@ Variables d'environnement reconnues :
 |---|---|---|
 | `SPECTRE_DATA_DIR` | Où sont écrites les données (comptes, projets, dépôts Follow, présets d'étape) | `./data` |
 | `SPECTRE_BASE_URL` | URL publique utilisée dans les liens des e-mails envoyés (invitation, mot de passe oublié) | (vide) |
-| `SPECTRE_SMTP_HOST` | Serveur SMTP pour l'envoi réel des e-mails - absent, les e-mails sont journalisés au lieu d'être envoyés | (aucun) |
+| `SPECTRE_COOKIE_SECURE` | `1` / `0` : force ou retire l'attribut `Secure` du cookie de session | `1` si `SPECTRE_BASE_URL` est en `https://` |
+| `SPECTRE_SMTP_HOST` | Serveur SMTP pour l'envoi réel des e-mails - absent, seuls le destinataire et l'objet de chaque e-mail sont journalisés | (aucun) |
+| `SPECTRE_EMAIL_DEBUG` | `1` : sans SMTP, journalise aussi le corps des e-mails (et donc leurs liens) - poste de développement seulement | (aucun) |
 | `SPECTRE_SMTP_PORT` | Port SMTP | `587` |
 | `SPECTRE_SMTP_USER` / `SPECTRE_SMTP_PASSWORD` | Identifiants SMTP | (aucun) |
 | `SPECTRE_SMTP_FROM` | Adresse d'expéditeur | `SPECTRE_SMTP_USER`, sinon `spectre@localhost` |

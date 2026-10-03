@@ -6,6 +6,7 @@ import sqlite3
 
 from ...kernel.db import column_names, execute_script
 from ...kernel.plugin import Migration
+from .security import hash_token
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -54,7 +55,18 @@ def _promote_first_admin(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM users)")
 
 
+def _hash_tokens(conn: sqlite3.Connection) -> None:
+    """Les jetons de session et de réinitialisation ne sont plus gardés qu'en empreinte SHA-256
+    (colonne ``token_hash``) : les lignes existantes sont hachées sur place, si bien que les
+    sessions ouvertes et les liens déjà envoyés restent valides."""
+    for table in ("sessions", "password_resets"):
+        conn.execute(f"ALTER TABLE {table} RENAME COLUMN token TO token_hash")
+        for (token,) in conn.execute(f"SELECT token_hash FROM {table}").fetchall():
+            conn.execute(f"UPDATE {table} SET token_hash = ? WHERE token_hash = ?", (hash_token(token), token))
+
+
 MIGRATIONS = (
     Migration("0001_initial", _initial),
     Migration("0002_first_admin", _promote_first_admin),
+    Migration("0003_hashed_tokens", _hash_tokens),
 )

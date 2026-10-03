@@ -14,7 +14,7 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   errorBox.style.display = "none";
   try {
-    await accountsApi.resetPassword({ token, password: document.getElementById("password").value }, { redirectOn401: false });
+    await accountsApi.completePasswordReset({ token, password: document.getElementById("password").value }, { redirectOn401: false });
     successBox.style.display = "block";
     form.style.display = "none";
     setTimeout(() => (window.location.href = "/connexion"), 1500);

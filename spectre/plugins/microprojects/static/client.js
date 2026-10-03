@@ -39,6 +39,10 @@ const microprojectsApi = {
   },
   // l'invitation derrière le lien reçu par e-mail (page d'inscription, sans session)
   invitation(token, options) {
-    return api.get(`/api/auth/invitation/${encodeURIComponent(token)}`, options);
+    return api.get(`/api/invitations/${encodeURIComponent(token)}`, options);
+  },
+  // rejoindre le µprojet avec le compte connecté (même adresse que l'invitation)
+  acceptInvitation(token, options) {
+    return api.post(`/api/invitations/${encodeURIComponent(token)}/acceptance`, {}, options);
   },
 };
