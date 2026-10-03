@@ -1,31 +1,28 @@
 /* Menu « Données en base » des plaques d'une page, via characterizationApi
    (characterization/static/client.js). */
 
-/* « Données en base » : les requêtes PRISM (page Data) qui prennent des lasermarks, ouvertes sur
-   les plaques données - un clic, et la requête part avec ces wafers (data-types.js, ?wafers=). Rien
-   n'est affiché si PRISM n'a aucune requête de ce genre (ou s'il n'y a aucun lasermark). Utilisé par
+/* « Données en base » : les types de données implémentés qui prennent des lasermarks (page Data),
+   ouverts sur les plaques données - un clic, et la requête part avec ces wafers (data-types.js,
+   ?wafers=). Rien n'est affiché s'il n'y a aucun type de ce genre (ou aucun lasermark). Utilisé par
    la fiche d'expérience et la page d'une plaque. */
-let waferHooksPromise = null;
-function waferHooks() {
-  if (!waferHooksPromise) {
-    waferHooksPromise = characterizationApi
-      .hooks()
-      .then((data) => (data.hooks || []).filter((h) => h.status === "implemented" && (h.parameters || []).includes("wafer_names")))
-      .catch(() => []);
+let byWaferDataTypesPromise = null;
+function byWaferDataTypes() {
+  if (!byWaferDataTypesPromise) {
+    byWaferDataTypesPromise = characterizationApi.list({ status: "implemented", by_wafer: true }).catch(() => []);
   }
-  return waferHooksPromise;
+  return byWaferDataTypesPromise;
 }
 
 async function renderWaferDbLinks(hosts, lasermarkList) {
   const lasermarks = [...new Set((lasermarkList || []).filter(Boolean))];
-  const hooks = lasermarks.length ? await waferHooks() : [];
-  if (!hooks.length) {
+  const dataTypes = lasermarks.length ? await byWaferDataTypes() : [];
+  if (!dataTypes.length) {
     hosts.forEach((h) => (h.innerHTML = ""));
     return;
   }
   const wafers = encodeURIComponent(lasermarks.join(","));
-  const items = hooks
-    .map((h) => `<li><a href="/donnees/${encodeURIComponent(h.key)}?wafers=${wafers}" target="_blank" rel="noopener">${escapeHtml(h.title)}<span>${escapeHtml(h.category || "")}</span></a></li>`)
+  const items = dataTypes
+    .map((t) => `<li><a href="/donnees/${encodeURIComponent(t.key)}?wafers=${wafers}" target="_blank" rel="noopener">${escapeHtml(t.title)}<span>${escapeHtml(t.category || "")}</span></a></li>`)
     .join("");
   const icon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>`;
   hosts.forEach((host) => {

@@ -29,8 +29,8 @@ from pydantic import BaseModel
 
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from ..characterization import source as characterization
-from ..characterization.source import DataSourceError
+from ...kernel.errors import NotFound
+from ..characterization import service as characterization
 from ..experiments.repository import get_repository
 from ..experiments.service import derive_branch, form_validation_error, not_found
 from ..microprojects.deps import require_role
@@ -43,10 +43,6 @@ NOTEBOOK_KEY = "data_notebook"
 MAX_ENTRIES = 60
 _COMPONENT_RE = re.compile(r"^[a-z0-9][a-z0-9.\-]{1,48}$")
 _ENTRY_ID_RE = re.compile(r"^nb_[0-9a-f]{12}$")
-
-
-def _source_error(exc: DataSourceError) -> HTTPException:
-    return HTTPException(status_code=exc.status_code, detail=exc.message)
 
 
 class SnapshotRequest(BaseModel):
@@ -78,25 +74,20 @@ class EntryUpdate(BaseModel):
 
 @router.get("/{slug}/donnees/sources")
 def notebook_sources(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    return {"sources": characterization.available_sources(), "demo": characterization.demo_enabled()}
+    sources = [t.summary() for t in characterization.list_types(status="implemented")]
+    return {"sources": sources, "demo": characterization.demo_enabled()}
 
 
 @router.post("/{slug}/donnees/instantanes", status_code=201)
 def take_snapshot(body: SnapshotRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    try:
-        dataset = snapshots.fetch(body.hook, body.wafers, refresh=body.refresh)
-    except DataSourceError as exc:
-        raise _source_error(exc) from exc
+    dataset = snapshots.fetch(body.hook, body.wafers, refresh=body.refresh)
     snapshot_id = snapshots.store(microproject.slug, dataset)
     return {"snapshot_id": snapshot_id, **dataset}
 
 
 @router.get("/{slug}/donnees/instantanes/{snapshot_id}")
 def read_snapshot(snapshot_id: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    try:
-        return {"snapshot_id": snapshot_id, **snapshots.load(microproject.slug, snapshot_id)}
-    except DataSourceError as exc:
-        raise _source_error(exc) from exc
+    return {"snapshot_id": snapshot_id, **snapshots.load(microproject.slug, snapshot_id)}
 
 
 def _clean_text(value: str | None, limit: int) -> str | None:
@@ -126,7 +117,7 @@ def _check_objective(objective: str | None, parent: Any) -> str | None:
 def _snapshot_summary(slug: str, snapshot_id: str) -> dict[str, Any]:
     try:
         dataset = snapshots.load(slug, snapshot_id)
-    except DataSourceError as exc:
+    except NotFound as exc:
         raise HTTPException(status_code=422, detail="instantané de données introuvable - rechargez les données") from exc
     return {
         "snapshot_id": snapshot_id,

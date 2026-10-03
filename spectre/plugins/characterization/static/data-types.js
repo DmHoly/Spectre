@@ -1,7 +1,7 @@
-/* Page "wiki" du dictionnaire de hooks PRISM (paquet prism-aledia-datahook) :
-   - /donnees              -> le hub, une carte par catégorie (Post EPI, Structure...), chaque hook
+/* Page "wiki" des types de données de caractérisation (hooks PRISM, paquet prism-aledia-datahook) :
+   - /donnees              -> le hub, une carte par catégorie (Post EPI, Structure...), chaque type
                               en chip (implémenté = cliquable, "planned" = grisé "à venir").
-   - /donnees/<key>         -> la fiche d'un hook : description, colonnes niveau 1 (données brutes,
+   - /donnees/<key>         -> la fiche d'un type : description, colonnes niveau 1 (données brutes,
                               telles que la requête SQL les renvoie) et niveau 2 (KPI calculés par
                               le post-traitement, avec leur source), un graphique représentatif
                               construit sur `example_rows` (écrit à la main dans hook.yml - la fiche
@@ -9,8 +9,8 @@
                               implémenté - un testeur en direct (mêmes paramètres, exécute
                               vraiment la requête, comme avant).
 
-   Tout vient des hook.yml de PRISM (voir prism/hooks.py) via /api/donnees/categories -
-   rien de tout ça n'est câblé en dur ici. */
+   Tout vient des hook.yml de PRISM (voir prism/hooks.py) via characterizationApi.categories() et
+   characterizationApi.get() - rien de tout ça n'est câblé en dur ici. */
 
 const errorBox = document.getElementById("error");
 function showError(err) {
@@ -54,12 +54,12 @@ function hookChipHtml(hook) {
 }
 
 function categoryCardHtml(category) {
-  const implementedCount = category.hooks.filter((h) => h.status === "implemented").length;
+  const implementedCount = category.data_types.filter((h) => h.status === "implemented").length;
   return `
     <div class="card card-pad">
       <div style="font-size:15.5px;font-weight:700;">${escapeHtml(category.name)}</div>
-      <div class="help" style="margin-top:2px;">${implementedCount}/${category.hooks.length} implémenté${implementedCount > 1 ? "s" : ""}</div>
-      <div class="hook-chip-list">${category.hooks.map(hookChipHtml).join("")}</div>
+      <div class="help" style="margin-top:2px;">${implementedCount}/${category.data_types.length} implémenté${implementedCount > 1 ? "s" : ""}</div>
+      <div class="hook-chip-list">${category.data_types.map(hookChipHtml).join("")}</div>
     </div>`;
 }
 
@@ -76,8 +76,8 @@ async function renderHub() {
     <div id="categories-grid" class="category-grid"><p class="help">Chargement…</p></div>`;
 
   try {
-    const body = await characterizationApi.categories();
-    document.getElementById("categories-grid").innerHTML = body.categories.map(categoryCardHtml).join("");
+    const categories = await characterizationApi.categories();
+    document.getElementById("categories-grid").innerHTML = categories.map(categoryCardHtml).join("");
   } catch (err) {
     showError(err);
   }
@@ -204,7 +204,7 @@ function runnerHtml(hook) {
       </div>`
         )
         .join("")
-    : `<div class="help" style="margin-top:8px;">Ce hook ne prend aucun paramètre.</div>`;
+    : `<div class="help" style="margin-top:8px;">Ce type de données ne prend aucun paramètre.</div>`;
 
   const cacheHtml = hook.cacheable
     ? `<label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12.5px;font-weight:400;">
@@ -236,7 +236,7 @@ function hookChartsHtml(hook) {
       <div style="margin-top:14px;">
         <div style="font-weight:600;font-size:13.5px;margin-bottom:2px;">${escapeHtml(c.title)}</div>
         <p class="help" style="margin-bottom:8px;">${escapeHtml(c.description || "")}</p>
-        <img src="${characterizationApi.chartUrl(hook.key, c.key)}"
+        <img src="${escapeHtml(c.url)}"
              alt="${escapeHtml(c.title)}" style="max-width:100%;border-radius:var(--radius-sm);border:1px solid var(--border-soft);">
       </div>`
     )
@@ -262,7 +262,7 @@ function wireRunner(hook) {
     submitBtn.disabled = true;
     submitBtn.textContent = "Requête en cours…";
     try {
-      const result = await characterizationApi.run(hook.key, { parameters, refresh });
+      const result = await characterizationApi.query(hook.key, { parameters, refresh });
       renderRunnerResults(result);
     } catch (err) {
       showError(err);
@@ -278,10 +278,11 @@ function renderRunnerResults(result) {
   document.getElementById("results-card").style.display = "";
   const countLabel = result.row_count === 0 ? "Aucune ligne renvoyée." : `${result.row_count} ligne${result.row_count > 1 ? "s" : ""}.`;
   const cacheLabel =
-    result.from_cache !== undefined
+    result.from_cache
       ? ` (${result.from_cache.length} wafer${result.from_cache.length > 1 ? "s" : ""} en cache, ${result.fetched.length} requêté${result.fetched.length > 1 ? "s" : ""})`
       : "";
-  document.getElementById("results-summary").textContent = countLabel + cacheLabel;
+  const demoLabel = result.source === "demo" ? " Données de démonstration." : "";
+  document.getElementById("results-summary").textContent = countLabel + cacheLabel + demoLabel;
 
   const table = document.getElementById("donnees-results-table");
   if (result.row_count === 0) {
@@ -301,7 +302,7 @@ async function renderHookPage(key) {
   root.innerHTML = `<p class="help">Chargement…</p>`;
   let hook;
   try {
-    hook = await characterizationApi.hook(key);
+    hook = await characterizationApi.get(key);
   } catch (err) {
     showError(err);
     root.innerHTML = "";
