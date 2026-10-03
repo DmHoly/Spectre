@@ -1,38 +1,34 @@
-"""GET /api/atlas: the cross-microproject bird's-eye view (spectre.plugins.atlas).
-Nodes are branch tips (not every version ever committed - see test_experience_list_shows_branch_tips.py
-for why that matters) plus the physical entities tracked on them, and edges are condensed down to
-tip-to-tip links so a fork or a merge still shows without drawing every intermediate commit.
+"""GET /api/areas/{area_slug}/atlas : la vue graphe d'un projet corporate (plugin atlas). Un nœud par
+piste d'étude, montrée à sa pointe (pas une par version), les entités physiques qu'elle suit, et des
+arêtes condensées de pointe à pointe - une fourche ou une fusion se voit sans dessiner chaque version.
+Les liens viennent du plugin links et désignent la piste, comme les nœuds.
 """
 
 from __future__ import annotations
 
 from support.areas import create_area
-from support.experiments import conclude, evolve, launch, launch_campaign, merge, track_entities
-from support.http import assert_handler_404
-from support.microprojects import move_microproject, signup_with_microproject
+from support.atlas import atlas, atlas_microproject
+from support.experiments import conclude, evolve, launch, launch_campaign, merge, tag, track_entities
+from support.http import ROUTER_NOT_FOUND, assert_handler_404
+from support.links import entity, link_entities, link_microprojects
+from support.microprojects import create_microproject, move_microproject, signup_with_microproject
 from support.structures import steps
 
 
-def _atlas_microproject(client, slug):
-    atlas = client.get("/api/atlas?theme=non-classe").json()
-    return next(p for p in atlas["microprojects"] if p["slug"] == slug)
-
-
-def test_atlas_lists_only_the_current_user_own_microprojects(client):
+def test_the_atlas_lists_only_the_viewer_own_microprojects(client):
     slug_a = signup_with_microproject(client, "atlas-a@example.com", "Projet A")
     launch(client, slug_a, title="Etude A", intent="Depart")
 
     slug_b = signup_with_microproject(client, "atlas-b@example.com", "Projet B")
     launch(client, slug_b, title="Etude B", intent="Depart")
 
-    # atlas-b's session is the last one logged in on the shared client - only their own microproject shows.
-    atlas = client.get("/api/atlas?theme=non-classe").json()
-    slugs = [p["slug"] for p in atlas["microprojects"]]
-    assert slug_b in slugs
-    assert slug_a not in slugs
+    # atlas-b est le dernier connecté sur le client partagé : seul son µprojet apparaît
+    body = atlas(client)
+    assert body["area"] == {"slug": "non-classe", "name": "Non classé"}
+    assert [p["slug"] for p in body["microprojects"]] == [slug_b]
 
 
-def test_atlas_shows_one_experience_node_per_branch_tip_with_entities_and_objectives(client):
+def test_one_node_per_piste_with_its_entities_and_objectives(client):
     slug = signup_with_microproject(client, "atlas-tips@example.com")
     launched = launch(
         client,
@@ -51,45 +47,40 @@ def test_atlas_shows_one_experience_node_per_branch_tip_with_entities_and_object
         objective_results=[{"objective": "Rugosité", "status": "met", "reasoning": "0.5nm mesuré."}],
     )
 
-    microproject = _atlas_microproject(client, slug)
-    assert len(microproject["experiences"]) == 1  # one card per branch tip, not one per version
-    exp = microproject["experiences"][0]
-    assert exp["id"] == concluded["version_id"]
-    assert exp["experiment_id"] == launched["id"]  # la piste, ce que vise « Ouvrir la fiche »
-    assert exp["status"] == "concluded"
-    assert exp["decision"] == "promote"  # for the "Concluante"/"Non concluante"/"À poursuivre" badge nuance
-    assert exp["entities"] == [{"index": 0, "sample_id": "W1-A1", "location": "congélateur B"}]
-    assert exp["objectives"] == [{"name": "Rugosité", "status": "met"}]
+    [experiment] = atlas_microproject(client, slug)["experiments"]  # une piste, pas une bulle par version
+    assert experiment["experiment_id"] == launched["id"]
+    assert experiment["version_id"] == concluded["version_id"]
+    assert experiment["status"] == "concluded"
+    assert experiment["decision"] == "promote"  # la nuance « Concluante » / « À poursuivre » du badge
+    assert experiment["entities"] == [{"index": 0, "sample_id": "W1-A1", "location": "congélateur B"}]
+    assert experiment["objectives"] == [{"name": "Rugosité", "status": "met"}]
+    assert "attachments" not in experiment  # champ mort, retiré
 
 
-def test_atlas_skips_physical_tracking_entries_with_no_sample_id_or_location(client):
+def test_entries_with_no_sample_id_or_location_get_no_node(client):
     slug = signup_with_microproject(client, "atlas-empty-entity@example.com")
     launched = launch(client, slug, title="Etude", intent="Depart", entities=[{"sample_id": "placeholder"}])
     track_entities(client, slug, launched["id"], [{}])
 
-    assert _atlas_microproject(client, slug)["experiences"][0]["entities"] == []
+    assert atlas_microproject(client, slug)["experiments"][0]["entities"] == []
 
 
-def test_atlas_entity_index_survives_a_partially_tracked_campaign(client):
-    """A campaign variant left untracked must not shift the *index* of the ones after it - that
-    index is the addressing spectre.plugins.links (and the attachment upload form) both rely on, so
-    a naive "filter then enumerate the result" would silently point a link/attachment at the
-    wrong sample the moment a middle variant is skipped.
-    """
+def test_the_entity_index_survives_a_partially_tracked_campaign(client):
+    """Une variante laissée sans suivi ne décale pas l'index des suivantes : c'est l'adressage des
+    liens d'entités, qu'un « filtrer puis numéroter » ferait pointer sur le mauvais échantillon."""
     slug = signup_with_microproject(client, "atlas-partial-tracking@example.com")
     campaign = launch_campaign(client, slug, objectives=[], entities=[{"sample_id": "placeholder"}])
-    # 3 variants, only the first and last tracked - the middle one stays blank.
     track_entities(client, slug, campaign["id"], [{"sample_id": "V0"}, {}, {"sample_id": "V2"}])
 
-    entities = _atlas_microproject(client, slug)["experiences"][0]["entities"]
+    entities = atlas_microproject(client, slug)["experiments"][0]["entities"]
     assert {(e["index"], e["sample_id"]) for e in entities} == {(0, "V0"), (2, "V2")}
 
 
-def test_atlas_condenses_a_fork_and_merge_into_tip_to_tip_edges(client):
+def test_a_fork_and_a_merge_condense_into_edges_between_pistes(client):
     slug = signup_with_microproject(client, "atlas-merge@example.com")
     root = launch(client, slug, title="Reference", intent="Depart", steps=steps(10))
-    # piste A continues the root's own line, piste B forks onto its own - so the merge (which
-    # always advances the line it is made on) supersedes A but leaves B as its own still-current tip.
+    # la piste racine continue (Piste A), piste-b en part ; la fusion avance la piste racine et laisse
+    # piste-b vivante à sa pointe
     evolve(client, slug, root["id"], title="Piste A", intent="Suite A", steps=steps(15))
     branch_b = launch(
         client, slug, title="Piste B", intent="Suite B", steps=steps(30), branch="piste-b",
@@ -97,37 +88,66 @@ def test_atlas_condenses_a_fork_and_merge_into_tip_to_tip_edges(client):
     )
     merged = merge(client, slug, root["id"], branch_b["id"])
 
-    microproject = _atlas_microproject(client, slug)
-    # root and piste A were both superseded on the same line by the merge commit ; piste B's own
-    # line was never advanced, so it's still a separate, live node.
-    node_ids = {exp["id"] for exp in microproject["experiences"]}
-    assert node_ids == {merged["version_id"], branch_b["version_id"]}
-    assert {exp["experiment_id"] for exp in microproject["experiences"]} == {root["id"], "piste-b"}
-
-    edges = {(e["from"], e["to"]) for e in microproject["edges"]}
-    assert edges == {(branch_b["version_id"], merged["version_id"])}  # not one edge per commit in the collapsed history
+    microproject = atlas_microproject(client, slug)
+    nodes = {(e["experiment_id"], e["version_id"]) for e in microproject["experiments"]}
+    assert nodes == {(root["id"], merged["version_id"]), ("piste-b", branch_b["version_id"])}
+    assert microproject["edges"] == [{"from": "piste-b", "to": root["id"]}]  # pas une arête par version
 
 
-def test_atlas_requires_a_theme(client):
-    signup_with_microproject(client, "atlas-notheme@example.com")
-    assert client.get("/api/atlas").status_code == 422
-
-
-def test_atlas_404s_on_an_unknown_theme(client):
+def test_the_atlas_of_an_unknown_area_is_404(client):
     signup_with_microproject(client, "atlas-badtheme@example.com")
-    assert_handler_404(client.get("/api/atlas?theme=ne-existe-pas"))
+    assert_handler_404(client.get("/api/areas/ne-existe-pas/atlas"))
 
 
-def test_atlas_only_shows_microprojects_in_the_given_theme(client):
+def test_the_old_atlas_route_is_gone(client):
+    signup_with_microproject(client, "atlas-old@example.com")
+    response = client.get("/api/atlas?theme=non-classe")
+    assert response.status_code == 404 and response.json()["detail"] == ROUTER_NOT_FOUND
+
+
+def test_the_atlas_only_shows_the_microprojects_of_its_area(client):
     slug = signup_with_microproject(client, "atlas-theme-scope@example.com", "Projet thématique")
     launch(client, slug, title="Etude", intent="Depart")
     created = create_area(client, "Fiabilité")
     move_microproject(client, created["slug"], slug)
 
-    # still a member, but moved out of "non-classe" - no longer shows there.
-    unclassified = client.get("/api/atlas?theme=non-classe").json()
-    assert slug not in {p["slug"] for p in unclassified["microprojects"]}
+    # toujours membre, mais sorti de « non-classe »
+    assert slug not in {p["slug"] for p in atlas(client)["microprojects"]}
 
-    own_theme = client.get(f"/api/atlas?theme={created['slug']}").json()
-    assert own_theme["theme"] == {"slug": created["slug"], "name": "Fiabilité"}
-    assert slug in {p["slug"] for p in own_theme["microprojects"]}
+    own_area = atlas(client, created["slug"])
+    assert own_area["area"] == {"slug": created["slug"], "name": "Fiabilité"}
+    assert slug in {p["slug"] for p in own_area["microprojects"]}
+
+
+def test_the_atlas_carries_the_links_of_its_area(client):
+    slug_a = signup_with_microproject(client, "atlas-links@example.com", "Projet A")
+    slug_b = create_microproject(client, "Projet B")["slug"]
+    link = link_microprojects(client, slug_a, slug_b, "Même famille")
+
+    body = atlas(client)
+    assert body["microproject_links"] == [link]
+    assert body["entity_links"] == []
+
+
+def test_an_entity_link_still_resolves_after_writes_on_both_studies(client):
+    """Bug B7 : un lien d'entités désignait une version, et disparaissait de l'atlas à la première
+    écriture sur l'une des deux études."""
+    slug_a = signup_with_microproject(client, "atlas-b7@example.com", "Projet A")
+    exp_a = launch(client, slug_a, title="Etude A", intent="Depart", entities=[{"sample_id": "W-A1"}])
+    slug_b = create_microproject(client, "Projet B")["slug"]
+    exp_b = launch(client, slug_b, title="Etude B", intent="Depart", entities=[{"sample_id": "W-B1"}])
+    link = link_entities(client, entity(slug_a, exp_a["id"]), entity(slug_b, exp_b["id"]))
+
+    conclude(client, slug_a, exp_a["id"], decision="promote")
+    tag(client, slug_b, exp_b["id"], ["suivi"])
+
+    body = atlas(client)
+    assert body["entity_links"] == [link]
+    nodes = {
+        (p["slug"], e["experiment_id"], entity_["index"])
+        for p in body["microprojects"]
+        for e in p["experiments"]
+        for entity_ in e["entities"]
+    }
+    for side in (link["a"], link["b"]):
+        assert (side["microproject"], side["experiment_id"], side["entity_index"]) in nodes

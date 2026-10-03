@@ -2,6 +2,6 @@
 
 const atlasApi = {
   get(areaSlug) {
-    return api.get(api.withQuery("/api/atlas", { theme: areaSlug }));
+    return api.get(`/api/areas/${encodeURIComponent(areaSlug)}/atlas`);
   },
 };

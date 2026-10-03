@@ -41,10 +41,6 @@ def test_pasted_images_become_the_evidence_attachments_in_one_version(client):
     assert download.status_code == 200 and download.content == PNG_1PX
     assert download.headers["content-type"] == "image/png"
 
-    atlas = client.get("/api/atlas?theme=non-classe").json()
-    microproject = next(p for p in atlas["microprojects"] if p["slug"] == slug)
-    assert microproject["experiences"][0]["attachments"][0]["filename"] == "sem.png"
-
 
 def test_an_evidence_image_must_be_an_uploaded_image_of_this_microproject(client):
     slug = signup_with_microproject(client, "attach-unknown@example.com")

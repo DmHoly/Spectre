@@ -141,7 +141,10 @@ def test_legacy_database_and_data_dir_are_renamed_in_place(data_dir):
     assert conn.execute("SELECT microproject_id FROM invitations").fetchone()["microproject_id"] == 1
     link = conn.execute("SELECT * FROM microproject_links").fetchone()
     assert (link["microproject_a_id"], link["microproject_b_id"]) == (1, 2)
-    entity = conn.execute("SELECT * FROM entity_links").fetchone()
+    # 'exp-a' n'est pas une version des dépôts : la migration des liens vers la piste (plugin links)
+    # met la ligne de côté, renommée, au lieu de la perdre
+    assert conn.execute("SELECT COUNT(*) FROM entity_links").fetchone()[0] == 0
+    entity = conn.execute("SELECT * FROM entity_links_unresolved").fetchone()
     assert entity["a_microproject_slug"] == "nanofils-gan"
     assert entity["b_microproject_slug"] == "contact-ohmique"
 
