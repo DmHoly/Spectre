@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from support.evidence import add_evidence, evidence_by_id, upload_image
 from support.experiments import (
-    add_evidence,
     conclude,
     experiment_url,
     get_experiment,
@@ -10,7 +10,6 @@ from support.experiments import (
     merge,
     process,
     tag,
-    upload_image,
 )
 from support.microprojects import signup_with_microproject
 from support.structures import steps
@@ -43,17 +42,19 @@ def test_merging_keeps_the_evidence_of_both_sides_without_orphans(client):
     on_b = add_evidence(client, slug, b["id"], "Image B", links=["https://b.example/2"], images=[{"image_id": image_id}], interpretation="B")
 
     merged = merge(client, slug, a["id"], b["id"])
-    evidence = {e["id"]: e for e in merged["evidence"]}
-    assert list(evidence) == [on_a["evidence_id"], on_b["evidence_id"]]
-    assert evidence[on_b["evidence_id"]]["kind"] == "image" and evidence[on_b["evidence_id"]]["interpretation"] == "B"
-    assert evidence[on_a["evidence_id"]]["interpretation"] == "A"
-    assert merged["evidence_links"] == {on_a["evidence_id"]: ["https://a.example/1"], on_b["evidence_id"]: ["https://b.example/2"]}
-    assert [(att["id"], att["evidence_id"]) for att in merged["attachments"]] == [(image_id, on_b["evidence_id"])]
+    assert merged["evidence_count"] == 2
+    evidence = evidence_by_id(client, slug, a["id"])
+    assert list(evidence) == [on_a["id"], on_b["id"]]
+    assert evidence[on_b["id"]]["kind"] == "image" and evidence[on_b["id"]]["interpretation"] == "B"
+    assert evidence[on_a["id"]]["interpretation"] == "A"
+    assert {key: e["links"] for key, e in evidence.items()} == {on_a["id"]: ["https://a.example/1"], on_b["id"]: ["https://b.example/2"]}
+    assert [image["id"] for image in evidence[on_b["id"]]["images"]] == [image_id]
 
     # fusionner encore la même piste ne duplique rien
-    again = merge(client, slug, a["id"], b["id"])
-    assert [e["id"] for e in again["evidence"]] == [on_a["evidence_id"], on_b["evidence_id"]]
-    assert len(again["attachments"]) == 1
+    merge(client, slug, a["id"], b["id"])
+    again = evidence_by_id(client, slug, a["id"])
+    assert list(again) == [on_a["id"], on_b["id"]]
+    assert [image["id"] for e in again.values() for image in e["images"]] == [image_id]
 
 
 def test_merging_purges_metadata_that_points_at_a_missing_evidence():

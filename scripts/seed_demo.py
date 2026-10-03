@@ -213,12 +213,16 @@ class Microproject:
         return {"id": result["id"], "version_id": result["version_id"]}
 
     def evidence(self, session: Session, exp: dict, *, description, source, metric_name=None, metric_value=None, metric_unit=None, days_ago) -> dict:
-        result = session.post(
-            f"/api/microprojets/{self.slug}/experiences/{exp['id']}/preuves",
+        # la réponse est la preuve : la version qu'elle a créée se lit sur la piste
+        session.request(
+            "POST",
+            f"{self._experiments()}/{exp['id']}/evidence",
             json={"description": description, "source": source, "metric_name": metric_name, "metric_value": metric_value, "metric_unit": metric_unit},
+            headers={"If-Match": f'"{exp["version_id"]}"'},
         )
-        record(result["version_id"], days_ago)
-        return {"id": result["id"], "version_id": result["version_id"]}
+        tip = session.get(f"{self._experiments()}/{exp['id']}")
+        record(tip["version_id"], days_ago)
+        return {"id": exp["id"], "version_id": tip["version_id"]}
 
     def conclude(self, session: Session, exp: dict, *, status="concluded", decision=None, summary=None, next_steps=None, objective_results=None, days_ago) -> dict:
         body = {"status": status, "decision": decision, "summary": summary, "next_steps": next_steps, "objective_results": objective_results or []}

@@ -35,9 +35,6 @@ KERNEL_COMPOSITION_ROOT = ("spectre.kernel.app", "spectre.plugins")
 ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {
     ("spectre.plugins.microprojects.api", "spectre.plugins.wafers.fdl"): "GET /api/wafers?fdl=",
     ("spectre.plugins.microprojects.api", "spectre.plugins.wafers.service"): "GET /api/wafers?fdl=",
-    ("spectre.plugins.experiments.api", "spectre.plugins.evidence.service"): (
-        "GET .../experiments/{exp}/evidence : la fiche ne porte plus les preuves"
-    ),
     ("spectre.plugins.experiments.lineage", "spectre.plugins.lots.service"): (
         "GET /api/microprojects/{mp}/lineage sans badge de lot : le front compose les badges via lotsApi"
     ),

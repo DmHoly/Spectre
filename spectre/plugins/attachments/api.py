@@ -21,7 +21,7 @@ def _url(slug: str, attachment_id: str) -> str:
 
 
 def _resource(slug: str, attachment: store.Attachment) -> dict:
-    return {**attachment.as_dict(), "url": f"{_url(slug, attachment.id)}/content"}
+    return {**attachment.as_dict(), "url": store.content_url(slug, attachment.id)}
 
 
 @router.post("", status_code=201)

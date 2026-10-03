@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from .attachments import upload_file
 from .http import assert_created, assert_ok
 from .structures import campaign_plan, steps, substrate
 
@@ -163,17 +162,6 @@ def create_ref(client: Any, slug: str, ref: str, name: str | None = None, *, ver
     surnom, sinon « ref vX.Y.Z »)."""
     body = {"experiment_id": ref, **({"name": name} if name is not None else {}), **({"version_id": version_id} if version_id else {})}
     return assert_created(client.post(f"/api/microprojects/{slug}/refs", json=body))
-
-
-def add_evidence(client: Any, slug: str, ref: str, description: str = "Mesure", **fields: Any) -> dict:
-    """POST .../preuves (plugin evidence) - renvoie ``{id, version_id, evidence_id}``."""
-    body = {"description": description, "source": "labo", **fields}
-    return assert_created(client.post(f"/api/microprojets/{slug}/experiences/{ref}/preuves", json=body))
-
-
-def upload_image(client: Any, slug: str, name: str = "mesure.png") -> str:
-    """Une image collée dans le formulaire de preuve (POST .../attachments, purpose=evidence) - renvoie son id."""
-    return upload_file(client, slug, "evidence", name)["id"]
 
 
 def experiment_stats(client: Any, **filters: Any) -> list[dict]:

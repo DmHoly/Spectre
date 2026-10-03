@@ -11,8 +11,8 @@ import time
 
 import pytest
 
+from support.evidence import add_evidence, annotate, evidence_by_id, evidence_url, upload_image
 from support.experiments import (
-    add_evidence,
     conclude,
     evolve,
     evolve_image,
@@ -27,7 +27,6 @@ from support.experiments import (
     structure_diff,
     tag,
     track_entities,
-    upload_image,
     versions,
 )
 from support.http import PNG_1PX, assert_handler_404
@@ -78,7 +77,7 @@ def study(client, tmp_path, monkeypatch):
         "line": line,
         "schema": schema,
         "picture": picture,
-        "evidence_id": evidence["evidence_id"],
+        "evidence_id": evidence["id"],
         "entry_id": entry["entry_id"],
         "snapshot_id": snapshot["snapshot_id"],
         "data_id": data["data_item"]["id"],
@@ -105,9 +104,7 @@ WRITES = {
         c, s["slug"], s["line"], [s["schema"]], title="Coupe", intent="Mieux dit", form_answers={"operateur": "Ada"}
     ),
     "preuve": lambda c, s: add_evidence(c, s["slug"], s["line"], "Autre mesure"),
-    "annotations": lambda c, s: _old(
-        c, "POST", s, f"preuves/{s['evidence_id']}/annotations", json={"annotations": [{"attachment_id": s["picture"], "type": "box", "x": 1.0, "y": 2.0}]}
-    ),
+    "annotations": lambda c, s: annotate(c, s["slug"], s["line"], s["evidence_id"], [{"attachment_id": s["picture"], "type": "box", "x": 1.0, "y": 2.0}]),
     "cahier": lambda c, s: _old(c, "PUT", s, f"cahier/{s['entry_id']}", json={"note": "Vu"}),
     "galerie-epingle": lambda c, s: _old(c, "PATCH", s, f"data/{s['data_id']}/epingle", json={"pinned_index": 1}),
     "galerie-retrait": lambda c, s: _old(c, "DELETE", s, f"data/{s['data_id']}"),
@@ -126,10 +123,10 @@ def test_every_lightweight_write_carries_the_whole_parent(client, study, write):
     assert after["objective_verification"] == {"EQE": "Banc EQE"}
     assert after["form_answers"] == {"operateur": "Ada"}
     assert [o["name"] for o in after["objectives"]] == ["EQE"]
-    own = next(e for e in after["evidence"] if e["id"] == study["evidence_id"])
+    own = evidence_by_id(client, study["slug"], study["line"])[study["evidence_id"]]
     assert own["interpretation"] == "Net" and own["kind"] == "image"
-    assert after["evidence_links"][study["evidence_id"]] == ["https://exemple.fr/tem"]
-    assert study["picture"] in [a["id"] for a in after["attachments"]]
+    assert own["links"] == ["https://exemple.fr/tem"]
+    assert [image["id"] for image in own["images"]] == [study["picture"]]
     assert [e["id"] for e in after["data_notebook"]] == [study["entry_id"]]
     if write != "galerie-retrait":
         assert [d["id"] for d in after["data_items"]] == [study["data_id"]]
@@ -153,11 +150,9 @@ STALE_WRITES = {
     "entities": lambda c, s, h: c.put(f"{experiment_url(s['slug'], s['line'])}/entities", headers=h, json={"entities": [{"sample_id": "W9"}]}),
     "merges": lambda c, s, h: c.post(f"{experiment_url(s['slug'], s['line'])}/merges", headers=h, json={"other_experiment_id": s["other"]}),
     "delete": lambda c, s, h: c.delete(experiment_url(s["slug"], s["line"]), headers=h),
+    "evidence": lambda c, s, h: c.post(evidence_url(s["slug"], s["line"]), headers=h, json={"description": "x"}),
+    "annotations": lambda c, s, h: c.put(f"{evidence_url(s['slug'], s['line'])}/{s['evidence_id']}/annotations", headers=h, json={"annotations": []}),
     # les anciennes routes des plugins de la vague 3, qui écrivent elles aussi sur la piste
-    "preuve": lambda c, s, h: c.post(f"/api/microprojets/{s['slug']}/experiences/{s['line']}/preuves", headers=h, json={"description": "x"}),
-    "annotations": lambda c, s, h: c.post(
-        f"/api/microprojets/{s['slug']}/experiences/{s['line']}/preuves/{s['evidence_id']}/annotations", headers=h, json={"annotations": []}
-    ),
     "cahier-ajout": lambda c, s, h: c.post(
         f"/api/microprojets/{s['slug']}/experiences/{s['line']}/cahier", headers=h, json={"title": "x", "snapshot_id": s["snapshot_id"], "component": "table"}
     ),

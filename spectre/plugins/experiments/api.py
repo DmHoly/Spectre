@@ -5,7 +5,8 @@ son ``ETag`` ; toute écriture accepte ``If-Match`` (412 si la piste a avancé, 
 renvoie l'étude à jour avec son nouvel ``ETag``. Le domaine est dans :mod:`.service` ; ici, on lit
 la requête et on sérialise.
 
-La fiche montre les preuves (plugin evidence, listé après celui-ci), lues dans :func:`_detail`.
+Le détail d'une étude ne porte que le nombre de ses preuves : elles se lisent dans le plugin evidence
+(``GET .../experiments/{experiment_id}/evidence``).
 La page d'une étude (``page_router``) redirige un ancien lien vers un id de version sur sa piste.
 """
 
@@ -70,8 +71,6 @@ def _summary(tip: follow.Experiment) -> dict:
 
 
 def _detail(repo: follow.Repository, experiment_id: str, version: follow.Experiment) -> dict:
-    from ..evidence.service import EVIDENCE_EXTRA_KEY, evidence_payload
-
     continued_at = service.continued_at(repo, version)
     return {
         "id": experiment_id,
@@ -104,11 +103,8 @@ def _detail(repo: follow.Repository, experiment_id: str, version: follow.Experim
         # a structure given as pictures: [{image_id, kind, caption}, ...] in reading order
         "structure_images": kinds.structure_images(version.structure_type, version.structure),
         "has_editable_process": "structureforge_process" in version.metadata,
-        "evidence": [evidence_payload(e, version.metadata.get(EVIDENCE_EXTRA_KEY, {})) for e in version.evidence],
+        "evidence_count": len(version.evidence),
         "physical_tracking": version.metadata.get("physical_tracking", []),
-        "attachments": version.metadata.get("attachments", []),
-        # per preuve id: the links (folder, PowerPoint deck...) recorded with it
-        "evidence_links": version.metadata.get("evidence_links", {}),
         "data_notebook": version.metadata.get("data_notebook", []),
         "data_items": version.metadata.get("data_items", []),
         "form_answers": dict(version.form_answers),

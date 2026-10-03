@@ -2,7 +2,9 @@
    « Données ») : chaque preuve (description, liens, mesure, objectif visé, interprétation, images
    annotées d'une flèche ou d'un cadre), la comparaison de deux preuves, et le formulaire d'ajout
    (liens, images collées, mesure, étape associée). Les anciennes preuves « graphique » se lisent
-   (titre, axes, requête) ; on n'en crée plus. Écritures : evidenceApi, avec la version affichée. */
+   (titre, axes, requête) ; on n'en crée plus. Les preuves de la version affichée se lisent par
+   evidenceApi.list (le détail de l'étude n'en donne que le nombre) ; écritures : evidenceApi, avec
+   la version affichée. */
 
 (() => {
   const EVIDENCE_KIND_LABELS = { image: "Image", graph: "Graphique" };
@@ -37,11 +39,11 @@
       </svg>`;
   }
 
-  // Les images d'une preuve (ses pièces jointes images), chacune avec ses annotations.
+  // Les images d'une preuve, chacune avec ses annotations.
   function imagesHtml(ctx, e) {
-    const images = (ctx.detail.attachments || []).filter((a) => a.evidence_id === e.id && (a.content_type || "image/").startsWith("image/"));
+    const { images } = e;
     if (!images.length) return e.kind === "image" ? `<div class="help" style="margin-top:8px;">Image en cours d'envoi ou absente.</div>` : "";
-    const all = e.image_annotations || [];
+    const all = e.annotations;
     return `<div class="evidence-images" data-count="${Math.min(images.length, 3)}">${images
       .map((attachment) => {
         const mine = all.map((a, i) => ({ ...a, globalIndex: i })).filter((a) => !a.attachment_id || a.attachment_id === attachment.id);
@@ -61,7 +63,7 @@
         return `
         <figure class="evidence-image">
           <div class="js-annotation-image" data-evidence-id="${escapeHtml(e.id)}" data-attachment-id="${escapeHtml(attachment.id)}" style="position:relative;display:inline-block;max-width:100%;cursor:${ctx.canEdit ? "crosshair" : "default"};">
-            <img src="${attachmentsApi.contentUrl(ctx.microprojectSlug, attachment.id)}" alt="${escapeHtml(attachment.caption || attachment.filename || "Image de la preuve")}" style="max-width:100%;display:block;border-radius:var(--radius-sm);">
+            <img src="${escapeHtml(attachment.url)}" alt="${escapeHtml(attachment.caption || attachment.filename || "Image de la preuve")}" style="max-width:100%;display:block;border-radius:var(--radius-sm);">
             ${annotationMarkersSvg(mine)}
           </div>
           ${attachment.caption ? `<figcaption class="evidence-image__caption">${escapeHtml(attachment.caption)}</figcaption>` : ""}
@@ -166,7 +168,7 @@
       .map(([name, q]) => `${escapeHtml(name)} : ${escapeHtml(String(q.value))}${q.unit ? " " + escapeHtml(q.unit) : ""}`)
       .join(" · ");
     const badge = (text) => `<span class="badge badge-role" style="font-size:10.5px;margin-left:6px;">${escapeHtml(text)}</span>`;
-    const links = (ctx.detail.evidence_links || {})[e.id] || [];
+    const { links } = e;
     const source =
       e.source && !links.includes(e.source)
         ? `<div style="font-size:12px;color:var(--text-soft);margin-top:2px;word-break:break-all;">${
@@ -187,26 +189,26 @@
   }
 
   function saveAnnotations(ctx, evidenceId, annotations) {
-    return ctx.write(() => evidenceApi.updateAnnotations(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, evidenceId, { annotations }));
+    return ctx.write(() => evidenceApi.replaceAnnotations(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, evidenceId, { annotations }));
   }
 
   // Poser des annotations sur une image : choisir l'outil, cliquer (flèche : départ puis arrivée) ou
   // cliquer-glisser (cadre), puis enregistrer - toutes celles de l'image d'un coup.
-  function wireAnnotations(ctx, list) {
+  function wireAnnotations(ctx, list, evidenceList) {
     list.querySelectorAll(".js-remove-annotation").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const evidence = ctx.detail.evidence.find((ev) => ev.id === btn.dataset.evidenceId);
+        const evidence = evidenceList.find((ev) => ev.id === btn.dataset.evidenceId);
         const index = Number(btn.dataset.index);
-        if (evidence) saveAnnotations(ctx, evidence.id, (evidence.image_annotations || []).filter((_, i) => i !== index));
+        if (evidence) saveAnnotations(ctx, evidence.id, evidence.annotations.filter((_, i) => i !== index));
       });
     });
     list.querySelectorAll(".js-annotation-image").forEach((container) => {
       const { evidenceId, attachmentId } = container.dataset;
-      const evidence = ctx.detail.evidence.find((ev) => ev.id === evidenceId);
+      const evidence = evidenceList.find((ev) => ev.id === evidenceId);
       const toolsBar = container.closest(".evidence-image").querySelector(".js-annotation-tools");
       if (!evidence || !toolsBar) return;
       const hint = toolsBar.querySelector(".js-annotation-hint");
-      const all = evidence.image_annotations || [];
+      const all = evidence.annotations;
       const others = all.filter((a) => a.attachment_id && a.attachment_id !== attachmentId);
       const local = all.filter((a) => !a.attachment_id || a.attachment_id === attachmentId).map((a) => ({ ...a, attachment_id: attachmentId }));
       let tool = null;
@@ -263,8 +265,7 @@
 
   // Comparer deux preuves entre elles (une mesure après un dépôt à 400 nm puis à 200 nm), sur leurs
   // mesures chiffrées - côté client, les preuves sont déjà chargées.
-  function compareToolHtml(ctx) {
-    const evidence = ctx.detail.evidence;
+  function compareToolHtml(ctx, evidence) {
     if (evidence.length < 2) return "";
     const options = evidence
       .map((e) => `<option value="${escapeHtml(e.id)}">${escapeHtml(e.description)}${e.step_index != null ? " — " + escapeHtml(stepLabel(ctx, e.step_index)) : ""}</option>`)
@@ -281,22 +282,22 @@
       </div>`;
   }
 
-  function wireCompareTool(ctx, el) {
+  function wireCompareTool(el, evidence) {
     const tool = el.querySelector(".js-evidence-compare");
     if (!tool) return;
     const selectA = tool.querySelector(".js-compare-a");
     const selectB = tool.querySelector(".js-compare-b");
     const box = tool.querySelector(".js-compare-result");
     // par défaut, les deux plus récentes : « où j'en suis par rapport à juste avant »
-    selectA.selectedIndex = ctx.detail.evidence.length - 2;
-    selectB.selectedIndex = ctx.detail.evidence.length - 1;
+    selectA.selectedIndex = evidence.length - 2;
+    selectB.selectedIndex = evidence.length - 1;
     tool.querySelector(".js-compare-btn").addEventListener("click", () => {
       if (selectA.value === selectB.value) {
         box.innerHTML = `<div class="help">Choisissez deux preuves différentes.</div>`;
         return;
       }
-      const a = ctx.detail.evidence.find((e) => e.id === selectA.value);
-      const b = ctx.detail.evidence.find((e) => e.id === selectB.value);
+      const a = evidence.find((e) => e.id === selectA.value);
+      const b = evidence.find((e) => e.id === selectB.value);
       const names = [...new Set([...Object.keys(a.metrics || {}), ...Object.keys(b.metrics || {})])];
       if (!names.length) {
         box.innerHTML = `<div class="help">Aucune des deux preuves n'a de mesure chiffrée à comparer.</div>`;
@@ -399,11 +400,13 @@
 
   ExperiencePage.registerPanel({
     key: "evidence",
-    mount(el, ctx) {
-      const { evidence } = ctx.detail;
+    async mount(el, ctx) {
+      const shown = ctx.versionId;
+      const evidence = await evidenceApi.list(ctx.microprojectSlug, ctx.experimentId, shown);
+      if (ctx.versionId !== shown) return; // la fiche a été rechargée entre-temps : ce rechargement-là remplit le panneau
       el.innerHTML = `
         <div class="js-evidence-list">${evidence.length ? evidence.map((e) => evidenceHtml(ctx, e)).join("") : `<div class="help">Aucune preuve enregistrée.</div>`}</div>
-        ${compareToolHtml(ctx)}
+        ${compareToolHtml(ctx, evidence)}
         ${ctx.canEdit ? formHtml(ctx) : ""}`;
       const list = el.querySelector(".js-evidence-list");
       list.addEventListener("click", async (event) => {
@@ -414,10 +417,10 @@
         setTimeout(() => (btn.textContent = label), 1600);
       });
       if (ctx.canEdit) {
-        wireAnnotations(ctx, list);
+        wireAnnotations(ctx, list, evidence);
         wireForm(ctx, el);
       }
-      wireCompareTool(ctx, el);
+      wireCompareTool(el, evidence);
     },
   });
 })();
