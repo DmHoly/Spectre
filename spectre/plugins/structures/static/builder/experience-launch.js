@@ -10,6 +10,9 @@
 const entityFdlField = mountFdlField(document.getElementById("exp-entity-fdl"), { label: "FDL du wafer" });
 document.querySelector("#exp-entity-fdl .fdl-field__input").id = "exp-entity-fdl-input";
 
+// Formulaire d'intention du µprojet (intent_forms/static/intent-form-section.js), monté par main.js
+let intentFormSection = null;
+
 async function loadExistingProcess() {
   if (!evolveExperienceId) return;
   try {
@@ -36,7 +39,7 @@ async function loadExistingProcess() {
     const verification = detail.objective_verification || {};
     state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
     renderObjectives();
-    fillIntentFormAnswers(detail.form_answers);
+    intentFormSection.fill(detail.form_answers);
     updateStageMeta();
 
     // en évolution, l'entité physique se transmet automatiquement de la version précédente
@@ -79,7 +82,7 @@ async function commitExperience(entities) {
     context: document.getElementById("exp-context").value,
     objectives: state.objectives,
     entities,
-    form_answers: collectIntentFormAnswers(),
+    form_answers: intentFormSection ? intentFormSection.collect() : {},
   };
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
     const branchName = document.getElementById("new-branch-name").value.trim();
@@ -107,7 +110,7 @@ async function commitExperience(entities) {
     const result = await launch();
     window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
   } catch (err) {
-    const formMessage = intentFormErrorMessage(err);
+    const formMessage = intentFormSection && intentFormSection.errorMessage(err);
     showError(formMessage ? new Error(formMessage) : err);
   }
 }

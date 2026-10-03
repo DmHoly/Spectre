@@ -52,7 +52,7 @@ async function init() {
   } else if (isBrickMode) {
     await initBrickMode();
   } else {
-    await loadIntentForm();
+    intentFormSection = await mountIntentFormSection(document.getElementById("intent-form-box"), { microprojectSlug: slug, onError: showError });
     await loadExistingProcess();
     await loadTemplateProcess();
     await loadChosenStructureForExperience();
