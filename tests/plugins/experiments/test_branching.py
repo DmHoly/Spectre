@@ -4,8 +4,8 @@ de créer une fourche implicite."""
 
 from __future__ import annotations
 
+from support.evidence import add_evidence
 from support.experiments import (
-    add_evidence,
     conclude,
     evolve,
     experiments_url,
@@ -93,7 +93,6 @@ def test_writes_without_if_match_always_continue_the_tip(client):
 
     concluded = conclude(client, slug, "reference", summary="Conclu", objective_results=[])
     assert concluded["parents"] == [evolved["version_id"]]
-    added = add_evidence(client, slug, "reference", "Mesure ajoutee apres coup", source="profilometre")
-    assert added["id"] == "reference"
+    add_evidence(client, slug, "reference", "Mesure ajoutee apres coup", source="profilometre")
     assert get_experiment(client, slug, "reference")["parents"] == [concluded["version_id"]]
     assert [item["id"] for item in list_experiments(client, slug)["items"]] == ["reference"]

@@ -1,14 +1,14 @@
 """FDL (feuilles de lancement JIRA, spectre.plugins.wafers.fdl) stacked on each wafer - normalized, carried
-along the versions, searchable from the topbar - and preuves carrying links (a folder, a PowerPoint
-deck) and pasted images, recorded in one version.
+along the versions, searchable from the topbar - and the context description of an experience. The
+preuves (links, pasted images) are tested in ``tests/plugins/evidence``.
 """
 
 from __future__ import annotations
 
 from spectre.plugins.experiments.entities import clean_fdl_list, normalize_fdl
 
+from support.evidence import upload_image
 from support.experiments import (
-    add_evidence,
     conclude,
     evolve,
     evolve_image,
@@ -18,7 +18,6 @@ from support.experiments import (
     launch_image,
     tag,
     track_entities,
-    upload_image,
     versions,
 )
 from support.microprojects import signup_with_microproject
@@ -90,50 +89,6 @@ def test_the_topbar_finds_an_experience_by_its_fdl(client):
     # quelqu'un qui n'est pas membre du µprojet ne voit pas ses expériences
     _owner_microproject(client, "stranger-fdl@example.com", "Ailleurs")
     assert search("1201") == []
-
-
-def test_a_preuve_with_links_and_pasted_images_is_one_version(client):
-    slug = _owner_microproject(client)
-    launched = launch(client, slug, intent="x", entities=[{"sample_id": "W7"}])
-    before = len(versions(client, slug, launched["id"]))
-    first, second = upload_image(client, slug, "tem.png"), upload_image(client, slug)
-
-    response = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves",
-        json={
-            "description": "Coupes TEM et présentation du run",
-            "links": ['"\\\\srv-data\\R&D\\Runs\\W7\\revue.pptx"', "https://aledia.sharepoint.com/sites/rd/W7", "", "https://aledia.sharepoint.com/sites/rd/W7"],
-            "images": [{"image_id": first, "caption": "Vue d'ensemble"}, {"image_id": second}],
-        },
-    )
-    assert response.status_code == 201, response.text
-    evidence_id = response.json()["evidence_id"]
-    detail = get_experiment(client, slug, response.json()["id"])
-    assert detail["evidence_links"] == {evidence_id: ["\\\\srv-data\\R&D\\Runs\\W7\\revue.pptx", "https://aledia.sharepoint.com/sites/rd/W7"]}
-    evidence = next(e for e in detail["evidence"] if e["id"] == evidence_id)
-    assert evidence["source"] == "\\\\srv-data\\R&D\\Runs\\W7\\revue.pptx"  # le premier lien, faute de source
-    assert evidence["kind"] == "image"  # des images collées font une preuve image
-    images = [a for a in detail["attachments"] if a["evidence_id"] == evidence_id]
-    assert [(a["id"], a["caption"]) for a in images] == [(first, "Vue d'ensemble"), (second, None)]
-    assert client.get(f"/api/microprojects/{slug}/attachments/{first}/content").status_code == 200
-    # tout en une seule version (plus une par image)
-    assert len(versions(client, slug, launched["id"])) == before + 1
-
-    # une preuve suivante garde les liens des précédentes
-    later = add_evidence(client, slug, launched["id"], source="profilomètre", links=["S:\\Mesures\\W7"])
-    links = get_experiment(client, slug, launched["id"])["evidence_links"]
-    assert links[evidence_id] and links[later["evidence_id"]] == ["S:\\Mesures\\W7"]
-
-
-def test_a_preuve_refuses_images_that_were_never_uploaded(client):
-    slug = _owner_microproject(client)
-    launched = launch(client, slug, intent="x", entities=[{"sample_id": "W7"}])
-    url = f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves"
-    assert client.post(url, json={"description": "x", "images": [{"image_id": "att_" + "0" * 20}]}).status_code == 422
-    assert client.post(url, json={"description": "x", "images": [{"image_id": "../secret"}]}).status_code == 422
-    image = upload_image(client, slug)
-    assert client.post(url, json={"description": "x", "images": [{"image_id": image}, {"image_id": image}]}).status_code == 422
-    assert client.post(url, json={"description": "x", "links": [f"https://exemple.fr/{i}" for i in range(11)]}).status_code == 422
 
 
 def test_the_context_description_follows_the_experience(client):

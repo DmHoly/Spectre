@@ -167,7 +167,7 @@ const ExperiencePage = (() => {
 
   // Repères sur les onglets : combien de données, et si l'étude est conclue.
   function updateTabBadges(detail) {
-    const count = (detail.evidence || []).length + (detail.data_items || []).length + (detail.data_notebook || []).length;
+    const count = detail.evidence_count + (detail.data_items || []).length + (detail.data_notebook || []).length;
     document.getElementById("tab-donnees-count").textContent = count ? String(count) : "";
     const state = document.getElementById("tab-conclusion-state");
     const concluded = detail.status === "concluded" || detail.status === "abandoned";

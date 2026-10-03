@@ -81,6 +81,12 @@ def attachments_dir(slug: str) -> Path:
     return path
 
 
+def content_url(slug: str, attachment_id: str) -> str:
+    """L'URL des octets d'un fichier (``GET .../attachments/{attachment_id}/content``) : un plugin
+    qui montre une image téléversée (une preuve) en donne l'``url`` sans la construire lui-même."""
+    return f"/api/microprojects/{slug}/attachments/{attachment_id}/content"
+
+
 def new_attachment_id() -> str:
     return f"att_{secrets.token_hex(10)}"
 
