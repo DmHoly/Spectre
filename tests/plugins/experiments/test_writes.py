@@ -80,7 +80,9 @@ def study(client, tmp_path, monkeypatch):
         "picture": picture,
         "evidence_id": evidence["evidence_id"],
         "entry_id": entry["entry_id"],
+        "snapshot_id": snapshot["snapshot_id"],
         "data_id": data["data_item"]["id"],
+        "paths": paths,
         "other": other["id"],
         "before": get_experiment(client, slug, line),
     }
@@ -151,6 +153,21 @@ STALE_WRITES = {
     "entities": lambda c, s, h: c.put(f"{experiment_url(s['slug'], s['line'])}/entities", headers=h, json={"entities": [{"sample_id": "W9"}]}),
     "merges": lambda c, s, h: c.post(f"{experiment_url(s['slug'], s['line'])}/merges", headers=h, json={"other_experiment_id": s["other"]}),
     "delete": lambda c, s, h: c.delete(experiment_url(s["slug"], s["line"]), headers=h),
+    # les anciennes routes des plugins de la vague 3, qui écrivent elles aussi sur la piste
+    "preuve": lambda c, s, h: c.post(f"/api/microprojets/{s['slug']}/experiences/{s['line']}/preuves", headers=h, json={"description": "x"}),
+    "annotations": lambda c, s, h: c.post(
+        f"/api/microprojets/{s['slug']}/experiences/{s['line']}/preuves/{s['evidence_id']}/annotations", headers=h, json={"annotations": []}
+    ),
+    "cahier-ajout": lambda c, s, h: c.post(
+        f"/api/microprojets/{s['slug']}/experiences/{s['line']}/cahier", headers=h, json={"title": "x", "snapshot_id": s["snapshot_id"], "component": "table"}
+    ),
+    "cahier": lambda c, s, h: c.put(f"/api/microprojets/{s['slug']}/experiences/{s['line']}/cahier/{s['entry_id']}", headers=h, json={"note": "x"}),
+    "cahier-retrait": lambda c, s, h: c.delete(f"/api/microprojets/{s['slug']}/experiences/{s['line']}/cahier/{s['entry_id']}", headers=h),
+    "galerie-ajout": lambda c, s, h: c.post(f"/api/microprojets/{s['slug']}/experiences/{s['line']}/data", headers=h, json={"image_paths": s["paths"]}),
+    "galerie-epingle": lambda c, s, h: c.patch(
+        f"/api/microprojets/{s['slug']}/experiences/{s['line']}/data/{s['data_id']}/epingle", headers=h, json={"pinned_index": 1}
+    ),
+    "galerie-retrait": lambda c, s, h: c.delete(f"/api/microprojets/{s['slug']}/experiences/{s['line']}/data/{s['data_id']}", headers=h),
 }
 
 

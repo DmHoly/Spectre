@@ -10,9 +10,10 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 import follow
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from ...kernel.http import if_match_version
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..attachments.store import uploaded_image
@@ -80,6 +81,7 @@ def _clean_evidence_links(raw: list[str]) -> list[str]:
 def add_evidence(
     ref: str,
     body: EvidenceInput,
+    if_match: str | None = Header(None),
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
@@ -147,7 +149,7 @@ def add_evidence(
             **native_evidence_fields(extra),
         )
 
-    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, expected_version=if_match_version(if_match), change=change)
     return {"id": ref, "version_id": experiment.id, "evidence_id": evidence_id}
 
 
@@ -156,6 +158,7 @@ def update_evidence_annotations(
     ref: str,
     evidence_id: str,
     body: EvidenceAnnotationsRequest,
+    if_match: str | None = Header(None),
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
@@ -176,5 +179,5 @@ def update_evidence_annotations(
         extras = builder.metadata.setdefault(EVIDENCE_EXTRA_KEY, {})
         extras[evidence_id] = {**extras.get(evidence_id, {}), **annotations}
 
-    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, expected_version=if_match_version(if_match), change=change)
     return {"id": ref, "version_id": experiment.id}

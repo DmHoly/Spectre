@@ -8,8 +8,12 @@
    d'autres pour comparer), charger, puis choisir une vue - d'abord les préréglages du type
    (notebook/static/dataviz/presets.js), puis toute vue qui convient à ces données - et l'ajuster en direct.
    Chaque changement (ajout, réglage, note, ordre, retrait) enregistre une nouvelle version de la
-   fiche, comme le reste (voir spectre.api.notebook). */
+   fiche, comme le reste (voir notebook/api.py), avec la version affichée en If-Match.
 
+   Un panneau de la fiche (ExperiencePage.registerPanel) : il reçoit son contexte (`notebookCtx`) à
+   chaque montage. */
+
+let notebookCtx = null;
 const notebookSnapshots = new Map(); // snapshot_id -> Promise<jeu de données>
 let notebookSources = null;
 
@@ -17,7 +21,7 @@ function loadSnapshot(snapshotId) {
   if (!notebookSnapshots.has(snapshotId)) {
     notebookSnapshots.set(
       snapshotId,
-      notebookApi.snapshot(slug, snapshotId).catch((err) => {
+      notebookApi.snapshot(notebookCtx.microprojectSlug, snapshotId).catch((err) => {
         notebookSnapshots.delete(snapshotId);
         throw err;
       })
@@ -27,23 +31,18 @@ function loadSnapshot(snapshotId) {
 }
 
 async function getNotebookSources() {
-  if (!notebookSources) notebookSources = notebookApi.sources(slug).catch(() => ({ sources: [], demo: false }));
+  if (!notebookSources) notebookSources = notebookApi.sources(notebookCtx.microprojectSlug).catch(() => ({ sources: [], demo: false }));
   return notebookSources;
 }
 
-// `write` : l'appel de notebookApi qui enregistre le changement (une nouvelle version de la piste).
-async function notebookChange(write) {
-  clearError();
-  try {
-    await write();
-    reloadFiche(); // la fiche se recharge sur sa dernière version, onglet gardé
-  } catch (err) {
-    showError(err);
-  }
+// `write` : l'appel de notebookApi qui enregistre le changement (une nouvelle version de la piste) ;
+// la fiche se recharge ensuite sur place, onglet gardé (ctx.write).
+function notebookChange(write) {
+  return notebookCtx.write(write);
 }
 
 function experienceLasermarks() {
-  return [...new Set((currentDetail.physical_tracking || []).map((e) => e.sample_id).filter(Boolean))];
+  return [...new Set((notebookCtx.detail.physical_tracking || []).map((e) => e.sample_id).filter(Boolean))];
 }
 
 const NB_ICONS = {
@@ -55,7 +54,7 @@ const NB_ICONS = {
 };
 
 function notebookEntryHtml(entry, index, total) {
-  const canEdit = isEditorRole();
+  const canEdit = notebookCtx.canEdit;
   const wafers = (entry.wafers || []).map((w) => `<a class="mono" href="${plateUrl(w)}">${escapeHtml(w)}</a>`).join(", ");
   const note = entry.note || "";
   const actions = canEdit
@@ -106,9 +105,8 @@ function notebookEntryHtml(entry, index, total) {
 
 async function renderNotebook(detail) {
   const host = document.getElementById("notebook-entries");
-  if (!host) return;
   const entries = detail.data_notebook || [];
-  const canEdit = isEditorRole();
+  const canEdit = notebookCtx.canEdit;
   document.getElementById("notebook-add-btn").hidden = !canEdit;
   document.getElementById("notebook-demo-note").hidden = !entries.some((e) => e.source === "demo");
   if (!entries.length) {
@@ -143,7 +141,7 @@ function wireNotebookEntry(article, entry, entries) {
   note.addEventListener("input", () => {
     noteActions.hidden = note.value === (entry.note || "");
   });
-  article.querySelector(".nb-note-save").addEventListener("click", () => notebookChange(() => notebookApi.updateEntry(slug, experienceId, entry.id, { note: note.value })));
+  article.querySelector(".nb-note-save").addEventListener("click", () => notebookChange(() => notebookApi.updateEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id, { note: note.value })));
   article.querySelector(".nb-note-cancel").addEventListener("click", () => {
     note.value = entry.note || "";
     noteActions.hidden = true;
@@ -152,19 +150,18 @@ function wireNotebookEntry(article, entry, entries) {
     const btn = event.target.closest("[data-act]");
     if (!btn) return;
     const act = btn.dataset.act;
-    if (act === "up" || act === "down") return notebookChange(() => notebookApi.updateEntry(slug, experienceId, entry.id, { move: act === "up" ? -1 : 1 }));
+    if (act === "up" || act === "down") return notebookChange(() => notebookApi.updateEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id, { move: act === "up" ? -1 : 1 }));
     if (act === "remove") {
-      if (window.confirm(`Retirer « ${entry.title} » du cahier ? (Elle reste dans l'historique de la fiche.)`)) notebookChange(() => notebookApi.removeEntry(slug, experienceId, entry.id));
+      if (window.confirm(`Retirer « ${entry.title} » du cahier ? (Elle reste dans l'historique de la fiche.)`)) notebookChange(() => notebookApi.removeEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id));
       return;
     }
     if (act === "refresh") {
       btn.disabled = true;
-      clearError();
       try {
-        const snap = await notebookApi.takeSnapshot(slug, { hook: entry.hook, wafers: entry.wafers || [], refresh: true });
-        notebookChange(() => notebookApi.updateEntry(slug, experienceId, entry.id, { snapshot_id: snap.snapshot_id }));
+        const snap = await notebookApi.takeSnapshot(notebookCtx.microprojectSlug, { hook: entry.hook, wafers: entry.wafers || [], refresh: true });
+        notebookChange(() => notebookApi.updateEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id, { snapshot_id: snap.snapshot_id }));
       } catch (err) {
-        showError(err);
+        notebookCtx.showError(err);
         btn.disabled = false;
       }
       return;
@@ -174,7 +171,7 @@ function wireNotebookEntry(article, entry, entries) {
 }
 
 function objectiveOptionsHtml(selected) {
-  return `<option value="">— aucun —</option>${(currentDetail.objectives || [])
+  return `<option value="">— aucun —</option>${(notebookCtx.detail.objectives || [])
     .map((o) => `<option value="${escapeHtml(o.name)}"${o.name === selected ? " selected" : ""}>${escapeHtml(o.name)}</option>`)
     .join("")}`;
 }
@@ -226,7 +223,7 @@ async function toggleEntrySettings(article, entry, btn) {
   panel.querySelector(".nb-settings-cancel").addEventListener("click", () => btn.click());
   panel.querySelector(".nb-settings-apply").addEventListener("click", () =>
     notebookChange(() =>
-      notebookApi.updateEntry(slug, experienceId, entry.id, {
+      notebookApi.updateEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id, {
         title: panel.querySelector(`#nbs-${entry.id}-title`).value,
         component,
         options: DataViz.readOptions(panel.querySelector(".nb-settings__options")),
@@ -306,7 +303,7 @@ async function loadNotebookData() {
   btn.disabled = true;
   status.textContent = "Chargement depuis la base…";
   try {
-    const ds = await notebookApi.takeSnapshot(slug, { hook: nbAdd.source.key, wafers });
+    const ds = await notebookApi.takeSnapshot(notebookCtx.microprojectSlug, { hook: nbAdd.source.key, wafers });
     nbAdd.dataset = ds;
     notebookSnapshots.set(ds.snapshot_id, Promise.resolve(ds));
     const nWafers = DataViz.byWafer(ds).size;
@@ -380,7 +377,7 @@ function wireNotebookDialog() {
     }
     dialog.close();
     notebookChange(() =>
-      notebookApi.addEntry(slug, experienceId, {
+      notebookApi.addEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, {
         title,
         snapshot_id: nbAdd.dataset.snapshot_id,
         component: nbAdd.component,
@@ -393,3 +390,11 @@ function wireNotebookDialog() {
 }
 
 wireNotebookDialog();
+
+ExperiencePage.registerPanel({
+  key: "notebook",
+  mount(el, ctx) {
+    notebookCtx = ctx;
+    return renderNotebook(ctx.detail);
+  },
+});

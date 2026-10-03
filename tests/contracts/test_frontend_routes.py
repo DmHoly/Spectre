@@ -23,7 +23,7 @@ from contracts.frontend_calls import matching_route, openapi_routes, scan, scan_
 # page a déjà affichée.
 DYNAMIC_CALLS: dict[tuple[str, str, str], tuple[str, ...]] = {
     # le rapport embarque ses images (attachmentsApi.contentUrl, externalImagesApi.imageUrl)
-    ("plugins/experiments/static/experiment.js", "GET", "src"): (
+    ("plugins/experiments/static/report.js", "GET", "src"): (
         "/api/microprojects/{microproject_slug}/attachments/{attachment_id}/content",
         "/api/microprojets/{slug}/data/image",
     ),
@@ -32,8 +32,7 @@ DYNAMIC_CALLS: dict[tuple[str, str, str], tuple[str, ...]] = {
 # Appels dynamiques qui ne visent pas une route de Spectre.
 NOT_ROUTE_CALLS: dict[tuple[str, str, str], str] = {
     ("kernel/static/api.js", "GET", "path"): "le client HTTP lui-même : chaque client.js est vérifié là où il l'appelle",
-    ("plugins/experiments/static/experiment.js", "GET", "mount.dataset.url"): "graph_config.data_source_url : un service de données externe",
-    ("plugins/experiments/static/experiment.js", "GET", "link.href"): "le rapport embarque les feuilles de style de la page",
+    ("plugins/experiments/static/report.js", "GET", "link.href"): "le rapport embarque les feuilles de style de la page",
 }
 
 

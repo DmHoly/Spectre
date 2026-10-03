@@ -1,5 +1,5 @@
 /* « Ajouter au lot », depuis un µprojet - le panneau d'un nœud du graphe (lineage-view.js) et la
-   carte « Plaques » de la fiche d'une expérience (experiment.js) : met un ou plusieurs wafers de
+   carte « Plaques » de la fiche d'une expérience (un panneau de ExperiencePage, en bas du fichier) : met un ou plusieurs wafers de
    l'expérience (ses lasermarks) dans un lot - en cours ou déjà sorti, à tout moment, autant de fois
    qu'on veut - ou dans un nouveau lot créé sur place. Voir /lots et spectre.api.lots (GET /selection,
    POST /{code}/wafers, POST ""). Dépend de lotsApi (lots/static/client.js). */
@@ -173,4 +173,18 @@ function mountLotAssign(container, { lasermarks = [], onChange } = {}) {
 
   container.innerHTML = `<p class="help">Chargement des lots…</p>`;
   load();
+}
+
+// Sur la fiche d'une expérience (et seulement là : ce fichier sert aussi au graphe de filiation), le
+// panneau « Lot de fabrication » sous les plaques, pour un éditeur sur la dernière version.
+if (typeof ExperiencePage !== "undefined") {
+  ExperiencePage.registerPanel({
+    key: "lots",
+    mount(el, ctx) {
+      el.hidden = !ctx.canEdit;
+      if (!ctx.canEdit) return;
+      el.innerHTML = `<div class="section-title" style="font-size:12px;margin-bottom:6px;">Lot de fabrication</div><div></div>`;
+      mountLotAssign(el.lastElementChild, { lasermarks: (ctx.detail.physical_tracking || []).map((e) => e.sample_id) });
+    },
+  });
 }

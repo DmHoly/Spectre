@@ -23,12 +23,13 @@ import secrets
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ...kernel.errors import NotFound
+from ...kernel.http import if_match_version
 from ..characterization import service as characterization
 from ..experiments import service as experiments
 from ..microprojects.deps import require_role
@@ -128,9 +129,9 @@ def _snapshot_summary(slug: str, snapshot_id: str) -> dict[str, Any]:
     }
 
 
-def _commit(microproject: Microproject, ref: str, user: User, mutate: Callable[[list[dict], Any], dict]) -> dict:
+def _commit(microproject: Microproject, ref: str, user: User, if_match: str | None, mutate: Callable[[list[dict], Any], dict]) -> dict:
     """Une écriture légère sur la piste ``ref`` qui ne change que le cahier (tout le reste reporté
-    tel quel, :func:`spectre.plugins.experiments.service.amend`)."""
+    tel quel, :func:`spectre.plugins.experiments.service.amend` ; ``If-Match`` périmé : 412)."""
     result: dict = {}
 
     def change(builder: Any, parent: Any) -> None:
@@ -138,7 +139,7 @@ def _commit(microproject: Microproject, ref: str, user: User, mutate: Callable[[
         result.update(mutate(entries, parent))
         builder.metadata[NOTEBOOK_KEY] = entries
 
-    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, expected_version=if_match_version(if_match), change=change)
     return {"id": ref, "version_id": experiment.id, **result}
 
 
@@ -153,6 +154,7 @@ def _find(entries: list[dict], entry_id: str) -> int:
 def add_entry(
     ref: str,
     body: EntryInput,
+    if_match: str | None = Header(None),
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
@@ -182,7 +184,7 @@ def add_entry(
         entries.append(entry)
         return {"entry_id": entry["id"]}
 
-    return _commit(microproject, ref, user, mutate)
+    return _commit(microproject, ref, user, if_match, mutate)
 
 
 @router.put("/{slug}/experiences/{ref}/cahier/{entry_id}")
@@ -190,6 +192,7 @@ def update_entry(
     ref: str,
     entry_id: str,
     body: EntryUpdate,
+    if_match: str | None = Header(None),
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
@@ -224,13 +227,14 @@ def update_entry(
             entries.insert(target, entries.pop(index))
         return {"entry_id": entry_id}
 
-    return _commit(microproject, ref, user, mutate)
+    return _commit(microproject, ref, user, if_match, mutate)
 
 
 @router.delete("/{slug}/experiences/{ref}/cahier/{entry_id}")
 def remove_entry(
     ref: str,
     entry_id: str,
+    if_match: str | None = Header(None),
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
@@ -238,4 +242,4 @@ def remove_entry(
         entries.pop(_find(entries, entry_id))
         return {}
 
-    return _commit(microproject, ref, user, mutate)
+    return _commit(microproject, ref, user, if_match, mutate)

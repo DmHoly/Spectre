@@ -1,17 +1,24 @@
 /* Client de l'API du plugin external_images : galerie d'images externes (TEM, scans) d'une
-   expérience, parcours des dossiers autorisés et URL d'une image. */
+   expérience, parcours des dossiers autorisés et URL d'une image. Les écritures sur la galerie
+   envoient la version affichée (`versionId`, en-tête If-Match) : 412 si la piste a avancé. */
 
 const externalImagesApi = {
-  create(microprojectSlug, ref, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/data`, body);
+  create(microprojectSlug, experimentId, versionId, body) {
+    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(experimentId)}/data`, body, {
+      ifMatch: versionId && `"${versionId}"`,
+    });
   },
-  remove(microprojectSlug, ref, itemId) {
-    return api.del(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/data/${encodeURIComponent(itemId)}`);
+  remove(microprojectSlug, experimentId, versionId, itemId) {
+    return api.del(
+      `/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(experimentId)}/data/${encodeURIComponent(itemId)}`,
+      { ifMatch: versionId && `"${versionId}"` }
+    );
   },
-  pin(microprojectSlug, ref, itemId, body) {
+  pin(microprojectSlug, experimentId, versionId, itemId, body) {
     return api.patch(
-      `/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/data/${encodeURIComponent(itemId)}/epingle`,
-      body
+      `/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(experimentId)}/data/${encodeURIComponent(itemId)}/epingle`,
+      body,
+      { ifMatch: versionId && `"${versionId}"` }
     );
   },
   browse(microprojectSlug, folder) {

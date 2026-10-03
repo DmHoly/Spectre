@@ -10,7 +10,7 @@
    ou d'une entité.
 
    Pièces jointes : retirées du panneau contextuel pour l'instant (gestion depuis la fiche
-   d'expérience uniquement, spectre/plugins/experiments/static/experiment.js) - cette partie doit être revue en
+   d'expérience uniquement, spectre/plugins/evidence/static/evidence-panel.js) - cette partie doit être revue en
    entier, pas seulement republiée telle quelle ici.
 */
 
@@ -21,13 +21,6 @@ const STATUS_COLOR = {
   continued: "var(--draft)",
   concluded: "var(--done)",
   abandoned: "var(--abandoned)",
-};
-
-const OBJECTIVE_STATUS_LABELS = {
-  met: "Atteint",
-  not_met: "Non atteint",
-  partially_met: "Partiellement atteint",
-  inconclusive: "Non concluant",
 };
 
 const EXPERIENCE_RADIUS = 9;
@@ -151,7 +144,7 @@ function renderExperiencePanel(d) {
       (o) => `
       <div style="padding:6px 0;border-top:1px solid var(--border-soft);font-size:12.5px;">
         <span style="font-weight:600;">${escapeHtml(o.name)}</span>
-        <span style="color:var(--text-faint);"> — ${escapeHtml(o.status ? OBJECTIVE_STATUS_LABELS[o.status] || o.status : "en cours de vérification")}</span>
+        <span style="color:var(--text-faint);"> — ${escapeHtml(o.status ? ExperimentVocabulary.objectiveStatuses[o.status] || o.status : "en cours de vérification")}</span>
       </div>`
     )
     .join("");
@@ -174,7 +167,7 @@ function renderExperiencePanel(d) {
 // Aperçu de structure du nœud sélectionné - une seule image pour une expérience normale, un
 // carrousel (référence + chaque variante) pour une campagne (ProcessLot) : avant ça, cliquer le
 // nœud d'une campagne dans l'atlas ne montrait ni la structure ni les variantes, il fallait ouvrir
-// la fiche complète pour les voir (voir experiment.js::renderBatchMatrix, dont /matrice vient ici).
+// la fiche complète pour les voir (voir experiments/static/structure-view.js, la cartographie des variantes).
 async function loadStructurePreview(d) {
   const container = document.getElementById("atlas-structure-preview");
   try {

@@ -133,7 +133,7 @@ spectre/plugins/<plugin>/
 | `register_library_file(LibraryFile)` : clé en kebab-case anglais (le nom du fichier YAML reste le nom historique), `parse` (mapping YAML → contenu, `ValueError` si invalide : sert à valider avant l'écriture et à charger) et `fallback` (contenu quand le fichier est absent ou invalide) | `library` | structures (matériaux, recettes), process_library (présets, briques), library (textes de la section intention, servis par `GET /api/ui-texts/intention`) |
 | `register(KpiDefinition)` | `kpis` | activité, wafers, démo EQE |
 | `DataViz.register(component)` | `notebook/static/dataviz/core.js` | table, carte de wafer, distribution, nuage de points, courbes… |
-| `ExperiencePage.registerPanel({key, mount(ctx)})` | `experiments/static/page.js` | evidence, notebook, external_images, lots |
+| `ExperiencePage.registerPanel({key, mount(el, ctx)})` (voir § 6) | `experiments/static/page.js` | les panneaux de la fiche elle-même, puis evidence (`evidence-panel.js`), external_images (`gallery.js`), lots (`lot-picker.js`), notebook (`notebook.js`) |
 
 **Clés de type de structure figées.** `ProcessLot` et `StructureImage` surchargent
 `registry_key()` pour renvoyer leur chaîne historique (`spectre.core.structures.…`). Follow
@@ -208,8 +208,9 @@ déplacement de classe ne doit jamais la changer.
   `repository.delete_line(repo, experiment_id)`.
 - Les anciennes routes des plugins de la vague 3 qui écrivent dans une étude (evidence, notebook,
   external_images) appellent `amend()` : leur segment `{ref}` reçoit désormais un id de piste (Follow
-  résout un nom de branche), elles renvoient `{id: <piste>, version_id, ...}` et n'acceptent pas
-  encore `If-Match`.
+  résout un nom de branche), elles renvoient `{id: <piste>, version_id, ...}` et acceptent `If-Match`
+  comme les autres (412 `stale_version`) : la fiche l'envoie pour toutes ses écritures, ces routes
+  ne changent que de chemin en vague 3.
 - En attendant la vague 3, les lectures des autres plugins suivent la piste : l'index des plaques
   (wafers, donc la recherche et les lots) donne `experience.id` = la piste ; l'atlas ajoute
   `experiment_id` à chaque étude (son `id` reste la version de pointe, que citent les liens d'entités
@@ -380,7 +381,7 @@ Droits d'écriture :
 | Avant | Après |
 |---|---|
 | *(dans le détail)* | `GET …/experiments/{exp}/evidence` |
-| `POST …/{ref}/preuves` | `POST …/experiments/{exp}/evidence` → 201 (le type `graph`, qui allait chercher une URL arbitraire, n'est plus proposé à la création) |
+| `POST …/{ref}/preuves` | `POST …/experiments/{exp}/evidence` → 201 (le type `graph`, qui allait chercher une URL arbitraire, n'est plus proposé à la création ; la fiche montre les anciennes en lecture - titre, axes, requête - sans rien aller chercher) |
 | `POST …/{ref}/preuves/{id}/annotations` | `PUT …/experiments/{exp}/evidence/{evidence_id}/annotations` |
 | `GET /api/microprojets/{slug}/donnees/sources` | `GET /api/characterization/data-types?by_wafer=true&status=implemented` |
 | `POST …/donnees/instantanes` | `POST /api/microprojects/{mp}/snapshots` → 201 |
@@ -488,6 +489,47 @@ Supprimée : `/microprojets/{slug}/graphe`.
   (dans `ui.js`), jamais par position dans `location.pathname`.
 - CSS : `kernel.css` (tokens et composants de la charte, voir `design-system/spectre/MASTER.md`),
   plus `/static/<plugin>/<plugin>.css` chargé par les pages qui en affichent les composants.
+
+### La fiche d'une expérience
+
+- `experiments/static/page.js` (global `ExperiencePage`) amorce la fiche : il charge l'étude (la
+  pointe, ou `?version=`), le µprojet, la frise (`versions`) et le procédé, puis monte chaque panneau
+  enregistré par `ExperiencePage.registerPanel({key, mount(el, ctx)})` dans l'élément
+  `[data-panel="<key>"]` de la page, dans l'ordre de chargement des scripts (un panneau sans élément
+  est ignoré). Les modules de la fiche sont eux-mêmes des panneaux, un fichier chacun, sans global :
+  `header.js` (bandeau, verdict, statut et pause), `objectives.js` (objectifs, réponses au
+  formulaire d'intention), `tags-refs.js`, `structure-view.js` (structure, couches, campagne,
+  comparaison, images de la structure), `plates.js` (plaques suivies), `versions.js` (frise,
+  historique, pistes filles, liens), `conclusion.js`, `advanced.js` (fusion, suppression),
+  `report.js`. Ceux des autres plugins suivent : `evidence/static/evidence-panel.js`,
+  `external_images/static/gallery.js`, `lots/static/lot-picker.js`, `notebook/static/notebook.js`.
+- `ctx` est un objet explicite, le même d'un rechargement à l'autre : `microprojectSlug`,
+  `experimentId`, `versionId`, `isTip` (la pointe, ouverte sans `?version=`), `role`, `canEdit`
+  (éditeur sur la pointe), `detail`, `reload()`, `showError(err, box?)` ; s'y ajoutent, pour ne pas
+  recharger chacun la même chose, `microproject`, `versions`, `process`, `variants()` (la matrice
+  d'une campagne, un appel par chargement) et `write(call, box?)`. Aucun module ne lit de globale
+  de la page.
+- `mount` est rappelé, sur le même élément, à chaque `ctx.reload()` : il remplit l'élément de
+  nouveau ; ce qu'un module branche une fois pour toutes (modales, champs fixes de la page), il le
+  branche au chargement de son script.
+- Écritures : `ctx.write(call)` envoie `ctx.versionId` en `If-Match` (chaque fonction d'écriture
+  des clients reçoit la version affichée) ; réussie, la fiche se relit sur place (même adresse,
+  dernière version, onglet gardé) ; un `412` ferme les modales et affiche le bandeau « La fiche a été
+  modifiée entre-temps » avec « Recharger », la saisie restant en place ; un autre refus s'affiche
+  tel quel (le `409 has_descendants` d'une suppression, par exemple : le client ne recalcule pas les
+  préconditions du serveur).
+- Une version passée (`?version=`, ou pas la pointe) se lit seule : aucun contrôle d'édition, un
+  bandeau « Version du … - voir la version actuelle » et, pour un éditeur, « Partir de cette
+  version », qui ouvre l'éditeur sur `?version=` : il enregistre une nouvelle piste
+  (`POST /experiments` avec `from_version`).
+- Le vocabulaire d'une étude (types d'étape et leurs paramètres, décisions, résultats d'un objectif)
+  est dans `experiments/static/vocabulary.js` (global `ExperimentVocabulary`), chargé par la fiche
+  et l'atlas.
+- Écarts : `lot-picker.js` sert aussi au graphe de filiation, où `ExperiencePage` n'existe pas ; il
+  ne s'enregistre donc que `if (typeof ExperiencePage !== "undefined")`. `notebook.js` et
+  `gallery.js` gardent leurs déclarations de premier niveau (vague 3) mais ne lisent plus que le
+  `ctx` reçu. Les compteurs de l'onglet « Données » lisent encore `evidence`, `data_items` et
+  `data_notebook` dans le détail, comme les panneaux, jusqu'aux sous-ressources de la vague 3.
 
 ## 7. Tests
 

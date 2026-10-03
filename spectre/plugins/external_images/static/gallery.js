@@ -1,11 +1,11 @@
 /* Galerie "DATA" : images externes (jamais copiées - référencées à leur emplacement d'origine)
    attachées à une expérience ou à une variante précise d'une campagne, affichées en carrousel à
-   côté de la structure simulée pour une comparaison "conçu vs mesuré". Vit dans le même bloc que
-   les Preuves historiques (voir experiment.js::renderEvidence) mais est un mécanisme totalement
-   indépendant - metadata["data_items"], pas Evidence/kind. Dépend des globals définis par
-   experiment.js (slug, experienceId, currentDetail, isEditorRole, reloadFiche, escapeHtml) - ce fichier est
-   chargé juste après lui. */
+   côté de la structure simulée pour une comparaison "conçu vs mesuré". Un panneau de la fiche
+   (ExperiencePage.registerPanel, onglet « Données »), au-dessus des preuves mais indépendant d'elles -
+   metadata["data_items"], pas Evidence/kind. Il reçoit le contexte de la fiche (`galleryCtx`) ;
+   chaque écriture envoie la version affichée et recharge la fiche. */
 
+let galleryCtx = null;
 
 function dataGalleryShowError(message) {
   const box = document.getElementById("data-gallery-error");
@@ -19,7 +19,7 @@ function dataGalleryClearError() {
 }
 
 function dataImageUrl(path) {
-  return externalImagesApi.imageUrl(slug, path);
+  return externalImagesApi.imageUrl(galleryCtx.microprojectSlug, path);
 }
 
 // Un chemin Windows (C:\Users\...) interpolé tel quel dans un attribut onerror="..." se fait
@@ -45,14 +45,14 @@ function dataImageTag(path, extraStyle) {
   return `<img class="js-data-image" src="${dataImageUrl(path)}" alt="${safePath}" data-path="${safePath}" style="${extraStyle || ""}">`;
 }
 
-// la matrice de campagne, partagée avec le reste de la fiche (voir experiment.js::getBatchVariation)
+// la matrice de campagne, partagée avec le reste de la fiche (ctx.variants)
 async function fetchBatchVariationCached() {
-  return getBatchVariation().catch(() => null);
+  return galleryCtx.variants().catch(() => null);
 }
 
 async function structureCompareHtml(detail, item) {
   if (detail.structure_images) {
-    return `${structureBoardHtml(slug, detail.structure_images, { compact: true })}<div class="help" style="margin-top:4px;">Structure (images)</div>`;
+    return `${structureBoardHtml(galleryCtx.microprojectSlug, detail.structure_images, { compact: true })}<div class="help" style="margin-top:4px;">Structure (images)</div>`;
   }
   if (item.entity_index == null) {
     return `${detail.structure_svg || ""}<div class="help" style="margin-top:4px;">Structure simulée</div>`;
@@ -79,7 +79,7 @@ async function dataItemHtml(detail, item) {
     .join("");
 
   const structureHtml = await structureCompareHtml(detail, item);
-  const canEdit = isEditorRole();
+  const canEdit = galleryCtx.canEdit;
 
   return `
     <div class="marked-card" style="margin-top:12px;">
@@ -97,7 +97,8 @@ async function dataItemHtml(detail, item) {
     </div>`;
 }
 
-async function renderDataGallery(detail) {
+async function renderDataGallery(host, detail) {
+  host.innerHTML = `<div id="data-gallery-list"></div><div id="data-gallery-add-wrap"></div>`;
   const list = document.getElementById("data-gallery-list");
   const items = detail.data_items || [];
   if (!items.length) {
@@ -107,33 +108,21 @@ async function renderDataGallery(detail) {
     list.innerHTML = htmls.join("");
   }
 
-  list.querySelectorAll(".js-data-thumb").forEach((el) => {
-    el.addEventListener("click", async () => {
-      dataGalleryClearError();
-      try {
-        // Comme toute évolution légère de cette fiche (tags, pièces jointes...), épingler une
-        // autre image enregistre une nouvelle version - on navigue dessus plutôt que de rafraîchir
-        // sur place, sans quoi la page resterait sur une version désormais figée (immuable) qui ne
-        // porte plus ce changement.
-        await externalImagesApi.pin(slug, experienceId, el.dataset.itemId, {
-          pinned_index: parseInt(el.dataset.index, 10),
-        });
-        reloadFiche();
-      } catch (err) {
-        dataGalleryShowError(err.message || String(err));
-      }
+  // Comme toute écriture légère de la fiche, épingler une autre image ou retirer des données
+  // enregistre une nouvelle version de la piste : la fiche se recharge dessus.
+  const ctx = galleryCtx;
+  if (ctx.canEdit) {
+    list.querySelectorAll(".js-data-thumb").forEach((el) => {
+      el.addEventListener("click", () => {
+        const body = { pinned_index: parseInt(el.dataset.index, 10) };
+        ctx.write(() => externalImagesApi.pin(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, el.dataset.itemId, body));
+      });
     });
-  });
+  }
 
   list.querySelectorAll(".js-data-delete").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      dataGalleryClearError();
-      try {
-        await externalImagesApi.remove(slug, experienceId, btn.dataset.itemId);
-        reloadFiche();
-      } catch (err) {
-        dataGalleryShowError(err.message || String(err));
-      }
+    btn.addEventListener("click", () => {
+      ctx.write(() => externalImagesApi.remove(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, btn.dataset.itemId));
     });
   });
 
@@ -142,7 +131,7 @@ async function renderDataGallery(detail) {
 
 function renderDataGalleryAddForm(detail) {
   const wrap = document.getElementById("data-gallery-add-wrap");
-  if (!isEditorRole()) {
+  if (!galleryCtx.canEdit) {
     wrap.innerHTML = "";
     return;
   }
@@ -208,7 +197,7 @@ function renderDataGalleryAddForm(detail) {
     const folder = document.getElementById("data-add-folder").value.trim();
     if (!folder) return;
     try {
-      const result = await externalImagesApi.browse(slug, folder);
+      const result = await externalImagesApi.browse(galleryCtx.microprojectSlug, folder);
       browsedImages = result.images || [];
       const resultsEl = document.getElementById("data-add-browse-results");
       if (!browsedImages.length) {
@@ -267,11 +256,15 @@ function renderDataGalleryAddForm(detail) {
       entity_index: entityIndexRaw === "" ? null : parseInt(entityIndexRaw, 10),
       ...extra,
     };
-    try {
-      await externalImagesApi.create(slug, experienceId, body);
-      reloadFiche();
-    } catch (err) {
-      dataGalleryShowError(err.message || String(err));
-    }
+    const ctx = galleryCtx;
+    await ctx.write(() => externalImagesApi.create(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, body), document.getElementById("data-gallery-error"));
   }
 }
+
+ExperiencePage.registerPanel({
+  key: "external_images",
+  mount(el, ctx) {
+    galleryCtx = ctx;
+    return renderDataGallery(el, ctx.detail);
+  },
+});

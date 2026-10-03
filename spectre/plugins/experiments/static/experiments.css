@@ -252,6 +252,46 @@
   font-weight: 400;
   color: var(--text);
 }
+/* une version passée : lecture seule, avec « Partir de cette version » */
+.fiche-status-note--past {
+  background: var(--accent-tint);
+  color: var(--text);
+}
+.fiche-status-note__action {
+  min-height: 32px;
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 12.5px;
+}
+
+/* une écriture refusée parce que la piste a avancé entre-temps (412) */
+.fiche-conflict {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--hold);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--hold-tint);
+  color: var(--text);
+  font-size: 13.5px;
+}
+.fiche-conflict[hidden] {
+  display: none;
+}
+.fiche-conflict:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.fiche-conflict > svg {
+  flex: none;
+  color: var(--hold);
+}
+.fiche-conflict__text {
+  flex: 1 1 260px;
+}
 .fiche-hero__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
@@ -631,7 +671,10 @@
   flex-direction: column;
   gap: 10px;
 }
-.plates-card__body > .btn {
+.plates-card__rows {
+  display: contents; /* la liste et son bouton restent les éléments flexibles de .plates-card__body */
+}
+.plates-card__rows > .btn {
   flex: none;
   align-self: flex-start;
 }

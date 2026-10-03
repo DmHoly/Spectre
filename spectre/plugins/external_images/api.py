@@ -11,10 +11,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from ...kernel.http import if_match_version
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..experiments import service as experiments
@@ -59,6 +60,7 @@ def _validate_external_image_path(raw: str) -> Path:
 def create_data_item(
     ref: str,
     body: DataSetInput,
+    if_match: str | None = Header(None),
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
@@ -91,7 +93,7 @@ def create_data_item(
                 raise HTTPException(status_code=422, detail="cette entité n'existe pas sur cette expérience")
         builder.metadata["data_items"] = list(builder.metadata.get("data_items", [])) + [record]
 
-    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, expected_version=if_match_version(if_match), change=change)
     return {"id": ref, "version_id": experiment.id, "data_item": record}
 
 
@@ -99,6 +101,7 @@ def create_data_item(
 def remove_data_item(
     ref: str,
     data_id: str,
+    if_match: str | None = Header(None),
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
@@ -109,7 +112,7 @@ def remove_data_item(
             raise HTTPException(status_code=404, detail="donnée introuvable sur cette version")
         builder.metadata["data_items"] = remaining
 
-    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, expected_version=if_match_version(if_match), change=change)
     return {"id": ref, "version_id": experiment.id}
 
 
@@ -118,6 +121,7 @@ def pin_data_item(
     ref: str,
     data_id: str,
     body: DataPinRequest,
+    if_match: str | None = Header(None),
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
@@ -133,7 +137,7 @@ def pin_data_item(
             raise HTTPException(status_code=422, detail="pinned_index hors limites")
         builder.metadata["data_items"] = [dict(d, pinned_index=body.pinned_index) if d.get("id") == data_id else d for d in existing]
 
-    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, expected_version=if_match_version(if_match), change=change)
     return {"id": ref, "version_id": experiment.id}
 
 
