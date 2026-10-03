@@ -421,8 +421,8 @@ document.getElementById("microprojet-form").addEventListener("submit", async (ev
     const p = await microprojectsApi.create({
       name: document.getElementById("mp-name").value,
       description: document.getElementById("mp-description").value,
-      management_area_slug: slug,
-      thematique_slug: document.getElementById("mp-thematic").value || null,
+      area: slug,
+      thematic: document.getElementById("mp-thematic").value || null,
     });
     window.location.href = `/microprojets/${encodeURIComponent(p.slug)}`;
   } catch (err) {
@@ -475,12 +475,12 @@ document.getElementById("ea-delete").addEventListener("click", async () => {
 const attachDialog = document.getElementById("attach-dialog");
 document.getElementById("attach-microprojet-btn").addEventListener("click", async () => {
   try {
-    const all = await microprojectsApi.listAll();
+    const all = await microprojectsApi.list({ scope: "all" });
     const select = document.getElementById("attach-select");
     select.innerHTML = all.length
       ? all
           .map((p) => {
-            const where = [p.management_area && p.management_area.name, p.thematique && p.thematique.name].filter(Boolean).join(" › ");
+            const where = [p.area && p.area.name, p.thematic && p.thematic.name].filter(Boolean).join(" › ");
             return `<option value="${escapeHtml(p.slug)}">${p.code ? `${escapeHtml(p.code)} · ` : ""}${escapeHtml(p.name)}${where ? ` — ${escapeHtml(where)}` : ""}</option>`;
           })
           .join("")

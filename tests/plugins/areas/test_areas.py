@@ -45,7 +45,7 @@ def test_admin_creates_an_area_and_moves_a_microprojet_into_it(client):
     assert get_area(client, "fiabilite")["name"] == "Fiabilité"
 
     moved = move_microproject(client, "fiabilite", "contact-ohmique")
-    assert moved["management_area"] == {"slug": "fiabilite", "name": "Fiabilité"}
+    assert moved["area"] == {"slug": "fiabilite", "name": "Fiabilité"}
     assert _slugs(experiment_stats(client, area="fiabilite")) == ["contact-ohmique"]
     assert experiment_stats(client, area="non-classe") == []
 
@@ -103,12 +103,8 @@ def test_thematiques_group_microprojets_inside_a_corporate_project(client):
     create_thematic(client, "native-pt2", "Double EBL")
     assert [t["slug"] for t in get_area(client, "native-pt2")["thematics"]] == ["dopage-pgan", "double-ebl"]
 
-    recuit = client.post(
-        "/api/microprojets",
-        json={"name": "Recuit Mg", "management_area_slug": "native-pt2", "thematique_slug": "dopage-pgan"},
-    )
-    assert recuit.status_code == 201
-    assert recuit.json()["thematique"] == {"slug": "dopage-pgan", "name": "Dopage PGaN"}
+    recuit = create_microproject(client, "Recuit Mg", area="native-pt2", thematic="dopage-pgan")
+    assert recuit["thematic"] == {"slug": "dopage-pgan", "name": "Dopage PGaN"}
 
     create_microproject(client, "Orphelin")
     move_microproject(client, "native-pt2", "orphelin", "double-ebl")
@@ -116,8 +112,8 @@ def test_thematiques_group_microprojets_inside_a_corporate_project(client):
     assert by_slug == {"recuit-mg": {"slug": "dopage-pgan", "name": "Dopage PGaN"}, "orphelin": {"slug": "double-ebl", "name": "Double EBL"}}
 
     # A thématique of another project is rejected.
-    bad = client.post("/api/microprojets", json={"name": "X", "management_area_slug": "nova-pt1", "thematique_slug": "dopage-pgan"})
-    assert_handler_404(bad)
+    bad = client.post("/api/microprojects", json={"name": "X", "area": "nova-pt1", "thematic": "dopage-pgan"})
+    assert bad.status_code == 422 and "n'appartient pas à ce projet" in bad.json()["detail"]
 
     renamed = client.patch("/api/areas/native-pt2/thematics/dopage-pgan", json={"name": "Dopage p-GaN"})
     assert renamed.status_code == 200
@@ -197,7 +193,7 @@ def test_objectives_record_a_bonus_percentage_and_the_microproject_that_validate
     assert all("effort" not in o for o in objectives)  # un simple chiffre, rien de calculé
     assert all(o["achieved"] is False and o["validated_by"] is None for o in objectives)
 
-    microproject = create_microproject(client, "Pilote procédé", management_area_slug="nova-pt1")
+    microproject = create_microproject(client, "Pilote procédé", area="nova-pt1")
     objective_id = objectives[0]["id"]
     done = client.patch(
         f"/api/areas/nova-pt1/objectives/{objective_id}", json={"achieved": True, "validated_by": microproject["slug"]}

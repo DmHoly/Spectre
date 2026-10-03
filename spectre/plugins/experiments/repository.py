@@ -171,11 +171,3 @@ def branch_tips(repo) -> list:
         seen_ids.add(tip_id)
         tips.append(repo.get(tip_id))
     return tips
-
-
-def experiment_counts(slug: str) -> tuple[int, int]:
-    """``(running, concluded)`` among the microproject's current lines of study."""
-    tips = branch_tips(get_repository(slug))
-    running = sum(1 for exp in tips if exp.conclusion.status in RUNNING_STATUSES)
-    concluded = sum(1 for exp in tips if exp.conclusion.status in CONCLUDED_STATUSES)
-    return running, concluded

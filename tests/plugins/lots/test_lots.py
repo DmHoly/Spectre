@@ -83,7 +83,7 @@ def test_a_lot_finds_its_experiences_and_thematiques_through_its_wafers(client):
     _signup_boss(client)
     create_thematic(client, "native-pt2", "Dopage PGaN")
     create_thematic(client, "native-pt2", "Double EBL")
-    create_microproject(client, "Recuit Mg", management_area_slug="native-pt2", thematique_slug="dopage-pgan")
+    create_microproject(client, "Recuit Mg", area="native-pt2", thematic="dopage-pgan")
     launched = launch(client, "recuit-mg", title="Recuit 700 C", entities=[{"sample_id": "W12-A3"}])
     ebl = next(t["id"] for g in client.get("/api/lots/thematiques").json() for t in g["thematiques"] if t["name"] == "Double EBL")
     create_lot(client, "L7", wafers=["w12-a3", "W99"], thematic_ids=[ebl])
@@ -140,7 +140,7 @@ def test_an_experiment_is_attached_as_soon_as_its_wafer_enters_a_lot_even_if_fin
     # An epitaxy test is over, then a fabrication lot is launched on its wafer for the electro-optical
     # data: the finished experiment belongs to that lot.
     _signup_boss(client)
-    create_microproject(client, "Recuit Mg", management_area_slug="native-pt2")
+    create_microproject(client, "Recuit Mg", area="native-pt2")
     launched = launch(client, "recuit-mg", title="Epitaxie 700 C", entities=[{"sample_id": "W12-A3"}])
     conclude(client, "recuit-mg", launched["id"], decision="promote")
     create_lot(client, "LATER", started_on="2099-01-01", wafers=["W12-A3"])

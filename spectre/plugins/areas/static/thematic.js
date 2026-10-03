@@ -424,8 +424,8 @@ document.getElementById("microprojet-form").addEventListener("submit", async (ev
     const p = await microprojectsApi.create({
       name: document.getElementById("mp-name").value,
       description: document.getElementById("mp-description").value,
-      management_area_slug: areaSlug,
-      thematique_slug: thematicSlug,
+      area: areaSlug,
+      thematic: thematicSlug,
     });
     window.location.href = microprojetUrl(p);
   } catch (err) {

@@ -46,18 +46,6 @@ router = APIRouter(prefix="/api/microprojects/{microproject_slug}", tags=["exper
 page_router = APIRouter()
 
 
-def _member(min_role: str):
-    """:func:`require_role` pour une route dont le paramètre de chemin est ``{microproject_slug}``.
-    Transitoire : à remplacer par ``Depends(require_role(...))`` quand ``microprojects.deps`` lira
-    ce paramètre (il lit encore ``{slug}``)."""
-    check = require_role(min_role)
-
-    def dependency(microproject_slug: str, user: User = Depends(current_user)) -> Microproject:
-        return check(user=user, microproject=get_microproject(microproject_slug))
-
-    return dependency
-
-
 def _experiment_url(slug: str, experiment_id: str) -> str:
     return f"/api/microprojects/{slug}/experiments/{experiment_id}"
 
@@ -154,7 +142,7 @@ def list_experiments(
     q: str = Query("", max_length=200),
     offset: int = Query(0, ge=0),
     limit: int = Query(30, ge=1, le=200),
-    microproject: Microproject = Depends(_member("viewer")),
+    microproject: Microproject = Depends(require_role("viewer")),
 ) -> dict:
     """Les pistes du µprojet (leur dernière version), les plus récentes d'abord - ``q`` cherche dans
     le titre, l'intention, les étiquettes et le nom de la piste."""
@@ -174,7 +162,7 @@ def list_experiments(
 def create_experiment(
     body: CreateExperimentRequest,
     response: Response,
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     """Une nouvelle piste (structure ``process``, ``images`` ou ``campaign``), à partir de rien ou
@@ -185,7 +173,7 @@ def create_experiment(
 
 
 @router.get("/lineage")
-def microproject_lineage(microproject: Microproject = Depends(_member("viewer"))) -> dict:
+def microproject_lineage(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """The microproject's structural lineage (:func:`lineage_graph`) - what the µprojet page draws.
     Only a genuine structural change creates a node (a root, a merge, or a version that actually
     moved the process forward); a status, tags or a title change updates the node of its line in
@@ -194,7 +182,7 @@ def microproject_lineage(microproject: Microproject = Depends(_member("viewer"))
 
 
 @router.get("/experiment-versions/{version_id}")
-def experiment_of_version(version_id: str, microproject: Microproject = Depends(_member("viewer"))) -> dict:
+def experiment_of_version(version_id: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """``{experiment_id, version_id}`` : la piste d'une version - pour un ancien lien vers un id de
     version."""
     return {"experiment_id": service.experiment_of_version(get_repository(microproject.slug), version_id), "version_id": version_id}
@@ -204,7 +192,7 @@ def experiment_of_version(version_id: str, microproject: Microproject = Depends(
 
 
 @router.get("/experiments/{experiment_id}")
-def get_experiment(experiment_id: str, response: Response, microproject: Microproject = Depends(_member("viewer"))) -> dict:
+def get_experiment(experiment_id: str, response: Response, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     repo = get_repository(microproject.slug)
     tip = service.tip_of(repo, experiment_id)
     response.headers["ETag"] = etag(tip.id)
@@ -213,7 +201,7 @@ def get_experiment(experiment_id: str, response: Response, microproject: Micropr
 
 @router.delete("/experiments/{experiment_id}", status_code=204)
 def delete_experiment(
-    experiment_id: str, if_match: str | None = Header(None), microproject: Microproject = Depends(_member("editor"))
+    experiment_id: str, if_match: str | None = Header(None), microproject: Microproject = Depends(require_role("editor"))
 ) -> Response:
     """Supprime la piste jusqu'à son point de fourche - 409 si une autre piste en découle."""
     service.delete(microproject.slug, experiment_id, expected_version=if_match_version(if_match))
@@ -221,7 +209,7 @@ def delete_experiment(
 
 
 @router.get("/experiments/{experiment_id}/versions")
-def list_versions(experiment_id: str, microproject: Microproject = Depends(_member("viewer"))) -> list[dict]:
+def list_versions(experiment_id: str, microproject: Microproject = Depends(require_role("viewer"))) -> list[dict]:
     """La frise : chaque version de la piste, de la première à la pointe (``is_tip``), avec son
     numéro X.Y.Z et son niveau de changement (``change_level`` : ``none`` pour une version qui ne
     change pas la structure - une étiquette, une preuve...)."""
@@ -249,7 +237,7 @@ def evolve_experiment(
     body: EvolveRequest,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     """Une nouvelle version de la piste (structure ``process`` ou ``images``, intention reposée) -
@@ -261,7 +249,7 @@ def evolve_experiment(
 
 
 @router.get("/experiments/{experiment_id}/versions/{version_id}")
-def get_version(experiment_id: str, version_id: str, response: Response, microproject: Microproject = Depends(_member("viewer"))) -> dict:
+def get_version(experiment_id: str, version_id: str, response: Response, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     repo = get_repository(microproject.slug)
     version = service.version_of(repo, experiment_id, version_id)
     response.headers["ETag"] = etag(version.id)
@@ -274,7 +262,7 @@ def replace_structure_images(
     body: StructureImagesRequest,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     after = service.replace_structure_images(
@@ -289,7 +277,7 @@ def conclude_experiment(
     body: ConclusionRequest,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     after = service.conclude(microproject.slug, experiment_id, body, author=user.name, expected_version=if_match_version(if_match))
@@ -302,7 +290,7 @@ def set_status(
     body: StatusRequest,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     """Brouillon, en cours, en pause (``hold_reason``) - ou la reprise d'une étude conclue."""
@@ -323,7 +311,7 @@ def set_tags(
     body: TagsRequest,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     after = service.set_tags(microproject.slug, experiment_id, body.tags, author=user.name, expected_version=if_match_version(if_match))
@@ -336,7 +324,7 @@ def set_entities(
     body: EntitiesRequest,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     """Les échantillons physiques suivis : un par variante d'une campagne, un sinon."""
@@ -352,7 +340,7 @@ def merge_experiments(
     body: MergeRequest,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     """Réunit l'autre piste dans celle-ci : une nouvelle version à deux parents (``Location`` vers elle)."""
@@ -365,7 +353,7 @@ def merge_experiments(
 
 @router.get("/experiments/{experiment_id}/process")
 def experiment_process(
-    experiment_id: str, version: str | None = None, microproject: Microproject = Depends(_member("viewer"))
+    experiment_id: str, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
 ) -> dict:
     """Le procédé éditable (substrat et étapes) d'une version - la pointe par défaut."""
     process = service.version_of(get_repository(microproject.slug), experiment_id, version).metadata.get("structureforge_process")
@@ -381,7 +369,7 @@ def structure_diff(
     against_version: str | None = None,
     against_experiment: str | None = None,
     against_microproject: str | None = None,
-    microproject: Microproject = Depends(_member("viewer")),
+    microproject: Microproject = Depends(require_role("viewer")),
     user: User = Depends(current_user),
 ) -> dict:
     """La structure d'une version (la pointe par défaut) comparée à une autre : une version de la
@@ -420,7 +408,7 @@ def structure_diff(
 
 @router.get("/experiments/{experiment_id}/variants")
 def experiment_variants(
-    experiment_id: str, version: str | None = None, microproject: Microproject = Depends(_member("viewer"))
+    experiment_id: str, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
 ) -> dict:
     """The constant/varying split of a DOE campaign's variants (``follow.doe.batch.analyze_batch``,
     what Follow's own GUI calls "matrice de split"), one drawn cross-section per variant, and what
@@ -444,14 +432,14 @@ def experiment_variants(
 
 
 @router.get("/refs")
-def list_refs(microproject: Microproject = Depends(_member("viewer"))) -> dict:
+def list_refs(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
     """``{refs, edges}`` : chaque ref du µprojet (des points de départ nommés) et leur graphe
     condensé, de ref en ref (:func:`spectre.plugins.experiments.refs.ref_graph`)."""
     return refs.ref_graph(get_repository(microproject.slug))
 
 
 @router.post("/refs", status_code=201)
-def create_ref(body: RefRequest, microproject: Microproject = Depends(_member("editor"))) -> dict:
+def create_ref(body: RefRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
     """Marque une version (la pointe de la piste par défaut) comme ref : ``name`` (un surnom), ou
     « ref vX.Y.Z ». 422 pour un nom avec « / », 409 pour un nom déjà pris."""
     return service.create_ref(microproject.slug, body.experiment_id, body.version_id, body.name)

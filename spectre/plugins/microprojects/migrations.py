@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import sqlite3
 
-from ...kernel.db import column_names, data_dir, execute_script, table_exists
+from ...kernel.db import column_names, data_dir, execute_script, rebuild_table, table_exists
 from ...kernel.plugin import Migration
+from ..accounts.security import hash_token
 from ..areas.service import UNCLASSIFIED_AREA_SLUG
 from .service import assign_code
 
@@ -135,8 +136,33 @@ def _backfill_areas_and_codes(conn: sqlite3.Connection) -> None:
         assign_code(conn, row["id"], row["management_area_id"])
 
 
+_INVITATIONS_WITH_ID = """
+CREATE TABLE invitations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    microproject_id INTEGER NOT NULL REFERENCES microprojects(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('owner', 'editor', 'viewer')),
+    invited_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL
+)
+"""
+
+
+def _invitation_ids_and_hashed_tokens(conn: sqlite3.Connection) -> None:
+    """An invitation gets an id (what the members dialog cancels) and keeps only the SHA-256 of
+    its token, like a session: the token in clear lives in the e-mail alone. The links already
+    sent keep working - their token is hashed in place before the old column goes."""
+    conn.execute("ALTER TABLE invitations ADD COLUMN token_hash TEXT")
+    for row in conn.execute("SELECT rowid, token FROM invitations").fetchall():
+        conn.execute("UPDATE invitations SET token_hash = ? WHERE rowid = ?", (hash_token(row["token"]), row["rowid"]))
+    rebuild_table(conn, "invitations", _INVITATIONS_WITH_ID)
+
+
 MIGRATIONS = (
     Migration("0001_legacy_project_rename", _rename_legacy_project_tables),
     Migration("0002_initial", _initial),
     Migration("0003_backfill_areas_and_codes", _backfill_areas_and_codes),
+    Migration("0004_invitation_ids_and_hashed_tokens", _invitation_ids_and_hashed_tokens),
 )

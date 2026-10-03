@@ -4,33 +4,47 @@ let currentUser = null;
 let currentRole = null;
 let currentMicroprojectName = null;
 
+// Messages : dans le dialogue des membres quand il est ouvert (la page est derrière), sur la page sinon.
+const inMembersDialog = () => document.getElementById("members-dialog").open;
+
 function showError(err) {
-  errorBox.textContent = err.message || String(err);
-  errorBox.style.display = "block";
+  const box = inMembersDialog() ? document.getElementById("members-error") : errorBox;
+  box.textContent = err.message || String(err);
+  box.style.display = "block";
 }
 
 function clearErrorFlash() {
-  errorBox.style.display = "none";
-  document.getElementById("flash").style.display = "none";
+  for (const id of ["error", "flash", "members-error", "members-flash"]) document.getElementById(id).style.display = "none";
 }
 
 function showFlash(message) {
-  const flashBox = document.getElementById("flash");
+  const flashBox = document.getElementById(inMembersDialog() ? "members-flash" : "flash");
   flashBox.textContent = message;
   flashBox.style.display = "block";
 }
 
+// Le rôle d'un membre : une liste pour un propriétaire (sauf pour le créateur, qui le reste), un badge sinon.
+function memberRoleCell(member) {
+  if (currentRole !== "owner" || member.is_creator) {
+    return `<span class="badge badge-role">${escapeHtml(roleLabel(member.role))}</span>`;
+  }
+  const options = Object.keys(ROLE_LABELS)
+    .map((role) => `<option value="${role}"${role === member.role ? " selected" : ""}>${escapeHtml(roleLabel(role))}</option>`)
+    .join("");
+  return `<select class="field js-member-role" data-user-id="${member.id}" aria-label="Droit de ${escapeHtml(member.name)}" style="padding:4px 8px;font-size:12.5px;">${options}</select>`;
+}
+
 function memberRow(member) {
-  const canManage = currentRole === "owner";
+  const canRemove = currentRole === "owner" && !member.is_creator;
   return `
     <tr style="border-top:1px solid var(--border-soft);">
       <td style="padding:10px 0;">
         <div style="font-weight:600;">${escapeHtml(member.name)}</div>
-        <div style="color:var(--text-faint);font-size:12px;">${escapeHtml(member.email)}</div>
+        <div style="color:var(--text-faint);font-size:12px;">${escapeHtml(member.email)}${member.is_creator ? " &middot; a créé le µprojet" : ""}</div>
       </td>
-      <td><span class="badge badge-role">${escapeHtml(roleLabel(member.role))}</span></td>
+      <td>${memberRoleCell(member)}</td>
       <td style="text-align:right;">
-        ${canManage ? `<button class="btn btn-line js-remove-member" data-user-id="${member.id}" style="padding:5px 10px;font-size:12px;">Retirer</button>` : ""}
+        ${canRemove ? `<button class="btn btn-line js-remove-member" data-user-id="${member.id}" style="padding:5px 10px;font-size:12px;">Retirer</button>` : ""}
       </td>
     </tr>`;
 }
@@ -39,20 +53,30 @@ async function loadMembers() {
   try {
     const members = await microprojectsApi.members(slug);
     document.getElementById("members-body").innerHTML = members.map(memberRow).join("");
-    document.querySelectorAll(".js-remove-member").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        try {
-          await microprojectsApi.removeMember(slug, btn.dataset.userId);
-          loadMembers();
-        } catch (err) {
-          showError(err);
-        }
-      });
-    });
   } catch (err) {
     showError(err);
   }
 }
+
+// Une écriture sur les membres : la liste se relit, réussie ou refusée (409 : le dernier propriétaire, par exemple).
+async function writeMembers(call) {
+  clearErrorFlash();
+  try {
+    await call();
+  } catch (err) {
+    showError(err);
+  }
+  loadMembers();
+}
+
+document.getElementById("members-body").addEventListener("change", (event) => {
+  const select = event.target.closest(".js-member-role");
+  if (select) writeMembers(() => microprojectsApi.updateMember(slug, select.dataset.userId, { role: select.value }));
+});
+document.getElementById("members-body").addEventListener("click", (event) => {
+  const button = event.target.closest(".js-remove-member");
+  if (button) writeMembers(() => microprojectsApi.removeMember(slug, button.dataset.userId));
+});
 
 function invitationRow(invitation) {
   return `
@@ -61,7 +85,7 @@ function invitationRow(invitation) {
         <div style="font-size:13px;">${escapeHtml(invitation.email)}</div>
         <div style="font-size:11.5px;color:var(--text-faint);">Invitation envoyée &middot; ${escapeHtml(roleLabel(invitation.role))}</div>
       </div>
-      <button class="btn btn-line js-cancel-invitation" data-token="${escapeHtml(invitation.token)}" style="padding:5px 10px;font-size:12px;">Annuler</button>
+      <button class="btn btn-line js-cancel-invitation" data-invitation-id="${invitation.id}" style="padding:5px 10px;font-size:12px;">Annuler</button>
     </div>`;
 }
 
@@ -79,7 +103,7 @@ async function loadInvitations() {
     document.querySelectorAll(".js-cancel-invitation").forEach((btn) => {
       btn.addEventListener("click", async () => {
         try {
-          await microprojectsApi.cancelInvitation(slug, btn.dataset.token);
+          await microprojectsApi.cancelInvitation(slug, btn.dataset.invitationId);
           loadInvitations();
         } catch (err) {
           showError(err);
@@ -94,6 +118,7 @@ async function loadInvitations() {
 const membersDialog = document.getElementById("members-dialog");
 document.getElementById("members-btn").addEventListener("click", () => {
   clearErrorFlash();
+  hideInviteOffer();
   membersDialog.showModal();
 });
 document.getElementById("close-members-dialog").addEventListener("click", () => membersDialog.close());
@@ -112,21 +137,51 @@ document.getElementById("delete-microproject-btn").addEventListener("click", asy
   }
 });
 
+// Ajouter un membre : un compte existant d'abord ; sans compte (404 « no_account »), on propose de
+// l'inviter par e-mail - un second appel, explicite.
+const inviteOffer = document.getElementById("invite-offer");
+let pendingInvite = null;
+
+function hideInviteOffer() {
+  pendingInvite = null;
+  inviteOffer.style.display = "none";
+}
+
 document.getElementById("add-member-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   clearErrorFlash();
-  const email = document.getElementById("member-email").value;
-  const role = document.getElementById("member-role").value;
+  hideInviteOffer();
+  const body = { email: document.getElementById("member-email").value, role: document.getElementById("member-role").value };
   try {
-    const result = await microprojectsApi.addMember(slug, { email, role });
+    await microprojectsApi.addMember(slug, body);
     document.getElementById("member-email").value = "";
-    showFlash(result.status === "invited" ? "Invitation envoyée par e-mail." : "Personne ajoutée au µprojet.");
+    showFlash("Personne ajoutée au µprojet.");
     loadMembers();
+  } catch (err) {
+    if (err.status === 404 && err.data && err.data.code === "no_account") {
+      pendingInvite = body;
+      document.getElementById("invite-offer-text").textContent = `Aucun compte Spectre pour ${body.email}. Lui envoyer une invitation par e-mail ?`;
+      inviteOffer.style.display = "";
+    } else {
+      showError(err);
+    }
+  }
+});
+
+document.getElementById("invite-offer-btn").addEventListener("click", async () => {
+  const body = pendingInvite;
+  hideInviteOffer();
+  if (!body) return;
+  try {
+    await microprojectsApi.invite(slug, body);
+    document.getElementById("member-email").value = "";
+    showFlash(`Invitation envoyée à ${body.email}.`);
     loadInvitations();
   } catch (err) {
     showError(err);
   }
 });
+document.getElementById("invite-offer-cancel").addEventListener("click", hideInviteOffer);
 
 const newExperienceDialog = document.getElementById("new-experience-dialog");
 
@@ -208,7 +263,7 @@ async function init() {
       codeEl.style.display = "";
       document.title = `${microproject.code} · ${microproject.name} — Spectre`;
     }
-    const area = microproject.management_area;
+    const area = microproject.area;
     const areaCrumb = document.getElementById("area-crumb");
     if (area) {
       areaCrumb.textContent = area.name;
@@ -216,7 +271,7 @@ async function init() {
     } else {
       areaCrumb.textContent = "Non classé";
     }
-    const thematic = microproject.thematique;
+    const thematic = microproject.thematic;
     const thematicCrumb = document.getElementById("thematic-crumb");
     thematicCrumb.innerHTML =
       thematic && area

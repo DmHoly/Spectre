@@ -30,9 +30,10 @@ function themeCard(area, thematicCount, totals) {
     </a>`;
 }
 
-function microprojectCard(microproject) {
-  const area = microproject.management_area;
-  const where = [area && area.name, microproject.thematique && microproject.thematique.name].filter(Boolean).join(" › ");
+// Un de mes µprojets, avec ses compteurs (sa ligne d'experimentsApi.stats).
+function microprojectCard(microproject, counts) {
+  const area = microproject.area;
+  const where = [area && area.name, microproject.thematic && microproject.thematic.name].filter(Boolean).join(" › ");
   return `
     <a href="/microprojets/${encodeURIComponent(microproject.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:6px;color:inherit;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:22px;">
@@ -43,7 +44,7 @@ function microprojectCard(microproject) {
       ${where ? `<div style="font-size:11.5px;color:var(--text-faint);font-family:var(--font-mono);">${escapeHtml(where)}</div>` : ""}
       ${ownerChipHtml(microproject.owners)}
       <div style="font-size:12px;color:var(--text-faint);padding-top:6px;border-top:1px solid var(--border-soft);">
-        ${microproject.running_count} en cours &middot; ${microproject.concluded_count} terminées
+        ${counts.running} en cours &middot; ${counts.concluded + counts.abandoned} terminées
       </div>
     </a>`;
 }
@@ -97,7 +98,7 @@ async function load() {
 
     document.getElementById("my-microprojects-count").textContent = `(${mine.length})`;
     document.getElementById("my-microprojects").innerHTML = mine.length
-      ? mine.map(microprojectCard).join("")
+      ? mine.map((p) => microprojectCard(p, stats.find((row) => row.microproject.slug === p.slug))).join("")
       : `<div style="grid-column:1/-1;font-size:13px;color:var(--text-faint);">Vous n'êtes membre d'aucun µprojet. Ouvrez un projet pour en créer un.</div>`;
     if (mine.length) document.getElementById("my-microprojects-details").open = false;
   } catch (err) {

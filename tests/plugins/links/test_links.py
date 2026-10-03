@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from support.accounts import login, signup
 from support.experiments import launch, track_entities
-from support.microprojects import create_microproject, join_as, signup_with_microproject
+from support.microprojects import create_microproject, get_microproject, join_as, signup_with_microproject
 
 
 def _link(client, slug_a, slug_b, **fields):
@@ -46,7 +46,7 @@ def test_viewer_cannot_link_a_microproject_they_only_view(client):
     join_as(client, owner_slug, "viewer-links@example.com", owner="owner-links@example.com", role="viewer")
 
     own_slug = create_microproject(client, "Chez le viewer")["slug"]
-    assert client.get(f"/api/microprojets/{owner_slug}").json()["role"] == "viewer"
+    assert get_microproject(client, owner_slug)["role"] == "viewer"
     assert _link(client, own_slug, owner_slug).status_code == 403
 
 

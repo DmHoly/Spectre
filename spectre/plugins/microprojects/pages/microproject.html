@@ -202,6 +202,8 @@
   <dialog id="members-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
     <div class="card-pad" style="width:440px;">
       <h2 style="font-size:16px;margin-bottom:14px;">Membres</h2>
+      <div id="members-error" class="error" role="alert" style="display:none;margin-bottom:12px;"></div>
+      <div id="members-flash" class="flash flash-ok" role="status" style="display:none;margin-bottom:12px;"></div>
       <table style="width:100%;border-collapse:collapse;font-size:13.5px;" id="members-table">
         <thead>
           <tr style="text-align:left;color:var(--text-faint);font-size:12px;text-transform:uppercase;letter-spacing:.03em;">
@@ -213,7 +215,7 @@
         <tbody id="members-body"></tbody>
       </table>
 
-      <form id="add-member-form" style="display:none;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);gap:10px;" class="field-row" style="grid-template-columns:1fr 140px auto;">
+      <form id="add-member-form" class="field-row" style="display:none;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);gap:10px;">
         <input class="field" id="member-email" type="email" placeholder="e-mail de la personne" required>
         <select class="field" id="member-role">
           <option value="viewer">Lecture seule</option>
@@ -222,6 +224,14 @@
         </select>
         <button class="btn btn-primary" type="submit">Ajouter</button>
       </form>
+
+      <div id="invite-offer" class="flash" style="display:none;margin-top:12px;">
+        <p id="invite-offer-text" style="font-size:13px;margin-bottom:10px;"></p>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-line" id="invite-offer-cancel" type="button">Annuler</button>
+          <button class="btn btn-primary" id="invite-offer-btn" type="button">Envoyer l'invitation</button>
+        </div>
+      </div>
 
       <div id="invitations-wrap"></div>
 

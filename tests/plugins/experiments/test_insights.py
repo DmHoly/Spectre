@@ -30,8 +30,8 @@ def loads(monkeypatch):
 
 def test_stats_count_each_line_of_study_and_each_wafer_once(client, loads):
     signup(client, "boss@example.com")
-    create_microproject(client, "Recuit Mg", management_area_slug="native-pt2")
-    create_microproject(client, "Ailleurs", management_area_slug="nova-pt1")
+    create_microproject(client, "Recuit Mg", area="native-pt2")
+    create_microproject(client, "Ailleurs", area="nova-pt1")
     running = launch(client, "recuit-mg", title="En cours", entities=[{"sample_id": "W12-A3"}, {"sample_id": "W1"}])
     done = launch(client, "recuit-mg", title="Conclue", entities=[{"sample_id": "w12 a3"}])
     dropped = launch(client, "recuit-mg", title="Abandonnée", entities=[{"sample_id": "W2"}])
@@ -64,7 +64,7 @@ def test_stats_count_each_line_of_study_and_each_wafer_once(client, loads):
 
 def test_stats_are_visible_to_any_signed_in_user(client):
     signup(client, "boss@example.com")
-    create_microproject(client, "Recuit Mg", management_area_slug="native-pt2")
+    create_microproject(client, "Recuit Mg", area="native-pt2")
     launch(client, "recuit-mg", title="Essai")
 
     signup(client, "hand@example.com")
@@ -77,8 +77,8 @@ def test_thematique_frise_lists_its_microprojets_and_redacts_them_for_outsiders(
     signup(client, "boss@example.com", name="Alice Martin")
     create_thematic(client, "native-pt2", "Dopage PGaN", description="Mg")
     create_thematic(client, "native-pt2", "Double EBL")
-    create_microproject(client, "Recuit Mg", management_area_slug="native-pt2", thematique_slug="dopage-pgan")
-    create_microproject(client, "Ailleurs", management_area_slug="native-pt2", thematique_slug="double-ebl")
+    create_microproject(client, "Recuit Mg", area="native-pt2", thematic="dopage-pgan")
+    create_microproject(client, "Ailleurs", area="native-pt2", thematic="double-ebl")
     launched = launch(client, "recuit-mg", title="Recuit 700 C")
     paused = launch(client, "recuit-mg", title="En pause")
     set_status(client, "recuit-mg", paused["id"], "hold", hold_reason="four en panne")
