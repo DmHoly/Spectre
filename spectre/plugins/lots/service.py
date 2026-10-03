@@ -340,22 +340,47 @@ def create(
     forecast = _check_date(forecast_exit_on, "Fin prévisionnelle")
     _check_dates(started, forecast, None)
     status = "wip" if started and started <= date.today().isoformat() else "planned"
-    with get_conn() as conn:
-        code = _check_code(code) if (code or "").strip() else _next_code(conn)
-        if conn.execute("SELECT 1 FROM lots WHERE code = ? COLLATE NOCASE", (code,)).fetchone():
-            raise _code_taken(code)
-        try:
-            cursor = conn.execute(
-                "INSERT INTO lots (code, title, description, priority, status, started_on, forecast_exit_on, created_by, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (code, title.strip()[:160], description.strip(), _check_priority(priority), status, started, forecast, created_by, _now()),
-            )
-        except sqlite3.IntegrityError as exc:  # créé entre-temps par une autre requête
-            raise _code_taken(code) from exc
-        lot_id = cursor.lastrowid
+    values = (title.strip()[:160], description.strip(), _check_priority(priority), status, started, forecast, created_by)
+    if (code or "").strip():
+        code = _check_code(code)
+        with get_conn() as conn:
+            if conn.execute("SELECT 1 FROM lots WHERE code = ? COLLATE NOCASE", (code,)).fetchone():
+                raise _code_taken(code)
+            try:
+                lot_id = _insert_lot(conn, code, values)
+            except sqlite3.IntegrityError as exc:  # créé entre-temps par une autre requête
+                raise _code_taken(code) from exc
+            _write_wafers(conn, lot_id, wafers or [])
+            _write_thematics(conn, lot_id, thematic_ids or [])
+        return get(lot_id)
+    # Code généré : deux créations simultanées ne doivent pas tirer le même numéro (verrou jusqu'au
+    # commit), et un code saisi à la main qui prend ce numéro entre-temps fait passer au suivant -
+    # jamais de 409 pour un code que personne n'a tapé.
+    with keyed_lock("lots", "next-code"), get_conn() as conn:
+        for _ in range(_NEXT_CODE_ATTEMPTS):
+            try:
+                lot_id = _insert_lot(conn, _next_code(conn), values)
+                break
+            except sqlite3.IntegrityError:
+                continue
+        else:
+            raise Conflict("Impossible d'attribuer un code au lot : réessayez.", code="lot_code_unavailable")
         _write_wafers(conn, lot_id, wafers or [])
         _write_thematics(conn, lot_id, thematic_ids or [])
     return get(lot_id)
+
+
+_NEXT_CODE_ATTEMPTS = 20
+
+
+def _insert_lot(conn: sqlite3.Connection, code: str, values: tuple) -> int:
+    """``values`` : titre, description, priorité, statut, début, fin prévisionnelle, auteur."""
+    cursor = conn.execute(
+        "INSERT INTO lots (code, title, description, priority, status, started_on, forecast_exit_on, created_by, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (code, *values, _now()),
+    )
+    return cursor.lastrowid
 
 
 def _check_version(lot: Lot, expected_version: str | None) -> None:

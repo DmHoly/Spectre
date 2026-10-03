@@ -25,6 +25,8 @@ def test_adding_an_existing_account(client, outbox):
     assert response.status_code == 201
     assert response.headers["location"] == f"/api/microprojects/{slug}/members/{bob['id']}"
     assert response.json() == {"id": bob["id"], "name": "bob", "email": "bob@example.com", "role": "editor", "is_creator": False}
+    located = client.get(response.headers["location"])  # le Location se lit
+    assert located.status_code == 200 and located.json() == response.json()
     assert outbox == []  # un compte existant n'est pas invité : il est ajouté
 
     listed = {m["email"]: (m["role"], m["is_creator"]) for m in members(client, slug)}
@@ -106,6 +108,7 @@ def test_removing_a_member(client):
     assert response.status_code == 204 and response.content == b""
     assert [m["email"] for m in members(client, slug)] == ["owner@example.com"]
     assert_handler_404(remove_member(client, slug, bob["id"]), "membre")
+    assert_handler_404(client.get(f"/api/microprojects/{slug}/members/{bob['id']}"), "membre")
 
     login(client, "bob@example.com")
     assert client.get(f"/api/microprojects/{slug}").status_code == 403

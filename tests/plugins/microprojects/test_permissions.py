@@ -46,6 +46,7 @@ def test_non_member_cannot_see_microproject(client):
     response = client.get(f"/api/microprojects/{slug}")
     assert response.status_code == 403
     assert client.get(f"/api/microprojects/{slug}/members").status_code == 403
+    assert client.get(f"/api/microprojects/{slug}/members/1").status_code == 403
 
 
 def test_listing_every_microproject_is_admin_only(client):

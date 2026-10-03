@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+import time
 from datetime import date
 
 import pytest
@@ -89,6 +91,67 @@ def test_a_code_taken_during_the_creation_is_a_conflict_too(client, monkeypatch)
     monkeypatch.setattr(service, "_check_priority", racing)
     response = client.post("/api/lots", json={"code": "race"})
     assert response.status_code == 409 and response.json()["code"] == "lot_code_taken"
+
+
+def test_lots_created_at_once_without_a_code_each_get_their_own(client, monkeypatch):
+    # Huit créations simultanées sans code : chacune reçoit un numéro, aucune ne se voit opposer
+    # un 409 pour un code qu'elle n'a pas saisi.
+    from spectre.plugins.accounts import service as accounts
+    from spectre.plugins.lots import service
+
+    _signup_boss(client)
+    boss = accounts.get_by_email("boss@example.com").id
+    next_code = service._next_code
+
+    def slow_next_code(conn):
+        code = next_code(conn)
+        time.sleep(0.02)  # élargit la fenêtre entre le choix du numéro et l'écriture
+        return code
+
+    monkeypatch.setattr(service, "_next_code", slow_next_code)
+    barrier = threading.Barrier(8)
+    codes: list[str] = []
+    errors: list[BaseException] = []
+
+    def create() -> None:
+        try:
+            barrier.wait()
+            codes.append(service.create(code=None, created_by=boss).code)
+        except BaseException as exc:  # noqa: BLE001 - remonté au thread principal
+            errors.append(exc)
+
+    threads = [threading.Thread(target=create) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert not errors
+    assert sorted(codes) == [f"LOT-{n:04d}" for n in range(1, 9)]
+
+
+def test_a_generated_code_taken_meanwhile_moves_on_to_the_next(client, monkeypatch):
+    # Un code saisi à la main qui prend le numéro choisi juste avant l'écriture : le lot sans code
+    # passe au suivant au lieu d'un 409.
+    from spectre.kernel.db import db_path
+    from spectre.plugins.lots import service
+
+    _signup_boss(client)
+    next_code = service._next_code
+    calls = []
+
+    def racing(conn):
+        code = next_code(conn)
+        if not calls:
+            other = sqlite3.connect(db_path())
+            other.execute("INSERT INTO lots (code) VALUES (?)", (code.lower(),))
+            other.commit()
+            other.close()
+        calls.append(code)
+        return code
+
+    monkeypatch.setattr(service, "_next_code", racing)
+    response = client.post("/api/lots", json={})
+    assert response.status_code == 201 and response.json()["code"] == "LOT-0002"
 
 
 def test_lots_are_listed_by_priority_and_filtered_by_status(client):

@@ -216,6 +216,12 @@ def add_member(body: MemberRequest, response: Response, microproject: Microproje
     return member
 
 
+@router.get("/microprojects/{microproject_slug}/members/{user_id}")
+def get_member(user_id: int, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    """One member - the ``Location`` of an addition or an accepted invitation; 404 if not a member."""
+    return microprojects.get_member(microproject.id, user_id)
+
+
 @router.patch("/microprojects/{microproject_slug}/members/{user_id}")
 def change_member_role(user_id: int, body: MemberPatch, microproject: Microproject = Depends(require_role("owner"))) -> dict:
     return microprojects.change_member_role(microproject, user_id, body.role)

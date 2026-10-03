@@ -40,6 +40,8 @@ def test_registering_then_accepting_joins_the_microproject(client, outbox):
     assert response.headers["location"] == f"/api/microprojects/{slug}/members/{user['id']}"
     assert response.json() == {"microproject": {"slug": slug, "name": "Salle blanche"}, "role": "editor"}
     assert _role_in(client, slug) == "editor"
+    membership = client.get(response.headers["location"])  # le Location se lit
+    assert membership.status_code == 200 and membership.json()["role"] == "editor"
 
     # one-time use
     assert_handler_404(_accept(client, token), "invitation")

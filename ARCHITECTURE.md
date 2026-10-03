@@ -296,7 +296,8 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 | *(nouveau)* | `PATCH /api/microprojects/{mp}` `{name, description, area, thematic}` |
 | `DELETE /api/microprojets/{slug}` | `DELETE /api/microprojects/{mp}?confirm_name=` → 204 (garde côté serveur : mauvais nom → 422 `confirm_name_mismatch`) |
 | `GET …/members` | `GET /api/microprojects/{mp}/members` |
-| `POST …/members` (upsert + invitation) | `POST /api/microprojects/{mp}/members` `{email, role}` → 201 (409 déjà membre ; 404 `no_account`) |
+| `POST …/members` (upsert + invitation) | `POST /api/microprojects/{mp}/members` `{email, role}` → 201 + `Location` `/api/microprojects/{mp}/members/{user_id}` (409 déjà membre ; 404 `no_account`) |
+| *(nouveau : cible du `Location`)* | `GET /api/microprojects/{mp}/members/{user_id}` (viewer) → `{id, name, email, role, is_creator}` ; 404 si ce compte n'est pas membre |
 | *(changement de rôle par POST)* | `PATCH /api/microprojects/{mp}/members/{user_id}` `{role}` (409 `last_owner` / `creator_protected`, vérifiés sous verrou) |
 | `DELETE …/members/{user_id}` | `DELETE …` → 204 (409 pour le créateur ou le dernier owner) |
 | `GET …/invitations` | `GET /api/microprojects/{mp}/invitations` (en attente, non expirées, **sans le jeton**) |
