@@ -331,7 +331,7 @@ def test_a_lot_table_from_the_first_version_gets_its_priority_column(data_dir):
     run_migrations(_plugins())
     from spectre.plugins.lots import service as lots
 
-    assert lots.get_by_code("OLD-1").priority == ""
+    assert lots.list_lots(code="OLD-1")[0].priority == ""
     with connect() as conn:
         assert conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'lot_steps'").fetchone() is None
 

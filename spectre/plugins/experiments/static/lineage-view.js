@@ -217,7 +217,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
         const code = first.code.length > 11 ? `${first.code.slice(0, 10)}…` : first.code;
         const text = d.lots.length > 1 ? `${code} +${d.lots.length - 1}` : code;
         const width = text.length * 6 + 12;
-        const active = ["planned", "wip", "hold"].includes(first.status);
+        const active = first.is_active;
         const badge = d3
           .select(this)
           .append("a")
@@ -262,9 +262,20 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
     }
   }
 
+  // Les lots (lotsApi, en une requête) qui contiennent un wafer de chaque nœud : son badge de lot.
+  async function attachLots(nodes) {
+    const marks = [...new Set(nodes.flatMap((n) => n.wafers || []))];
+    const lots = marks.length ? await lotsApi.list({ wafer: marks.map(waferKey), view: "summary" }) : [];
+    nodes.forEach((node) => {
+      const keys = new Set((node.wafers || []).map(waferKey));
+      node.lots = lots.filter((l) => l.wafers.some((w) => keys.has(w.key)));
+    });
+  }
+
   async function loadLineage() {
     try {
       const body = await experimentsApi.lineage(slug);
+      await attachLots(body.nodes);
       render(body.nodes, body.edges);
     } catch (err) {
       panel.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div>`;

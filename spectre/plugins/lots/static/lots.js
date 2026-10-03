@@ -9,6 +9,8 @@ function showError(err) {
   errorBox.style.display = "block";
 }
 
+// les statuts de chaque filtre (GET /api/lots?status=)
+const FILTERS = { actifs: "planned,wip,hold", sortis: "done", annules: "cancelled", tous: "" };
 const FILTER_KEY = "spectre:lots:filtre";
 let filter = "actifs";
 try {
@@ -16,6 +18,7 @@ try {
 } catch (err) {
   filter = "actifs";
 }
+if (!(filter in FILTERS)) filter = "actifs";
 let lots = [];
 const expanded = new Set();
 const scroll = document.getElementById("gantt-scroll");
@@ -25,7 +28,7 @@ function kpi(value, label, alert) {
 }
 
 function renderKpis() {
-  const active = lots.filter((l) => ["planned", "wip", "hold"].includes(l.status));
+  const active = lots.filter((l) => l.is_active);
   const wafers = active.filter((l) => l.status !== "planned").reduce((n, l) => n + l.wafers.length, 0);
   const late = active.filter((l) => l.late_days).length;
   const soon = active.filter((l) => {
@@ -67,8 +70,8 @@ function renderTable() {
             <td class="num">${escapeHtml(lotDateLabel(l.forecast_exit_on) || "—")}${l.late_days ? ` <span style="color:var(--danger);font-weight:600;">+${l.late_days} j</span>` : ""}</td>
             <td class="num">${escapeHtml(lotDateLabel(l.exited_on) || "—")}${l.exit_delta_days ? ` <span style="color:${l.exit_delta_days > 0 ? "var(--danger)" : "var(--done)"};">(${l.exit_delta_days > 0 ? "+" : ""}${l.exit_delta_days} j)</span>` : ""}</td>
             <td class="num">${l.wafers.length}</td>
-            <td class="num">${l.experiences.length}</td>
-            <td>${escapeHtml(l.thematiques.map((t) => t.name).join(", ") || "—")}</td>
+            <td class="num">${l.experiments.length}</td>
+            <td>${escapeHtml(l.thematics.map((t) => t.name).join(", ") || "—")}</td>
           </tr>`
         )
         .join("")}</tbody></table></div>`
@@ -82,7 +85,7 @@ async function load() {
     b.setAttribute("aria-pressed", String(on));
   });
   try {
-    lots = (await lotsApi.list(filter)).lots;
+    lots = await lotsApi.list({ status: FILTERS[filter] });
   } catch (err) {
     showError(err);
     scroll.innerHTML = "";
@@ -129,6 +132,12 @@ new ResizeObserver(() => {
 // --- nouveau lot ------------------------------------------------------------------------------
 
 const lotDialog = document.getElementById("lot-dialog");
+lotsApi
+  .priorities()
+  .then((priorities) => {
+    document.getElementById("lot-priorities").innerHTML = priorities.map((p) => `<option value="${escapeHtml(p)}">`).join("");
+  })
+  .catch(() => {}); // suggestions seulement
 document.getElementById("new-lot-btn").addEventListener("click", () => {
   document.getElementById("lot-form").reset();
   lotDialog.showModal();

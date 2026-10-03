@@ -22,7 +22,9 @@ from support.experiments import (
     versions,
 )
 from support.microprojects import signup_with_microproject
+from support.search import search as search_topbar
 from support.structures import campaign_plan, steps
+from support.wafers import list_wafers
 
 
 def _owner_microproject(client, email="fdl@example.com", name="Lots"):
@@ -51,8 +53,7 @@ def test_fdls_stack_on_a_wafer_and_follow_the_versions(client):
     assert evolved["physical_tracking"] == [
         {"sample_id": "W7", "location": "boîte 2", "fdl": ["FDL-1201", "FDL-1350"]}
     ]
-    history = client.get(f"/api/microprojets/{slug}/entites/historique").json()
-    assert history["fdls"] == ["FDL-1201", "FDL-1350"]
+    assert [w["fdl"] for w in list_wafers(client, microproject=slug)] == [["FDL-1201", "FDL-1350"]]
 
     # un wafer sans FDL garde exactement sa forme d'avant
     plain = launch(client, slug, title="Sans FDL", intent="x", entities=[{"sample_id": "W8"}])
@@ -79,12 +80,12 @@ def test_the_topbar_finds_an_experience_by_its_fdl(client):
     launch(client, slug, title="Autre", intent="x", entities=[{"sample_id": "W9", "fdl": ["FDL-12010"]}])
 
     def search(q):
-        return client.get(f"/api/microprojets/recherche-fdl?q={q}").json()
+        return search_topbar(client, q, types="fdl")
 
     hits = search("1201")
-    assert [(h["fdl"], h["experience"]["title"]) for h in hits] == [("FDL-1201", "Dopage"), ("FDL-12010", "Autre")]
-    assert hits[0]["sample_id"] == "W7" and hits[0]["microproject"]["slug"] == slug and hits[0]["experience"]["id"] == first["id"]
-    assert [h["fdl"] for h in search("fdl 1350")] == ["FDL-1350"]
+    assert [(h["label"], h["detail"]) for h in hits] == [("FDL-1201", "Dopage · W7"), ("FDL-12010", "Autre · W9")]
+    assert hits[0]["url"] == f"/microprojets/{slug}/experiences/{first['id']}"
+    assert [h["label"] for h in search("fdl 1350")] == ["FDL-1350"]
     assert search("dopage") == [] and search("") == []  # un FDL est un numéro
 
     # quelqu'un qui n'est pas membre du µprojet ne voit pas ses expériences

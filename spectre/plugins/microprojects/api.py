@@ -2,8 +2,8 @@
 router (structures, experiments) sits behind :func:`spectre.plugins.microprojects.deps.require_role`
 for a microproject resolved here. The invitation a signup link carries: :mod:`.invitations_api`.
 
-The experiment counts on each µprojet, and the topbar's FDL search, read plugins listed above this
-one (experiments, wafers) through imports inside the functions that need them.
+The experiment counts on each µprojet read a plugin listed above this one (experiments) through an
+import inside the function that needs it.
 """
 
 from __future__ import annotations
@@ -133,14 +133,6 @@ def search_microprojects(q: str = Query("", max_length=80), user: User = Depends
         for p in microprojects.search(q)
     ]
 
-
-@router.get("/microprojets/recherche-fdl")
-def search_fdl(q: str = Query("", max_length=80), user: User = Depends(current_user)) -> list[dict]:
-    """The topbar search, FDL side: experiences whose wafers carry the FDL typed (« 1234 », « FDL-1234 »)
-    - only in the microprojects the caller is a member of, like any experience."""
-    from ..wafers import fdl, service as plates
-
-    return fdl.search(q, plates.visible_entries(user.id))
 
 
 @router.get("/microprojets/tous")

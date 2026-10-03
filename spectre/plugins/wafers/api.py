@@ -1,10 +1,8 @@
-"""Plaques : la recherche par lasermark (barre de recherche de la topbar), la page d'une plaque -
-toutes les études qui la suivent, d'un µprojet à l'autre - et les identifiants déjà saisis dans un
-µprojet. Tout vient de l'index :mod:`spectre.plugins.wafers.service`, limité aux µprojets dont on
-est membre.
-
-Les lots qui contiennent une plaque appartiennent au plugin lots, listé après celui-ci : ils sont
-lus dans la fonction qui les ajoute à la réponse.
+"""Plaques (``/api/wafers``) : une seule collection - la recherche par lasermark (``q``) ou par FDL
+(``fdl``), les plaques déjà notées dans un µprojet (``microproject``, pour l'autocomplétion de la
+fiche) - et le passeport d'une plaque, toutes les études qui la suivent, d'un µprojet à l'autre.
+Tout vient de l'index :mod:`.service`, vu selon sa règle de visibilité. Les lots qui contiennent
+une plaque se lisent chez eux : ``GET /api/lots?wafer=``.
 """
 
 from __future__ import annotations
@@ -13,36 +11,27 @@ from fastapi import APIRouter, Depends, Query
 
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from ..experiments.repository import branch_tips, get_repository
-from ..microprojects.deps import require_role
-from ..microprojects.service import Microproject
-from . import service as plates
+from . import service
 
-router = APIRouter(prefix="/api", tags=["plates"])
+router = APIRouter(prefix="/api", tags=["wafers"])
 
 
-@router.get("/plaques/recherche")
-def search_plates(q: str = Query("", max_length=80), user: User = Depends(current_user)) -> list[dict]:
-    return plates.search(q, plates.visible_entries(user.id))
+@router.get("/wafers")
+def list_wafers(
+    q: str = Query("", max_length=80),
+    fdl: str = Query("", max_length=80),
+    microproject: str | None = None,
+    user: User = Depends(current_user),
+) -> list[dict]:
+    """Les plaques (``key``, ``lasermark``, ``count``, ``microprojects``, ``latest``, ``fdl``,
+    ``locations``) dont le lasermark correspond à ``q``, qui portent une FDL correspondant à ``fdl``,
+    suivies dans le µprojet ``microproject`` (dont il faut être membre) - les filtres se cumulent."""
+    scope = service.microproject_for(user.id, microproject) if microproject else None
+    return service.wafers(service.occurrences(user.id, microproject=scope), q=q, fdl=fdl)
 
 
-@router.get("/plaques/{lasermark}")
-def plate(lasermark: str, user: User = Depends(current_user)) -> dict:
-    """Une plaque et tout son parcours - vide (aucune étude) plutôt qu'une 404, la page l'explique -
-    plus les lots (spectre.plugins.lots.service) qui la contiennent."""
-    from ..lots import service as lots
-
-    history = plates.plate_history(lasermark, plates.visible_entries(user.id))
-    history["lots"] = lots.lots_for_lasermarks([lasermark])
-    return history
-
-
-@router.get("/microprojets/{slug}/entites/historique")
-def entity_history(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    """Every distinct sample_id/location already used on this microproject's current lines of study -
-    feeds the autocomplete on the physical-entities editor (see
-    :func:`spectre.plugins.wafers.service.entity_history_for_microproject`).
-    """
-    repo = get_repository(microproject.slug)
-    tips = branch_tips(repo)
-    return plates.entity_history_for_microproject(repo, tips)
+@router.get("/wafers/{wafer_key}")
+def get_wafer(wafer_key: str, user: User = Depends(current_user)) -> dict:
+    """Le passeport d'une plaque (``wafer_key``, ou son lasermark tel qu'écrit : il est comparé
+    sans casse ni séparateurs) - vide (aucune étude) plutôt qu'une 404, la page l'explique."""
+    return service.passport(wafer_key, service.occurrences(user.id, keys=[wafer_key]))

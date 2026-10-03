@@ -2,6 +2,7 @@
 invitations. Fournit ``deps.require_role``."""
 
 from ...kernel.plugin import Page, Plugin
+from . import search_provider  # noqa: F401 - déclare les µprojets à la recherche
 from .api import page_router, router
 from .migrations import MIGRATIONS
 

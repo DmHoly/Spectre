@@ -40,7 +40,7 @@
   async function fillHistory(ctx) {
     if (historyLoaded) return;
     historyLoaded = true;
-    const history = await wafersApi.entityHistory(ctx.microprojectSlug).catch(() => ({ sample_ids: [], locations: [], fdls: [] }));
+    const history = waferSuggestions(await wafersApi.list({ microproject: ctx.microprojectSlug }).catch(() => []));
     const options = (values) => (values || []).map((v) => `<option value="${escapeHtml(v)}">`).join("");
     document.getElementById("entity-sample-id-history").innerHTML = options(history.sample_ids);
     document.getElementById("entity-location-history").innerHTML = options(history.locations);

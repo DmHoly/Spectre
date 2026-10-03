@@ -1,6 +1,7 @@
 """Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt."""
 
 from ...kernel.plugin import NavEntry, Page, Plugin
+from . import search_provider  # noqa: F401 - déclare les lots à la recherche
 from .api import router
 from .migrations import MIGRATIONS
 

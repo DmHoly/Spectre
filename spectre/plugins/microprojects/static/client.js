@@ -10,12 +10,6 @@ const microprojectsApi = {
   create(body) {
     return api.post("/api/microprojets", body);
   },
-  search(query) {
-    return api.get(api.withQuery("/api/microprojets/recherche", { q: query }));
-  },
-  searchFdl(query) {
-    return api.get(api.withQuery("/api/microprojets/recherche-fdl", { q: query }));
-  },
   get(microprojectSlug) {
     return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}`);
   },

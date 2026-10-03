@@ -19,7 +19,8 @@
 
   <!-- La page d'une plaque (un wafer, par son lasermark) : où elle est, ses FDL, et toutes les
        études qui la suivent, d'un µprojet à l'autre - le « passeport » de la plaque, pour la
-       traçabilité. Tout vient de GET /api/plaques/{lasermark} (spectre.core.plates). -->
+       traçabilité. Le passeport vient de GET /api/wafers/{wafer_key} (spectre.plugins.wafers),
+       ses lots de GET /api/lots?wafer= (plugin lots). -->
   <div class="page" style="max-width:1080px;">
     <p style="color:var(--text-faint);margin-bottom:16px;"><a href="/">Projets</a> / Plaques / <span id="plate-crumb"></span></p>
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
@@ -49,9 +50,9 @@
   <script src="/static/kernel/ui.js"></script>
   <script src="/static/kernel/shell.js"></script>
   <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/accounts/client.js"></script>
-  <script src="/static/microprojects/client.js"></script>
   <script src="/static/wafers/client.js"></script>
   <script src="/static/lots/client.js"></script>
   <script src="/static/characterization/client.js"></script>

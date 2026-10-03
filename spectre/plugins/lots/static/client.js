@@ -1,40 +1,35 @@
 /* Client de l'API du plugin lots : lots de fabrication, leurs wafers et leurs thématiques visées.
-   `code` : le code d'un lot. */
+   `lotId` : l'id d'un lot (son code se cherche avec list({code})). */
 
 const lotsApi = {
-  // filter : actifs | sortis | annules | tous
-  list(filter) {
-    return api.get(api.withQuery("/api/lots", { statut: filter }));
+  // filters : {status: "planned,wip,hold", q, wafer: [clés de wafer], code, view: "summary"}
+  list(filters) {
+    return api.get(api.withQuery("/api/lots", filters));
+  },
+  // les priorités proposées à la saisie (P10, P20...)
+  priorities() {
+    return api.get("/api/lot-priorities");
   },
   create(body) {
     return api.post("/api/lots", body);
   },
-  search(query) {
-    return api.get(api.withQuery("/api/lots/recherche", { q: query }));
+  get(lotId) {
+    return api.get(`/api/lots/${encodeURIComponent(lotId)}`);
   },
-  // les lots où l'on peut ajouter des wafers (sélecteur « Ajouter au lot »)
-  selection() {
-    return api.get("/api/lots/selection");
+  // ifMatch : la version affichée (updated_at du lot)
+  update(lotId, body, ifMatch) {
+    return api.patch(`/api/lots/${encodeURIComponent(lotId)}`, body, { ifMatch });
   },
-  thematicOptions() {
-    return api.get("/api/lots/thematiques");
+  remove(lotId) {
+    return api.del(`/api/lots/${encodeURIComponent(lotId)}`);
   },
-  get(code) {
-    return api.get(`/api/lots/${encodeURIComponent(code)}`);
+  addWafers(lotId, body) {
+    return api.post(`/api/lots/${encodeURIComponent(lotId)}/wafers`, body);
   },
-  update(code, body) {
-    return api.put(`/api/lots/${encodeURIComponent(code)}`, body);
+  removeWafer(lotId, waferKey) {
+    return api.del(`/api/lots/${encodeURIComponent(lotId)}/wafers/${encodeURIComponent(waferKey)}`);
   },
-  remove(code) {
-    return api.del(`/api/lots/${encodeURIComponent(code)}`);
-  },
-  addWafers(code, body) {
-    return api.post(`/api/lots/${encodeURIComponent(code)}/wafers`, body);
-  },
-  removeWafer(code, lasermark) {
-    return api.del(`/api/lots/${encodeURIComponent(code)}/wafers/${encodeURIComponent(lasermark)}`);
-  },
-  setThematics(code, body) {
-    return api.put(`/api/lots/${encodeURIComponent(code)}/thematiques`, body);
+  setThematics(lotId, body) {
+    return api.put(`/api/lots/${encodeURIComponent(lotId)}/thematics`, body);
   },
 };

@@ -1,4 +1,5 @@
-/* FDL d'un wafer (normalisation, pastilles, champ de saisie) et lien vers la page d'une plaque. */
+/* FDL d'un wafer (normalisation, pastilles, champ de saisie), lien vers la page d'une plaque, clé
+   d'une plaque et autocomplétion des plaques d'un µprojet. */
 
 /* FDL - feuille de lancement (ticket JIRA) : le numéro de suivi avec lequel un wafer passe en
    ligne, celui qu'on cite pour le retrouver. Un wafer peut en avoir plusieurs (une par passage) :
@@ -121,4 +122,21 @@ function mountFdlField(container, { values = [], onChange = () => {}, datalistId
 // La page d'une plaque (son parcours d'une étude à l'autre, voir wafer.html).
 function plateUrl(lasermark) {
   return `/plaques/${encodeURIComponent(lasermark)}`;
+}
+
+// La clé d'une plaque (`key` des réponses de l'API) : son lasermark sans casse ni séparateurs,
+// comme côté serveur (spectre.plugins.wafers.service.wafer_key) - « w12-a3 » = « W12 A3 ».
+function waferKey(lasermark) {
+  return String(lasermark || "").replace(/[\s_\-./#:]/g, "").toUpperCase();
+}
+
+// L'autocomplétion des plaques d'un µprojet (wafersApi.list({microproject})) : les lasermarks,
+// emplacements et FDL déjà notés, chacun une fois.
+function waferSuggestions(wafers) {
+  const unique = (values) => [...new Set(values.filter(Boolean))].sort();
+  return {
+    sample_ids: unique(wafers.map((w) => w.lasermark)),
+    locations: unique(wafers.flatMap((w) => w.locations || [])),
+    fdls: unique(wafers.flatMap((w) => w.fdl || [])),
+  };
 }
