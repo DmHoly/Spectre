@@ -202,7 +202,7 @@ def eqe_demo_series(area: ManagementArea, months: int, today: date | None = None
 @lru_cache(maxsize=None)
 def _structure_svg(study_id: str) -> tuple[str, tuple[str, ...], tuple[tuple[str, str], ...]]:
     study = _STUDY_BY_ID[study_id]
-    _geometry, frames, materials = run_simulation("demo", SubstrateSpec.model_validate(_SUBSTRATE), _STEP_LIST.validate_python(study.steps))
+    _geometry, frames, materials = run_simulation(SubstrateSpec.model_validate(_SUBSTRATE), _STEP_LIST.validate_python(study.steps))
     colors = {m.name: m.color for m in materials}
     final = frames[-1]
     shown = tuple(sorted({layer.material for layer in final.layers}))

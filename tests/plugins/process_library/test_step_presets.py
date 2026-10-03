@@ -98,7 +98,7 @@ def test_builtin_presets_are_listed_and_usable_in_a_step(client):
 
     # a preset only pre-fills a step's own fields - it's never referenced by name at simulate time
     sim = client.post(
-        f"/api/microprojets/{slug}/structures/simulate",
+        "/api/simulations",
         json={"substrate": substrate(), "steps": [deposition("GaN", "GaN", recipe=mocvd["payload"]["recipe"], thickness_nm=10)]},
     )
     assert sim.status_code == 200

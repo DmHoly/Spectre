@@ -1,4 +1,4 @@
-"""Bridges the structure-builder page to StructureForge: which materials and recipes a microproject can
+"""Bridges the structure-builder page to StructureForge: which materials and recipes a structure can
 draw on, and turning a substrate + step list into simulated frames the page can show. All the
 physics stays in ``structureforge`` - a ``Deposition``/``Etch`` step names a recipe from the
 recipe library by string key (mode/angle/selectivity live on the recipe, not the step), resolved
@@ -21,6 +21,7 @@ from structureforge.geometry.engine import Geometry, LayerProvenance
 from structureforge.process.simulate import Frame, SimulationError, simulate
 from structureforge.process.steps import ProcessStep
 
+from ...kernel.errors import InvalidInput
 
 class SubstrateSpec(BaseModel):
     material: str
@@ -28,8 +29,9 @@ class SubstrateSpec(BaseModel):
     thickness: Length
 
 
-class SimulationFailedError(Exception):
-    pass
+class SimulationFailedError(InvalidInput):
+    """A process StructureForge can't simulate (an unknown material, a step that doesn't apply...),
+    or a campaign plan that can't be built - the request is what's wrong, hence a 422."""
 
 
 class DeclaredParam(BaseModel):
@@ -197,7 +199,6 @@ def _apply_declared_params(frames: list[Frame], declared_params: dict[int, list[
 
 
 def run_simulation(
-    slug: str,
     substrate: SubstrateSpec,
     steps: list[ProcessStep],
     declared_params: dict[int, list[DeclaredParam]] | None = None,
@@ -205,9 +206,8 @@ def run_simulation(
     """Build the starting geometry and apply ``steps`` to it, the same way
     ``structureforge.api.app`` does for its own ``/api/simulate`` - returns the live objects
     (geometry, one frame per step, the material library used) for a caller that needs them for
-    more than just a preview (e.g. to commit the result as a Follow experiment). ``slug`` is kept
-    in the signature even though every microproject shares the same material/step/recipe physics now -
-    callers already pass it, and a microproject-specific material library is a plausible future need.
+    more than just a preview (e.g. to commit the result as a Follow experiment). Every microproject
+    shares the same material/step/recipe physics.
 
     ``declared_params`` (step_index -> extra parameters the user attached in the builder, see
     :class:`DeclaredParam`) is Spectre-only bookkeeping never seen by ``structureforge`` itself -

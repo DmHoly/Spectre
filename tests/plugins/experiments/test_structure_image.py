@@ -7,6 +7,7 @@ structure drawn in the builder.
 
 from __future__ import annotations
 
+from support.attachments import post_attachment
 from support.experiments import evolve, get_experience, launch, launch_campaign, lineage, tag, timeline
 from support.http import PNG_1PX, assert_handler_404
 from support.microprojects import join_as, signup_with_microproject
@@ -18,10 +19,7 @@ def _owner_microproject(client, email="image@example.com"):
 
 
 def _upload(client, slug, name="schema.png", content_type="image/png", data=None):
-    return client.post(
-        f"/api/microprojets/{slug}/structures/images",
-        files={"file": (name, data if data is not None else PNG_1PX, content_type)},
-    )
+    return post_attachment(client, slug, "structure", name, data if data is not None else PNG_1PX, content_type)
 
 
 def _image(client, slug, kind="coupe", caption=None, name="schema.png"):
@@ -47,16 +45,16 @@ def test_launch_an_experience_with_several_pictures(client):
     upload = _upload(client, slug)
     assert upload.status_code == 201
     image = upload.json()
-    assert image["url"] == f"/api/microprojets/{slug}/pieces-jointes/{image['image_id']}"
+    assert image["url"] == f"/api/microprojects/{slug}/attachments/{image['id']}/content"
     served = client.get(image["url"])
     assert served.status_code == 200 and served.headers["content-type"] == "image/png"
 
     overview = _image(client, slug, "coupe", "  Coupe FIB du wafer W7  ")
-    launched = _launch_response(client, slug, [{"image_id": image["image_id"], "kind": "schema"}, overview])
+    launched = _launch_response(client, slug, [{"image_id": image["id"], "kind": "schema"}, overview])
     assert launched.status_code == 201
     detail = get_experience(client, slug, launched.json()["id"])
     assert detail["structure_images"] == [
-        {"image_id": image["image_id"], "kind": "schema", "caption": None},
+        {"image_id": image["id"], "kind": "schema", "caption": None},
         {"image_id": overview["image_id"], "kind": "coupe", "caption": "Coupe FIB du wafer W7"},
     ]
     assert detail["structure_svg"] is None and detail["is_batch"] is False and detail["has_editable_process"] is False
@@ -96,7 +94,7 @@ def test_upload_refuses_what_the_browser_cannot_show(client):
     assert tiff.status_code == 422 and "collez" in tiff.json()["detail"]
     assert _upload(client, slug, "x.svg", "image/svg+xml", b"<svg onload='alert(1)'/>").status_code == 422
     assert _upload(client, slug, data=b"").status_code == 422
-    assert _upload(client, slug, data=b"0" * (10 * 1024 * 1024 + 1)).status_code == 422
+    assert _upload(client, slug, data=b"0" * (10 * 1024 * 1024 + 1)).status_code == 413
 
 
 def test_viewer_cannot_upload_or_launch(client):

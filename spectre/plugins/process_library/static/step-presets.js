@@ -211,7 +211,7 @@ async function init() {
     return;
   }
   try {
-    state.recipes = await structuresApi.recipes(slug);
+    state.recipes = await structuresApi.listRecipes();
   } catch (err) {
     state.recipes = { deposition: [], etch: [] };
   }

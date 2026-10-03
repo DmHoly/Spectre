@@ -1,19 +1,20 @@
-"""The kinds of structure an experiment can carry, besides StructureForge's own single
-``ProcessStructure``: a DOE campaign's variants (:class:`ProcessLot`) and pictures given instead of a
-drawn process (:class:`StructureImage`) - plus what every view needs to tell them apart (how many
-physical entities a structure has, its SVG, its pictures).
+"""The kinds of structure an experiment can carry: StructureForge's own single ``ProcessStructure``,
+a DOE campaign's variants (:class:`ProcessLot`) and pictures given instead of a drawn process
+(:class:`StructureImage`). Each is a :class:`StructureKind` of :data:`KINDS`, keyed by the registry
+key Follow persists in ``structure_type`` - what every view asks of a structure (its SVG, how many
+physical entities it tracks) goes through it rather than through a comparison of that key.
 """
 
 from __future__ import annotations
 
 import secrets
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import follow
-from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from structureforge.adapters.follow_adapter import ProcessStructure
 
+from ...kernel.errors import InvalidInput
 from ..attachments.store import uploaded_image
 from .rendering import svg_for_process_structure
 from .schemas import StructureImageInput
@@ -105,8 +106,62 @@ DRAWN_STRUCTURE_METADATA_KEYS = (
 )
 
 
+class StructureKind(Protocol):
+    """A kind of structure, found in :data:`KINDS` by the registry key Follow persisted for it."""
+
+    key: str
+
+    def render_svg(self, data: dict[str, Any]) -> str | None:
+        """The SVG of a committed structure of this kind - ``None`` when there is nothing to draw."""
+
+    def entity_count(self, data: dict[str, Any]) -> int:
+        """How many physical entities a structure of this kind tracks."""
+
+
+class _ProcessKind:
+    key = ProcessStructure.registry_key()
+
+    def render_svg(self, data: dict[str, Any]) -> str | None:
+        return _process_svg(ProcessStructure.model_validate(data))
+
+    def entity_count(self, data: dict[str, Any]) -> int:
+        return 1
+
+
+class _CampaignKind:
+    """A campaign renders its first entry, the representative case the constant/varying split
+    already covers in full; it tracks one entity per variant."""
+
+    key = PROCESS_LOT_KEY
+
+    def render_svg(self, data: dict[str, Any]) -> str | None:
+        lot = ProcessLot.model_validate(data)
+        return _process_svg(lot.entries[0]) if lot.entries else None
+
+    def entity_count(self, data: dict[str, Any]) -> int:
+        return len(ProcessLot.model_validate(data).entries)
+
+
+class _ImagesKind:
+    """Pictures: nothing for StructureForge to draw, one entity."""
+
+    key = STRUCTURE_IMAGE_KEY
+
+    def render_svg(self, data: dict[str, Any]) -> str | None:
+        return None
+
+    def entity_count(self, data: dict[str, Any]) -> int:
+        return 1
+
+
+PROCESS: StructureKind = _ProcessKind()
+CAMPAIGN: StructureKind = _CampaignKind()
+IMAGES: StructureKind = _ImagesKind()
+KINDS: dict[str, StructureKind] = {kind.key: kind for kind in (PROCESS, CAMPAIGN, IMAGES)}
+
+
 def is_image_structure(structure_type: str) -> bool:
-    return structure_type == StructureImage.registry_key()
+    return KINDS.get(structure_type) is IMAGES
 
 
 def structure_images(structure_type: str, structure_data: dict[str, Any]) -> list[dict[str, Any]] | None:
@@ -168,26 +223,17 @@ def new_image_revision() -> str:
     return secrets.token_hex(6)
 
 
-def render_structure_svg(structure_type: str, structure_data: dict[str, Any]) -> str | None:
-    """SVG for an already-committed experiment's current structure, reusing
-    ``structureforge.presentation.svg.frame_to_svg`` on a synthetic single-frame ``Frame`` built
-    from the stored, already-flattened layers. ``None`` for any structure type StructureForge
-    doesn't know how to draw (the fiche just skips the diagram then) - a ``ProcessLot`` batch
-    renders its first entry, the representative case a DOE campaign's constant/varying split
-    (:func:`spectre.plugins.experiments.api`) already covers in full.
-    """
-    if structure_type == ProcessStructure.registry_key():
-        process_structure = ProcessStructure.model_validate(structure_data)
-    elif structure_type == ProcessLot.registry_key():
-        lot = ProcessLot.model_validate(structure_data)
-        if not lot.entries:
-            return None
-        process_structure = lot.entries[0]
-    else:
-        return None
-
+def _process_svg(process_structure: ProcessStructure) -> str:
     materials = materials_library(*material_names_in_layers(process_structure.layers))
     return svg_for_process_structure(process_structure, {m.name: m.color for m in materials})
+
+
+def render_structure_svg(structure_type: str, structure_data: dict[str, Any]) -> str | None:
+    """SVG for an already-committed experiment's current structure, redrawn by StructureForge from
+    its stored, already-flattened layers - ``None`` for a structure type with nothing to draw (the
+    fiche just skips the diagram then)."""
+    kind = KINDS.get(structure_type)
+    return kind.render_svg(structure_data) if kind else None
 
 
 def render_lot_svgs(lot: ProcessLot) -> list[str]:
@@ -201,9 +247,8 @@ def render_lot_svgs(lot: ProcessLot) -> list[str]:
 
 def entity_count(structure_type: str, structure_data: dict[str, Any]) -> int:
     """How many physical entities a structure tracks: one per variant of a campaign, one otherwise."""
-    if structure_type == ProcessLot.registry_key():
-        return len(ProcessLot.model_validate(structure_data).entries)
-    return 1
+    kind = KINDS.get(structure_type)
+    return kind.entity_count(structure_data) if kind else 1
 
 
 def structure_image_from_input(slug: str, items: list[StructureImageInput]) -> StructureImage:
@@ -211,11 +256,11 @@ def structure_image_from_input(slug: str, items: list[StructureImageInput]) -> S
     uploaded image of *this* microproject (each id is checked against the files on disk, never
     turned into a path from anything else)."""
     if not items:
-        raise HTTPException(status_code=422, detail="Collez ou choisissez au moins une image de la structure.")
+        raise InvalidInput("Collez ou choisissez au moins une image de la structure.")
     if len(items) > MAX_STRUCTURE_IMAGES:
-        raise HTTPException(status_code=422, detail=f"{MAX_STRUCTURE_IMAGES} images au maximum.")
+        raise InvalidInput(f"{MAX_STRUCTURE_IMAGES} images au maximum.")
     if len({item.image_id for item in items}) != len(items):
-        raise HTTPException(status_code=422, detail="La même image figure deux fois.")
+        raise InvalidInput("La même image figure deux fois.")
     pictures = []
     for item in items:
         uploaded_image(slug, item.image_id)

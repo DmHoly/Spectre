@@ -25,7 +25,7 @@ def _plan_two_factors():
 def test_preview_campaign_returns_svgs_and_variation(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     response = client.post(
-        f"/api/microprojets/{slug}/structures/variantes",
+        "/api/campaign-previews",
         json={"substrate": substrate(), "steps": steps(), "plan": _plan()},
     )
     assert response.status_code == 200
@@ -43,7 +43,7 @@ def test_preview_campaign_rejects_numbers_for_a_name_field(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     bad_plan = {"factors": [{"step_index": 0, "field": "material", "values": [1, 2]}]}
     response = client.post(
-        f"/api/microprojets/{slug}/structures/variantes",
+        "/api/campaign-previews",
         json={"substrate": substrate(), "steps": steps(), "plan": bad_plan},
     )
     assert response.status_code == 422
@@ -52,7 +52,7 @@ def test_preview_campaign_rejects_numbers_for_a_name_field(client):
 def test_preview_campaign_with_two_factors_is_fully_crossed(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     response = client.post(
-        f"/api/microprojets/{slug}/structures/variantes",
+        "/api/campaign-previews",
         json={"substrate": substrate(), "steps": _steps_two(), "plan": _plan_two_factors()},
     )
     assert response.status_code == 200
@@ -127,7 +127,7 @@ def test_preview_campaign_rejects_an_unknown_field(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     bad_plan = {"factors": [{"step_index": 0, "field": "vitesse_imaginaire", "values": [1, 2]}]}
     response = client.post(
-        f"/api/microprojets/{slug}/structures/variantes",
+        "/api/campaign-previews",
         json={"substrate": substrate(), "steps": steps(), "plan": bad_plan},
     )
     assert response.status_code == 422
@@ -136,7 +136,7 @@ def test_preview_campaign_rejects_an_unknown_field(client):
 
 def _preview(client, slug, process_steps, plan, declared_params=None):
     return client.post(
-        f"/api/microprojets/{slug}/structures/variantes",
+        "/api/campaign-previews",
         json={"substrate": substrate(), "steps": process_steps, "plan": plan, "declared_params": declared_params or {}},
     )
 

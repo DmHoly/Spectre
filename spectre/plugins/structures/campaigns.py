@@ -6,6 +6,7 @@ variants a :class:`~spectre.plugins.structures.kinds.ProcessLot` commits.
 from __future__ import annotations
 
 import itertools
+import math
 from enum import Enum
 from typing import Any
 
@@ -15,9 +16,9 @@ from pydantic import BaseModel, ValidationError
 from structureforge.adapters.follow_adapter import ProcessStructure, to_structure
 from structureforge.core.materials import aluminum_gan, indium_gan
 from structureforge.core.units import Length
-from structureforge.presentation.svg import frame_to_svg
 from structureforge.process.steps import ProcessStep
 
+from .rendering import frame_svg
 from .simulation import GRADED_NITRIDE_RE, DeclaredParam, SimulationFailedError, SubstrateSpec, run_simulation
 
 
@@ -42,6 +43,10 @@ CAMPAIGN_FIELD_LABELS = {
     "openings.pitch": "Pas du réseau",
     "openings.diameter": "Diamètre d'ouverture",
 }
+
+# Plafond d'entités d'une campagne : chaque variante est re-simulée (près d'une seconde chacune) à
+# chaque aperçu et au lancement - vérifié avant toute simulation.
+MAX_CAMPAIGN_ENTITIES = 30
 
 SUBSTRATE_STEP_INDEX = -1  # un facteur à cet index fait varier le substrat plutôt qu'une étape
 DECLARED_FIELD_PREFIX = "declared:"  # "declared:dopage" : un paramètre déclaré (DeclaredParam) de l'étape
@@ -246,7 +251,6 @@ def _factor_label(factor: VariantFactor, steps: list[ProcessStep]) -> str:
 
 
 def generate_campaign_variants(
-    slug: str,
     substrate: SubstrateSpec,
     steps: list[ProcessStep],
     plan: VariantPlan,
@@ -271,6 +275,11 @@ def generate_campaign_variants(
             raise SimulationFailedError("il faut choisir un paramètre à faire varier")
         if factor.step_index == SUBSTRATE_STEP_INDEX and factor.field.startswith(DECLARED_FIELD_PREFIX):
             raise SimulationFailedError("le substrat n'a pas de paramètres déclarés")
+    combinations = math.prod(len(factor.values) for factor in plan.factors)
+    if combinations > MAX_CAMPAIGN_ENTITIES:
+        raise SimulationFailedError(
+            f"{combinations} variantes : {MAX_CAMPAIGN_ENTITIES} au maximum par campagne (chacune est simulée) - réduisez le nombre de valeurs."
+        )
 
     factor_labels = [_factor_label(factor, steps) for factor in plan.factors]
     base_declared = declared_params or {}
@@ -291,10 +300,10 @@ def generate_campaign_variants(
             else:
                 domain_nm = varied_substrate.domain_width.to_nm()
                 varied_steps[factor.step_index] = _step_with_value(varied_steps[factor.step_index], factor.field, value, domain_nm)
-        geometry, frames, materials = run_simulation(slug, varied_substrate, varied_steps, varied_declared or None)
+        geometry, frames, materials = run_simulation(varied_substrate, varied_steps, varied_declared or None)
         entries.append(to_structure(geometry))
         material_colors = {m.name: m.color for m in materials}
-        svgs.append(frame_to_svg(frames[-1], material_colors))
+        svgs.append(frame_svg(frames[-1], material_colors))
         labels.append(" · ".join(_format_value_label(v) for v in combo))
         factor_values.append(list(combo))
 

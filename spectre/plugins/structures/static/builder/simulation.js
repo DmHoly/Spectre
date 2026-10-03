@@ -110,7 +110,7 @@ function renderFrame() {
   const legend = document.getElementById("legend");
   const materials = frame ? frame.materials : [];
   legend.innerHTML = materials
-    .map((name) => `<span class="legend-item"><span class="legend-swatch" style="background:${state.materialColors[name] || "var(--text-faint)"};"></span>${escapeHtml(name)}</span>`)
+    .map((name) => `<span class="legend-item"><span class="legend-swatch" style="background:${escapeHtml(state.materialColors[name] || "var(--text-faint)")};"></span>${escapeHtml(name)}</span>`)
     .join("");
   const prev = document.getElementById("frame-prev-btn");
   const next = document.getElementById("frame-next-btn");
@@ -345,7 +345,7 @@ async function simulateNow() {
   const busy = document.getElementById("sim-busy");
   const busyTimer = setTimeout(() => (busy.hidden = false), 250);
   try {
-    const result = await structuresApi.simulate(slug, {
+    const result = await structuresApi.simulate({
       substrate: substrateSpec(),
       steps: state.steps,
       declared_params: declaredParamsPayload(state.steps),

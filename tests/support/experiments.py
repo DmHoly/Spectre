@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from .http import PNG_1PX, assert_created, assert_ok
+from .attachments import upload_file
 from .structures import campaign_plan, steps, substrate
 
 
@@ -111,6 +112,5 @@ def upload_attachment(client: Any, slug: str, ref: str, filename: str = "mesure.
 
 
 def upload_image(client: Any, slug: str, name: str = "mesure.png") -> str:
-    """Une image collée dans le formulaire de preuve (POST /images) - renvoie son ``image_id``."""
-    response = client.post(f"/api/microprojets/{slug}/images", files={"file": (name, PNG_1PX, "image/png")})
-    return assert_created(response)["image_id"]
+    """Une image collée dans le formulaire de preuve (POST .../attachments, purpose=evidence) - renvoie son id."""
+    return upload_file(client, slug, "evidence", name)["id"]
