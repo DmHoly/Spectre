@@ -191,7 +191,7 @@ déplacement de classe ne doit jamais la changer.
   le changement et ne commite que s'il y a une différence.
 - Les liens vers une étude (atlas, entités, pages) désignent la piste et non une version. Une URL
   de page qui porte encore un ancien id de version est résolue par
-  `GET /api/microprojects/{slug}/experiment-versions/{version_id}`.
+  `GET /api/microprojects/{microproject_slug}/experiment-versions/{version_id}`.
 
 **Mise en œuvre** (`experiments/repository.py`, `experiments/service.py`) :
 
@@ -206,15 +206,24 @@ déplacement de classe ne doit jamais la changer.
   les réponses en défaut.
 - Les seuls accès aux internes privés de Follow (suppression d'une piste) sont dans
   `repository.delete_line(repo, experiment_id)`.
-- Les anciennes routes des plugins de la vague 3 qui écrivent dans une étude (evidence, notebook,
-  external_images) appellent `amend()` : leur segment `{ref}` reçoit désormais un id de piste (Follow
-  résout un nom de branche), elles renvoient `{id: <piste>, version_id, ...}` et acceptent `If-Match`
-  comme les autres (412 `stale_version`) : la fiche l'envoie pour toutes ses écritures, ces routes
-  ne changent que de chemin en vague 3.
-- En attendant la vague 3, les lectures des autres plugins suivent la piste : l'index des plaques
-  (wafers, donc la recherche et les lots) donne `experience.id` = la piste ; l'atlas ajoute
-  `experiment_id` à chaque étude (son `id` reste la version de pointe, que citent les liens d'entités
-  jusqu'à leur migration).
+- Les plugins qui écrivent dans une étude sans en être le propriétaire (evidence, notebook,
+  external_images) exposent leurs sous-ressources sous `.../experiments/{exp}/` et passent par
+  `amend()` : `If-Match` comme les autres (412 `stale_version`), et une écriture renvoie **la
+  ressource écrite** (la preuve, la vue du cahier, le jeu d'images), pas l'étude, avec en `ETag` la
+  version créée - c'est ce que la fiche enverra en `If-Match` à l'écriture suivante. Leurs lectures
+  acceptent `?version=`, sur le modèle de `process?version=`, pour qu'une version passée ouverte en
+  lecture seule montre ses propres données. Le détail d'une étude ne porte plus que
+  `evidence_count`. Les clés des métadonnées Follow (`evidence_links`, `image_annotations`,
+  `data_notebook`, `data_items`) ne changent pas : les études existantes restent lisibles.
+- Toutes les lectures des autres plugins désignent la piste : l'index des plaques (wafers, donc la
+  recherche et les lots) donne `experiment.id` = la piste ; l'atlas nomme chaque étude par
+  `experiment_id` (et `version_id`, sa pointe) ; un lien d'entité désigne
+  `{microproject, experiment_id, entity_index}`.
+- Deux écritures traversent encore une frontière de plugin sans import, faute de dépendance dans
+  ce sens : une fusion (`experiments.service`) reporte et purge les métadonnées de preuve par id
+  (evidence dépend d'experiments, pas l'inverse) ; supprimer une piste ne purge pas ses liens
+  d'entités (experiments ne dépend pas de links) - ils restent listés et supprimables, l'atlas ne
+  les dessine plus. Supprimer un µprojet, lui, purge ses liens (`ON DELETE CASCADE`).
 - Le nom d'une piste : tiré du titre (`epitaxie-a-20-nm`, accents retirés, suffixe `-2`... si pris),
   ou `branch` à la création - un seul segment sans `/`, ni `.`/`..`, ni la forme d'un id de version,
   libre parmi les pistes **et** les refs (sinon 409 `branch_name_taken`).
@@ -248,7 +257,7 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 
 | Avant | Après |
 |---|---|
-| `GET /api/microprojets/recherche`, `/api/plaques/recherche`, `/api/microprojets/recherche-fdl`, `/api/lots/recherche` (4 appels par frappe) | `GET /api/search?q=&types=` → `[{type, label, detail, badge, url}]` |
+| `GET /api/microprojets/recherche`, `/api/plaques/recherche`, `/api/microprojets/recherche-fdl`, `/api/lots/recherche` (4 appels par frappe) | `GET /api/search?q=&types=` → `[{type, label, detail, badge, url}]` (types `microproject`, `lot`, `wafer`, `fdl` ; un type inconnu → 422 ; l'`url` est une page, donnée par le fournisseur) |
 
 ### areas · kpis · kpis_demo
 
@@ -272,28 +281,28 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 | `GET /api/management/{slug}/tendances` | `GET /api/areas/{area_slug}/kpis` |
 | `GET /api/management/{slug}/tendances/{kpi}?mois=&variante=` | `GET /api/areas/{area_slug}/kpis/{kpi_key}?months=&variant=` |
 | `GET …/tendances/{kpi}/etudes/{study_id}` | `GET /api/areas/{area_slug}/kpis/{kpi_key}/studies/{study_id}` (kpis_demo) |
-| `GET /api/atlas?theme=` | `GET /api/areas/{area_slug}/atlas` (plugin atlas) |
+| `GET /api/atlas?theme=` | `GET /api/areas/{area_slug}/atlas` (plugin atlas) → `{area, microprojects: [{…, experiments, edges}], microproject_links, entity_links}` : chaque étude porte `experiment_id` (la piste) et `version_id` (sa pointe), les `edges` d'un µprojet relient des pistes, les liens sont ceux des listes du plugin links ; le front relit ensuite les seuls liens (`GET /api/microproject-links`, `/api/entity-links`) après une création ou un retrait |
 
 ### microprojects
 
 | Avant | Après |
 |---|---|
-| `GET /api/microprojets` | `GET /api/microprojects` (les miens) ; `?scope=all` (admin) ; `?area=&thematic=` |
-| `GET /api/microprojets/recherche?q=` | `GET /api/microprojects?q=&limit=` (toute la société, champs réduits) |
+| `GET /api/microprojets` | `GET /api/microprojects` (les miens) ; `?scope=all` (admin, sinon 403) ; `?area=&thematic=` (inconnu → 404, `thematic` sans `area` → 422). Le payload d'un µprojet nomme son rattachement `area` / `thematic`, comme le `PATCH`, et ne porte plus de compteurs : le front les lit dans `GET /api/experiment-stats` |
+| `GET /api/microprojets/recherche?q=` | `GET /api/microprojects?q=&limit=` (toute la société, champs réduits `{slug, code, name, area}` ; `?q=` et `?code=` ne se combinent avec aucun autre filtre → 422) |
 | `GET /api/microprojets/tous` | `GET /api/microprojects?scope=all` |
-| `GET /api/microprojets/code/{code}` | `GET /api/microprojects?code=` |
-| `POST /api/microprojets` | `POST /api/microprojects` → 201 |
+| `GET /api/microprojets/code/{code}` | `GET /api/microprojects?code=` → `[]` ou un élément, mêmes champs réduits |
+| `POST /api/microprojets` | `POST /api/microprojects` `{name, description, area, thematic}` → 201 + `Location` (projet ou thématique inconnus → 422, comme le `PATCH` ; un nom qui donnerait le slug « new » ou « nouvelle » reçoit un suffixe) |
 | `GET /api/microprojets/{slug}` | `GET /api/microprojects/{mp}` |
 | *(nouveau)* | `PATCH /api/microprojects/{mp}` `{name, description, area, thematic}` |
-| `DELETE /api/microprojets/{slug}` | `DELETE /api/microprojects/{mp}` → 204 |
+| `DELETE /api/microprojets/{slug}` | `DELETE /api/microprojects/{mp}?confirm_name=` → 204 (garde côté serveur : mauvais nom → 422 `confirm_name_mismatch`) |
 | `GET …/members` | `GET /api/microprojects/{mp}/members` |
 | `POST …/members` (upsert + invitation) | `POST /api/microprojects/{mp}/members` `{email, role}` → 201 (409 déjà membre ; 404 `no_account`) |
-| *(changement de rôle par POST)* | `PATCH /api/microprojects/{mp}/members/{user_id}` `{role}` (409 si plus aucun owner) |
+| *(changement de rôle par POST)* | `PATCH /api/microprojects/{mp}/members/{user_id}` `{role}` (409 `last_owner` / `creator_protected`, vérifiés sous verrou) |
 | `DELETE …/members/{user_id}` | `DELETE …` → 204 (409 pour le créateur ou le dernier owner) |
 | `GET …/invitations` | `GET /api/microprojects/{mp}/invitations` (en attente, non expirées, **sans le jeton**) |
-| *(implicite dans POST members)* | `POST /api/microprojects/{mp}/invitations` `{email, role}` → 201 |
+| *(implicite dans POST members)* | `POST /api/microprojects/{mp}/invitations` `{email, role}` → 201, **sans `Location`** (une invitation n'a pas de route propre) ; réinviter une adresse remplace son invitation en attente, inviter un membre → 409 ; jeton stocké haché (SHA-256), les liens déjà envoyés restent valides |
 | `DELETE …/invitations/{token}` | `DELETE /api/microprojects/{mp}/invitations/{invitation_id}` → 204 |
-| `GET …/entites/historique` | `GET /api/wafers?microproject={mp}` (plugin wafers) |
+| `GET …/entites/historique` | `GET /api/wafers?microproject={mp}` (plugin wafers ; 403 hors membre, 404 inconnu) |
 | `GET /api/microprojets/recherche-fdl` | `GET /api/wafers?fdl=` (plugin wafers) |
 
 ### attachments
@@ -370,7 +379,7 @@ Droits d'écriture :
 | `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
 | `POST …/{ref}/ref` | `POST /api/microprojects/{mp}/refs` `{experiment_id, version_id?, name?}` → 201 et la ref telle que la liste la montre (`name` vide : « ref vX.Y.Z » ; « / » → 422, nom pris → 409). **Sans `Location`** : une ref n'a pas de route propre, elle se lit dans la liste |
 | `GET …/refs`, `GET …/refs/graphe` | `GET /api/microprojects/{mp}/refs` → `{refs: [{version_id, experiment_id, names, title, status, decision, version, created_at}], edges: [{from, to}]}` (ids de version) |
-| `GET /api/microprojets/{slug}/filiation` | `GET /api/microprojects/{mp}/lineage` (les nœuds portent `version_id` et `experiment_id` - et `id`, égal à `version_id`, que citent les `edges` ; le badge de lot y reste tant que `lotsApi` ne sait pas chercher par wafer, voir `ALLOWED_TRANSITIONAL`) |
+| `GET /api/microprojets/{slug}/filiation` | `GET /api/microprojects/{mp}/lineage` (les nœuds portent `version_id` et `experiment_id` - et `id`, égal à `version_id`, que citent les `edges` ; plus de badge de lot : le front le compose avec `GET /api/lots?wafer=`) |
 | `GET /api/microprojets/{slug}/graphe.html` | **supprimée**, ainsi que la page `/microprojets/{slug}/graphe` |
 | *(dans les listes de µprojets)* | `GET /api/experiment-stats?microproject=&area=` → `[{microproject, running, concluded, abandoned, wafers}]` |
 | *(dans la thématique)* | `GET /api/experiment-timeline?area=&thematic=` (champs masqués pour les non-membres) |
@@ -380,22 +389,25 @@ Droits d'écriture :
 
 | Avant | Après |
 |---|---|
-| *(dans le détail)* | `GET …/experiments/{exp}/evidence` |
-| `POST …/{ref}/preuves` | `POST …/experiments/{exp}/evidence` → 201 (le type `graph`, qui allait chercher une URL arbitraire, n'est plus proposé à la création ; la fiche montre les anciennes en lecture - titre, axes, requête - sans rien aller chercher) |
-| `POST …/{ref}/preuves/{id}/annotations` | `PUT …/experiments/{exp}/evidence/{evidence_id}/annotations` |
+| *(dans le détail : `evidence`, `evidence_links`, `attachments`)* | `GET …/experiments/{exp}/evidence?version=` → tableau ; chaque preuve porte les champs de Follow plus `kind`, `objective`, `interpretation`, `graph_config`, `annotations` (stockées sous `image_annotations`), `links` et `images: [{id, url, filename, content_type, size, caption}]` ; le détail ne garde que `evidence_count` |
+| `POST …/{ref}/preuves` | `POST …/experiments/{exp}/evidence` → 201 + `Location` + la preuve (`ETag` : la version créée) ; le type `graph`, qui allait chercher une URL arbitraire, est refusé à la création (422) et `graph_config` n'est plus reçu ; la fiche montre les anciennes en lecture - titre, axes, requête - sans rien aller chercher ; une image téléversée dans un autre µprojet → 422 |
+| *(nouveau)* | `GET …/experiments/{exp}/evidence/{evidence_id}?version=` (la cible du `Location`) |
+| `POST …/{ref}/preuves/{id}/annotations` | `PUT …/experiments/{exp}/evidence/{evidence_id}/annotations` → 200, la preuve (les mêmes annotations ne créent pas de version ; image étrangère à la preuve → 422) |
 | `GET /api/microprojets/{slug}/donnees/sources` | `GET /api/characterization/data-types?by_wafer=true&status=implemented` |
-| `POST …/donnees/instantanes` | `POST /api/microprojects/{mp}/snapshots` → 201 |
-| `GET …/donnees/instantanes/{id}` | `GET /api/microprojects/{mp}/snapshots/{snapshot_id}` |
-| *(dans le détail)* | `GET …/experiments/{exp}/notebook-entries` |
-| `POST …/{ref}/cahier` | `POST …/experiments/{exp}/notebook-entries` → 201 |
-| `PUT …/{ref}/cahier/{entry_id}` (+ `move`) | `PATCH …/experiments/{exp}/notebook-entries/{entry_id}` (`position` entier) |
+| `POST …/donnees/instantanes` | `POST /api/microprojects/{mp}/snapshots` `{hook, wafers, refresh}` → 201 + `Location` (la clé `hook` est celle que stockent instantanés et vues) |
+| `GET …/donnees/instantanes/{id}` | `GET /api/microprojects/{mp}/snapshots/{snapshot_id}` (immuable : `Cache-Control: private, max-age=31536000, immutable`) |
+| *(dans le détail : `data_notebook`)* | `GET …/experiments/{exp}/notebook-entries?version=` → tableau |
+| `POST …/{ref}/cahier` | `POST …/experiments/{exp}/notebook-entries` → 201 + la vue (`ETag` : la version créée), **sans `Location`** : une vue n'a pas de route propre, elle se lit dans la liste |
+| `PUT …/{ref}/cahier/{entry_id}` (+ `move`) | `PATCH …/experiments/{exp}/notebook-entries/{entry_id}` (`position` entier, ramené dans les bornes ; sans effet → pas de version) |
 | `DELETE …/{ref}/cahier/{entry_id}` | `DELETE …` → 204 |
-| *(dans le détail)* | `GET …/experiments/{exp}/image-sets` |
-| `POST …/{ref}/data` | `POST …/experiments/{exp}/image-sets` → 201 |
-| `PATCH …/{ref}/data/{id}/epingle` | `PATCH …/experiments/{exp}/image-sets/{set_id}` `{pinned_index}` |
+| *(dans le détail : `data_items`)* | `GET …/experiments/{exp}/image-sets?version=` → tableau ; chaque image `{index, name, path, status, url}`, `status` ∈ `ok`, `missing`, `unsupported`, `forbidden` |
+| `POST …/{ref}/data` | `POST …/experiments/{exp}/image-sets` → 201 + le jeu (`ETag`), **sans `Location`** (pas de route propre, comme une vue du cahier) |
+| `PATCH …/{ref}/data/{id}/epingle` | `PATCH …/experiments/{exp}/image-sets/{set_id}` `{pinned_index}` (sans effet → pas de version) |
 | `DELETE …/{ref}/data/{id}` | `DELETE …/experiments/{exp}/image-sets/{set_id}` → 204 |
-| `GET /api/microprojets/{slug}/data/image?chemin=` | `GET …/experiments/{exp}/image-sets/{set_id}/images/{index}` (chemin résolu côté serveur, jamais reçu du client) |
-| `GET /api/microprojets/{slug}/data/parcourir?dossier=` | `GET /api/microprojects/{mp}/external-images?directory=` (editor ; limité à `SPECTRE_EXTERNAL_IMAGE_ROOTS`, désactivé si la variable n'est pas définie) |
+| `GET /api/microprojets/{slug}/data/image?chemin=` | `GET …/experiments/{exp}/image-sets/{set_id}/images/{index}?version=` (chemin lu dans les métadonnées, jamais reçu du client ; borné aux racines lui aussi : un ancien jeu qui pointe ailleurs répond 403) |
+| `GET /api/microprojets/{slug}/data/parcourir?dossier=` | `GET /api/microprojects/{mp}/external-images?directory=` (editor) → `[{name, path, size, displayable}]` ; limité à `SPECTRE_EXTERNAL_IMAGE_ROOTS` (racines connues telles qu'écrites et résolues : un nom court Windows passe), désactivé sans cette variable (503 `browsing_disabled` ; les chemins locaux restent acceptés à la création, les chemins UNC non) ; les TIFF sont listés, non affichables |
+
+Codes de la galerie : hors des racines → 403 `outside_roots` (contrôle lexical avant tout accès disque, revérifié après résolution des liens) ; dossier ou image absents → 404 `directory_not_found` / `image_missing` ; TIFF, fichier qui n'est pas une image, introuvable ou chemin relatif → 422 `unsupported_format`, `not_an_image`, `file_not_found`, `relative_path`.
 
 ### intent_forms
 
@@ -421,22 +433,31 @@ de la copie (un simple renommage ne compte pas, une entrée supprimée non plus)
 
 | Avant | Après |
 |---|---|
-| `GET /api/plaques/recherche?q=` | `GET /api/wafers?q=` |
-| `GET /api/plaques/{lasermark}` | `GET /api/wafers/{wafer_key}` (sans les lots : `GET /api/lots?wafer=`) |
-| `GET /api/lots?statut=actifs\|sortis\|annules\|tous` | `GET /api/lots?status=planned,wip,hold,done,cancelled&q=&wafer=&code=&view=summary` |
+| `GET /api/plaques/recherche?q=` | `GET /api/wafers?q=` (aussi `fdl=` et `microproject=` ; chaque élément porte `key`) |
+| `GET /api/plaques/{lasermark}` | `GET /api/wafers/{wafer_key}` (le lasermark tel qu'écrit marche aussi ; sans les lots : `GET /api/lots?wafer=` ; une plaque inconnue → 200 sans occurrence, comme avant) ; chaque occurrence : `lasermark` et `experiment: {microproject, member, status, updated_at, id?, title?}` |
+| `GET /api/lots?statut=actifs\|sortis\|annules\|tous` | `GET /api/lots?status=planned,wip,hold,done,cancelled&q=&wafer=&code=&view=summary` → tableau ; clés en anglais (`experiments`, `thematics`, `via_experiments`) et `is_active` calculé par le serveur |
 | `GET /api/lots/recherche`, `/selection` | `GET /api/lots?q=…`, `GET /api/lots?view=summary&status=…` |
 | `GET /api/lots/thematiques` | `GET /api/thematics` (plugin areas) |
-| `POST /api/lots` | `POST /api/lots` → 201 (409 code déjà pris) |
-| `GET/PUT/DELETE /api/lots/{code}` | `GET` / `PATCH` / `DELETE /api/lots/{lot_id}` (204) ; le code devient un champ filtrable |
-| `POST /api/lots/{code}/wafers` | `POST /api/lots/{lot_id}/wafers` `{lasermarks}` → 201 |
+| `POST /api/lots` | `POST /api/lots` → 201 + `Location` + `ETag` (409 `lot_code_taken`, course comprise) |
+| *(datalists codées en dur)* | `GET /api/lot-priorities` → les priorités proposées à la saisie (P10…P50 ; toute valeur courte reste acceptée). Nouvelle route : la liste des lots est devenue un tableau, les suggestions n'avaient plus d'autre source |
+| `GET/PUT/DELETE /api/lots/{code}` | `GET` / `PATCH` / `DELETE /api/lots/{lot_id}` (204) ; le code devient un champ filtrable. `PATCH` : `exclude_unset`, `If-Match` = `updated_at` (`ETag`, ISO UTC ; 412 `stale_version`), sans effet → rien d'écrit ; les règles de statut d'un lot déclaratif sont une fonction pure (`declared_state`) ; un lot `prism` refuse priorité, dates et wafers (409 `lot_read_only_source`) |
+| `POST /api/lots/{code}/wafers` | `POST /api/lots/{lot_id}/wafers` `{lasermarks}` → 201, 200 si rien n'est ajouté ; **sans `Location`** (un wafer d'un lot n'a pas de route propre) |
 | `DELETE /api/lots/{code}/wafers/{lasermark}` | `DELETE /api/lots/{lot_id}/wafers/{wafer_key}` → 204 (404 si absent) |
 | `PUT /api/lots/{code}/thematiques` | `PUT /api/lots/{lot_id}/thematics` `{thematic_ids}` |
-| `POST /api/liens-projets` | `POST /api/microproject-links` → 201 (409 doublon) |
-| `DELETE /api/liens-projets/{id}` | `DELETE /api/microproject-links/{link_id}` → 204 |
-| *(nouveau)* | `GET /api/microproject-links?microproject=&area=` |
-| `POST /api/liens-entites` | `POST /api/entity-links` `{a: {microproject, experiment_id, entity_index}, b: {…}, note}` → 201 (désigne la piste ; les lignes existantes sont migrées) |
+| `POST /api/liens-projets` | `POST /api/microproject-links` `{a, b, note}` (slugs) → 201 `{id, a: {slug, name}, b, note, created_at}`, **sans `Location`** (un lien se lit dans la liste) ; doublon dans un sens ou l'autre → 409 `already_linked` ; µprojet lié à lui-même → 422 `self_link`, inconnu → 422 `unknown_microproject` ; rôle editor des deux côtés |
+| `DELETE /api/liens-projets/{id}` | `DELETE /api/microproject-links/{link_id}` → 204 (editor d'un côté au moins) |
+| *(nouveau)* | `GET /api/microproject-links?microproject=&area=` (un lien n'est listé qu'aux membres de ses deux µprojets ; retenu dès qu'un de ses bouts correspond au filtre ; `?microproject=` inconnu → 404, hors membre → 403 ; `?area=` inconnu → 404) |
+| `POST /api/liens-entites` | `POST /api/entity-links` `{a: {microproject, experiment_id, entity_index}, b: {…}, note}` → 201, sans `Location` (désigne la piste : piste inconnue → 422 `unknown_experiment`, index hors de la pointe → 422 `unknown_entity`, même entité des deux côtés → 422 `self_link`) ; les lignes existantes sont migrées vers la piste, les irrésolubles gardées dans `entity_links_unresolved` et journalisées |
 | `DELETE /api/liens-entites/{id}` | `DELETE /api/entity-links/{link_id}` → 204 |
-| *(nouveau)* | `GET /api/entity-links?microproject=&area=` |
+| *(nouveau)* | `GET /api/entity-links?microproject=&area=` (mêmes règles) |
+
+Visibilité des plaques : une seule règle (`wafers.service`), partagée par les lots. Tout compte
+connecté voit qu'un autre µprojet suit une plaque (µprojet, statut, dates) ; titre, lien,
+emplacement, FDL et variante restent aux membres, et la recherche par FDL ne lit que les FDL des
+µprojets dont on est membre. Avant, la page et la recherche des plaques ne montraient que ses
+propres µprojets quand les lots montraient déjà les autres, masqués : les deux suivent désormais la
+règle des lots. Une entité suivie sans lasermark (un emplacement seul) n'a pas de `wafer_key` et
+n'est plus proposée à l'autocomplétion.
 
 ### characterization
 
@@ -479,7 +500,8 @@ Supprimée : `/microprojets/{slug}/graphe`.
   déclarations restent locales, dans une IIFE ou un objet.
 - Ordre de chargement d'une page :
   1. noyau : `/static/kernel/api.js`, `ui.js`, `shell.js` ;
-  2. session et recherche : `/static/accounts/session.js`, `/static/search/topbar-search.js` ;
+  2. session et recherche : `/static/accounts/session.js`, `/static/search/client.js`,
+     `/static/search/topbar-search.js` ;
   3. les `client.js` des plugins utilisés ;
   4. le contrôleur de la page.
 - Un module réutilisé par plusieurs pages reçoit son contexte en paramètre
@@ -507,8 +529,9 @@ Supprimée : `/microprojets/{slug}/graphe`.
   `experimentId`, `versionId`, `isTip` (la pointe, ouverte sans `?version=`), `role`, `canEdit`
   (éditeur sur la pointe), `detail`, `reload()`, `showError(err, box?)` ; s'y ajoutent, pour ne pas
   recharger chacun la même chose, `microproject`, `versions`, `process`, `variants()` (la matrice
-  d'une campagne, un appel par chargement) et `write(call, box?)`. Aucun module ne lit de globale
-  de la page.
+  d'une campagne, un appel par chargement), `write(call, box?)` et `setDataCount(key, n)`, par
+  lequel un panneau de l'onglet « Données » qui lit sa propre ressource (cahier, galerie) déclare
+  son compte. Aucun module ne lit de globale de la page.
 - `mount` est rappelé, sur le même élément, à chaque `ctx.reload()` : il remplit l'élément de
   nouveau ; ce qu'un module branche une fois pour toutes (modales, champs fixes de la page), il le
   branche au chargement de son script.
@@ -528,10 +551,11 @@ Supprimée : `/microprojets/{slug}/graphe`.
   est dans `experiments/static/vocabulary.js` (global `ExperimentVocabulary`), chargé par la fiche
   et l'atlas.
 - Écarts : `lot-picker.js` sert aussi au graphe de filiation, où `ExperiencePage` n'existe pas ; il
-  ne s'enregistre donc que `if (typeof ExperiencePage !== "undefined")`. `notebook.js` et
-  `gallery.js` gardent leurs déclarations de premier niveau (vague 3) mais ne lisent plus que le
-  `ctx` reçu. Les compteurs de l'onglet « Données » lisent encore `evidence`, `data_items` et
-  `data_notebook` dans le détail, comme les panneaux, jusqu'aux sous-ressources de la vague 3.
+  ne s'enregistre donc que `if (typeof ExperiencePage !== "undefined")`. `notebook.js` garde des
+  déclarations de premier niveau (état du cahier, rendu d'une vue) mais ne lit que le `ctx` reçu.
+  Chaque panneau de l'onglet « Données » lit sa propre sous-ressource, pour la version affichée
+  (`?version=`) ; le repère de l'onglet
+  additionne `detail.evidence_count` et ce que déclarent les panneaux (`ctx.setDataCount`).
 
 ## 7. Tests
 

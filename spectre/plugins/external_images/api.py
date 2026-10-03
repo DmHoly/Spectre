@@ -22,24 +22,12 @@ from fastapi.responses import FileResponse
 from ...kernel.http import etag, if_match_version
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from ..microprojects.deps import get_microproject, require_role
+from ..microprojects.deps import require_role
 from ..microprojects.service import Microproject
 from . import service
 from .schemas import ImageSetInput, ImageSetUpdate
 
 router = APIRouter(prefix="/api/microprojects/{microproject_slug}", tags=["external-images"])
-
-
-def _member(min_role: str):
-    """:func:`require_role` pour une route dont le paramètre de chemin est ``{microproject_slug}``.
-    Transitoire : à remplacer par ``Depends(require_role(...))`` quand ``microprojects.deps`` lira
-    ce paramètre (il lit encore ``{slug}``)."""
-    check = require_role(min_role)
-
-    def dependency(microproject_slug: str, user: User = Depends(current_user)) -> Microproject:
-        return check(user=user, microproject=get_microproject(microproject_slug))
-
-    return dependency
 
 
 def _resource(slug: str, experiment_id: str, item: dict, version: str | None = None) -> dict:
@@ -63,7 +51,7 @@ def _resource(slug: str, experiment_id: str, item: dict, version: str | None = N
 
 
 @router.get("/experiments/{experiment_id}/image-sets")
-def list_image_sets(experiment_id: str, version: str | None = None, microproject: Microproject = Depends(_member("viewer"))) -> list[dict]:
+def list_image_sets(experiment_id: str, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))) -> list[dict]:
     return [_resource(microproject.slug, experiment_id, item, version) for item in service.image_sets(microproject.slug, experiment_id, version)]
 
 
@@ -73,7 +61,7 @@ def create_image_set(
     body: ImageSetInput,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     """Un jeu d'images de plus - sans ``Location`` : un jeu n'a pas de route de lecture propre, il se
@@ -90,7 +78,7 @@ def update_image_set(
     body: ImageSetUpdate,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     item, tip = service.pin(
@@ -105,7 +93,7 @@ def delete_image_set(
     experiment_id: str,
     set_id: str,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> Response:
     tip = service.remove(microproject.slug, experiment_id, set_id, author=user.name, expected_version=if_match_version(if_match))
@@ -114,7 +102,7 @@ def delete_image_set(
 
 @router.get("/experiments/{experiment_id}/image-sets/{set_id}/images/{index}")
 def get_image(
-    experiment_id: str, set_id: str, index: int, version: str | None = None, microproject: Microproject = Depends(_member("viewer"))
+    experiment_id: str, set_id: str, index: int, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
 ) -> FileResponse:
     path = service.image_file(microproject.slug, experiment_id, set_id, index, version)
     media_type, _ = mimetypes.guess_type(path.name)
@@ -122,6 +110,6 @@ def get_image(
 
 
 @router.get("/external-images")
-def browse_external_images(directory: str, microproject: Microproject = Depends(_member("editor"))) -> list[dict]:
+def browse_external_images(directory: str, microproject: Microproject = Depends(require_role("editor"))) -> list[dict]:
     """Les images d'un dossier autorisé (503 si aucun dossier n'est autorisé sur ce serveur)."""
     return service.browse(directory)

@@ -12,24 +12,12 @@ from fastapi import APIRouter, Depends, Header, Response
 from ...kernel.http import created, etag, if_match_version
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from ..microprojects.deps import get_microproject, require_role
+from ..microprojects.deps import require_role
 from ..microprojects.service import Microproject
 from . import service
 from .schemas import AnnotationsRequest, EvidenceInput
 
 router = APIRouter(prefix="/api/microprojects/{microproject_slug}/experiments/{experiment_id}/evidence", tags=["evidence"])
-
-
-def _member(min_role: str):
-    """:func:`require_role` pour une route dont le paramètre de chemin est ``{microproject_slug}``.
-    Transitoire : à remplacer par ``Depends(require_role(...))`` quand ``microprojects.deps`` lira
-    ce paramètre (il lit encore ``{slug}``)."""
-    check = require_role(min_role)
-
-    def dependency(microproject_slug: str, user: User = Depends(current_user)) -> Microproject:
-        return check(user=user, microproject=get_microproject(microproject_slug))
-
-    return dependency
 
 
 def _tag(response: Response, version: follow.Experiment) -> None:
@@ -39,7 +27,7 @@ def _tag(response: Response, version: follow.Experiment) -> None:
 
 @router.get("")
 def list_evidence(
-    experiment_id: str, response: Response, version: str | None = None, microproject: Microproject = Depends(_member("viewer"))
+    experiment_id: str, response: Response, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
 ) -> list[dict]:
     """Les preuves de la piste (de sa version ``version``), avec leurs liens, leurs images et leurs
     annotations."""
@@ -54,7 +42,7 @@ def add_evidence(
     body: EvidenceInput,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     """Ajoute une preuve (liens, mesure, images téléversées d'abord) : une nouvelle version de la
@@ -67,7 +55,7 @@ def add_evidence(
 
 @router.get("/{evidence_id}")
 def get_evidence(
-    experiment_id: str, evidence_id: str, response: Response, version: str | None = None, microproject: Microproject = Depends(_member("viewer"))
+    experiment_id: str, evidence_id: str, response: Response, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
 ) -> dict:
     read, evidence = service.get_evidence(microproject.slug, experiment_id, evidence_id, version)
     _tag(response, read)
@@ -81,7 +69,7 @@ def replace_annotations(
     body: AnnotationsRequest,
     response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(_member("editor")),
+    microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
     """Remplace les annotations (flèches, cadres) des images d'une preuve - renvoie la preuve."""

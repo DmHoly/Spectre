@@ -7,7 +7,7 @@ route body ever runs.
 
 from __future__ import annotations
 
-from fastapi import Depends, Request
+from fastapi import Depends
 
 from ...kernel.errors import Forbidden
 from ..accounts.deps import current_user
@@ -20,13 +20,6 @@ def get_microproject(microproject_slug: str) -> Microproject:
     return get_by_slug(microproject_slug)
 
 
-def _microproject_of_path(request: Request) -> Microproject:
-    # Transitoire : les routes de la vague 3 encore sous /api/microprojets/{slug} (evidence,
-    # notebook, external_images, wafers) nomment ce paramètre ``slug``.
-    params = request.path_params
-    return get_microproject(params["microproject_slug"] if "microproject_slug" in params else params["slug"])
-
-
 def require_role(min_role: str):
     """A FastAPI dependency: 403s unless the current user's role in the microproject of the path
     is at least ``min_role`` (``viewer`` < ``editor`` < ``owner``). Returns the resolved
@@ -37,7 +30,7 @@ def require_role(min_role: str):
     telling it which slugs exist.
     """
 
-    def dependency(user: User = Depends(current_user), microproject: Microproject = Depends(_microproject_of_path)) -> Microproject:
+    def dependency(user: User = Depends(current_user), microproject: Microproject = Depends(get_microproject)) -> Microproject:
         role = role_for(microproject.id, user.id)
         if role is None or ROLE_ORDER[role] < ROLE_ORDER[min_role]:
             raise Forbidden("vous n'avez pas les droits nécessaires pour cette action")
