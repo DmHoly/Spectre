@@ -1261,3 +1261,10 @@ def refs_graph(microproject: Microproject = Depends(require_role("viewer"))) -> 
     """
     repo = get_repository(microproject.slug)
     return refs.ref_graph(repo)
+
+
+# Les lectures transverses (statistiques et frise, insights_api.py) vivent sous /api, hors du préfixe
+# de ce routeur : include_router le leur ajouterait, leurs routes sont donc reprises telles quelles.
+from .insights_api import router as insights_router  # noqa: E402
+
+router.routes.extend(insights_router.routes)

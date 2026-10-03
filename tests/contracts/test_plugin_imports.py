@@ -5,7 +5,7 @@ en tête de fichier ou dans une fonction (un import paresseux reste une dépenda
 - le noyau n'importe aucun plugin ;
 - un plugin n'importe que les plugins de son ``depends_on`` (et ceux dont ils dépendent) ;
 - un plugin n'importe jamais le module ``api`` d'un autre ;
-- le domaine d'un plugin (tout module autre que ``api``, ``deps`` et ``schemas``) n'importe pas FastAPI.
+- le domaine d'un plugin (tout module autre que ``api``, ``*_api``, ``deps`` et ``schemas``) n'importe pas FastAPI.
 
 Les exceptions encore permises sont listées ici, chacune avec ce qui la fera disparaître ; une entrée
 qui ne correspond plus à aucun import fait échouer le test.
@@ -19,6 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SCANNED = (ROOT / "spectre" / "kernel", ROOT / "spectre" / "plugins")
 HTTP_MODULES = {"api", "deps", "schemas"}
+# Un second routeur d'un plugin, inclus par son api.py (experiments/insights_api.py) : HTTP lui aussi.
+HTTP_MODULE_SUFFIX = "_api"
 
 # La racine de composition : create_app() lit la liste des plugins quand on ne lui en passe pas.
 KERNEL_COMPOSITION_ROOT = ("spectre.kernel.app", "spectre.plugins")
@@ -36,11 +38,6 @@ ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {
     ("spectre.plugins.library.service", "spectre.plugins.process_library.tech_bricks"): (
         "registre LibraryFile : process_library déclare ses fichiers presets.yml et briques.yml"
     ),
-    ("spectre.plugins.areas.api", "spectre.plugins.microprojects.service"): (
-        "GET /api/experiment-stats (agrégats par µprojet) et PATCH /api/microprojects/{mp} (rattachement)"
-    ),
-    ("spectre.plugins.areas.api", "spectre.plugins.experiments.repository"): "GET /api/experiment-stats?area=",
-    ("spectre.plugins.areas.api", "spectre.plugins.experiments.lineage"): "GET /api/experiment-timeline?area=&thematic=",
     ("spectre.plugins.microprojects.api", "spectre.plugins.experiments.repository"): "GET /api/experiment-stats?microproject=",
     ("spectre.plugins.microprojects.api", "spectre.plugins.wafers.fdl"): "GET /api/wafers?fdl=",
     ("spectre.plugins.microprojects.api", "spectre.plugins.wafers.service"): "GET /api/wafers?fdl=",
@@ -51,9 +48,6 @@ ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {
         "GET /api/microprojects/{mp}/lineage sans badge de lot : le front compose les badges via lotsApi"
     ),
     ("spectre.plugins.wafers.api", "spectre.plugins.lots.service"): "GET /api/wafers/{wafer_key} sans les lots : le front appelle GET /api/lots?wafer=",
-    ("spectre.plugins.kpis.service", "spectre.plugins.kpis_demo.service"): (
-        "GET /api/areas/{area_slug}/kpis/{kpi_key} : kpis_demo enregistre lui-même son KPI (kpis.register)"
-    ),
 }
 
 # Modules du domaine qui lèvent encore HTTPException -> ce qui la remplacera.
@@ -170,7 +164,10 @@ def test_the_domain_of_a_plugin_does_not_know_http():
     importing = {
         module
         for module, target in _graph()
-        if _plugin_of(module) and module.rsplit(".", 1)[-1] not in HTTP_MODULES and target.split(".")[0] in ("fastapi", "starlette")
+        if _plugin_of(module)
+        and module.rsplit(".", 1)[-1] not in HTTP_MODULES
+        and not module.endswith(HTTP_MODULE_SUFFIX)
+        and target.split(".")[0] in ("fastapi", "starlette")
     }
     unexpected = sorted(importing - ALLOWED_FASTAPI.keys())
     stale = sorted(ALLOWED_FASTAPI.keys() - importing)

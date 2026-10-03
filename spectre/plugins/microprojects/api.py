@@ -33,6 +33,13 @@ class CreateMicroprojectRequest(BaseModel):
     thematique_slug: str | None = None  # one of that project's thématiques (optional)
 
 
+class MicroprojectPatch(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    area: str | None = None  # slug du projet corporate
+    thematic: str | None = None  # slug d'une thématique de ce projet ; null : sans thématique
+
+
 class AddMemberRequest(BaseModel):
     email: str
     role: str
@@ -165,6 +172,13 @@ def find_by_code(code: str, user: User = Depends(current_user)) -> dict:
 def get_microproject(microproject: Microproject = Depends(require_role("viewer")), user: User = Depends(current_user)) -> dict:
     role = microprojects.role_for(microproject.id, user.id)
     return _microproject_payload(microproject, role)
+
+
+@router.patch("/microprojects/{microproject_slug}")
+def update_microproject(microproject_slug: str, body: MicroprojectPatch, user: User = Depends(current_user)) -> dict:
+    """Rename it, or move it to another project / thématique - its owners and the admins."""
+    microproject = microprojects.update(microproject_slug, user, body.model_dump(exclude_unset=True))
+    return _microproject_payload(microproject, microprojects.role_for(microproject.id, user.id))
 
 
 @router.get("/microprojets/{slug}/members")

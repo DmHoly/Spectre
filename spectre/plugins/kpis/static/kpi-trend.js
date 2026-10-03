@@ -3,7 +3,7 @@
    Usage (dépend de d3 et de kernel/static/ui.js pour escapeHtml) :
 
      KpiTrendBlock.mount(document.getElementById("trends"), {
-       loadKpis: () => kpisApi.list("native-pt2"),                 // -> { kpis: [{key, label, status, variants...}] }
+       loadKpis: () => kpisApi.list("native-pt2"),                 // -> [{key, label, status, variants...}]
        loadSeries: (key, months, variant) => kpisApi.series("native-pt2", key, months, variant),
        ranges: [6, 12, 24],       // boutons de période, en mois
        defaultRange: 12,
@@ -21,7 +21,7 @@
    « données fictives ». Un KPI à `variants` (ex : expériences en cours / wafers engagés) affiche
    une bascule au-dessus de la courbe. Un point porteur d'une étude (`study`, `label`) est marqué
    d'un jalon cliquable (et listé sous la courbe) qui appelle `onPointClick`. Voir
-   spectre/core/trends.py pour ajouter un KPI côté serveur. */
+   spectre/plugins/kpis/service.py pour ajouter un KPI côté serveur. */
 
 (function () {
   const MONTHS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
@@ -477,7 +477,7 @@
 
     (async () => {
       try {
-        state.kpis = opts.kpis || (await opts.loadKpis()).kpis;
+        state.kpis = opts.kpis || (await opts.loadKpis());
       } catch (err) {
         panel.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div>`;
         return;

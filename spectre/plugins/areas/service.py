@@ -10,6 +10,13 @@ Thin data-access over the ``management_areas`` / ``thematics`` / ``area_objectiv
 :mod:`spectre.plugins.microprojects.service` but simpler: none of these has a Follow repo or on-disk home of
 its own, and access is company-wide (every signed-in user sees everything; only an admin,
 ``users.is_admin``, writes).
+
+« Non classé » is the **system** area (:attr:`ManagementArea.is_system`): it holds the µprojets not
+sorted yet, so it can't be deleted, numbers nothing and takes neither thématique nor objective.
+
+The ``microprojects`` table belongs to the plugin above this one: only the SQL below touches it -
+to send the µprojets of a deleted area or thématique back where they belong, and to name the µprojet
+that validated an objective.
 """
 
 from __future__ import annotations
@@ -20,21 +27,27 @@ import unicodedata
 from dataclasses import dataclass
 
 from ...kernel.db import get_conn
+from ...kernel.errors import Conflict, InvalidInput, NotFound
 
 DEFAULT_OBJECTIVES_PERIOD = "6 prochains mois"
+DEFAULT_HORIZON_MONTHS = 6
 UNCLASSIFIED_AREA_SLUG = "non-classe"
 
 
-class ManagementAreaNotFoundError(Exception):
+class ManagementAreaNotFoundError(NotFound):
     pass
 
 
-class ThematicNotFoundError(Exception):
+class ThematicNotFoundError(NotFound):
     pass
 
 
-class ObjectiveNotFoundError(Exception):
+class ObjectiveNotFoundError(NotFound):
     pass
+
+
+# « 6 prochains mois », « 12 mois », « 3 derniers mois » -> the number of months
+_HORIZON_RE = re.compile(r"(\d+)\s*(?:derniers?\s+|prochains?\s+)?mois", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -47,6 +60,18 @@ class ManagementArea:
     created_by: int | None
     objectives_period: str = DEFAULT_OBJECTIVES_PERIOD
     code_prefix: str = ""  # « Nat » -> its µprojets are Nat_0001, Nat_0002... ('' = not numbered)
+
+    @property
+    def is_system(self) -> bool:
+        """« Non classé »: where µprojets wait to be sorted - see the module docstring."""
+        return self.slug == UNCLASSIFIED_AREA_SLUG
+
+    @property
+    def horizon_months(self) -> int:
+        """How far the objectives look ahead, in months (1 to 24), read from ``objectives_period``
+        (« 6 prochains mois » -> 6); 6 when the period names no month count (« S1 2027 »)."""
+        match = _HORIZON_RE.search(self.objectives_period or "")
+        return min(24, max(1, int(match.group(1)))) if match else DEFAULT_HORIZON_MONTHS
 
 
 @dataclass(frozen=True)
@@ -69,7 +94,7 @@ class Objective:
     position: int  # orders objectives without a weight (0 = most important)
     weight: float | None = None  # a figure (0-100 %) used for the team's bonus - recorded, shown, ranked by; nothing computed from it
     achieved: bool = False
-    validated_by: int | None = None  # id of the µprojet that validated it
+    validated_by: dict | None = None  # the µprojet that validated it: {"slug", "code", "name"}
 
 
 def _from_row(row: sqlite3.Row) -> ManagementArea:
@@ -89,7 +114,22 @@ def _thematic_from_row(row: sqlite3.Row) -> Thematic:
     return Thematic(row["id"], row["management_area_id"], row["slug"], row["name"], row["description"], row["position"])
 
 
+# An objective with the µprojet that validated it, numbered the way the microprojects plugin numbers
+# them (« Nat_0004 », see spectre.plugins.microprojects.service.format_code).
+_OBJECTIVE_SELECT = (
+    "SELECT area_objectives.*, microprojects.slug AS validator_slug, microprojects.name AS validator_name, "
+    "CASE WHEN microprojects.code_number IS NOT NULL AND microprojects.code_prefix != '' "
+    "THEN printf('%s_%04d', microprojects.code_prefix, microprojects.code_number) END AS validator_code "
+    "FROM area_objectives LEFT JOIN microprojects ON microprojects.id = area_objectives.validated_by_microproject_id"
+)
+
+
 def _objective_from_row(row: sqlite3.Row) -> Objective:
+    validator = (
+        {"slug": row["validator_slug"], "code": row["validator_code"], "name": row["validator_name"]}
+        if row["validator_slug"]
+        else None
+    )
     return Objective(
         row["id"],
         row["management_area_id"],
@@ -99,7 +139,7 @@ def _objective_from_row(row: sqlite3.Row) -> Objective:
         row["position"],
         row["weight"],
         bool(row["achieved"]),
-        row["validated_by_microproject_id"],
+        validator,
     )
 
 
@@ -107,16 +147,17 @@ def _check_weight(weight: float | None) -> float | None:
     if weight is None:
         return None
     if not 0 <= weight <= 100:
-        raise ValueError("le pourcentage doit être compris entre 0 et 100 %")
+        raise InvalidInput("le pourcentage doit être compris entre 0 et 100 %")
     return round(float(weight), 2)
 
 
-def _check_validated_by(conn: sqlite3.Connection, microproject_id: int | None) -> int | None:
-    if microproject_id is None:
+def _validator_id(conn: sqlite3.Connection, microproject_slug: str | None) -> int | None:
+    if not microproject_slug:
         return None
-    if conn.execute("SELECT 1 FROM microprojects WHERE id = ?", (microproject_id,)).fetchone() is None:
-        raise ValueError("µprojet validant introuvable")
-    return microproject_id
+    row = conn.execute("SELECT id FROM microprojects WHERE slug = ?", (microproject_slug,)).fetchone()
+    if row is None:
+        raise InvalidInput(f"µprojet validant {microproject_slug!r} introuvable")
+    return row["id"]
 
 
 _PREFIX_RE = re.compile(r"[A-Za-z]{2,5}")
@@ -141,13 +182,20 @@ def derive_code_prefix(name: str, taken: set[str]) -> str:
 def _check_prefix(conn: sqlite3.Connection, prefix: str, area_id: int | None) -> str:
     prefix = prefix.strip()
     if not _PREFIX_RE.fullmatch(prefix):
-        raise ValueError("le préfixe des numéros de µprojet doit faire 2 à 5 lettres (ex : Nat)")
+        raise InvalidInput("le préfixe des numéros de µprojet doit faire 2 à 5 lettres (ex : Nat)")
     clash = conn.execute(
         "SELECT name FROM management_areas WHERE lower(code_prefix) = lower(?) AND id != ?", (prefix, area_id or -1)
     ).fetchone()
     if clash:
-        raise ValueError(f"le préfixe « {prefix} » est déjà celui du projet « {clash['name']} »")
+        raise Conflict(f"le préfixe « {prefix} » est déjà celui du projet « {clash['name']} »")
     return prefix
+
+
+def _required(value: str, message: str) -> str:
+    value = value.strip()
+    if not value:
+        raise InvalidInput(message)
+    return value
 
 
 def slugify(name: str) -> str:
@@ -183,7 +231,7 @@ def get_by_slug(slug: str) -> ManagementArea:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM management_areas WHERE slug = ?", (slug,)).fetchone()
     if row is None:
-        raise ManagementAreaNotFoundError(slug)
+        raise ManagementAreaNotFoundError(f"projet {slug!r} introuvable")
     return _from_row(row)
 
 
@@ -191,21 +239,15 @@ def get_by_id(area_id: int) -> ManagementArea:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM management_areas WHERE id = ?", (area_id,)).fetchone()
     if row is None:
-        raise ManagementAreaNotFoundError(str(area_id))
+        raise ManagementAreaNotFoundError(f"projet n° {area_id} introuvable")
     return _from_row(row)
-
-
-def unclassified() -> ManagementArea:
-    return get_by_slug(UNCLASSIFIED_AREA_SLUG)
 
 
 def create(
     name: str, description: str = "", strategy: str = "", *, created_by: int, code_prefix: str | None = None
 ) -> ManagementArea:
     """``code_prefix`` numbers its µprojets (« Nat » -> Nat_0001...); derived from the name when omitted."""
-    name = name.strip()
-    if not name:
-        raise ValueError("le nom du projet est obligatoire")
+    name = _required(name, "le nom du projet est obligatoire")
     with get_conn() as conn:
         if code_prefix:
             prefix = _check_prefix(conn, code_prefix, None)
@@ -220,68 +262,60 @@ def create(
     return get_by_slug(slug)
 
 
-def update(
-    area_id: int,
-    *,
-    name: str,
-    description: str,
-    strategy: str,
-    objectives_period: str | None = None,
-    code_prefix: str | None = None,
-) -> ManagementArea:
-    """A new ``code_prefix`` only applies to µprojets numbered from now on - existing numbers never change."""
-    name = name.strip()
-    if not name:
-        raise ValueError("le nom du projet est obligatoire")
+def update(area: ManagementArea, **changes: str | None) -> ManagementArea:
+    """Only the fields given change (``name``, ``description``, ``strategy``, ``objectives_period``,
+    ``code_prefix``). A new ``code_prefix`` only applies to µprojets numbered from now on - existing
+    numbers never change; the system area numbers nothing."""
+    columns: dict[str, str] = {}
+    if changes.get("name") is not None:
+        columns["name"] = _required(changes["name"], "le nom du projet est obligatoire")
+    for key in ("description", "strategy"):
+        if changes.get(key) is not None:
+            columns[key] = changes[key].strip()
+    if changes.get("objectives_period") is not None:
+        columns["objectives_period"] = changes["objectives_period"].strip() or DEFAULT_OBJECTIVES_PERIOD
     with get_conn() as conn:
-        row = conn.execute("SELECT slug FROM management_areas WHERE id = ?", (area_id,)).fetchone()
-        if row is None:
-            raise ManagementAreaNotFoundError(str(area_id))
-        conn.execute(
-            "UPDATE management_areas SET name = ?, description = ?, strategy = ? WHERE id = ?",
-            (name, description.strip(), strategy.strip(), area_id),
-        )
-        if code_prefix is not None and row["slug"] != UNCLASSIFIED_AREA_SLUG:
-            conn.execute(
-                "UPDATE management_areas SET code_prefix = ? WHERE id = ?", (_check_prefix(conn, code_prefix, area_id), area_id)
-            )
-        if objectives_period is not None:
-            conn.execute(
-                "UPDATE management_areas SET objectives_period = ? WHERE id = ?",
-                (objectives_period.strip() or DEFAULT_OBJECTIVES_PERIOD, area_id),
-            )
-    return get_by_id(area_id)
+        if changes.get("code_prefix") is not None:
+            if area.is_system:
+                raise Conflict(f"« {area.name} » ne numérote pas ses µprojets : il n'a pas de préfixe")
+            columns["code_prefix"] = _check_prefix(conn, changes["code_prefix"], area.id)
+        if columns:
+            assignments = ", ".join(f"{column} = ?" for column in columns)
+            conn.execute(f"UPDATE management_areas SET {assignments} WHERE id = ?", (*columns.values(), area.id))
+    return get_by_id(area.id)
 
 
-def delete(area_id: int) -> None:
-    """Remove an area; its µprojets fall back to « Non classé » (without thématique) rather than
-    being deleted, its thématiques and objectives go with it. The catch-all area itself cannot be
-    removed.
-    """
+def delete(area: ManagementArea) -> None:
+    """Remove an area; its µprojets fall back to the system area (without thématique) rather than
+    being deleted, its thématiques and objectives go with it. The system area itself stays."""
+    if area.is_system:
+        raise Conflict(f"« {area.name} » ne peut pas être supprimé")
     with get_conn() as conn:
-        row = conn.execute("SELECT slug FROM management_areas WHERE id = ?", (area_id,)).fetchone()
-        if row is None:
-            raise ManagementAreaNotFoundError(str(area_id))
-        if row["slug"] == UNCLASSIFIED_AREA_SLUG:
-            raise ValueError("« Non classé » ne peut pas être supprimé")
-        fallback = conn.execute(
-            "SELECT id FROM management_areas WHERE slug = ?", (UNCLASSIFIED_AREA_SLUG,)
-        ).fetchone()["id"]
+        fallback = conn.execute("SELECT id FROM management_areas WHERE slug = ?", (UNCLASSIFIED_AREA_SLUG,)).fetchone()["id"]
         conn.execute(
             "UPDATE microprojects SET management_area_id = ?, thematic_id = NULL WHERE management_area_id = ?",
-            (fallback, area_id),
+            (fallback, area.id),
         )
-        conn.execute("DELETE FROM management_areas WHERE id = ?", (area_id,))
+        conn.execute("DELETE FROM management_areas WHERE id = ?", (area.id,))
+
+
+def _refuse_on_system_area(area: ManagementArea, what: str) -> None:
+    if area.is_system:
+        raise Conflict(f"« {area.name} » ne porte pas de {what} : rattachez d'abord ses µprojets à un projet")
 
 
 # --- thematics --------------------------------------------------------------------------------
 
 
-def list_thematics(area_id: int) -> list[Thematic]:
+def list_thematics(area_id: int | None = None) -> list[Thematic]:
+    """The thématiques of one area, or of every area (``None``) - area by area, each in its order."""
     with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM thematics WHERE management_area_id = ? ORDER BY position, id", (area_id,)
-        ).fetchall()
+        if area_id is None:
+            rows = conn.execute("SELECT * FROM thematics ORDER BY management_area_id, position, id").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM thematics WHERE management_area_id = ? ORDER BY position, id", (area_id,)
+            ).fetchall()
     return [_thematic_from_row(row) for row in rows]
 
 
@@ -291,7 +325,7 @@ def get_thematic(area_id: int, slug: str) -> Thematic:
             "SELECT * FROM thematics WHERE management_area_id = ? AND slug = ?", (area_id, slug)
         ).fetchone()
     if row is None:
-        raise ThematicNotFoundError(slug)
+        raise ThematicNotFoundError(f"thématique {slug!r} introuvable")
     return _thematic_from_row(row)
 
 
@@ -299,145 +333,129 @@ def get_thematic_by_id(thematic_id: int) -> Thematic:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM thematics WHERE id = ?", (thematic_id,)).fetchone()
     if row is None:
-        raise ThematicNotFoundError(str(thematic_id))
+        raise ThematicNotFoundError(f"thématique n° {thematic_id} introuvable")
     return _thematic_from_row(row)
 
 
-def create_thematic(area_id: int, name: str, description: str = "", *, created_by: int) -> Thematic:
-    name = name.strip()
-    if not name:
-        raise ValueError("le nom de la thématique est obligatoire")
+def create_thematic(area: ManagementArea, name: str, description: str = "", *, created_by: int) -> Thematic:
+    _refuse_on_system_area(area, "thématique")
+    name = _required(name, "le nom de la thématique est obligatoire")
     with get_conn() as conn:
         base = _slugify(name, "thematique")
         slug, suffix = base, 2
         while conn.execute(
-            "SELECT 1 FROM thematics WHERE management_area_id = ? AND slug = ?", (area_id, slug)
+            "SELECT 1 FROM thematics WHERE management_area_id = ? AND slug = ?", (area.id, slug)
         ).fetchone():
             slug = f"{base}-{suffix}"
             suffix += 1
         position = conn.execute(
-            "SELECT COALESCE(MAX(position) + 1, 0) AS p FROM thematics WHERE management_area_id = ?", (area_id,)
+            "SELECT COALESCE(MAX(position) + 1, 0) AS p FROM thematics WHERE management_area_id = ?", (area.id,)
         ).fetchone()["p"]
         cursor = conn.execute(
             "INSERT INTO thematics (management_area_id, slug, name, description, position, created_by) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (area_id, slug, name, description.strip(), position, created_by),
+            (area.id, slug, name, description.strip(), position, created_by),
         )
-        return Thematic(cursor.lastrowid, area_id, slug, name, description.strip(), position)
+        return Thematic(cursor.lastrowid, area.id, slug, name, description.strip(), position)
 
 
-def update_thematic(thematic_id: int, *, name: str, description: str) -> Thematic:
-    name = name.strip()
-    if not name:
-        raise ValueError("le nom de la thématique est obligatoire")
-    with get_conn() as conn:
-        conn.execute(
-            "UPDATE thematics SET name = ?, description = ? WHERE id = ?", (name, description.strip(), thematic_id)
-        )
-    return get_thematic_by_id(thematic_id)
+def update_thematic(thematic: Thematic, *, name: str | None = None, description: str | None = None) -> Thematic:
+    """Only the fields given change; the slug stays (links to the thématique keep working)."""
+    columns: dict[str, str] = {}
+    if name is not None:
+        columns["name"] = _required(name, "le nom de la thématique est obligatoire")
+    if description is not None:
+        columns["description"] = description.strip()
+    if columns:
+        assignments = ", ".join(f"{column} = ?" for column in columns)
+        with get_conn() as conn:
+            conn.execute(f"UPDATE thematics SET {assignments} WHERE id = ?", (*columns.values(), thematic.id))
+    return get_thematic_by_id(thematic.id)
 
 
-def delete_thematic(thematic_id: int) -> None:
+def delete_thematic(thematic: Thematic) -> None:
     """Its µprojets stay in the project, just without a thématique."""
     with get_conn() as conn:
-        conn.execute("UPDATE microprojects SET thematic_id = NULL WHERE thematic_id = ?", (thematic_id,))
-        conn.execute("DELETE FROM thematics WHERE id = ?", (thematic_id,))
+        conn.execute("UPDATE microprojects SET thematic_id = NULL WHERE thematic_id = ?", (thematic.id,))
+        conn.execute("DELETE FROM thematics WHERE id = ?", (thematic.id,))
 
 
 # --- objectives -------------------------------------------------------------------------------
 
 
 def list_objectives(area_id: int) -> list[Objective]:
-    """Heaviest share of the effort first; objectives without a weight after, in their own order."""
+    """Heaviest share of the effort first; objectives without a weight after, in creation order."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM area_objectives WHERE management_area_id = ? "
-            "ORDER BY weight IS NULL, weight DESC, position, id",
+            f"{_OBJECTIVE_SELECT} WHERE area_objectives.management_area_id = ? "
+            "ORDER BY area_objectives.weight IS NULL, area_objectives.weight DESC, area_objectives.position, area_objectives.id",
             (area_id,),
         ).fetchall()
     return [_objective_from_row(row) for row in rows]
 
 
-def _objective_row(conn: sqlite3.Connection, area_id: int, objective_id: int) -> sqlite3.Row:
+def _objective(conn: sqlite3.Connection, area_id: int, objective_id: int) -> Objective:
     row = conn.execute(
-        "SELECT * FROM area_objectives WHERE id = ? AND management_area_id = ?", (objective_id, area_id)
+        f"{_OBJECTIVE_SELECT} WHERE area_objectives.id = ? AND area_objectives.management_area_id = ?", (objective_id, area_id)
     ).fetchone()
     if row is None:
-        raise ObjectiveNotFoundError(str(objective_id))
-    return row
+        raise ObjectiveNotFoundError(f"objectif n° {objective_id} introuvable")
+    return _objective_from_row(row)
 
 
 def create_objective(
-    area_id: int,
+    area: ManagementArea,
     title: str,
     detail: str = "",
     target: str = "",
     *,
     weight: float | None = None,
     achieved: bool = False,
-    validated_by: int | None = None,
+    validated_by: str | None = None,
     created_by: int,
 ) -> Objective:
-    """Ranked by ``weight`` (the bonus figure); without one, appended last among the unweighted
-    objectives - :func:`reorder_objectives` orders those."""
-    title = title.strip()
-    if not title:
-        raise ValueError("l'intitulé de l'objectif est obligatoire")
+    """Ranked by ``weight`` (the bonus figure); without one, after the weighted objectives, in
+    creation order. ``validated_by`` is the slug of the µprojet that validated it."""
+    _refuse_on_system_area(area, "objectif")
+    title = _required(title, "l'intitulé de l'objectif est obligatoire")
     weight = _check_weight(weight)
     with get_conn() as conn:
-        validated_by = _check_validated_by(conn, validated_by)
+        validator_id = _validator_id(conn, validated_by)
         position = conn.execute(
-            "SELECT COALESCE(MAX(position) + 1, 0) AS p FROM area_objectives WHERE management_area_id = ?", (area_id,)
+            "SELECT COALESCE(MAX(position) + 1, 0) AS p FROM area_objectives WHERE management_area_id = ?", (area.id,)
         ).fetchone()["p"]
         cursor = conn.execute(
             "INSERT INTO area_objectives (management_area_id, title, detail, target, weight, achieved, "
             "validated_by_microproject_id, position, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (area_id, title, detail.strip(), target.strip(), weight, int(achieved), validated_by, position, created_by),
+            (area.id, title, detail.strip(), target.strip(), weight, int(achieved), validator_id, position, created_by),
         )
-        return _objective_from_row(_objective_row(conn, area_id, cursor.lastrowid))
+        return _objective(conn, area.id, cursor.lastrowid)
 
 
-def update_objective(
-    area_id: int,
-    objective_id: int,
-    *,
-    title: str,
-    detail: str,
-    target: str,
-    weight: float | None = None,
-    achieved: bool = False,
-    validated_by: int | None = None,
-) -> Objective:
-    title = title.strip()
-    if not title:
-        raise ValueError("l'intitulé de l'objectif est obligatoire")
-    weight = _check_weight(weight)
+def update_objective(area: ManagementArea, objective_id: int, **changes) -> Objective:
+    """Only the fields given change (``title``, ``detail``, ``target``, ``weight``, ``achieved``,
+    ``validated_by``); ``weight`` and ``validated_by`` may be set back to ``None``."""
+    columns: dict[str, object] = {}
+    if changes.get("title") is not None:
+        columns["title"] = _required(changes["title"], "l'intitulé de l'objectif est obligatoire")
+    for key in ("detail", "target"):
+        if changes.get(key) is not None:
+            columns[key] = changes[key].strip()
+    if "weight" in changes:
+        columns["weight"] = _check_weight(changes["weight"])
+    if changes.get("achieved") is not None:
+        columns["achieved"] = int(changes["achieved"])
     with get_conn() as conn:
-        _objective_row(conn, area_id, objective_id)
-        validated_by = _check_validated_by(conn, validated_by)
-        conn.execute(
-            "UPDATE area_objectives SET title = ?, detail = ?, target = ?, weight = ?, achieved = ?, "
-            "validated_by_microproject_id = ? WHERE id = ?",
-            (title, detail.strip(), target.strip(), weight, int(achieved), validated_by, objective_id),
-        )
-        return _objective_from_row(_objective_row(conn, area_id, objective_id))
+        _objective(conn, area.id, objective_id)
+        if "validated_by" in changes:
+            columns["validated_by_microproject_id"] = _validator_id(conn, changes["validated_by"])
+        if columns:
+            assignments = ", ".join(f"{column} = ?" for column in columns)
+            conn.execute(f"UPDATE area_objectives SET {assignments} WHERE id = ?", (*columns.values(), objective_id))
+        return _objective(conn, area.id, objective_id)
 
 
-def delete_objective(area_id: int, objective_id: int) -> None:
+def delete_objective(area: ManagementArea, objective_id: int) -> None:
     with get_conn() as conn:
-        _objective_row(conn, area_id, objective_id)
+        _objective(conn, area.id, objective_id)
         conn.execute("DELETE FROM area_objectives WHERE id = ?", (objective_id,))
-
-
-def reorder_objectives(area_id: int, ordered_ids: list[int]) -> list[Objective]:
-    """``ordered_ids`` is the new ranking, most important first; it must list exactly this
-    project's objectives, each once."""
-    with get_conn() as conn:
-        existing = {
-            row["id"] for row in conn.execute("SELECT id FROM area_objectives WHERE management_area_id = ?", (area_id,))
-        }
-        if len(ordered_ids) != len(existing) or set(ordered_ids) != existing:
-            raise ValueError("l'ordre doit lister exactement les objectifs du projet")
-        for position, objective_id in enumerate(ordered_ids):
-            conn.execute("UPDATE area_objectives SET position = ? WHERE id = ?", (position, objective_id))
-    return list_objectives(area_id)

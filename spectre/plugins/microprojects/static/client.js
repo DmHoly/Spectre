@@ -19,6 +19,10 @@ const microprojectsApi = {
   get(microprojectSlug) {
     return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}`);
   },
+  // renommer, ou déplacer dans un autre projet / une autre thématique : {name, description, area, thematic}
+  update(microprojectSlug, body) {
+    return api.patch(`/api/microprojects/${encodeURIComponent(microprojectSlug)}`, body);
+  },
   remove(microprojectSlug, confirmName) {
     return api.del(api.withQuery(`/api/microprojets/${encodeURIComponent(microprojectSlug)}`, { confirm_name: confirmName }));
   },

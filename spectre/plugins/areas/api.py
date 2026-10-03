@@ -1,104 +1,57 @@
-"""The strategy layer: corporate projects (management areas), their thématiques and ranked
-objectives, and the company-wide overview built on them. Unlike every ``/api/microprojets/{slug}``
-router, these routes are not microproject-scoped - every signed-in user reads them; only an admin
-(:func:`spectre.plugins.accounts.deps.require_admin`) writes.
+"""The strategy layer over HTTP: corporate projects (``/api/areas``), their thématiques and their
+ranked objectives, plus the flat list of every thématique (``/api/thematics``). Every signed-in
+user reads them; only an admin (:func:`spectre.plugins.accounts.deps.require_admin`) writes.
 
-The overview counts each µprojet's experiments and wafers, and the thématique page lays out their
-lineage on a time axis: data of plugins listed above this one (microprojects, experiments), read
-through imports inside the functions that need them.
+What the µprojets of a project are doing (their counts, the thématique's frise) is read from the
+experiments plugin (``GET /api/experiment-stats``, ``GET /api/experiment-timeline``), and a µprojet
+moves between projects by ``PATCH /api/microprojects/{microproject_slug}``: this plugin, listed
+below both, knows nothing of them.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Response
 
 from ..accounts.deps import current_user, require_admin
 from ..accounts.service import User
-from . import service as management
-from .service import ManagementArea, ManagementAreaNotFoundError, ObjectiveNotFoundError, ThematicNotFoundError
+from . import service as areas
+from .schemas import AreaCreate, AreaPatch, ObjectiveCreate, ObjectivePatch, ThematicCreate, ThematicPatch
+from .service import ManagementArea, Objective, Thematic
 
-router = APIRouter(prefix="/api/management", tags=["management"])
-
-_STAT_KEYS = ("experiences", "running", "concluded", "wafers")
-
-
-class AreaRequest(BaseModel):
-    name: str
-    description: str = ""
-    strategy: str = ""
-    objectives_period: str | None = None  # left untouched when omitted
-    code_prefix: str | None = None  # prefix of its µprojets' numbers (« Nat »); left untouched / derived when omitted
+router = APIRouter(prefix="/api", tags=["areas"])
 
 
-class AssignRequest(BaseModel):
-    microproject_slug: str
-    thematique_slug: str | None = None  # None = in the project, without thématique
+def _area_ref(area: ManagementArea) -> dict:
+    return {"slug": area.slug, "name": area.name}
 
 
-class ThematicRequest(BaseModel):
-    name: str
-    description: str = ""
+def _area_payload(area: ManagementArea) -> dict:
+    return {
+        "id": area.id,
+        "slug": area.slug,
+        "name": area.name,
+        "description": area.description,
+        "strategy": area.strategy,
+        "objectives_period": area.objectives_period,
+        "horizon_months": area.horizon_months,
+        "code_prefix": area.code_prefix,
+        "is_system": area.is_system,
+        "can_delete": not area.is_system,
+    }
 
 
-class ObjectiveRequest(BaseModel):
-    title: str
-    detail: str = ""
-    target: str = ""
-    weight: float | None = None  # bonus figure, 0-100 %; None = not set
-    achieved: bool = False
-    validated_by: str | None = None  # slug of the µprojet that validated it
+def _thematic_payload(thematic: Thematic, area: ManagementArea) -> dict:
+    return {
+        "id": thematic.id,
+        "slug": thematic.slug,
+        "name": thematic.name,
+        "description": thematic.description,
+        "position": thematic.position,
+        "area": _area_ref(area),
+    }
 
 
-class ReorderRequest(BaseModel):
-    ids: list[int]  # most important first
-
-
-def _get_area(slug: str) -> ManagementArea:
-    try:
-        return management.get_by_slug(slug)
-    except ManagementAreaNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"projet {slug!r} introuvable") from exc
-
-
-def _get_thematic(area: ManagementArea, slug: str) -> management.Thematic:
-    try:
-        return management.get_thematic(area.id, slug)
-    except ThematicNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"thématique {slug!r} introuvable") from exc
-
-
-def _wafer_count(slug: str) -> int:
-    """How many real samples this µprojet tracks: one per non-blank ``physical_tracking`` slot on a
-    branch tip (the same "a wafer is a named tracking slot" rule the atlas uses)."""
-    from ..experiments.repository import branch_tips, get_repository
-
-    total = 0
-    for exp in branch_tips(get_repository(slug)):
-        total += sum(1 for e in exp.metadata.get("physical_tracking", []) if e.get("sample_id"))
-    return total
-
-
-def _microproject_stats(slug: str) -> dict:
-    from ..experiments.repository import experiment_counts
-
-    running, concluded = experiment_counts(slug)
-    return {"experiences": running + concluded, "running": running, "concluded": concluded, "wafers": _wafer_count(slug)}
-
-
-def _microproject_ref(microproject_id: int | None) -> dict | None:
-    from ..microprojects import service as microprojects
-
-    if microproject_id is None:
-        return None
-    try:
-        microproject = microprojects.get_by_id(microproject_id)
-    except microprojects.MicroprojectNotFoundError:
-        return None
-    return {"slug": microproject.slug, "code": microproject.code, "name": microproject.name}
-
-
-def _objective_payload(objective: management.Objective) -> dict:
+def _objective_payload(objective: Objective) -> dict:
     return {
         "id": objective.id,
         "title": objective.title,
@@ -106,317 +59,133 @@ def _objective_payload(objective: management.Objective) -> dict:
         "target": objective.target,
         "weight": objective.weight,
         "achieved": objective.achieved,
-        "validated_by": _microproject_ref(objective.validated_by),
+        "validated_by": objective.validated_by,
         "position": objective.position,
     }
 
 
-def _validated_by_id(slug: str | None) -> int | None:
-    from ..microprojects import service as microprojects
-
-    if not slug:
-        return None
-    try:
-        return microprojects.get_by_slug(slug).id
-    except microprojects.MicroprojectNotFoundError as exc:
-        raise HTTPException(status_code=422, detail=f"µprojet {slug!r} introuvable") from exc
-
-
-def _area_payload(area: ManagementArea, *, detailed: bool = False, user: User | None = None) -> dict:
-    """Rolled-up counts for the area; with ``detailed``, also its objectives, its thématiques (each
-    with its own counts) and every µprojet row - what the corporate-project page renders."""
-    from ..microprojects import service as microprojects
-
-    area_microprojects = microprojects.list_by_management_area(area.id)
-    thematics = management.list_thematics(area.id)
-    agg = {"microprojets": len(area_microprojects), "thematiques": len(thematics), **{k: 0 for k in _STAT_KEYS}}
-    per_thematic = {t.id: {"microprojets": 0, **{k: 0 for k in _STAT_KEYS}} for t in thematics}
-    slug_by_thematic = {t.id: t.slug for t in thematics}
-    owners = microprojects.owners_by_microproject([m.id for m in area_microprojects]) if detailed else {}
-    microproject_rows = []
-    for microproject in area_microprojects:
-        stats = _microproject_stats(microproject.slug)
-        for key in _STAT_KEYS:
-            agg[key] += stats[key]
-        bucket = per_thematic.get(microproject.thematic_id)
-        if bucket is not None:
-            bucket["microprojets"] += 1
-            for key in _STAT_KEYS:
-                bucket[key] += stats[key]
-        if detailed:
-            role = microprojects.role_for(microproject.id, user.id) if user else None
-            microproject_rows.append(
-                {
-                    "slug": microproject.slug,
-                    "code": microproject.code,
-                    "name": microproject.name,
-                    "description": microproject.description,
-                    "role": role,
-                    "owners": owners[microproject.id],
-                    "thematique_slug": slug_by_thematic.get(microproject.thematic_id),
-                    **stats,
-                }
-            )
-    payload = {
-        "id": area.id,
-        "slug": area.slug,
-        "name": area.name,
-        "description": area.description,
-        "strategy": area.strategy,
-        "objectives_period": area.objectives_period,
-        "code_prefix": area.code_prefix,
-        "stats": agg,
+def _area_detail(area: ManagementArea) -> dict:
+    """The project page's own data: the project, its thématiques and its objectives."""
+    return {
+        **_area_payload(area),
+        "thematics": [_thematic_payload(t, area) for t in areas.list_thematics(area.id)],
+        "objectives": [_objective_payload(o) for o in areas.list_objectives(area.id)],
     }
-    if detailed:
-        payload["objectifs"] = [_objective_payload(o) for o in management.list_objectives(area.id)]
-        payload["thematiques"] = [
-            {"slug": t.slug, "name": t.name, "description": t.description, "stats": per_thematic[t.id]} for t in thematics
-        ]
-        payload["microprojets"] = microproject_rows
-        if user is not None:
-            payload["is_admin"] = user.is_admin
-    return payload
 
 
-def _detailed(area: ManagementArea, user: User) -> dict:
-    return _area_payload(management.get_by_id(area.id), detailed=True, user=user)
+def _created(response: Response, location: str) -> None:
+    response.headers["Location"] = location
 
 
-@router.get("")
-def list_areas(user: User = Depends(current_user)) -> dict:
-    """Every area with its rolled-up counts - the payload the company-wide dashboard and the
-    project leaderboard are both built from."""
-    areas = [_area_payload(area) for area in management.list_all()]
-    totals = {"themes": len(areas), "microprojets": 0, "thematiques": 0, **{k: 0 for k in _STAT_KEYS}}
-    for area in areas:
-        for key in ("microprojets", "thematiques", *_STAT_KEYS):
-            totals[key] += area["stats"][key]
-    conclusion_rate = round(100 * totals["concluded"] / totals["experiences"]) if totals["experiences"] else 0
-    return {"areas": areas, "totals": {**totals, "conclusion_rate": conclusion_rate}, "is_admin": user.is_admin}
+def _no_content() -> Response:
+    return Response(status_code=204)
 
 
-@router.get("/{slug}")
-def get_area(slug: str, user: User = Depends(current_user)) -> dict:
-    return _area_payload(_get_area(slug), detailed=True, user=user)
+# --- projets corporate -------------------------------------------------------------------------
 
 
-@router.post("", status_code=201)
-def create_area(body: AreaRequest, user: User = Depends(require_admin)) -> dict:
-    try:
-        area = management.create(body.name, body.description, body.strategy, created_by=user.id, code_prefix=body.code_prefix)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _area_payload(area, detailed=True, user=user)
+@router.get("/areas")
+def list_areas(user: User = Depends(current_user)) -> list[dict]:
+    """Every project, the system one (« Non classé ») last."""
+    return [_area_payload(area) for area in areas.list_all()]
 
 
-@router.put("/{slug}")
-def update_area(slug: str, body: AreaRequest, user: User = Depends(require_admin)) -> dict:
-    area = _get_area(slug)
-    try:
-        area = management.update(
-            area.id,
-            name=body.name,
-            description=body.description,
-            strategy=body.strategy,
-            objectives_period=body.objectives_period,
-            code_prefix=body.code_prefix,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _area_payload(area, detailed=True, user=user)
+@router.post("/areas", status_code=201)
+def create_area(body: AreaCreate, response: Response, user: User = Depends(require_admin)) -> dict:
+    area = areas.create(body.name, body.description, body.strategy, created_by=user.id, code_prefix=body.code_prefix)
+    _created(response, f"/api/areas/{area.slug}")
+    return _area_detail(area)
 
 
-@router.delete("/{slug}")
-def delete_area(slug: str, user: User = Depends(require_admin)) -> dict:
-    area = _get_area(slug)
-    try:
-        management.delete(area.id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"deleted": slug}
+@router.get("/areas/{area_slug}")
+def get_area(area_slug: str, user: User = Depends(current_user)) -> dict:
+    return _area_detail(areas.get_by_slug(area_slug))
 
 
-@router.post("/{slug}/microprojets", status_code=200)
-def assign_microproject(slug: str, body: AssignRequest, user: User = Depends(require_admin)) -> dict:
-    """Move a µprojet into this project, and into one of its thématiques (or none)."""
-    from ..microprojects import service as microprojects
+@router.patch("/areas/{area_slug}")
+def update_area(area_slug: str, body: AreaPatch, user: User = Depends(require_admin)) -> dict:
+    area = areas.update(areas.get_by_slug(area_slug), **body.model_dump(exclude_unset=True))
+    return _area_detail(area)
 
-    area = _get_area(slug)
-    thematic_id = _get_thematic(area, body.thematique_slug).id if body.thematique_slug else None
-    try:
-        microproject = microprojects.get_by_slug(body.microproject_slug)
-    except microprojects.MicroprojectNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"µprojet {body.microproject_slug!r} introuvable") from exc
-    microprojects.set_management_area(microproject.id, area.id, thematic_id)
-    return _detailed(area, user)
+
+@router.delete("/areas/{area_slug}", status_code=204)
+def delete_area(area_slug: str, user: User = Depends(require_admin)) -> Response:
+    """Its µprojets go back to the system area; the system area itself can't be deleted (409)."""
+    areas.delete(areas.get_by_slug(area_slug))
+    return _no_content()
 
 
 # --- thématiques ------------------------------------------------------------------------------
 
 
-@router.post("/{slug}/thematiques", status_code=201)
-def create_thematic(slug: str, body: ThematicRequest, user: User = Depends(require_admin)) -> dict:
-    area = _get_area(slug)
-    try:
-        management.create_thematic(area.id, body.name, body.description, created_by=user.id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _detailed(area, user)
+@router.get("/thematics")
+def list_thematics(area: str | None = None, user: User = Depends(current_user)) -> list[dict]:
+    """Every thématique (of one project with ``?area=``), project by project - e.g. to pick those a
+    lot aims at."""
+    if area:
+        project = areas.get_by_slug(area)
+        by_id, thematics = {project.id: project}, areas.list_thematics(project.id)
+    else:
+        by_id, thematics = {project.id: project for project in areas.list_all()}, areas.list_thematics()
+    return [{"id": t.id, "slug": t.slug, "name": t.name, "area": _area_ref(by_id[t.management_area_id])} for t in thematics]
 
 
-def _sqlite_utc_iso(value: str | None) -> str | None:
-    """SQLite's ``datetime('now')`` (« 2026-03-01 09:30:00 », UTC, no zone) as ISO 8601 with its
-    zone, so a browser doesn't read it as local time."""
-    return f"{value.replace(' ', 'T')}Z" if value else None
+@router.post("/areas/{area_slug}/thematics", status_code=201)
+def create_thematic(area_slug: str, body: ThematicCreate, response: Response, user: User = Depends(require_admin)) -> dict:
+    area = areas.get_by_slug(area_slug)
+    thematic = areas.create_thematic(area, body.name, body.description, created_by=user.id)
+    _created(response, f"/api/areas/{area.slug}/thematics/{thematic.slug}")
+    return _thematic_payload(thematic, area)
 
 
-def _frise_node(node: dict, *, member: bool) -> dict:
-    """One experiment of a µprojet on the thématique's frise - its dates and outcome for anyone (the
-    same company-wide visibility as the counts), its id and title only for the µprojet's members."""
-    point = {k: node[k] for k in ("started_at", "ended_at", "continued_at", "status", "decision", "is_merge", "is_tip")}
-    hold = node.get("hold")
-    point["hold"] = {"since": hold["since"]} if hold else None
-    if member:
-        point["id"] = node["id"]
-        point["title"] = node["title"]
-        if hold:
-            point["hold"]["reason"] = hold["reason"]
-    return point
+@router.get("/areas/{area_slug}/thematics/{thematic_slug}")
+def get_thematic(area_slug: str, thematic_slug: str, user: User = Depends(current_user)) -> dict:
+    area = areas.get_by_slug(area_slug)
+    return _thematic_payload(areas.get_thematic(area.id, thematic_slug), area)
 
 
-@router.get("/{slug}/thematiques/{thematique_slug}")
-def get_thematic(slug: str, thematique_slug: str, user: User = Depends(current_user)) -> dict:
-    """The thématique page: its µprojets (owners, counts) and each one's experiments laid out on a
-    time axis (the same nodes as the µprojet's filiation graph, see :func:`lineage_graph`), plus the
-    project's other thématiques to travel to."""
-    from ..experiments.lineage import lineage_graph
-    from ..experiments.repository import get_repository
-    from ..microprojects import service as microprojects
-
-    area = _get_area(slug)
-    thematic = _get_thematic(area, thematique_slug)
-    area_microprojects = microprojects.list_by_management_area(area.id)
-    members = [m for m in area_microprojects if m.thematic_id == thematic.id]
-    members.sort(key=lambda m: m.created_at or "")
-    owners = microprojects.owners_by_microproject([m.id for m in members])
-    agg = {"microprojets": len(members), **{k: 0 for k in _STAT_KEYS}}
-    rows = []
-    for microproject in members:
-        stats = _microproject_stats(microproject.slug)
-        for key in _STAT_KEYS:
-            agg[key] += stats[key]
-        role = microprojects.role_for(microproject.id, user.id)
-        graph = lineage_graph(get_repository(microproject.slug))
-        frise = sorted((_frise_node(n, member=role is not None) for n in graph["nodes"]), key=lambda n: n["started_at"])
-        rows.append(
-            {
-                "slug": microproject.slug,
-                "code": microproject.code,
-                "name": microproject.name,
-                "description": microproject.description,
-                "created_at": _sqlite_utc_iso(microproject.created_at),
-                "role": role,
-                "owners": owners[microproject.id],
-                "frise": frise,
-                **stats,
-            }
-        )
-    count_by_thematic: dict[int, int] = {}
-    for microproject in area_microprojects:
-        if microproject.thematic_id is not None:
-            count_by_thematic[microproject.thematic_id] = count_by_thematic.get(microproject.thematic_id, 0) + 1
-    return {
-        "area": {"slug": area.slug, "name": area.name, "objectives_period": area.objectives_period},
-        "slug": thematic.slug,
-        "name": thematic.name,
-        "description": thematic.description,
-        "stats": agg,
-        "microprojets": rows,
-        "thematiques": [
-            {"slug": t.slug, "name": t.name, "microprojets": count_by_thematic.get(t.id, 0)}
-            for t in management.list_thematics(area.id)
-        ],
-        "is_admin": user.is_admin,
-    }
+@router.patch("/areas/{area_slug}/thematics/{thematic_slug}")
+def update_thematic(area_slug: str, thematic_slug: str, body: ThematicPatch, user: User = Depends(require_admin)) -> dict:
+    area = areas.get_by_slug(area_slug)
+    thematic = areas.update_thematic(areas.get_thematic(area.id, thematic_slug), **body.model_dump(exclude_unset=True))
+    return _thematic_payload(thematic, area)
 
 
-@router.put("/{slug}/thematiques/{thematique_slug}")
-def update_thematic(slug: str, thematique_slug: str, body: ThematicRequest, user: User = Depends(require_admin)) -> dict:
-    area = _get_area(slug)
-    thematic = _get_thematic(area, thematique_slug)
-    try:
-        management.update_thematic(thematic.id, name=body.name, description=body.description)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _detailed(area, user)
-
-
-@router.delete("/{slug}/thematiques/{thematique_slug}")
-def delete_thematic(slug: str, thematique_slug: str, user: User = Depends(require_admin)) -> dict:
-    area = _get_area(slug)
-    management.delete_thematic(_get_thematic(area, thematique_slug).id)
-    return _detailed(area, user)
+@router.delete("/areas/{area_slug}/thematics/{thematic_slug}", status_code=204)
+def delete_thematic(area_slug: str, thematic_slug: str, user: User = Depends(require_admin)) -> Response:
+    """Its µprojets stay in the project, without thématique."""
+    area = areas.get_by_slug(area_slug)
+    areas.delete_thematic(areas.get_thematic(area.id, thematic_slug))
+    return _no_content()
 
 
 # --- objectifs corporate ----------------------------------------------------------------------
 
 
-@router.post("/{slug}/objectifs", status_code=201)
-def create_objective(slug: str, body: ObjectiveRequest, user: User = Depends(require_admin)) -> dict:
-    area = _get_area(slug)
-    try:
-        management.create_objective(
-            area.id,
-            body.title,
-            body.detail,
-            body.target,
-            weight=body.weight,
-            achieved=body.achieved,
-            validated_by=_validated_by_id(body.validated_by),
-            created_by=user.id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _detailed(area, user)
+@router.post("/areas/{area_slug}/objectives", status_code=201)
+def create_objective(area_slug: str, body: ObjectiveCreate, response: Response, user: User = Depends(require_admin)) -> dict:
+    area = areas.get_by_slug(area_slug)
+    objective = areas.create_objective(
+        area,
+        body.title,
+        body.detail,
+        body.target,
+        weight=body.weight,
+        achieved=body.achieved,
+        validated_by=body.validated_by,
+        created_by=user.id,
+    )
+    _created(response, f"/api/areas/{area.slug}/objectives/{objective.id}")
+    return _objective_payload(objective)
 
 
-@router.put("/{slug}/objectifs")
-def reorder_objectives(slug: str, body: ReorderRequest, user: User = Depends(require_admin)) -> dict:
-    """New ranking of the whole list, most important first."""
-    area = _get_area(slug)
-    try:
-        management.reorder_objectives(area.id, body.ids)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _detailed(area, user)
+@router.patch("/areas/{area_slug}/objectives/{objective_id}")
+def update_objective(area_slug: str, objective_id: int, body: ObjectivePatch, user: User = Depends(require_admin)) -> dict:
+    area = areas.get_by_slug(area_slug)
+    return _objective_payload(areas.update_objective(area, objective_id, **body.model_dump(exclude_unset=True)))
 
 
-@router.put("/{slug}/objectifs/{objective_id}")
-def update_objective(slug: str, objective_id: int, body: ObjectiveRequest, user: User = Depends(require_admin)) -> dict:
-    area = _get_area(slug)
-    try:
-        management.update_objective(
-            area.id,
-            objective_id,
-            title=body.title,
-            detail=body.detail,
-            target=body.target,
-            weight=body.weight,
-            achieved=body.achieved,
-            validated_by=_validated_by_id(body.validated_by),
-        )
-    except ObjectiveNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="objectif introuvable") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _detailed(area, user)
-
-
-@router.delete("/{slug}/objectifs/{objective_id}")
-def delete_objective(slug: str, objective_id: int, user: User = Depends(require_admin)) -> dict:
-    area = _get_area(slug)
-    try:
-        management.delete_objective(area.id, objective_id)
-    except ObjectiveNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="objectif introuvable") from exc
-    return _detailed(area, user)
+@router.delete("/areas/{area_slug}/objectives/{objective_id}", status_code=204)
+def delete_objective(area_slug: str, objective_id: int, user: User = Depends(require_admin)) -> Response:
+    areas.delete_objective(areas.get_by_slug(area_slug), objective_id)
+    return _no_content()

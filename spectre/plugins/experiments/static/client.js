@@ -80,4 +80,12 @@ const experimentsApi = {
   refsGraph(microprojectSlug) {
     return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/refs/graphe`);
   },
+  // les compteurs de chaque µprojet : filters = {area, microproject} (slugs, facultatifs)
+  stats(filters) {
+    return api.get(api.withQuery("/api/experiment-stats", filters));
+  },
+  // la frise des µprojets d'un projet : filters = {area, thematic}
+  timeline(filters) {
+    return api.get(api.withQuery("/api/experiment-timeline", filters));
+  },
 };

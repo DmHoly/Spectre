@@ -114,3 +114,13 @@ def upload_image(client: Any, slug: str, name: str = "mesure.png") -> str:
     """Une image collée dans le formulaire de preuve (POST /images) - renvoie son ``image_id``."""
     response = client.post(f"/api/microprojets/{slug}/images", files={"file": (name, PNG_1PX, "image/png")})
     return assert_created(response)["image_id"]
+
+
+def experiment_stats(client: Any, **filters: Any) -> list[dict]:
+    """GET /api/experiment-stats (``area``, ``microproject``) - une ligne par µprojet."""
+    return assert_ok(client.get("/api/experiment-stats", params=filters))
+
+
+def experiment_timeline(client: Any, **filters: Any) -> list[dict]:
+    """GET /api/experiment-timeline (``area``, ``thematic``) - la frise, une ligne par µprojet."""
+    return assert_ok(client.get("/api/experiment-timeline", params=filters))

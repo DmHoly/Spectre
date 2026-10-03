@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import date
 
 from support.accounts import login, signup
+from support.areas import create_thematic
 from support.experiments import conclude, launch, lineage
 from support.http import assert_handler_404
 from support.lots import create_lot, get_lot, update_lot
-from support.management import create_thematique
 from support.microprojects import create_microproject
 
 
@@ -81,8 +81,8 @@ def test_an_unknown_lot_is_404(client):
 
 def test_a_lot_finds_its_experiences_and_thematiques_through_its_wafers(client):
     _signup_boss(client)
-    create_thematique(client, "native-pt2", "Dopage PGaN")
-    create_thematique(client, "native-pt2", "Double EBL")
+    create_thematic(client, "native-pt2", "Dopage PGaN")
+    create_thematic(client, "native-pt2", "Double EBL")
     create_microproject(client, "Recuit Mg", management_area_slug="native-pt2", thematique_slug="dopage-pgan")
     launched = launch(client, "recuit-mg", title="Recuit 700 C", entities=[{"sample_id": "W12-A3"}])
     ebl = next(t["id"] for g in client.get("/api/lots/thematiques").json() for t in g["thematiques"] if t["name"] == "Double EBL")

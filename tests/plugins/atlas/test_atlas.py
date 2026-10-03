@@ -6,10 +6,10 @@ tip-to-tip links so a fork or a merge still shows without drawing every intermed
 
 from __future__ import annotations
 
+from support.areas import create_area
 from support.experiments import combine, conclude, evolve, launch, launch_campaign, track_entities
 from support.http import assert_handler_404
-from support.management import create_area, move_microproject
-from support.microprojects import signup_with_microproject
+from support.microprojects import move_microproject, signup_with_microproject
 from support.structures import steps
 
 

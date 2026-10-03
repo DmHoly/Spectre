@@ -12,8 +12,7 @@ function stat(n, label) {
   return `<div class="kpi"><div class="kpi__value">${n}</div><div class="kpi__label">${label}</div></div>`;
 }
 
-function themeCard(area) {
-  const s = area.stats;
+function themeCard(area, thematicCount, totals) {
   return `
     <a href="/management/${encodeURIComponent(area.slug)}" class="theme-card">
       <div class="theme-card__art">${techArtSvg(area.slug, area.name)}</div>
@@ -23,10 +22,10 @@ function themeCard(area) {
       </div>
       <div class="theme-card__desc">${escapeHtml(area.description || area.strategy || "")}</div>
       <div class="theme-card__stats">
-        ${stat(s.thematiques, "thématiques")}
-        ${stat(s.microprojets, "µprojets")}
-        ${stat(s.experiences, "expériences")}
-        ${stat(s.wafers, "wafers")}
+        ${stat(thematicCount, "thématiques")}
+        ${stat(totals.microprojects, "µprojets")}
+        ${stat(totals.experiments, "expériences")}
+        ${stat(totals.wafers, "wafers")}
       </div>
     </a>`;
 }
@@ -49,23 +48,52 @@ function microprojectCard(microproject) {
     </a>`;
 }
 
+// Un µprojet du projet système (« Non classé ») : ses compteurs (experimentsApi.stats).
+function unclassifiedCard(row) {
+  const p = row.microproject;
+  const inner = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <div style="font-size:14px;font-weight:700;">${escapeHtml(p.name)}</div>
+      ${p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role))}</span>` : `<span style="font-size:11px;color:var(--text-faint);">non membre</span>`}
+    </div>
+    <div style="font-size:12px;color:var(--text-faint);padding-top:6px;border-top:1px solid var(--border-soft);">
+      ${row.running} en cours &middot; ${row.concluded + row.abandoned} terminées
+    </div>`;
+  return p.role
+    ? `<a href="/microprojets/${encodeURIComponent(p.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:6px;color:inherit;">${inner}</a>`
+    : `<div class="card card-pad" style="display:flex;flex-direction:column;gap:6px;opacity:.75;">${inner}</div>`;
+}
+
 async function load() {
   try {
-    const [mgmt, mine] = await Promise.all([areasApi.list(), microprojectsApi.list()]);
+    const [areas, thematics, stats, mine, me] = await Promise.all([
+      areasApi.list(),
+      areasApi.listThematics(),
+      experimentsApi.stats(),
+      microprojectsApi.list(),
+      accountsApi.me(),
+    ]);
+    const rowsOf = (area) => stats.filter((row) => row.microproject.area && row.microproject.area.slug === area.slug);
+    const thematicsOf = (area) => thematics.filter((t) => t.area.slug === area.slug).length;
 
-    // "Non classé" ne s'affiche que s'il contient vraiment quelque chose - sinon il encombre.
-    // « Non classé » n'est pas un projet : il sort de la grille, replié en bas comme « Mes µprojets »
-    // (et n'apparaît que s'il contient quelque chose).
-    const themes = mgmt.areas.filter((a) => a.slug !== "non-classe");
-    const unclassified = mgmt.areas.find((a) => a.slug === "non-classe");
-    if (unclassified && unclassified.stats.microprojets > 0) {
-      document.getElementById("unclassified-count").textContent = `(${unclassified.stats.microprojets})`;
+    // Le projet système (« Non classé ») n'est pas un projet : il sort de la grille, replié en bas
+    // comme « Mes µprojets », et n'apparaît que s'il contient quelque chose.
+    const unclassified = areas.find((a) => a.is_system);
+    const waiting = unclassified ? rowsOf(unclassified) : [];
+    if (waiting.length) {
+      document.getElementById("unclassified-name").textContent = unclassified.name;
+      document.getElementById("unclassified-count").textContent = `(${waiting.length})`;
+      document.getElementById("unclassified-link").href = `/management/${encodeURIComponent(unclassified.slug)}`;
+      document.getElementById("unclassified").innerHTML = waiting.map(unclassifiedCard).join("");
       document.getElementById("unclassified-details").style.display = "";
     }
     const grid = document.getElementById("themes");
-    grid.innerHTML = themes.map(themeCard).join("");
+    grid.innerHTML = areas
+      .filter((a) => !a.is_system)
+      .map((area) => themeCard(area, thematicsOf(area), experimentTotals(rowsOf(area))))
+      .join("");
     grid.removeAttribute("aria-busy");
-    if (mgmt.is_admin) document.getElementById("new-theme-btn").style.display = "";
+    if (me.is_admin) document.getElementById("new-theme-btn").style.display = "";
 
     document.getElementById("my-microprojects-count").textContent = `(${mine.length})`;
     document.getElementById("my-microprojects").innerHTML = mine.length
@@ -92,36 +120,6 @@ document.getElementById("new-theme-form").addEventListener("submit", async (even
     window.location.href = `/management/${encodeURIComponent(area.slug)}`;
   } catch (err) {
     dialog.close();
-    showError(err);
-  }
-});
-
-// Contenu de « Non classé » chargé seulement à l'ouverture du bloc (la page d'accueil n'en a pas besoin).
-const unclassifiedDetails = document.getElementById("unclassified-details");
-unclassifiedDetails.addEventListener("toggle", async () => {
-  if (!unclassifiedDetails.open || unclassifiedDetails.dataset.loaded) return;
-  const box = document.getElementById("unclassified");
-  box.innerHTML = `<div class="skeleton" style="height:84px;"></div>`;
-  try {
-    const area = await areasApi.get("non-classe");
-    unclassifiedDetails.dataset.loaded = "1";
-    box.innerHTML = area.microprojets
-      .map((p) => {
-        const inner = `
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-            <div style="font-size:14px;font-weight:700;">${escapeHtml(p.name)}</div>
-            ${p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role))}</span>` : `<span style="font-size:11px;color:var(--text-faint);">non membre</span>`}
-          </div>
-          <div style="font-size:12px;color:var(--text-faint);padding-top:6px;border-top:1px solid var(--border-soft);">
-            ${p.running} en cours &middot; ${p.concluded} terminées
-          </div>`;
-        return p.role
-          ? `<a href="/microprojets/${encodeURIComponent(p.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:6px;color:inherit;">${inner}</a>`
-          : `<div class="card card-pad" style="display:flex;flex-direction:column;gap:6px;opacity:.75;">${inner}</div>`;
-      })
-      .join("");
-  } catch (err) {
-    box.innerHTML = "";
     showError(err);
   }
 });

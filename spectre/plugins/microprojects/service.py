@@ -15,8 +15,10 @@ from pathlib import Path
 
 from ...kernel import mail
 from ...kernel.db import data_dir, get_conn
+from ...kernel.errors import Forbidden, InvalidInput, NotFound
 from ..accounts import security
 from ..accounts import service as accounts
+from ..areas import service as areas
 from ..areas.service import slugify
 
 ROLE_ORDER = {"viewer": 0, "editor": 1, "owner": 2}
@@ -194,6 +196,50 @@ def set_management_area(microproject_id: int, management_area_id: int, thematic_
             (management_area_id, thematic_id, microproject_id),
         )
         assign_code(conn, microproject_id, management_area_id)  # numbered on first landing in a numbered project
+
+
+def update(slug: str, user: accounts.User, changes: dict) -> Microproject:
+    """Only the fields given change: ``name``, ``description``, and where the µprojet sits -
+    ``area`` (a project's slug; changing project drops its thématique) and ``thematic`` (the slug
+    of one of that project's thématiques, or ``None``). Its owners and the strategy-layer admins
+    only."""
+    try:
+        microproject = get_by_slug(slug)
+    except MicroprojectNotFoundError as exc:
+        raise NotFound(f"µprojet {slug!r} introuvable") from exc
+    if not (user.is_admin or role_for(microproject.id, user.id) == "owner"):
+        raise Forbidden("seuls un propriétaire du µprojet ou un administrateur peuvent le modifier")
+
+    name, description = microproject.name, microproject.description
+    if changes.get("name") is not None:
+        name = changes["name"].strip()
+        if not name:
+            raise InvalidInput("le nom du µprojet est obligatoire")
+    if changes.get("description") is not None:
+        description = changes["description"].strip()
+    area_id, thematic_id = microproject.management_area_id, microproject.thematic_id
+    if "area" in changes:
+        if not changes["area"]:
+            raise InvalidInput("un µprojet appartient toujours à un projet")
+        try:
+            area_id = areas.get_by_slug(changes["area"]).id
+        except areas.ManagementAreaNotFoundError as exc:
+            raise InvalidInput(f"projet {changes['area']!r} introuvable") from exc
+        if area_id != microproject.management_area_id:
+            thematic_id = None
+    if "thematic" in changes:
+        thematic_id = None
+        if changes["thematic"]:
+            try:
+                thematic_id = areas.get_thematic(area_id, changes["thematic"]).id
+            except areas.ThematicNotFoundError as exc:
+                raise InvalidInput(f"la thématique {changes['thematic']!r} n'appartient pas à ce projet") from exc
+
+    with get_conn() as conn:
+        conn.execute("UPDATE microprojects SET name = ?, description = ? WHERE id = ?", (name, description, microproject.id))
+    if (area_id, thematic_id) != (microproject.management_area_id, microproject.thematic_id):
+        set_management_area(microproject.id, area_id, thematic_id)
+    return get_by_id(microproject.id)
 
 
 def list_by_management_area(management_area_id: int) -> list[Microproject]:

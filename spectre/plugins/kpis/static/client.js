@@ -2,11 +2,9 @@
 
 const kpisApi = {
   list(areaSlug) {
-    return api.get(`/api/management/${encodeURIComponent(areaSlug)}/tendances`);
+    return api.get(`/api/areas/${encodeURIComponent(areaSlug)}/kpis`);
   },
   series(areaSlug, kpiKey, months, variant) {
-    return api.get(
-      api.withQuery(`/api/management/${encodeURIComponent(areaSlug)}/tendances/${encodeURIComponent(kpiKey)}`, { mois: months, variante: variant })
-    );
+    return api.get(api.withQuery(`/api/areas/${encodeURIComponent(areaSlug)}/kpis/${encodeURIComponent(kpiKey)}`, { months, variant }));
   },
 };
