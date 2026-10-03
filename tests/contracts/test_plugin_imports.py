@@ -28,14 +28,6 @@ ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {
     ("spectre.plugins.accounts.api", "spectre.plugins.microprojects.service"): (
         "POST /api/invitations/{token}/acceptance : l'inscription n'accepte plus d'invitation"
     ),
-    ("spectre.plugins.library.api", "spectre.plugins.microprojects.deps"): "GET /api/ui-texts/intention (sans µprojet)",
-    ("spectre.plugins.library.api", "spectre.plugins.microprojects.service"): "GET /api/ui-texts/intention (sans µprojet)",
-    ("spectre.plugins.library.service", "spectre.plugins.process_library.step_presets"): (
-        "registre LibraryFile : process_library déclare ses fichiers presets.yml et briques.yml"
-    ),
-    ("spectre.plugins.library.service", "spectre.plugins.process_library.tech_bricks"): (
-        "registre LibraryFile : process_library déclare ses fichiers presets.yml et briques.yml"
-    ),
     ("spectre.plugins.areas.api", "spectre.plugins.microprojects.service"): (
         "GET /api/experiment-stats (agrégats par µprojet) et PATCH /api/microprojects/{mp} (rattachement)"
     ),

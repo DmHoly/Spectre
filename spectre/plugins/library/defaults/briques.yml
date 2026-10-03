@@ -3,7 +3,7 @@
 # ce qui existe déjà.
 #
 # Rechargé automatiquement quand le fichier change. Vide/invalide → aucune brique intégrée
-# (spectre/core/tech_bricks.py, _builtin_tech_bricks). Les briques créées depuis l'app vivent, elles,
+# (spectre/plugins/process_library/tech_bricks.py, builtin_tech_bricks). Les briques créées depuis l'app vivent, elles,
 # dans les stores par projet / partagé — ce fichier ne sert qu'aux briques « standard » de l'instance.
 #
 # Champs par entrée : name (obligatoire), notes (optionnel), steps (liste d'étapes au même format

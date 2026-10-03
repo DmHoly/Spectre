@@ -1,17 +1,17 @@
 /* Client de l'API du plugin library : fichiers YAML de la bibliothèque de l'instance et textes
-   d'interface (formulaire d'intention du constructeur). */
+   d'interface (section « Objectifs et intention » du constructeur). */
 
 const libraryApi = {
   listFiles() {
-    return api.get("/api/bibliotheque/fichiers");
+    return api.get("/api/library/files");
   },
-  getFile(key) {
-    return api.get(`/api/bibliotheque/fichiers/${encodeURIComponent(key)}`);
+  getFile(fileKey) {
+    return api.get(`/api/library/files/${encodeURIComponent(fileKey)}`);
   },
-  saveFile(key, body) {
-    return api.put(`/api/bibliotheque/fichiers/${encodeURIComponent(key)}`, body);
+  saveFile(fileKey, content) {
+    return api.put(`/api/library/files/${encodeURIComponent(fileKey)}`, { content });
   },
-  intentionForm(microprojectSlug) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/structures/intention-form`);
+  intentionTexts() {
+    return api.get("/api/ui-texts/intention");
   },
 };

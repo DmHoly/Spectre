@@ -6,8 +6,8 @@ async function loadPickers() {
   [state.materials, state.recipes, state.stepPresets, state.techBricks] = await Promise.all([
     structuresApi.materials(slug),
     structuresApi.recipes(slug),
-    processLibraryApi.stepPresets(slug),
-    processLibraryApi.techBricks(slug),
+    processLibraryApi.stepPresets({ microproject: slug }),
+    processLibraryApi.techBricks({ microproject: slug }),
   ]);
   document.getElementById("substrate-material").innerHTML = materialOptions("Si");
   populateKindSelect();

@@ -1,5 +1,5 @@
-"""Bibliothèque racine YAML de l'instance (matériaux, recettes, présets, briques, textes d'UI) et
-son éditeur, réservé à l'administrateur."""
+"""Bibliothèque racine YAML de l'instance : registre des fichiers déclarés par leurs plugins
+propriétaires, chargeur avec cache, éditeur réservé à l'administrateur, textes d'interface."""
 
 from ...kernel.plugin import Plugin
 from .api import router

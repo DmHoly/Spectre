@@ -3,7 +3,7 @@
 #
 # Modifiez ce fichier puis rafraîchissez la page : pas besoin de redémarrer le serveur (rechargé
 # automatiquement dès que le fichier change). Un fichier vide ou invalide → jeu intégré de repli
-# (voir spectre/core/registry.py, _builtin_materials) avec un avertissement dans les logs.
+# (voir spectre/plugins/structures/library_files.py, _builtin_materials) avec un avertissement dans les logs.
 #
 # L'ORDRE des entrées pilote l'ordre du menu déroulant (regroupé par `category`).
 #

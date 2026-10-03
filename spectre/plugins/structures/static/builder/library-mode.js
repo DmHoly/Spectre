@@ -1,24 +1,10 @@
 /* Mode bibliothèque : choisir une structure enregistrée pour démarrer une expérience, et
    enregistrer/dupliquer une structure dans la bibliothèque (projet ou partagée). */
 
-async function fetchSavedStructures() {
-  return processLibraryApi.savedStructures(slug);
-}
-
-function findSavedStructure(list, name, scope) {
-  const bucket = scope === "preset" ? list.presets : scope === "partagee" ? list.partagees : list.microprojet;
-  return (bucket || []).find((s) => s.name === name) || null;
-}
-
 async function loadChosenStructureForExperience() {
-  if (!chosenStructureName) return;
+  if (!chosenStructureId) return;
   try {
-    const list = await fetchSavedStructures();
-    const found = findSavedStructure(list, chosenStructureName, chosenStructureScope);
-    if (!found) {
-      showError(new Error(`Structure "${chosenStructureName}" introuvable dans la bibliothèque.`));
-      return;
-    }
+    const found = await processLibraryApi.savedStructure(chosenStructureId);
     setSubstrateFields(found.substrate);
     state.steps = attachDeclaredParams(found.steps, found.declared_params);
     selectLastStep();
@@ -26,8 +12,7 @@ async function loadChosenStructureForExperience() {
     document.getElementById("based-on-note").hidden = false;
     document.getElementById("based-on-name").textContent = found.name;
     document.getElementById("edit-structure-link").href =
-      `/microprojets/${slug}/structures/bibliotheque/${encodeURIComponent(found.name)}` +
-      `?scope=${chosenStructureScope}&dupliquer=1&retour=nouvelle-experience`;
+      `/microprojets/${slug}/structures/bibliotheque/${encodeURIComponent(found.id)}?dupliquer=1&retour=nouvelle-experience`;
   } catch (err) {
     showError(err);
   }
@@ -44,24 +29,21 @@ async function saveLibraryStructure(forceNew) {
     document.getElementById("library-name").focus();
     return;
   }
-  const partagee = document.getElementById("library-shared-checkbox").checked;
   const payload = {
     name,
     substrate: substrateSpec(),
     steps: state.steps,
     declared_params: declaredParamsPayload(state.steps),
-    derived_from: state.derivedFrom || null,
-    partagee,
+    scope: document.getElementById("library-shared-checkbox").checked ? "shared" : "microproject",
+    microproject: slug,
   };
   try {
-    if (!forceNew && state.editingLibraryName) {
-      await processLibraryApi.updateSavedStructure(slug, state.editingLibraryName, state.editingLibraryScope === "partagee", payload);
-    } else {
-      await processLibraryApi.createSavedStructure(slug, payload);
-    }
-    const scope = partagee ? "partagee" : "microprojet";
+    const saved =
+      !forceNew && state.editingLibraryId
+        ? await processLibraryApi.updateSavedStructure(state.editingLibraryId, payload)
+        : await processLibraryApi.createSavedStructure({ ...payload, derived_from: state.derivedFrom || null });
     if (returnTo === "nouvelle-experience") {
-      window.location.href = `/microprojets/${slug}/structures/nouvelle?structure=${encodeURIComponent(name)}&scope=${scope}`;
+      window.location.href = `/microprojets/${slug}/structures/nouvelle?structure=${encodeURIComponent(saved.id)}`;
     } else if (returnTo === "bibliotheque") {
       window.location.href = "/bibliotheque";
     } else {
@@ -79,28 +61,23 @@ async function initLibraryMode() {
   // avec tous les µprojets", pas propre au µprojet de travail choisi pour ouvrir l'éditeur.
   if (queryParams.get("partagee") === "1") document.getElementById("library-shared-checkbox").checked = true;
 
-  if (!libraryStructureName) {
+  if (!libraryStructureId) {
     setPageTitle("Nouvelle structure");
     document.getElementById("library-name").focus();
     return;
   }
   try {
-    const list = await fetchSavedStructures();
-    const found = findSavedStructure(list, libraryStructureName, librarySourceScope);
-    if (!found) {
-      showError(new Error(`Structure "${libraryStructureName}" introuvable.`));
-      return;
-    }
+    const found = await processLibraryApi.savedStructure(libraryStructureId);
     setSubstrateFields(found.substrate);
     state.steps = attachDeclaredParams(found.steps, found.declared_params);
     selectLastStep();
     renderSteps();
-    // A preset (structureforge built-in) has no backing store to edit in place - forcing
+    // A built-in structure (or one we may not change) has nothing to edit in place - forcing
     // duplicate mode turns "Modifier" into "dupliquer sous un nouveau nom", which is the only
     // thing that makes sense for it.
-    const duplicateMode = libraryDuplicateMode || librarySourceScope === "preset";
+    const duplicateMode = libraryDuplicateMode || !found.can_edit;
     if (duplicateMode) {
-      setPageTitle(librarySourceScope === "preset" ? "Enregistrer ce préset sous un nouveau nom" : "Dupliquer une structure");
+      setPageTitle(found.scope === "builtin" ? "Enregistrer cette structure intégrée sous un nouveau nom" : "Dupliquer une structure");
       document.getElementById("library-name").placeholder = `ex : ${found.name} + ...`;
       state.derivedFrom = found.name;
       document.getElementById("library-derived-note").hidden = false;
@@ -108,10 +85,9 @@ async function initLibraryMode() {
     } else {
       setPageTitle("Modifier la structure");
       document.getElementById("library-name").value = found.name;
-      document.getElementById("library-shared-checkbox").checked = librarySourceScope === "partagee";
+      document.getElementById("library-shared-checkbox").checked = found.scope === "shared";
       state.derivedFrom = found.derived_from || null;
-      state.editingLibraryName = found.name;
-      state.editingLibraryScope = librarySourceScope;
+      state.editingLibraryId = found.id;
       document.getElementById("library-save-as-btn").hidden = false;
       if (found.derived_from) {
         document.getElementById("library-derived-note").hidden = false;

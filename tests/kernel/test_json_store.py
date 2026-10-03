@@ -1,16 +1,20 @@
-"""Unit tests for :class:`spectre.kernel.json_store.KeyedJsonStore` in isolation - the generic
-persistence StepPresetStore and StructureLibraryStore are now both thin wrappers around, but which
-until now was only ever exercised indirectly through the full HTTP routes in
-test_step_presets.py/test_structure_library.py.
+"""Unit tests for :mod:`spectre.kernel.json_store` in isolation: :class:`KeyedJsonStore` (the
+intent forms) and :class:`ItemStore` (the process libraries) - atomic, locked writes and
+item-by-item validation.
 """
 
 from __future__ import annotations
 
+import json
+import threading
 from pathlib import Path
 
+import pytest
 from pydantic import BaseModel, Field
 
-from spectre.kernel.json_store import KeyedJsonStore
+from spectre.kernel import json_store
+from spectre.kernel.errors import Unavailable
+from spectre.kernel.json_store import ItemStore, KeyedJsonStore
 
 
 class _Item(BaseModel):
@@ -83,3 +87,85 @@ def test_two_stores_over_the_same_path_see_each_others_writes(tmp_path):
     store_b = KeyedJsonStore(path, _Library, "items")
     store_a.upsert(_Item(name="A", value=1))
     assert store_b.load_items()["A"].value == 1
+
+
+def test_an_invalid_item_is_left_out_of_the_reading_and_kept_on_the_next_write(tmp_path):
+    path = tmp_path / "lib.json"
+    path.write_text(json.dumps({"items": {"A": {"name": "A", "value": 1}, "B": {"name": "B", "value": "pas un entier"}}}), encoding="utf-8")
+    store = KeyedJsonStore(path, _Library, "items")
+
+    assert list(store.load_items()) == ["A"]
+    store.upsert(_Item(name="C", value=3))
+    assert json.loads(path.read_text(encoding="utf-8"))["items"]["B"] == {"name": "B", "value": "pas un entier"}
+
+
+def test_an_unreadable_file_reads_as_empty_but_is_never_overwritten(tmp_path):
+    path = tmp_path / "lib.json"
+    path.write_text("{ pas du json", encoding="utf-8")
+    store = KeyedJsonStore(path, _Library, "items")
+
+    assert store.load_items() == {}
+    with pytest.raises(Unavailable):
+        store.upsert(_Item(name="A"))
+    assert path.read_text(encoding="utf-8") == "{ pas du json"
+
+
+class _Element(BaseModel):
+    id: str
+    name: str
+
+
+def test_item_store_round_trip_and_invalid_items(tmp_path):
+    path = tmp_path / "items.json"
+    store = ItemStore(path, _Element)
+    assert store.load() == []
+
+    with store.edit() as items:
+        items.append({"id": "1", "name": "Un"})
+        items.append({"id": "2"})  # sans nom : invalide
+    assert store.load() == [_Element(id="1", name="Un")]
+
+    with store.edit() as items:
+        items.append({"id": "3", "name": "Trois"})
+    assert [raw["id"] for raw in json.loads(path.read_text(encoding="utf-8"))["items"]] == ["1", "2", "3"]
+
+
+def test_an_error_inside_an_edit_writes_nothing(tmp_path):
+    store = ItemStore(tmp_path / "items.json", _Element)
+    with store.edit() as items:
+        items.append({"id": "1", "name": "Un"})
+
+    with pytest.raises(RuntimeError), store.edit() as items:
+        items.clear()
+        raise RuntimeError("abandon")
+    assert [item.id for item in store.load()] == ["1"]
+
+
+def test_a_failed_write_keeps_the_old_file_and_no_temporary_file(tmp_path, monkeypatch):
+    store = ItemStore(tmp_path / "items.json", _Element)
+    with store.edit() as items:
+        items.append({"id": "1", "name": "Un"})
+
+    def broken_replace(src, dst):
+        raise OSError("disque plein")
+
+    monkeypatch.setattr(json_store.os, "replace", broken_replace)
+    with pytest.raises(OSError), store.edit() as items:
+        items.append({"id": "2", "name": "Deux"})
+    assert [item.id for item in store.load()] == ["1"]
+    assert [path.name for path in tmp_path.iterdir()] == ["items.json"]
+
+
+def test_concurrent_edits_do_not_lose_writes(tmp_path):
+    store = ItemStore(tmp_path / "items.json", _Element)
+
+    def add(i: int) -> None:
+        with store.edit() as items:
+            items.append({"id": str(i), "name": f"n{i}"})
+
+    threads = [threading.Thread(target=add, args=(i,)) for i in range(20)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(int(item.id) for item in store.load()) == list(range(20))

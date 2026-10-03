@@ -131,19 +131,14 @@ document.getElementById("add-member-form").addEventListener("submit", async (eve
 const newExperienceDialog = document.getElementById("new-experience-dialog");
 
 async function fetchSavedStructures() {
-  return processLibraryApi.savedStructures(slug);
+  return processLibraryApi.savedStructures({ microproject: slug });
 }
 
-function savedStructureOptionsHtml(library) {
-  const entries = [
-    ...(library.presets || []).map((s) => ({ ...s, scope: "preset" })),
-    ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
-    ...library.microprojet.map((s) => ({ ...s, scope: "microprojet" })),
-  ];
+function savedStructureOptionsHtml(entries) {
   if (!entries.length) return { html: `<option value="">Aucune structure enregistrée</option>`, empty: true };
-  const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", microprojet: "" };
+  const scopeSuffix = { builtin: " (intégrée)", shared: " (partagée)", microproject: "" };
   const html = entries
-    .map((s) => `<option value="${s.scope}::${encodeURIComponent(s.name)}">${escapeHtml(s.name)}${scopeSuffix[s.scope]}</option>`)
+    .map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}${scopeSuffix[s.scope] || ""}</option>`)
     .join("");
   return { html, empty: false };
 }
@@ -178,8 +173,7 @@ document.getElementById("option-image").addEventListener("click", () => {
 document.getElementById("option-template").addEventListener("click", () => {
   const source = document.getElementById("template-select").value;
   if (!source) return;
-  const [scope, name] = source.split("::");
-  window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${name}&scope=${scope}`;
+  window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${encodeURIComponent(source)}`;
 });
 
 document.getElementById("option-new-library-structure").addEventListener("click", (event) => {

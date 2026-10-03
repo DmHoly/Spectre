@@ -54,20 +54,15 @@ paletteTools.addEventListener("dragstart", (event) => {
 
 // -- briques ------------------------------------------------------------------------------------
 
-const BRICK_SCOPE_LABELS = { preset: "préset", partagee: "partagée", microprojet: "µprojet" };
+const BRICK_SCOPE_LABELS = { builtin: "intégrée", shared: "partagée", microproject: "µprojet" };
 
 function allTechBricks() {
   // paramètres déclarés rattachés à leurs étapes : une brique insérée garde son dopage & co
-  const entry = (b, scope) => ({ ...b, steps: attachDeclaredParams(b.steps, b.declared_params), scope });
-  return [
-    ...(state.techBricks.presets || []).map((b) => entry(b, "preset")),
-    ...(state.techBricks.partagees || []).map((b) => entry(b, "partagee")),
-    ...(state.techBricks.microprojet || []).map((b) => entry(b, "microprojet")),
-  ];
+  return state.techBricks.map((b) => ({ ...b, steps: attachDeclaredParams(b.steps, b.declared_params) }));
 }
 
-function findBrickEntry(scope, name) {
-  return allTechBricks().find((b) => b.scope === scope && b.name === name) || null;
+function findBrickEntry(id) {
+  return allTechBricks().find((b) => b.id === id) || null;
 }
 
 function renderBrickList() {
@@ -87,7 +82,7 @@ function renderBrickList() {
   list.innerHTML = shown
     .map(
       (b) => `
-      <button class="sb-brick-tool" type="button" draggable="true" data-scope="${b.scope}" data-name="${escapeHtml(b.name)}"
+      <button class="sb-brick-tool" type="button" draggable="true" data-id="${escapeHtml(b.id)}"
               title="${escapeHtml(b.name)}${b.notes ? ` - ${escapeHtml(b.notes)}` : ""}&#10;${b.steps.length} étape(s) · clic : insérer après la sélection · glisser : dans le flow">
         <span class="sb-brick-tool__name">${escapeHtml(b.name)}</span>
         <span class="sb-brick-tool__meta">${b.steps.length} étape${b.steps.length > 1 ? "s" : ""} · ${BRICK_SCOPE_LABELS[b.scope] || b.scope}</span>
@@ -99,11 +94,11 @@ function renderBrickList() {
 const brickList = document.getElementById("insert-brick-list");
 brickList.addEventListener("click", (event) => {
   const btn = event.target.closest(".sb-brick-tool");
-  if (btn) insertBrickAt(findBrickEntry(btn.dataset.scope, btn.dataset.name));
+  if (btn) insertBrickAt(findBrickEntry(btn.dataset.id));
 });
 brickList.addEventListener("dragstart", (event) => {
   const btn = event.target.closest(".sb-brick-tool");
-  const brick = btn && findBrickEntry(btn.dataset.scope, btn.dataset.name);
+  const brick = btn && findBrickEntry(btn.dataset.id);
   if (brick) startFlowDrag(event, { type: "brick", brick });
 });
 document.getElementById("brick-search").addEventListener("input", renderBrickList);

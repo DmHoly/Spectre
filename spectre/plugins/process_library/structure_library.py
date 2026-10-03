@@ -1,9 +1,9 @@
 """Saved, reusable structures: a substrate + step list, named and persisted independently of any
 experiment - so a structure can be built once (e.g. an epitaxial stack) and reused, or derived
 into a new one (e.g. the same stack with contacts added on top, saved under a new name), without
-that being tied to launching a particular experience. Two stores per Spectre instance: one shared
-across every microproject, one private to a single microproject - see
-:func:`spectre.plugins.process_library.stores.get_shared_structure_store`/``get_structure_store``.
+that being tied to launching a particular experience. Like every library item
+(:mod:`spectre.plugins.process_library.service`), a structure is built in, shared across every
+microproject, or private to one.
 Deliberately not a Follow repository: saved structures have no lifecycle of their own (no
 conclusion, no evidence) - they are just a named, overwritable snapshot a new experience starts
 from, similar in spirit to :mod:`spectre.plugins.process_library.step_presets`.
@@ -11,24 +11,20 @@ from, similar in spirit to :mod:`spectre.plugins.process_library.step_presets`.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from pydantic import BaseModel, Field
+from pydantic import Field
 from structureforge.core.units import Length
 from structureforge.process.steps import Deposition, Etch, FacetedGrowth, Lithography, ProcessStep, ResistStrip
 
-from ...kernel.json_store import KeyedJsonStore
 from ..structures.simulation import DeclaredParam, SubstrateSpec
+from .models import LibraryItem
 
 
-class SavedStructure(BaseModel):
-    name: str
+class SavedStructure(LibraryItem):
     substrate: SubstrateSpec
     steps: list[ProcessStep]
     derived_from: str | None = None
     # the steps' declared parameters (see spectre.plugins.structures.simulation.DeclaredParam), by step index
     declared_params: dict[str, list[DeclaredParam]] = Field(default_factory=dict)
-    created_at: str
 
 
 def _nanofil_vpit_inverse_preset() -> SavedStructure:
@@ -83,16 +79,9 @@ def _nanofil_vpit_inverse_preset() -> SavedStructure:
 def default_structure_presets() -> dict[str, SavedStructure]:
     """Built-in structure presets, the same "standard, not stored, not deletable" status
     :func:`spectre.plugins.process_library.step_presets.default_step_presets` gives standard step
-    presets - always available from every microproject's structure library, under their own
-    ``"preset"`` scope (see :func:`spectre.plugins.process_library.api.list_saved_structures`), never
-    written to a JSON store.
+    presets - always available from every microproject's structure library, under the
+    ``"builtin"`` scope (see :mod:`spectre.plugins.process_library.service`), never written to a
+    JSON store.
     """
     return {s.name: s for s in [_nanofil_vpit_inverse_preset()]}
 
-
-class StructureLibrary(BaseModel):
-    structures: dict[str, SavedStructure] = Field(default_factory=dict)
-
-
-def StructureLibraryStore(path: str | Path) -> KeyedJsonStore[StructureLibrary, SavedStructure]:
-    return KeyedJsonStore(path, StructureLibrary, "structures")

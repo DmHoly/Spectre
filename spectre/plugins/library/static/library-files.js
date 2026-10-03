@@ -1,10 +1,9 @@
 /* La partie "fichiers YAML" de la page /bibliotheque : une carte par famille (matériaux, recettes,
    présets, briques, formulaire d'intention), chacune ouvrant un vrai éditeur (CodeMirror, coloration
    YAML) dans une modale - plutôt qu'un simple <textarea> - pour éditer confortablement un fichier de
-   plusieurs dizaines d'entrées. Enregistre via PUT /api/bibliotheque/fichiers/{key} - validé côté
-   serveur (voir spectre.core.registry.validate_library_yaml) avant d'écrire quoi que ce soit sur
-   disque, réservé aux administrateurs (les autres voient le contenu en lecture seule, pour
-   comprendre le format sans casser ce que tout le monde partage). */
+   plusieurs dizaines d'entrées. Enregistre via libraryApi.saveFile - validé côté serveur avant
+   d'écrire quoi que ce soit sur disque, réservé aux administrateurs (les autres voient le contenu
+   en lecture seule, pour comprendre le format sans casser ce que tout le monde partage). */
 
 const libraryErrorBox = document.getElementById("library-files-error");
 function showLibraryError(err) {
@@ -20,7 +19,7 @@ function libraryCardHtml(file) {
     <div class="card card-pad" data-key="${escapeHtml(file.key)}" style="display:flex;flex-direction:column;gap:10px;">
       <div style="font-size:15.5px;font-weight:700;">${escapeHtml(file.title)}</div>
       <div style="font-size:13px;color:var(--text-soft);line-height:1.55;">${escapeHtml(file.description)}</div>
-      <div style="font-size:12px;color:var(--text-faint);"><code>library/${escapeHtml(file.filename)}</code></div>
+      <div style="font-size:12px;color:var(--text-faint);"><code>${escapeHtml(file.filename)}</code></div>
       <button class="btn btn-line js-open-library-editor" data-key="${escapeHtml(file.key)}" type="button" style="align-self:flex-start;">Voir / modifier &rarr;</button>
     </div>`;
 }
@@ -61,7 +60,7 @@ document.getElementById("library-editor-save-btn").addEventListener("click", asy
   saveBtn.disabled = true;
   try {
     const content = getLibraryCodeMirror().getValue();
-    await libraryApi.saveFile(libraryEditingKey, { content });
+    await libraryApi.saveFile(libraryEditingKey, content);
     saveBtn.textContent = "Enregistré ✓";
     setTimeout(() => (saveBtn.textContent = "Enregistrer"), 1500);
   } catch (err) {
@@ -82,7 +81,7 @@ async function openLibraryEditor(key) {
     const detail = await libraryApi.getFile(key);
     libraryEditingKey = key;
     document.getElementById("library-editor-title").textContent = detail.title;
-    document.getElementById("library-editor-filename").textContent = `library/${detail.filename}`;
+    document.getElementById("library-editor-filename").textContent = detail.filename;
     document.getElementById("library-editor-readonly-note").style.display = detail.can_edit ? "none" : "";
     document.getElementById("library-editor-save-btn").style.display = detail.can_edit ? "" : "none";
 
@@ -102,8 +101,8 @@ async function openLibraryEditor(key) {
 async function initLibraryFiles() {
   const list = document.getElementById("library-files-list");
   try {
-    const body = await libraryApi.listFiles();
-    list.innerHTML = body.files.map(libraryCardHtml).join("");
+    const files = await libraryApi.listFiles();
+    list.innerHTML = files.map(libraryCardHtml).join("");
     list.querySelectorAll(".js-open-library-editor").forEach((btn) => {
       btn.addEventListener("click", () => openLibraryEditor(btn.dataset.key));
     });

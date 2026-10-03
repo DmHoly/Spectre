@@ -1,130 +1,58 @@
-"""Online editor for the root library's YAML files (``library/*.yml`` - materials, recipes, step
-presets, tech bricks, the intention-form copy). Until now these were only editable by hand on the
-server (see ``library/README.md``); this exposes the same five files as raw-YAML text a user can
-read and save from the browser, with the exact same validation the app already applies when it
-*reads* them (:func:`spectre.plugins.library.service.validate_library_yaml`) run *before* writing,
-so a bad save fails loudly instead of silently falling back to the built-in defaults on the next
-reload.
-
-Reserved to admins: unlike a µprojet's own "partagé"/"projet" presets and bricks
-(:mod:`spectre.kernel.scoped`), this is the one truly global, shared-by-everyone tier - a mistake
-here is visible to every µprojet at once.
-
-Also served here, read by every µprojet's structure builder: the intention-form copy
-(``intention.yml``), under the µprojet whose builder asks for it.
-"""
+"""Les fichiers YAML de la bibliothèque racine, lisibles par tout compte connecté et modifiables par
+un administrateur (un changement ici se voit dans tous les µprojets à la fois), et les textes
+d'interface qui en sont tirés."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Any
+
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from ..accounts.deps import current_user
+from ..accounts.deps import current_user, require_admin
 from ..accounts.service import User
-from ..microprojects.deps import require_role
-from ..microprojects.service import Microproject
-from . import service as registry
+from . import service
+from .service import LibraryFile
 
-router = APIRouter(prefix="/api", tags=["bibliotheque"])
-
-# key (used in the URL) -> (filename in library/, title, one-line description shown on its card).
-# Order here is the display order on the page.
-LIBRARY_FILES: dict[str, dict[str, str]] = {
-    "materiaux": {
-        "filename": "materiaux.yml",
-        "title": "Matériaux",
-        "description": "La liste proposée dans le sélecteur de matériau du constructeur de structure (nom, catégorie, couleur...).",
-    },
-    "recettes": {
-        "filename": "recettes.yml",
-        "title": "Recettes",
-        "description": "Recettes de dépôt/gravure supplémentaires (dont les gravures sélectives), fusionnées avec celles de StructureForge.",
-    },
-    "presets": {
-        "filename": "presets.yml",
-        "title": "Présets d'étape",
-        "description": "Raccourcis nommés vers une recette de dépôt ou de gravure, proposés dans le formulaire d'étape.",
-    },
-    "briques": {
-        "filename": "briques.yml",
-        "title": "Briques technologiques",
-        "description": "Séquences d'étapes réutilisables (masque + gravure, empilement de croissance...) insérables d'un bloc.",
-    },
-    "intention": {
-        "filename": "intention.yml",
-        "title": "Formulaire d'intention",
-        "description": "Les libellés, placeholders et couleurs de la section « Objectifs et intention » du constructeur de structure.",
-    },
-}
+router = APIRouter(prefix="/api", tags=["library"])
 
 
-def _require_admin(user: User) -> None:
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="réservé aux administrateurs")
-
-
-def _meta_or_404(key: str) -> dict[str, str]:
-    meta = LIBRARY_FILES.get(key)
-    if meta is None:
-        raise HTTPException(status_code=404, detail=f"fichier de bibliothèque inconnu : {key!r}")
-    return meta
-
-
-class SaveLibraryFileRequest(BaseModel):
+class LibraryFileContent(BaseModel):
     content: str
 
 
-@router.get("/bibliotheque/fichiers")
-def list_library_files(user: User = Depends(current_user)) -> dict:
+def _summary(file: LibraryFile, user: User) -> dict[str, Any]:
     return {
-        "files": [
-            {"key": key, "filename": meta["filename"], "title": meta["title"], "description": meta["description"]}
-            for key, meta in LIBRARY_FILES.items()
-        ],
+        "key": file.key,
+        "filename": file.filename,
+        "title": file.title,
+        "description": file.description,
         "can_edit": user.is_admin,
     }
 
 
-@router.get("/bibliotheque/fichiers/{key}")
-def get_library_file(key: str, user: User = Depends(current_user)) -> dict:
-    meta = _meta_or_404(key)
-    path = registry.library_dir() / meta["filename"]
-    try:
-        content = path.read_text(encoding="utf-8")
-        exists = True
-    except OSError:
-        content = ""
-        exists = False
-    return {
-        "key": key,
-        "filename": meta["filename"],
-        "title": meta["title"],
-        "description": meta["description"],
-        "content": content,
-        "exists": exists,
-        "can_edit": user.is_admin,
-    }
+def _detail(file: LibraryFile, user: User) -> dict[str, Any]:
+    content = service.read_text(file)
+    return {**_summary(file, user), "content": content or "", "exists": content is not None}
 
 
-@router.put("/bibliotheque/fichiers/{key}")
-def save_library_file(key: str, body: SaveLibraryFileRequest, user: User = Depends(current_user)) -> dict:
-    _require_admin(user)
-    meta = _meta_or_404(key)
-    try:
-        registry.validate_library_yaml(meta["filename"], body.content)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    path = registry.library_dir() / meta["filename"]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body.content, encoding="utf-8")
-    return {"ok": True}
+@router.get("/library/files")
+def list_library_files(user: User = Depends(current_user)) -> list[dict[str, Any]]:
+    return [_summary(file, user) for file in service.library_files()]
 
 
-@router.get("/microprojets/{slug}/structures/intention-form")
-def get_intention_form(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    """Libellés/placeholders/aides éditables de la section « Objectifs et intention » du
-    constructeur de structure (``library/intention.yml``, voir
-    :func:`spectre.plugins.library.service.registry_intention_form`).
-    """
-    return registry.registry_intention_form()
+@router.get("/library/files/{file_key}")
+def get_library_file(file_key: str, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _detail(service.get_library_file(file_key), user)
+
+
+@router.put("/library/files/{file_key}")
+def save_library_file(file_key: str, body: LibraryFileContent, user: User = Depends(require_admin)) -> dict[str, Any]:
+    service.save(file_key, body.content)
+    return _detail(service.get_library_file(file_key), user)
+
+
+@router.get("/ui-texts/intention")
+def get_intention_texts(user: User = Depends(current_user)) -> dict[str, Any]:
+    """Libellés, placeholders et aides de la section « Objectifs et intention » du constructeur."""
+    return service.load("intention")
