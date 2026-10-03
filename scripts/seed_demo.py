@@ -306,7 +306,7 @@ GROWTH_TAPER = [
 
 def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     created = demo.post(
-        "/api/microprojets",
+        "/api/microprojects",
         json={
             "name": "Nanofils GaN - puits quantique simple",
             "description": "Nanofils GaN à pointe semipolaire pour LED bleue - épitaxie, gravure, croissance sélective, un seul puits quantique, avec un changement de substrat de base et une déclinaison rouge/vert/bleu du taux d'indium.",
@@ -314,7 +314,7 @@ def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> 
     )
     slug = created["slug"]
     for email in (lea.email, marc.email):
-        demo.post(f"/api/microprojets/{slug}/members", json={"email": email, "role": "editor"})
+        demo.post(f"/api/microprojects/{slug}/members", json={"email": email, "role": "editor"})
     proj = Microproject(slug)
 
     OBJ = [
@@ -562,7 +562,7 @@ def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> 
 
 def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     created = demo.post(
-        "/api/microprojets",
+        "/api/microprojects",
         json={
             "name": "Nanofils GaN - puits quantiques multiples (MQW)",
             "description": "Même base épitaxiale que le projet à puits simple, mais avec plusieurs puits quantiques : comparaison avec/sans couche bloqueuse d'électrons (EBL), puis réglage du dopage P en aval.",
@@ -570,7 +570,7 @@ def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     )
     slug = created["slug"]
     for email in (lea.email, marc.email):
-        demo.post(f"/api/microprojets/{slug}/members", json={"email": email, "role": "editor"})
+        demo.post(f"/api/microprojects/{slug}/members", json={"email": email, "role": "editor"})
     proj = Microproject(slug)
 
     OBJ = [

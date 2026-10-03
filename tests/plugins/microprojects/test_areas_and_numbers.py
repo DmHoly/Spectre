@@ -3,33 +3,25 @@ par PATCH /api/microprojects/{microproject_slug}), son numéro, la recherche par
 
 from __future__ import annotations
 
-from support.accounts import login, signup
+from support.accounts import login, logout, signup
 from support.areas import create_area, create_thematic
 from support.experiments import experiment_stats
 from support.http import assert_handler_404
-from support.microprojects import create_microproject, join_as, move_microproject
+from support.microprojects import create_microproject, get_microproject, join_as, list_microprojects, move_microproject
 
 
 def test_creating_a_microprojet_directly_in_a_theme(client):
     signup(client, "boss@example.com")
     slug = create_area(client, "Contacts")["slug"]
 
-    created = client.post("/api/microprojets", json={"name": "PGaN", "management_area_slug": slug})
-    assert created.status_code == 201
-    assert created.json()["management_area"]["slug"] == slug
-    assert client.get("/api/microprojets/pgan").json()["management_area"]["name"] == "Contacts"
+    created = create_microproject(client, "PGaN", area=slug)
+    assert created["area"]["slug"] == slug
+    assert get_microproject(client, "pgan")["area"]["name"] == "Contacts"
 
-    bad = client.post("/api/microprojets", json={"name": "X", "management_area_slug": "inexistant"})
-    assert_handler_404(bad)
-
-
-def test_list_all_microprojets_is_admin_only(client):
-    signup(client, "boss@example.com")
-    create_microproject(client, "A")
-    assert [p["slug"] for p in client.get("/api/microprojets/tous").json()] == ["a"]
-
-    signup(client, "hand@example.com")
-    assert client.get("/api/microprojets/tous").status_code == 403
+    bad = client.post("/api/microprojects", json={"name": "X", "area": "inexistant"})
+    assert bad.status_code == 422 and "introuvable" in bad.json()["detail"]
+    # « Non classé » n'a pas de thématique
+    assert client.post("/api/microprojects", json={"name": "X", "thematic": "contacts"}).status_code == 422
 
 
 def test_an_owner_renames_and_moves_a_microprojet(client):
@@ -43,17 +35,17 @@ def test_an_owner_renames_and_moves_a_microprojet(client):
     assert patched.status_code == 200
     body = patched.json()
     assert (body["slug"], body["name"], body["description"], body["role"]) == ("recuit", "Recuit Mg", "Après", "owner")
-    assert body["management_area"]["slug"] == "non-classe"  # un PATCH ne touche que les champs envoyés
+    assert body["area"]["slug"] == "non-classe"  # un PATCH ne touche que les champs envoyés
 
     moved = client.patch("/api/microprojects/recuit", json={"area": "native-pt2", "thematic": "dopage-pgan"}).json()
-    assert moved["management_area"]["slug"] == "native-pt2" and moved["thematique"]["slug"] == "dopage-pgan"
+    assert moved["area"]["slug"] == "native-pt2" and moved["thematic"]["slug"] == "dopage-pgan"
     assert moved["code"] == "Nat_0001" and moved["name"] == "Recuit Mg"
 
     # changer de projet laisse sa thématique ; une thématique seule se lit dans le projet actuel
     elsewhere = client.patch("/api/microprojects/recuit", json={"area": "nova-pt1"}).json()
-    assert elsewhere["management_area"]["slug"] == "nova-pt1" and elsewhere["thematique"] is None
-    assert client.patch("/api/microprojects/recuit", json={"thematic": "pilote"}).json()["thematique"]["slug"] == "pilote"
-    assert client.patch("/api/microprojects/recuit", json={"thematic": None}).json()["thematique"] is None
+    assert elsewhere["area"]["slug"] == "nova-pt1" and elsewhere["thematic"] is None
+    assert client.patch("/api/microprojects/recuit", json={"thematic": "pilote"}).json()["thematic"]["slug"] == "pilote"
+    assert client.patch("/api/microprojects/recuit", json={"thematic": None}).json()["thematic"] is None
 
 
 def test_moving_a_microprojet_checks_its_target(client):
@@ -69,7 +61,7 @@ def test_moving_a_microprojet_checks_its_target(client):
     assert patch({"area": "inconnu"}).status_code == 422
     assert patch({"area": None}).status_code == 422
     assert patch({"name": "  "}).status_code == 422
-    assert client.get("/api/microprojets/recuit").json()["management_area"]["slug"] == "non-classe"  # rien n'a bougé
+    assert get_microproject(client, "recuit")["area"]["slug"] == "non-classe"  # rien n'a bougé
     assert_handler_404(client.patch("/api/microprojects/inconnu", json={"name": "x"}))
 
 
@@ -85,7 +77,7 @@ def test_only_an_owner_or_an_admin_moves_a_microprojet(client):
 
     login(client, "boss@example.com")
     moved = move_microproject(client, "native-pt2", "recuit")
-    assert moved["management_area"]["slug"] == "native-pt2" and moved["role"] is None
+    assert moved["area"]["slug"] == "native-pt2" and moved["role"] is None
     assert [row["microproject"]["slug"] for row in experiment_stats(client, area="native-pt2")] == ["recuit"]
 
 
@@ -93,8 +85,7 @@ def test_microprojets_get_an_auto_incremented_number_from_their_corporate_projec
     signup(client, "boss@example.com")
 
     def create(name, area=None):
-        body = {"name": name, **({"management_area_slug": area} if area else {})}
-        return client.post("/api/microprojets", json=body).json()
+        return create_microproject(client, name, **({"area": area} if area else {}))
 
     nat1, nat2 = create("Dopage A", "native-pt2"), create("Dopage B", "native-pt2")
     nov1 = create("Pilote", "nova-pt1")
@@ -104,44 +95,70 @@ def test_microprojets_get_an_auto_incremented_number_from_their_corporate_projec
     # rattaché plus tard : numéroté à ce moment-là ; déplacé ensuite : garde son numéro
     move_microproject(client, "datacom-vlc", loose["slug"])
     move_microproject(client, "nova-pt1", nat1["slug"])
-    codes = {p["slug"]: p["code"] for p in client.get("/api/microprojets/tous").json()}
+    codes = {p["slug"]: p["code"] for p in list_microprojects(client, scope="all")}
     assert codes[loose["slug"]] == "VLC_0001" and codes[nat1["slug"]] == "Nat_0001"
     assert create("Dopage C", "native-pt2")["code"] == "Nat_0003"  # jamais de numéro réutilisé
 
     for typed in ("Nat_0002", "nat 2", "NAT2", "Nat-02"):
-        found = client.get(f"/api/microprojets/code/{typed}")
-        assert found.status_code == 200 and found.json()["slug"] == nat2["slug"], typed
-    assert_handler_404(client.get("/api/microprojets/code/Nat_0099"))
-    redirect = client.get("/p/Nat_0002", follow_redirects=False)
-    assert redirect.status_code == 302 and redirect.headers["location"] == f"/microprojets/{nat2['slug']}"
+        assert list_microprojects(client, code=typed) == [
+            {"slug": nat2["slug"], "code": "Nat_0002", "name": "Dopage B", "area": {"slug": "native-pt2", "name": "Native (PT2)"}}
+        ], typed
+    assert list_microprojects(client, code="Nat_0099") == []
+    assert list_microprojects(client, code="n'importe quoi") == []
 
     assert client.patch("/api/areas/native-pt2", json={"code_prefix": "Ntv"}).json()["code_prefix"] == "Ntv"
     assert create("Dopage D", "native-pt2")["code"] == "Ntv_0001"
-    assert client.get(f"/api/microprojets/{nat2['slug']}").json()["code"] == "Nat_0002"
+    assert get_microproject(client, nat2["slug"])["code"] == "Nat_0002"
+
+
+def test_a_number_finds_any_microprojet_of_the_company(client):
+    signup(client, "boss@example.com")
+    create_microproject(client, "Dopage A", area="native-pt2")
+    signup(client, "hand@example.com")  # ni admin ni membre
+    assert [p["name"] for p in list_microprojects(client, code="Nat_0001")] == ["Dopage A"]
+
+
+def test_the_short_link_redirects_after_the_session_check(client):
+    signup(client, "boss@example.com")
+    nat1 = create_microproject(client, "Dopage A", area="native-pt2")
+
+    redirect = client.get("/p/Nat_0001", follow_redirects=False)
+    assert redirect.status_code == 302 and redirect.headers["location"] == f"/microprojets/{nat1['slug']}"
+    unknown = client.get("/p/Nat_0099", follow_redirects=False)
+    assert unknown.status_code == 302 and unknown.headers["location"] == "/?introuvable=Nat_0099"
+
+    # sans session : la connexion d'abord, sans dire si le numéro existe
+    logout(client)
+    for code in ("Nat_0001", "Nat_0099"):
+        anonymous = client.get(f"/p/{code}", follow_redirects=False)
+        assert anonymous.status_code == 302 and anonymous.headers["location"] == f"/connexion?suite=/p/{code}"
 
 
 def test_topbar_search_finds_microprojets_by_number_or_name(client):
     signup(client, "boss@example.com")
     for name in ("Dopage PGaN", "Amélioration IQE", "Double EBL"):
-        create_microproject(client, name, management_area_slug="native-pt2")
+        create_microproject(client, name, area="native-pt2")
+    signup(client, "hand@example.com")  # la recherche couvre toute la société
 
-    def names(q):
-        return [p["name"] for p in client.get(f"/api/microprojets/recherche?q={q}").json()]
+    def names(q, **params):
+        return [p["name"] for p in list_microprojects(client, q=q, **params)]
 
     assert names("nat 2") == ["Amélioration IQE"]  # le numéro exact d'abord
     assert names("nat") == ["Dopage PGaN", "Amélioration IQE", "Double EBL"]  # Nat_0001, 0002, 0003
+    assert names("nat", limit=2) == ["Dopage PGaN", "Amélioration IQE"]
     assert names("amelio") == ["Amélioration IQE"]  # sans accent, début du nom
     assert names("ebl double") == ["Double EBL"]  # tous les mots, dans le désordre
     assert names("") == [] and names("introuvable") == []
-    hit = client.get("/api/microprojets/recherche?q=Nat_0003").json()[0]
-    assert hit["code"] == "Nat_0003" and hit["management_area"]["slug"] == "native-pt2"
+    [hit] = list_microprojects(client, q="Nat_0003")
+    assert hit == {"slug": "double-ebl", "code": "Nat_0003", "name": "Double EBL", "area": {"slug": "native-pt2", "name": "Native (PT2)"}}
+    assert client.get("/api/microprojects", params={"q": "nat", "limit": 0}).status_code == 422
 
 
 def test_microprojet_payloads_name_their_owner(client):
     signup(client, "boss@example.com", name="Alice Martin")
-    create_microproject(client, "Recuit Mg", management_area_slug="native-pt2")
+    create_microproject(client, "Recuit Mg", area="native-pt2")
 
-    assert client.get("/api/microprojets/recuit-mg").json()["owners"] == [{"id": 1, "name": "Alice Martin"}]
-    assert client.get("/api/microprojets").json()[0]["owners"][0]["name"] == "Alice Martin"
+    assert get_microproject(client, "recuit-mg")["owners"] == [{"id": 1, "name": "Alice Martin"}]
+    assert list_microprojects(client)[0]["owners"][0]["name"] == "Alice Martin"
     row = experiment_stats(client, area="native-pt2")[0]
     assert row["microproject"]["owners"] == [{"id": 1, "name": "Alice Martin"}]

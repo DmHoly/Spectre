@@ -29,7 +29,7 @@ function initTopbarSearch() {
   let timer = null;
   let seq = 0;
 
-  // un résultat : {type: "microproject", slug, code, name, management_area}, {type: "lot", code, title,
+  // un résultat : {type: "microproject", slug, code, name, area}, {type: "lot", code, title,
   // status, priority, wafer}, {type: "plate", sample_id, count, microprojects, latest} ou
   // {type: "fdl", fdl, sample_id, experience, microproject}
   const open = (hit) => {
@@ -74,7 +74,7 @@ function initTopbarSearch() {
                    <span class="topbar-search__area">${escapeHtml(p.microprojects.slice(0, 2).join(", "))}${p.microprojects.length > 2 ? "…" : ""}</span>`
                 : `${p.code ? `<span class="topbar-search__code">${escapeHtml(p.code)}</span>` : ""}
                  <span class="topbar-search__name">${escapeHtml(p.name)}</span>
-                 ${p.management_area ? `<span class="topbar-search__area">${escapeHtml(p.management_area.name)}</span>` : ""}`;
+                 ${p.area ? `<span class="topbar-search__area">${escapeHtml(p.area.name)}</span>` : ""}`;
           return `${group}
           <li class="topbar-search__item${i === active ? " is-active" : ""}" id="topbar-search-${i}" role="option" aria-selected="${i === active}" data-index="${i}">
             ${body}
@@ -99,7 +99,7 @@ function initTopbarSearch() {
     try {
       const longEnough = query.replace(/[\s_\-./#:]/g, "").length >= 2;
       const [projects, plateHits, fdlHits, lotHits] = await Promise.all([
-        microprojectsApi.search(query),
+        microprojectsApi.list({ q: query }),
         longEnough ? wafersApi.search(query).catch(() => []) : Promise.resolve([]),
         /\d/.test(query) ? microprojectsApi.searchFdl(query).catch(() => []) : Promise.resolve([]),
         longEnough ? lotsApi.search(query).catch(() => []) : Promise.resolve([]),

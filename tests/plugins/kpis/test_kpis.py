@@ -41,7 +41,7 @@ def test_month_periods_cross_the_year_boundary():
 
 def test_activity_trend_counts_experiments_in_progress_and_their_wafers(client):
     signup(client, "boss@example.com")
-    microproject = create_microproject(client, "Suivi activite", management_area_slug="native-pt2")
+    microproject = create_microproject(client, "Suivi activite", area="native-pt2")
     for title, wafers in (("Essai A", ["W1", "W2"]), ("Essai B", ["W3"])):
         launch(client, microproject["slug"], title=title, intent="x", entities=[{"sample_id": w} for w in wafers])
 
@@ -58,7 +58,7 @@ def test_activity_trend_counts_experiments_in_progress_and_their_wafers(client):
 
 def test_a_wafer_followed_by_two_studies_is_engaged_once(client):
     signup(client, "boss@example.com")
-    microproject = create_microproject(client, "Suivi wafers", management_area_slug="native-pt2")
+    microproject = create_microproject(client, "Suivi wafers", area="native-pt2")
     launch(client, microproject["slug"], title="Essai A", intent="x", entities=[{"sample_id": "W12-A3"}, {"sample_id": "W1"}])
     launch(client, microproject["slug"], title="Essai B", intent="x", entities=[{"sample_id": "w12 a3"}])
 

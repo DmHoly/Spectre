@@ -4,7 +4,7 @@ une à chaque fois."""
 
 from __future__ import annotations
 
-from support.experiments import add_evidence, conclude, evolve, launch, list_experiments
+from support.experiments import add_evidence, conclude, evolve, experiment_stats, launch, list_experiments
 from support.microprojects import signup_with_microproject
 from support.structures import steps
 
@@ -30,9 +30,9 @@ def test_microproject_counts_reflect_one_status_per_branch(client):
     add_evidence(client, slug, launched["id"])
     conclude(client, slug, launched["id"])
 
-    payload = client.get(f"/api/microprojets/{slug}").json()
-    assert payload["running_count"] == 0
-    assert payload["concluded_count"] == 1
+    [row] = experiment_stats(client, microproject=slug)
+    assert row["running"] == 0
+    assert row["concluded"] == 1
 
 
 def test_a_fork_still_shows_both_lines_once_each(client):

@@ -1,30 +1,38 @@
-"""Microprojects and membership - the data-access layer over the ``microprojects``/``memberships`` tables,
-plus each microproject's own directory on disk (:func:`microproject_dir`), under which the other
-plugins keep its Follow repository, saved structures, step presets and attachments. Follow and
-StructureForge never know a "microproject" exists; the plugins map a slug to the paths they're given
-from here.
+"""Microprojects and membership - the data-access layer over the ``microprojects``/``memberships``/
+``invitations`` tables, plus each microproject's own directory on disk (:func:`microproject_dir`),
+under which the other plugins keep its Follow repository, saved structures, step presets and
+attachments. Follow and StructureForge never know a "microproject" exists; the plugins map a slug to
+the paths they're given from here.
+
+Membership keeps two invariants, whatever the route: a µprojet always has at least one owner, and
+its creator stays an owner (:func:`change_member_role`, :func:`remove_member`). An invitation is
+stored by the SHA-256 of its token only: the token in clear leaves :func:`create_invitation` for the
+e-mail and is never read back.
 """
 
 from __future__ import annotations
 
 import re
+import shutil
 import sqlite3
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...kernel import mail
 from ...kernel.db import data_dir, get_conn
-from ...kernel.errors import Forbidden, InvalidInput, NotFound
+from ...kernel.errors import Conflict, Forbidden, InvalidInput, NotFound
+from ...kernel.locks import keyed_lock
 from ..accounts import security
 from ..accounts import service as accounts
 from ..areas import service as areas
-from ..areas.service import slugify
+from ..areas.service import UNCLASSIFIED_AREA_SLUG, slugify
 
 ROLE_ORDER = {"viewer": 0, "editor": 1, "owner": 2}
+# Slugs a µprojet never gets, so that a page under /microprojets/<literal> stays possible.
+RESERVED_SLUGS = frozenset({"new", "nouvelle"})
 
 
-class MicroprojectNotFoundError(Exception):
+class MicroprojectNotFoundError(NotFound):
     pass
 
 
@@ -43,6 +51,19 @@ class Microproject:
     thematic_id: int | None = None  # one of that area's thématiques (spectre.plugins.areas.service.Thematic), optional
     code: str | None = None  # « Nat_0004 » - see assign_code ; None while it sits in « Non classé »
     created_at: str | None = None  # SQLite « YYYY-MM-DD HH:MM:SS », UTC
+
+
+@dataclass(frozen=True)
+class Invitation:
+    """A pending invitation - without its token, which only the e-mail carries."""
+
+    id: int
+    microproject_id: int
+    email: str
+    role: str
+    invited_by: int
+    created_at: str
+    expires_at: str
 
 
 def format_code(prefix: str, number: int) -> str:
@@ -101,11 +122,10 @@ def search(text: str, *, limit: int = 8) -> list[Microproject]:
     query = _folded(text)
     if not query:
         return []
-    exact = None
     try:
         exact = get_by_code(text)
     except MicroprojectNotFoundError:
-        pass
+        exact = None
     words = query.split()
     scored = []
     for microproject in list_all():
@@ -130,59 +150,67 @@ def search(text: str, *, limit: int = 8) -> list[Microproject]:
 def get_by_code(text: str) -> Microproject:
     """A µprojet by its number, written the way people say it: « Nat_0004 », « Nat 4 », « nat4 »."""
     match = _CODE_RE.match(text or "")
-    if not match:
-        raise MicroprojectNotFoundError(text)
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM microprojects WHERE lower(code_prefix) = lower(?) AND code_number = ?",
-            (match.group(1), int(match.group(2))),
-        ).fetchone()
+    row = None
+    if match:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM microprojects WHERE lower(code_prefix) = lower(?) AND code_number = ?",
+                (match.group(1), int(match.group(2))),
+            ).fetchone()
     if row is None:
-        raise MicroprojectNotFoundError(text)
+        raise MicroprojectNotFoundError(f"aucun µprojet numéroté « {text} »")
     return _microproject_from_row(row)
 
 
-def _slugify(name: str) -> str:
-    return slugify(name) or "microprojet"
-
-
-def _unique_slug(conn: sqlite3.Connection, base: str) -> str:
+def _unique_slug(conn: sqlite3.Connection, name: str) -> str:
+    base = slugify(name) or "microprojet"
     slug = base
     suffix = 2
-    while conn.execute("SELECT 1 FROM microprojects WHERE slug = ?", (slug,)).fetchone():
+    while slug in RESERVED_SLUGS or conn.execute("SELECT 1 FROM microprojects WHERE slug = ?", (slug,)).fetchone():
         slug = f"{base}-{suffix}"
         suffix += 1
     return slug
 
 
-def create(
-    name: str,
-    description: str,
-    *,
-    owner_id: int,
-    management_area_id: int | None = None,
-    thematic_id: int | None = None,
-) -> Microproject:
+def _area_id(area_slug: str | None) -> int:
+    if not area_slug:
+        raise InvalidInput("un µprojet appartient toujours à un projet")
+    try:
+        return areas.get_by_slug(area_slug).id
+    except areas.ManagementAreaNotFoundError as exc:
+        raise InvalidInput(f"projet {area_slug!r} introuvable") from exc
+
+
+def _thematic_id(area_id: int, thematic_slug: str | None) -> int | None:
+    if not thematic_slug:
+        return None
+    try:
+        return areas.get_thematic(area_id, thematic_slug).id
+    except areas.ThematicNotFoundError as exc:
+        raise InvalidInput(f"la thématique {thematic_slug!r} n'appartient pas à ce projet") from exc
+
+
+def create(name: str, description: str, *, owner_id: int, area: str | None = None, thematic: str | None = None) -> Microproject:
+    """A new µprojet, its creator its first owner. ``area`` (a project's slug, « Non classé » by
+    default) and ``thematic`` (one of that project's thématiques) say where it sits."""
     name = name.strip()
     if not name:
-        raise ValueError("le nom du µprojet est obligatoire")
+        raise InvalidInput("le nom du µprojet est obligatoire")
+    area_id = _area_id(area or UNCLASSIFIED_AREA_SLUG)
+    thematic_id = _thematic_id(area_id, thematic)
     with get_conn() as conn:
-        if management_area_id is None:
-            management_area_id = conn.execute(
-                "SELECT id FROM management_areas WHERE slug = ?", ("non-classe",)
-            ).fetchone()["id"]
-        slug = _unique_slug(conn, _slugify(name))
+        slug = _unique_slug(conn, name)
         cursor = conn.execute(
             "INSERT INTO microprojects (slug, name, description, management_area_id, thematic_id, created_by) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (slug, name, description.strip(), management_area_id, thematic_id, owner_id),
+            (slug, name, description.strip(), area_id, thematic_id, owner_id),
         )
         microproject_id = cursor.lastrowid
         conn.execute(
             "INSERT INTO memberships (microproject_id, user_id, role) VALUES (?, ?, 'owner')",
             (microproject_id, owner_id),
         )
-        assign_code(conn, microproject_id, management_area_id)
+        assign_code(conn, microproject_id, area_id)
     microproject_dir(slug)  # create the on-disk home for this microproject's Follow repo/structures upfront
     return get_by_id(microproject_id)
 
@@ -203,10 +231,7 @@ def update(slug: str, user: accounts.User, changes: dict) -> Microproject:
     ``area`` (a project's slug; changing project drops its thématique) and ``thematic`` (the slug
     of one of that project's thématiques, or ``None``). Its owners and the strategy-layer admins
     only."""
-    try:
-        microproject = get_by_slug(slug)
-    except MicroprojectNotFoundError as exc:
-        raise NotFound(f"µprojet {slug!r} introuvable") from exc
+    microproject = get_by_slug(slug)
     if not (user.is_admin or role_for(microproject.id, user.id) == "owner"):
         raise Forbidden("seuls un propriétaire du µprojet ou un administrateur peuvent le modifier")
 
@@ -219,21 +244,11 @@ def update(slug: str, user: accounts.User, changes: dict) -> Microproject:
         description = changes["description"].strip()
     area_id, thematic_id = microproject.management_area_id, microproject.thematic_id
     if "area" in changes:
-        if not changes["area"]:
-            raise InvalidInput("un µprojet appartient toujours à un projet")
-        try:
-            area_id = areas.get_by_slug(changes["area"]).id
-        except areas.ManagementAreaNotFoundError as exc:
-            raise InvalidInput(f"projet {changes['area']!r} introuvable") from exc
+        area_id = _area_id(changes["area"])
         if area_id != microproject.management_area_id:
             thematic_id = None
     if "thematic" in changes:
-        thematic_id = None
-        if changes["thematic"]:
-            try:
-                thematic_id = areas.get_thematic(area_id, changes["thematic"]).id
-            except areas.ThematicNotFoundError as exc:
-                raise InvalidInput(f"la thématique {changes['thematic']!r} n'appartient pas à ce projet") from exc
+        thematic_id = _thematic_id(area_id, changes["thematic"])
 
     with get_conn() as conn:
         conn.execute("UPDATE microprojects SET name = ?, description = ? WHERE id = ?", (name, description, microproject.id))
@@ -260,7 +275,7 @@ def get_by_slug(slug: str) -> Microproject:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM microprojects WHERE slug = ?", (slug,)).fetchone()
     if row is None:
-        raise MicroprojectNotFoundError(slug)
+        raise MicroprojectNotFoundError(f"µprojet {slug!r} introuvable")
     return _microproject_from_row(row)
 
 
@@ -268,7 +283,7 @@ def get_by_id(microproject_id: int) -> Microproject:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM microprojects WHERE id = ?", (microproject_id,)).fetchone()
     if row is None:
-        raise MicroprojectNotFoundError(str(microproject_id))
+        raise MicroprojectNotFoundError(f"µprojet n° {microproject_id} introuvable")
     return _microproject_from_row(row)
 
 
@@ -289,17 +304,6 @@ def role_for(microproject_id: int, user_id: int) -> str | None:
             "SELECT role FROM memberships WHERE microproject_id = ? AND user_id = ?", (microproject_id, user_id)
         ).fetchone()
     return row["role"] if row else None
-
-
-def list_members(microproject_id: int) -> list[dict]:
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT users.id, users.name, users.email, memberships.role FROM memberships "
-            "JOIN users ON users.id = memberships.user_id WHERE memberships.microproject_id = ? "
-            "ORDER BY users.name",
-            (microproject_id,),
-        ).fetchall()
-    return [dict(row) for row in rows]
 
 
 def owners_by_microproject(microproject_ids: list[int]) -> dict[int, list[dict]]:
@@ -323,112 +327,197 @@ def owners_by_microproject(microproject_ids: list[int]) -> dict[int, list[dict]]
     return owners
 
 
-def add_member(microproject_id: int, microproject_name: str, email: str, role: str, *, invited_by: int) -> str:
-    """Add ``email`` to the microproject directly if they already have an account (returns
-    ``"added"``), or create a two-week invitation and e-mail them a signup link otherwise
-    (returns ``"invited"``) - see :func:`accept_invitation` for the other end of that link.
-    """
-    if role not in ROLE_ORDER:
-        raise ValueError(f"rôle inconnu : {role!r}")
-    email = email.strip().lower()
-    user = accounts.get_by_email(email)
-    if user is not None:
-        with get_conn() as conn:
-            conn.execute(
-                "INSERT INTO memberships (microproject_id, user_id, role) VALUES (?, ?, ?) "
-                "ON CONFLICT(microproject_id, user_id) DO UPDATE SET role = excluded.role",
-                (microproject_id, user.id, role),
-            )
-            # a member now: an invitation still pending for this address is stale
-            conn.execute("DELETE FROM invitations WHERE microproject_id = ? AND email = ?", (microproject_id, email))
-        return "added"
+# -- membres ----------------------------------------------------------------------------------------
 
+_MEMBER_SELECT = (
+    "SELECT users.id, users.name, users.email, memberships.role, users.id = microprojects.created_by AS is_creator "
+    "FROM memberships JOIN users ON users.id = memberships.user_id "
+    "JOIN microprojects ON microprojects.id = memberships.microproject_id "
+)
+
+
+def _member_from_row(row: sqlite3.Row) -> dict:
+    return {**dict(row), "is_creator": bool(row["is_creator"])}
+
+
+def _check_role(role: str) -> None:
+    if role not in ROLE_ORDER:
+        raise InvalidInput(f"rôle inconnu : {role!r}")
+
+
+def list_members(microproject_id: int) -> list[dict]:
+    """``[{id, name, email, role, is_creator}]``, by name."""
+    with get_conn() as conn:
+        rows = conn.execute(_MEMBER_SELECT + "WHERE memberships.microproject_id = ? ORDER BY users.name", (microproject_id,)).fetchall()
+    return [_member_from_row(row) for row in rows]
+
+
+def get_member(microproject_id: int, user_id: int) -> dict:
+    with get_conn() as conn:
+        row = conn.execute(
+            _MEMBER_SELECT + "WHERE memberships.microproject_id = ? AND memberships.user_id = ?", (microproject_id, user_id)
+        ).fetchone()
+    if row is None:
+        raise NotFound("cette personne n'est pas membre du µprojet")
+    return _member_from_row(row)
+
+
+def add_member(microproject: Microproject, email: str, role: str) -> dict:
+    """Add the account of ``email`` to the µprojet - 404 ``no_account`` if there is none (invite
+    it instead: :func:`create_invitation`), 409 if it is already a member. Its pending invitations
+    to this µprojet are dropped: they have nothing left to give."""
+    _check_role(role)
+    user = accounts.get_by_email(email)
+    if user is None:
+        raise NotFound(f"aucun compte n'existe pour {accounts.normalize_email(email)!r} : invitez cette personne", code="no_account")
+    with get_conn() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO memberships (microproject_id, user_id, role) VALUES (?, ?, ?)", (microproject.id, user.id, role)
+            )
+        except sqlite3.IntegrityError as exc:
+            raise Conflict(f"{user.email} est déjà membre du µprojet", code="already_member") from exc
+        conn.execute("DELETE FROM invitations WHERE microproject_id = ? AND email = ?", (microproject.id, user.email))
+    return get_member(microproject.id, user.id)
+
+
+def _owner_count(conn: sqlite3.Connection, microproject_id: int) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) FROM memberships WHERE microproject_id = ? AND role = 'owner'", (microproject_id,)
+    ).fetchone()[0]
+
+
+def _check_keeps_an_owner(conn: sqlite3.Connection, microproject: Microproject, member: dict) -> None:
+    """409 if ``member`` is about to lose the owner role while being the creator or the last owner."""
+    if member["is_creator"]:
+        raise Conflict("la personne qui a créé le µprojet en reste propriétaire", code="creator_protected")
+    if member["role"] == "owner" and _owner_count(conn, microproject.id) == 1:
+        raise Conflict("un µprojet garde au moins un propriétaire", code="last_owner")
+
+
+def change_member_role(microproject: Microproject, user_id: int, role: str) -> dict:
+    _check_role(role)
+    with keyed_lock("memberships", microproject.slug), get_conn() as conn:
+        member = get_member(microproject.id, user_id)
+        if member["role"] == role:
+            return member
+        if role != "owner":
+            _check_keeps_an_owner(conn, microproject, member)
+        conn.execute(
+            "UPDATE memberships SET role = ? WHERE microproject_id = ? AND user_id = ?", (role, microproject.id, user_id)
+        )
+    return get_member(microproject.id, user_id)
+
+
+def remove_member(microproject: Microproject, user_id: int) -> None:
+    with keyed_lock("memberships", microproject.slug), get_conn() as conn:
+        _check_keeps_an_owner(conn, microproject, get_member(microproject.id, user_id))
+        conn.execute("DELETE FROM memberships WHERE microproject_id = ? AND user_id = ?", (microproject.id, user_id))
+
+
+# -- invitations ------------------------------------------------------------------------------------
+
+_PENDING = "expires_at > datetime('now')"
+
+
+def _invitation_from_row(row: sqlite3.Row) -> Invitation:
+    return Invitation(
+        id=row["id"],
+        microproject_id=row["microproject_id"],
+        email=row["email"],
+        role=row["role"],
+        invited_by=row["invited_by"],
+        created_at=row["created_at"],
+        expires_at=row["expires_at"],
+    )
+
+
+def create_invitation(microproject: Microproject, email: str, role: str, *, invited_by: int) -> tuple[Invitation, str]:
+    """A two-week invitation to the µprojet, and its token in clear - for the e-mail, the only
+    place it goes. It replaces the pending invitation of the same address, if any (inviting again
+    re-sends the link); a member is not invited (409)."""
+    _check_role(role)
+    email = accounts.normalize_email(email)
+    if not email or "@" not in email:
+        raise InvalidInput("adresse e-mail invalide", code="invalid_email")
+    user = accounts.get_by_email(email)
+    if user is not None and role_for(microproject.id, user.id) is not None:
+        raise Conflict(f"{email} est déjà membre du µprojet", code="already_member")
     token = security.new_token()
     with get_conn() as conn:
-        conn.execute(
-            "INSERT INTO invitations (token, microproject_id, email, role, invited_by, expires_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (token, microproject_id, email, role, invited_by, security.invitation_expiry()),
+        conn.execute("DELETE FROM invitations WHERE microproject_id = ? AND email = ?", (microproject.id, email))
+        cursor = conn.execute(
+            "INSERT INTO invitations (token_hash, microproject_id, email, role, invited_by, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (security.hash_token(token), microproject.id, email, role, invited_by, security.invitation_expiry()),
         )
-    inviter = accounts.get_by_id(invited_by)
-    link = f"{mail.base_url()}/inscription?invitation={token}"
-    mail.send_email(
-        email,
-        f"Invitation à rejoindre « {microproject_name} » sur Spectre",
-        f"{inviter.name if inviter else 'Un membre'} vous invite à rejoindre le projet "
-        f"« {microproject_name} » sur Spectre.\n\n"
-        f"Pour créer votre compte et rejoindre le projet, ouvrez ce lien (valable 14 jours) :\n{link}",
-    )
-    return "invited"
+        row = conn.execute("SELECT * FROM invitations WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    return _invitation_from_row(row), token
 
 
-def remove_member(microproject_id: int, user_id: int) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM memberships WHERE microproject_id = ? AND user_id = ?", (microproject_id, user_id))
-
-
-def list_invitations(microproject_id: int) -> list[dict]:
+def list_invitations(microproject_id: int) -> list[Invitation]:
+    """The pending invitations (not yet expired), newest first."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT token, email, role, created_at FROM invitations WHERE microproject_id = ? ORDER BY created_at DESC",
+            f"SELECT * FROM invitations WHERE microproject_id = ? AND {_PENDING} ORDER BY created_at DESC, id DESC",
             (microproject_id,),
         ).fetchall()
-    return [dict(row) for row in rows]
+    return [_invitation_from_row(row) for row in rows]
 
 
-def cancel_invitation(microproject_id: int, token: str) -> None:
+def cancel_invitation(microproject_id: int, invitation_id: int) -> None:
     with get_conn() as conn:
-        conn.execute("DELETE FROM invitations WHERE microproject_id = ? AND token = ?", (microproject_id, token))
+        deleted = conn.execute(
+            "DELETE FROM invitations WHERE microproject_id = ? AND id = ?", (microproject_id, invitation_id)
+        ).rowcount
+    if not deleted:
+        raise NotFound("invitation introuvable")
 
 
-def get_invitation(token: str) -> dict | None:
+def get_invitation(token: str) -> Invitation | None:
+    """The pending invitation an e-mailed token designates, if it is still valid."""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT invitations.token, invitations.email, invitations.role, invitations.microproject_id, "
-            "microprojects.name AS microproject_name FROM invitations JOIN microprojects ON microprojects.id = invitations.microproject_id "
-            "WHERE invitations.token = ? AND invitations.expires_at > datetime('now')",
-            (token,),
+            f"SELECT * FROM invitations WHERE token_hash = ? AND {_PENDING}", (security.hash_token(token),)
         ).fetchone()
-    return dict(row) if row else None
+    return _invitation_from_row(row) if row else None
 
 
-def accept_invitation(token: str, user_id: int, user_email: str) -> str | None:
+def accept_invitation(invitation: Invitation, user: accounts.User) -> str:
     """Consume an invitation for a signed-in user - only if its email matches the one the
     invitation was addressed to (a token alone isn't proof of that email address, since it
-    travels inside a plain URL). Returns the user's role in the microproject afterwards, or
-    ``None`` if the invitation wasn't accepted.
+    travels inside a plain URL: 403 ``email_mismatch`` otherwise). Returns the user's role in the
+    microproject afterwards; every invitation of that address to the µprojet is consumed.
 
-    An invitation never lowers a role: someone who became a member in the meantime (added
-    directly, promoted owner...) keeps the higher of their current role and the invited one -
-    a stale link must not demote the last owner behind the "at least one owner" rule.
+    An invitation never lowers a role: someone who became a member in the meantime keeps the
+    higher of their current role and the invited one - a stale link must not demote the last owner.
     """
-    invitation = get_invitation(token)
-    if invitation is None or invitation["email"] != user_email.strip().lower():
-        return None
+    if invitation.email != accounts.normalize_email(user.email):
+        raise Forbidden("cette invitation est adressée à une autre adresse e-mail", code="email_mismatch")
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT role FROM memberships WHERE microproject_id = ? AND user_id = ?",
-            (invitation["microproject_id"], user_id),
+            "SELECT role FROM memberships WHERE microproject_id = ? AND user_id = ?", (invitation.microproject_id, user.id)
         ).fetchone()
-        role = invitation["role"]
+        role = invitation.role
         if row is not None and ROLE_ORDER[row["role"]] >= ROLE_ORDER[role]:
             role = row["role"]
         conn.execute(
             "INSERT INTO memberships (microproject_id, user_id, role) VALUES (?, ?, ?) "
             "ON CONFLICT(microproject_id, user_id) DO UPDATE SET role = excluded.role",
-            (invitation["microproject_id"], user_id, role),
+            (invitation.microproject_id, user.id, role),
         )
-        conn.execute("DELETE FROM invitations WHERE token = ?", (token,))
+        conn.execute("DELETE FROM invitations WHERE microproject_id = ? AND email = ?", (invitation.microproject_id, invitation.email))
     return role
 
 
-def delete(microproject: Microproject) -> None:
+def delete(microproject: Microproject, confirm_name: str) -> None:
     """Permanently delete a microproject: its database rows (memberships and pending invitations
     cascade via the foreign keys) and the on-disk directory holding its Follow repository, saved
     structures, step presets, and tech bricks - there is no undo, this is real experiment history.
+    ``confirm_name`` must match its name exactly: the page asks the owner to type it, and a raw API
+    call can't skip that guard either.
     """
-    import shutil
-
+    if confirm_name.strip() != microproject.name:
+        raise InvalidInput("le nom saisi ne correspond pas au nom du µprojet", code="confirm_name_mismatch")
     with get_conn() as conn:
         conn.execute("DELETE FROM microprojects WHERE id = ?", (microproject.id,))
     shutil.rmtree(microproject_dir(microproject.slug), ignore_errors=True)
@@ -438,4 +527,3 @@ def microproject_dir(slug: str) -> Path:
     path = data_dir() / "microprojects" / slug
     path.mkdir(parents=True, exist_ok=True)
     return path
-

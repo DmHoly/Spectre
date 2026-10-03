@@ -182,13 +182,13 @@ const ExperiencePage = (() => {
     crumb.textContent = microproject.code ? `${microproject.code} · ${microproject.name}` : microproject.name;
     crumb.href = `/microprojets/${encodeURIComponent(microprojectSlug)}`;
     const areaCrumb = document.getElementById("area-crumb");
-    if (microproject.management_area) {
-      areaCrumb.textContent = microproject.management_area.name;
-      areaCrumb.href = `/management/${encodeURIComponent(microproject.management_area.slug)}`;
+    if (microproject.area) {
+      areaCrumb.textContent = microproject.area.name;
+      areaCrumb.href = `/management/${encodeURIComponent(microproject.area.slug)}`;
     } else {
       areaCrumb.textContent = "Non classé";
     }
-    document.getElementById("thematic-crumb").textContent = microproject.thematique ? " / " + microproject.thematique.name : "";
+    document.getElementById("thematic-crumb").textContent = microproject.thematic ? " / " + microproject.thematic.name : "";
   }
 
   // --- chargement ---------------------------------------------------------------------------------

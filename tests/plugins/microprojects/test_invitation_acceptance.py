@@ -5,19 +5,15 @@ inscrite entre-temps n'est plus morte)."""
 
 from __future__ import annotations
 
-from support.accounts import link_token, login, logout, signup
+import sqlite3
+
+from support.accounts import login, logout, signup
 from support.http import assert_handler_404
-from support.microprojects import add_member, signup_with_microproject
+from support.microprojects import add_member, get_microproject, invitations, invite_and_get_token, signup_with_microproject
 
 
 def _owner_microproject(client, microproject_name="Projet"):
     return signup_with_microproject(client, "owner@example.com", microproject_name, name="Owner")
-
-
-def _invite(client, outbox, slug, email, role):
-    add_member(client, slug, email, role)
-    assert outbox[-1].to == email
-    return link_token(outbox[-1].body, "invitation")
 
 
 def _accept(client, token):
@@ -25,13 +21,13 @@ def _accept(client, token):
 
 
 def _role_in(client, slug):
-    """Le rôle du compte connecté dans le µprojet (route du plugin microprojects)."""
-    return client.get(f"/api/microprojets/{slug}").json()["role"]
+    """Le rôle du compte connecté dans le µprojet."""
+    return get_microproject(client, slug)["role"]
 
 
 def test_registering_then_accepting_joins_the_microproject(client, outbox):
     slug = _owner_microproject(client, "Salle blanche")
-    token = _invite(client, outbox, slug, "invite@example.com", "editor")
+    token = invite_and_get_token(client, outbox, slug, "invite@example.com", "editor")
 
     logout(client)
     info = client.get(f"/api/invitations/{token}")
@@ -48,11 +44,13 @@ def test_registering_then_accepting_joins_the_microproject(client, outbox):
     # one-time use
     assert_handler_404(_accept(client, token), "invitation")
     assert_handler_404(client.get(f"/api/invitations/{token}"))
+    login(client, "owner@example.com")
+    assert invitations(client, slug) == []
 
 
 def test_signing_up_no_longer_consumes_an_invitation(client, outbox):
     slug = _owner_microproject(client)
-    token = _invite(client, outbox, slug, "later@example.com", "viewer")
+    token = invite_and_get_token(client, outbox, slug, "later@example.com", "viewer")
 
     signup(client, "later@example.com", name="Plus tard")
     # the account exists now: the page offers to sign in, the invitation still waits
@@ -61,7 +59,7 @@ def test_signing_up_no_longer_consumes_an_invitation(client, outbox):
 
 def test_accepting_with_another_address_is_refused_and_keeps_the_invitation(client, outbox):
     slug = _owner_microproject(client)
-    token = _invite(client, outbox, slug, "correct@example.com", "viewer")
+    token = invite_and_get_token(client, outbox, slug, "correct@example.com", "viewer")
 
     signup(client, "different@example.com", name="Autre")
     response = _accept(client, token)
@@ -76,9 +74,9 @@ def test_a_second_invitation_is_accepted_with_the_existing_account(client, outbo
     first = _owner_microproject(client, "Premier")
     second = signup_with_microproject(client, "owner2@example.com", "Second", name="Owner 2")
     login(client, "owner@example.com")
-    first_token = _invite(client, outbox, first, "twice@example.com", "viewer")
+    first_token = invite_and_get_token(client, outbox, first, "twice@example.com", "viewer")
     login(client, "owner2@example.com")
-    second_token = _invite(client, outbox, second, "twice@example.com", "editor")
+    second_token = invite_and_get_token(client, outbox, second, "twice@example.com", "editor")
 
     # signs up from the first invitation...
     signup(client, "twice@example.com", name="Deux fois")
@@ -93,7 +91,7 @@ def test_a_second_invitation_is_accepted_with_the_existing_account(client, outbo
 
 def test_accepting_requires_a_session(client, outbox):
     slug = _owner_microproject(client)
-    token = _invite(client, outbox, slug, "anon@example.com", "viewer")
+    token = invite_and_get_token(client, outbox, slug, "anon@example.com", "viewer")
     logout(client)
     assert _accept(client, token).status_code == 401
 
@@ -103,28 +101,29 @@ def test_accepting_an_unknown_invitation_404s(client):
     assert_handler_404(_accept(client, "not-a-real-token"), "invitation")
 
 
-def test_a_stale_invitation_never_lowers_a_role(client, outbox):
+def test_a_stale_invitation_never_lowers_a_role(client, outbox, data_dir):
     slug = _owner_microproject(client)
-    viewer_token = _invite(client, outbox, slug, "bob@example.com", "viewer")
-    owner_token = _invite(client, outbox, slug, "bob@example.com", "owner")
+    token = invite_and_get_token(client, outbox, slug, "bob@example.com", "viewer")
+    bob = signup(client, "bob@example.com", name="Bob")
+    # une adhésion d'avant, qui n'avait pas consommé l'invitation (l'API, elle, la supprime)
+    conn = sqlite3.connect(data_dir / "spectre.db")
+    conn.execute("INSERT INTO memberships (microproject_id, user_id, role) SELECT id, ?, 'owner' FROM microprojects", (bob["id"],))
+    conn.commit()
+    conn.close()
 
-    signup(client, "bob@example.com", name="Bob")
-    assert _accept(client, owner_token).json()["role"] == "owner"
-    # the older, lower invitation is still consumed, but Bob stays owner
-    response = _accept(client, viewer_token)
-    assert response.status_code == 201
-    assert response.json()["role"] == "owner"
+    response = _accept(client, token)
+    assert response.status_code == 201 and response.json()["role"] == "owner"
     assert _role_in(client, slug) == "owner"
 
 
 def test_adding_a_member_directly_drops_their_pending_invitations(client, outbox):
     slug = _owner_microproject(client)
-    token = _invite(client, outbox, slug, "bob@example.com", "viewer")
+    token = invite_and_get_token(client, outbox, slug, "bob@example.com", "viewer")
     signup(client, "bob@example.com", name="Bob")
 
     login(client, "owner@example.com")
     add_member(client, slug, "bob@example.com", "owner")
-    assert client.get(f"/api/microprojets/{slug}/invitations").json() == []
+    assert invitations(client, slug) == []
 
     login(client, "bob@example.com")
     assert_handler_404(_accept(client, token), "invitation")

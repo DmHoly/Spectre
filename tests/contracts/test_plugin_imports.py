@@ -33,7 +33,6 @@ KERNEL_COMPOSITION_ROOT = ("spectre.kernel.app", "spectre.plugins")
 
 # (module qui importe, module importé) -> ce qui supprimera l'import.
 ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {
-    ("spectre.plugins.microprojects.api", "spectre.plugins.experiments.repository"): "GET /api/experiment-stats?microproject=",
     ("spectre.plugins.microprojects.api", "spectre.plugins.wafers.fdl"): "GET /api/wafers?fdl=",
     ("spectre.plugins.microprojects.api", "spectre.plugins.wafers.service"): "GET /api/wafers?fdl=",
     ("spectre.plugins.experiments.api", "spectre.plugins.evidence.service"): (
