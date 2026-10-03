@@ -282,3 +282,78 @@ Les décisions prises :
 
 Le contrat est dans [`ARCHITECTURE.md`](ARCHITECTURE.md) : noyau sans métier, 21 plugins nommés de
 la même façon en Python, sous `/api` et sous `/static`, et table de correspondance des 131 routes.
+
+---
+
+## 7. État après le refactor (4 octobre 2026)
+
+Branche `refactor/plugins` : 43 commits depuis `03f4646`. Elle a été menée par étapes, chacune
+gardant la suite verte puis relue par un agent chargé de la réfuter :
+1. filet de sécurité ;
+2. déplacement structurel ;
+3. front par plugin ;
+4. trois vagues REST ;
+5. finitions.
+
+**Résultat.** 769 tests verts, sans xfail. S'y ajoutent les tests de contrat :
+- appels du front ↔ routes ;
+- aucune chaîne `/api/` hors des `client.js` ;
+- 401 anonyme sur toute route non publique ;
+- graphe d'imports entre plugins, sans aucune exception transitoire ;
+- assets servis.
+
+### Constats de ce rapport : ce qui est réglé
+
+| Constat | État |
+|---|---|
+| S — `api/experiments.py`, `core/microprojects.py`, `api/structures.py`, `core/db.py`, `common.js`, `experience.js` | Réglé : répartis en plugins. `experiments` a une seule fonction d'écriture (`amend`) et la fiche est découpée en modules et panneaux |
+| O — dispatch par chaîne sur le type de structure, ordre des routeurs, recherche codée en dur | Réglé : `StructureKind` (3 types), identifiants d'un seul segment, `GET /api/search` avec registre de fournisseurs |
+| L — « Non classé », source démo | Réglé : `is_system`/`can_delete` ; `DataSource` respecté par les deux sources |
+| I — globales implicites, `_detail` fourre-tout | Réglé en grande partie : contexte explicite (`ctx`, `mount(el, ctx)`), chaque plugin lit sa sous-ressource. Il reste des fonctions globales partagées entre plugins côté front, documentées dans ARCHITECTURE.md § 6 |
+| D — `core/permissions` → `api`, adaptateurs PRISM doublés | Réglé : dépendances dans `accounts.deps`/`microprojects.deps`, un seul adaptateur PRISM derrière `DataSource`. Les accès privés à Follow sont isolés dans `experiments.repository.delete_line` |
+| REST | Réglé : 131 routes renommées en ressources anglaises (rupture nette). Codes, `Location` qui se lit, 204, `If-Match`/412 ; plus de HTML sous `/api` |
+| S1 lecture de fichiers arbitraires | Réglé : images servies par identifiant, racines `SPECTRE_EXTERNAL_IMAGE_ROOTS`, parcours réservé aux éditeurs |
+| S2 redirection ouverte, S3 XSS de préset, SVG non échappés | Réglé, testé dans le navigateur |
+| S4 bibliothèque partagée modifiable par tous | Réglé : auteur ou admin, `created_by`/`updated_by`, confirmation avant suppression |
+| S6 jetons dans les journaux, S7 jetons en clair, cookie, `/p/{code}` anonyme | Réglé |
+| B1 hypothèse effacée, B2 champs de preuve perdus, B3 fusion sans preuves | Réglé et testé pour chaque écriture. `scripts/repair_hypotheses.py` (à blanc par défaut) restaure les hypothèses déjà perdues : 12 sur la copie de `data/` |
+| B4 écritures concurrentes, fourches silencieuses | Réglé : verrou par µprojet, cache du dépôt, `If-Match` → 412, aucune fourche implicite (vérifié sous charge et dans le navigateur) |
+| B5 formulaire d'intention bloquant, B6 renommage qui écrase, B7 liens d'atlas qui disparaissent, B8 version périmée « actuelle » | Réglé |
+| B9 owner rétrogradable, invitations mortes, B10 401 sur mot de passe faux, B11 bibliothèque en Docker, B12 admin re-promu, DOE sans plafond | Réglé |
+| Performance : dépôt relu à chaque requête | Réglé : cache invalidé par signature ; les stats et la frise chargent chaque dépôt une seule fois |
+| Filet de tests | Réglé : helpers par plugin, 404 du handler distingué de celui du routeur, contrats ; écritures atomiques réessayées sous Windows |
+
+### Ce qui reste ouvert
+
+**Décisions produit ou sécurité :**
+- Inscription libre sans vérification d'adresse, et ajout direct d'un compte existant comme membre
+  (S5). Une liste blanche de domaines (`SPECTRE_ALLOWED_EMAIL_DOMAINS`) serait la réponse minimale.
+- `/openapi.json` est lisible sans session : il décrit les routes, pas les données.
+
+**Dette assumée, documentée dans ARCHITECTURE.md :**
+- Les dépendances structureforge, follow et prism ne sont pas épinglées (§ 4 ci-dessus) : à
+  épingler avant une mise en production.
+- Le cahier de données vit encore dans les métadonnées versionnées de l'étude. C'est désormais
+  sûr (verrou, `If-Match`), mais chaque note crée une version : à sortir dans un stockage propre
+  si le cahier devient un vrai cahier de labo.
+- Côté front, des règles métier sont encore recopiées : `waferKey`, `normalizeFdl`, limites
+  d'images, définition du WIP. Il reste aussi quelques fonctions globales partagées entre plugins.
+- Les liens d'entités d'une piste supprimée restent listés. Le nom d'une piste supprimée n'est
+  jamais réattribué, donc ils ne pointent jamais vers une autre étude.
+- `areas` met à jour la table `microprojects` lors d'une suppression : c'est l'exception écrite
+  dans ARCHITECTURE.md § 3.
+
+**Autres points :**
+- Les pages de documentation intégrées (`/docs`) citent encore les anciennes routes ; leur
+  contenu est laissé en l'état, à reprendre.
+- `tests_js` ne tourne pas sur ce poste, faute de Node.
+
+**Incident pendant le refactor.** Le 3 octobre à 23 h 33, la nouvelle version a été démarrée sur
+le dossier `data/` réel du dépôt, par un processus non identifié. Les migrations s'y sont
+appliquées.
+- Aucune donnée d'expérience n'a été touchée : les dépôts Follow sont intacts, de même que les
+  comptes, les µprojets et les lots.
+- Seules les 5 lignes de la table abandonnée `lot_steps` sont perdues.
+- Ce `data/` ne peut plus être ouvert par `main`.
+
+Depuis, toute migration commence par une sauvegarde dans `data/backups/<horodatage>/`.
