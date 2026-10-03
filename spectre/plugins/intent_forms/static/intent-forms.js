@@ -90,8 +90,10 @@ function libraryEntryRow(entry) {
   const isOrigin = activeForm && activeForm.origin && activeForm.origin.form_id === entry.id;
   const isActive = isOrigin && !activeForm.outdated;
   const questions = `${entry.form.fields.length} question${entry.form.fields.length > 1 ? "s" : ""}`;
-  const author = entry.created_by ? ` · par ${escapeHtml(entry.created_by)}` : "";
-  const edited = entry.updated_by && entry.updated_by !== entry.created_by ? `, modifié par ${escapeHtml(entry.updated_by)}` : "";
+  const createdBy = entry.created_by && entry.created_by.name;
+  const updatedBy = entry.updated_by && entry.updated_by.name;
+  const author = createdBy ? ` · par ${escapeHtml(createdBy)}` : "";
+  const edited = updatedBy && updatedBy !== createdBy ? `, modifié par ${escapeHtml(updatedBy)}` : "";
   const buttons = [];
   if (canActivate() && !isActive) {
     buttons.push(`<button class="btn btn-line js-activate" type="button" data-id="${escapeHtml(entry.id)}" style="padding:5px 10px;font-size:12px;">${isOrigin ? "Réactiver" : "Activer"}</button>`);

@@ -33,6 +33,11 @@ class ActivateIntentFormRequest(BaseModel):
     intent_form_id: str
 
 
+def _account(user_id: int | None, name: str | None) -> dict | None:
+    """``{id, name}`` comme dans process_library, ou ``None`` pour une entrée d'avant cette trace."""
+    return None if user_id is None and name is None else {"id": user_id, "name": name}
+
+
 def _entry_payload(entry: LibraryEntry, user: User) -> dict:
     item = entry.item
     return {
@@ -40,8 +45,8 @@ def _entry_payload(entry: LibraryEntry, user: User) -> dict:
         "name": item.name,
         "scope": entry.scope,
         "microproject": entry.microproject,
-        "created_by": item.created_by,
-        "updated_by": item.updated_by,
+        "created_by": _account(item.created_by_id, item.created_by),
+        "updated_by": _account(item.updated_by_id, item.updated_by),
         "created_at": item.created_at,
         "updated_at": item.updated_at,
         "can_edit": intent_forms.can_edit(user, entry),

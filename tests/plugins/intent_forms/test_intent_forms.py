@@ -52,7 +52,8 @@ def test_create_and_list_intent_form(client):
     assert created["name"] == "Simple"
     assert created["scope"] == "microproject"
     assert created["microproject"] == slug
-    assert created["created_by"] == created["updated_by"] == "Alice"
+    assert created["created_by"]["name"] == created["updated_by"]["name"] == "Alice"
+    assert created["created_by"] == created["updated_by"]
     assert created["form"]["title"] == "Formulaire simple"
     assert created["can_edit"] is True
 
@@ -145,7 +146,7 @@ def test_a_shared_entry_is_modified_by_its_author_or_an_admin_only(client):
     signup(client, "admin@example.com", name="Admin")  # le premier compte est admin
     switch_user(client, "auteur@example.com", name="Auteur")
     shared = create_intent_form(client, name="Commun")
-    assert shared["created_by"] == "Auteur" and shared["can_edit"] is True
+    assert shared["created_by"]["name"] == "Auteur" and shared["can_edit"] is True
 
     switch_user(client, "autre@example.com", name="Autre")
     assert list_intent_forms(client)[0]["can_edit"] is False
@@ -155,7 +156,8 @@ def test_a_shared_entry_is_modified_by_its_author_or_an_admin_only(client):
 
     switch_user(client, "admin@example.com")
     renamed = update_intent_form(client, shared["id"], name="Commun (revu)")
-    assert renamed["created_by"] == "Auteur" and renamed["updated_by"] == "Admin"
+    assert renamed["created_by"]["name"] == "Auteur" and renamed["updated_by"]["name"] == "Admin"
+    assert renamed["updated_by"]["id"] != renamed["created_by"]["id"]
 
     switch_user(client, "auteur@example.com")
     delete_intent_form(client, shared["id"])

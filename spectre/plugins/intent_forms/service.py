@@ -56,6 +56,7 @@ class IntentForm(BaseModel):
     updated_at: str | None = None
     created_by_id: int | None = None
     created_by: str | None = None
+    updated_by_id: int | None = None
     updated_by: str | None = None
 
 
@@ -243,6 +244,7 @@ def create_form(user: User, *, name: str, yaml_text: str, scope: str, microproje
             updated_at=now,
             created_by_id=user.id,
             created_by=user.name,
+            updated_by_id=user.id,
             updated_by=user.name,
         )
         forms[item.id] = item
@@ -270,7 +272,7 @@ def update_form(user: User, form_id: str, *, name: str | None = None, yaml_text:
             return LibraryEntry(current, entry.microproject)  # rien ne change
         if "name" in changes:
             _check_name_free(forms, changes["name"], except_id=form_id)
-        item = current.model_copy(update={**changes, "updated_at": _now(), "updated_by": user.name})
+        item = current.model_copy(update={**changes, "updated_at": _now(), "updated_by_id": user.id, "updated_by": user.name})
         forms[form_id] = item
         _save(path, forms)
     return LibraryEntry(item, entry.microproject)
