@@ -18,7 +18,7 @@ def lineage_graph(repo: Any) -> dict:
     """The ``{"nodes", "edges"}`` payload of the µprojet's lineage (``GET .../lineage``, see
     :func:`spectre.plugins.experiments.api.microproject_lineage` for what each node means) for one
     repository - shared with the frise of a thématique (:mod:`spectre.plugins.experiments.insights`),
-    which lays out the same nodes on a time axis, and with the lots (:mod:`spectre.plugins.lots.api`).
+    which lays out the same nodes on a time axis, and with the lots (:mod:`spectre.plugins.lots.views`).
     Each node is a version (``version_id``, also its ``id`` in ``edges``) of a line of study
     (``experiment_id``), the line's tip or not (``is_tip``). The lots holding a node's wafers are
     the lots plugin's own (``GET /api/lots?wafer=``) : the page composes their badges."""

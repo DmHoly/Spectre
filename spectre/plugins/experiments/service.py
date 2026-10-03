@@ -29,7 +29,7 @@ from ..structures import campaigns, kinds, simulation
 from ..structures.schemas import CampaignPayload, ImagesPayload, StructureImageInput
 from . import refs, versioning
 from .entities import EntityTrackingInput, clean_entity_entries, has_tracked_physical_entity
-from .repository import HOLD_KEY, RUNNING_STATUSES, delete_line, display_status, writing
+from .repository import HOLD_KEY, RUNNING_STATUSES, delete_line, display_status, retire_line, retired_lines, writing
 from .schemas import ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput
 
 CONTEXT_METADATA_KEY = "context"
@@ -222,25 +222,30 @@ def _slugify_branch(title: str) -> str:
     return slug or "experience"
 
 
-def unique_branch(repo: follow.Repository, title: str) -> str:
+def unique_branch(taken: set[str], title: str) -> str:
     base = _slugify_branch(title)
     branch = base
     suffix = 2
-    while branch in repo.branches or branch in repo.tags:
+    while branch in taken:
         branch = f"{base}-{suffix}"
         suffix += 1
     return branch
 
 
-def _new_branch_name(repo: follow.Repository, requested: str | None, title: str) -> str:
-    """Le nom de la nouvelle piste : celui demandé (un seul segment d'URL, libre), ou tiré du titre."""
+def _new_branch_name(slug: str, repo: follow.Repository, requested: str | None, title: str) -> str:
+    """Le nom de la nouvelle piste : celui demandé (un seul segment d'URL, libre), ou tiré du titre.
+    Pris : les pistes, les refs, et les pistes supprimées (:func:`~.repository.retired_lines` - un
+    lien vers l'ancienne piste ne doit pas passer à une étude sans rapport)."""
+    taken = set(repo.branches) | set(repo.tags) | retired_lines(slug)
     name = (requested or "").strip()
     if not name:
-        return unique_branch(repo, title)
+        return unique_branch(taken, title)
     if "/" in name or name in (".", "..") or VERSION_ID_RE.fullmatch(name):
         raise InvalidInput("Le nom de la piste ne peut pas contenir « / » (ni avoir la forme d'un id de version).", code="invalid_branch_name")
-    if name in repo.branches or name in repo.tags:
-        raise Conflict(f"Le nom « {name} » est déjà pris par une autre piste ou une ref.", code="branch_name_taken")
+    if name in taken:
+        raise Conflict(
+            f"Le nom « {name} » est déjà pris par une autre piste, une ref ou une piste supprimée.", code="branch_name_taken"
+        )
     return name
 
 
@@ -341,7 +346,7 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
     entities = clean_entity_entries(body.entities)
     with writing(slug) as repo:
         source = _source_of(repo, body.from_version) if body.from_version else None
-        branch = _new_branch_name(repo, body.branch, body.title)
+        branch = _new_branch_name(slug, repo, body.branch, body.title)
         common = dict(title=body.title.strip(), intent=body.intent.strip(), author=author, hypothesis=body.hypothesis or None)
         if source is not None:
             builder = repo.derive(
@@ -588,13 +593,16 @@ def _merge_evidence(builder: follow.ExperimentBuilder, other: follow.Experiment)
 
 
 def delete(slug: str, experiment_id: str, *, expected_version: str | None) -> list[str]:
-    """Supprimer la piste, jusqu'à son point de fourche (:func:`delete_line`)."""
+    """Supprimer la piste, jusqu'à son point de fourche (:func:`delete_line`) ; son nom n'est plus
+    jamais redonné (:func:`retire_line`)."""
     with writing(slug) as repo:
         tip = tip_of(repo, experiment_id)
         if expected_version and expected_version != tip.id:
             raise PreconditionFailed(
                 "Cette étude a changé depuis que vous l'avez ouverte - rechargez la page.", code="stale_version"
             )
+        # le nom d'abord : une piste supprimée ne doit jamais rester sans son nom retiré
+        retire_line(slug, experiment_id)
         return delete_line(repo, experiment_id)
 
 

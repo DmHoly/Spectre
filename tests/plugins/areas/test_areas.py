@@ -148,6 +148,8 @@ def test_corporate_objectives_are_ranked_and_editable(client):
     first = client.post(base, json={"title": "Qualifier le procédé", "target": "T1 2027"})
     assert first.status_code == 201
     assert first.headers["location"] == f"{base}/{first.json()['id']}"
+    assert client.get(first.headers["location"]).json() == first.json()  # le Location se lit
+    assert_handler_404(client.get(f"/api/areas/native-pt2/objectives/{first.json()['id']}"))  # pas l'objectif de ce projet
     assert first.json()["title"] == "Qualifier le procédé" and first.json()["target"] == "T1 2027"
     create_objective(client, "nova-pt1", "Transférer en prod")
     create_objective(client, "nova-pt1", "Réduire le coût")

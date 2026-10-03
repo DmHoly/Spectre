@@ -10,9 +10,9 @@
    objectives.js / intention-copy.js du constructeur sont repris tels quels : ils lisent `slug` et
    `state`, définis ici. Le formulaire d'intention est monté par mountIntentFormSection (intent_forms). */
 
-const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experience_id}/evoluer-image");
+const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experiment_id}/evoluer-image");
 const { slug } = evolveRoute || routeParams("/microprojets/{slug}/structures/image");
-const evolveExperienceId = evolveRoute ? evolveRoute.experience_id : null;
+const evolveExperienceId = evolveRoute ? evolveRoute.experiment_id : null;
 const evolveVersionId = evolveExperienceId ? new URLSearchParams(window.location.search).get("version") : null;
 const state = { objectives: [] };
 let parentDetail = null; // la version de départ (sa version_id part en If-Match, ou en from_version)

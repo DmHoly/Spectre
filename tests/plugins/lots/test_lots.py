@@ -26,7 +26,24 @@ from support.lots import (
 )
 from support.microprojects import create_microproject
 
-TODAY = date.today().isoformat()
+_FROZEN = date.today()
+TODAY = _FROZEN.isoformat()
+
+
+class _FrozenDate(date):
+    @classmethod
+    def today(cls):
+        return _FROZEN
+
+
+@pytest.fixture(autouse=True)
+def _frozen_today(monkeypatch):
+    # « aujourd'hui » du serveur figé sur celui des tests : un passage de minuit pendant la suite ne
+    # fait plus diverger les deux (TODAY est calculé à l'import du module)
+    from spectre.plugins.lots import service, views
+
+    monkeypatch.setattr(service, "date", _FrozenDate)
+    monkeypatch.setattr(views, "date", _FrozenDate)
 
 
 def _signup_boss(client):

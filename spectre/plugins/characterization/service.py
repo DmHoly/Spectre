@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 
+from ...kernel.db import data_dir
 from ...kernel.errors import InvalidInput
 from .demo import DemoSource
 from .prism_source import PrismSource
@@ -30,6 +31,10 @@ def demo_enabled() -> bool:
 
 
 def current_source() -> DataSource:
+    # Le cache disque de PRISM (résultats de hooks par wafer) vit avec le reste des données de
+    # Spectre - donc dans le volume monté en production - plutôt que sous ~/.prism/data. PRISM lit
+    # la variable à chaque accès ; une valeur explicite de PRISM_DATA_DIR reste prioritaire.
+    os.environ.setdefault("PRISM_DATA_DIR", str(data_dir() / "prism"))
     return _DEMO if demo_enabled() else _PRISM
 
 

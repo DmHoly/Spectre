@@ -146,8 +146,14 @@ def _entity_links_by_experiment(conn: sqlite3.Connection) -> None:
 
 
 # Une paire de µprojets n'est liée qu'une fois, dans un sens ou dans l'autre : les doublons d'avant
-# l'index (le service les refusait déjà, sans verrou) ne gardent que le plus ancien.
+# l'index (le service les refusait déjà, sans verrou) ne gardent que le plus ancien. Les autres,
+# avec leur note, sont mis de côté dans ``microproject_links_duplicates`` (plus lue), comme les liens
+# d'entités irrésolubles dans ``entity_links_unresolved``.
 UNIQUE_MICROPROJECT_PAIR = """
+CREATE TABLE microproject_links_duplicates AS SELECT * FROM microproject_links WHERE id NOT IN (
+    SELECT MIN(id) FROM microproject_links
+    GROUP BY MIN(microproject_a_id, microproject_b_id), MAX(microproject_a_id, microproject_b_id)
+);
 DELETE FROM microproject_links WHERE id NOT IN (
     SELECT MIN(id) FROM microproject_links
     GROUP BY MIN(microproject_a_id, microproject_b_id), MAX(microproject_a_id, microproject_b_id)

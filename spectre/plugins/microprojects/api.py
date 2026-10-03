@@ -11,12 +11,12 @@ from __future__ import annotations
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from ...kernel import mail
-from ...kernel.errors import Forbidden, InvalidInput
+from ...kernel.errors import Forbidden, InvalidInput, Unauthorized
 from ...kernel.http import created
 from ..accounts.deps import current_user
 from ..accounts.service import User
@@ -265,7 +265,7 @@ def microproject_by_code(code: str, request: Request) -> RedirectResponse:
     connexion d'abord - un anonyme n'apprend pas quels numéros existent."""
     try:
         current_user(request)
-    except HTTPException:
+    except Unauthorized:
         return RedirectResponse(f"/connexion?suite={quote(request.url.path)}", status_code=302)
     try:
         microproject = microprojects.get_by_code(code)

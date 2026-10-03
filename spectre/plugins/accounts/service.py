@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from ...kernel import mail
 from ...kernel.db import get_conn
-from ...kernel.errors import Conflict, InvalidInput, NotFound
+from ...kernel.errors import Conflict, InvalidInput, NotFound, Unauthorized
 from . import security
 
 MIN_PASSWORD_LENGTH = 8
@@ -116,14 +116,20 @@ def create_session(user_id: int) -> tuple[str, str]:
     return token, expires_at
 
 
-def user_for_session(token: str) -> User | None:
+def session(token: str | None) -> tuple[User, str]:
+    """The live session of ``token``: ``(user, expires_at)`` - :class:`Unauthorized` (401, the one
+    status reserved for « no session ») without a token, or for an unknown or expired one."""
+    if not token:
+        raise Unauthorized("connexion requise")
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT users.* FROM sessions JOIN users ON users.id = sessions.user_id "
+            "SELECT users.*, sessions.expires_at AS session_expires_at FROM sessions JOIN users ON users.id = sessions.user_id "
             "WHERE sessions.token_hash = ? AND sessions.expires_at > datetime('now')",
             (security.hash_token(token),),
         ).fetchone()
-    return _user_from_row(row) if row else None
+    if row is None:
+        raise Unauthorized("connexion requise")
+    return _user_from_row(row), row["session_expires_at"]
 
 
 def delete_session(token: str) -> None:

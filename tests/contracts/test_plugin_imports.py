@@ -4,7 +4,8 @@ en tête de fichier ou dans une fonction (un import paresseux reste une dépenda
 
 - le noyau n'importe aucun plugin ;
 - un plugin n'importe que les plugins de son ``depends_on`` (et ceux dont ils dépendent) ;
-- un plugin n'importe jamais le module ``api`` d'un autre ;
+- un plugin n'importe jamais le module ``api`` d'un autre, seulement ses modules publics
+  (``PUBLIC_MODULES``, plus ceux que ``PUBLIC_EXTRA`` liste pour lui) ;
 - le domaine d'un plugin (tout module autre que ``api``, ``*_api``, ``deps`` et ``schemas``) n'importe pas FastAPI.
 
 Il n'en reste aucune : ``ALLOWED_TRANSITIONAL`` et ``ALLOWED_FASTAPI`` sont vides. Une exception à
@@ -31,6 +32,16 @@ def _is_http_module(module: str) -> bool:
 
 # La racine de composition : create_app() lit la liste des plugins quand on ne lui en passe pas.
 KERNEL_COMPOSITION_ROOT = ("spectre.kernel.app", "spectre.plugins")
+
+# Les modules publics d'un plugin (ARCHITECTURE.md § 1.3) : ceux que tout plugin peut exposer...
+PUBLIC_MODULES = {"service", "store", "models", "deps", "schemas"}
+# ... et, plugin par plugin, les autres modules de domaine qu'il offre (ARCHITECTURE.md § 3). Une
+# entrée qu'aucun import n'utilise plus fait échouer le test.
+PUBLIC_EXTRA: dict[str, set[str]] = {
+    "accounts": {"security"},
+    "experiments": {"repository", "lineage", "entities", "insights"},
+    "structures": {"kinds", "campaigns", "simulation", "rendering"},
+}
 
 # (module qui importe, module importé) -> ce qui supprimera l'import.
 ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {}
@@ -136,6 +147,25 @@ def test_no_plugin_imports_another_plugins_api():
         if _plugin_of(module) and _plugin_of(target) not in (None, _plugin_of(module)) and (target.split(".")[3:4] == ["api"] or target.endswith("_api"))
     ]
     assert not crossing, "Un plugin importe l'api d'un autre :\n  " + "\n  ".join(crossing)
+
+
+def test_a_plugin_only_imports_the_public_modules_of_another():
+    used: set[tuple[str, str]] = set()
+    private = []
+    for module, target in _graph():
+        plugin, other = _plugin_of(module), _plugin_of(target)
+        if plugin is None or other is None or other == plugin:
+            continue
+        name = ".".join(target.split(".")[3:])
+        if name in PUBLIC_MODULES:
+            continue
+        if name in PUBLIC_EXTRA.get(other, set()):
+            used.add((other, name))
+        else:
+            private.append(f"{module} -> {target}")
+    stale = [f"{plugin}.{name}" for plugin, names in PUBLIC_EXTRA.items() for name in names if (plugin, name) not in used]
+    assert not private, "Imports d'un module non public d'un autre plugin :\n  " + "\n  ".join(private)
+    assert not stale, "Entrées de PUBLIC_EXTRA qu'aucun autre plugin n'importe plus :\n  " + "\n  ".join(stale)
 
 
 def test_the_domain_of_a_plugin_does_not_know_http():

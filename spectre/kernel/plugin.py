@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Iterable
 
 from fastapi import APIRouter
@@ -40,10 +41,13 @@ class NavEntry:
 class Migration:
     """Une étape du schéma d'un plugin, appliquée une seule fois (``spectre.kernel.db.run_migrations``).
     ``apply`` : un script SQL, ou une fonction qui reçoit la connexion - dans la transaction de la
-    migration, donc sans ``commit()`` ni ``executescript()``."""
+    migration, donc sans ``commit()`` ni ``executescript()``. ``files`` : pour une migration qui
+    réécrit ou supprime des fichiers hors de la base, ceux qu'elle touchera (chemins existants sous
+    ``data_dir()``), sauvegardés avec la base avant la première migration en attente."""
 
     id: str
     apply: str | Callable[[sqlite3.Connection], None]
+    files: Callable[[], Iterable[Path]] | None = None
 
 
 def _always() -> bool:

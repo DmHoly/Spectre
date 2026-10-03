@@ -24,8 +24,13 @@ toute exception y est écrite. Le *pourquoi* de chaque choix (constats, coûts, 
    déjà. Le test `tests/contracts/test_frontend_routes.py` fait échouer tout appel front vers une
    route inexistante (méthode et chemin).
 3. **Les dépendances forment un DAG explicite.** Un plugin n'importe que les plugins listés dans son
-   `depends_on`, et seulement leurs modules publics (`service`, `models`, `deps`, `schemas`), jamais
-   leur `api`. Le noyau n'importe aucun plugin.
+   `depends_on`, et seulement leurs modules publics, jamais leur `api` : `service` (ou `store`),
+   `models`, `deps`, `schemas`, plus les modules de domaine que trois plugins offrent en propre -
+   `accounts.security` (cookie de session, hachage des jetons), `experiments.repository`,
+   `experiments.lineage`, `experiments.entities`, `experiments.insights`, `structures.kinds`,
+   `structures.campaigns`, `structures.simulation` et `structures.rendering`. La liste est tenue par
+   `tests/contracts/test_plugin_imports.py` (`PUBLIC_MODULES`, `PUBLIC_EXTRA`). Le noyau n'importe
+   aucun plugin.
 4. **Le domaine ne connaît pas HTTP.** `service.py`, `store.py` et `models.py` n'importent pas
    FastAPI et lèvent des exceptions de `spectre.kernel.errors`. `api.py` ne fait que lire la
    requête, appeler le service et sérialiser. Les codes HTTP sont posés à un seul endroit, par
@@ -40,16 +45,17 @@ Le noyau ne connaît **aucune** fonctionnalité métier. Il fournit :
 
 | Module | Rôle |
 |---|---|
-| `plugin.py` | `Plugin`, `Page`, `NavEntry`, `Migration` (dataclasses figées), et `check_dependencies(plugins)`, qui vérifie l'ordre topologique au démarrage |
+| `plugin.py` | `Plugin`, `Page`, `NavEntry`, `Migration` (dataclasses figées ; `Migration.files` : les fichiers hors base qu'une migration réécrit ou supprime), et `check_dependencies(plugins)`, qui vérifie l'ordre topologique au démarrage |
 | `app.py` | `create_app(plugins=PLUGINS)` : migrations, `include_router` de chaque plugin, routes de pages, montage de `/static/<plugin>/` et `/static/kernel/`, exception handlers, middleware `Cache-Control: no-cache` |
-| `db.py` | `data_dir()`, `connect()`, `get_conn()`, exécuteur de migrations versionnées (table `schema_migrations(plugin, migration_id, applied_at)`), `rebuild_table()` pour les changements non additifs (CHECK, NOT NULL) |
-| `errors.py` | `DomainError` → `NotFound` (404), `Forbidden` (403), `Conflict` (409), `PreconditionFailed` (412), `InvalidInput` (422), `UpstreamError` (502), `Unavailable` (503) ; un handler unique renvoie `{"detail": str, "code": str}`. Un plugin peut sous-classer `DomainError` pour un statut qui lui est propre (`attachments.store.TooLarge` : 413, `too_large`), le même handler s'en charge |
+| `db.py` | `data_dir()`, `connect()`, `get_conn()`, exécuteur de migrations versionnées (table `schema_migrations(plugin, migration_id, applied_at)`), `rebuild_table()` pour les changements non additifs (CHECK, NOT NULL), qui garde le compteur d'`AUTOINCREMENT` de la table (un id supprimé n'est jamais redonné). Avant la première migration en attente d'une installation existante, la base (API de sauvegarde de sqlite3) et les fichiers déclarés par les migrations (`Migration.files`, copiés juste avant chacune) sont sauvegardés dans `data_dir/backups/<horodatage>/` : une migration peut supprimer ou réécrire ce que l'ancien code lit, et l'ancien code ne lit pas une base migrée - revenir en arrière, c'est restaurer cette copie |
+| `errors.py` | `DomainError` → `Unauthorized` (401, `unauthorized` : pas de session, levée par `accounts.deps.current_user`), `NotFound` (404), `Forbidden` (403), `Conflict` (409), `PreconditionFailed` (412), `InvalidInput` (422), `UpstreamError` (502), `Unavailable` (503) ; un handler unique renvoie `{"detail": str, "code": str}`. Un plugin peut sous-classer `DomainError` pour un statut qui lui est propre (`attachments.store.TooLarge` : 413, `too_large`), le même handler s'en charge |
 | `locks.py` | `keyed_lock(namespace, key)` : un `threading.Lock` par clé (le serveur tourne en un seul processus) |
-| `fs.py` | `replace(src, dst)` : le `os.replace` de toute écriture atomique (fichier temporaire du même dossier, puis remplacement), réessayé quelques fois sur `PermissionError` - sous Windows, un antivirus ou un lecteur tient la cible un instant |
+| `fs.py` | `replace(src, dst)` : le `os.replace` de toute écriture atomique (fichier temporaire du même dossier, puis remplacement), réessayé quelques fois, à intervalles croissants, sur `PermissionError` - sous Windows, un antivirus ou un lecteur tient la cible un instant (de même pour le dossier de bibliothèque assemblé puis renommé, `library.service`) ; `write_text(path, text)` : l'écriture atomique complète (temporaire unique, `fsync`, `replace`), celle des dépôts Follow (`experiments.repository`) |
+| `json_store.py` | Collections JSON `{"items": [...]}` d'éléments à `id`, lues et écrites sous un verrou par chemin, de façon atomique ; un élément illisible est écarté à la lecture et gardé tel quel à l'écriture (`ItemStore`, `read_json`, `write_json`, `path_lock`) - les bibliothèques de `process_library` |
 | `mail.py` | `send_email(to, subject, body)` : SMTP si `SPECTRE_SMTP_HOST`, sinon journalisation **sans le corps** hors `SPECTRE_EMAIL_DEBUG=1` |
 | `pages.py` | Service des pages HTML d'un plugin, avec la barre du haut commune à la place du marqueur `<!-- spectre:topbar -->` (fil d'Ariane déclaré dans le marqueur : `crumb-id`, `crumb-text`) : marque, navigation construite à partir des `NavEntry` de tous les plugins (une entrée peut être réservée à certaines pages : `NavEntry.pages`), place de la session |
 | `http.py` | Petits helpers HTTP : `created(response, location)`, conversion `ETag` / `If-Match` |
-| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
+| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`), `timeline.js` (axe des mois et hachures des frises : lots, thématique), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
 
 ```python
 @dataclass(frozen=True)
@@ -88,19 +94,29 @@ placés au-dessus de lui.
 | 6 | `attachments` | Fichiers téléversés d'un µprojet (blob + sidecar), types, tailles, service des octets | microprojects | `data/microprojects/<slug>/attachments/` |
 | 7 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
 | 8 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library | JSON par portée |
-| 9 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, fusion, suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` |
+| 9 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, fusion, suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
 | 10 | `evidence` | Preuves d'une étude, liens, images, annotations | experiments, attachments | métadonnées Follow |
 | 11 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
 | 12 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité | experiments, search | cache mémoire |
-| 13 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
-| 14 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` |
+| 13 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
+| 14 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
 | 15 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
-| 16 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` |
+| 16 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
 | 17 | `notebook` | Cahier de données d'une étude : instantanés et vues DataViz | characterization, experiments | `snapshots/`, métadonnées Follow |
 | 18 | `external_images` | Galerie d'images externes référencées (TEM, scans) d'une étude, limitée aux racines autorisées | experiments | métadonnées Follow |
 | 19 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
 | 20 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
 | 21 | `docs` | Pages de documentation (contenu inchangé) | — | — |
+
+**Les tables d'un autre plugin.** Un plugin possède ses tables : il est seul à y écrire. Il peut
+en revanche les **lire par jointure SQL** chez les plugins dont il dépend, pour une liste qui en
+affiche un champ (`lots` lit `thematics`, `links` joint `microprojects`, `microprojects` lit
+`management_areas`, les auteurs sont joints sur `users`). Une seule exception va contre le DAG :
+`areas`, placé avant `microprojects` (qui dépend de lui), touche la table `microprojects` -
+l'objectif validé par un µprojet (`area_objectives.validated_by_microproject_id`, lu par jointure
+avec son code recopié de `microprojects.service.format_code`), et le repli des µprojets quand on
+supprime un projet (vers « Non classé », sans thématique) ou une thématique (`thematic_id` remis à
+`NULL`). La faire passer par `microprojects` demanderait une dépendance dans l'autre sens.
 
 Une **page** appartient au plugin de sa ressource principale. Son script peut utiliser les
 `client.js` d'autres plugins : le navigateur est la racine de composition. Une agrégation qui
@@ -167,8 +183,12 @@ déplacement de classe ne doit jamais la changer.
   Une modification sans effet renvoie `200` et ne crée pas de version.
 - **Recherche et filtres** : par query params sur la collection (`?q=`, `?status=`, `?code=`).
   Aucun segment littéral ne partage le niveau d'un identifiant.
-- **Identifiants** : un seul segment, opaque, sans `/`. Paramètres nommés `{<ressource>_id}` ou
-  `{<ressource>_slug}`. Pas de convertisseur `:path`.
+- **Identifiants** : un seul segment, opaque, sans `/`. Paramètres nommés `{<ressource>_id}`,
+  `{<ressource>_slug}`, ou `{<ressource>_key}` pour une clé naturelle (`{wafer_key}`, `{kpi_key}`,
+  `{data_type_key}`, `{chart_key}`, `{file_key}`) ; deux autres formes : `{token}` (le jeton d'une
+  invitation, seul identifiant que connaît son destinataire) et `{index}` (la position d'une image
+  dans un jeu). Pas de convertisseur `:path` sous `/api` (une seule page en a un : la redirection
+  héritée `/projets/{rest:path}`).
 - **JSON** : clés en `snake_case` anglais. Collections paginées : `{"items": [...], "total": n}` ;
   les autres sont un tableau. Les ressources binaires exposent leur `url` : le front ne la
   construit pas.
@@ -206,7 +226,9 @@ déplacement de classe ne doit jamais la changer.
   `kernel.errors` ; un formulaire refusé est un 422 `invalid_intent_form` dont le `detail` énumère
   les réponses en défaut.
 - Les seuls accès aux internes privés de Follow (suppression d'une piste) sont dans
-  `repository.delete_line(repo, experiment_id)`.
+  `repository.delete_line(repo, experiment_id)`. Le dépôt est ouvert sur le stockage JSON de Follow
+  (même format sur disque), dont les écritures passent par `kernel.fs.write_text` : un `refs.json`
+  tenu un instant par un lecteur, sous Windows, ne fait plus échouer un commit.
 - Les plugins qui écrivent dans une étude sans en être le propriétaire (evidence, notebook,
   external_images) exposent leurs sous-ressources sous `.../experiments/{exp}/` et passent par
   `amend()` : `If-Match` comme les autres (412 `stale_version`), et une écriture renvoie **la
@@ -224,10 +246,12 @@ déplacement de classe ne doit jamais la changer.
   ce sens : une fusion (`experiments.service`) reporte et purge les métadonnées de preuve par id
   (evidence dépend d'experiments, pas l'inverse) ; supprimer une piste ne purge pas ses liens
   d'entités (experiments ne dépend pas de links) - ils restent listés et supprimables, l'atlas ne
-  les dessine plus. Supprimer un µprojet, lui, purge ses liens (`ON DELETE CASCADE`).
+  les dessine plus, et le nom de la piste n'est **jamais redonné** (`follow/retired_lines.json`,
+  `repository.retire_line`) : un lien désigne la piste par son nom, il passerait sinon à une étude
+  sans rapport. Supprimer un µprojet, lui, purge ses liens (`ON DELETE CASCADE`).
 - Le nom d'une piste : tiré du titre (`epitaxie-a-20-nm`, accents retirés, suffixe `-2`... si pris),
   ou `branch` à la création - un seul segment sans `/`, ni `.`/`..`, ni la forme d'un id de version,
-  libre parmi les pistes **et** les refs (sinon 409 `branch_name_taken`).
+  libre parmi les pistes, les refs **et** les pistes supprimées (sinon 409 `branch_name_taken`).
 - Une piste créée depuis une version (`from_version`, `version_id` facultatif : la pointe par
   défaut) en reprend, faute de mieux dans la requête, les objectifs, le contexte et l'entité suivie -
   pas les preuves, les étiquettes ni la conclusion : c'est une nouvelle étude.
@@ -244,7 +268,8 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 | Avant | Après |
 |---|---|
 | `POST /api/auth/register` | `POST /api/users` → 201 + session |
-| `POST /api/auth/login` | `POST /api/sessions` → 201 `{user, expires_at}` ; identifiants refusés → 422 `invalid_credentials` (401 reste réservé à l'absence de session) |
+| `POST /api/auth/login` | `POST /api/sessions` → 201 `{user, expires_at}` + `Location` `/api/sessions/current` ; identifiants refusés → 422 `invalid_credentials` (401 reste réservé à l'absence de session) |
+| *(nouveau : cible du `Location`)* | `GET /api/sessions/current` → `{user, expires_at}` de la session de l'appelant (401 sans session) |
 | `POST /api/auth/logout` | `DELETE /api/sessions/current` → 204 |
 | `GET /api/auth/me` | `GET /api/users/me` |
 | `PUT /api/auth/me` | `PATCH /api/users/me` |
@@ -277,6 +302,7 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 | *(nouveau)* | `GET /api/thematics?area=` : liste à plat `{id, slug, name, area}` (remplace `/api/lots/thematiques`) |
 | `POST /api/management/{slug}/objectifs` | `POST /api/areas/{area_slug}/objectives` → 201 |
 | `PUT /api/management/{slug}/objectifs` (réordonner) | **supprimée** (aucun appelant) |
+| *(nouveau : cible du `Location`)* | `GET /api/areas/{area_slug}/objectives/{objective_id}` (404 si l'objectif n'est pas celui de ce projet) |
 | `PUT /api/management/{slug}/objectifs/{id}` | `PATCH /api/areas/{area_slug}/objectives/{objective_id}` |
 | `DELETE /api/management/{slug}/objectifs/{id}` | `DELETE …` → 204 |
 | `GET /api/management/{slug}/tendances` | `GET /api/areas/{area_slug}/kpis` |
@@ -351,6 +377,7 @@ Droits d'écriture :
 |---|---|
 | `GET /api/microprojets/{slug}/presets-etapes` | `GET /api/step-presets?microproject={mp}` (intégrés + partagés + ceux du µprojet) |
 | `POST …/presets-etapes` | `POST /api/step-presets` `{scope, microproject?, …}` → 201 |
+| *(nouveau)* | `GET /api/step-presets/{preset_id}` (la cible du `Location`) |
 | `PUT …/presets-etapes/{name}?partagee=` | `PATCH /api/step-presets/{preset_id}` (la portée est modifiable) |
 | `DELETE …/presets-etapes/{name}?partagee=` | `DELETE /api/step-presets/{preset_id}` → 204 |
 | `…/structures-sauvegardees[/{name}]` | `/api/saved-structures[/{structure_id}]` (même schéma) |
@@ -425,6 +452,7 @@ de la copie (un simple renommage ne compte pas, une entrée supprimée non plus)
 | Avant | Après |
 |---|---|
 | `GET /api/microprojets/{slug}/formulaires-intention` | `GET /api/intent-forms?microproject={mp}` (à plat, avec `scope`) |
+| *(nouveau)* | `GET /api/intent-forms/{form_id}` (la cible du `Location`) |
 | `POST …` | `POST /api/intent-forms` → 201 |
 | `PUT …/{name}` | `PATCH /api/intent-forms/{form_id}` |
 | `DELETE …/{name}?partagee=` | `DELETE /api/intent-forms/{form_id}` → 204 |
@@ -483,7 +511,7 @@ PRISM absente 503 ; connexion, requête ou fiche `hook.yml` invalide 502 (une fi
 | accounts | `/connexion`, `/inscription`, `/mot-de-passe-oublie`, `/reinitialiser`, `/profil` |
 | areas | `/`, `/management/{slug}`, `/management/{slug}/thematiques/{thematique_slug}` |
 | atlas | `/management/{slug}/atlas` |
-| microprojects | `/microprojets/{slug}`, `/p/{code}` (redirection, **après** contrôle de session), `/projets/{rest}` (redirection héritée) |
+| microprojects | `/microprojets/{slug}`, `/p/{code}` (redirection, **après** contrôle de session), `/projets/{rest:path}` (redirection héritée, 308) |
 | experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/refs` |
 | structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
 | process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
@@ -497,9 +525,32 @@ Supprimée : `/microprojets/{slug}/graphe`.
 
 ## 6. Front
 
-- Scripts classiques (`<script src>`), sans bundler ni framework. Chaque fichier n'expose qu'un
-  global nommé d'après son plugin (`lotsApi`, `ExperiencePage`, `DataViz`…). Les autres
-  déclarations restent locales, dans une IIFE ou un objet.
+- Scripts classiques (`<script src>`), sans bundler ni framework. Un `client.js`, un registre ou
+  un module partagé récent n'expose qu'un global nommé d'après son plugin (`lotsApi`,
+  `ExperiencePage`, `DataViz`…) ; ses autres déclarations restent locales, dans une IIFE ou un
+  objet. **Écarts, tels qu'ils sont** (les regrouper sous un objet par plugin est un chantier à
+  part) :
+  - les **contrôleurs de page** (un par page : `lots.js`, `area.js`, `atlas.js`…) et le
+    **constructeur** (`structures/static/builder/*.js`, une seule page découpée en fichiers qui
+    partagent `state`, `slug`, `showError`) déclarent au premier niveau : ces noms ne sortent pas
+    de leur page ;
+  - le noyau expose ses helpers sans préfixe : `api`, `apiErrorMessage` (`api.js`), `escapeHtml`,
+    `initials`, `formatDate`, `timeAgo`, `formatDuration`, `elapsedLabel`, `routeParams` (`ui.js`),
+    `timeline*` (`timeline.js`) ;
+  - des **bibliothèques de widgets** partagées entre plugins exposent plusieurs fonctions de
+    premier niveau : `wafers/fdl.js` (`normalizeFdl`, `fdlChipsHtml`, `fdlsOfTracking`,
+    `mountFdlField`, `plateUrl`, `waferKey`, `waferSuggestions`), `experiments/lineage-graph.js`
+    (`lineage*`), `experiments/lineage-view.js` (`mountLineage`), `experiments/status.js`
+    (`statusBadgeHtml`, `experimentOutcome`, libellés), `microprojects/roles.js` (`roleLabel`,
+    `ownerChipHtml`), `attachments/image-drop.js` (`mountImageDrop`, contrôles d'images),
+    `structures/structure-images.js`, `structures/campaign-carousel.js`,
+    `characterization/wafer-data-links.js`, `intent_forms/intent-form-section.js`,
+    `areas/totals.js` (`experimentTotals`), `areas/area-art.js`, `lots/lots-gantt.js`,
+    `lots/lot-picker.js` (`mountLotAssign`), `library/library-files.js`, `accounts/session.js`. Une
+    page qui en utilise une la charge elle-même ; un nom nouveau ne doit pas en recouvrir un de
+    cette liste ;
+  - `notebook.js` et `external_images/gallery.js` gardent un état de premier niveau (`notebookCtx`,
+    `galleryCtx`, `galleryMounts`…) mais ne lisent que le `ctx` reçu (voir plus bas).
 - Ordre de chargement d'une page :
   1. noyau : `/static/kernel/api.js`, `ui.js`, `shell.js` ;
   2. session et recherche : `/static/accounts/session.js`, `/static/search/client.js`,

@@ -3,7 +3,7 @@
 
 /* FDL - feuille de lancement (ticket JIRA) : le numéro de suivi avec lequel un wafer passe en
    ligne, celui qu'on cite pour le retrouver. Un wafer peut en avoir plusieurs (une par passage) :
-   elles s'empilent, dans l'ordre. Même écriture partout que côté serveur (spectre.core.fdl) :
+   elles s'empilent, dans l'ordre. Même écriture partout que côté serveur (spectre.plugins.experiments.entities.normalize_fdl) :
    « fdl 1234 », « 1234 » -> FDL-1234 ; une autre clé JIRA « abc 12 » -> ABC-12. */
 function normalizeFdl(text) {
   const value = String(text || "").replace(/\s+/g, " ").trim().replace(/^["']+|["']+$/g, "").trim();

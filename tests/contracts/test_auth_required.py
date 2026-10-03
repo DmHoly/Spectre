@@ -70,3 +70,5 @@ def test_an_anonymous_caller_gets_401(anonymous_client, operation):
     url = re.sub(r"\{[^}]+\}", "1", path)  # 1 : une valeur acceptée par un paramètre texte comme entier
     response = anonymous_client.request(method, url)
     assert response.status_code == 401, f"{method} {path} : {response.status_code} {response.text}"
+    # posé par le handler du noyau, comme toute erreur du domaine (Unauthorized)
+    assert response.json() == {"detail": "connexion requise", "code": "unauthorized"}

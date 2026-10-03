@@ -30,4 +30,4 @@ def add_ids(conn: sqlite3.Connection | None = None) -> None:
             write_json(path, {"items": items})
 
 
-MIGRATIONS = (Migration("0001_item_ids", add_ids),)
+MIGRATIONS = (Migration("0001_item_ids", add_ids, files=lambda: [path for path, _key in legacy_files()]),)

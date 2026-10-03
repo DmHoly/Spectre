@@ -57,3 +57,24 @@ def test_without_demo_data_the_eqe_waits_for_its_source(client):
     missing = client.get("/api/areas/native-pt2/kpis/eqe/studies/eqe-ref")
     assert missing.status_code == 404 and missing.json()["detail"] == ROUTER_NOT_FOUND
     assert client.get("/static/kpis_demo/study.js").status_code == 404
+
+
+def test_a_material_colour_with_html_is_escaped_in_the_demo_study_svg(demo_client):
+    # la couleur d'un matériau vient de la bibliothèque éditable et finit dans un attribut du SVG,
+    # que la fiche insère par innerHTML ; sans cache, la correction de la bibliothèque se voit aussitôt
+    from spectre.plugins.library.service import library_dir
+
+    client = demo_client
+    signup(client, "boss@example.com")
+    url = "/api/areas/native-pt2/kpis/eqe/studies/eqe-ref"
+    assert 'fill="#dbe4ee"' in client.get(url).json()["structure_svg"]  # le saphir de la bibliothèque livrée
+
+    library = library_dir() / "materiaux.yml"
+    original = library.read_text(encoding="utf-8")
+    hostile = '"><img src=x onerror=alert(1)>'
+    library.write_text(original.replace('color: "#dbe4ee"', f"color: '{hostile}'"), encoding="utf-8")
+    svg = client.get(url).json()["structure_svg"]
+    assert "<img" not in svg and "&lt;img src=x onerror=alert(1)&gt;" in svg
+
+    library.write_text(original, encoding="utf-8")
+    assert 'fill="#dbe4ee"' in client.get(url).json()["structure_svg"]

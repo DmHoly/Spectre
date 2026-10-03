@@ -403,6 +403,11 @@ def _objective(conn: sqlite3.Connection, area_id: int, objective_id: int) -> Obj
     return _objective_from_row(row)
 
 
+def get_objective(area: ManagementArea, objective_id: int) -> Objective:
+    with get_conn() as conn:
+        return _objective(conn, area.id, objective_id)
+
+
 def create_objective(
     area: ManagementArea,
     title: str,

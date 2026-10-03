@@ -9,7 +9,7 @@ import sqlite3
 
 from support.accounts import login, me, signup
 from support.areas import create_area
-from support.experiments import conclude, launch, tag, track_entities
+from support.experiments import conclude, delete_experiment, launch, post_launch, tag, track_entities
 from support.http import assert_handler_404
 from support.links import (
     entity,
@@ -175,6 +175,23 @@ def test_an_entity_link_target_must_exist(client):
     assert entity_links(client) == []
 
 
+def test_a_deleted_line_never_hands_its_entity_links_to_a_new_study(client):
+    # un lien d'entité désigne la piste par son nom : supprimer la piste laisse le lien (listé,
+    # supprimable), et le nom n'est jamais redonné - sinon le lien passerait à une étude sans rapport
+    slug_a, exp_a, slug_b, exp_b = _two_tracked_studies(client, "entity-link-retired@example.com")
+    created = link_entities(client, entity(slug_a, exp_a), entity(slug_b, exp_b))
+    assert exp_b == "etude-b"
+
+    assert delete_experiment(client, slug_b, exp_b).status_code == 204
+    assert entity_links(client) == [created]
+    again = launch(client, slug_b, title="Etude B", intent="Autre", entities=[{"sample_id": "AUTRE-PLAQUE"}])
+    assert again["id"] == "etude-b-2"
+    taken = post_launch(client, slug_b, title="Etude B", intent="Autre", branch="etude-b")
+    assert taken.status_code == 409 and taken.json()["code"] == "branch_name_taken"
+    assert entity_links(client) == [created]  # toujours vers la piste supprimée
+    assert post_entity_link(client, entity(slug_a, exp_a), entity(slug_b, "etude-b")).json()["code"] == "unknown_experiment"
+
+
 def test_the_entity_index_is_checked_against_the_tip(client):
     slug_a, exp_a, slug_b, exp_b = _two_tracked_studies(client, "entity-link-tip@example.com")
     track_entities(client, slug_b, exp_b, [{"sample_id": "W-B1"}])  # la pointe ne suit plus qu'une plaque
@@ -294,10 +311,14 @@ def test_duplicate_microproject_links_keep_the_oldest(client, data_dir):
 
     _replay_migrations(
         data_dir,
-        "DROP INDEX idx_microproject_links_pair;\n"
+        "DROP INDEX idx_microproject_links_pair;\nDROP TABLE microproject_links_duplicates;\n"
         "DELETE FROM schema_migrations WHERE plugin = 'links' AND migration_id = '0003_unique_microproject_pair';",
         "INSERT INTO microproject_links (microproject_a_id, microproject_b_id, note, created_by) VALUES (?, ?, ?, ?)",
         [(ids[1], ids[0], "le doublon", me(client)["id"])],
     )
     assert microproject_links(client) == [first]
     assert post_microproject_link(client, slug_b, slug_a).status_code == 409
+    conn = sqlite3.connect(data_dir / "spectre.db")
+    set_aside = [row[0] for row in conn.execute("SELECT note FROM microproject_links_duplicates")]
+    conn.close()
+    assert set_aside == ["le doublon"]  # mis de côté avec sa note, pas perdu

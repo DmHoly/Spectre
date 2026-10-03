@@ -20,10 +20,8 @@ import hashlib
 import os
 from dataclasses import dataclass, field, replace
 from datetime import date
-from functools import lru_cache
 from typing import Any
 
-from structureforge.presentation.svg import frame_to_svg
 from structureforge.process.steps import ProcessStep
 from pydantic import TypeAdapter
 
@@ -31,6 +29,7 @@ from ...kernel.errors import NotFound
 from ..areas.service import ManagementArea
 from ..kpis import service as trends
 from ..kpis.service import TrendPoint, TrendResult, month_periods
+from ..structures.rendering import frame_svg
 from ..structures.simulation import SubstrateSpec, run_simulation
 
 EQE_TARGET = 10.0  # % - the reference line on the chart ("objectif")
@@ -210,14 +209,15 @@ def eqe_demo_series(area: ManagementArea, months: int, variant: str | None = Non
     )
 
 
-@lru_cache(maxsize=None)
 def _structure_svg(study_id: str) -> tuple[str, tuple[str, ...], tuple[tuple[str, str], ...]]:
+    """La coupe de l'étude, simulée à chaque demande (sans cache : les couleurs suivent la
+    bibliothèque éditable) et rendue par ``frame_svg``, qui échappe nom et couleur des matériaux."""
     study = _STUDY_BY_ID[study_id]
     _geometry, frames, materials = run_simulation(SubstrateSpec.model_validate(_SUBSTRATE), _STEP_LIST.validate_python(study.steps))
     colors = {m.name: m.color for m in materials}
     final = frames[-1]
     shown = tuple(sorted({layer.material for layer in final.layers}))
-    return frame_to_svg(final, colors), shown, tuple((name, colors.get(name, "#999999")) for name in shown)
+    return frame_svg(final, colors), shown, tuple((name, colors.get(name, "#999999")) for name in shown)
 
 
 def _tree(current: str) -> dict[str, Any]:

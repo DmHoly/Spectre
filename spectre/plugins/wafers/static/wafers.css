@@ -177,13 +177,6 @@
   border: 1px solid var(--accent-tint-strong);
   border-radius: var(--radius-pill);
 }
-.fiche-head__fdl:not(:empty) {
-  margin-top: 8px;
-}
-.fiche-head__fdl .fdl-chip {
-  font-size: 12.5px;
-  padding: 3px 11px;
-}
 
 .fdl-field {
   display: flex;

@@ -379,6 +379,17 @@ def _migrate_shelf(legacy: Path, target: Path) -> dict[str, str]:
     return ids
 
 
+def legacy_files() -> list[Path]:
+    """Les fichiers que :func:`migrate_legacy_files` réécrit ou supprime - sauvegardés avant elle
+    (``Migration.files``)."""
+    root = data_dir()
+    found = [root / _LEGACY_SHARED, root / LIBRARY_FILE]
+    microprojects_root = root / "microprojects"
+    for directory in sorted(microprojects_root.iterdir()) if microprojects_root.exists() else ():
+        found += [directory / _LEGACY_OWN, directory / LIBRARY_FILE, directory / _LEGACY_POINTER, directory / "follow" / ACTIVE_FILE]
+    return [path for path in found if path.is_file()]
+
+
 def migrate_legacy_files(conn: sqlite3.Connection | None = None) -> None:
     """Migration ``0001_library_ids`` : les bibliothèques indexées par nom reçoivent des ids, et le
     pointeur ``formulaire_intention_actif.json`` devient l'en-tête d'origine de ``commit_form.yml``

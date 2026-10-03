@@ -25,7 +25,6 @@ from fastapi.responses import HTMLResponse, Response
 
 from .plugin import NavEntry
 
-TOPBAR_MARKER = "<!-- spectre:topbar -->"
 TOPBAR_MARKER_RE = re.compile(r'<!-- spectre:topbar((?:\s+crumb-(?:id|text)="[^"]*")*)\s*-->')
 _CRUMB_ATTR_RE = re.compile(r'crumb-(id|text)="([^"]*)"')
 PLUGINS_DIR = Path(__file__).resolve().parents[1] / "plugins"

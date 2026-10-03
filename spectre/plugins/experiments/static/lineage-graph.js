@@ -37,11 +37,7 @@ function lineageOutcomeStyle({ status, decision }) {
   return LINEAGE_OUTCOME_STYLE[experimentOutcome(status, decision)] || LINEAGE_OUTCOME_STYLE.draft;
 }
 
-function lineageNodeColor(node) {
-  return lineageOutcomeStyle(node).color;
-}
-
-// Début et fin d'une expérience, pour son temps écoulé (GET .../filiation : started_at, ended_at,
+// Début et fin d'une expérience, pour son temps écoulé (GET .../lineage : started_at, ended_at,
 // continued_at) : conclue ou abandonnée -> sa conclusion ; brouillon continué par une version
 // suivante -> le lancement de cette suite ; sinon pas terminée (fin = maintenant) - en pause compris.
 function lineageSpan(node) {

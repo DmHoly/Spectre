@@ -2,21 +2,21 @@
    état partagé entre tous les modules de ce dossier, et petits utilitaires de formulaire communs.
    Chargé en premier - tous les autres modules lisent `state` et utilisent `showError`/`clearError`. */
 
-// Les routes du constructeur (spectre/plugins/structures/__init__.py) ; « nouvelle » tient lieu de {name}.
-const libraryRoute = routeParams("/microprojets/{slug}/structures/bibliotheque/{name}");
-const brickRoute = routeParams("/microprojets/{slug}/briques-technologiques/bibliotheque/{name}");
-const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experience_id}/evoluer");
+// Les routes du constructeur (spectre/plugins/structures/__init__.py) ; « nouvelle » tient lieu de l'id.
+const libraryRoute = routeParams("/microprojets/{slug}/structures/bibliotheque/{structure_id}");
+const brickRoute = routeParams("/microprojets/{slug}/briques-technologiques/bibliotheque/{brick_id}");
+const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experiment_id}/evoluer");
 const { slug } = libraryRoute || brickRoute || evolveRoute || routeParams("/microprojets/{slug}/structures/nouvelle");
 const isLibraryMode = Boolean(libraryRoute);
-const libraryStructureId = isLibraryMode && libraryRoute.name !== "nouvelle" ? libraryRoute.name : null; // l'id de la structure
+const libraryStructureId = isLibraryMode && libraryRoute.structure_id !== "nouvelle" ? libraryRoute.structure_id : null;
 // Mode brique : réutilise ce même constructeur pour composer/éditer une brique technologique (une
 // séquence d'étapes réutilisable, sans substrat propre - voir brick-mode.js). Mutuellement exclusif
 // avec le mode bibliothèque, mêmes conventions d'URL (bibliotheque/{id|nouvelle}, ?dupliquer=1).
 const isBrickMode = Boolean(brickRoute);
-const brickId = isBrickMode && brickRoute.name !== "nouvelle" ? brickRoute.name : null;
+const brickId = isBrickMode && brickRoute.brick_id !== "nouvelle" ? brickRoute.brick_id : null;
 const queryParams = new URLSearchParams(window.location.search);
 const libraryDuplicateMode = queryParams.get("dupliquer") === "1";
-const evolveExperienceId = evolveRoute ? evolveRoute.experience_id : null;
+const evolveExperienceId = evolveRoute ? evolveRoute.experiment_id : null;
 // ?version= : partir d'une version passée de la piste (qui ne se continue que sur une nouvelle piste)
 const evolveVersionId = evolveExperienceId ? queryParams.get("version") : null;
 const templateExperienceId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("depuis") : null;

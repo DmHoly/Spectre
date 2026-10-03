@@ -100,7 +100,7 @@ def _create(path: Path) -> None:
         shutil.copy2(source, staging / source.name)
     if legacy:
         logger.warning("Bibliothèque reprise de %s : %s", LEGACY_DIR, ", ".join(source.name for source in legacy))
-    staging.rename(path)
+    fs.replace(staging, path)  # réessayé : sous Windows, un antivirus tient un instant les fichiers tout juste copiés
 
 
 def read_text(file: LibraryFile) -> str | None:

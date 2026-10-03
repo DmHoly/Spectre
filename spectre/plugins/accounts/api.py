@@ -90,6 +90,13 @@ def create_session(body: CreateSessionRequest, response: Response) -> dict:
     return {"user": _user_payload(user), "expires_at": expires_at}
 
 
+@router.get("/sessions/current")
+def get_current_session(request: Request) -> dict:
+    """The session of the caller (the ``Location`` of ``POST /api/sessions``): ``{user, expires_at}``."""
+    user, expires_at = accounts.session(request.cookies.get(SESSION_COOKIE))
+    return {"user": _user_payload(user), "expires_at": expires_at}
+
+
 @router.delete("/sessions/current", status_code=204)
 def delete_current_session(request: Request) -> Response:
     """Public: without a session there is nothing to close, and the answer is the same."""

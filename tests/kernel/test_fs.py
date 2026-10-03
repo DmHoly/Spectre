@@ -56,3 +56,20 @@ def test_any_other_error_is_not_retried(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="disque plein"):
         fs.replace(tmp_path / "new", tmp_path / "file")
     assert len(calls) == 1
+
+
+def test_write_text_replaces_the_file_and_leaves_no_temporary(tmp_path, monkeypatch):
+    target = tmp_path / "sub" / "refs.json"
+    real_replace = fs.os.replace
+    calls = []
+
+    def held_once(a, b):
+        calls.append(a)
+        if len(calls) == 1:
+            raise PermissionError(13, "Accès refusé")
+        real_replace(a, b)
+
+    monkeypatch.setattr(fs.os, "replace", held_once)
+    fs.write_text(target, "é")
+    assert target.read_text(encoding="utf-8") == "é" and len(calls) == 2
+    assert [p.name for p in target.parent.iterdir()] == ["refs.json"]

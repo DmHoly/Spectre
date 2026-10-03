@@ -26,6 +26,7 @@ def test_register_login_me_logout(client):
     assert response.headers["location"] == "/api/sessions/current"
     assert response.json()["user"]["email"] == "ana@example.com"
     assert response.json()["expires_at"]
+    assert client.get(response.headers["location"]).json() == response.json()  # le Location se lit
     assert client.get("/api/users/me").status_code == 200
 
 

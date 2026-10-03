@@ -22,6 +22,13 @@ class DomainError(Exception):
             self.code = code
 
 
+class Unauthorized(DomainError):
+    """Pas de session : le seul cas du 401 (des identifiants refusés sont un 422)."""
+
+    status = 401
+    code = "unauthorized"
+
+
 class NotFound(DomainError):
     status = 404
     code = "not_found"

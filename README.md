@@ -115,7 +115,7 @@ Variables lues par le code de Spectre :
 | `SPECTRE_SMTP_USER` / `SPECTRE_SMTP_PASSWORD` | Identifiants SMTP | (aucun) |
 | `SPECTRE_SMTP_FROM` | Expéditeur | `SPECTRE_SMTP_USER`, sinon `spectre@localhost` |
 | `SPECTRE_EMAIL_DEBUG` | `1` : sans SMTP, journalise aussi le corps des e-mails, donc leurs liens. Poste de développement uniquement | (désactivé) |
-| `PRISM_DATA_DIR` | Cache disque de PRISM. Spectre le fixe au démarrage s'il n'est pas défini | `<SPECTRE_DATA_DIR>/prism` |
+| `PRISM_DATA_DIR` | Cache disque de PRISM. Le plugin characterization le fixe à son premier accès à PRISM s'il n'est pas défini | `<SPECTRE_DATA_DIR>/prism` |
 
 Variables lues par PRISM lui-même (voir sa documentation) :
 
@@ -166,7 +166,10 @@ sans accès aux bases.
   figurent pas encore dans la table `schema_migrations(plugin, migration_id, applied_at)`, dans
   l'ordre des plugins puis de leurs migrations, une transaction par migration. Rien à lancer à la
   main ; une installation antérieure au renommage `projet → µprojet` se migre aussi
-  automatiquement. `spectre admin` applique les migrations avant d'agir.
+  automatiquement. `spectre admin` applique les migrations avant d'agir. Avant la première
+  migration en attente, la base et les fichiers que les migrations réécrivent sont copiés dans
+  `<SPECTRE_DATA_DIR>/backups/<horodatage>/` : l'ancien code ne lit pas une base migrée, revenir
+  à une version précédente, c'est arrêter Spectre et remettre cette copie en place.
 - **Bibliothèque YAML.** Matériaux, recettes, présets d'étape, briques technologiques et textes de
   la section intention sont des fichiers YAML dans `<SPECTRE_DATA_DIR>/library` (ou
   `SPECTRE_LIBRARY_DIR`). Au premier démarrage, ce dossier est créé depuis

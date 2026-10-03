@@ -12,13 +12,12 @@ No application is built at import time: uvicorn runs :func:`create_app` as a fac
 
 from __future__ import annotations
 
-import os
 from typing import Sequence
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from .db import data_dir, run_migrations
+from .db import run_migrations
 from .errors import install_error_handlers
 from .pages import KERNEL_STATIC_DIR, nav_entries_for, page_handler, plugin_dir, render_nav, resolve_page
 from .plugin import Plugin, check_dependencies
@@ -32,10 +31,6 @@ def create_app(plugins: Sequence[Plugin] | None = None) -> FastAPI:
         plugins = PLUGINS
     check_dependencies(plugins)
     run_migrations(plugins)
-    # Le cache disque de PRISM (résultats de hooks par wafer) vit avec le reste des données de
-    # Spectre - donc dans le volume monté en production - plutôt que sous ~/.prism/data. Une
-    # valeur explicite de PRISM_DATA_DIR reste prioritaire.
-    os.environ.setdefault("PRISM_DATA_DIR", str(data_dir() / "prism"))
 
     app = FastAPI(title="Spectre", docs_url=None, redoc_url=None)
     install_error_handlers(app)

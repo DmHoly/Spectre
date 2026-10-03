@@ -12,14 +12,19 @@ applied once each, in the order of the plugins then of their migrations - see
 
 from __future__ import annotations
 
+import logging
 import os
 import re
+import shutil
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Iterator
 
 from .plugin import Plugin
+
+logger = logging.getLogger(__name__)
 
 _MIGRATIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -94,10 +99,53 @@ def execute_script(conn: sqlite3.Connection, script: str) -> None:
         raise ValueError(f"instruction SQL incomplète en fin de script : {pending.strip()[:80]!r}")
 
 
+def backups_dir() -> Path:
+    """Where :func:`run_migrations` saves the data before migrating it: one ``<timestamp>``
+    directory per start-up that had migrations to apply."""
+    return data_dir() / "backups"
+
+
+def _backup_database(conn: sqlite3.Connection) -> Path:
+    """Copy the database into a new directory of :func:`backups_dir` (sqlite3's backup API: a
+    consistent copy of a file still open) - returns that directory."""
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = backups_dir() / stamp
+    suffix = 2
+    while target.exists():
+        target = backups_dir() / f"{stamp}-{suffix}"
+        suffix += 1
+    target.mkdir(parents=True)
+    copy = sqlite3.connect(target / "spectre.db")
+    try:
+        conn.backup(copy)
+    finally:
+        copy.close()
+    return target
+
+
+def _backup_files(target: Path, files: Iterable[Path]) -> None:
+    """Copy ``files`` into ``target``, at their path relative to ``data_dir()`` - a file already
+    saved there is kept (its state before the first migration that touched it)."""
+    root = data_dir()
+    for path in files:
+        path = Path(path).resolve()
+        if not path.is_file() or not path.is_relative_to(root) or path.is_relative_to(backups_dir()):
+            continue
+        destination = target / path.relative_to(root)
+        if not destination.exists():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, destination)
+
+
 def run_migrations(plugins: Iterable[Plugin]) -> None:
     """Apply every migration not yet recorded in ``schema_migrations``, in the order of
     ``plugins`` then of each plugin's ``migrations`` - one transaction per migration, recorded in
     the same transaction, so an interrupted start-up resumes at the migration that failed.
+
+    Before the first pending migration of an existing installation (a database with tables, or
+    files a pending migration declares), the database is saved under :func:`backups_dir`, and the
+    files each migration declares (``Migration.files``) right before it runs - a migration may
+    drop or rewrite data the previous code still reads, and that code can't read migrated data.
 
     Foreign keys are off for the whole run (SQLite ignores ``PRAGMA foreign_keys`` inside a
     transaction, and :func:`rebuild_table` needs them off); a rebuilt table is checked with
@@ -107,26 +155,30 @@ def run_migrations(plugins: Iterable[Plugin]) -> None:
     conn.isolation_level = None  # transactions explicites : BEGIN / COMMIT ci-dessous
     try:
         conn.execute("PRAGMA foreign_keys = OFF")
+        existing = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name != 'schema_migrations'").fetchone()
         conn.execute(_MIGRATIONS_TABLE)
         applied = {(row["plugin"], row["migration_id"]) for row in conn.execute("SELECT plugin, migration_id FROM schema_migrations")}
-        for plugin in plugins:
-            for migration in plugin.migrations:
-                if (plugin.name, migration.id) in applied:
-                    continue
-                conn.execute("BEGIN")
-                try:
-                    if isinstance(migration.apply, str):
-                        execute_script(conn, migration.apply)
-                    else:
-                        migration.apply(conn)
-                    conn.execute(
-                        "INSERT INTO schema_migrations (plugin, migration_id) VALUES (?, ?)", (plugin.name, migration.id)
-                    )
-                    conn.execute("COMMIT")
-                except BaseException:
-                    if conn.in_transaction:
-                        conn.execute("ROLLBACK")
-                    raise
+        pending = [(plugin, migration) for plugin in plugins for migration in plugin.migrations if (plugin.name, migration.id) not in applied]
+        backup = None
+        if pending and (existing or any(Path(path).is_file() for _p, m in pending if m.files for path in m.files())):
+            backup = _backup_database(conn)
+            logger.warning("%d migration(s) en attente : données sauvegardées dans %s", len(pending), backup)
+        for plugin, migration in pending:
+            if backup is not None and migration.files:
+                # juste avant la migration : une migration précédente a pu déplacer ces fichiers
+                _backup_files(backup, migration.files())
+            conn.execute("BEGIN")
+            try:
+                if isinstance(migration.apply, str):
+                    execute_script(conn, migration.apply)
+                else:
+                    migration.apply(conn)
+                conn.execute("INSERT INTO schema_migrations (plugin, migration_id) VALUES (?, ?)", (plugin.name, migration.id))
+                conn.execute("COMMIT")
+            except BaseException:
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
+                raise
     finally:
         conn.close()
 
@@ -157,13 +209,33 @@ def rebuild_table(conn: sqlite3.Connection, table: str, new_ddl: str) -> None:
     conn.execute(ddl)
     shared = ", ".join(name for name in _ordered_columns(conn, temporary) if name in old_columns)
     conn.execute(f"INSERT INTO {temporary} ({shared}) SELECT {shared} FROM {table}")
+    sequence = _sequence(conn, table)
     conn.execute(f"DROP TABLE {table}")
     conn.execute(f"ALTER TABLE {temporary} RENAME TO {table}")
+    if sequence is not None and table_exists(conn, "sqlite_sequence"):
+        # le compteur d'AUTOINCREMENT disparaît avec l'ancienne table : sans lui, la nouvelle repartirait
+        # du plus grand id restant et redonnerait l'id d'une ligne supprimée (l'id d'un lot est son URL)
+        conn.execute("UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = ?", (sequence, table))
+        if not conn.execute("SELECT 1 FROM sqlite_sequence WHERE name = ?", (table,)).fetchone() and _autoincrement(conn, table):
+            conn.execute("INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)", (table, sequence))
     for sql in indexes:
         conn.execute(sql)
     violations = conn.execute(f"PRAGMA foreign_key_check({table})").fetchall()
     if violations:
         raise sqlite3.IntegrityError(f"{len(violations)} ligne(s) de {table!r} violent une clé étrangère après reconstruction")
+
+
+def _sequence(conn: sqlite3.Connection, table: str) -> int | None:
+    """Le compteur d'AUTOINCREMENT de ``table`` (``None`` sans compteur)."""
+    if not table_exists(conn, "sqlite_sequence"):
+        return None
+    row = conn.execute("SELECT seq FROM sqlite_sequence WHERE name = ?", (table,)).fetchone()
+    return row[0] if row else None
+
+
+def _autoincrement(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone()
+    return bool(row and re.search(r"\bAUTOINCREMENT\b", row[0], re.IGNORECASE))
 
 
 def _ordered_columns(conn: sqlite3.Connection, table: str) -> list[str]:

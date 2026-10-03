@@ -12,15 +12,21 @@ tip of each line of study.
   one.
 - :func:`delete_line` is the one place that reaches into Follow's private state: Follow has no
   delete (experiments are immutable, content-addressed).
+- :class:`_Store` is Follow's own JSON layout, written through :func:`spectre.kernel.fs.write_text`:
+  under Windows a reader holding ``refs.json`` for an instant no longer fails a commit.
 """
 
 from __future__ import annotations
 
+import json
 import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+from follow.storage.backends import JsonFileStore
+
+from ...kernel import fs
 from ...kernel.errors import Conflict
 from ...kernel.locks import keyed_lock
 from ..microprojects.service import microproject_dir
@@ -32,10 +38,22 @@ def follow_repo_path(slug: str) -> Path:
     return microproject_dir(slug) / "follow"
 
 
+class _Store(JsonFileStore):
+    """``JsonFileStore`` (the layout on disk is unchanged) whose atomic writes go through
+    :func:`spectre.kernel.fs.write_text` - retried on a transient ``PermissionError``, like every
+    atomic write of Spectre."""
+
+    def add_experiment(self, experiment) -> None:
+        fs.write_text(self.path / "objects" / f"{experiment.id}.json", experiment.model_dump_json(indent=2))
+
+    def write_refs(self, branches: dict[str, str], tags: dict[str, str]) -> None:
+        fs.write_text(self.path / "refs.json", json.dumps({"branches": branches, "tags": tags}, indent=2, sort_keys=True))
+
+
 def _load(slug: str):
     import follow
 
-    return follow.Repository(follow_repo_path(slug))
+    return follow.Repository(store=_Store(follow_repo_path(slug)))
 
 
 def _signature(path: Path) -> tuple | None:
@@ -123,10 +141,33 @@ def delete_line(repo, experiment_id: str) -> list[str]:
         repo._tags.pop(name)
     repo._branches.pop(experiment_id, None)
     repo._store.write_refs(dict(repo._branches), dict(repo._tags))
-    if repo.path is not None:
+    store_path = getattr(repo._store, "path", None)
+    if store_path is not None:
         for version_id in to_delete:
-            (repo.path / "objects" / f"{version_id}.json").unlink(missing_ok=True)
+            (store_path / "objects" / f"{version_id}.json").unlink(missing_ok=True)
     return to_delete
+
+
+RETIRED_LINES_FILE = "retired_lines.json"
+
+
+def retired_lines(slug: str) -> set[str]:
+    """The names of the lines deleted from the microproject: never given to a new line, since a
+    link to a study names its line (an entity link stays after its line is deleted, see
+    :func:`retire_line`) - a reused name would hand it over to an unrelated study."""
+    path = follow_repo_path(slug) / RETIRED_LINES_FILE
+    try:
+        return set(json.loads(path.read_text(encoding="utf-8")).get("lines", []))
+    except FileNotFoundError:
+        return set()
+
+
+def retire_line(slug: str, experiment_id: str) -> None:
+    """Record the deleted line ``experiment_id`` (under :func:`writing`): its name is retired for
+    good. The links to it (plugin links, which experiments doesn't know) stay listed and
+    deletable; the atlas no longer draws them."""
+    names = retired_lines(slug) | {experiment_id}
+    fs.write_text(follow_repo_path(slug) / RETIRED_LINES_FILE, json.dumps({"lines": sorted(names)}, indent=2))
 
 
 RUNNING_STATUSES = {"draft", "running"}

@@ -37,42 +37,6 @@
 
 /* -- constructeur de structure ---------------------------------------------------------- */
 
-/* -- constructeur de structure : grille structure (gauche) / panneau contextuel (droite) - le
-   reste (campagne, objectifs) vit en accordéons pleine largeur en dessous, la page défile
-   normalement comme les autres écrans (plus de colonne verrouillée à la hauteur de l'écran). */
-
-.builder-grid {
-  display: grid;
-  grid-template-columns: 300px 1fr 340px;
-  gap: var(--space-5);
-  align-items: stretch;
-}
-
-.builder-col {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.builder-col__scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-}
-
-@media (max-width: 1100px) {
-  .builder-grid {
-    grid-template-columns: 1fr;
-  }
-  .builder-col {
-    min-height: unset;
-  }
-  .builder-col__scroll {
-    flex: none;
-    overflow: visible;
-  }
-}
-
 .builder-canvas-svg {
   height: 340px;
   display: flex;
@@ -168,13 +132,6 @@
   height: 10px;
   border-radius: 3px;
   flex: none;
-}
-
-.objective-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr 100px auto;
-  gap: 8px;
-  align-items: center;
 }
 
 /* -- carrousel de structure (panneau atlas, un nœud de campagne) -------------------------- */
@@ -676,7 +633,6 @@
   padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
-.sb-panel,
 .sb-flow,
 .sb-palette,
 .sb-factors,
@@ -689,7 +645,6 @@
   box-shadow: var(--shadow);
 }
 
-.sb-panel-title,
 .sb-palette__title {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1271,15 +1226,6 @@
   color: var(--text-faint);
 }
 
-.sb-palette__foot {
-  flex: none;
-  padding: 8px 14px 10px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--text-faint);
-  border-top: 1px solid var(--border-soft);
-}
-
 @media (min-width: 1101px) {
   .sb-shell.is-palette-collapsed .sb-work {
     grid-template-columns: 62px minmax(0, 1fr) clamp(300px, 26vw, 390px);
@@ -1295,8 +1241,7 @@
   .is-palette-collapsed .sb-palette__group-title,
   .is-palette-collapsed .sb-tool__label,
   .is-palette-collapsed .sb-tool__key,
-  .is-palette-collapsed #palette-bricks,
-  .is-palette-collapsed .sb-palette__foot {
+  .is-palette-collapsed #palette-bricks {
     display: none;
   }
   .is-palette-collapsed .sb-palette__scroll {

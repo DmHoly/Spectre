@@ -5,7 +5,7 @@ are a strategy-layer admin (:func:`require_admin`). What they may do inside a mi
 
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Request
 
 from ...kernel.errors import Forbidden
 from . import service as accounts
@@ -15,10 +15,7 @@ from .service import User
 
 def current_user(request: Request) -> User:
     """The signed-in user - 401 otherwise, the one status reserved for « no session »."""
-    token = request.cookies.get(SESSION_COOKIE)
-    user = accounts.user_for_session(token) if token else None
-    if user is None:
-        raise HTTPException(status_code=401, detail="connexion requise")
+    user, _expires_at = accounts.session(request.cookies.get(SESSION_COOKIE))
     return user
 
 

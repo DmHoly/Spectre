@@ -12,7 +12,7 @@ Ce module ne stocke **ni expériences ni µprojets** : les expériences d'un lot
 suivent un de ses wafers - dès qu'un wafer entre dans un lot, ses expériences y sont rattachées, même
 terminées avant (une épitaxie finie, puis un lot de fabrication lancé pour en avoir la mesure
 électro-optique) ; ses thématiques sont celles de leurs µprojets, plus celles déclarées « visées » à
-la main, utiles avant qu'une expérience n'existe - voir :mod:`spectre.plugins.lots.api`. Un lot
+la main, utiles avant qu'une expérience n'existe - voir :mod:`spectre.plugins.lots.views`. Un lot
 est visible de tout utilisateur connecté, comme les projets corporate ; chacun peut en créer et le
 mettre à jour.
 """

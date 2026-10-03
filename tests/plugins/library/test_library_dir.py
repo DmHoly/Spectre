@@ -59,3 +59,26 @@ def test_an_older_install_keeps_its_edits_from_the_repository_library(tmp_path, 
     assert (target / "presets.yml").read_text(encoding="utf-8") == "presets: []\n"
     assert (target / "briques.yml").read_text(encoding="utf-8") == (service.DEFAULTS_DIR / "briques.yml").read_text(encoding="utf-8")
     assert not (tmp_path / ".library.tmp").exists()
+
+
+def test_the_library_directory_is_created_when_its_staging_copy_is_held_for_an_instant(tmp_path, monkeypatch):
+    # sous Windows, un antivirus tient un instant les fichiers tout juste copiés : le renommage du
+    # dossier assemblé réessaie, comme toute écriture atomique de Spectre (kernel.fs.replace)
+    from spectre.kernel import fs
+
+    target = tmp_path / "library"
+    monkeypatch.setenv("SPECTRE_LIBRARY_DIR", str(target))
+    monkeypatch.setattr(fs, "REPLACE_DELAY_SECONDS", 0)
+    real_replace = fs.os.replace
+    held = []
+
+    def held_once(src, dst):
+        if str(src).endswith(".library.tmp") and not held:
+            held.append(src)
+            raise PermissionError(13, "Accès refusé")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(fs.os, "replace", held_once)
+    service.library_dir()
+    assert held and sorted(path.name for path in target.iterdir()) == SHIPPED
+    assert not (tmp_path / ".library.tmp").exists()

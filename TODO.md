@@ -116,8 +116,6 @@ d'étapes (jugé trop lourd à saisir). Reste :
       fin prévisionnelle et fin réelle, liste des wafers d'un lot. `lots.source` vaut `declaratif`
       aujourd'hui - prévoir la valeur pour un lot alimenté par hook et ce qui reste saisissable à
       la main (thématiques visées, notes).
-- [ ] La table `lot_steps` créée par la toute première version (parcours, abandonné) peut rester
-      dans une base existante : plus lue, à supprimer à l'occasion (`DROP TABLE lot_steps`).
 
 ## Polish navigation / rename
 
@@ -139,6 +137,9 @@ d'étapes (jugé trop lourd à saisir). Reste :
       au fil des besoins réels (le fichier explique le format en commentaire).
 
 ## Fait (pour mémoire, pas d'action)
+
+- Table `lot_steps` de la toute première version des lots supprimée par la migration
+  `lots/0002_drop_lot_steps` (la base d'avant est sauvegardée dans `data/backups/` au démarrage qui migre).
 
 - Bibliothèque racine éditable (`library/*.yml` + registry.py, rechargement à chaud) - matériaux
   resserrés nitrures, présets, recettes de gravure sélective.

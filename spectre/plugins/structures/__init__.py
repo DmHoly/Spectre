@@ -11,12 +11,12 @@ PLUGIN = Plugin(
     router=router,
     pages=(
         Page("/microprojets/{slug}/briques-technologiques/bibliotheque/nouvelle", "builder.html"),
-        Page("/microprojets/{slug}/briques-technologiques/bibliotheque/{name}", "builder.html"),
+        Page("/microprojets/{slug}/briques-technologiques/bibliotheque/{brick_id}", "builder.html"),
         Page("/microprojets/{slug}/structures/bibliotheque/nouvelle", "builder.html"),
-        Page("/microprojets/{slug}/structures/bibliotheque/{name}", "builder.html"),
+        Page("/microprojets/{slug}/structures/bibliotheque/{structure_id}", "builder.html"),
         Page("/microprojets/{slug}/structures/nouvelle", "builder.html"),
         Page("/microprojets/{slug}/structures/image", "image-structure.html"),
-        Page("/microprojets/{slug}/experiences/{experience_id}/evoluer", "builder.html"),
-        Page("/microprojets/{slug}/experiences/{experience_id}/evoluer-image", "image-structure.html"),
+        Page("/microprojets/{slug}/experiences/{experiment_id}/evoluer", "builder.html"),
+        Page("/microprojets/{slug}/experiences/{experiment_id}/evoluer-image", "image-structure.html"),
     ),
 )

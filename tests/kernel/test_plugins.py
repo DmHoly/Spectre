@@ -74,7 +74,7 @@ def showcase(tmp_path, monkeypatch, data_dir):
     (root / "pages").mkdir(parents=True)
     (root / "static").mkdir()
     (root / "pages" / "vitrine.html").write_text(
-        f'<html><body>\n  {pages.TOPBAR_MARKER}\n  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Vitrine" --></body></html>',
+        f'<html><body>\n  <!-- spectre:topbar -->\n  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Vitrine" --></body></html>',
         encoding="utf-8",
     )
     (root / "pages" / "brute.html").write_text("<html><body>sans barre commune</body></html>", encoding="utf-8")

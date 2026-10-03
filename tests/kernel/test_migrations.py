@@ -420,3 +420,54 @@ def test_rebuild_table_refuses_to_run_with_foreign_keys_on(data_dir):
         conn.execute("CREATE TABLE items (id INTEGER PRIMARY KEY)")
         with pytest.raises(RuntimeError):
             rebuild_table(conn, "items", "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)")
+
+
+def test_rebuild_table_keeps_the_autoincrement_counter(data_dir):
+    # sans le compteur, la table reconstruite repartirait du plus grand id restant et redonnerait
+    # l'id d'une ligne supprimée avant la migration
+    def create(conn):
+        conn.execute("CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)")
+        conn.execute("INSERT INTO items (name) VALUES ('un'), ('deux'), ('trois')")
+        conn.execute("DELETE FROM items WHERE id IN (2, 3)")
+
+    def rebuild(conn):
+        rebuild_table(conn, "items", "CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)")
+
+    run_migrations([Plugin("demo", migrations=(Migration("0001", create), Migration("0002", rebuild)))])
+    with connect() as conn:
+        assert conn.execute("INSERT INTO items (name) VALUES ('quatre')").lastrowid == 4
+        assert [r["name"] for r in conn.execute("SELECT name FROM sqlite_sequence")] == ["items"]
+
+
+# --- la sauvegarde avant migration --------------------------------------------------------------
+
+
+def test_an_existing_installation_is_saved_before_its_first_pending_migration(data_dir):
+    from spectre.kernel.db import backups_dir
+
+    legacy = data_dir / "legacy.json"
+
+    def create(conn):
+        conn.execute("CREATE TABLE notes (text TEXT)")
+        conn.execute("INSERT INTO notes VALUES ('avant')")
+
+    def rewrite(conn):
+        conn.execute("DROP TABLE notes")
+        legacy.unlink()
+
+    run_migrations([Plugin("demo", migrations=(Migration("0001", create),))])
+    assert not backups_dir().exists()  # une installation neuve : rien à sauvegarder
+    legacy.write_text('{"avant": true}', encoding="utf-8")
+
+    plugin = Plugin("demo", migrations=(Migration("0001", create), Migration("0002", rewrite, files=lambda: [legacy])))
+    run_migrations([plugin])
+    (saved,) = backups_dir().iterdir()
+    assert (saved / "legacy.json").read_text(encoding="utf-8") == '{"avant": true}'
+    copy = sqlite3.connect(saved / "spectre.db")
+    try:
+        assert copy.execute("SELECT text FROM notes").fetchall() == [("avant",)]
+    finally:
+        copy.close()
+
+    run_migrations([plugin])  # plus rien en attente : pas de nouvelle sauvegarde
+    assert len(list(backups_dir().iterdir())) == 1

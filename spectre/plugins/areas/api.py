@@ -179,6 +179,11 @@ def create_objective(area_slug: str, body: ObjectiveCreate, response: Response, 
     return _objective_payload(objective)
 
 
+@router.get("/areas/{area_slug}/objectives/{objective_id}")
+def get_objective(area_slug: str, objective_id: int, user: User = Depends(current_user)) -> dict:
+    return _objective_payload(areas.get_objective(areas.get_by_slug(area_slug), objective_id))
+
+
 @router.patch("/areas/{area_slug}/objectives/{objective_id}")
 def update_objective(area_slug: str, objective_id: int, body: ObjectivePatch, user: User = Depends(require_admin)) -> dict:
     area = areas.get_by_slug(area_slug)

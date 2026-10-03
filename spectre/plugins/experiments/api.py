@@ -16,11 +16,11 @@ from typing import Any, Literal
 from urllib.parse import quote
 
 import follow
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from starlette.convertors import Convertor, register_url_convertor
 
-from ...kernel.errors import Forbidden, InvalidInput, NotFound
+from ...kernel.errors import Forbidden, InvalidInput, NotFound, Unauthorized
 from ...kernel.http import created, etag, if_match_version
 from ..accounts.deps import current_user
 from ..accounts.service import User
@@ -464,7 +464,7 @@ def legacy_version_page(slug: str, version_id: str, request: Request) -> Redirec
     sa piste (``?version=`` quand ce n'est pas la dernière). Hors session : la connexion d'abord."""
     try:
         user = current_user(request)
-    except HTTPException:
+    except Unauthorized:
         return RedirectResponse(f"/connexion?suite={quote(request.url.path)}", status_code=302)
     try:
         microproject = microprojects.get_by_slug(slug)

@@ -342,3 +342,25 @@ def test_an_old_version_link_resolves_to_its_line(client):
     client.cookies.clear()
     anonymous = client.get(f"/microprojets/{slug}/experiences/{launched['version_id']}", follow_redirects=False)
     assert anonymous.status_code == 302 and anonymous.headers["location"].startswith("/connexion?suite=")
+
+
+def test_a_commit_survives_refs_json_held_for_an_instant(client, monkeypatch):
+    # sous Windows, un lecteur (antivirus, indexeur, une requête concurrente) tient refs.json un
+    # instant : le remplacement des écritures de Follow réessaie, comme toute écriture de Spectre
+    from spectre.kernel import fs
+
+    slug = signup_with_microproject(client, "refs-held@example.com")
+    launched = launch(client, slug)
+    monkeypatch.setattr(fs, "REPLACE_DELAY_SECONDS", 0)
+    real_replace = fs.os.replace
+    held = []
+
+    def refs_held_once(src, dst):
+        if str(dst).endswith("refs.json") and not held:
+            held.append(dst)
+            raise PermissionError(13, "Accès refusé")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(fs.os, "replace", refs_held_once)
+    tag(client, slug, launched["id"], ["tenu"])
+    assert held and get_experiment(client, slug, launched["id"])["tags"] == ["tenu"]
