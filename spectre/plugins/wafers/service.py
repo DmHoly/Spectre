@@ -50,7 +50,7 @@ def _build(slug: str) -> list[dict[str, Any]]:
                     "entity_index": index,
                     "variant": labels[index] if index < len(labels) else None,
                     "experience": {
-                        "id": tip.id,
+                        "id": tip.branch,  # la piste (lien vers la fiche)
                         "title": tip.title,
                         "status": display_status(tip),
                         "updated_at": tip.created_at.isoformat(),

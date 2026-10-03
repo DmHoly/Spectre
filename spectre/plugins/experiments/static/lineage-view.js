@@ -1,8 +1,8 @@
 /* Vue par défaut du µprojet : le graphe hiérarchique "git-like" de ses expériences (un nœud =
-   une expérience, un trait = un lien de filiation classique), plus la carte contextuelle qui
-   s'ouvre au clic - voir GET /api/microprojets/{slug}/filiation (spectre.plugins.experiments.api::
-   microproject_lineage). Un nœud n'est jamais une version parmi d'autres : seuls les racines, les
-   fusions (/combiner) et les commits qui ont réellement fait avancer la structure sont gardés
+   une version de structure d'une piste, un trait = un lien de filiation classique), plus la carte
+   contextuelle qui s'ouvre au clic - voir GET /api/microprojects/{slug}/lineage
+   (spectre.plugins.experiments.api::microproject_lineage). Un nœud n'est jamais une version parmi
+   d'autres : seuls les racines, les fusions et les commits qui ont réellement fait avancer la structure sont gardés
    (spectre.plugins.experiments.versioning) - "un µprojet = split de structure". Remplace
    l'ancienne vue d'ensemble Plotly, supprimée : rendu D3 pour un vrai contrôle du layout et du
    clic, dans le même esprit qu'atlas.js.
@@ -32,15 +32,26 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
     return `<p class="help">Cliquez un nœud pour voir la structure, l'objectif et la conclusion de cette expérience ici.</p>`;
   }
 
-  async function loadCard(nodeId, node) {
+  // Un nœud est une version (version_id) d'une piste (experiment_id) : sa pointe, ou une version
+  // passée de la piste - qu'on ouvre alors avec ?version= et dont on ne peut que partir sur une
+  // nouvelle piste.
+  function pageUrl(node, suffix = "") {
+    const page = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(node.experiment_id)}${suffix}`;
+    return node.is_tip ? page : `${page}?version=${encodeURIComponent(node.version_id)}`;
+  }
+
+  async function loadCard(node) {
     panel.innerHTML = `<p class="help">Chargement…</p>`;
+    const version = node.is_tip ? null : node.version_id;
     try {
-      const detail = await experimentsApi.get(slug, nodeId);
+      const detail = version
+        ? await experimentsApi.getVersion(slug, node.experiment_id, version)
+        : await experimentsApi.get(slug, node.experiment_id);
       let structureBlock;
       let variation = null;
       if (detail.is_batch) {
         try {
-          variation = await experimentsApi.variants(slug, nodeId);
+          variation = await experimentsApi.variants(slug, node.experiment_id, version);
           structureBlock = `<div id="lineage-structure-carousel"></div>`;
         } catch (err) {
           structureBlock = "";
@@ -99,10 +110,10 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
           ${escapeHtml(detail.author || "Auteur inconnu")} &middot; ${timeAgo(detail.created_at)}
         </div>
         <div style="display:flex;gap:8px;margin-top:14px;">
-          <a class="btn btn-line" style="flex:1;" href="/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(nodeId)}">Ouvrir la fiche</a>
+          <a class="btn btn-line" style="flex:1;" href="${pageUrl(node)}">Ouvrir la fiche</a>
           ${
             canEvolve
-              ? `<a class="btn btn-primary" style="flex:1;" href="/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(nodeId)}/${detail.structure_images ? "evoluer-image" : "evoluer"}">Continuer d'ici</a>`
+              ? `<a class="btn btn-primary" style="flex:1;" href="${pageUrl(node, detail.structure_images ? "/evoluer-image" : "/evoluer")}">Continuer d'ici</a>`
               : ""
           }
         </div>`;
@@ -164,7 +175,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       svg.selectAll(".lineage-node").classed("lineage-node-selected", false);
       d3.select(target).classed("lineage-node-selected", true);
       selectedId = d.id;
-      loadCard(d.id, d);
+      loadCard(d);
     }
 
     const nodeGroups = svg

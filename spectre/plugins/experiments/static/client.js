@@ -1,84 +1,112 @@
-/* Client de l'API du plugin experiments : expériences d'un µprojet (lancement, évolution, statut,
-   conclusion, étiquettes, entités, fusion, suppression), diff, filiation et refs. `ref` : l'id
-   d'une expérience. */
+/* Client de l'API du plugin experiments : les études d'un µprojet. Une étude est une piste
+   (`experimentId`, toujours sa dernière version) et ses versions (`versionId`). Chaque écriture sur
+   une piste envoie la version affichée (`versionId`, en-tête If-Match) : si la piste a avancé
+   entre-temps, la réponse est 412 et rien n'est écrit. Les écritures renvoient l'étude à jour. */
 
 const experimentsApi = {
-  // params : {status, q, offset, limit}
+  // params : {status, q, offset, limit} -> {items, total}
   list(microprojectSlug, params) {
-    return api.get(api.withQuery(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences`, params));
+    return api.get(api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments`, params));
   },
-  launch(microprojectSlug, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences`, body);
+  // body : {structure: {kind: "process" | "images" | "campaign", ...}, title, intent, ..., from_version?, branch?}
+  create(microprojectSlug, body) {
+    return api.post(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments`, body);
   },
-  launchImage(microprojectSlug, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/image`, body);
+  get(microprojectSlug, experimentId) {
+    return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}`);
   },
-  launchCampaign(microprojectSlug, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/campagne`, body);
-  },
-  get(microprojectSlug, ref) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}`);
-  },
-  remove(microprojectSlug, ref) {
-    return api.del(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}`);
-  },
-  timeline(microprojectSlug, ref) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/timeline`);
-  },
-  process(microprojectSlug, ref) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/process`);
-  },
-  // la structure comparée à sa version précédente, ou à l'expérience `against` du même µprojet
-  diff(microprojectSlug, ref, against) {
+  getVersion(microprojectSlug, experimentId, versionId) {
     return api.get(
-      api.withQuery(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/diff`, { against })
+      `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/versions/${encodeURIComponent(versionId)}`
     );
   },
-  // la structure comparée à celle d'une expérience d'un autre µprojet
-  diffExternal(microprojectSlug, ref, otherMicroprojectSlug, otherRef) {
+  remove(microprojectSlug, experimentId, versionId) {
+    return api.del(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}`, {
+      ifMatch: versionId && `"${versionId}"`,
+    });
+  },
+  // la frise : chaque version de la piste, de la première à la pointe (is_tip)
+  versions(microprojectSlug, experimentId) {
+    return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/versions`);
+  },
+  // le procédé éditable d'une version (la pointe sans `version`)
+  process(microprojectSlug, experimentId, version) {
     return api.get(
-      api.withQuery(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/diff-externe`, {
-        autre_projet: otherMicroprojectSlug,
-        autre_experience: otherRef,
+      api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/process`, {
+        version,
       })
     );
   },
+  // params : {version, against_version, against_experiment, against_microproject} - sans cible, la
+  // version de structure précédente
+  structureDiff(microprojectSlug, experimentId, params) {
+    return api.get(
+      api.withQuery(
+        `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/structure-diff`,
+        params
+      )
+    );
+  },
   // les variantes d'une campagne (structures en SVG, libellés, facteurs)
-  variants(microprojectSlug, ref) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/matrice`);
+  variants(microprojectSlug, experimentId, version) {
+    return api.get(
+      api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/variants`, {
+        version,
+      })
+    );
   },
-  evolve(microprojectSlug, ref, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/evoluer`, body);
+  // une nouvelle version de la piste : body = {structure: {kind: "process" | "images", ...}, title, intent, ...}
+  evolve(microprojectSlug, experimentId, versionId, body) {
+    return api.post(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/versions`, body, {
+      ifMatch: versionId && `"${versionId}"`,
+    });
   },
-  evolveWithImage(microprojectSlug, ref, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/evoluer-image`, body);
+  replaceStructureImages(microprojectSlug, experimentId, versionId, body) {
+    return api.put(
+      `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/structure-images`,
+      body,
+      { ifMatch: versionId && `"${versionId}"` }
+    );
   },
-  replaceDrawing(microprojectSlug, ref, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/dessin`, body);
+  // body : {status: "draft" | "running" | "hold", hold_reason}
+  setStatus(microprojectSlug, experimentId, versionId, body) {
+    return api.put(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/status`, body, {
+      ifMatch: versionId && `"${versionId}"`,
+    });
   },
-  setStatus(microprojectSlug, ref, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/statut`, body);
+  conclude(microprojectSlug, experimentId, versionId, body) {
+    return api.put(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/conclusion`, body, {
+      ifMatch: versionId && `"${versionId}"`,
+    });
   },
-  conclude(microprojectSlug, ref, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/conclure`, body);
+  setTags(microprojectSlug, experimentId, versionId, body) {
+    return api.put(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/tags`, body, {
+      ifMatch: versionId && `"${versionId}"`,
+    });
   },
-  setTags(microprojectSlug, ref, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/etiquettes`, body);
+  setEntities(microprojectSlug, experimentId, versionId, body) {
+    return api.put(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/entities`, body, {
+      ifMatch: versionId && `"${versionId}"`,
+    });
   },
-  setEntities(microprojectSlug, ref, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/entites`, body);
+  // réunit la piste `otherExperimentId` dans celle-ci
+  merge(microprojectSlug, experimentId, versionId, otherExperimentId) {
+    return api.post(
+      `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/merges`,
+      { other_experiment_id: otherExperimentId },
+      { ifMatch: versionId && `"${versionId}"` }
+    );
   },
-  combine(microprojectSlug, ref, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/combiner`, body);
+  // les refs du µprojet et leur graphe condensé : {refs, edges}
+  refs(microprojectSlug) {
+    return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/refs`);
   },
-  createRef(microprojectSlug, ref, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(ref)}/ref`, body);
+  // body : {experiment_id, version_id?, name?}
+  createRef(microprojectSlug, body) {
+    return api.post(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/refs`, body);
   },
   lineage(microprojectSlug) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/filiation`);
-  },
-  refsGraph(microprojectSlug) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/refs/graphe`);
+    return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/lineage`);
   },
   // les compteurs de chaque µprojet : filters = {area, microproject} (slugs, facultatifs)
   stats(filters) {

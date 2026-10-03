@@ -6,8 +6,8 @@ quel dans son rapport.
 - ``POST /{slug}/donnees/instantanes`` : charger un type de données pour des plaques et le figer
   (:mod:`spectre.plugins.notebook.snapshots`) ; ``GET .../instantanes/{id}`` le relit.
 - ``POST/PUT/DELETE /{slug}/experiences/{ref}/cahier[/{entry_id}]`` : ajouter / modifier / retirer
-  une vue. Comme tout le reste de la fiche, chaque changement est une nouvelle version (évolution
-  légère) - la traçabilité d'un cahier de labo, pour rien.
+  une vue. Comme tout le reste de la fiche, chaque changement est une nouvelle version (écriture
+  légère sur la piste) - la traçabilité d'un cahier de labo, pour rien.
 
 Une vue = un instantané + un composant de visualisation (``component``, une clé du registre
 ``DataViz`` côté page, ``notebook/static/dataviz/``) + ses réglages (``options``, libres : c'est le composant qui
@@ -23,7 +23,6 @@ import secrets
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-import follow
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -31,8 +30,7 @@ from ..accounts.deps import current_user
 from ..accounts.service import User
 from ...kernel.errors import NotFound
 from ..characterization import service as characterization
-from ..experiments.repository import get_repository
-from ..experiments.service import derive_branch, form_validation_error, not_found
+from ..experiments import service as experiments
 from ..microprojects.deps import require_role
 from ..microprojects.service import Microproject
 from . import snapshots
@@ -130,38 +128,18 @@ def _snapshot_summary(slug: str, snapshot_id: str) -> dict[str, Any]:
     }
 
 
-def _commit(
-    microproject: Microproject, ref: str, user: User, mutate: Callable[[list[dict], Any], dict], failure: str
-) -> dict:
-    """Une évolution légère qui ne change que le cahier (tout le reste reporté tel quel)."""
-    repo = get_repository(microproject.slug)
-    try:
-        parent = repo.get(ref)
-    except follow.ExperimentNotFoundError as exc:
-        raise not_found(exc) from exc
-    entries = [dict(e) for e in parent.metadata.get(NOTEBOOK_KEY, [])]
-    result = mutate(entries, parent)
-    builder = repo.derive(
-        ref,
-        title=parent.title,
-        intent=parent.intent,
-        new_branch=derive_branch(repo, parent, None),
-        author=user.name,
-        hypothesis=parent.hypothesis,
-    )
-    builder.metadata = dict(parent.metadata)
-    builder.metadata[NOTEBOOK_KEY] = entries
-    builder.form_answers = dict(parent.form_answers)
-    builder.evidence = list(parent.evidence)
-    builder.tags = list(parent.tags)
-    builder.conclusion = parent.conclusion
-    try:
-        experiment = builder.commit()
-    except follow.FormValidationError as exc:
-        raise form_validation_error(exc) from exc
-    except follow.FollowError as exc:
-        raise HTTPException(status_code=400, detail=f"{failure} - rechargez la page et réessayez.") from exc
-    return {"id": experiment.id, **result}
+def _commit(microproject: Microproject, ref: str, user: User, mutate: Callable[[list[dict], Any], dict]) -> dict:
+    """Une écriture légère sur la piste ``ref`` qui ne change que le cahier (tout le reste reporté
+    tel quel, :func:`spectre.plugins.experiments.service.amend`)."""
+    result: dict = {}
+
+    def change(builder: Any, parent: Any) -> None:
+        entries = [dict(e) for e in parent.metadata.get(NOTEBOOK_KEY, [])]
+        result.update(mutate(entries, parent))
+        builder.metadata[NOTEBOOK_KEY] = entries
+
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    return {"id": ref, "version_id": experiment.id, **result}
 
 
 def _find(entries: list[dict], entry_id: str) -> int:
@@ -204,7 +182,7 @@ def add_entry(
         entries.append(entry)
         return {"entry_id": entry["id"]}
 
-    return _commit(microproject, ref, user, mutate, "Impossible d'ajouter cette vue")
+    return _commit(microproject, ref, user, mutate)
 
 
 @router.put("/{slug}/experiences/{ref}/cahier/{entry_id}")
@@ -246,7 +224,7 @@ def update_entry(
             entries.insert(target, entries.pop(index))
         return {"entry_id": entry_id}
 
-    return _commit(microproject, ref, user, mutate, "Impossible d'enregistrer cette vue")
+    return _commit(microproject, ref, user, mutate)
 
 
 @router.delete("/{slug}/experiences/{ref}/cahier/{entry_id}")
@@ -260,4 +238,4 @@ def remove_entry(
         entries.pop(_find(entries, entry_id))
         return {}
 
-    return _commit(microproject, ref, user, mutate, "Impossible de retirer cette vue")
+    return _commit(microproject, ref, user, mutate)

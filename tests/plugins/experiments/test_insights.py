@@ -81,7 +81,7 @@ def test_thematique_frise_lists_its_microprojets_and_redacts_them_for_outsiders(
     create_microproject(client, "Ailleurs", management_area_slug="native-pt2", thematique_slug="double-ebl")
     launched = launch(client, "recuit-mg", title="Recuit 700 C")
     paused = launch(client, "recuit-mg", title="En pause")
-    set_status(client, "recuit-mg", paused["id"], "hold", reason="four en panne")
+    set_status(client, "recuit-mg", paused["id"], "hold", hold_reason="four en panne")
 
     loads.clear()
     rows = experiment_timeline(client, area="native-pt2", thematic="dopage-pgan")
@@ -90,10 +90,13 @@ def test_thematique_frise_lists_its_microprojets_and_redacts_them_for_outsiders(
     row = rows[0]
     assert row["microproject"]["owners"][0]["name"] == "Alice Martin" and row["microproject"]["created_at"].endswith("Z")
     by_title = {n["title"]: n for n in row["nodes"]}
-    assert (by_title["Recuit 700 C"]["id"], by_title["Recuit 700 C"]["status"], by_title["Recuit 700 C"]["ended_at"]) == (
+    node = by_title["Recuit 700 C"]
+    assert (node["experiment_id"], node["version_id"], node["status"], node["ended_at"], node["is_tip"]) == (
         launched["id"],
+        launched["version_id"],
         "draft",
         None,
+        True,
     )
     assert by_title["En pause"]["status"] == "hold" and by_title["En pause"]["hold"]["reason"] == "four en panne"
     assert [r["microproject"]["slug"] for r in experiment_timeline(client, area="native-pt2")] == ["recuit-mg", "ailleurs"]
@@ -101,7 +104,7 @@ def test_thematique_frise_lists_its_microprojets_and_redacts_them_for_outsiders(
     # Someone outside the µprojet sees its counts and dates, not what its experiments are.
     signup(client, "hand@example.com")
     nodes = experiment_timeline(client, area="native-pt2", thematic="dopage-pgan")[0]["nodes"]
-    assert all("title" not in n and "id" not in n for n in nodes)
+    assert all("title" not in n and "id" not in n and "experiment_id" not in n and "version_id" not in n for n in nodes)
     assert sorted(n["status"] for n in nodes) == ["draft", "hold"]
     hold = next(n["hold"] for n in nodes if n["status"] == "hold")
     assert hold["since"] and "reason" not in hold

@@ -26,10 +26,11 @@ def isolated_environment(tmp_path, monkeypatch):
 
     monkeypatch.setenv("SPECTRE_LIBRARY_DIR", str(tmp_path / "library"))
 
+    from spectre.plugins.experiments import repository as experiments
     from spectre.plugins.library import service as library
     from spectre.plugins.wafers import service as plates
 
-    caches = (library._CACHE, plates._CACHE)
+    caches = (experiments._CACHE, library._CACHE, plates._CACHE)
     for cache in caches:
         cache.clear()
     yield

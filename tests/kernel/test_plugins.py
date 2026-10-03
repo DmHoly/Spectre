@@ -39,8 +39,12 @@ def test_the_plugin_list_is_in_topological_order_and_matches_the_packages():
     assert sorted(plugin.name for plugin in PLUGINS) == packages
 
 
+# Un segment qu'accepte le convertisseur d'une route (``{name:convertisseur}``) ; « x » sinon.
+SAMPLE_SEGMENTS = {"experiment_version": "exp_" + "0" * 16}
+
+
 def _page_url(path: str) -> str:
-    return re.sub(r"\{[^}]+\}", "x", path)
+    return re.sub(r"\{[^}:]+(?::(\w+))?\}", lambda m: SAMPLE_SEGMENTS.get(m.group(1), "x"), path)
 
 
 def test_every_declared_page_is_served(client):

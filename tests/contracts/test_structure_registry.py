@@ -31,7 +31,7 @@ def test_a_stored_campaign_reloads_through_a_class_defined_elsewhere(client, mon
     slug = signup_with_microproject(client, "registry@example.com")
     campaign = launch_campaign(client, slug)
 
-    stored = json.loads((follow_repo_path(slug) / "objects" / f"{campaign['id']}.json").read_text(encoding="utf-8"))
+    stored = json.loads((follow_repo_path(slug) / "objects" / f"{campaign['version_id']}.json").read_text(encoding="utf-8"))
     assert stored["structure_type"] == PROCESS_LOT_KEY
 
     # the same structure, as a plugin would define it from another module: registered under the

@@ -12,6 +12,9 @@ document.querySelector("#exp-entity-fdl .fdl-field__input").id = "exp-entity-fdl
 
 // Formulaire d'intention du µprojet (intent_forms/static/intent-form-section.js), monté par main.js
 let intentFormSection = null;
+// La version de départ d'une évolution : sa version_id part en If-Match (continuer la piste) ou en
+// from_version (une nouvelle piste, une campagne).
+let evolveParent = null;
 
 async function loadExistingProcess() {
   if (!evolveExperienceId) return;
@@ -19,7 +22,7 @@ async function loadExistingProcess() {
     // Une expérience dont la structure n'est qu'une image (image-structure.html) n'a pas de procédé
     // à rouvrir : on la redessine à partir du seul substrat, le reste (intention, objectifs,
     // entité) est repris comme pour toute évolution.
-    const data = await experimentsApi.process(slug, evolveExperienceId).catch((err) => {
+    const data = await experimentsApi.process(slug, evolveExperienceId, evolveVersionId).catch((err) => {
       if (err.status === 404) return null;
       throw err;
     });
@@ -31,7 +34,16 @@ async function loadExistingProcess() {
     }
     setPageTitle(data ? "Éditer la fiche" : "Redessiner la structure");
 
-    const detail = await experimentsApi.get(slug, evolveExperienceId);
+    const detail = evolveVersionId
+      ? await experimentsApi.getVersion(slug, evolveExperienceId, evolveVersionId)
+      : await experimentsApi.get(slug, evolveExperienceId);
+    evolveParent = detail;
+    if (!detail.is_tip) {
+      // une version passée ne se continue que sur une nouvelle piste
+      document.getElementById("branch-fork").checked = true;
+      document.getElementById("branch-continue").disabled = true;
+      document.getElementById("new-branch-name").hidden = false;
+    }
     document.getElementById("exp-title").value = detail.title;
     document.getElementById("exp-intent").value = detail.intent;
     document.getElementById("exp-hypothesis").value = detail.hypothesis || "";
@@ -71,10 +83,9 @@ async function commitExperience(entities) {
     document.getElementById(title ? "exp-intent" : "exp-title").focus();
     return;
   }
+  const structure = { kind: "process", substrate: substrateSpec(), steps: state.steps, declared_params: declaredParamsPayload(state.steps) };
   const payload = {
-    substrate: substrateSpec(),
-    steps: state.steps,
-    declared_params: declaredParamsPayload(state.steps),
+    structure,
     title,
     intent,
     hypothesis: document.getElementById("exp-hypothesis").value || null,
@@ -92,23 +103,23 @@ async function commitExperience(entities) {
       document.getElementById("new-branch-name").focus();
       return;
     }
-    payload.new_branch = branchName;
+    payload.branch = branchName;
+  }
+  if (state.campaignPlan) {
+    structure.kind = "campaign";
+    structure.plan = state.campaignPlan;
+  }
+  // Une nouvelle piste partie de la version de départ (une fourche, ou une campagne) garde le lien
+  // de filiation ; continuer la piste envoie la version affichée (If-Match).
+  if (evolveExperienceId && (payload.branch || state.campaignPlan)) {
+    payload.from_version = { experiment_id: evolveExperienceId, version_id: evolveParent ? evolveParent.version_id : null };
   }
   try {
-    let launch;
-    if (state.campaignPlan) {
-      payload.plan = state.campaignPlan;
-      // Campagne partie d'une ref / d'une expérience : on garde le lien de filiation (voir
-      // launch_campaign::from_ref) - `payload.new_branch` est déjà posé plus haut si "fork".
-      if (evolveExperienceId) payload.from_ref = evolveExperienceId;
-      launch = () => experimentsApi.launchCampaign(slug, payload);
-    } else if (evolveExperienceId) {
-      launch = () => experimentsApi.evolve(slug, evolveExperienceId, payload);
-    } else {
-      launch = () => experimentsApi.launch(slug, payload);
-    }
-    const result = await launch();
-    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+    const result =
+      evolveExperienceId && !payload.from_version
+        ? await experimentsApi.evolve(slug, evolveExperienceId, evolveParent && evolveParent.version_id, payload)
+        : await experimentsApi.create(slug, payload);
+    window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(result.id)}`;
   } catch (err) {
     const formMessage = intentFormSection && intentFormSection.errorMessage(err);
     showError(formMessage ? new Error(formMessage) : err);

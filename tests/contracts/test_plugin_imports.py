@@ -46,12 +46,7 @@ ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {
 }
 
 # Modules du domaine qui lèvent encore HTTPException -> ce qui la remplacera.
-ALLOWED_FASTAPI: dict[str, str] = {
-    "spectre.plugins.experiments.service": (
-        "require_branch_name, require_title_and_intent et form_validation_error lèvent InvalidInput, "
-        "not_found devient NotFound (kernel.errors)"
-    ),
-}
+ALLOWED_FASTAPI: dict[str, str] = {}
 
 
 def _module_name(path: Path) -> str:

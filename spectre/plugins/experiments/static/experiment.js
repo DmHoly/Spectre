@@ -5,9 +5,14 @@
    carrousel pour une campagne, et à côté les plaques ; versions, cartographie), « Données »
    (données mesurées + preuves), « Conclusion » (ou le formulaire pour la rédiger).
    L'onglet ouvert est dans l'adresse (#structure / #donnees / #conclusion) et survit aux actions
-   qui enregistrent une nouvelle version (voir goToVersion). Le rapport téléchargé reprend les trois. */
+   qui enregistrent une nouvelle version (voir reloadFiche). Le rapport téléchargé reprend les trois.
 
-const { slug, experience_id: experienceId } = routeParams("/microprojets/{slug}/experiences/{experience_id}");
+   L'adresse désigne la piste (experienceId) : la fiche montre sa dernière version, ou une version
+   passée avec ?version= - en lecture seule. Chaque écriture envoie la version affichée (If-Match) :
+   si la piste a avancé entre-temps, rien n'est écrit et la page le dit. */
+
+const { slug, experiment_id: experienceId } = routeParams("/microprojets/{slug}/experiences/{experiment_id}");
+const requestedVersion = new URLSearchParams(window.location.search).get("version");
 
 const REFERENCE_ROLE_LABELS = {
   baseline: "Référence",
@@ -56,14 +61,26 @@ let currentDetail = null;
 let currentProcess = null; // {substrate, steps} from /process - absent for structures without an
 // editable StructureForge recipe recorded (e.g. a campaign's representative entry).
 
+// Une version passée se lit, elle ne s'édite pas : on écrit toujours sur la pointe de la piste.
 function isEditorRole() {
-  return currentRole === "editor" || currentRole === "owner";
+  return (currentRole === "editor" || currentRole === "owner") && (!currentDetail || currentDetail.is_tip);
 }
 
-// Chaque action (preuve, étiquette, conclusion...) enregistre une nouvelle version immuable : on la
-// suit, en gardant l'onglet ouvert (#donnees...) plutôt que de revenir au premier.
-function goToVersion(id) {
-  window.location.href = `/microprojets/${slug}/experiences/${id}${window.location.hash}`;
+// La version affichée : ce qu'une écriture envoie en If-Match.
+function shownVersionId() {
+  return currentDetail ? currentDetail.version_id : null;
+}
+
+// La page d'une version : sa piste, avec ?version= quand ce n'est pas (ou pas forcément) la pointe.
+function experimentPageUrl({ experiment_id, version_id, is_tip }) {
+  const page = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(experiment_id)}`;
+  return is_tip ? page : `${page}?version=${encodeURIComponent(version_id)}`;
+}
+
+// Chaque action (preuve, étiquette, conclusion...) enregistre une nouvelle version de la piste : la
+// fiche se recharge sur la même adresse (sa dernière version), en gardant l'onglet ouvert.
+function reloadFiche() {
+  window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(experienceId)}${window.location.hash}`;
 }
 
 // La matrice d'une campagne (/matrice : une structure par variante, facteurs, suivi physique) - un
@@ -71,7 +88,7 @@ function goToVersion(id) {
 let batchVariationPromise = null;
 function getBatchVariation() {
   if (!batchVariationPromise) {
-    batchVariationPromise = experimentsApi.variants(slug, experienceId).catch((err) => {
+    batchVariationPromise = experimentsApi.variants(slug, experienceId, requestedVersion).catch((err) => {
       batchVariationPromise = null;
       throw err;
     });
@@ -291,7 +308,10 @@ function renderHeroConclusion(detail) {
 function renderStatusNote(detail) {
   const note = document.getElementById("status-note");
   note.className = "fiche-status-note";
-  if (detail.status === "hold" && detail.hold) {
+  if (!detail.is_tip) {
+    note.innerHTML = `<span>Version passée du ${escapeHtml(formatDate(detail.created_at))}, en lecture seule - <a href="/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(experienceId)}">voir la dernière version</a></span>`;
+    note.hidden = false;
+  } else if (detail.status === "hold" && detail.hold) {
     const since = detail.hold.since;
     note.classList.add("fiche-status-note--hold");
     note.innerHTML = `<span>En pause depuis le ${escapeHtml(formatDate(since))} (${escapeHtml(formatDuration(new Date() - new Date(since)))})${detail.hold.by ? ` · par ${escapeHtml(detail.hold.by)}` : ""}</span>${
@@ -364,12 +384,12 @@ async function changeStatus(targetStatus, btn) {
   if (targetStatus === "hold") {
     const reason = await askHoldReason();
     if (reason === null) return;
-    body.reason = reason || null;
+    body.hold_reason = reason || null;
   }
   if (btn) btn.disabled = true;
   try {
-    const result = await experimentsApi.setStatus(slug, experienceId, body);
-    goToVersion(result.id);
+    await experimentsApi.setStatus(slug, experienceId, shownVersionId(), body);
+    reloadFiche();
   } catch (err) {
     showError(err);
     if (btn) btn.disabled = false;
@@ -435,13 +455,18 @@ function versionBadge(item) {
   return `<span class="timeline-version" title="${escapeHtml(CHANGE_LEVEL_LABELS[item.change_level] || "")}">v${escapeHtml(item.version)}</span>`;
 }
 
-// item.is_current vient du serveur (la toute dernière entrée de la piste) - jamais déduit de la
-// position dans la liste affichée, puisque la frise des versions peut omettre des entrées
-// intermédiaires (voir renderTimeline) et donc ne pas se terminer sur le vrai commit courant.
+// item.is_tip vient du serveur (la dernière version de la piste) - jamais déduit de la position
+// dans la liste affichée, puisque la frise des versions peut omettre des entrées intermédiaires
+// (voir renderTimeline) et donc ne pas se terminer sur la vraie pointe. Une version passée s'ouvre
+// en lecture (?version=).
 function renderTimelineItem(item, extraClass) {
+  const shown = currentDetail && item.version_id === currentDetail.version_id;
+  const date = item.is_tip
+    ? `${formatDate(item.created_at)} · version actuelle`
+    : `<a href="?version=${encodeURIComponent(item.version_id)}${window.location.hash}">${formatDate(item.created_at)}</a>`;
   return `
-    <div class="timeline-item ${item.is_current ? "current" : ""} ${extraClass || ""}">
-      <div class="timeline-date">${formatDate(item.created_at)}${item.is_current ? " · version actuelle" : ""} ${versionBadge(item)}</div>
+    <div class="timeline-item ${item.is_tip ? "current" : ""} ${extraClass || ""}">
+      <div class="timeline-date">${date}${shown && !item.is_tip ? " · version affichée" : ""} ${versionBadge(item)}</div>
       <div class="timeline-title">${escapeHtml(item.title)}</div>
       <div class="timeline-desc">${escapeHtml(item.intent)}</div>
     </div>`;
@@ -958,16 +983,14 @@ function renderConcludeForm(detail, prefill) {
       reasoning: document.getElementById(`obj-reasoning-${i}`).value.trim() || null,
     }));
     try {
-      const result = await experimentsApi.conclude(slug, experienceId, {
+      await experimentsApi.conclude(slug, experienceId, shownVersionId(), {
         status: document.getElementById("conclude-status").value,
         decision: document.getElementById("conclude-decision").value || null,
         summary: document.getElementById("conclude-summary").value || null,
         next_steps: document.getElementById("conclude-next-steps").value || null,
         objective_results: objectiveResults,
       });
-      // conclure records a new version carrying the conclusion (experiences are immutable) -
-      // go to it, not back to this now-superseded draft.
-      goToVersion(result.id);
+      reloadFiche();
     } catch (err) {
       showError(err);
     }
@@ -1011,12 +1034,13 @@ document.getElementById("compare-btn").addEventListener("click", async () => {
   if (!target) return;
   const box = document.getElementById("compare-result");
   try {
-    const diff =
-      targetMicroproject === slug
-        ? await experimentsApi.diff(slug, experienceId, target)
-        : await experimentsApi.diffExternal(slug, experienceId, targetMicroproject, target);
-    if (diff.note) {
-      box.innerHTML = `<div class="help">${escapeHtml(diff.note)}</div>`;
+    const diff = await experimentsApi.structureDiff(slug, experienceId, {
+      version: requestedVersion,
+      against_experiment: target,
+      against_microproject: targetMicroproject === slug ? null : targetMicroproject,
+    });
+    if (diff.summary) {
+      box.innerHTML = diffSummaryHtml(diff.summary);
     } else if (diff.entries.length === 0) {
       box.innerHTML = `<div class="help">Aucune différence de structure.</div>`;
     } else {
@@ -1033,10 +1057,10 @@ document.getElementById("compare-btn").addEventListener("click", async () => {
 async function saveAnnotations(evidenceId, annotations) {
   clearError();
   try {
-    const result = await evidenceApi.updateAnnotations(slug, experienceId, evidenceId, {
+    await evidenceApi.updateAnnotations(slug, experienceId, evidenceId, {
       annotations,
     });
-    goToVersion(result.id);
+    reloadFiche();
   } catch (err) {
     showError(err);
   }
@@ -1496,7 +1520,7 @@ function renderEvidence(detail) {
       const metricNameEl = document.getElementById("evidence-metric-name");
       const metricValueEl = document.getElementById("evidence-metric-value");
       const stepSelect = document.getElementById("evidence-step-select");
-      const result = await evidenceApi.add(slug, experienceId, {
+      await evidenceApi.add(slug, experienceId, {
         description: document.getElementById("evidence-description").value,
         source,
         kind,
@@ -1509,9 +1533,7 @@ function renderEvidence(detail) {
         links,
         images,
       });
-      // preuves records a new version carrying the evidence - its links and images included
-      // (experiences are immutable) - go to it, not back to this now-superseded version.
-      goToVersion(result.id);
+      reloadFiche();
     } catch (err) {
       showError(err);
     }
@@ -1605,7 +1627,7 @@ function renderForksNote(detail) {
   box.innerHTML = `
     <div style="font-size:12px;color:var(--text-faint);margin-bottom:6px;">Cette version a donné plusieurs pistes :</div>
     ${detail.children
-      .map((c) => `<div style="font-size:13px;margin-bottom:4px;"><a href="/microprojets/${slug}/experiences/${c.id}">${escapeHtml(c.title)}</a></div>`)
+      .map((c) => `<div style="font-size:13px;margin-bottom:4px;"><a href="${experimentPageUrl(c)}">${escapeHtml(c.title)}</a></div>`)
       .join("")}
     <a href="/microprojets/${slug}" style="font-size:12px;">Voir le µprojet &rarr;</a>`;
 }
@@ -1653,9 +1675,8 @@ function renderTags(detail) {
 async function updateTags(tags) {
   clearError();
   try {
-    const result = await experimentsApi.setTags(slug, experienceId, { tags });
-    // like conclure/preuves, tagging records a new version - follow it there.
-    goToVersion(result.id);
+    await experimentsApi.setTags(slug, experienceId, shownVersionId(), { tags });
+    reloadFiche();
   } catch (err) {
     showError(err);
   }
@@ -1696,8 +1717,8 @@ function renderRefs(detail) {
 async function createRef(name) {
   clearError();
   try {
-    await experimentsApi.createRef(slug, experienceId, { name: name || null });
-    currentDetail = await experimentsApi.get(slug, experienceId);
+    const ref = await experimentsApi.createRef(slug, { experiment_id: experienceId, version_id: shownVersionId(), name: name || null });
+    currentDetail = { ...currentDetail, ref_names: ref.names };
     renderRefs(currentDetail);
   } catch (err) {
     showError(err);
@@ -1755,19 +1776,13 @@ async function populateCombineSelect() {
 document.getElementById("combine-btn").addEventListener("click", async () => {
   clearError();
   const otherId = document.getElementById("combine-select").value;
-  const title = document.getElementById("combine-title").value.trim();
-  const intent = document.getElementById("combine-intent").value.trim();
-  if (!otherId || !title || !intent) {
-    showError(new Error("Choisissez une expérience, un titre et une raison de combiner."));
+  if (!otherId) {
+    showError(new Error("Choisissez l'expérience à combiner avec celle-ci."));
     return;
   }
   try {
-    const result = await experimentsApi.combine(slug, experienceId, {
-      other_id: otherId,
-      title,
-      intent,
-    });
-    goToVersion(result.id);
+    await experimentsApi.merge(slug, experienceId, shownVersionId(), otherId);
+    reloadFiche();
   } catch (err) {
     showError(err);
   }
@@ -1776,9 +1791,8 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
 async function savePhysicalTracking(entities) {
   clearError();
   try {
-    const result = await experimentsApi.setEntities(slug, experienceId, { entities });
-    // like tags/preuves, this records a new version - follow it there.
-    goToVersion(result.id);
+    await experimentsApi.setEntities(slug, experienceId, shownVersionId(), { entities });
+    reloadFiche();
   } catch (err) {
     showError(err);
   }
@@ -1842,7 +1856,7 @@ function renderReferences(detail) {
     .map((r) => {
       const label = REFERENCE_ROLE_LABELS[r.role] || r.role;
       const target = r.experiment_id
-        ? `<a href="/microprojets/${slug}/experiences/${r.experiment_id}">${escapeHtml(r.label)}</a>`
+        ? `<a href="/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(r.experiment_id)}">${escapeHtml(r.label)}</a>`
         : escapeHtml(r.label);
       return `<div style="font-size:13px;margin-bottom:8px;"><span style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(label)}</span><br>${target}</div>`;
     })
@@ -2005,14 +2019,14 @@ async function saveReplacedDrawing() {
   const button = document.getElementById("replace-drawing-save");
   button.disabled = true;
   try {
-    const result = await experimentsApi.replaceDrawing(slug, experienceId, {
+    const result = await experimentsApi.replaceStructureImages(slug, experienceId, shownVersionId(), {
       images: images.map((img) => ({ ...img, caption: (img.caption || "").trim() || null })),
     });
-    if (result.id === experienceId) {
+    if (result.version_id === shownVersionId()) {
       document.getElementById("replace-drawing-dialog").close();
       return;
     }
-    goToVersion(result.id);
+    reloadFiche();
   } catch (err) {
     showReplaceDrawingError(err);
     button.disabled = false;
@@ -2026,18 +2040,14 @@ function wireDeleteExperience() {
     const children = currentDetail.children || [];
     const title = currentDetail.title || "cette étude";
     if (children.length) {
-      const sameBranch = children.some((c) => c.branch === currentDetail.branch);
-      hint.textContent = sameBranch
-        ? "Vous consultez une version ancienne — ouvrez la version courante de cette piste pour la supprimer."
-        : `Impossible : ${children.length} piste(s) découlent de cette version. Supprimez-les d'abord.`;
+      hint.textContent = `Impossible : ${children.length} piste(s) découlent de cette version. Supprimez-les d'abord.`;
       return;
     }
-    if (!window.confirm(`Supprimer définitivement « ${title} » (cette version et les précédentes de cette piste) ? Cette action est irréversible.`)) return;
+    if (!window.confirm(`Supprimer définitivement « ${title} » (toutes les versions de cette piste) ? Cette action est irréversible.`)) return;
     btn.disabled = true;
     clearError();
     try {
-      const result = await experimentsApi.remove(slug, experienceId);
-      hint.textContent = `${result.count} version(s) supprimée(s).`;
+      await experimentsApi.remove(slug, experienceId, shownVersionId());
       window.location.href = `/microprojets/${slug}`;
     } catch (err) {
       showError(err);
@@ -2065,7 +2075,9 @@ function applyModeVisibility() {
 
 async function init() {
   try {
-    currentDetail = await experimentsApi.get(slug, experienceId);
+    currentDetail = requestedVersion
+      ? await experimentsApi.getVersion(slug, experienceId, requestedVersion)
+      : await experimentsApi.get(slug, experienceId);
     const microproject = await microprojectsApi.get(slug);
     currentRole = microproject.role;
     currentMicroprojectName = microproject.name;
@@ -2104,11 +2116,11 @@ async function init() {
     document.getElementById("export-report-btn").addEventListener("click", downloadReport);
     applyModeVisibility();
 
-    const [timeline, diff, process, entityHistory] = await Promise.all([
-      experimentsApi.timeline(slug, experienceId),
-      experimentsApi.diff(slug, experienceId),
+    const [history, diff, process, entityHistory] = await Promise.all([
+      experimentsApi.versions(slug, experienceId),
+      experimentsApi.structureDiff(slug, experienceId, { version: requestedVersion }),
       currentDetail.has_editable_process
-        ? experimentsApi.process(slug, experienceId).catch(() => null)
+        ? experimentsApi.process(slug, experienceId, requestedVersion).catch(() => null)
         : Promise.resolve(null),
       wafersApi.entityHistory(slug).catch(() => ({ sample_ids: [], locations: [], fdls: [] })),
     ]);
@@ -2122,15 +2134,15 @@ async function init() {
     renderEvidence(currentDetail);
     if (typeof renderDataGallery === "function") renderDataGallery(currentDetail);
     if (typeof renderNotebook === "function") renderNotebook(currentDetail);
-    renderTimeline(timeline.versions);
-    renderFullHistory(timeline.items);
-    const current = timeline.items.find((item) => item.is_current);
+    renderTimeline(history.filter((item) => item.change_level !== "none"));
+    renderFullHistory(history);
+    const current = history.find((item) => item.version_id === currentDetail.version_id);
     document.getElementById("hero-version").textContent = current ? `v${current.version}` : "";
-    // « Débutée le » : le début de la version de structure actuelle (vX.Y.Z) - pas le commit qu'on
+    // « Débutée le » : le début de la version de structure affichée (vX.Y.Z) - pas le commit qu'on
     // regarde, puisque chaque édition, étiquette ou preuve en crée un ; ni le tout début de la filiation.
-    if (timeline.items.length) {
-      const latest = current || timeline.items[timeline.items.length - 1];
-      const started = timeline.items.find((item) => item.version === latest.version).created_at;
+    if (history.length) {
+      const latest = current || history[history.length - 1];
+      const started = history.find((item) => item.version === latest.version).created_at;
       const updated = latest.created_at;
       document.getElementById("hero-dates").innerHTML =
         `Débutée le&nbsp;: <span class="meta-value">${formatDate(started)}</span>` +

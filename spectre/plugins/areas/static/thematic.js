@@ -184,7 +184,7 @@ function laneSvg(lane, geo, ticks, laneIndex) {
       const bar = style.filled
         ? `<rect x="${item.x0}" y="${y - BAR_H / 2}" width="${item.x1 - item.x0}" height="${BAR_H}" rx="4" fill="${style.color}"></rect>`
         : `<rect x="${item.x0}" y="${y - BAR_H / 2}" width="${item.x1 - item.x0}" height="${BAR_H}" rx="4" fill="${style.color}" fill-opacity="0.16" style="stroke:${style.color};stroke-width:1.2px"></rect>`;
-      const href = item.id ? `/microprojets/${encodeURIComponent(lane.p.slug)}/experiences/${encodeURIComponent(item.id)}` : "";
+      const href = itemUrl(lane, item);
       const focus = href ? ` tabindex="0" role="link" data-href="${escapeHtml(href)}"` : "";
       return `<g class="frise-bar" data-lane="${laneIndex}" data-item="${i}"${focus} aria-label="${escapeHtml(itemSummary(lane, item))}">
           <rect class="frise-hit" x="${item.x0 - 8}" y="${y - ROW_H / 2 + 1}" width="${item.x1 - item.x0 + 18}" height="${ROW_H - 2}" rx="5"></rect>
@@ -203,6 +203,14 @@ function laneSvg(lane, geo, ticks, laneIndex) {
       <line class="frise-today" x1="${geo.pastW}" x2="${geo.pastW}" y1="0" y2="${height}"></line>
       ${bars}${empty}
     </svg>`;
+}
+
+// La fiche d'un point de la frise (réservée aux membres, qui seuls reçoivent ses ids) : sa piste, et
+// la version quand ce n'en est pas la pointe.
+function itemUrl(lane, item) {
+  if (!item.id) return "";
+  const page = `/microprojets/${encodeURIComponent(lane.p.slug)}/experiences/${encodeURIComponent(item.experiment_id)}`;
+  return item.is_tip ? page : `${page}?version=${encodeURIComponent(item.version_id)}`;
 }
 
 function itemTitle(item) {
@@ -327,7 +335,7 @@ function renderTable() {
     lane.items.map(
       (item) => `<tr>
         <td>${lane.p.code ? `<span class="mp-code">${escapeHtml(lane.p.code)}</span> ` : ""}${escapeHtml(lane.p.name)}</td>
-        <td>${item.id ? `<a href="/microprojets/${encodeURIComponent(lane.p.slug)}/experiences/${encodeURIComponent(item.id)}">${escapeHtml(itemTitle(item))}</a>` : escapeHtml(itemTitle(item))}</td>
+        <td>${item.id ? `<a href="${escapeHtml(itemUrl(lane, item))}">${escapeHtml(itemTitle(item))}</a>` : escapeHtml(itemTitle(item))}</td>
         <td>${statusBadgeHtml(item.status, item.decision)}</td>
         <td class="num">${escapeHtml(formatDate(item.started_at))}</td>
         <td class="num">${lineageSpan(item).end ? `${escapeHtml(formatDate(lineageSpan(item).end))}${lineageSpan(item).state === "continued" ? " (continuée)" : ""}` : "—"}</td>

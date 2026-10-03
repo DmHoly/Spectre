@@ -55,7 +55,7 @@ class Plugin:
     name: str  # identique en Python, sous /static/<name>/ et dans les tests
     depends_on: tuple[str, ...] = ()
     router: APIRouter | None = None  # routes /api de ce plugin
-    page_router: APIRouter | None = None  # routes de pages spéciales (redirections)
+    page_router: APIRouter | None = None  # routes de pages spéciales (redirections), avant ses pages
     pages: tuple[Page, ...] = ()
     nav: tuple[NavEntry, ...] = ()
     migrations: tuple[Migration, ...] = ()

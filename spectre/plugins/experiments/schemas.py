@@ -1,81 +1,102 @@
-"""Request bodies of an experience's launch and evolution - by the structure builder, with pictures,
-or as a whole DOE campaign."""
+"""Request bodies of the experiments routes: creating a line of study (any kind of structure, from
+scratch or from an existing version), evolving it, and the lightweight writes on its tip."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
+import follow
 from pydantic import BaseModel
-from structureforge.process.steps import ProcessStep
 
-from ..structures.schemas import CampaignPreviewRequest, StructureImageInput
-from ..structures.simulation import DeclaredParam, SubstrateSpec
+from ..structures.schemas import StructureImageInput, StructurePayload
 from .entities import EntityTrackingInput
 
 
 class ObjectiveInput(BaseModel):
     name: str
     metric: str
-    direction: str = "observe"
+    direction: Literal["maximize", "minimize", "target", "range", "observe"] = "observe"
     target: float | None = None
     tolerance: float | None = None
     rationale: str | None = None  # pourquoi cet objectif compte
     verification_method: str | None = None  # comment on prévoit de le vérifier
 
 
-class LaunchExperienceRequest(BaseModel):
-    substrate: SubstrateSpec
-    steps: list[ProcessStep]
+class FromVersion(BaseModel):
+    """The version a new line of study starts from - the tip of ``experiment_id`` when
+    ``version_id`` is left out."""
+
+    experiment_id: str
+    version_id: str | None = None
+
+
+class _Intention(BaseModel):
+    """What a launch and an evolution ask again: the intention, the objectives, the entity and the
+    answers to the microproject's intention form."""
+
     title: str
     intent: str
     hypothesis: str | None = None
-    # a short description that puts the experience back in context (shown at the top of the fiche) -
-    # None on an evolution keeps the previous version's (see apply_context)
+    # a short description that puts the experiment back in context (shown at the top of the fiche) -
+    # None keeps the one already there (see service.apply_context)
     context: str | None = None
     objectives: list[ObjectiveInput] = []
-    # required on a brand-new launch (see launch_experience) ; optional when evolving, where
-    # it's only needed to fix forward an experience whose lineage never got one (see evolve_experience).
+    # the physical samples followed (one per variant of a campaign) - inherited when left empty on
+    # an evolution or a launch from an existing version
     entities: list[EntityTrackingInput] = []
-    new_branch: str | None = None  # only meaningful when evolving: fork instead of continuing
-    # the steps' declared parameters (see simulation.DeclaredParam), keyed by step index - kept in
-    # the committed process metadata (simulation.process_metadata) so an evolution gets them back
-    declared_params: dict[str, list[DeclaredParam]] = {}
-    # answers to the microproject's active commit form (spectre.plugins.intent_forms), if one is
-    # configured - re-asked on every real launch/evolution, unlike metadata/tags/evidence which
-    # lightweight evolutions (conclure/preuves/etiquettes...) simply carry forward unchanged.
     form_answers: dict[str, Any] = {}
 
 
-class LaunchImageExperienceRequest(BaseModel):
-    """A launch (or an evolution, see ``evolve_experience_with_image``) whose structure is given as
-    pictures instead of a simulated process - otherwise the same intention fields as
-    :class:`LaunchExperienceRequest`."""
-
-    images: list[StructureImageInput]
-    title: str
-    intent: str
-    hypothesis: str | None = None
-    # a short description that puts the experience back in context (shown at the top of the fiche) -
-    # None on an evolution keeps the previous version's (see apply_context)
-    context: str | None = None
-    objectives: list[ObjectiveInput] = []
-    entities: list[EntityTrackingInput] = []
-    new_branch: str | None = None  # evolution only: fork instead of continuing
-    form_answers: dict[str, Any] = {}
+class CreateExperimentRequest(_Intention):
+    structure: StructurePayload
+    from_version: FromVersion | None = None
+    branch: str | None = None  # the name of the new line of study - from its title by default
 
 
-class LaunchCampaignRequest(CampaignPreviewRequest):
-    title: str
-    intent: str
-    hypothesis: str | None = None
-    # a short description that puts the experience back in context (shown at the top of the fiche) -
-    # None on an evolution keeps the previous version's (see apply_context)
-    context: str | None = None
-    objectives: list[ObjectiveInput] = []
-    entities: list[EntityTrackingInput] = []  # at least one (the reference sample) is required
-    form_answers: dict[str, Any] = {}
-    # when the campaign is built from an existing version (« partir d'une ref » / « continuer ») it
-    # branches off that commit so the lineage/baseline link is kept, exactly like an évolution -
-    # instead of starting a disconnected new branch.
-    from_ref: str | None = None
-    new_branch: str | None = None  # only meaningful with from_ref: name the forked branch
+class EvolveRequest(_Intention):
+    structure: StructurePayload  # process or images: a campaign is launched as a new line of study
+
+
+class StructureImagesRequest(BaseModel):
+    images: list[StructureImageInput]  # in reading order
+
+
+class ObjectiveResultInput(BaseModel):
+    objective: str
+    status: Literal["met", "not_met", "partially_met", "inconclusive"]
+    observed: follow.Quantity | None = None
+    reasoning: str | None = None
+
+
+class ConclusionRequest(BaseModel):
+    status: Literal["concluded", "abandoned"] = "concluded"
+    decision: Literal["promote", "branch", "replicate", "abandon", "inconclusive"] | None = None
+    summary: str | None = None
+    next_steps: str | None = None
+    objective_results: list[ObjectiveResultInput] = []
+
+
+class StatusRequest(BaseModel):
+    # only the "in progress" states - moving to concluded/abandoned is PUT .../conclusion, which
+    # also records the per-objective verdicts and the narrative. « hold » pauses the study.
+    status: Literal["draft", "running", "hold"]
+    hold_reason: str | None = None
+
+
+class TagsRequest(BaseModel):
+    tags: list[str]
+
+
+class EntitiesRequest(BaseModel):
+    entities: list[EntityTrackingInput]
+
+
+class MergeRequest(BaseModel):
+    other_experiment_id: str
+
+
+class RefRequest(BaseModel):
+    experiment_id: str
+    version_id: str | None = None  # the tip of experiment_id when left out
+    name: str | None = None  # a nickname ; « ref vX.Y.Z » when left blank
+

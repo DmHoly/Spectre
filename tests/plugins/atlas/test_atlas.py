@@ -7,7 +7,7 @@ tip-to-tip links so a fork or a merge still shows without drawing every intermed
 from __future__ import annotations
 
 from support.areas import create_area
-from support.experiments import combine, conclude, evolve, launch, launch_campaign, track_entities
+from support.experiments import conclude, evolve, launch, launch_campaign, merge, track_entities
 from support.http import assert_handler_404
 from support.microprojects import move_microproject, signup_with_microproject
 from support.structures import steps
@@ -42,11 +42,11 @@ def test_atlas_shows_one_experience_node_per_branch_tip_with_entities_and_object
         objectives=[{"name": "Rugosité", "metric": "rugosite", "direction": "minimize", "target": 1.0}],
         entities=[{"sample_id": "placeholder"}],
     )
-    with_entity = track_entities(client, slug, launched["id"], [{"sample_id": "W1-A1", "location": "congélateur B"}])
+    track_entities(client, slug, launched["id"], [{"sample_id": "W1-A1", "location": "congélateur B"}])
     concluded = conclude(
         client,
         slug,
-        with_entity["id"],
+        launched["id"],
         decision="promote",
         objective_results=[{"objective": "Rugosité", "status": "met", "reasoning": "0.5nm mesuré."}],
     )
@@ -54,7 +54,8 @@ def test_atlas_shows_one_experience_node_per_branch_tip_with_entities_and_object
     microproject = _atlas_microproject(client, slug)
     assert len(microproject["experiences"]) == 1  # one card per branch tip, not one per version
     exp = microproject["experiences"][0]
-    assert exp["id"] == concluded["id"]
+    assert exp["id"] == concluded["version_id"]
+    assert exp["experiment_id"] == launched["id"]  # la piste, ce que vise « Ouvrir la fiche »
     assert exp["status"] == "concluded"
     assert exp["decision"] == "promote"  # for the "Concluante"/"Non concluante"/"À poursuivre" badge nuance
     assert exp["entities"] == [{"index": 0, "sample_id": "W1-A1", "location": "congélateur B"}]
@@ -87,21 +88,24 @@ def test_atlas_entity_index_survives_a_partially_tracked_campaign(client):
 def test_atlas_condenses_a_fork_and_merge_into_tip_to_tip_edges(client):
     slug = signup_with_microproject(client, "atlas-merge@example.com")
     root = launch(client, slug, title="Reference", intent="Depart", steps=steps(10))
-    # branch_a stays on the default branch, branch_b forks onto its own - so combiner (which
-    # always advances `ref`'s own branch, see experiments.py::combine_experiences) supersedes
-    # branch_a but leaves branch_b's branch as its own still-current tip.
-    branch_a = evolve(client, slug, root["id"], title="Piste A", intent="Suite A", steps=steps(15))
-    branch_b = evolve(client, slug, root["id"], title="Piste B", intent="Suite B", steps=steps(30), new_branch="piste-b")
-    merged = combine(client, slug, branch_a["id"], branch_b["id"], title="Fusion", intent="Reunir A et B")
+    # piste A continues the root's own line, piste B forks onto its own - so the merge (which
+    # always advances the line it is made on) supersedes A but leaves B as its own still-current tip.
+    evolve(client, slug, root["id"], title="Piste A", intent="Suite A", steps=steps(15))
+    branch_b = launch(
+        client, slug, title="Piste B", intent="Suite B", steps=steps(30), branch="piste-b",
+        from_version={"experiment_id": root["id"], "version_id": root["version_id"]},
+    )
+    merged = merge(client, slug, root["id"], branch_b["id"])
 
     microproject = _atlas_microproject(client, slug)
-    # root and branch_a were both superseded on the same (default) branch by the merge commit ;
-    # branch_b's own branch was never advanced, so it's still a separate, live node.
+    # root and piste A were both superseded on the same line by the merge commit ; piste B's own
+    # line was never advanced, so it's still a separate, live node.
     node_ids = {exp["id"] for exp in microproject["experiences"]}
-    assert node_ids == {merged["id"], branch_b["id"]}
+    assert node_ids == {merged["version_id"], branch_b["version_id"]}
+    assert {exp["experiment_id"] for exp in microproject["experiences"]} == {root["id"], "piste-b"}
 
     edges = {(e["from"], e["to"]) for e in microproject["edges"]}
-    assert edges == {(branch_b["id"], merged["id"])}  # not one edge per commit in the collapsed history
+    assert edges == {(branch_b["version_id"], merged["version_id"])}  # not one edge per commit in the collapsed history
 
 
 def test_atlas_requires_a_theme(client):

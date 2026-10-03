@@ -17,6 +17,8 @@ const brickId = isBrickMode && brickRoute.name !== "nouvelle" ? brickRoute.name 
 const queryParams = new URLSearchParams(window.location.search);
 const libraryDuplicateMode = queryParams.get("dupliquer") === "1";
 const evolveExperienceId = evolveRoute ? evolveRoute.experience_id : null;
+// ?version= : partir d'une version passée de la piste (qui ne se continue que sur une nouvelle piste)
+const evolveVersionId = evolveExperienceId ? queryParams.get("version") : null;
 const templateExperienceId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("depuis") : null;
 const chosenStructureId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("structure") : null;
 const returnTo = queryParams.get("retour"); // where "Enregistrer" in library/brick mode sends you back to

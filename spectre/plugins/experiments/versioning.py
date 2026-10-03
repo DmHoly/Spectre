@@ -96,6 +96,20 @@ def classify_process_change(before: dict[str, Any] | None, after: dict[str, Any]
     return "patch"
 
 
+def changes_structure(before: dict[str, Any], after: dict[str, Any]) -> bool:
+    """Whether a commit whose metadata is ``after``, derived from one whose metadata is ``before``,
+    moved the process/structure forward (any level but ``"none"``)."""
+    after_signature = structure_signature(after)
+    return after_signature is not None and classify_process_change(structure_signature(before), after_signature) != "none"
+
+
+def structural_versions(history: list[Any]) -> list[Any]:
+    """The entries of ``history`` (oldest first, a first-parent lineage) that moved the
+    process/structure forward - the frise's structure versions, its first one included."""
+    levels = compute_branch_versions(history)
+    return [exp for exp in history if levels[exp.id]["level"] != "none"]
+
+
 def _bump(version: tuple[int, int, int], level: ChangeLevel) -> tuple[int, int, int]:
     x, y, z = version
     if level in ("initial", "major"):

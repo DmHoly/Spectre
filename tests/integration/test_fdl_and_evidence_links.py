@@ -12,14 +12,14 @@ from support.experiments import (
     conclude,
     evolve,
     evolve_image,
-    get_experience,
+    get_experiment,
     launch,
     launch_campaign,
     launch_image,
     tag,
-    timeline,
     track_entities,
     upload_image,
+    versions,
 )
 from support.microprojects import signup_with_microproject
 from support.structures import campaign_plan, steps
@@ -42,13 +42,13 @@ def test_fdl_numbers_are_spelled_one_way():
 def test_fdls_stack_on_a_wafer_and_follow_the_versions(client):
     slug = _owner_microproject(client)
     launched = launch(client, slug, intent="x", entities=[{"sample_id": "W7", "fdl": ["fdl 1201"]}])
-    detail = get_experience(client, slug, launched["id"])
+    detail = get_experiment(client, slug, launched["id"])
     assert detail["physical_tracking"] == [{"sample_id": "W7", "location": None, "fdl": ["FDL-1201"]}]
 
     # le wafer repasse en ligne : une deuxième FDL s'empile sur la première
-    stacked = track_entities(client, slug, launched["id"], [{"sample_id": "W7", "location": "boîte 2", "fdl": ["FDL-1201", "1350"]}])
-    evolved = evolve(client, slug, stacked["id"], intent="Plus épais", steps=steps(40), objectives=[])
-    assert get_experience(client, slug, evolved["id"])["physical_tracking"] == [
+    track_entities(client, slug, launched["id"], [{"sample_id": "W7", "location": "boîte 2", "fdl": ["FDL-1201", "1350"]}])
+    evolved = evolve(client, slug, launched["id"], intent="Plus épais", steps=steps(40))
+    assert evolved["physical_tracking"] == [
         {"sample_id": "W7", "location": "boîte 2", "fdl": ["FDL-1201", "FDL-1350"]}
     ]
     history = client.get(f"/api/microprojets/{slug}/entites/historique").json()
@@ -56,7 +56,7 @@ def test_fdls_stack_on_a_wafer_and_follow_the_versions(client):
 
     # un wafer sans FDL garde exactement sa forme d'avant
     plain = launch(client, slug, title="Sans FDL", intent="x", entities=[{"sample_id": "W8"}])
-    assert get_experience(client, slug, plain["id"])["physical_tracking"] == [{"sample_id": "W8", "location": None}]
+    assert get_experiment(client, slug, plain["id"])["physical_tracking"] == [{"sample_id": "W8", "location": None}]
 
 
 def test_a_campaign_carries_fdls_per_wafer(client):
@@ -69,7 +69,7 @@ def test_a_campaign_carries_fdls_per_wafer(client):
         intent="Epaisseur",
         entities=[{"sample_id": "W1", "fdl": ["FDL-10"]}, {"sample_id": "W2", "fdl": ["FDL-10", "FDL-11"]}],
     )
-    tracking = get_experience(client, slug, campaign["id"])["physical_tracking"]
+    tracking = get_experiment(client, slug, campaign["id"])["physical_tracking"]
     assert [e.get("fdl") for e in tracking] == [["FDL-10"], ["FDL-10", "FDL-11"]]
 
 
@@ -95,7 +95,7 @@ def test_the_topbar_finds_an_experience_by_its_fdl(client):
 def test_a_preuve_with_links_and_pasted_images_is_one_version(client):
     slug = _owner_microproject(client)
     launched = launch(client, slug, intent="x", entities=[{"sample_id": "W7"}])
-    before = len(timeline(client, slug, launched["id"])["items"])
+    before = len(versions(client, slug, launched["id"]))
     first, second = upload_image(client, slug, "tem.png"), upload_image(client, slug)
 
     response = client.post(
@@ -108,7 +108,7 @@ def test_a_preuve_with_links_and_pasted_images_is_one_version(client):
     )
     assert response.status_code == 201, response.text
     evidence_id = response.json()["evidence_id"]
-    detail = get_experience(client, slug, response.json()["id"])
+    detail = get_experiment(client, slug, response.json()["id"])
     assert detail["evidence_links"] == {evidence_id: ["\\\\srv-data\\R&D\\Runs\\W7\\revue.pptx", "https://aledia.sharepoint.com/sites/rd/W7"]}
     evidence = next(e for e in detail["evidence"] if e["id"] == evidence_id)
     assert evidence["source"] == "\\\\srv-data\\R&D\\Runs\\W7\\revue.pptx"  # le premier lien, faute de source
@@ -117,11 +117,11 @@ def test_a_preuve_with_links_and_pasted_images_is_one_version(client):
     assert [(a["id"], a["caption"]) for a in images] == [(first, "Vue d'ensemble"), (second, None)]
     assert client.get(f"/api/microprojects/{slug}/attachments/{first}/content").status_code == 200
     # tout en une seule version (plus une par image)
-    assert len(timeline(client, slug, response.json()["id"])["items"]) == before + 1
+    assert len(versions(client, slug, launched["id"])) == before + 1
 
     # une preuve suivante garde les liens des précédentes
-    later = add_evidence(client, slug, response.json()["id"], source="profilomètre", links=["S:\\Mesures\\W7"])
-    links = get_experience(client, slug, later["id"])["evidence_links"]
+    later = add_evidence(client, slug, launched["id"], source="profilomètre", links=["S:\\Mesures\\W7"])
+    links = get_experiment(client, slug, launched["id"])["evidence_links"]
     assert links[evidence_id] and links[later["evidence_id"]] == ["S:\\Mesures\\W7"]
 
 
@@ -146,12 +146,12 @@ def test_the_context_description_follows_the_experience(client):
         context="  Suite du run W40 : la directivité chutait sur les plaques pixélisées.  ",
         entities=[{"sample_id": "W7"}],
     )
-    assert get_experience(client, slug, launched["id"])["context"] == "Suite du run W40 : la directivité chutait sur les plaques pixélisées."
+    assert get_experiment(client, slug, launched["id"])["context"] == "Suite du run W40 : la directivité chutait sur les plaques pixélisées."
 
     # une étiquette, puis une évolution qui ne dit rien du contexte : il reste
-    tagged = tag(client, slug, launched["id"], ["x"])
-    evolved = evolve(client, slug, tagged["id"], title="Pixélisation", intent="Idem, plus épais", steps=steps(40), objectives=[])
-    assert get_experience(client, slug, evolved["id"])["context"].startswith("Suite du run W40")
+    tag(client, slug, launched["id"], ["x"])
+    evolved = evolve(client, slug, launched["id"], title="Pixélisation", intent="Idem, plus épais", steps=steps(40))
+    assert evolved["context"].startswith("Suite du run W40")
 
     # une campagne partie de cette version le reprend aussi
     campaign = launch_campaign(
@@ -161,37 +161,35 @@ def test_the_context_description_follows_the_experience(client):
         title="Split",
         intent="Epaisseur",
         entities=[{"sample_id": "W1"}, {"sample_id": "W2"}],
-        from_ref=evolved["id"],
+        from_version={"experiment_id": evolved["id"], "version_id": evolved["version_id"]},
     )
-    assert get_experience(client, slug, campaign["id"])["context"].startswith("Suite du run W40")
+    assert campaign["context"].startswith("Suite du run W40")
 
     # l'effacer explicitement
-    cleared = evolve(client, slug, evolved["id"], title="Pixélisation", intent="Idem", steps=steps(40), objectives=[], context=" ")
-    assert get_experience(client, slug, cleared["id"])["context"] is None
+    cleared = evolve(client, slug, launched["id"], title="Pixélisation", intent="Idem", steps=steps(40), context=" ")
+    assert cleared["context"] is None
 
 
 def test_editing_the_fiche_without_changing_the_structure_keeps_the_conclusion(client):
     slug = _owner_microproject(client)
     launched = launch(client, slug, intent="x", entities=[{"sample_id": "W7"}])
-    concluded = conclude(client, slug, launched["id"], decision="promote", summary="Directivité identique.")
+    conclude(client, slug, launched["id"], decision="promote", summary="Directivité identique.")
 
     # « Éditer la fiche » : un contexte en plus, même structure -> toujours conclue
-    edited = evolve(client, slug, concluded["id"], intent="x", objectives=[], context="Suite du run W40")
-    detail = get_experience(client, slug, edited["id"])
-    assert detail["status"] == "concluded" and detail["conclusion"]["summary"] == "Directivité identique."
-    assert detail["context"] == "Suite du run W40"
+    edited = evolve(client, slug, launched["id"], intent="x", context="Suite du run W40")
+    assert edited["status"] == "concluded" and edited["conclusion"]["summary"] == "Directivité identique."
+    assert edited["context"] == "Suite du run W40"
 
     # la structure change : nouvelle itération, à conclure à nouveau
-    changed = evolve(client, slug, edited["id"], intent="x", steps=steps(40), objectives=[])
-    assert get_experience(client, slug, changed["id"])["status"] == "draft"
+    changed = evolve(client, slug, launched["id"], intent="x", steps=steps(40))
+    assert changed["status"] == "draft"
 
 
 def test_editing_an_image_fiche_with_the_same_pictures_keeps_version_and_conclusion(client):
     slug = _owner_microproject(client)
     image = {"image_id": upload_image(client, slug), "kind": "schema", "caption": None}
     launched = launch_image(client, slug, [image], intent="x", entities=[{"sample_id": "W7"}])
-    concluded = conclude(client, slug, launched["id"], summary="OK")
-    edited = evolve_image(client, slug, concluded["id"], [image], intent="x, mieux dit", context="Contexte ajouté")
-    detail = get_experience(client, slug, edited["id"])
-    assert detail["status"] == "concluded" and detail["intent"] == "x, mieux dit"
-    assert [v["version"] for v in timeline(client, slug, edited["id"])["versions"]] == ["1.0.0"]
+    conclude(client, slug, launched["id"], summary="OK")
+    edited = evolve_image(client, slug, launched["id"], [image], intent="x, mieux dit", context="Contexte ajouté")
+    assert edited["status"] == "concluded" and edited["intent"] == "x, mieux dit"
+    assert {v["version"] for v in versions(client, slug, launched["id"])} == {"1.0.0"}

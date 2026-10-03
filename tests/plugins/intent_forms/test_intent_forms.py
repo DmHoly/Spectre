@@ -10,7 +10,7 @@ import json
 import pytest
 
 from support.accounts import signup, switch_user
-from support.experiments import conclude, evolve, get_experience, launch, tag
+from support.experiments import conclude, evolve, get_experiment, launch, tag
 from support.http import assert_handler_404
 from support.intent_forms import (
     SIMPLE_FORM_YAML,
@@ -223,7 +223,7 @@ def test_activating_a_form_requires_its_fields_on_launch(client):
     assert "operateur" in missing
 
     ok = launch(client, slug, form_answers={"operateur": "Alice"})
-    assert get_experience(client, slug, ok["id"])["form_answers"] == {"operateur": "Alice"}
+    assert get_experiment(client, slug, ok["id"])["form_answers"] == {"operateur": "Alice"}
 
 
 def test_lightweight_actions_carry_forward_form_answers_unchanged(client):
@@ -232,7 +232,7 @@ def test_lightweight_actions_carry_forward_form_answers_unchanged(client):
     launched = launch(client, slug, form_answers={"operateur": "Alice"})
 
     tagged = tag(client, slug, launched["id"], ["a-suivre"])
-    assert get_experience(client, slug, tagged["id"])["form_answers"] == {"operateur": "Alice"}
+    assert tagged["form_answers"] == {"operateur": "Alice"}
 
 
 def test_evolving_requires_reanswering_the_form(client):
@@ -240,24 +240,24 @@ def test_evolving_requires_reanswering_the_form(client):
     activate_simple_form(client, slug)
     launched = launch(client, slug, form_answers={"operateur": "Alice"})
 
-    assert "422 au lieu de 201" in _rejected(evolve, client, slug, launched["id"], title="Suite", intent="x", steps=steps(30))
+    refused = _rejected(evolve, client, slug, launched["id"], title="Suite", intent="x", steps=steps(30))
+    assert "422 au lieu de 201" in refused and "operateur" in refused
 
     ok = evolve(client, slug, launched["id"], title="Suite", intent="x", steps=steps(30), form_answers={"operateur": "Bob"})
-    assert get_experience(client, slug, ok["id"])["form_answers"] == {"operateur": "Bob"}
+    assert ok["form_answers"] == {"operateur": "Bob"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="bug connu : les évolutions légères (/conclure, /etiquettes...) recopient form_answers de la "
-    "version parente, qui ne répond pas à un formulaire activé après coup - Follow refuse alors le "
-    "commit (422). À corriger à l'étape plugin experiments.",
-)
-def test_activating_a_form_after_launch_does_not_block_concluding(client):
+def test_activating_a_form_after_launch_does_not_block_lightweight_writes(client):
+    # les réponses d'une écriture légère sont reportées, pas saisies : un formulaire activé après
+    # coup ne bloque ni une étiquette ni la conclusion - seulement la prochaine vraie évolution.
     slug = signup_with_microproject(client, "forms-late@example.com")
     launched = launch(client, slug)
     activate_simple_form(client, slug)
 
-    conclude(client, slug, launched["id"], summary="Fini")
+    tag(client, slug, launched["id"], ["a-suivre"])
+    concluded = conclude(client, slug, launched["id"], summary="Fini")
+    assert concluded["status"] == "concluded" and concluded["form_answers"] == {}
+    assert "operateur" in _rejected(evolve, client, slug, launched["id"], title="Suite", intent="x", steps=steps(30))
 
 
 def test_deleting_the_library_entry_keeps_the_active_copy(client):

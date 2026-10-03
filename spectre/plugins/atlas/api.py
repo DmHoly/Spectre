@@ -49,6 +49,7 @@ def get_atlas(theme: str, user: User = Depends(current_user)) -> dict:
         experiences = [
             {
                 "id": exp.id,
+                "experiment_id": exp.branch,  # la piste : ce que vise un lien vers la fiche
                 "title": exp.title,
                 "intent": exp.intent,
                 "branch": exp.branch,

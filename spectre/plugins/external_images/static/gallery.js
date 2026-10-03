@@ -3,7 +3,7 @@
    côté de la structure simulée pour une comparaison "conçu vs mesuré". Vit dans le même bloc que
    les Preuves historiques (voir experiment.js::renderEvidence) mais est un mécanisme totalement
    indépendant - metadata["data_items"], pas Evidence/kind. Dépend des globals définis par
-   experiment.js (slug, experienceId, currentDetail, isEditorRole, escapeHtml) - ce fichier est
+   experiment.js (slug, experienceId, currentDetail, isEditorRole, reloadFiche, escapeHtml) - ce fichier est
    chargé juste après lui. */
 
 
@@ -115,10 +115,10 @@ async function renderDataGallery(detail) {
         // autre image enregistre une nouvelle version - on navigue dessus plutôt que de rafraîchir
         // sur place, sans quoi la page resterait sur une version désormais figée (immuable) qui ne
         // porte plus ce changement.
-        const result = await externalImagesApi.pin(slug, experienceId, el.dataset.itemId, {
+        await externalImagesApi.pin(slug, experienceId, el.dataset.itemId, {
           pinned_index: parseInt(el.dataset.index, 10),
         });
-        goToVersion(result.id);
+        reloadFiche();
       } catch (err) {
         dataGalleryShowError(err.message || String(err));
       }
@@ -129,8 +129,8 @@ async function renderDataGallery(detail) {
     btn.addEventListener("click", async () => {
       dataGalleryClearError();
       try {
-        const result = await externalImagesApi.remove(slug, experienceId, btn.dataset.itemId);
-        goToVersion(result.id);
+        await externalImagesApi.remove(slug, experienceId, btn.dataset.itemId);
+        reloadFiche();
       } catch (err) {
         dataGalleryShowError(err.message || String(err));
       }
@@ -268,8 +268,8 @@ function renderDataGalleryAddForm(detail) {
       ...extra,
     };
     try {
-      const result = await externalImagesApi.create(slug, experienceId, body);
-      goToVersion(result.id);
+      await externalImagesApi.create(slug, experienceId, body);
+      reloadFiche();
     } catch (err) {
       dataGalleryShowError(err.message || String(err));
     }

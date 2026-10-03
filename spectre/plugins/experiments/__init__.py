@@ -2,14 +2,15 @@
 conclusion, étiquettes, entités physiques, fusion, suppression, diff, filiation et refs."""
 
 from ...kernel.plugin import Page, Plugin
-from .api import router
+from .api import page_router, router
 
 PLUGIN = Plugin(
     name="experiments",
     depends_on=("microprojects", "structures", "attachments"),
     router=router,
+    page_router=page_router,  # un ancien lien vers un id de version -> la page de sa piste
     pages=(
-        Page("/microprojets/{slug}/experiences/{experience_id}", "experiment.html"),
+        Page("/microprojets/{slug}/experiences/{experiment_id}", "experiment.html"),
         Page("/microprojets/{slug}/refs", "refs.html"),
     ),
 )

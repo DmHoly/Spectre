@@ -31,12 +31,12 @@ async function getNotebookSources() {
   return notebookSources;
 }
 
-// `write` : l'appel de notebookApi qui enregistre le changement (il renvoie la nouvelle version).
+// `write` : l'appel de notebookApi qui enregistre le changement (une nouvelle version de la piste).
 async function notebookChange(write) {
   clearError();
   try {
-    const result = await write();
-    goToVersion(result.id); // chaque changement est une nouvelle version : on la suit (onglet gardé)
+    await write();
+    reloadFiche(); // la fiche se recharge sur sa dernière version, onglet gardé
   } catch (err) {
     showError(err);
   }

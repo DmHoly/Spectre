@@ -2,17 +2,20 @@
    constructeur - la structure est donnée en images (schéma PowerPoint, coupes TEM/MEB, photo),
    collées, déposées ou choisies sur la planche de gauche (attachments/static/image-drop.js) ; l'intention,
    l'entité physique et les objectifs à droite. Deux adresses :
-   - /microprojets/{slug}/structures/image : nouvelle expérience (POST /experiences/image) ;
-   - /microprojets/{slug}/experiences/{id}/evoluer-image : continuer une expérience (dessinée ou
-     en images) avec de nouvelles images (POST /experiences/{id}/evoluer-image), préremplie depuis
-     la version de départ.
+   - /microprojets/{slug}/structures/image : nouvelle expérience (experimentsApi.create, kind images) ;
+   - /microprojets/{slug}/experiences/{id}/evoluer-image : continuer une piste (dessinée ou en
+     images) avec de nouvelles images (experimentsApi.evolve), ou en partir sur une nouvelle piste
+     (experimentsApi.create avec from_version), préremplie depuis la version de départ - sa dernière
+     version, ou celle de ?version= (une version passée ne se continue que sur une nouvelle piste).
    objectives.js / intention-copy.js du constructeur sont repris tels quels : ils lisent `slug` et
    `state`, définis ici. Le formulaire d'intention est monté par mountIntentFormSection (intent_forms). */
 
 const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experience_id}/evoluer-image");
 const { slug } = evolveRoute || routeParams("/microprojets/{slug}/structures/image");
 const evolveExperienceId = evolveRoute ? evolveRoute.experience_id : null;
+const evolveVersionId = evolveExperienceId ? new URLSearchParams(window.location.search).get("version") : null;
 const state = { objectives: [] };
+let parentDetail = null; // la version de départ (sa version_id part en If-Match, ou en from_version)
 
 let imageDrop = null;
 let entityFdlField = null;
@@ -47,7 +50,11 @@ async function loadEntityHistory() {
 }
 
 async function loadParent() {
-  const detail = await experimentsApi.get(slug, evolveExperienceId);
+  const detail = evolveVersionId
+    ? await experimentsApi.getVersion(slug, evolveExperienceId, evolveVersionId)
+    : await experimentsApi.get(slug, evolveExperienceId);
+  parentDetail = detail;
+  if (!detail.is_tip) forceNewBranch();
   document.getElementById("exp-title").value = detail.title;
   document.getElementById("exp-intent").value = detail.intent;
   document.getElementById("exp-hypothesis").value = detail.hypothesis || "";
@@ -88,7 +95,7 @@ function collectPayload() {
     return { error: "L'entité physique (l'échantillon réel suivi) est obligatoire.", focus: document.getElementById("exp-entity-sample-id") };
   }
   const payload = {
-    images: images.map((img) => ({ ...img, caption: (img.caption || "").trim() || null })),
+    structure: { kind: "images", images: images.map((img) => ({ ...img, caption: (img.caption || "").trim() || null })) },
     title,
     intent,
     hypothesis: document.getElementById("exp-hypothesis").value.trim() || null,
@@ -100,9 +107,17 @@ function collectPayload() {
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
     const branchName = document.getElementById("new-branch-name").value.trim();
     if (!branchName) return { error: "Donnez un nom à la nouvelle piste.", focus: document.getElementById("new-branch-name") };
-    payload.new_branch = branchName;
+    payload.branch = branchName;
+    payload.from_version = { experiment_id: evolveExperienceId, version_id: parentDetail ? parentDetail.version_id : null };
   }
   return { payload };
+}
+
+// Une version passée : on n'écrit jamais que sur la pointe d'une piste, on en part donc sur une nouvelle.
+function forceNewBranch() {
+  document.getElementById("branch-fork").checked = true;
+  document.getElementById("branch-continue").disabled = true;
+  document.getElementById("new-branch-name").hidden = false;
 }
 
 async function launch() {
@@ -116,10 +131,11 @@ async function launch() {
   const button = document.getElementById("launch-btn");
   button.disabled = true;
   try {
-    const result = evolveExperienceId
-      ? await experimentsApi.evolveWithImage(slug, evolveExperienceId, payload)
-      : await experimentsApi.launchImage(slug, payload);
-    window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
+    const result =
+      evolveExperienceId && !payload.from_version
+        ? await experimentsApi.evolve(slug, evolveExperienceId, parentDetail && parentDetail.version_id, payload)
+        : await experimentsApi.create(slug, payload);
+    window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(result.id)}`;
   } catch (err) {
     const formMessage = intentFormSection && intentFormSection.errorMessage(err);
     showError(formMessage ? new Error(formMessage) : err);
@@ -134,9 +150,9 @@ async function initStructureImagePage() {
     setPageTitle("Éditer la fiche · structure en images");
     document.getElementById("launch-btn").textContent = "Enregistrer les modifications";
     document.getElementById("branch-choice-wrap").hidden = false;
-    builderLink.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(evolveExperienceId)}/evoluer`;
+    builderLink.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(evolveExperienceId)}/evoluer${window.location.search}`;
     builderLink.textContent = "Continuer dans le constructeur";
-    cancelLink.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(evolveExperienceId)}`;
+    cancelLink.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(evolveExperienceId)}${window.location.search}`;
   } else {
     setPageTitle("Nouvelle expérience · structure en image");
     builderLink.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle`;

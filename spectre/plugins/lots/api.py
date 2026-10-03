@@ -87,11 +87,12 @@ class _Context:
                         self._plates.setdefault(key, []).append((microproject, entry))
         return self._plates
 
-    def node(self, slug: str, experience_id: str) -> dict | None:
+    def node(self, slug: str, experiment_id: str) -> dict | None:
+        """Le nœud de filiation de la pointe de la piste ``experiment_id``."""
         if slug not in self._nodes:
             graph = lineage_graph(get_repository(slug))
-            self._nodes[slug] = {node["id"]: node for node in graph["nodes"]}
-        return self._nodes[slug].get(experience_id)
+            self._nodes[slug] = {node["experiment_id"]: node for node in graph["nodes"] if node["is_tip"]}
+        return self._nodes[slug].get(experiment_id)
 
     def thematic(self, thematic_id: int | None) -> dict | None:
         if thematic_id is None:

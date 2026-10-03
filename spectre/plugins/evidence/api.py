@@ -1,6 +1,6 @@
 """Les preuves d'une expérience : en ajouter une (liens, mesure, images collées) et annoter ses
-images. Comme tout le reste de la fiche, chaque changement est une évolution légère - une nouvelle
-version qui reporte tout le reste (:mod:`spectre.plugins.experiments.service`).
+images. Comme tout le reste de la fiche, chaque changement est une écriture légère sur la piste - une
+nouvelle version qui reporte tout le reste (:func:`spectre.plugins.experiments.service.amend`).
 """
 
 from __future__ import annotations
@@ -16,8 +16,7 @@ from pydantic import BaseModel
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..attachments.store import uploaded_image
-from ..experiments.repository import get_repository
-from ..experiments.service import derive_branch, form_validation_error, not_found
+from ..experiments import service as experiments
 from ..microprojects.deps import require_role
 from ..microprojects.service import Microproject
 from .service import EVIDENCE_EXTRA_KEY, native_evidence_fields
@@ -84,30 +83,10 @@ def add_evidence(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    """Attach a piece of evidence (a link, a measurement) to an experience - like ``conclure``,
-    this is a lightweight evolution (structure/steps/objectives all carried over unchanged, only
-    the evidence list grows) rather than a mutation, since committed experiences are immutable.
+    """Attach a piece of evidence (a link, a measurement, pasted images) to an experiment - a
+    lightweight write on its line of study (``ref``), everything else carried over unchanged
+    (:func:`spectre.plugins.experiments.service.amend`).
     """
-    repo = get_repository(microproject.slug)
-    try:
-        parent = repo.get(ref)
-    except follow.ExperimentNotFoundError as exc:
-        raise not_found(exc) from exc
-
-    if body.step_index is not None:
-        process = parent.metadata.get("structureforge_process")
-        steps = process.get("steps", []) if process else []
-        if not steps:
-            raise HTTPException(
-                status_code=422,
-                detail="cette expérience n'a pas de procédé éditable enregistré : impossible d'associer une étape",
-            )
-        if not (0 <= body.step_index < len(steps)):
-            raise HTTPException(status_code=422, detail="étape sélectionnée invalide")
-
-    if body.objective is not None and not any(o.name == body.objective for o in parent.objectives):
-        raise HTTPException(status_code=422, detail=f"objectif {body.objective!r} introuvable sur cette expérience")
-
     metric = None
     if body.metric_name:
         if body.metric_value is None:
@@ -122,55 +101,54 @@ def add_evidence(
     images = [(img, uploaded_image(microproject.slug, img.image_id)) for img in body.images]
     kind = "image" if images and body.kind == "standard" else body.kind
     source = body.source.strip() or (links[0] if links else "")
-
-    builder = repo.derive(
-        ref, title=parent.title, intent=parent.intent, new_branch=derive_branch(repo, parent, None), author=user.name
-    )
-    builder.metadata = dict(parent.metadata)
-    builder.form_answers = dict(parent.form_answers)
-    builder.evidence = list(parent.evidence)
-    builder.tags = list(parent.tags)
-    builder.conclusion = parent.conclusion
     evidence_id = secrets.token_hex(6)
-    if links:
-        builder.metadata["evidence_links"] = {**parent.metadata.get("evidence_links", {}), evidence_id: links}
     extra = {"kind": kind, "objective": body.objective, "interpretation": body.interpretation, "graph_config": body.graph_config}
-    builder.metadata[EVIDENCE_EXTRA_KEY] = {**parent.metadata.get(EVIDENCE_EXTRA_KEY, {}), evidence_id: extra}
-    if images:
-        # the pasted images become the preuve's attachments in this same version (see upload_attachment
-        # for the one-file-at-a-time route, which records a version per file)
-        now = datetime.now(timezone.utc).isoformat()
-        builder.metadata["attachments"] = list(parent.metadata.get("attachments", [])) + [
-            {
-                "id": img.image_id,
-                "filename": sidecar.get("filename", "image"),
-                "content_type": sidecar.get("content_type"),
-                "size": sidecar.get("size"),
-                "entity_index": None,
-                "evidence_id": evidence_id,
-                "caption": (img.caption or "").strip()[:200] or None,
-                "uploaded_by": user.name,
-                "uploaded_at": now,
-            }
-            for img, sidecar in images
-        ]
-    builder.add_evidence(
-        id=evidence_id,
-        description=body.description,
-        source=source,
-        metrics=metric or {},
-        step_index=body.step_index,
-        **native_evidence_fields(extra),
-    )
-    try:
-        experiment = builder.commit()
-    except follow.FormValidationError as exc:
-        raise form_validation_error(exc) from exc
-    except follow.FollowError as exc:
-        raise HTTPException(
-            status_code=400, detail="Impossible d'enregistrer cette preuve - rechargez la page et réessayez."
-        ) from exc
-    return {"id": experiment.id, "evidence_id": evidence_id}
+
+    def change(builder: Any, parent: Any) -> None:
+        if body.step_index is not None:
+            process = parent.metadata.get("structureforge_process")
+            steps = process.get("steps", []) if process else []
+            if not steps:
+                raise HTTPException(
+                    status_code=422,
+                    detail="cette expérience n'a pas de procédé éditable enregistré : impossible d'associer une étape",
+                )
+            if not (0 <= body.step_index < len(steps)):
+                raise HTTPException(status_code=422, detail="étape sélectionnée invalide")
+        if body.objective is not None and not any(o.name == body.objective for o in parent.objectives):
+            raise HTTPException(status_code=422, detail=f"objectif {body.objective!r} introuvable sur cette expérience")
+
+        if links:
+            builder.metadata["evidence_links"] = {**builder.metadata.get("evidence_links", {}), evidence_id: links}
+        builder.metadata[EVIDENCE_EXTRA_KEY] = {**builder.metadata.get(EVIDENCE_EXTRA_KEY, {}), evidence_id: extra}
+        if images:
+            # the pasted images become the preuve's attachments in this same version
+            now = datetime.now(timezone.utc).isoformat()
+            builder.metadata["attachments"] = list(builder.metadata.get("attachments", [])) + [
+                {
+                    "id": img.image_id,
+                    "filename": sidecar.get("filename", "image"),
+                    "content_type": sidecar.get("content_type"),
+                    "size": sidecar.get("size"),
+                    "entity_index": None,
+                    "evidence_id": evidence_id,
+                    "caption": (img.caption or "").strip()[:200] or None,
+                    "uploaded_by": user.name,
+                    "uploaded_at": now,
+                }
+                for img, sidecar in images
+            ]
+        builder.add_evidence(
+            id=evidence_id,
+            description=body.description,
+            source=source,
+            metrics=metric or {},
+            step_index=body.step_index,
+            **native_evidence_fields(extra),
+        )
+
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    return {"id": ref, "version_id": experiment.id, "evidence_id": evidence_id}
 
 
 @router.post("/{slug}/experiences/{ref}/preuves/{evidence_id}/annotations")
@@ -182,47 +160,21 @@ def update_evidence_annotations(
     user: User = Depends(current_user),
 ) -> dict:
     """Replace a ``kind="image"`` preuve's annotations (arrows/boxes marking up one of its attached
-    images) - a separate step from uploading the image itself, since annotating happens by
-    clicking on the picture once it's already visible. Same lightweight-evolution shape as every
-    other mutation on evidence (tags/preuves/entités carried over unchanged, only this one preuve's
+    images) - a lightweight write like every other one on the evidence (only this preuve's
     ``image_annotations`` changes).
     """
-    repo = get_repository(microproject.slug)
-    try:
-        parent = repo.get(ref)
-    except follow.ExperimentNotFoundError as exc:
-        raise not_found(exc) from exc
-
-    target = next((e for e in parent.evidence if e.id == evidence_id), None)
-    if target is None:
-        raise HTTPException(status_code=404, detail="preuve introuvable sur cette version")
-
-    attachment_ids = {a.get("id") for a in parent.metadata.get("attachments", []) if a.get("evidence_id") == evidence_id}
-    for annotation in body.annotations:
-        if annotation.attachment_id not in attachment_ids:
-            raise HTTPException(status_code=422, detail="pièce jointe introuvable sur cette preuve")
-
     annotations = {"image_annotations": [a.model_dump() for a in body.annotations]}
     native = native_evidence_fields(annotations)
-    updated_evidence = [e.model_copy(update=native) if native and e.id == evidence_id else e for e in parent.evidence]
-    extras = dict(parent.metadata.get(EVIDENCE_EXTRA_KEY, {}))
-    extras[evidence_id] = {**extras.get(evidence_id, {}), **annotations}
 
-    builder = repo.derive(
-        ref, title=parent.title, intent=parent.intent, new_branch=derive_branch(repo, parent, None), author=user.name
-    )
-    builder.metadata = dict(parent.metadata)
-    builder.metadata[EVIDENCE_EXTRA_KEY] = extras
-    builder.form_answers = dict(parent.form_answers)
-    builder.evidence = updated_evidence
-    builder.tags = list(parent.tags)
-    builder.conclusion = parent.conclusion
-    try:
-        experiment = builder.commit()
-    except follow.FormValidationError as exc:
-        raise form_validation_error(exc) from exc
-    except follow.FollowError as exc:
-        raise HTTPException(
-            status_code=400, detail="Impossible d'enregistrer les annotations - rechargez la page et réessayez."
-        ) from exc
-    return {"id": experiment.id}
+    def change(builder: Any, parent: Any) -> None:
+        if not any(e.id == evidence_id for e in parent.evidence):
+            raise HTTPException(status_code=404, detail="preuve introuvable sur cette version")
+        attachment_ids = {a.get("id") for a in parent.metadata.get("attachments", []) if a.get("evidence_id") == evidence_id}
+        if any(annotation.attachment_id not in attachment_ids for annotation in body.annotations):
+            raise HTTPException(status_code=422, detail="pièce jointe introuvable sur cette preuve")
+        builder.evidence = [e.model_copy(update=native) if native and e.id == evidence_id else e for e in parent.evidence]
+        extras = builder.metadata.setdefault(EVIDENCE_EXTRA_KEY, {})
+        extras[evidence_id] = {**extras.get(evidence_id, {}), **annotations}
+
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    return {"id": ref, "version_id": experiment.id}

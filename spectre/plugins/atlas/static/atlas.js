@@ -163,7 +163,7 @@ function renderExperiencePanel(d) {
     ${d.conclusion_summary ? `<div style="font-size:12.5px;background:var(--bg);border-radius:var(--radius-sm);padding:8px 10px;line-height:1.5;margin-bottom:12px;">${escapeHtml(d.conclusion_summary)}</div>` : ""}
     ${objectives ? `<div style="margin-bottom:14px;">${objectives}</div>` : ""}
     <div id="atlas-structure-preview" style="margin-bottom:14px;"><p class="help">Chargement de la structure…</p></div>
-    <a class="btn btn-primary btn-block" href="/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}">Ouvrir la fiche &rarr;</a>
+    <a class="btn btn-primary btn-block" href="/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.experimentId)}">Ouvrir la fiche &rarr;</a>
 
     <div class="section-title" style="margin:20px 0 8px;">Contexte</div>
     <div id="atlas-mini-tree"><p class="help">Chargement de l'arborescence…</p></div>`;
@@ -178,7 +178,7 @@ function renderExperiencePanel(d) {
 async function loadStructurePreview(d) {
   const container = document.getElementById("atlas-structure-preview");
   try {
-    const detail = await experimentsApi.get(d.microprojectSlug, d.id);
+    const detail = await experimentsApi.get(d.microprojectSlug, d.experimentId);
     if (!document.getElementById("atlas-structure-preview")) return; // sélection déjà changée entre-temps
     if (detail.structure_images) {
       container.innerHTML = structureBoardHtml(d.microprojectSlug, detail.structure_images, { compact: true });
@@ -188,7 +188,7 @@ async function loadStructurePreview(d) {
       container.innerHTML = detail.structure_svg ? `<div class="atlas-carousel"><div class="atlas-carousel__stage">${detail.structure_svg}</div></div>` : "";
       return;
     }
-    const variation = await experimentsApi.variants(d.microprojectSlug, d.id);
+    const variation = await experimentsApi.variants(d.microprojectSlug, d.experimentId);
     if (!document.getElementById("atlas-structure-preview")) return;
     renderStructureCarousel(container, variation);
   } catch (err) {
@@ -238,7 +238,9 @@ async function loadMiniTree(d) {
       .attr("transform", (n) => `translate(${n.x},${n.y})`)
       .style("cursor", "pointer")
       .on("click", (event, n) => {
-        window.location.href = `/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(n.id)}`;
+        // un nœud est une version (n.version_id) d'une piste (n.experiment_id) - sa pointe, ou une version passée
+        const page = `/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(n.experiment_id)}`;
+        window.location.href = n.is_tip ? page : `${page}?version=${encodeURIComponent(n.version_id)}`;
       });
     nodeGroups.each(function (n) {
       const current = n.id === d.id;
@@ -301,7 +303,7 @@ function renderEntityPanel(d) {
     ${d.fdl && d.fdl.length ? `<div style="margin-bottom:14px;">${fdlChipsHtml(d.fdl)}</div>` : ""}
     <div class="help" style="margin-bottom:10px;">Suivie sur l'étude :</div>
     <div style="font-size:13.5px;font-weight:600;margin-bottom:10px;">${escapeHtml(d.experienceTitle)}</div>
-    <a class="btn btn-line btn-block" href="/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.experienceId)}">Ouvrir la fiche &rarr;</a>
+    <a class="btn btn-line btn-block" href="/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.experimentId)}">Ouvrir la fiche &rarr;</a>
 
     <div class="section-title" style="margin:20px 0 8px;">Contexte</div>
     <div id="atlas-mini-tree"><p class="help">Chargement de l'arborescence…</p></div>
@@ -429,6 +431,7 @@ function build(atlas) {
       const anchor = microprojectBySlug.get(p.slug);
       experienceNodes.push({
         id: exp.id,
+        experimentId: exp.experiment_id,
         type: "experience",
         microprojectSlug: p.slug,
         title: exp.title,
@@ -451,6 +454,7 @@ function build(atlas) {
           type: "entity",
           microprojectSlug: p.slug,
           experienceId: exp.id,
+          experimentId: exp.experiment_id,
           experienceTitle: exp.title,
           entityIndex: entity.index,
           sample_id: entity.sample_id,

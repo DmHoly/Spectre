@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from support.experiments import get_experience, launch
+from support.experiments import experiment_url, launch, post_evolve, post_launch, process, variants
 from support.microprojects import signup_with_microproject
 from support.structures import deposition, lithography, steps, substrate
 
@@ -69,23 +69,14 @@ def test_preview_campaign_with_two_factors_is_fully_crossed(client):
 
 def test_launch_campaign_and_read_matrix(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
-    body = {
-        "substrate": substrate(),
-        "steps": steps(),
-        "plan": _plan(),
-        "title": "Campagne epaisseur",
-        "intent": "Explorer l'effet de l'epaisseur d'oxyde",
-        "entities": [{"sample_id": "W1"}],
-    }
-    response = client.post(f"/api/microprojets/{slug}/experiences/campagne", json=body)
+    response = post_launch(client, slug, kind="campaign", plan=_plan(), title="Campagne epaisseur", intent="Explorer l'effet de l'epaisseur d'oxyde")
     assert response.status_code == 201
-    experiment_id = response.json()["id"]
-
-    detail = get_experience(client, slug, experiment_id)
+    detail = response.json()
     assert detail["is_batch"] is True
     assert "<svg" in detail["structure_svg"]
+    assert detail["physical_tracking"] == [{"sample_id": "W1", "location": None}, {"sample_id": None, "location": None}, {"sample_id": None, "location": None}]
 
-    matrix = client.get(f"/api/microprojets/{slug}/experiences/{experiment_id}/matrice").json()
+    matrix = variants(client, slug, detail["id"])
     assert matrix["entity_count"] == 3
     assert len(matrix["varying"]) >= 1
     assert matrix["factor_labels"] == ["Épaisseur — Oxyde"]
@@ -97,19 +88,12 @@ def test_launch_campaign_and_read_matrix(client):
 
 def test_launch_campaign_with_two_factors(client):
     slug = signup_with_microproject(client, "two-factors@example.com", "Salle blanche")
-    body = {
-        "substrate": substrate(),
-        "steps": _steps_two(),
-        "plan": _plan_two_factors(),
-        "title": "Campagne croisee",
-        "intent": "Explorer epaisseur et profondeur ensemble",
-        "entities": [{"sample_id": "W1"}],
-    }
-    response = client.post(f"/api/microprojets/{slug}/experiences/campagne", json=body)
+    response = post_launch(
+        client, slug, kind="campaign", steps=_steps_two(), plan=_plan_two_factors(), title="Campagne croisee", intent="Explorer epaisseur et profondeur ensemble"
+    )
     assert response.status_code == 201
-    experiment_id = response.json()["id"]
 
-    matrix = client.get(f"/api/microprojets/{slug}/experiences/{experiment_id}/matrice").json()
+    matrix = variants(client, slug, response.json()["id"])
     assert matrix["entity_count"] == 6
     assert matrix["factor_labels"] == ["Épaisseur — Oxyde", "Épaisseur — Nitrure"]
     assert len(matrix["factor_values"]) == 6
@@ -119,8 +103,9 @@ def test_launch_campaign_with_two_factors(client):
 def test_matrice_endpoint_rejects_non_batch_experience(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     single = launch(client, slug, title="Essai simple")
-    response = client.get(f"/api/microprojets/{slug}/experiences/{single['id']}/matrice")
-    assert response.status_code == 400
+    response = client.get(f"{experiment_url(slug, single['id'])}/variants")
+    assert response.status_code == 422
+    assert response.json()["code"] == "not_a_campaign"
 
 
 def test_preview_campaign_rejects_an_unknown_field(client):
@@ -213,53 +198,39 @@ def test_campaign_varies_a_declared_parameter_on_a_log_scale_and_keeps_it(client
     assert preview.json()["labels"] == ["1e17", "1e18", "1e19"]  # never 100000000000000000
     assert preview.json()["factor_labels"] == ["dopage — Oxyde"]
 
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences/campagne",
-        json={
-            "substrate": substrate(),
-            "steps": steps(),
-            "plan": plan,
-            "declared_params": declared,
-            "title": "Campagne dopage",
-            "intent": "Balayer le dopage sur trois decades",
-            "entities": [{"sample_id": "W1"}],
-        },
+    launched = post_launch(
+        client, slug, kind="campaign", plan=plan, declared_params=declared, title="Campagne dopage", intent="Balayer le dopage sur trois decades"
     )
     assert launched.status_code == 201, launched.text
     experiment_id = launched.json()["id"]
 
-    matrix = client.get(f"/api/microprojets/{slug}/experiences/{experiment_id}/matrice").json()
+    matrix = variants(client, slug, experiment_id)
     assert matrix["factor_scales"] == ["log"]
     assert matrix["factor_values"] == [[1e17], [1e18], [1e19]]
     assert matrix["labels"] == ["1e17", "1e18", "1e19"]
 
-    process = client.get(f"/api/microprojets/{slug}/experiences/{experiment_id}/process").json()
-    assert process["declared_params"] == {"0": [{"name": "dopage", "value": 1e18, "obtention": {"precurseur": "Cp2Mg"}}]}
+    assert process(client, slug, experiment_id)["declared_params"] == {"0": [{"name": "dopage", "value": 1e18, "obtention": {"precurseur": "Cp2Mg"}}]}
 
 
 def test_declared_parameters_are_kept_on_launch_and_evolution(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     declared = {"0": [{"name": "dopage", "value": 2.5e18, "obtention": {}}]}
     launched = launch(client, slug, title="Essai dope", intent="Verifier que le dopage est garde", declared_params=declared)
-    process = client.get(f"/api/microprojets/{slug}/experiences/{launched['id']}/process").json()
-    assert process["declared_params"] == declared
+    assert process(client, slug, launched["id"])["declared_params"] == declared
 
-    evolved = client.post(
-        f"/api/microprojets/{slug}/experiences/{launched['id']}/evoluer",
-        json={
-            "substrate": substrate(),
-            "steps": steps(),
-            "declared_params": {"0": [{"name": "dopage", "value": 5e18, "obtention": {}}]},
-            "title": "Essai dope",
-            "intent": "Doubler le dopage",
-        },
+    evolved = post_evolve(
+        client,
+        slug,
+        launched["id"],
+        declared_params={"0": [{"name": "dopage", "value": 5e18, "obtention": {}}]},
+        title="Essai dope",
+        intent="Doubler le dopage",
     )
     assert evolved.status_code == 201, evolved.text
-    process = client.get(f"/api/microprojets/{slug}/experiences/{evolved.json()['id']}/process").json()
-    assert process["declared_params"]["0"][0]["value"] == 5e18
+    assert process(client, slug, launched["id"])["declared_params"]["0"][0]["value"] == 5e18
 
     plain = launch(client, slug, title="Sans", intent="x", entities=[{"sample_id": "W2"}])
-    assert "declared_params" not in client.get(f"/api/microprojets/{slug}/experiences/{plain['id']}/process").json()
+    assert "declared_params" not in process(client, slug, plain["id"])
 
 
 def test_campaign_varying_the_outline_shape_still_previews_and_launches(client):
@@ -282,14 +253,9 @@ def test_campaign_varying_the_outline_shape_still_previews_and_launches(client):
     plan = {"factors": [{"step_index": 0, "field": "rate_sp", "values": [0.2, 0.9], "scale": "linear"}]}
     preview = _preview(client, slug, process_steps, plan)
     assert preview.status_code == 200, preview.text
-    launched = client.post(
-        f"/api/microprojets/{slug}/experiences/campagne",
-        json={"substrate": substrate(), "steps": process_steps, "plan": plan, "title": "Facettes", "intent": "x", "entities": [{"sample_id": "W1"}]},
-    )
+    launched = post_launch(client, slug, kind="campaign", steps=process_steps, plan=plan, title="Facettes", intent="x")
     assert launched.status_code == 201, launched.text
-    matrix = client.get(f"/api/microprojets/{slug}/experiences/{launched.json()['id']}/matrice")
-    assert matrix.status_code == 200
-    assert matrix.json()["entity_count"] == 2
+    assert variants(client, slug, launched.json()["id"])["entity_count"] == 2
 
 
 def test_analyze_variants_compares_layer_extents_when_outlines_differ_in_shape():

@@ -3,6 +3,7 @@ from __future__ import annotations
 from spectre.plugins.library.service import library_dir
 from spectre.plugins.structures import campaigns
 from support.accounts import signup
+from support.experiments import experiments_url, launch_body, list_experiments
 from support.microprojects import join_as, signup_with_microproject
 from support.structures import campaign_plan, list_materials, list_recipes, preview_campaign, simulate, steps, substrate
 
@@ -125,28 +126,21 @@ def test_campaign_preview_over_the_cap_is_refused_before_any_simulation(client, 
 
 def test_launch_experience_creates_a_tracked_experiment(client):
     slug = _owner_microproject(client)
-    body = {
-        "substrate": substrate(),
-        "steps": steps(),
-        "title": "Ma premiere experience",
-        "intent": "Verifier le depot d'oxyde",
-        "objectives": [{"name": "Epaisseur cible", "metric": "thickness_nm", "direction": "target", "target": 20}],
-        "entities": [{"sample_id": "W1"}],
-    }
-    response = client.post(f"/api/microprojets/{slug}/experiences", json=body)
+    body = launch_body(
+        title="Ma premiere experience",
+        intent="Verifier le depot d'oxyde",
+        objectives=[{"name": "Epaisseur cible", "metric": "thickness_nm", "direction": "target", "target": 20}],
+    )
+    response = client.post(experiments_url(slug), json=body)
     assert response.status_code == 201
-    experiment_id = response.json()["id"]
-    assert response.json()["branch"] == "ma-premiere-experience"
+    assert response.json()["id"] == "ma-premiere-experience"
 
-    listed = client.get(f"/api/microprojets/{slug}/experiences?status=running").json()
-    assert any(item["id"] == experiment_id for item in listed["items"])
+    listed = list_experiments(client, slug, status="running")
+    assert [item["id"] for item in listed["items"]] == ["ma-premiere-experience"]
 
 
 def test_viewer_cannot_launch_experience(client):
     slug = _owner_microproject(client, "owner2@example.com", "Owner2")
     join_as(client, slug, "viewer2@example.com", owner="owner2@example.com", role="viewer", name="Viewer2")
-    response = client.post(
-        f"/api/microprojets/{slug}/experiences",
-        json={"substrate": substrate(), "steps": steps(), "title": "X", "intent": "Y"},
-    )
+    response = client.post(experiments_url(slug), json=launch_body(title="X", intent="Y"))
     assert response.status_code == 403

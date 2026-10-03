@@ -13,7 +13,7 @@ from spectre.kernel.errors import NotFound
 from spectre.plugins.notebook import snapshots
 
 from support.accounts import login, signup
-from support.experiments import get_experience, launch, timeline
+from support.experiments import get_experiment, launch, versions
 from support.http import assert_handler_404
 from support.microprojects import add_member, signup_with_microproject
 
@@ -128,7 +128,7 @@ def test_notebook_entries_are_versioned_with_their_notes(client, demo_data):
     )
     assert added.status_code == 201
     version = added.json()["id"]
-    entry = get_experience(client, slug, version)["data_notebook"][0]
+    entry = get_experiment(client, slug, version)["data_notebook"][0]
     assert entry["title"] == "EQE vs J" and entry["note"] == "Pas d'écart pixel / non pixel."
     assert entry["hook"] == "eqe" and entry["source"] == "demo" and entry["wafers"] == ["W12-A3", "W12-A4"]
     assert entry["created_by"] == "Chercheuse" and entry["in_report"] is True and entry["objective"] == "EQE identique"
@@ -142,15 +142,15 @@ def test_notebook_entries_are_versioned_with_their_notes(client, demo_data):
         f"/api/microprojets/{slug}/experiences/{second['id']}/cahier/{entry_id}",
         json={"note": "Conclusion : identique à 5 % près.", "move": 1, "in_report": False},
     ).json()
-    notebook = get_experience(client, slug, moved["id"])["data_notebook"]
+    notebook = get_experiment(client, slug, moved["id"])["data_notebook"]
     assert [e["title"] for e in notebook] == ["Carte EQE", "EQE vs J"]
     assert notebook[1]["note"] == "Conclusion : identique à 5 % près." and notebook[1]["in_report"] is False
 
     removed = client.delete(f"/api/microprojets/{slug}/experiences/{moved['id']}/cahier/{second['entry_id']}").json()
-    notebook = get_experience(client, slug, removed["id"])["data_notebook"]
+    notebook = get_experiment(client, slug, removed["id"])["data_notebook"]
     assert [e["title"] for e in notebook] == ["EQE vs J"]
     # l'historique garde chaque étape (cahier de labo)
-    assert len(timeline(client, slug, removed["id"])["items"]) == 5
+    assert len(versions(client, slug, removed["id"])) == 5
 
 
 def test_entries_are_validated(client, demo_data):

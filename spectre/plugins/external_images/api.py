@@ -9,16 +9,15 @@ import mimetypes
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-import follow
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from ..experiments.repository import get_repository
-from ..experiments.service import derive_branch, form_validation_error, not_found
+from ..experiments import service as experiments
 from ..microprojects.deps import require_role
 from ..microprojects.service import Microproject
 from ..structures import kinds
@@ -63,61 +62,37 @@ def create_data_item(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    """Attach an external, live-referenced image gallery ("DATA") to this experience or to one of
+    """Attach an external, live-referenced image gallery ("DATA") to this experiment or to one of
     its campaign variants - a "what I designed vs what I measured" comparison alongside the
     simulated structure drawing. Deliberately independent of the ``Evidence``/``kind`` mechanism:
     these images are never copied into Spectre's storage, just referenced by absolute path, so
     they can go stale if the file is later moved - that's accepted (see :func:`data_image`).
     """
-    repo = get_repository(microproject.slug)
-    try:
-        parent = repo.get(ref)
-    except follow.ExperimentNotFoundError as exc:
-        raise not_found(exc) from exc
-
     if not body.image_paths:
         raise HTTPException(status_code=422, detail="au moins une image est nécessaire")
     if body.pinned_index < 0 or body.pinned_index >= len(body.image_paths):
         raise HTTPException(status_code=422, detail="pinned_index hors limites")
-
-    entity_index = body.entity_index
-    if entity_index is not None:
-        expected_count = kinds.entity_count(parent.structure_type, parent.structure)
-        if entity_index < 0 or entity_index >= expected_count:
-            raise HTTPException(status_code=422, detail="cette entité n'existe pas sur cette expérience")
-
     resolved_paths = [str(_validate_external_image_path(p)) for p in body.image_paths]
-
     record = {
         "id": f"data_{secrets.token_hex(10)}",
         "title": body.title,
         "note": body.note,
-        "entity_index": entity_index,
+        "entity_index": body.entity_index,
         "image_paths": resolved_paths,
         "pinned_index": body.pinned_index,
         "created_by": user.name,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    data_items = list(parent.metadata.get("data_items", [])) + [record]
 
-    builder = repo.derive(
-        ref, title=parent.title, intent=parent.intent, new_branch=derive_branch(repo, parent, None), author=user.name
-    )
-    builder.metadata = dict(parent.metadata)
-    builder.form_answers = dict(parent.form_answers)
-    builder.evidence = list(parent.evidence)
-    builder.conclusion = parent.conclusion
-    builder.tags = list(parent.tags)
-    builder.metadata["data_items"] = data_items
-    try:
-        experiment = builder.commit()
-    except follow.FormValidationError as exc:
-        raise form_validation_error(exc) from exc
-    except follow.FollowError as exc:
-        raise HTTPException(
-            status_code=400, detail="Impossible d'enregistrer les données - rechargez la page et réessayez."
-        ) from exc
-    return {"id": experiment.id, "data_item": record}
+    def change(builder: Any, parent: Any) -> None:
+        if body.entity_index is not None:
+            expected_count = kinds.entity_count(parent.structure_type, parent.structure)
+            if body.entity_index < 0 or body.entity_index >= expected_count:
+                raise HTTPException(status_code=422, detail="cette entité n'existe pas sur cette expérience")
+        builder.metadata["data_items"] = list(builder.metadata.get("data_items", [])) + [record]
+
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    return {"id": ref, "version_id": experiment.id, "data_item": record}
 
 
 @router.delete("/{slug}/experiences/{ref}/data/{data_id}")
@@ -127,35 +102,15 @@ def remove_data_item(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    repo = get_repository(microproject.slug)
-    try:
-        parent = repo.get(ref)
-    except follow.ExperimentNotFoundError as exc:
-        raise not_found(exc) from exc
+    def change(builder: Any, parent: Any) -> None:
+        existing = parent.metadata.get("data_items", [])
+        remaining = [d for d in existing if d.get("id") != data_id]
+        if len(remaining) == len(existing):
+            raise HTTPException(status_code=404, detail="donnée introuvable sur cette version")
+        builder.metadata["data_items"] = remaining
 
-    existing = parent.metadata.get("data_items", [])
-    data_items = [d for d in existing if d.get("id") != data_id]
-    if len(data_items) == len(existing):
-        raise HTTPException(status_code=404, detail="donnée introuvable sur cette version")
-
-    builder = repo.derive(
-        ref, title=parent.title, intent=parent.intent, new_branch=derive_branch(repo, parent, None), author=user.name
-    )
-    builder.metadata = dict(parent.metadata)
-    builder.form_answers = dict(parent.form_answers)
-    builder.evidence = list(parent.evidence)
-    builder.conclusion = parent.conclusion
-    builder.tags = list(parent.tags)
-    builder.metadata["data_items"] = data_items
-    try:
-        experiment = builder.commit()
-    except follow.FormValidationError as exc:
-        raise form_validation_error(exc) from exc
-    except follow.FollowError as exc:
-        raise HTTPException(
-            status_code=400, detail="Impossible de retirer ces données - rechargez la page et réessayez."
-        ) from exc
-    return {"id": experiment.id}
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    return {"id": ref, "version_id": experiment.id}
 
 
 @router.patch("/{slug}/experiences/{ref}/data/{data_id}/epingle")
@@ -168,40 +123,18 @@ def pin_data_item(
 ) -> dict:
     """Cheap re-pin: swap which image within one already-created data item is the featured lead
     comparison image, without touching anything else about the item."""
-    repo = get_repository(microproject.slug)
-    try:
-        parent = repo.get(ref)
-    except follow.ExperimentNotFoundError as exc:
-        raise not_found(exc) from exc
 
-    existing = parent.metadata.get("data_items", [])
-    target = next((d for d in existing if d.get("id") == data_id), None)
-    if target is None:
-        raise HTTPException(status_code=404, detail="donnée introuvable sur cette version")
-    image_paths = target.get("image_paths", [])
-    if body.pinned_index < 0 or body.pinned_index >= len(image_paths):
-        raise HTTPException(status_code=422, detail="pinned_index hors limites")
+    def change(builder: Any, parent: Any) -> None:
+        existing = parent.metadata.get("data_items", [])
+        target = next((d for d in existing if d.get("id") == data_id), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail="donnée introuvable sur cette version")
+        if body.pinned_index < 0 or body.pinned_index >= len(target.get("image_paths", [])):
+            raise HTTPException(status_code=422, detail="pinned_index hors limites")
+        builder.metadata["data_items"] = [dict(d, pinned_index=body.pinned_index) if d.get("id") == data_id else d for d in existing]
 
-    data_items = [dict(d, pinned_index=body.pinned_index) if d.get("id") == data_id else d for d in existing]
-
-    builder = repo.derive(
-        ref, title=parent.title, intent=parent.intent, new_branch=derive_branch(repo, parent, None), author=user.name
-    )
-    builder.metadata = dict(parent.metadata)
-    builder.form_answers = dict(parent.form_answers)
-    builder.evidence = list(parent.evidence)
-    builder.conclusion = parent.conclusion
-    builder.tags = list(parent.tags)
-    builder.metadata["data_items"] = data_items
-    try:
-        experiment = builder.commit()
-    except follow.FormValidationError as exc:
-        raise form_validation_error(exc) from exc
-    except follow.FollowError as exc:
-        raise HTTPException(
-            status_code=400, detail="Impossible d'épingler cette image - rechargez la page et réessayez."
-        ) from exc
-    return {"id": experiment.id}
+    experiment = experiments.amend(microproject.slug, ref, author=user.name, change=change)
+    return {"id": ref, "version_id": experiment.id}
 
 
 @router.get("/{slug}/data/parcourir")

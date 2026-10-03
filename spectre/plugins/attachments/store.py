@@ -49,12 +49,6 @@ PURPOSES = {
 # Usage des sidecars écrits avant ``purpose`` (champ ``role``).
 _LEGACY_ROLES = {"structure": "structure", "preuve": "evidence"}
 
-# Transitoire : les pièces jointes d'une expérience (POST .../experiences/{ref}/pieces-jointes, plugin
-# experiments) gardent leurs propres types, avec les fonctions write/remove/new_attachment_id ; ces
-# routes disparaissent avec la vague REST d'experiments. image/svg+xml absent, comme plus haut.
-ATTACHMENT_ALLOWED_TYPES = IMAGE_TYPES | {"application/pdf", "text/csv", "text/plain"}
-ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
-
 
 class TooLarge(DomainError):
     """Un fichier plus gros que ce que son usage accepte."""
@@ -89,18 +83,6 @@ def attachments_dir(slug: str) -> Path:
 
 def new_attachment_id() -> str:
     return f"att_{secrets.token_hex(10)}"
-
-
-def write(slug: str, attachment_id: str, contents: bytes, sidecar: dict[str, Any]) -> None:
-    directory = attachments_dir(slug)
-    (directory / attachment_id).write_bytes(contents)
-    (directory / f"{attachment_id}.json").write_text(json.dumps(sidecar), encoding="utf-8")
-
-
-def remove(slug: str, attachment_id: str) -> None:
-    directory = attachments_dir(slug)
-    (directory / attachment_id).unlink(missing_ok=True)
-    (directory / f"{attachment_id}.json").unlink(missing_ok=True)
 
 
 def _type_problem(content_type: str) -> str:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from support.accounts import login, signup
-from support.experiments import add_evidence, conclude, evolve, get_experience, launch, tag
+from support.experiments import add_evidence, conclude, evolve, experiment_url, get_experiment, get_version, launch, structure_diff, tag
 from support.microprojects import create_microproject, join_as, signup_with_microproject
 from support.structures import steps
 
@@ -19,27 +19,29 @@ def test_add_evidence_creates_a_new_version_and_carries_forward(client):
     }
     response = client.post(f"/api/microprojets/{slug}/experiences/{launched['id']}/preuves", json=body)
     assert response.status_code == 201
-    new_id = response.json()["id"]
-    assert new_id != launched["id"]
+    added = response.json()
+    assert added["id"] == launched["id"]  # la même piste
+    assert added["version_id"] != launched["version_id"]  # une nouvelle version
 
-    detail = get_experience(client, slug, new_id)
+    detail = get_experiment(client, slug, launched["id"])
+    assert detail["version_id"] == added["version_id"]
     assert len(detail["evidence"]) == 1
     assert detail["evidence"][0]["description"] == "Mesure d'epaisseur au profilometre"
     assert detail["evidence"][0]["metrics"]["thickness_nm"]["value"] == 20.3
 
     # a second piece of evidence carries the first one forward
-    second = add_evidence(client, slug, new_id, "Deuxieme mesure", source="https://labo.example/mesures/143")
-    assert len(get_experience(client, slug, second["id"])["evidence"]) == 2
+    second = add_evidence(client, slug, launched["id"], "Deuxieme mesure", source="https://labo.example/mesures/143")
+    assert len(get_experiment(client, slug, launched["id"])["evidence"]) == 2
+    assert len(get_version(client, slug, launched["id"], added["version_id"])["evidence"]) == 1  # la version d'avant reste
+    assert second["version_id"] != added["version_id"]
 
 
 def test_concluding_an_experience_keeps_its_evidence(client):
     slug = signup_with_microproject(client, "owner-concl@example.com", name="Owner")
     launched = launch(client, slug)
 
-    with_evidence = add_evidence(client, slug, launched["id"], "Mesure d'epaisseur au profilometre", source="https://labo.example/mesures/142")
-    concluded = conclude(client, slug, with_evidence["id"])
-
-    detail = get_experience(client, slug, concluded["id"])
+    add_evidence(client, slug, launched["id"], "Mesure d'epaisseur au profilometre", source="https://labo.example/mesures/142")
+    detail = conclude(client, slug, launched["id"])
     assert len(detail["evidence"]) == 1
     assert detail["evidence"][0]["description"] == "Mesure d'epaisseur au profilometre"
 
@@ -71,11 +73,11 @@ def test_evidence_step_index_round_trips_and_is_labeled_in_the_process(client):
         },
     )
     assert response.status_code == 201
-    assert get_experience(client, slug, response.json()["id"])["evidence"][0]["step_index"] == 0
+    assert get_experiment(client, slug, launched["id"])["evidence"][0]["step_index"] == 0
 
     # omitting step_index still defaults to None (not tied to any step)
-    without_step = add_evidence(client, slug, response.json()["id"], "Preuve generale", source="https://labo.example/mesures/2")
-    assert get_experience(client, slug, without_step["id"])["evidence"][-1]["step_index"] is None
+    add_evidence(client, slug, launched["id"], "Preuve generale", source="https://labo.example/mesures/2")
+    assert get_experiment(client, slug, launched["id"])["evidence"][-1]["step_index"] is None
 
 
 def test_evidence_step_index_must_be_within_process_bounds(client):
@@ -99,11 +101,10 @@ def test_evolving_an_experience_preserves_its_evidence_and_tags(client):
     slug = signup_with_microproject(client, "owner-evolve@example.com", name="Owner")
     launched = launch(client, slug)
 
-    with_evidence = add_evidence(client, slug, launched["id"], "Mesure avant evolution", source="https://labo.example/mesures/1")
-    with_tag = tag(client, slug, with_evidence["id"], ["important"])
-    evolved = evolve(client, slug, with_tag["id"], intent="Reduire l'epaisseur", steps=steps(thickness_nm=10), objectives=[])
+    add_evidence(client, slug, launched["id"], "Mesure avant evolution", source="https://labo.example/mesures/1")
+    tag(client, slug, launched["id"], ["important"])
+    detail = evolve(client, slug, launched["id"], intent="Reduire l'epaisseur", steps=steps(thickness_nm=10))
 
-    detail = get_experience(client, slug, evolved["id"])
     assert len(detail["evidence"]) == 1
     assert detail["evidence"][0]["description"] == "Mesure avant evolution"
     assert detail["tags"] == ["important"]
@@ -117,15 +118,12 @@ def test_cross_microproject_diff(client):
     exp_a = launch(client, slug_a, title="Essai A")
     exp_b = launch(client, slug_b, title="Essai B", steps=steps(thickness_nm=40), entities=[{"sample_id": "W2"}])
 
-    response = client.get(
-        f"/api/microprojets/{slug_a}/experiences/{exp_a['id']}/diff-externe"
-        f"?autre_projet={slug_b}&autre_experience={exp_b['id']}"
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["target"] == exp_b["id"]
-    assert body["target_microproject"] == "Projet B"
+    body = structure_diff(client, slug_a, exp_a["id"], against_microproject=slug_b, against_experiment=exp_b["id"])
+    assert body["target"] == {"experiment_id": exp_b["id"], "version_id": exp_b["version_id"], "title": "Essai B", "microproject": "Projet B"}
     assert len(body["entries"]) >= 1
+    # sans l'expérience à comparer, l'autre µprojet ne suffit pas
+    missing = client.get(f"{experiment_url(slug_a, exp_a['id'])}/structure-diff", params={"against_microproject": slug_b})
+    assert missing.status_code == 422
 
 
 def test_cross_microproject_diff_requires_access_to_other_microproject(client):
@@ -137,8 +135,7 @@ def test_cross_microproject_diff_requires_access_to_other_microproject(client):
 
     login(client, "ownerC@example.com")
     response = client.get(
-        f"/api/microprojets/{slug_c}/experiences/{exp_c['id']}/diff-externe"
-        f"?autre_projet={slug_d}&autre_experience={exp_d['id']}"
+        f"{experiment_url(slug_c, exp_c['id'])}/structure-diff", params={"against_microproject": slug_d, "against_experiment": exp_d["id"]}
     )
     assert response.status_code == 403
 
@@ -161,7 +158,7 @@ def test_evidence_kind_objective_and_interpretation_round_trip(client):
         },
     )
     assert response.status_code == 201
-    evidence = get_experience(client, slug, response.json()["id"])["evidence"][0]
+    evidence = get_experiment(client, slug, launched["id"])["evidence"][0]
     assert evidence["kind"] == "graph"
     assert evidence["objective"] == "Isolation"
     assert evidence["interpretation"].startswith("L'isolation")
@@ -174,13 +171,13 @@ def test_evidence_own_fields_survive_lightweight_and_real_evolutions(client):
     slug = signup_with_microproject(client, "owner-kind-carry@example.com")
     launched = launch(client, slug, objectives=[{"name": "Isolation", "metric": "r", "direction": "observe"}])
     graph = add_evidence(client, slug, launched["id"], "Split vs PL", kind="graph", objective="Isolation", interpretation="Monte")
-    tagged = tag(client, slug, graph["id"], ["a-suivre"])
-    other = add_evidence(client, slug, tagged["id"], "Autre mesure")
-    concluded = conclude(client, slug, other["id"])
-    evolved = evolve(client, slug, concluded["id"], steps=steps(40))
+    tagged = tag(client, slug, launched["id"], ["a-suivre"])
+    other = add_evidence(client, slug, launched["id"], "Autre mesure")
+    concluded = conclude(client, slug, launched["id"])
+    evolved = evolve(client, slug, launched["id"], steps=steps(40))
 
     for version in (tagged, other, concluded, evolved):
-        evidence = {e["id"]: e for e in get_experience(client, slug, version["id"])["evidence"]}
+        evidence = {e["id"]: e for e in get_version(client, slug, launched["id"], version["version_id"])["evidence"]}
         own = evidence[graph["evidence_id"]]
         assert (own["kind"], own["objective"], own["interpretation"]) == ("graph", "Isolation", "Monte")
     assert evidence[other["evidence_id"]]["kind"] == "standard"  # each preuve keeps its own fields
@@ -206,7 +203,7 @@ def test_evidence_kind_defaults_to_standard(client):
         json={"description": "x", "source": "y"},
     )
     assert response.status_code == 201
-    evidence = get_experience(client, slug, response.json()["id"])["evidence"][0]
+    evidence = get_experiment(client, slug, launched["id"])["evidence"][0]
     assert evidence["kind"] == "standard"
     assert evidence["objective"] is None
     assert evidence["image_annotations"] == []

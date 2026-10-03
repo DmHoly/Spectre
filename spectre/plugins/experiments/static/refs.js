@@ -1,4 +1,4 @@
-/* Refs d'un µprojet : la liste, et comment elles s'enchaînent (spectre.core.refs.ref_graph) -
+/* Refs d'un µprojet : la liste, et comment elles s'enchaînent (spectre.plugins.experiments.refs.ref_graph) -
    rendue comme un arbre indenté plutôt qu'un graphe dessiné : chaque ref n'a jamais qu'un petit
    nombre de refs "suivantes" (voir spectre.core.atlas.condensed_edges, dont ref_graph réutilise
    l'algorithme), donc un arbre texte navigue aussi bien et reste lisible sans bibliothèque de
@@ -15,8 +15,8 @@ function refCardHtml(node) {
   return `
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;">
       <div>
-        <a href="/microprojets/${slug}/experiences/${node.experiment_id}" style="font-weight:600;font-size:14px;">${escapeHtml(node.title)}</a>
-        <span style="color:var(--text-faint);font-size:12px;margin-left:6px;">v${escapeHtml(node.version)} · ${escapeHtml(node.branch)}</span>
+        <a href="/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(node.experiment_id)}?version=${encodeURIComponent(node.version_id)}" style="font-weight:600;font-size:14px;">${escapeHtml(node.title)}</a>
+        <span style="color:var(--text-faint);font-size:12px;margin-left:6px;">v${escapeHtml(node.version)} · ${escapeHtml(node.experiment_id)}</span>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         ${names}
@@ -43,12 +43,12 @@ function renderTree(nodesById, childrenOf, roots, depth = 0) {
 
 async function init() {
   try {
-    const graph = await experimentsApi.refsGraph(slug);
-    if (graph.nodes.length === 0) {
+    const graph = await experimentsApi.refs(slug);
+    if (graph.refs.length === 0) {
       document.getElementById("empty-note").style.display = "block";
       return;
     }
-    const nodesById = new Map(graph.nodes.map((n) => [n.experiment_id, n]));
+    const nodesById = new Map(graph.refs.map((n) => [n.version_id, n]));
     const childrenOf = new Map();
     const hasParent = new Set();
     graph.edges.forEach((edge) => {
@@ -56,8 +56,8 @@ async function init() {
       childrenOf.get(edge.from).push(edge.to);
       hasParent.add(edge.to);
     });
-    // newest-first order (graph.nodes already sorted that way) is kept within each level
-    const order = graph.nodes.map((n) => n.experiment_id);
+    // newest-first order (graph.refs already sorted that way) is kept within each level
+    const order = graph.refs.map((n) => n.version_id);
     const rank = new Map(order.map((id, i) => [id, i]));
     childrenOf.forEach((ids) => ids.sort((a, b) => rank.get(a) - rank.get(b)));
     const roots = order.filter((id) => !hasParent.has(id));

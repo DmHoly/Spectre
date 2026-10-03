@@ -15,10 +15,12 @@ from .repository import CONCLUDED_STATUSES, display_status, hold_of
 
 
 def lineage_graph(repo: Any) -> dict:
-    """The ``{"nodes", "edges"}`` payload of the µprojet's lineage (``GET .../filiation``, see
+    """The ``{"nodes", "edges"}`` payload of the µprojet's lineage (``GET .../lineage``, see
     :func:`spectre.plugins.experiments.api.microproject_lineage` for what each node means) for one
-    repository - shared with the thématique page's frise (:mod:`spectre.plugins.areas.api`), which
-    lays out the same nodes on a time axis, and with the lots (:mod:`spectre.plugins.lots.api`).
+    repository - shared with the frise of a thématique (:mod:`spectre.plugins.experiments.insights`),
+    which lays out the same nodes on a time axis, and with the lots (:mod:`spectre.plugins.lots.api`).
+    Each node is a version (``version_id``, also its ``id`` in ``edges``) of a line of study
+    (``experiment_id``), the line's tip or not (``is_tip``).
 
     The badge of the lots holding a node's wafers reads the lots plugin, listed after this one,
     from inside the function."""
@@ -65,7 +67,9 @@ def lineage_graph(repo: Any) -> dict:
             ended_at = exp.conclusion.decided_at or exp.created_at
         hold = hold_of(exp)
         return {
-            "id": exp_id,
+            "id": exp_id,  # the node, in "edges"
+            "version_id": exp_id,
+            "experiment_id": exp.branch,
             "title": exp.title,
             "status": display_status(exp),
             "hold": {"since": hold.get("since"), "reason": hold.get("reason")} if hold else None,

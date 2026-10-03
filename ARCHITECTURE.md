@@ -56,12 +56,17 @@ class Plugin:
     name: str                              # identique en Python, sous /static/<name>/ et dans les tests
     depends_on: tuple[str, ...] = ()
     router: APIRouter | None = None        # routes /api de ce plugin
-    page_router: APIRouter | None = None   # routes de pages spéciales (redirections)
+    page_router: APIRouter | None = None   # routes de pages spéciales (redirections), incluses avant ses pages
     pages: tuple[Page, ...] = ()           # Page("/lots/{code}", "lot.html")
     nav: tuple[NavEntry, ...] = ()         # entrées de la barre du haut
     migrations: tuple[Migration, ...] = ()
     enabled: Callable[[], bool] = lambda: True   # ex. kpis_demo : SPECTRE_DEMO_DATA=1
 ```
+
+Le `page_router` d'un plugin est inclus **avant** ses pages : une redirection peut viser un gabarit
+plus étroit qu'une page du même plugin. Seul cas : un ancien id de version sous la page d'une étude
+(`/microprojets/{slug}/experiences/{version_id:experiment_version}`, convertisseur d'URL Starlette
+`exp_<16 hex>` déclaré par `experiments.api`, forme qu'aucun nom de piste ne peut prendre).
 
 Les plugins sont listés **dans l'ordre topologique** dans `spectre/plugins/__init__.py`
 (`PLUGINS = (...)`). L'application est construite par `create_app()`, en mode factory pour
@@ -188,6 +193,36 @@ déplacement de classe ne doit jamais la changer.
   de page qui porte encore un ancien id de version est résolue par
   `GET /api/microprojects/{slug}/experiment-versions/{version_id}`.
 
+**Mise en œuvre** (`experiments/repository.py`, `experiments/service.py`) :
+
+- Lecture : `get_repository(slug)` sert un `follow.Repository` par µprojet depuis un cache, rechargé
+  quand la signature du dépôt change (`refs.json` et `objects/`, comme l'index des plaques) ou après
+  une écriture (compteur de génération). L'instance est partagée : on n'y écrit jamais.
+- Écriture : `with writing(slug) as repo:` prend `keyed_lock("experiments", slug)`, recharge le
+  dépôt **dans** le verrou et invalide le cache à la sortie. `amend()` y désactive la revalidation du
+  formulaire d'intention (`repo.commit_form = None` : les réponses sont reportées, pas saisies) ;
+  une évolution (`POST .../versions`) le revalide. Les erreurs de Follow deviennent des
+  `kernel.errors` ; un formulaire refusé est un 422 `invalid_intent_form` dont le `detail` énumère
+  les réponses en défaut.
+- Les seuls accès aux internes privés de Follow (suppression d'une piste) sont dans
+  `repository.delete_line(repo, experiment_id)`.
+- Les anciennes routes des plugins de la vague 3 qui écrivent dans une étude (evidence, notebook,
+  external_images) appellent `amend()` : leur segment `{ref}` reçoit désormais un id de piste (Follow
+  résout un nom de branche), elles renvoient `{id: <piste>, version_id, ...}` et n'acceptent pas
+  encore `If-Match`.
+- En attendant la vague 3, les lectures des autres plugins suivent la piste : l'index des plaques
+  (wafers, donc la recherche et les lots) donne `experience.id` = la piste ; l'atlas ajoute
+  `experiment_id` à chaque étude (son `id` reste la version de pointe, que citent les liens d'entités
+  jusqu'à leur migration).
+- Le nom d'une piste : tiré du titre (`epitaxie-a-20-nm`, accents retirés, suffixe `-2`... si pris),
+  ou `branch` à la création - un seul segment sans `/`, ni `.`/`..`, ni la forme d'un id de version,
+  libre parmi les pistes **et** les refs (sinon 409 `branch_name_taken`).
+- Une piste créée depuis une version (`from_version`, `version_id` facultatif : la pointe par
+  défaut) en reprend, faute de mieux dans la requête, les objectifs, le contexte et l'entité suivie -
+  pas les preuves, les étiquettes ni la conclusion : c'est une nouvelle étude.
+- `scripts/repair_hypotheses.py` (à blanc par défaut, `--apply` pour écrire) reporte sur la pointe de
+  chaque piste qui l'a perdue la dernière hypothèse non vide de son historique (bug B1).
+
 ## 5. Table de correspondance des routes
 
 Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
@@ -268,7 +303,7 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 | `POST /api/microprojets/{slug}/structures/images` | idem avec `purpose=structure` |
 | `GET /api/microprojets/{slug}/pieces-jointes/{id}` | `GET /api/microprojects/{mp}/attachments/{attachment_id}/content` |
 | *(nouveau)* | `GET /api/microprojects/{mp}/attachments/{attachment_id}` (métadonnées) |
-| `POST/DELETE …/experiences/{ref}/pieces-jointes[/{id}]` | **supprimées** (aucun appelant front : on passe par attachments puis evidence) |
+| `POST/DELETE …/experiences/{ref}/pieces-jointes[/{id}]` | **supprimées** (aucun appelant front : on passe par attachments puis evidence), avec les fonctions transitoires de `attachments.store` qui les servaient |
 
 ### structures · library
 
@@ -313,28 +348,28 @@ Droits d'écriture :
 
 | Avant | Après |
 |---|---|
-| `GET /api/microprojets/{slug}/experiences?status=&offset=&limit=` | `GET /api/microprojects/{mp}/experiments?status=all\|running\|concluded&q=&offset=&limit=` → `{items, total}` |
+| `GET /api/microprojets/{slug}/experiences?status=&offset=&limit=` | `GET /api/microprojects/{mp}/experiments?status=all\|running\|concluded&q=&offset=&limit=` → `{items, total}` (`q` : titre, intention, étiquettes, nom de piste ; chaque élément : `id` = la piste, `version_id` = sa pointe) |
 | `POST …/experiences` | `POST /api/microprojects/{mp}/experiments` `{…, structure: {kind: "process", …}}` → 201 |
 | `POST …/experiences/image` | idem, avec `structure: {kind: "images", images: [...]}` |
 | `POST …/experiences/campagne` | idem, avec `structure: {kind: "campaign", …, plan}` ; `from_version` pour partir d'une version existante |
-| `GET …/experiences/{ref}` | `GET /api/microprojects/{mp}/experiments/{exp}` (dernière version, `ETag`) |
-| `GET …/experiences/{ref}/timeline` | `GET …/experiments/{exp}/versions` |
-| *(nouveau)* | `GET …/experiments/{exp}/versions/{version_id}` |
-| `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 |
+| `GET …/experiences/{ref}` | `GET /api/microprojects/{mp}/experiments/{exp}` (dernière version, `ETag`) ; le détail porte `id` (la piste), `version_id`, `is_tip`, `children` `[{experiment_id, version_id, title}]` et `continued_at` (première suite structurelle) |
+| `GET …/experiences/{ref}/timeline` | `GET …/experiments/{exp}/versions` → tableau, de la première version à la pointe : `{version_id, experiment_id, title, intent, created_at, author, is_tip, version, change_level}` (la frise des structures : `change_level != "none"`) |
+| *(nouveau)* | `GET …/experiments/{exp}/versions/{version_id}` (une version de l'histoire de la piste, `ETag`) |
+| `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 + `Location` vers la version ; **200 sans `Location`** si rien n'a changé (§ 4) ; une campagne y est refusée (422 `campaign_is_a_new_line`) : elle se lance avec `from_version` |
 | `POST …/{ref}/evoluer-image` | idem, avec `structure: {kind: "images", …}` |
 | `POST …/{ref}/dessin` | `PUT …/experiments/{exp}/structure-images` |
 | `POST …/{ref}/conclure` | `PUT …/experiments/{exp}/conclusion` |
 | `POST …/{ref}/statut` | `PUT …/experiments/{exp}/status` `{status, hold_reason}` |
 | `POST …/{ref}/etiquettes` | `PUT …/experiments/{exp}/tags` `{tags}` |
 | `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` |
-| `POST …/{ref}/combiner` | `POST …/experiments/{exp}/merges` `{other_experiment_id}` → 201 |
+| `POST …/{ref}/combiner` | `POST …/experiments/{exp}/merges` `{other_experiment_id}` → 201 + `Location` vers la version (titre et intention restent ceux de la piste ; les preuves des deux côtés sont reportées, dédoublonnées par id, et les métadonnées qui désignent une preuve absente purgées) |
 | `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=` |
-| `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` |
-| `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants` |
-| `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` → 204 (supprime la piste jusqu'au point de fourche ; 409 si quelque chose en découle) |
-| `POST …/{ref}/ref` | `POST /api/microprojects/{mp}/refs` `{experiment_id, version_id?, name}` → 201 |
-| `GET …/refs`, `GET …/refs/graphe` | `GET /api/microprojects/{mp}/refs` → `{refs, edges}` |
-| `GET /api/microprojets/{slug}/filiation` | `GET /api/microprojects/{mp}/lineage` (les nœuds portent `version_id` et `experiment_id` ; plus de badge de lot, que le front compose via `lotsApi`) |
+| `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?}` ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
+| `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
+| `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
+| `POST …/{ref}/ref` | `POST /api/microprojects/{mp}/refs` `{experiment_id, version_id?, name?}` → 201 et la ref telle que la liste la montre (`name` vide : « ref vX.Y.Z » ; « / » → 422, nom pris → 409). **Sans `Location`** : une ref n'a pas de route propre, elle se lit dans la liste |
+| `GET …/refs`, `GET …/refs/graphe` | `GET /api/microprojects/{mp}/refs` → `{refs: [{version_id, experiment_id, names, title, status, decision, version, created_at}], edges: [{from, to}]}` (ids de version) |
+| `GET /api/microprojets/{slug}/filiation` | `GET /api/microprojects/{mp}/lineage` (les nœuds portent `version_id` et `experiment_id` - et `id`, égal à `version_id`, que citent les `edges` ; le badge de lot y reste tant que `lotsApi` ne sait pas chercher par wafer, voir `ALLOWED_TRANSITIONAL`) |
 | `GET /api/microprojets/{slug}/graphe.html` | **supprimée**, ainsi que la page `/microprojets/{slug}/graphe` |
 | *(dans les listes de µprojets)* | `GET /api/experiment-stats?microproject=&area=` → `[{microproject, running, concluded, abandoned, wafers}]` |
 | *(dans la thématique)* | `GET /api/experiment-timeline?area=&thematic=` (champs masqués pour les non-membres) |
@@ -425,8 +460,8 @@ PRISM absente 503 ; connexion, requête ou fiche `hook.yml` invalide 502 (une fi
 | areas | `/`, `/management/{slug}`, `/management/{slug}/thematiques/{thematique_slug}` |
 | atlas | `/management/{slug}/atlas` |
 | microprojects | `/microprojets/{slug}`, `/p/{code}` (redirection, **après** contrôle de session), `/projets/{rest}` (redirection héritée) |
-| experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée ; un ancien id de version est résolu puis redirigé), `/microprojets/{slug}/refs` |
-| structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image`, `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
+| experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/refs` |
+| structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
 | process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
 | intent_forms | `/microprojets/{slug}/formulaire-intention` |
 | wafers | `/plaques/{lasermark}` |

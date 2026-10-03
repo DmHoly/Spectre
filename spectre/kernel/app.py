@@ -68,10 +68,12 @@ def create_app(plugins: Sequence[Plugin] | None = None) -> FastAPI:
 
     nav_entries = [entry for plugin in active for entry in plugin.nav]
     for plugin in active:
+        # ses routes de pages spéciales d'abord : une redirection peut viser un gabarit plus
+        # étroit qu'une page du plugin (un ancien id de version sous la page d'une étude)
+        if plugin.page_router is not None:
+            app.include_router(plugin.page_router)
         for page in plugin.pages:
             nav = render_nav(nav_entries_for(nav_entries, page.path))
             app.get(page.path)(page_handler(resolve_page(plugin.name, page.file), nav))
-        if plugin.page_router is not None:
-            app.include_router(plugin.page_router)
 
     return app
