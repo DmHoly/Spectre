@@ -121,8 +121,6 @@ def _detail(repo: follow.Repository, experiment_id: str, version: follow.Experim
         "attachments": version.metadata.get("attachments", []),
         # per preuve id: the links (folder, PowerPoint deck...) recorded with it
         "evidence_links": version.metadata.get("evidence_links", {}),
-        "data_notebook": version.metadata.get("data_notebook", []),
-        "data_items": version.metadata.get("data_items", []),
         "form_answers": dict(version.form_answers),
     }
 

@@ -1,21 +1,36 @@
-"""Cahier de données (spectre.plugins.notebook): load a characterization data type
-for an experience's plates, freeze it as a snapshot, and keep views on it (a visualization component
-+ its settings) with notes - every change a new version, like the rest of the fiche. Uses the demo
-data source (SPECTRE_DEMO_DATA=1) - PRISM itself needs real databases.
+"""Cahier de données (plugin notebook) : charger un type de données de caractérisation pour les
+plaques d'une étude, le figer en instantané, et garder des vues dessus (un composant de
+visualisation + ses réglages) avec des notes - chaque changement une écriture sur la piste, comme le
+reste de la fiche. Utilise la source de démonstration (SPECTRE_DEMO_DATA=1) : PRISM lui-même demande
+de vraies bases.
 """
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from spectre.plugins.attachments.store import attachments_dir
 from spectre.kernel.errors import NotFound
+from spectre.plugins.attachments.store import attachments_dir
 from spectre.plugins.notebook import snapshots
 
 from support.accounts import login, signup
-from support.experiments import get_experiment, launch, versions
+from support.characterization import list_data_types
+from support.experiments import get_experiment, launch, tag, versions
 from support.http import assert_handler_404
 from support.microprojects import add_member, signup_with_microproject
+from support.notebook import (
+    add_entry,
+    delete_entry,
+    entries,
+    get_snapshot,
+    patch_entry,
+    post_entry,
+    post_snapshot,
+    take_snapshot,
+    update_entry,
+)
 
 
 @pytest.fixture()
@@ -30,14 +45,11 @@ def _setup(client, email="notebook@example.com"):
         slug,
         title="Pixélisation",
         intent="Même directivité",
+        hypothesis="La pixélisation ne change rien",
         objectives=[{"name": "EQE identique", "metric": "max_EQE"}],
         entities=[{"sample_id": "W12-A3"}],
     )
     return slug, launched["id"]
-
-
-def _snapshot(client, slug, hook="eqe", wafers=("W12-A3", "W12-A4")):
-    return client.post(f"/api/microprojets/{slug}/donnees/instantanes", json={"hook": hook, "wafers": list(wafers)})
 
 
 def test_compacting_drops_matrices_and_keeps_vectors_aligned():
@@ -50,41 +62,55 @@ def test_compacting_drops_matrices_and_keeps_vectors_aligned():
     assert eqe == [v * 2 for v in current]  # mêmes indices pour I et EQE
 
 
-def test_sources_list_the_implemented_prism_types(client, demo_data):
-    slug, _ = _setup(client)
-    body = client.get(f"/api/microprojets/{slug}/donnees/sources").json()
-    keys = {s["key"] for s in body["sources"]}
+def test_the_loadable_types_come_from_the_characterization_catalogue(client, demo_data):
+    # la liste du cahier (l'ancienne route /donnees/sources) : les types implémentés, par plaque
+    signup(client, "catalogue@example.com")
+    keys = {t["key"] for t in list_data_types(client, by_wafer="true", status="implemented")}
     assert {"eqe", "pl", "ncel"} <= keys and "tem" not in keys  # pas les fiches « à venir »
-    assert body["demo"] is True
 
 
 def test_a_snapshot_freezes_the_data_of_the_plates(client, demo_data):
     slug, _ = _setup(client)
-    response = _snapshot(client, slug)
+    response = post_snapshot(client, slug)
     assert response.status_code == 201
     snap = response.json()
+    assert response.headers["Location"] == f"/api/microprojects/{slug}/snapshots/{snap['snapshot_id']}"
     assert snap["source"] == "demo" and snap["hook"] == "eqe" and snap["wafers"] == ["W12-A3", "W12-A4"]
     assert {"wafername", "X", "Y", "max_EQE", "I", "EQE"} <= set(snap["columns"])
     wafer_col = snap["columns"].index("wafername")
     assert {row[wafer_col] for row in snap["rows"]} == {"W12-A3", "W12-A4"}
-    again = client.get(f"/api/microprojets/{slug}/donnees/instantanes/{snap['snapshot_id']}").json()
-    assert again["rows"] == snap["rows"]
+
+    again = get_snapshot(client, slug, snap["snapshot_id"])
+    assert again.json()["rows"] == snap["rows"]
+    assert "immutable" in again.headers["Cache-Control"]  # un instantané ne change jamais
     # même plaque, mêmes données de démo
-    assert _snapshot(client, slug).json()["rows"] == snap["rows"]
-    assert_handler_404(client.get(f"/api/microprojets/{slug}/donnees/instantanes/snap_{'0' * 20}"), "instantané introuvable")
+    assert take_snapshot(client, slug)["rows"] == snap["rows"]
+    assert_handler_404(get_snapshot(client, slug, f"snap_{'0' * 20}"), "instantané introuvable")
 
 
-def test_a_snapshot_id_cannot_reach_outside_the_attachments(client):
+def test_new_snapshots_have_their_own_folder_and_old_ones_stay_readable(client, demo_data):
+    slug, _ = _setup(client)
+    snap = take_snapshot(client, slug)
+    assert (snapshots.snapshots_dir(slug) / f"{snap['snapshot_id']}.json").is_file()
+    assert not (attachments_dir(slug) / f"{snap['snapshot_id']}.json").exists()
+
+    # un instantané d'avant ce dossier, rangé avec les pièces jointes
+    old_id = f"snap_{'a' * 20}"
+    (attachments_dir(slug) / f"{old_id}.json").write_text(json.dumps({"hook": "eqe", "rows": [[1]], "columns": ["x"]}), encoding="utf-8")
+    assert get_snapshot(client, slug, old_id).json()["rows"] == [[1]]
+
+
+def test_a_snapshot_id_cannot_reach_outside_its_folders(client):
     slug, _ = _setup(client)
     # de vrais fichiers JSON qu'un id non vérifié atteindrait : sans eux, un 404 « instantané
     # introuvable » ne prouverait rien (il viendrait aussi d'un fichier simplement absent)
-    attachments = attachments_dir(slug)
-    (attachments / "secret.json").write_text('{"secret": true}', encoding="utf-8")
-    (attachments.parent / "secret.json").write_text('{"secret": true}', encoding="utf-8")
-    # an id still inside its own path segment reaches the handler, which refuses anything that isn't
-    # a snapshot id (an encoded "../" never gets that far: the router has no route for it)
-    assert_handler_404(client.get(f"/api/microprojets/{slug}/donnees/instantanes/secret"), "instantané introuvable")
-    for snapshot_id in ("secret", "../secret", r"..\secret", "../attachments/secret"):
+    for directory in (attachments_dir(slug), snapshots.snapshots_dir(slug)):
+        (directory / "secret.json").write_text('{"secret": true}', encoding="utf-8")
+        (directory.parent / "secret.json").write_text('{"secret": true}', encoding="utf-8")
+    # un id resté dans son segment atteint la route, qui refuse tout ce qui n'est pas un id
+    # d'instantané (un « ../ » encodé n'arrive pas jusque-là : le routeur n'a pas de route pour lui)
+    assert_handler_404(get_snapshot(client, slug, "secret"), "instantané introuvable")
+    for snapshot_id in ("secret", "../secret", r"..\secret", "../attachments/secret", "../snapshots/secret"):
         with pytest.raises(NotFound):
             snapshots.load(slug, snapshot_id)
         assert not snapshots.exists(slug, snapshot_id)
@@ -92,8 +118,8 @@ def test_a_snapshot_id_cannot_reach_outside_the_attachments(client):
 
 def test_a_snapshot_needs_plates_and_a_known_type(client, demo_data):
     slug, _ = _setup(client)
-    assert _snapshot(client, slug, wafers=()).status_code == 422
-    assert_handler_404(_snapshot(client, slug, hook="inconnu"), "type de données inconnu")
+    assert post_snapshot(client, slug, wafers=()).status_code == 422
+    assert_handler_404(post_snapshot(client, slug, hook="inconnu"), "type de données inconnu")
 
 
 def test_without_demo_data_prism_errors_are_readable(client, monkeypatch):
@@ -108,73 +134,121 @@ def test_without_demo_data_prism_errors_are_readable(client, monkeypatch):
     import prism
 
     monkeypatch.setattr(prism, "run_hook_cached", broken)
-    response = _snapshot(client, slug)
+    response = post_snapshot(client, slug)
     assert response.status_code == 503 and "PRISM" in response.json()["detail"]
 
 
 def test_notebook_entries_are_versioned_with_their_notes(client, demo_data):
-    slug, experience = _setup(client)
-    snap = _snapshot(client, slug).json()
-    added = client.post(
-        f"/api/microprojets/{slug}/experiences/{experience}/cahier",
-        json={
-            "title": "EQE vs J",
-            "snapshot_id": snap["snapshot_id"],
-            "component": "eqe-curves",
-            "options": {"maxCurves": 30},
-            "note": "  Pas d'écart pixel / non pixel.  ",
-            "objective": "EQE identique",
-        },
+    slug, line = _setup(client)
+    snap = take_snapshot(client, slug)
+    first_version = get_experiment(client, slug, line)["version_id"]
+    response = post_entry(
+        client,
+        slug,
+        line,
+        title="EQE vs J",
+        snapshot_id=snap["snapshot_id"],
+        component="eqe-curves",
+        options={"maxCurves": 30},
+        note="  Pas d'écart pixel / non pixel.  ",
+        objective="EQE identique",
     )
-    assert added.status_code == 201
-    version = added.json()["id"]
-    entry = get_experiment(client, slug, version)["data_notebook"][0]
+    assert response.status_code == 201
+    entry = response.json()
+    assert response.headers["ETag"] == f'"{get_experiment(client, slug, line)["version_id"]}"'
     assert entry["title"] == "EQE vs J" and entry["note"] == "Pas d'écart pixel / non pixel."
     assert entry["hook"] == "eqe" and entry["source"] == "demo" and entry["wafers"] == ["W12-A3", "W12-A4"]
     assert entry["created_by"] == "Chercheuse" and entry["in_report"] is True and entry["objective"] == "EQE identique"
+    assert entries(client, slug, line) == [entry]
+    # le détail de l'étude ne porte plus le cahier : le panneau lit sa propre ressource
+    assert "data_notebook" not in get_experiment(client, slug, line)
 
-    second = client.post(
-        f"/api/microprojets/{slug}/experiences/{version}/cahier",
-        json={"title": "Carte EQE", "snapshot_id": snap["snapshot_id"], "component": "wafer-map", "options": {"value": "max_EQE"}},
-    ).json()
-    entry_id = entry["id"]
-    moved = client.put(
-        f"/api/microprojets/{slug}/experiences/{second['id']}/cahier/{entry_id}",
-        json={"note": "Conclusion : identique à 5 % près.", "move": 1, "in_report": False},
-    ).json()
-    notebook = get_experiment(client, slug, moved["id"])["data_notebook"]
+    second = add_entry(client, slug, line, snap["snapshot_id"], title="Carte EQE", component="wafer-map", options={"value": "max_EQE"})
+    moved = update_entry(client, slug, line, entry["id"], note="Conclusion : identique à 5 % près.", position=1, in_report=False)
+    assert moved["note"] == "Conclusion : identique à 5 % près." and moved["in_report"] is False
+    notebook = entries(client, slug, line)
     assert [e["title"] for e in notebook] == ["Carte EQE", "EQE vs J"]
-    assert notebook[1]["note"] == "Conclusion : identique à 5 % près." and notebook[1]["in_report"] is False
+    assert notebook[1] == moved
+    # une place hors des bornes est ramenée dans le cahier
+    update_entry(client, slug, line, entry["id"], position=-5)
+    assert [e["title"] for e in entries(client, slug, line)] == ["EQE vs J", "Carte EQE"]
 
-    removed = client.delete(f"/api/microprojets/{slug}/experiences/{moved['id']}/cahier/{second['entry_id']}").json()
-    notebook = get_experiment(client, slug, removed["id"])["data_notebook"]
-    assert [e["title"] for e in notebook] == ["EQE vs J"]
-    # l'historique garde chaque étape (cahier de labo)
-    assert len(versions(client, slug, removed["id"])) == 5
+    removed = delete_entry(client, slug, line, second["id"])
+    assert removed.status_code == 204 and removed.content == b""
+    assert [e["title"] for e in entries(client, slug, line)] == ["EQE vs J"]
+    # l'historique garde chaque étape (cahier de labo), et une version passée se relit
+    assert len(versions(client, slug, line)) == 6
+    assert entries(client, slug, line, version=first_version) == []
+    # aucune écriture du cahier ne perd l'hypothèse
+    assert get_experiment(client, slug, line)["hypothesis"] == "La pixélisation ne change rien"
+
+
+def test_a_change_without_effect_creates_no_version(client, demo_data):
+    slug, line = _setup(client)
+    entry = add_entry(client, slug, line, take_snapshot(client, slug)["snapshot_id"], note="Vu")
+    count = len(versions(client, slug, line))
+    again = update_entry(client, slug, line, entry["id"], note="Vu", title="Vue", position=0)
+    assert again == entry
+    assert len(versions(client, slug, line)) == count
+
+
+def test_an_objective_can_be_cleared(client, demo_data):
+    slug, line = _setup(client)
+    entry = add_entry(client, slug, line, take_snapshot(client, slug)["snapshot_id"], objective="EQE identique")
+    assert update_entry(client, slug, line, entry["id"], objective="")["objective"] is None
 
 
 def test_entries_are_validated(client, demo_data):
-    slug, experience = _setup(client)
-    snap = _snapshot(client, slug).json()
-    url = f"/api/microprojets/{slug}/experiences/{experience}/cahier"
+    slug, line = _setup(client)
+    snap = take_snapshot(client, slug)
     base = {"title": "Vue", "snapshot_id": snap["snapshot_id"], "component": "table"}
-    assert client.post(url, json={**base, "title": " "}).status_code == 422
-    assert client.post(url, json={**base, "snapshot_id": "snap_" + "1" * 20}).status_code == 422
-    assert client.post(url, json={**base, "component": "<script>"}).status_code == 422
-    assert client.post(url, json={**base, "objective": "inexistant"}).status_code == 422
-    assert_handler_404(client.put(f"{url}/nb_000000000000", json={"note": "x"}), "introuvable")
-    assert_handler_404(client.delete(f"{url}/nb_000000000000"), "introuvable")
+    assert post_entry(client, slug, line, **{**base, "title": " "}).status_code == 422
+    assert post_entry(client, slug, line, **{**base, "snapshot_id": "snap_" + "1" * 20}).json()["code"] == "snapshot_not_found"
+    assert post_entry(client, slug, line, **{**base, "component": "<script>"}).status_code == 422
+    assert post_entry(client, slug, line, **{**base, "objective": "inexistant"}).status_code == 422
+    assert post_entry(client, slug, line, **{**base, "options": {"x": "a" * 20001}}).status_code == 422
+    entry = add_entry(client, slug, line, snap["snapshot_id"])
+    assert patch_entry(client, slug, line, entry["id"], title="").status_code == 422
+    assert_handler_404(patch_entry(client, slug, line, "nb_000000000000", note="x"), "introuvable")
+    assert_handler_404(delete_entry(client, slug, line, "nb_000000000000"), "introuvable")
+    assert_handler_404(post_entry(client, slug, "piste-inconnue", **base), "introuvable")
+
+
+def test_a_stale_if_match_is_refused_on_every_write(client, demo_data):
+    slug, line = _setup(client)
+    snap = take_snapshot(client, slug)
+    entry = add_entry(client, slug, line, snap["snapshot_id"])
+    shown = get_experiment(client, slug, line)["version_id"]
+    tag(client, slug, line, ["ailleurs"])  # quelqu'un d'autre a écrit entre-temps
+    refused = [
+        post_entry(client, slug, line, if_match=shown, title="x", snapshot_id=snap["snapshot_id"], component="table"),
+        patch_entry(client, slug, line, entry["id"], if_match=shown, note="x"),
+        delete_entry(client, slug, line, entry["id"], if_match=shown),
+    ]
+    assert [(r.status_code, r.json()["code"]) for r in refused] == [(412, "stale_version")] * 3
+    assert entries(client, slug, line) == [entry]
+    current = get_experiment(client, slug, line)["version_id"]
+    assert update_entry(client, slug, line, entry["id"], if_match=current, note="à jour")["note"] == "à jour"
 
 
 def test_viewers_read_the_notebook_but_do_not_change_it(client, demo_data):
     signup(client, "viewer-nb@example.com", name="V")
-    slug, experience = _setup(client, "owner-nb@example.com")
-    snap = _snapshot(client, slug).json()
+    slug, line = _setup(client, "owner-nb@example.com")
+    snap = take_snapshot(client, slug)
+    entry = add_entry(client, slug, line, snap["snapshot_id"])
     add_member(client, slug, "viewer-nb@example.com", "viewer")
     login(client, "viewer-nb@example.com")
-    assert client.get(f"/api/microprojets/{slug}/donnees/instantanes/{snap['snapshot_id']}").status_code == 200
-    assert _snapshot(client, slug).status_code == 403
-    assert client.post(
-        f"/api/microprojets/{slug}/experiences/{experience}/cahier",
-        json={"title": "Vue", "snapshot_id": snap["snapshot_id"], "component": "table"},
-    ).status_code == 403
+    assert get_snapshot(client, slug, snap["snapshot_id"]).status_code == 200
+    assert entries(client, slug, line) == [entry]
+    assert post_snapshot(client, slug).status_code == 403
+    assert post_entry(client, slug, line, title="Vue", snapshot_id=snap["snapshot_id"], component="table").status_code == 403
+    assert patch_entry(client, slug, line, entry["id"], note="x").status_code == 403
+    assert delete_entry(client, slug, line, entry["id"]).status_code == 403
+
+
+def test_a_member_of_another_microproject_reads_nothing(client, demo_data):
+    slug, line = _setup(client, "owner-nb2@example.com")
+    snap = take_snapshot(client, slug)
+    signup_with_microproject(client, "other-nb@example.com", "Ailleurs")
+    assert get_snapshot(client, slug, snap["snapshot_id"]).status_code == 403
+    assert client.get(f"/api/microprojects/{slug}/experiments/{line}/notebook-entries").status_code == 403

@@ -2,20 +2,22 @@
    l'expérience (PRISM), chacune avec ses observations et sa conclusion - le cahier de labo de
    l'étude, repris tel quel dans le rapport téléchargé.
 
-   Une vue = un instantané des données (spectre.core.datasets, chargé une fois puis relu) + un
-   composant de visualisation du registre DataViz (notebook/static/dataviz/) + ses réglages + une note.
+   Une vue = un instantané des données (notebook/snapshots.py, chargé une fois puis relu, et gardé en
+   mémoire d'un rechargement de la fiche à l'autre : un instantané ne change jamais) + un composant
+   de visualisation du registre DataViz (notebook/static/dataviz/) + ses réglages + une note.
    Ajouter : choisir le type de données, les plaques (celles de l'expérience, cochées, plus
    d'autres pour comparer), charger, puis choisir une vue - d'abord les préréglages du type
    (notebook/static/dataviz/presets.js), puis toute vue qui convient à ces données - et l'ajuster en direct.
    Chaque changement (ajout, réglage, note, ordre, retrait) enregistre une nouvelle version de la
-   fiche, comme le reste (voir notebook/api.py), avec la version affichée en If-Match.
+   fiche, comme le reste (voir notebook/service.py), avec la version affichée en If-Match.
 
    Un panneau de la fiche (ExperiencePage.registerPanel) : il reçoit son contexte (`notebookCtx`) à
-   chaque montage. */
+   chaque montage et lit le cahier de la version affichée (notebookApi.entries). */
 
 let notebookCtx = null;
 const notebookSnapshots = new Map(); // snapshot_id -> Promise<jeu de données>
 let notebookSources = null;
+let notebookMounts = 0;
 
 function loadSnapshot(snapshotId) {
   if (!notebookSnapshots.has(snapshotId)) {
@@ -30,8 +32,9 @@ function loadSnapshot(snapshotId) {
   return notebookSnapshots.get(snapshotId);
 }
 
+// les types de données qu'on peut charger pour des plaques (catalogue de caractérisation)
 async function getNotebookSources() {
-  if (!notebookSources) notebookSources = notebookApi.sources(notebookCtx.microprojectSlug).catch(() => ({ sources: [], demo: false }));
+  if (!notebookSources) notebookSources = characterizationApi.list({ status: "implemented", by_wafer: true }).catch(() => []);
   return notebookSources;
 }
 
@@ -103,10 +106,14 @@ function notebookEntryHtml(entry, index, total) {
     </article>`;
 }
 
-async function renderNotebook(detail) {
+async function renderNotebook() {
+  const seq = (notebookMounts += 1);
+  const ctx = notebookCtx;
+  const entries = await notebookApi.entries(ctx.microprojectSlug, ctx.experimentId, ctx.isTip ? null : ctx.versionId);
+  if (seq !== notebookMounts) return; // un rechargement plus récent est en route
+  ctx.setDataCount("notebook", entries.length);
   const host = document.getElementById("notebook-entries");
-  const entries = detail.data_notebook || [];
-  const canEdit = notebookCtx.canEdit;
+  const canEdit = ctx.canEdit;
   document.getElementById("notebook-add-btn").hidden = !canEdit;
   document.getElementById("notebook-demo-note").hidden = !entries.some((e) => e.source === "demo");
   if (!entries.length) {
@@ -123,7 +130,7 @@ async function renderNotebook(detail) {
     return;
   }
   host.innerHTML = entries.map((e, i) => notebookEntryHtml(e, i, entries.length)).join("");
-  entries.forEach((entry) => {
+  entries.forEach((entry, index) => {
     const article = host.querySelector(`[data-entry="${entry.id}"]`);
     const viz = article.querySelector(".nb-entry__viz");
     loadSnapshot(entry.snapshot_id)
@@ -131,11 +138,11 @@ async function renderNotebook(detail) {
       .catch((err) => {
         viz.innerHTML = `<div class="viz-empty">Données indisponibles : ${escapeHtml(err.message || String(err))}</div>`;
       });
-    if (canEdit) wireNotebookEntry(article, entry, entries);
+    if (canEdit) wireNotebookEntry(article, entry, index);
   });
 }
 
-function wireNotebookEntry(article, entry, entries) {
+function wireNotebookEntry(article, entry, index) {
   const note = article.querySelector(".nb-note-input");
   const noteActions = article.querySelector(".nb-note-actions");
   note.addEventListener("input", () => {
@@ -150,7 +157,10 @@ function wireNotebookEntry(article, entry, entries) {
     const btn = event.target.closest("[data-act]");
     if (!btn) return;
     const act = btn.dataset.act;
-    if (act === "up" || act === "down") return notebookChange(() => notebookApi.updateEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id, { move: act === "up" ? -1 : 1 }));
+    if (act === "up" || act === "down") {
+      const position = index + (act === "up" ? -1 : 1);
+      return notebookChange(() => notebookApi.updateEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id, { position }));
+    }
     if (act === "remove") {
       if (window.confirm(`Retirer « ${entry.title} » du cahier ? (Elle reste dans l'historique de la fiche.)`)) notebookChange(() => notebookApi.removeEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id));
       return;
@@ -240,9 +250,9 @@ const nbAdd = { source: null, dataset: null, component: null, presetTitle: "" };
 
 async function openNotebookDialog() {
   const dialog = document.getElementById("notebook-dialog");
-  const { sources, demo } = await getNotebookSources();
+  const sources = await getNotebookSources();
   Object.assign(nbAdd, { source: null, dataset: null, component: null, presetTitle: "" });
-  document.getElementById("nb-dialog-demo").hidden = !demo;
+  document.getElementById("nb-dialog-demo").hidden = true;
   document.getElementById("nb-sources").innerHTML = sources.length
     ? sources
         .map(
@@ -254,7 +264,7 @@ async function openNotebookDialog() {
         </label>`
         )
         .join("")
-    : `<p class="help">Aucune source de données disponible (PRISM n'est pas installé sur ce serveur).</p>`;
+    : `<p class="help">Aucun type de données disponible (PRISM n'est pas configuré sur ce serveur).</p>`;
   const marks = experienceLasermarks();
   document.getElementById("nb-plates").innerHTML = marks.length
     ? marks.map((m) => `<label class="viz-check"><input type="checkbox" value="${escapeHtml(m)}" checked> <span class="mono">${escapeHtml(m)}</span></label>`).join("")
@@ -271,14 +281,7 @@ async function openNotebookDialog() {
     first.checked = true;
     nbAdd.source = sources.find((s) => s.key === first.value);
   }
-  updateNotebookPlatesState();
   dialog.showModal();
-}
-
-function updateNotebookPlatesState() {
-  const byWafer = !nbAdd.source || nbAdd.source.by_wafer;
-  document.getElementById("nb-plates-step").classList.toggle("is-off", !byWafer);
-  document.getElementById("nb-plates-off").hidden = byWafer;
 }
 
 function chosenPlates() {
@@ -296,7 +299,7 @@ async function loadNotebookData() {
   const btn = document.getElementById("nb-load-btn");
   if (!nbAdd.source) return;
   const wafers = chosenPlates();
-  if (nbAdd.source.by_wafer && !wafers.length) {
+  if (!wafers.length) {
     status.textContent = "Choisissez au moins une plaque.";
     return;
   }
@@ -306,8 +309,9 @@ async function loadNotebookData() {
     const ds = await notebookApi.takeSnapshot(notebookCtx.microprojectSlug, { hook: nbAdd.source.key, wafers });
     nbAdd.dataset = ds;
     notebookSnapshots.set(ds.snapshot_id, Promise.resolve(ds));
+    document.getElementById("nb-dialog-demo").hidden = ds.source !== "demo";
     const nWafers = DataViz.byWafer(ds).size;
-    status.textContent = `${ds.rows.length} ligne${ds.rows.length > 1 ? "s" : ""}${nbAdd.source.by_wafer ? ` · ${nWafers} plaque${nWafers > 1 ? "s" : ""}` : ""}${ds.source === "demo" ? " · données de démonstration" : ""}${ds.truncated ? " · tronqué" : ""}`;
+    status.textContent = `${ds.rows.length} ligne${ds.rows.length > 1 ? "s" : ""} · ${nWafers} plaque${nWafers > 1 ? "s" : ""}${ds.source === "demo" ? " · données de démonstration" : ""}${ds.truncated ? " · tronqué" : ""}`;
     paintNotebookViews(ds);
   } catch (err) {
     status.textContent = err.message || String(err);
@@ -357,9 +361,8 @@ function wireNotebookDialog() {
   document.getElementById("nb-dialog-close").addEventListener("click", () => dialog.close());
   document.getElementById("nb-add-cancel").addEventListener("click", () => dialog.close());
   document.getElementById("nb-sources").addEventListener("change", async (event) => {
-    const { sources } = await getNotebookSources();
+    const sources = await getNotebookSources();
     nbAdd.source = sources.find((s) => s.key === event.target.value) || null;
-    updateNotebookPlatesState();
     document.getElementById("nb-step-view").hidden = true;
     document.getElementById("nb-add-submit").disabled = true;
   });
@@ -395,6 +398,6 @@ ExperiencePage.registerPanel({
   key: "notebook",
   mount(el, ctx) {
     notebookCtx = ctx;
-    return renderNotebook(ctx.detail);
+    return renderNotebook();
   },
 });

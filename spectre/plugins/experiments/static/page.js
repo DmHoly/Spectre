@@ -22,7 +22,9 @@
                                         ou en tête de page
      write(call, box?)                - une écriture sur la piste : `call()` envoie ctx.versionId en
                                         If-Match ; réussie, la fiche se recharge ; refusée, showError
-                                        (la saisie reste en place) ; renvoie true si elle est passée */
+                                        (la saisie reste en place) ; renvoie true si elle est passée
+     setDataCount(key, n)             - un panneau de l'onglet « Données » qui lit sa propre ressource
+                                        y dit combien d'éléments il montre (le repère de l'onglet) */
 
 const ExperiencePage = (() => {
   const { slug: microprojectSlug, experiment_id: experimentId } = routeParams("/microprojets/{slug}/experiences/{experiment_id}");
@@ -85,6 +87,7 @@ const ExperiencePage = (() => {
     reload,
     showError,
     write,
+    setDataCount,
   };
 
   function registerPanel(panel) {
@@ -165,10 +168,21 @@ const ExperiencePage = (() => {
   });
   window.addEventListener("hashchange", () => showTab(window.location.hash.slice(1)));
 
-  // Repères sur les onglets : combien de données, et si l'étude est conclue.
-  function updateTabBadges(detail) {
-    const count = (detail.evidence || []).length + (detail.data_items || []).length + (detail.data_notebook || []).length;
+  // Repères sur les onglets : combien de données (les preuves du détail, plus ce que les panneaux qui
+  // lisent leur propre ressource déclarent), et si l'étude est conclue.
+  const dataCounts = new Map();
+  function renderDataCount() {
+    const count = (ctx.detail.evidence || []).length + [...dataCounts.values()].reduce((sum, n) => sum + n, 0);
     document.getElementById("tab-donnees-count").textContent = count ? String(count) : "";
+  }
+
+  function setDataCount(key, count) {
+    dataCounts.set(key, count);
+    renderDataCount();
+  }
+
+  function updateTabBadges(detail) {
+    renderDataCount();
     const state = document.getElementById("tab-conclusion-state");
     const concluded = detail.status === "concluded" || detail.status === "abandoned";
     state.textContent = concluded ? "✓" : "à rédiger";

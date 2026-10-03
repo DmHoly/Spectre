@@ -1,11 +1,22 @@
-/* Galerie "DATA" : images externes (jamais copiées - référencées à leur emplacement d'origine)
-   attachées à une expérience ou à une variante précise d'une campagne, affichées en carrousel à
-   côté de la structure simulée pour une comparaison "conçu vs mesuré". Un panneau de la fiche
-   (ExperiencePage.registerPanel, onglet « Données »), au-dessus des preuves mais indépendant d'elles -
-   metadata["data_items"], pas Evidence/kind. Il reçoit le contexte de la fiche (`galleryCtx`) ;
-   chaque écriture envoie la version affichée et recharge la fiche. */
+/* Galerie d'images externes (jamais copiées - référencées à leur emplacement d'origine) attachées à
+   une expérience ou à une variante précise d'une campagne, chaque jeu affiché à côté de la structure
+   simulée pour une comparaison « conçu / mesuré ». Un panneau de la fiche (ExperiencePage.registerPanel,
+   onglet « Données »), au-dessus des preuves mais indépendant d'elles. Il reçoit le contexte de la
+   fiche (`galleryCtx`) à chaque montage et lit les jeux de la version affichée (externalImagesApi.list) :
+   chaque image y porte son état (`ok`, `missing`, `unsupported`, `forbidden`) et son `url`.
+
+   Cliquer une vignette ne fait que l'afficher ; « Épingler cette image » (éditeurs) en fait l'image
+   du jeu, et comme toute écriture de la fiche (créer, retirer un jeu), envoie la version affichée
+   puis recharge la fiche. */
 
 let galleryCtx = null;
+let galleryMounts = 0;
+
+const IMAGE_PROBLEMS = {
+  missing: "Image introuvable (déplacée ou supprimée)",
+  unsupported: "Format non affichable par le navigateur (TIFF…)",
+  forbidden: "Hors des dossiers autorisés",
+};
 
 function dataGalleryShowError(message) {
   const box = document.getElementById("data-gallery-error");
@@ -18,246 +29,234 @@ function dataGalleryClearError() {
   if (box) box.style.display = "none";
 }
 
-function dataImageUrl(path) {
-  return externalImagesApi.imageUrl(galleryCtx.microprojectSlug, path);
+function imageProblemHtml(problem, image) {
+  return `<div class="ext-image-problem"><strong>${escapeHtml(problem)}</strong><span class="mono">${escapeHtml(image.path)}</span></div>`;
 }
 
-// Un chemin Windows (C:\Users\...) interpolé tel quel dans un attribut onerror="..." se fait
-// dépecer par le parseur JS de l'attribut (`\U`, `\t`... lus comme des séquences d'échappement -
-// "\t" devient une vraie tabulation) plutôt que d'être affiché tel quel. data-path (un attribut
-// HTML ordinaire, jamais interprété comme du JS) + un handler délégué évitent le problème plutôt
-// que d'essayer d'échapper correctement un chemin arbitraire dans du JS inline.
+// Une image servie peut encore manquer (déplacée depuis la lecture du jeu) : elle cède alors la place
+// au même message qu'une image signalée introuvable par le serveur. Un handler délégué plutôt qu'un
+// onerror="..." en ligne, où un chemin Windows (C:\Users\...) serait lu comme du JS.
 document.addEventListener(
   "error",
   (event) => {
     const img = event.target;
-    if (!(img instanceof HTMLImageElement) || !img.classList.contains("js-data-image")) return;
-    const placeholder = document.createElement("div");
-    placeholder.className = "help";
-    placeholder.textContent = `image introuvable : ${img.dataset.path}`;
-    img.replaceWith(placeholder);
+    if (!(img instanceof HTMLImageElement) || !img.classList.contains("js-ext-image")) return;
+    const holder = document.createElement("div");
+    holder.innerHTML = imageProblemHtml(IMAGE_PROBLEMS.missing, { path: img.dataset.path });
+    img.replaceWith(holder.firstElementChild);
   },
-  true // capture: 'error' sur un <img> ne bulle pas
+  true // capture : « error » sur un <img> ne remonte pas
 );
 
-function dataImageTag(path, extraStyle) {
-  const safePath = escapeHtml(path);
-  return `<img class="js-data-image" src="${dataImageUrl(path)}" alt="${safePath}" data-path="${safePath}" style="${extraStyle || ""}">`;
+function imageHtml(image, className) {
+  if (image.status !== "ok") return imageProblemHtml(IMAGE_PROBLEMS[image.status] || IMAGE_PROBLEMS.missing, image);
+  return `<img class="js-ext-image ${className}" src="${escapeHtml(image.url)}" alt="${escapeHtml(image.name)}" data-path="${escapeHtml(image.path)}" loading="lazy">`;
 }
 
 // la matrice de campagne, partagée avec le reste de la fiche (ctx.variants)
-async function fetchBatchVariationCached() {
+function galleryVariants() {
   return galleryCtx.variants().catch(() => null);
 }
 
 async function structureCompareHtml(detail, item) {
   if (detail.structure_images) {
-    return `${structureBoardHtml(galleryCtx.microprojectSlug, detail.structure_images, { compact: true })}<div class="help" style="margin-top:4px;">Structure (images)</div>`;
+    return `${structureBoardHtml(galleryCtx.microprojectSlug, detail.structure_images, { compact: true })}<div class="help ext-caption">Structure (images)</div>`;
   }
   if (item.entity_index == null) {
-    return `${detail.structure_svg || ""}<div class="help" style="margin-top:4px;">Structure simulée</div>`;
+    return `${detail.structure_svg || ""}<div class="help ext-caption">Structure simulée</div>`;
   }
-  const variation = await fetchBatchVariationCached();
+  const variation = await galleryVariants();
   if (!variation || !variation.svgs || !variation.svgs[item.entity_index]) {
     return `<div class="help">Structure simulée indisponible pour cette variante.</div>`;
   }
   const label = (variation.labels || [])[item.entity_index] || `#${item.entity_index + 1}`;
-  return `${variation.svgs[item.entity_index]}<div class="help" style="margin-top:4px;">Structure simulée — ${escapeHtml(label)}</div>`;
+  return `${variation.svgs[item.entity_index]}<div class="help ext-caption">Structure simulée — ${escapeHtml(label)}</div>`;
 }
 
-async function dataItemHtml(detail, item) {
-  const pinnedPath = item.image_paths[item.pinned_index] ?? item.image_paths[0];
-  const thumbs = item.image_paths
-    .map(
-      (path, i) => `
-      <div class="js-data-thumb" data-item-id="${item.id}" data-index="${i}"
-           style="display:inline-block;width:64px;height:64px;margin:0 6px 6px 0;cursor:pointer;
-                  border:2px solid ${i === item.pinned_index ? "var(--accent, #4a7dff)" : "transparent"};border-radius:6px;overflow:hidden;">
-        ${dataImageTag(path, "width:100%;height:100%;object-fit:cover;display:block;")}
-      </div>`
-    )
-    .join("");
-
-  const structureHtml = await structureCompareHtml(detail, item);
-  const canEdit = galleryCtx.canEdit;
-
-  return `
-    <div class="marked-card" style="margin-top:12px;">
-      ${item.title ? `<div style="font-size:13px;font-weight:600;">${escapeHtml(item.title)}</div>` : ""}
-      ${item.note ? `<div style="font-size:12px;color:var(--text-soft);margin-top:2px;">${escapeHtml(item.note)}</div>` : ""}
-      <div class="data-item-grid" style="margin-top:10px;">
-        <div>
-          ${dataImageTag(pinnedPath, "max-width:100%;display:block;border-radius:var(--radius-sm);")}
-          <div class="help" style="margin-top:4px;">Mesure</div>
-          ${item.image_paths.length > 1 ? `<div style="margin-top:8px;">${thumbs}</div>` : ""}
-        </div>
-        <div>${structureHtml}</div>
-      </div>
-      ${canEdit ? `<button class="btn btn-line js-data-delete" data-item-id="${item.id}" type="button" style="margin-top:10px;">Retirer ces données</button>` : ""}
+function mainImageHtml(item, index) {
+  const image = item.images[index];
+  const pinned = index === item.pinned_index;
+  const pin =
+    galleryCtx.canEdit && !pinned && image.status === "ok"
+      ? `<button class="btn btn-line ext-pin-btn" type="button" data-act="pin" data-report-hide>Épingler cette image</button>`
+      : "";
+  return `${imageHtml(image, "ext-main-image")}
+    <div class="ext-main-meta">
+      <span class="help ext-caption">Mesure${item.images.length > 1 ? ` · ${index + 1}/${item.images.length}${pinned ? " · épinglée" : ""}` : ""}</span>
+      ${pin}
     </div>`;
 }
 
-async function renderDataGallery(host, detail) {
-  host.innerHTML = `<div id="data-gallery-list"></div><div id="data-gallery-add-wrap"></div>`;
-  const list = document.getElementById("data-gallery-list");
-  const items = detail.data_items || [];
-  if (!items.length) {
-    list.innerHTML = `<div class="help">Aucune donnée externe rattachée.</div>`;
-  } else {
-    const htmls = await Promise.all(items.map((item) => dataItemHtml(detail, item)));
-    list.innerHTML = htmls.join("");
-  }
-
-  // Comme toute écriture légère de la fiche, épingler une autre image ou retirer des données
-  // enregistre une nouvelle version de la piste : la fiche se recharge dessus.
-  const ctx = galleryCtx;
-  if (ctx.canEdit) {
-    list.querySelectorAll(".js-data-thumb").forEach((el) => {
-      el.addEventListener("click", () => {
-        const body = { pinned_index: parseInt(el.dataset.index, 10) };
-        ctx.write(() => externalImagesApi.pin(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, el.dataset.itemId, body));
-      });
-    });
-  }
-
-  list.querySelectorAll(".js-data-delete").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      ctx.write(() => externalImagesApi.remove(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, btn.dataset.itemId));
-    });
-  });
-
-  renderDataGalleryAddForm(detail);
+async function imageSetHtml(detail, item) {
+  const thumbs = item.images
+    .map(
+      (image, i) => `
+      <button type="button" class="ext-thumb${i === item.pinned_index ? " is-shown" : ""}" data-index="${i}" aria-label="Afficher ${escapeHtml(image.name)}" aria-pressed="${i === item.pinned_index}">
+        ${image.status === "ok" ? imageHtml(image, "ext-thumb__img") : `<span class="ext-thumb__off" title="${escapeHtml(IMAGE_PROBLEMS[image.status] || "")}">${escapeHtml(image.name)}</span>`}
+      </button>`
+    )
+    .join("");
+  const structureHtml = await structureCompareHtml(detail, item);
+  return `
+    <div class="marked-card ext-set" data-set-id="${escapeHtml(item.id)}">
+      ${item.title ? `<div class="ext-set__title">${escapeHtml(item.title)}</div>` : ""}
+      ${item.note ? `<div class="ext-set__note">${escapeHtml(item.note)}</div>` : ""}
+      <div class="data-item-grid">
+        <div>
+          <div class="ext-main">${mainImageHtml(item, item.pinned_index)}</div>
+          ${item.images.length > 1 ? `<div class="ext-thumbs">${thumbs}</div>` : ""}
+        </div>
+        <div>${structureHtml}</div>
+      </div>
+      ${galleryCtx.canEdit ? `<button class="btn btn-line" type="button" data-act="remove" data-report-hide>Retirer ces données</button>` : ""}
+    </div>`;
 }
 
-function renderDataGalleryAddForm(detail) {
-  const wrap = document.getElementById("data-gallery-add-wrap");
-  if (!galleryCtx.canEdit) {
-    wrap.innerHTML = "";
-    return;
-  }
+function wireImageSet(card, item) {
+  const ctx = galleryCtx;
+  let shown = item.pinned_index;
+  card.addEventListener("click", (event) => {
+    const thumb = event.target.closest(".ext-thumb");
+    if (thumb) {
+      // afficher seulement : rien n'est écrit
+      shown = Number(thumb.dataset.index);
+      card.querySelector(".ext-main").innerHTML = mainImageHtml(item, shown);
+      card.querySelectorAll(".ext-thumb").forEach((t) => {
+        const on = t === thumb;
+        t.classList.toggle("is-shown", on);
+        t.setAttribute("aria-pressed", String(on));
+      });
+      return;
+    }
+    const act = event.target.closest("[data-act]");
+    if (!act) return;
+    if (act.dataset.act === "pin") ctx.write(() => externalImagesApi.pin(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, item.id, shown));
+    if (act.dataset.act === "remove") ctx.write(() => externalImagesApi.remove(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, item.id));
+  });
+}
 
-  const entitySelect = detail.is_batch
-    ? `<div style="margin-top:8px;">
-         <label style="font-size:11px;">Variante concernée</label>
-         <select class="field" id="data-add-entity-index">
-           <option value="">— toute l'expérience —</option>
-         </select>
-       </div>`
-    : "";
+async function renderDataGallery(host) {
+  const seq = (galleryMounts += 1);
+  const ctx = galleryCtx;
+  const sets = await externalImagesApi.list(ctx.microprojectSlug, ctx.experimentId, ctx.isTip ? null : ctx.versionId);
+  const htmls = await Promise.all(sets.map((item) => imageSetHtml(ctx.detail, item)));
+  if (seq !== galleryMounts) return; // un rechargement plus récent est en route
+  ctx.setDataCount("external_images", sets.length);
+  host.innerHTML = `<div class="ext-sets">${htmls.join("") || `<div class="help">Aucune donnée externe rattachée.</div>`}</div><div class="ext-add-wrap"></div>`;
+  host.querySelectorAll(".ext-set").forEach((card, i) => wireImageSet(card, sets[i]));
+  renderDataGalleryAddForm(host.querySelector(".ext-add-wrap"), ctx.detail);
+}
 
+function renderDataGalleryAddForm(wrap, detail) {
+  if (!galleryCtx.canEdit) return;
   wrap.innerHTML = `
-    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft);" data-report-hide>
-      <div style="font-size:13px;font-weight:600;">Ajouter des données</div>
-      <div id="data-gallery-error" class="help" style="display:none;color:var(--danger);margin-top:6px;"></div>
+    <div class="ext-add" data-report-hide>
+      <div class="ext-set__title">Ajouter des données</div>
+      <div id="data-gallery-error" class="help ext-error" role="alert" style="display:none;"></div>
 
-      <div style="margin-top:10px;">
-        <label style="font-size:11px;">Titre (optionnel)</label>
+      <div class="ext-field">
+        <label for="data-add-title">Titre (optionnel)</label>
         <input class="field" id="data-add-title" placeholder="ex : coupe TEM après recuit">
       </div>
-      <div style="margin-top:8px;">
-        <label style="font-size:11px;">Note (optionnelle)</label>
+      <div class="ext-field">
+        <label for="data-add-note">Note (optionnelle)</label>
         <input class="field" id="data-add-note" placeholder="ex : mesure au centre de la plaque">
       </div>
-      ${entitySelect}
+      ${
+        detail.is_batch
+          ? `<div class="ext-field">
+               <label for="data-add-entity-index">Variante concernée</label>
+               <select class="field" id="data-add-entity-index"><option value="">— toute l'expérience —</option></select>
+             </div>`
+          : ""
+      }
 
-      <div style="margin-top:14px;">
-        <label style="font-size:11px;">Parcourir un dossier</label>
-        <div class="field-row" style="margin-top:4px;">
-          <input class="field" id="data-add-folder" placeholder="chemin absolu du dossier">
+      <div class="ext-field">
+        <label for="data-add-folder">Parcourir un dossier autorisé</label>
+        <div class="field-row">
+          <input class="field mono" id="data-add-folder" placeholder="chemin absolu du dossier">
           <button class="btn btn-line" id="data-add-browse-btn" type="button">Parcourir</button>
         </div>
-        <div id="data-add-browse-results" style="margin-top:8px;"></div>
-        <button class="btn btn-primary" id="data-add-from-folder-btn" type="button" style="margin-top:8px;display:none;">Ajouter</button>
+        <div id="data-add-browse-results" class="ext-browse"></div>
+        <button class="btn btn-primary" id="data-add-from-folder-btn" type="button" style="display:none;">Ajouter</button>
       </div>
 
-      <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border-soft);">
-        <label style="font-size:11px;">Ou une image unique (pas de dossier)</label>
-        <div class="field-row" style="margin-top:4px;">
-          <input class="field" id="data-add-single-path" placeholder="chemin absolu de l'image">
+      <div class="ext-field ext-field--split">
+        <label for="data-add-single-path">Ou une image unique</label>
+        <div class="field-row">
+          <input class="field mono" id="data-add-single-path" placeholder="chemin absolu de l'image">
           <button class="btn btn-line" id="data-add-single-btn" type="button">Ajouter cette image</button>
         </div>
       </div>
     </div>`;
 
   if (detail.is_batch) {
-    fetchBatchVariationCached().then((variation) => {
+    galleryVariants().then((variation) => {
       const select = document.getElementById("data-add-entity-index");
       if (!select || !variation) return;
       const labels = variation.labels || (variation.svgs || []).map((_, i) => `Variante ${i + 1}`);
-      select.innerHTML =
-        `<option value="">— toute l'expérience —</option>` +
-        labels.map((label, i) => `<option value="${i}">${escapeHtml(label)}</option>`).join("");
+      select.innerHTML = `<option value="">— toute l'expérience —</option>${labels.map((label, i) => `<option value="${i}">${escapeHtml(label)}</option>`).join("")}`;
     });
   }
 
-  let browsedImages = [];
+  let browsed = [];
+  const results = document.getElementById("data-add-browse-results");
+  const fromFolderBtn = document.getElementById("data-add-from-folder-btn");
 
   document.getElementById("data-add-browse-btn").addEventListener("click", async () => {
     dataGalleryClearError();
-    const folder = document.getElementById("data-add-folder").value.trim();
-    if (!folder) return;
+    const directory = document.getElementById("data-add-folder").value.trim();
+    if (!directory) return;
     try {
-      const result = await externalImagesApi.browse(galleryCtx.microprojectSlug, folder);
-      browsedImages = result.images || [];
-      const resultsEl = document.getElementById("data-add-browse-results");
-      if (!browsedImages.length) {
-        resultsEl.innerHTML = `<div class="help">Aucune image trouvée dans ce dossier.</div>`;
-        document.getElementById("data-add-from-folder-btn").style.display = "none";
-        return;
-      }
-      resultsEl.innerHTML = browsedImages
-        .map(
-          (img, i) => `
-        <div style="display:flex;align-items:center;gap:8px;padding:3px 0;">
-          <input type="checkbox" class="js-data-browse-check" data-index="${i}" checked>
-          <input type="radio" name="data-browse-pin" class="js-data-browse-pin" data-index="${i}" ${i === 0 ? "checked" : ""}>
-          <span style="font-size:12.5px;">${escapeHtml(img.name)} <span class="help" style="display:inline;">(${img.size} o)</span></span>
-        </div>`
-        )
-        .join("");
-      document.getElementById("data-add-from-folder-btn").style.display = "";
+      browsed = await externalImagesApi.browse(galleryCtx.microprojectSlug, directory);
     } catch (err) {
       dataGalleryShowError(err.message || String(err));
-    }
-  });
-
-  document.getElementById("data-add-from-folder-btn").addEventListener("click", async () => {
-    dataGalleryClearError();
-    const checks = Array.from(document.querySelectorAll(".js-data-browse-check")).filter((c) => c.checked);
-    if (!checks.length) {
-      dataGalleryShowError("sélectionnez au moins une image");
       return;
     }
-    const checkedIndexes = checks.map((c) => parseInt(c.dataset.index, 10));
-    const pinnedRadio = document.querySelector(".js-data-browse-pin:checked");
-    const pinnedFullIndex = pinnedRadio ? parseInt(pinnedRadio.dataset.index, 10) : checkedIndexes[0];
-    let pinnedIndex = checkedIndexes.indexOf(pinnedFullIndex);
-    if (pinnedIndex === -1) pinnedIndex = 0;
-
-    await submitDataItem({
-      image_paths: checkedIndexes.map((i) => browsedImages[i].path),
-      pinned_index: pinnedIndex,
-    });
+    const firstShown = browsed.findIndex((img) => img.displayable);
+    fromFolderBtn.style.display = firstShown === -1 ? "none" : "";
+    results.innerHTML = browsed.length
+      ? browsed
+          .map(
+            (img, i) => `
+        <div class="ext-browse__row${img.displayable ? "" : " is-off"}">
+          <input type="checkbox" class="js-browse-check" data-index="${i}" aria-label="Retenir ${escapeHtml(img.name)}"${img.displayable ? " checked" : " disabled"}>
+          <input type="radio" name="data-browse-pin" class="js-browse-pin" data-index="${i}" aria-label="Épingler ${escapeHtml(img.name)}"${i === firstShown ? " checked" : ""}${img.displayable ? "" : " disabled"}>
+          <span>${escapeHtml(img.name)} <span class="help">${img.displayable ? `${img.size} o` : "TIFF : non affichable par le navigateur, exportez-la en PNG ou en JPEG"}</span></span>
+        </div>`
+          )
+          .join("")
+      : `<div class="help">Aucune image dans ce dossier.</div>`;
   });
 
-  document.getElementById("data-add-single-btn").addEventListener("click", async () => {
+  fromFolderBtn.addEventListener("click", () => {
+    dataGalleryClearError();
+    const checked = [...results.querySelectorAll(".js-browse-check:checked")].map((c) => Number(c.dataset.index));
+    if (!checked.length) {
+      dataGalleryShowError("Sélectionnez au moins une image.");
+      return;
+    }
+    const pinned = results.querySelector(".js-browse-pin:checked");
+    const pinnedIndex = pinned ? checked.indexOf(Number(pinned.dataset.index)) : 0;
+    submitImageSet({ image_paths: checked.map((i) => browsed[i].path), pinned_index: Math.max(0, pinnedIndex) });
+  });
+
+  document.getElementById("data-add-single-btn").addEventListener("click", () => {
     dataGalleryClearError();
     const path = document.getElementById("data-add-single-path").value.trim();
-    if (!path) return;
-    await submitDataItem({ image_paths: [path], pinned_index: 0 });
+    if (path) submitImageSet({ image_paths: [path], pinned_index: 0 });
   });
 
-  async function submitDataItem(extra) {
-    const entitySelectEl = document.getElementById("data-add-entity-index");
-    const entityIndexRaw = entitySelectEl ? entitySelectEl.value : "";
+  function submitImageSet(images) {
+    const entity = document.getElementById("data-add-entity-index");
     const body = {
       title: document.getElementById("data-add-title").value.trim() || null,
       note: document.getElementById("data-add-note").value.trim() || null,
-      entity_index: entityIndexRaw === "" ? null : parseInt(entityIndexRaw, 10),
-      ...extra,
+      entity_index: entity && entity.value !== "" ? Number(entity.value) : null,
+      ...images,
     };
     const ctx = galleryCtx;
-    await ctx.write(() => externalImagesApi.create(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, body), document.getElementById("data-gallery-error"));
+    return ctx.write(() => externalImagesApi.create(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, body), document.getElementById("data-gallery-error"));
   }
 }
 
@@ -265,6 +264,6 @@ ExperiencePage.registerPanel({
   key: "external_images",
   mount(el, ctx) {
     galleryCtx = ctx;
-    return renderDataGallery(el, ctx.detail);
+    return renderDataGallery(el);
   },
 });

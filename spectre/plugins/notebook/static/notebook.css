@@ -259,9 +259,6 @@
 .nb-step {
   margin-bottom: 16px;
 }
-.nb-step.is-off {
-  opacity: 0.5;
-}
 .nb-step__label {
   display: flex;
   align-items: center;
