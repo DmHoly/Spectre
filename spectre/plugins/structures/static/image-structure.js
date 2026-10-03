@@ -40,7 +40,7 @@ function setPageTitle(text) {
 
 async function loadEntityHistory() {
   try {
-    const history = await wafersApi.entityHistory(slug);
+    const history = waferSuggestions(await wafersApi.list({ microproject: slug }));
     document.getElementById("entity-sample-id-history").innerHTML = history.sample_ids.map((v) => `<option value="${escapeHtml(v)}">`).join("");
     document.getElementById("entity-location-history").innerHTML = history.locations.map((v) => `<option value="${escapeHtml(v)}">`).join("");
     document.getElementById("entity-fdl-history").innerHTML = (history.fdls || []).map((v) => `<option value="${escapeHtml(v)}">`).join("");

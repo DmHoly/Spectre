@@ -1,14 +1,13 @@
-/* Client de l'API du plugin wafers : recherche d'une plaque, son passeport, et l'historique des
-   entités (lasermarks, emplacements, FDL) d'un µprojet. */
+/* Client de l'API du plugin wafers : les plaques (recherche, celles d'un µprojet) et le passeport
+   d'une plaque. */
 
 const wafersApi = {
-  search(query) {
-    return api.get(api.withQuery("/api/plaques/recherche", { q: query }));
+  // filters : {q, fdl, microproject} - [{key, lasermark, count, microprojects, latest, fdl, locations}]
+  list(filters) {
+    return api.get(api.withQuery("/api/wafers", filters));
   },
-  get(lasermark) {
-    return api.get(`/api/plaques/${encodeURIComponent(lasermark)}`);
-  },
-  entityHistory(microprojectSlug) {
-    return api.get(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/entites/historique`);
+  // waferKey : la clé d'une plaque, ou son lasermark tel qu'écrit
+  get(waferKey) {
+    return api.get(`/api/wafers/${encodeURIComponent(waferKey)}`);
   },
 };

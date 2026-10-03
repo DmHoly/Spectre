@@ -1,10 +1,12 @@
 """Suivi de lots : un lot de fabrication, c'est une liste de wafers (par lasermark - le ``sample_id``
-de ``Experiment.metadata["physical_tracking"]``, voir :mod:`spectre.plugins.wafers.service`) avec sa priorité
-(P10, P20... - la plus petite passe d'abord), son début, sa fin prévisionnelle et sa fin déclarée.
+de ``Experiment.metadata["physical_tracking"]``, comparé par sa clé, voir
+:mod:`spectre.plugins.wafers.service`) avec sa priorité (P10, P20... - la plus petite passe
+d'abord), son début, sa fin prévisionnelle et sa fin déclarée.
 
-Tout est **déclaratif** pour l'instant (``source = "declaratif"``) : les dates, la priorité et les
-wafers sont saisis à la main ; des datahooks PRISM (base de production) les alimenteront ensuite.
-Pas de parcours d'étapes : trop lourd à tenir à la main.
+Un lot a une **source** : ``declaratif``, saisi à la main ici - et c'est le seul cas aujourd'hui -,
+ou ``prism``, alimenté par la base de production : sa priorité, ses dates et ses wafers y sont
+alors en lecture seule (409). Les règles de statut (:func:`declared_state`) ne s'appliquent qu'à une
+saisie déclarative. Pas de parcours d'étapes : trop lourd à tenir à la main.
 
 Ce module ne stocke **ni expériences ni µprojets** : les expériences d'un lot sont toutes celles qui
 suivent un de ses wafers - dès qu'un wafer entre dans un lot, ses expériences y sont rattachées, même
@@ -19,23 +21,26 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timezone
+from typing import Iterable
 
 from ...kernel.db import get_conn
-from ..experiments.entities import compact
+from ...kernel.errors import Conflict, Forbidden, InvalidInput, NotFound, PreconditionFailed
+from ...kernel.locks import keyed_lock
+from ..wafers.service import wafer_key
 
 STATUSES = ("planned", "wip", "hold", "done", "cancelled")
-ACTIVE_STATUSES = {"planned", "wip", "hold"}  # pas encore sorti (ni annulé)
+ACTIVE_STATUSES = frozenset({"planned", "wip", "hold"})  # pas encore sorti (ni annulé)
 PRIORITIES = ("P10", "P20", "P30", "P40", "P50")  # suggestions - toute valeur courte est acceptée
 MAX_WAFERS = 200
+SEARCH_LIMIT = 20
 
-_CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _\-.]{0,39}$")  # il sert d'adresse : /lots/{code}
+# ce qu'un lot alimenté par PRISM ne laisse pas modifier ici
+PRISM_FIELDS = frozenset({"priority", "started_on", "forecast_exit_on", "exited_on"})
+
+_CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _\-.]{0,39}$")  # il se lit dans l'adresse d'une page : /lots/{code}
 _PRIORITY_RE = re.compile(r"^[A-Za-z0-9 _\-]{0,10}$")
-
-
-class LotNotFoundError(Exception):
-    pass
 
 
 @dataclass(frozen=True)
@@ -53,26 +58,27 @@ class Lot:
     source: str
     created_by: int | None
     created_at: str
-    updated_at: str
+    updated_at: str  # sa version : la précondition If-Match d'une modification
+
+    @property
+    def is_active(self) -> bool:
+        return self.status in ACTIVE_STATUSES
+
+
+@dataclass(frozen=True)
+class LotWafer:
+    key: str
+    lasermark: str  # tel que saisi
 
 
 def _lot_from_row(row: sqlite3.Row) -> Lot:
-    return Lot(
-        id=row["id"],
-        code=row["code"],
-        title=row["title"],
-        description=row["description"],
-        priority=row["priority"],
-        status=row["status"],
-        started_on=row["started_on"],
-        forecast_exit_on=row["forecast_exit_on"],
-        exited_on=row["exited_on"],
-        hold_reason=row["hold_reason"],
-        source=row["source"],
-        created_by=row["created_by"],
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
-    )
+    return Lot(**{name: row[name] for name in Lot.__dataclass_fields__})
+
+
+def _now() -> str:
+    """La date d'une écriture, à la microseconde : deux écritures successives d'un lot n'ont jamais
+    la même version."""
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
 def priority_rank(priority: str) -> tuple[int, str]:
@@ -81,53 +87,97 @@ def priority_rank(priority: str) -> tuple[int, str]:
     return (int(match.group()) if match else 10**6, (priority or "").upper())
 
 
+def _sort_key(lot: Lot) -> tuple:
+    return (priority_rank(lot.priority), lot.forecast_exit_on or "9999", lot.code)
+
+
+State = tuple[str, str | None, str | None]  # (statut, début, fin déclarée)
+
+
+def declared_state(current: State, changes: dict, *, today: str) -> State:
+    """Les règles de statut d'une saisie déclarative : ``(statut, début, fin déclarée)`` après
+    ``changes`` (ce que la saisie modifie de ``current``) - sans rien lire ni écrire. Un statut
+    choisi autre que sorti ou annulé rouvre le lot (la fin déclarée s'efface), une fin déclarée
+    effacée aussi ; une fin déclarée rend le lot « sorti » (sauf annulé), « sorti » sans date prend
+    ``today`` ; en cours ou en pause, il a commencé (``today`` sans début)."""
+    status, started_on, exited_on = (changes.get(name, value) for name, value in zip(("status", "started_on", "exited_on"), current))
+    if "status" in changes and "exited_on" not in changes and status not in ("done", "cancelled"):
+        exited_on = None
+    if "exited_on" in changes and exited_on is None and "status" not in changes and status == "done":
+        status = "wip" if started_on else "planned"
+    if exited_on and status != "cancelled":
+        status = "done"
+    if status == "done" and not exited_on:
+        exited_on = today
+    if status not in ("done", "cancelled"):
+        exited_on = None
+    if status in ("wip", "hold") and not started_on:
+        started_on = today
+    return status, started_on, exited_on
+
+
 def _check_date(value: str | None, label: str) -> str | None:
     if value is None or not str(value).strip():
         return None
     try:
         return date.fromisoformat(str(value).strip()[:10]).isoformat()
     except ValueError as exc:
-        raise ValueError(f"{label} : date invalide « {value} » (attendu AAAA-MM-JJ)") from exc
+        raise InvalidInput(f"{label} : date invalide « {value} » (attendu AAAA-MM-JJ)") from exc
 
 
 def _check_code(code: str) -> str:
     code = " ".join((code or "").split())
     if not _CODE_RE.match(code):
-        raise ValueError("le code du lot doit faire 1 à 40 caractères (lettres, chiffres, espace, - _ .)")
+        raise InvalidInput("Le code du lot doit faire 1 à 40 caractères (lettres, chiffres, espace, - _ .).")
     return code
 
 
 def _check_priority(priority: str | None) -> str:
     priority = " ".join((priority or "").split()).upper()
     if not _PRIORITY_RE.match(priority):
-        raise ValueError("la priorité est un code court (ex : P10), 10 caractères au plus")
+        raise InvalidInput("La priorité est un code court (ex : P10), 10 caractères au plus.")
     return priority
 
 
 def _check_dates(started: str | None, forecast: str | None, exited: str | None) -> None:
     if started and forecast and forecast < started:
-        raise ValueError("la fin prévisionnelle est avant le début du lot")
+        raise InvalidInput("La fin prévisionnelle est avant le début du lot.")
     if started and exited and exited < started:
-        raise ValueError("la fin déclarée est avant le début du lot")
+        raise InvalidInput("La fin déclarée est avant le début du lot.")
+
+
+def check_statuses(statuses: Iterable[str]) -> set[str]:
+    wanted = {status.strip() for status in statuses if status.strip()}
+    unknown = sorted(wanted - set(STATUSES))
+    if unknown:
+        raise InvalidInput(f"Statut de lot inconnu : {', '.join(unknown)} (connus : {', '.join(STATUSES)}).")
+    return wanted
 
 
 def parse_lasermarks(text: str | list[str]) -> list[str]:
     """Des lasermarks collés tels quels (une colonne Excel, « W12-A3, W12-A4 »...) - dans l'ordre,
-    sans doublon (même règle de comparaison que l'index des plaques)."""
+    sans doublon (même clé que l'index des plaques)."""
     items = text if isinstance(text, list) else re.split(r"[\s,;]+", text or "")
     seen: set[str] = set()
     result = []
     for item in items:
         item = (item or "").strip()
-        key = compact(item)
+        key = wafer_key(item)
         if key and key not in seen:
             seen.add(key)
             result.append(item[:60])
     return result
 
 
-def _touch(conn: sqlite3.Connection, lot_id: int) -> None:
-    conn.execute("UPDATE lots SET updated_at = datetime('now') WHERE id = ?", (lot_id,))
+def _code_taken(code: str) -> Conflict:
+    return Conflict(f"Le lot « {code} » existe déjà.", code="lot_code_taken")
+
+
+def _read_only(lot: Lot) -> Conflict:
+    return Conflict(
+        f"Le lot « {lot.code} » est alimenté par la base de production : sa priorité, ses dates et ses wafers ne se modifient pas ici.",
+        code="lot_read_only_source",
+    )
 
 
 def _next_code(conn: sqlite3.Connection) -> str:
@@ -140,135 +190,136 @@ def _next_code(conn: sqlite3.Connection) -> str:
 # --- lecture --------------------------------------------------------------------------------
 
 
-def list_all(statuses: set[str] | None = None) -> list[Lot]:
-    """Les lots par priorité (P10 d'abord), puis par fin prévisionnelle (ou seulement ceux de
-    ``statuses``)."""
+def _placeholders(values: Iterable) -> str:
+    return ", ".join("?" for _ in values)
+
+
+def list_lots(*, statuses: set[str] | None = None, wafer_keys: Iterable[str] | None = None, code: str | None = None) -> list[Lot]:
+    """Les lots par priorité (P10 d'abord), puis par fin prévisionnelle - ceux de ``statuses``,
+    qui contiennent l'un des wafers ``wafer_keys`` (des clés ou des lasermarks), ou dont le code
+    est ``code`` (sans la casse), si ces filtres sont donnés."""
+    where, params = [], []
+    if statuses:
+        where.append(f"status IN ({_placeholders(statuses)})")
+        params.extend(sorted(statuses))
+    if wafer_keys is not None:
+        keys = sorted({wafer_key(key) for key in wafer_keys} - {""})
+        if not keys:
+            return []
+        where.append(f"id IN (SELECT lot_id FROM lot_wafers WHERE lasermark_key IN ({_placeholders(keys)}))")
+        params.extend(keys)
+    if code is not None:
+        where.append("code = ? COLLATE NOCASE")
+        params.append(code.strip())
+    sql = "SELECT * FROM lots" + (f" WHERE {' AND '.join(where)}" if where else "")
     with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM lots").fetchall()
-    lots = [_lot_from_row(row) for row in rows if statuses is None or row["status"] in statuses]
-    return sorted(lots, key=lambda lot: (priority_rank(lot.priority), lot.forecast_exit_on or "9999", lot.code))
+        rows = conn.execute(sql, params).fetchall()
+    return sorted((_lot_from_row(row) for row in rows), key=_sort_key)
 
 
-def get_by_code(code: str) -> Lot:
+def search(query: str, *, statuses: set[str] | None = None, limit: int = SEARCH_LIMIT) -> list[tuple[Lot, str | None]]:
+    """``(lot, wafer)`` : les lots dont le code correspond à ``query`` (le code exact, puis ceux qui
+    commencent par lui, puis ceux qui le contiennent - ou dont le code et l'intitulé contiennent
+    chaque mot tapé), puis ceux qui contiennent un wafer dont le lasermark correspond (``wafer`` dit
+    lequel) ; les lots pas encore sortis d'abord, à rang égal."""
+    key = wafer_key(query)
+    if len(key) < 2:
+        return []
+    words = (query or "").lower().split()
+    every_word = " AND ".join("instr(py_lower(code || ' ' || title), ?) > 0" for _ in words)
+    status_filter = f"WHERE status IN ({_placeholders(statuses)})" if statuses else ""
+    sql = f"""
+        SELECT *, MIN(score) AS best FROM (
+            SELECT lots.*, NULL AS wafer, CASE
+                WHEN compact(code) = ? THEN 0
+                WHEN instr(compact(code), ?) = 1 THEN 1
+                WHEN instr(compact(code), ?) > 0 OR ({every_word}) THEN 2
+            END AS score
+            FROM lots
+            UNION ALL
+            SELECT lots.*, lot_wafers.lasermark, CASE WHEN lot_wafers.lasermark_key = ? THEN 3 ELSE 4 END
+            FROM lots JOIN lot_wafers ON lot_wafers.lot_id = lots.id
+            WHERE instr(lot_wafers.lasermark_key, ?) = 1
+        ) {status_filter}
+        GROUP BY id HAVING best IS NOT NULL
+        ORDER BY best, status NOT IN ({_placeholders(ACTIVE_STATUSES)}), code COLLATE NOCASE
+        LIMIT ?"""
+    params = [key, key, key, *words, key, key, *sorted(statuses or ()), *sorted(ACTIVE_STATUSES), limit]
     with get_conn() as conn:
-        row = conn.execute("SELECT * FROM lots WHERE code = ? COLLATE NOCASE", ((code or "").strip(),)).fetchone()
-    if row is None:
-        raise LotNotFoundError(code)
-    return _lot_from_row(row)
+        # la clé d'un code, comme celle d'un lasermark ; et lower() pour tout l'Unicode (« Épitaxie »)
+        conn.create_function("compact", 1, wafer_key, deterministic=True)
+        conn.create_function("py_lower", 1, lambda text: (text or "").lower(), deterministic=True)
+        rows = conn.execute(sql, params).fetchall()
+    return [(_lot_from_row(row), row["wafer"]) for row in rows]
 
 
-def get_by_id(lot_id: int) -> Lot:
+def get(lot_id: int) -> Lot:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM lots WHERE id = ?", (lot_id,)).fetchone()
     if row is None:
-        raise LotNotFoundError(str(lot_id))
+        raise NotFound(f"Lot {lot_id} introuvable.")
     return _lot_from_row(row)
 
 
-def list_wafers(lot_id: int) -> list[str]:
-    with get_conn() as conn:
-        rows = conn.execute("SELECT lasermark FROM lot_wafers WHERE lot_id = ? ORDER BY position", (lot_id,)).fetchall()
-    return [row["lasermark"] for row in rows]
-
-
-def declared_thematic_ids(lot_id: int) -> list[int]:
-    with get_conn() as conn:
-        rows = conn.execute("SELECT thematic_id FROM lot_thematics WHERE lot_id = ? ORDER BY thematic_id", (lot_id,)).fetchall()
-    return [row["thematic_id"] for row in rows]
-
-
-def lots_by_wafer() -> dict[str, list[dict]]:
-    """Lasermark comparé (:func:`spectre.plugins.experiments.entities.compact`) -> les lots qui le contiennent
-    (``{"code", "title", "status", "priority"}``, le plus récent d'abord) - pour marquer
-    d'un badge les expériences d'un µprojet qui suivent un wafer d'un lot."""
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT lot_wafers.lasermark_key, lots.code, lots.title, lots.status, lots.priority "
-            "FROM lot_wafers JOIN lots ON lots.id = lot_wafers.lot_id ORDER BY lots.created_at DESC, lots.id DESC"
-        ).fetchall()
-    index: dict[str, list[dict]] = {}
-    for row in rows:
-        index.setdefault(row["lasermark_key"], []).append(
-            {
-                "code": row["code"],
-                "title": row["title"],
-                "status": row["status"],
-                "priority": row["priority"],
-            }
-        )
-    return index
-
-
-def lots_for_lasermarks(lasermarks, index: dict[str, list[dict]] | None = None) -> list[dict]:
-    """Les lots (sans doublon) qui contiennent au moins un de ces wafers - ceux d'une expérience
-    qui suit ces wafers, quelle que soit sa date."""
-    index = lots_by_wafer() if index is None else index
-    seen: set[str] = set()
-    found = []
-    for lasermark in lasermarks:
-        for lot in index.get(compact(lasermark), []):
-            if lot["code"] in seen:
-                continue
-            seen.add(lot["code"])
-            found.append(lot)
+def wafers_of(lot_ids: Iterable[int]) -> dict[int, list[LotWafer]]:
+    """Les wafers de chacun de ces lots, dans l'ordre où ils ont été ajoutés - en une requête."""
+    ids = sorted(set(lot_ids))
+    found: dict[int, list[LotWafer]] = {lot_id: [] for lot_id in ids}
+    if ids:
+        with get_conn() as conn:
+            rows = conn.execute(
+                f"SELECT lot_id, lasermark, lasermark_key FROM lot_wafers WHERE lot_id IN ({_placeholders(ids)}) ORDER BY lot_id, position",
+                ids,
+            ).fetchall()
+        for row in rows:
+            found[row["lot_id"]].append(LotWafer(row["lasermark_key"], row["lasermark"]))
     return found
 
 
-def search(query: str, *, limit: int = 6) -> list[dict]:
-    """Les lots dont le code ou l'intitulé correspond à ``query`` (le code exact d'abord), puis ceux
-    qui contiennent un wafer dont le lasermark correspond - ``wafer`` dit lequel."""
-    wanted = compact(query)
-    words = (query or "").lower().split()
-    if len(wanted) < 2:
-        return []
-    with get_conn() as conn:
-        lots = [_lot_from_row(row) for row in conn.execute("SELECT * FROM lots").fetchall()]
-        wafer_rows = conn.execute("SELECT lot_id, lasermark, lasermark_key FROM lot_wafers").fetchall()
-    scored: dict[int, tuple] = {}
-    for lot in lots:
-        code = compact(lot.code)
-        if code == wanted:
-            rank = 0
-        elif code.startswith(wanted):
-            rank = 1
-        elif wanted in code or (words and all(w in f"{lot.code} {lot.title}".lower() for w in words)):
-            rank = 2
-        else:
-            continue
-        scored[lot.id] = (rank, None)
-    for row in wafer_rows:
-        key = row["lasermark_key"]
-        if row["lot_id"] in scored or not (key == wanted or key.startswith(wanted)):
-            continue
-        scored[row["lot_id"]] = (3 if key == wanted else 4, row["lasermark"])
-    by_id = {lot.id: lot for lot in lots}
-    ordered = sorted(scored.items(), key=lambda item: (item[1][0], by_id[item[0]].status not in ACTIVE_STATUSES, by_id[item[0]].code))
-    return [{"lot": by_id[lot_id], "wafer": wafer} for lot_id, (_rank, wafer) in ordered[:limit]]
+def declared_thematic_ids(lot_ids: Iterable[int]) -> dict[int, list[int]]:
+    """Les thématiques déclarées « visées » de chacun de ces lots - en une requête."""
+    ids = sorted(set(lot_ids))
+    found: dict[int, list[int]] = {lot_id: [] for lot_id in ids}
+    if ids:
+        with get_conn() as conn:
+            rows = conn.execute(
+                f"SELECT lot_id, thematic_id FROM lot_thematics WHERE lot_id IN ({_placeholders(ids)}) ORDER BY lot_id, thematic_id",
+                ids,
+            ).fetchall()
+        for row in rows:
+            found[row["lot_id"]].append(row["thematic_id"])
+    return found
 
 
 # --- écriture -------------------------------------------------------------------------------
 
 
-def _write_wafers(conn: sqlite3.Connection, lot_id: int, lasermarks: list[str]) -> None:
+def _write_wafers(conn: sqlite3.Connection, lot_id: int, lasermarks: list[str]) -> int:
+    """Ajoute les wafers qui n'y sont pas encore - renvoie combien."""
     existing = {row["lasermark_key"] for row in conn.execute("SELECT lasermark_key FROM lot_wafers WHERE lot_id = ?", (lot_id,))}
     position = conn.execute("SELECT COALESCE(MAX(position) + 1, 0) AS p FROM lot_wafers WHERE lot_id = ?", (lot_id,)).fetchone()["p"]
-    added = [lm for lm in parse_lasermarks(lasermarks) if compact(lm) not in existing]
+    added = [lasermark for lasermark in parse_lasermarks(lasermarks) if wafer_key(lasermark) not in existing]
     if len(existing) + len(added) > MAX_WAFERS:
-        raise ValueError(f"{MAX_WAFERS} wafers au maximum par lot")
+        raise InvalidInput(f"{MAX_WAFERS} wafers au maximum par lot.")
     for lasermark in added:
         conn.execute(
             "INSERT INTO lot_wafers (lot_id, lasermark, lasermark_key, position) VALUES (?, ?, ?, ?)",
-            (lot_id, lasermark, compact(lasermark), position),
+            (lot_id, lasermark, wafer_key(lasermark), position),
         )
         position += 1
+    return len(added)
 
 
 def _write_thematics(conn: sqlite3.Connection, lot_id: int, thematic_ids: list[int]) -> None:
     conn.execute("DELETE FROM lot_thematics WHERE lot_id = ?", (lot_id,))
     for thematic_id in dict.fromkeys(thematic_ids):
         if conn.execute("SELECT 1 FROM thematics WHERE id = ?", (thematic_id,)).fetchone() is None:
-            raise ValueError("thématique introuvable")
+            raise InvalidInput(f"Thématique {thematic_id} introuvable.")
         conn.execute("INSERT INTO lot_thematics (lot_id, thematic_id) VALUES (?, ?)", (lot_id, thematic_id))
+
+
+def _touch(conn: sqlite3.Connection, lot_id: int) -> None:
+    conn.execute("UPDATE lots SET updated_at = ? WHERE id = ?", (_now(), lot_id))
 
 
 def create(
@@ -283,98 +334,151 @@ def create(
     thematic_ids: list[int] | None = None,
     created_by: int,
 ) -> Lot:
-    """Un nouveau lot - code auto (LOT-0001...) s'il est laissé vide ; « en cours » dès qu'il a un
-    début passé, « en préparation » sinon."""
-    started = _check_date(started_on, "début")
-    forecast = _check_date(forecast_exit_on, "fin prévisionnelle")
+    """Un nouveau lot déclaratif - code auto (LOT-0001...) s'il est laissé vide ; « en cours » dès
+    qu'il a un début passé, « en préparation » sinon. Un code déjà pris (sans la casse) : 409."""
+    started = _check_date(started_on, "Début")
+    forecast = _check_date(forecast_exit_on, "Fin prévisionnelle")
     _check_dates(started, forecast, None)
     status = "wip" if started and started <= date.today().isoformat() else "planned"
     with get_conn() as conn:
         code = _check_code(code) if (code or "").strip() else _next_code(conn)
         if conn.execute("SELECT 1 FROM lots WHERE code = ? COLLATE NOCASE", (code,)).fetchone():
-            raise ValueError(f"le lot « {code} » existe déjà")
-        cursor = conn.execute(
-            "INSERT INTO lots (code, title, description, priority, status, started_on, forecast_exit_on, created_by) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (code, title.strip()[:160], description.strip(), _check_priority(priority), status, started, forecast, created_by),
-        )
+            raise _code_taken(code)
+        try:
+            cursor = conn.execute(
+                "INSERT INTO lots (code, title, description, priority, status, started_on, forecast_exit_on, created_by, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (code, title.strip()[:160], description.strip(), _check_priority(priority), status, started, forecast, created_by, _now()),
+            )
+        except sqlite3.IntegrityError as exc:  # créé entre-temps par une autre requête
+            raise _code_taken(code) from exc
         lot_id = cursor.lastrowid
         _write_wafers(conn, lot_id, wafers or [])
         _write_thematics(conn, lot_id, thematic_ids or [])
-    return get_by_id(lot_id)
+    return get(lot_id)
 
 
-def update(
-    lot_id: int,
-    *,
-    code: str,
-    title: str,
-    description: str,
-    priority: str,
-    status: str,
-    started_on: str | None,
-    forecast_exit_on: str | None,
-    exited_on: str | None,
-    hold_reason: str = "",
-) -> Lot:
-    """Les informations du lot. Une fin déclarée le rend « sorti » ; « sorti » sans date prend
-    aujourd'hui ; tout autre statut efface la fin déclarée (le lot est rouvert)."""
-    if status not in STATUSES:
-        raise ValueError(f"statut inconnu : {status!r}")
-    started = _check_date(started_on, "début")
-    forecast = _check_date(forecast_exit_on, "fin prévisionnelle")
-    exited = _check_date(exited_on, "fin déclarée")
-    _check_dates(started, forecast, exited)  # les dates saisies ; un début ajouté ci-dessous peut dépasser la prévision (retard)
-    if exited and status != "cancelled":
-        status = "done"
-    if status == "done" and not exited:
-        exited = date.today().isoformat()
-    if status not in ("done", "cancelled"):
-        exited = None
-    if status in ("wip", "hold") and not started:
-        started = date.today().isoformat()
-    with get_conn() as conn:
-        code = _check_code(code)
-        clash = conn.execute("SELECT id FROM lots WHERE code = ? COLLATE NOCASE AND id != ?", (code, lot_id)).fetchone()
-        if clash:
-            raise ValueError(f"le lot « {code} » existe déjà")
-        conn.execute(
-            "UPDATE lots SET code = ?, title = ?, description = ?, priority = ?, status = ?, started_on = ?, "
-            "forecast_exit_on = ?, exited_on = ?, hold_reason = ?, updated_at = datetime('now') WHERE id = ?",
-            (
-                code,
-                title.strip()[:160],
-                description.strip(),
-                _check_priority(priority),
-                status,
-                started,
-                forecast,
-                exited,
-                hold_reason.strip()[:300] if status == "hold" else "",
-                lot_id,
-            ),
+def _check_version(lot: Lot, expected_version: str | None) -> None:
+    if expected_version is not None and expected_version != lot.updated_at:
+        raise PreconditionFailed(
+            f"Le lot « {lot.code} » a été modifié entre-temps : rechargez-le avant de l'enregistrer.", code="stale_version"
         )
-    return get_by_id(lot_id)
 
 
-def add_wafers(lot_id: int, lasermarks: str | list[str]) -> None:
-    with get_conn() as conn:
-        _write_wafers(conn, lot_id, parse_lasermarks(lasermarks))
-        _touch(conn, lot_id)
+def update(lot_id: int, changes: dict, *, expected_version: str | None = None) -> Lot:
+    """Modifie les champs de ``changes`` (``code``, ``title``, ``description``, ``priority``,
+    ``status``, ``started_on``, ``forecast_exit_on``, ``exited_on``, ``hold_reason``) - les autres
+    restent. ``expected_version`` (``If-Match``) : la version affichée, sinon 412 et rien n'est
+    écrit. Sans effet, rien n'est écrit (et la version ne change pas)."""
+    with keyed_lock("lots", str(lot_id)):
+        lot = get(lot_id)
+        _check_version(lot, expected_version)
+        if lot.source != "declaratif" and PRISM_FIELDS & changes.keys():
+            current = {name: getattr(lot, name) for name in PRISM_FIELDS & changes.keys()}
+            if any(changes[name] != value for name, value in current.items()):
+                raise _read_only(lot)
+        if "status" in changes and changes["status"] not in STATUSES:
+            raise InvalidInput(f"Statut de lot inconnu : {changes['status']!r} (connus : {', '.join(STATUSES)}).")
+        fields = {name: value for name, value in changes.items() if name in Lot.__dataclass_fields__}
+        after = replace(lot, **fields)
+        started = _check_date(after.started_on, "Début")
+        forecast = _check_date(after.forecast_exit_on, "Fin prévisionnelle")
+        exited = _check_date(after.exited_on, "Fin déclarée")
+        if changes.keys() & {"started_on", "forecast_exit_on", "exited_on"}:
+            # les dates saisies ; un début ajouté par les règles de statut peut dépasser la prévision (retard)
+            _check_dates(started, forecast, exited)
+        status = after.status
+        if lot.source == "declaratif":
+            given = {"status": status, "started_on": started, "exited_on": exited}
+            status, started, exited = declared_state(
+                (lot.status, lot.started_on, lot.exited_on),
+                {name: value for name, value in given.items() if name in changes},
+                today=date.today().isoformat(),
+            )
+        after = replace(
+            after,
+            code=_check_code(after.code),
+            title=(after.title or "").strip()[:160],
+            description=(after.description or "").strip(),
+            priority=_check_priority(after.priority),
+            status=status,
+            started_on=started,
+            forecast_exit_on=forecast,
+            exited_on=exited,
+            hold_reason=(after.hold_reason or "").strip()[:300] if status == "hold" else "",
+        )
+        if after == lot:
+            return lot
+        with get_conn() as conn:
+            if conn.execute("SELECT 1 FROM lots WHERE code = ? COLLATE NOCASE AND id != ?", (after.code, lot_id)).fetchone():
+                raise _code_taken(after.code)
+            try:
+                conn.execute(
+                    "UPDATE lots SET code = ?, title = ?, description = ?, priority = ?, status = ?, started_on = ?, "
+                    "forecast_exit_on = ?, exited_on = ?, hold_reason = ?, updated_at = ? WHERE id = ?",
+                    (
+                        after.code,
+                        after.title,
+                        after.description,
+                        after.priority,
+                        after.status,
+                        after.started_on,
+                        after.forecast_exit_on,
+                        after.exited_on,
+                        after.hold_reason,
+                        _now(),
+                        lot_id,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise _code_taken(after.code) from exc
+    return get(lot_id)
 
 
-def remove_wafer(lot_id: int, lasermark: str) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM lot_wafers WHERE lot_id = ? AND lasermark_key = ?", (lot_id, compact(lasermark)))
-        _touch(conn, lot_id)
+def add_wafers(lot_id: int, lasermarks: str | list[str]) -> int:
+    """Ajoute ces wafers au lot (ceux qui n'y sont pas encore) - renvoie combien."""
+    with keyed_lock("lots", str(lot_id)):
+        lot = get(lot_id)
+        if lot.source != "declaratif":
+            raise _read_only(lot)
+        with get_conn() as conn:
+            added = _write_wafers(conn, lot_id, parse_lasermarks(lasermarks))
+            if added:
+                _touch(conn, lot_id)
+    return added
+
+
+def remove_wafer(lot_id: int, wafer: str) -> None:
+    """Retire du lot le wafer ``wafer`` (sa clé, ou son lasermark) - 404 s'il n'y est pas."""
+    with keyed_lock("lots", str(lot_id)):
+        lot = get(lot_id)
+        if lot.source != "declaratif":
+            raise _read_only(lot)
+        with get_conn() as conn:
+            removed = conn.execute("DELETE FROM lot_wafers WHERE lot_id = ? AND lasermark_key = ?", (lot_id, wafer_key(wafer))).rowcount
+            if not removed:
+                raise NotFound(f"Le wafer « {wafer} » n'est pas dans le lot « {lot.code} ».")
+            _touch(conn, lot_id)
 
 
 def set_thematics(lot_id: int, thematic_ids: list[int]) -> None:
-    with get_conn() as conn:
-        _write_thematics(conn, lot_id, thematic_ids)
-        _touch(conn, lot_id)
+    with keyed_lock("lots", str(lot_id)):
+        get(lot_id)
+        with get_conn() as conn:
+            before = [row["thematic_id"] for row in conn.execute("SELECT thematic_id FROM lot_thematics WHERE lot_id = ? ORDER BY thematic_id", (lot_id,))]
+            _write_thematics(conn, lot_id, thematic_ids)
+            if sorted(dict.fromkeys(thematic_ids)) != before:
+                _touch(conn, lot_id)
 
 
-def delete(lot_id: int) -> None:
+def can_delete(lot: Lot, user_id: int, is_admin: bool) -> bool:
+    return is_admin or lot.created_by == user_id
+
+
+def delete(lot_id: int, *, user_id: int, is_admin: bool) -> None:
+    """Seule la personne qui a créé le lot, ou un admin, le supprime (403 sinon)."""
+    lot = get(lot_id)
+    if not can_delete(lot, user_id, is_admin):
+        raise Forbidden("Seule la personne qui a créé le lot (ou un admin) peut le supprimer.")
     with get_conn() as conn:
         conn.execute("DELETE FROM lots WHERE id = ?", (lot_id,))

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from ...kernel.db import column_names, execute_script
+from ...kernel.db import column_names, execute_script, rebuild_table
 from ...kernel.plugin import Migration
 
 SCHEMA = """
@@ -56,8 +56,38 @@ def _initial(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE lots ADD COLUMN priority TEXT NOT NULL DEFAULT ''")
 
 
+LOTS_0003 = """
+CREATE TABLE lots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    priority TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'wip', 'hold', 'done', 'cancelled')),
+    started_on TEXT,
+    forecast_exit_on TEXT,
+    exited_on TEXT,
+    hold_reason TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'declaratif' CHECK (source IN ('declaratif', 'prism')),
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))
+)
+"""
+
+
+def _source_and_version(conn: sqlite3.Connection) -> None:
+    """La source d'un lot n'accepte plus que ``declaratif`` (saisi à la main) ou ``prism`` (la base
+    de production : priorité, dates et wafers en lecture seule) ; ``updated_at``, la version d'un
+    lot (``If-Match``), s'écrit en ISO 8601 UTC, sans espace - un ``ETag`` n'en contient pas."""
+    conn.execute("UPDATE lots SET source = 'declaratif' WHERE source NOT IN ('declaratif', 'prism')")
+    rebuild_table(conn, "lots", LOTS_0003)
+    conn.execute("UPDATE lots SET updated_at = replace(updated_at, ' ', 'T') || '+00:00' WHERE updated_at LIKE '% %'")
+
+
 MIGRATIONS = (
     Migration("0001_initial", _initial),
     # la table des étapes de cette toute première version n'est plus lue
     Migration("0002_drop_lot_steps", "DROP TABLE IF EXISTS lot_steps;"),
+    Migration("0003_source_and_version", _source_and_version),
 )

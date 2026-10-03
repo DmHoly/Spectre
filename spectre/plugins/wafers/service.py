@@ -1,25 +1,41 @@
 """Index des plaques : chaque entité physique suivie (un wafer, par son lasermark - ``sample_id``
 dans ``Experiment.metadata["physical_tracking"]``) avec son emplacement, ses FDL (voir
 :mod:`spectre.plugins.wafers.fdl`) et l'étude qui la suit - de quoi la retrouver depuis la barre de
-recherche, et retracer son parcours d'une étude, voire d'un µprojet, à l'autre.
+recherche, et retracer son parcours d'une étude, voire d'un µprojet, à l'autre. Une plaque est
+désignée par sa clé, :func:`wafer_key` : le lasermark sans casse ni séparateurs.
 
 Seul l'état courant de chaque piste compte (sa pointe de branche, comme les autres vues des
 entités). L'index d'un µprojet est gardé en mémoire et ne se reconstruit que si son dépôt Follow a
 bougé : chaque commit réécrit ``refs.json`` et ajoute un fichier dans ``objects/`` (voir
 :func:`_signature`) - taper dans la recherche ne relit donc pas tous les dépôts à chaque frappe.
+
+**Visibilité** - une seule règle, pour les plaques comme pour les lots (qui la lisent ici) : chaque
+étude qui suit une plaque est lue (:func:`occurrences`), quel que soit son µprojet ; un membre de ce
+µprojet en voit tout, les autres n'en voient que le µprojet, le statut et les dates - ni titre, ni
+lien, ni emplacement, ni FDL (:func:`experiment_payload`, :func:`occurrence_payload`), comme sur la
+frise d'une thématique.
 """
 
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass
 from typing import Any, Iterable
 
-from ..experiments.entities import compact, entities_for
+from ...kernel.errors import Forbidden, NotFound
+from ..experiments.entities import compact
 from ..experiments.repository import branch_tips, display_status, follow_repo_path, get_repository
 from ..microprojects import service as microprojects
+from ..microprojects.service import Microproject
+from . import fdl as fdls
 
 _CACHE: dict[str, tuple[tuple, list[dict[str, Any]]]] = {}
 _LOCK = threading.Lock()
+
+
+def wafer_key(lasermark: str | None) -> str:
+    """La clé d'une plaque : son lasermark tel qu'on le compare (« w12-a3 » = « W12 A3 » = ``W12A3``)."""
+    return compact(lasermark)
 
 
 def _signature(slug: str) -> tuple | None:
@@ -49,7 +65,7 @@ def _build(slug: str) -> list[dict[str, Any]]:
                     "fdl": list(entry.get("fdl") or []),
                     "entity_index": index,
                     "variant": labels[index] if index < len(labels) else None,
-                    "experience": {
+                    "experiment": {
                         "id": tip.branch,  # la piste (lien vers la fiche)
                         "title": tip.title,
                         "status": display_status(tip),
@@ -76,106 +92,157 @@ def entries_for(slug: str) -> list[dict[str, Any]]:
     return entries
 
 
-def visible_entries(user_id: int) -> Iterable[tuple[Any, dict[str, Any]]]:
-    """``(microproject, entry)`` for every plate in the microprojects ``user_id`` is a member of -
-    an experience (and so its plates) is only ever visible to its microproject's members."""
-    for microproject, _role in microprojects.list_for_user(user_id):
-        for entry in entries_for(microproject.slug):
-            yield microproject, entry
+# --- visibilité --------------------------------------------------------------------------------
 
 
-def _microproject_ref(microproject: Any) -> dict[str, Any]:
+@dataclass(frozen=True)
+class Occurrence:
+    """Une étude (la pointe d'une piste) qui suit une plaque, et si le lecteur est membre de son
+    µprojet. ``entry`` est la ligne de l'index, entière : ne la montrer que par les fonctions
+    ci-dessous."""
+
+    microproject: Microproject
+    entry: dict[str, Any]
+    member: bool
+
+    @property
+    def key(self) -> str:
+        return wafer_key(self.entry.get("sample_id"))
+
+    @property
+    def experiment_id(self) -> str:
+        return self.entry["experiment"]["id"]
+
+    @property
+    def updated_at(self) -> str:
+        return self.entry["experiment"]["updated_at"]
+
+
+def microproject_for(user_id: int, slug: str) -> Microproject:
+    """Le µprojet ``slug``, dont ``user_id`` doit être membre pour y lire les plaques en entier
+    (404 s'il n'existe pas, 403 sinon)."""
+    try:
+        microproject = microprojects.get_by_slug(slug)
+    except microprojects.MicroprojectNotFoundError as exc:
+        raise NotFound(f"µprojet {slug!r} introuvable") from exc
+    if microprojects.role_for(microproject.id, user_id) is None:
+        raise Forbidden("Vous n'êtes pas membre de ce µprojet.")
+    return microproject
+
+
+def occurrences(user_id: int, *, keys: Iterable[str] | None = None, microproject: Microproject | None = None) -> list[Occurrence]:
+    """Chaque étude qui suit une plaque - de tous les µprojets, ou du seul ``microproject`` ;
+    seulement les plaques de ``keys`` (des clés ou des lasermarks), si elles sont données - vue par
+    ``user_id``."""
+    member_of = {mp.id for mp, _role in microprojects.list_for_user(user_id)}
+    wanted = None if keys is None else {wafer_key(key) for key in keys} - {""}
+    found = []
+    for mp in [microproject] if microproject else microprojects.list_all():
+        for entry in entries_for(mp.slug):
+            if wanted is None or wafer_key(entry.get("sample_id")) in wanted:
+                found.append(Occurrence(mp, entry, mp.id in member_of))
+    return found
+
+
+def microproject_ref(microproject: Microproject) -> dict[str, Any]:
     return {"slug": microproject.slug, "code": microproject.code, "name": microproject.name}
 
 
-def _occurrence(microproject: Any, entry: dict[str, Any]) -> dict[str, Any]:
-    return {**entry, "microproject": _microproject_ref(microproject)}
-
-
-def search(query: str, rows: Iterable[tuple[Any, dict[str, Any]]], *, limit: int = 6) -> list[dict[str, Any]]:
-    """Plates whose lasermark matches ``query`` - exact first, then starting with it, then
-    containing it - one result per plate, with the studies that follow it (most recent first)."""
-    wanted = compact(query)
-    if len(wanted) < 2:
-        return []
-    plates: dict[str, dict[str, Any]] = {}
-    for microproject, entry in rows:
-        key = compact(entry.get("sample_id"))
-        if not key:
-            continue
-        if key == wanted:
-            rank = 0
-        elif key.startswith(wanted):
-            rank = 1
-        elif wanted in key:
-            rank = 2
-        else:
-            continue
-        plate = plates.setdefault(key, {"sample_id": entry["sample_id"], "rank": rank, "occurrences": []})
-        plate["occurrences"].append(_occurrence(microproject, entry))
-    results = []
-    for plate in sorted(plates.values(), key=lambda p: (p["rank"], p["sample_id"])):
-        occurrences = sorted(plate["occurrences"], key=lambda o: o["experience"]["updated_at"], reverse=True)
-        codes: list[str] = []
-        for o in occurrences:
-            label = o["microproject"]["code"] or o["microproject"]["name"]
-            if label not in codes:
-                codes.append(label)
-        results.append(
-            {
-                "sample_id": plate["sample_id"],
-                "count": len(occurrences),
-                "microprojects": codes,
-                "latest": {"id": occurrences[0]["experience"]["id"], "title": occurrences[0]["experience"]["title"], "microproject": occurrences[0]["microproject"]},
-            }
-        )
-    return results[:limit]
-
-
-def plate_history(lasermark: str, rows: Iterable[tuple[Any, dict[str, Any]]]) -> dict[str, Any]:
-    """Everything about one plate: every study that follows it (most recent first), where it was
-    put, its FDLs - what its own page shows."""
-    wanted = compact(lasermark)
-    occurrences = sorted(
-        (_occurrence(microproject, entry) for microproject, entry in rows if wanted and compact(entry.get("sample_id")) == wanted),
-        key=lambda o: o["experience"]["updated_at"],
-        reverse=True,
-    )
-    fdl: list[str] = []
-    microproject_refs: list[dict[str, Any]] = []
-    for o in occurrences:
-        for value in o["fdl"]:
-            if value not in fdl:
-                fdl.append(value)
-        if o["microproject"] not in microproject_refs:
-            microproject_refs.append(o["microproject"])
-    location = next((o["location"] for o in occurrences if o["location"]), None)
+def experiment_payload(occurrence: Occurrence, public: dict[str, Any]) -> dict[str, Any]:
+    """L'étude d'une occurrence telle que le lecteur la voit : son µprojet et ``public`` (son
+    statut, ses dates) pour tous, son id (la piste) et son titre pour les membres."""
+    experiment = occurrence.entry["experiment"]
     return {
-        "sample_id": occurrences[0]["sample_id"] if occurrences else lasermark.strip(),
-        "occurrences": occurrences,
-        "fdl": fdl,
-        "microprojects": microproject_refs,
-        "last_location": location,
+        "microproject": microproject_ref(occurrence.microproject),
+        "member": occurrence.member,
+        **public,
+        **({"id": experiment["id"], "title": experiment["title"]} if occurrence.member else {}),
     }
 
 
-def entity_history_for_microproject(repo: Any, tips: list[Any]) -> dict[str, list[str]]:
-    """Every distinct sample_id/location/FDL already used anywhere on the microproject's current branch
-    tips - not the full commit history (a superseded intermediate version's entities don't
-    surface), the same "current state, not every version" scope
-    :func:`spectre.plugins.experiments.entities.entities_for` already works at. Meant to feed an
-    autocomplete on the physical-entities editor so a user typing a sample id or location sees
-    what's already in use elsewhere in the microproject, rather than re-typing a slightly different
-    spelling of the same thing.
-    """
-    sample_ids: set[str] = set()
-    locations: set[str] = set()
-    fdls: set[str] = set()
-    for tip in tips:
-        for entry in entities_for(tip):
-            if entry["sample_id"]:
-                sample_ids.add(entry["sample_id"])
-            if entry["location"]:
-                locations.add(entry["location"])
-            fdls.update(entry.get("fdl", []))
-    return {"sample_ids": sorted(sample_ids), "locations": sorted(locations), "fdls": sorted(fdls)}
+def occurrence_payload(occurrence: Occurrence) -> dict[str, Any]:
+    """Une étude qui suit une plaque, telle que le lecteur la voit : où la plaque a été rangée, ses
+    FDL et la variante qu'elle porte dans une campagne pour les membres seulement."""
+    entry = occurrence.entry
+    payload = {
+        "lasermark": entry.get("sample_id"),
+        "entity_index": entry["entity_index"],
+        "experiment": experiment_payload(occurrence, {"status": entry["experiment"]["status"], "updated_at": occurrence.updated_at}),
+    }
+    if occurrence.member:
+        payload.update(location=entry["location"], fdl=entry["fdl"], variant=entry["variant"])
+    return payload
+
+
+# --- plaques ------------------------------------------------------------------------------------
+
+
+def _unique(values: Iterable[Any]) -> list[Any]:
+    found: list[Any] = []
+    for value in values:
+        if value and value not in found:
+            found.append(value)
+    return found
+
+
+def _latest_first(found: Iterable[Occurrence]) -> list[Occurrence]:
+    return sorted(found, key=lambda o: o.updated_at, reverse=True)
+
+
+def _wafer_payload(key: str, found: list[Occurrence]) -> dict[str, Any]:
+    members = [o for o in found if o.member]
+    return {
+        "key": key,
+        "lasermark": found[0].entry["sample_id"],
+        "count": len(found),
+        "microprojects": _unique(microproject_ref(o.microproject) for o in found),
+        "latest": occurrence_payload(found[0]),
+        "fdl": _unique(value for o in members for value in o.entry["fdl"]),
+        "locations": _unique(o.entry["location"] for o in members),
+    }
+
+
+def _q_rank(query: str, key: str) -> int | None:
+    """Exact first, then starting with what was typed, then containing it."""
+    wanted = wafer_key(query)
+    if not wanted:
+        return None
+    if key == wanted:
+        return 0
+    if key.startswith(wanted):
+        return 1
+    return 2 if wanted in key else None
+
+
+def wafers(found: Iterable[Occurrence], *, q: str = "", fdl: str = "") -> list[dict[str, Any]]:
+    """Les plaques de ces occurrences, une par clé (chacune avec ses études, la plus récente
+    d'abord) - celles dont le lasermark correspond à ``q`` (le lasermark exact d'abord), qui portent
+    une FDL correspondant à ``fdl`` (lue chez les membres seulement), ou toutes."""
+    by_key: dict[str, list[Occurrence]] = {}
+    for occurrence in found:
+        if occurrence.key:
+            by_key.setdefault(occurrence.key, []).append(occurrence)
+    ranked = []
+    for key, group in by_key.items():
+        q_rank = _q_rank(q, key) if q.strip() else 0
+        fdl_rank = fdls.best_rank(fdl, (value for o in group if o.member for value in o.entry["fdl"])) if fdl.strip() else 0
+        if q_rank is not None and fdl_rank is not None:
+            ranked.append(((q_rank, fdl_rank, key), _wafer_payload(key, _latest_first(group))))
+    return [payload for _rank, payload in sorted(ranked, key=lambda item: item[0])]
+
+
+def passport(lasermark: str, found: Iterable[Occurrence]) -> dict[str, Any]:
+    """Tout ce qu'on sait d'une plaque : chaque étude qui la suit (la plus récente d'abord), où elle
+    a été rangée et ses FDL (chez les membres) - ce que montre sa page. Une plaque qu'aucune étude ne
+    suit (encore) n'est pas une erreur : la page l'explique."""
+    key = wafer_key(lasermark)
+    group = _latest_first(o for o in found if o.key == key)
+    members = [o for o in group if o.member]
+    return {
+        "key": key,
+        "lasermark": group[0].entry["sample_id"] if group else lasermark.strip(),
+        "occurrences": [occurrence_payload(o) for o in group],
+        "fdl": _unique(value for o in members for value in o.entry["fdl"]),
+        "microprojects": _unique(microproject_ref(o.microproject) for o in group),
+        "last_location": next((o.entry["location"] for o in members if o.entry["location"]), None),
+    }

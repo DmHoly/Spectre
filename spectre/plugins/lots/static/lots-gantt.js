@@ -4,7 +4,7 @@
    pause), le reste jusqu'à la fin prévisionnelle en pointillé (une prévision) ; une fois sorti, la
    barre pleine jusqu'à la fin déclarée, l'éventuel dépassement de la prévision en rouge. Dépliée,
    une sous-ligne par expérience liée (au code du graphe de filiation, lineage-graph.js). Saisie
-   déclarative pour l'instant : voir spectre.api.lots. Dépend de experiments/static/status.js, lineage-graph.js,
+   déclarative pour l'instant : voir spectre.plugins.lots. Dépend de experiments/static/status.js, lineage-graph.js,
    timeline.js et d3. */
 
 const LOT_STATUS = {
@@ -206,8 +206,8 @@ function ganttLotLabel(lot, { expanded, expandable, link = true }) {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>`
     : `<span class="gantt__toggle-spacer"></span>`;
   const code = link ? `<a class="gantt__code" href="${lotUrl(lot.code)}">${escapeHtml(lot.code)}</a>` : `<span class="gantt__code">${escapeHtml(lot.code)}</span>`;
-  const thematics = (lot.thematiques || []).slice(0, 2).map((t) => `<span class="lot-chip">${escapeHtml(t.name)}</span>`).join("");
-  const more = (lot.thematiques || []).length > 2 ? `<span class="lot-chip lot-chip--more">+${lot.thematiques.length - 2}</span>` : "";
+  const thematics = (lot.thematics || []).slice(0, 2).map((t) => `<span class="lot-chip">${escapeHtml(t.name)}</span>`).join("");
+  const more = (lot.thematics || []).length > 2 ? `<span class="lot-chip lot-chip--more">+${lot.thematics.length - 2}</span>` : "";
   return `<div class="gantt__label">
       ${toggle}
       <div class="gantt__label-body">
@@ -236,10 +236,10 @@ function ganttHtml(lots, width, { expanded = new Set(), alwaysExpanded = false, 
   const rows = lots
     .map((lot) => {
       const open = alwaysExpanded || expanded.has(lot.code);
-      const expandable = !alwaysExpanded && lot.experiences.length > 0;
+      const expandable = !alwaysExpanded && lot.experiments.length > 0;
       const lotRow = `<div class="gantt__row">${ganttLotLabel(lot, { expanded: open, expandable, link })}${ganttLotTrack(lot, geo, { href: link ? lotUrl(lot.code) : "" })}</div>`;
       const subs = open
-        ? lot.experiences.map((exp) => `<div class="gantt__row gantt__row--sub">${ganttExperienceLabel(exp)}${ganttExperienceTrack(exp, geo)}</div>`).join("")
+        ? lot.experiments.map((exp) => `<div class="gantt__row gantt__row--sub">${ganttExperienceLabel(exp)}${ganttExperienceTrack(exp, geo)}</div>`).join("")
         : "";
       return lotRow + subs;
     })

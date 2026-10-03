@@ -250,15 +250,6 @@ def cancel_invitation(invitation_id: int, microproject: Microproject = Depends(r
     return Response(status_code=204)
 
 
-@router.get("/microprojets/recherche-fdl")
-def search_fdl(q: str = Query("", max_length=80), user: User = Depends(current_user)) -> list[dict]:
-    """Transitoire, jusqu'à GET /api/wafers?fdl= (plugin wafers) : les études dont une plaque porte
-    la FDL tapée, dans les µprojets dont l'appelant est membre."""
-    from ..wafers import fdl, service as plates
-
-    return fdl.search(q, plates.visible_entries(user.id))
-
-
 # -- pages ------------------------------------------------------------------------------------------
 
 

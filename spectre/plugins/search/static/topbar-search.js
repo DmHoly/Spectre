@@ -1,5 +1,6 @@
 /* Recherche de la barre du haut, sur toutes les pages connectées : µprojets, lots, plaques et FDL,
-   via microprojectsApi, wafersApi et lotsApi (les client.js de ces plugins). */
+   en une requête par frappe (searchApi.search : GET /api/search, qui interroge les fournisseurs des
+   plugins et donne l'adresse de chaque résultat). */
 
 // Recherche de µprojet dans la topbar, sur toutes les pages connectées : son numéro tel qu'on le
 // dit (« Nat 4 », « Nat_0004 », « nat4 ») ou un bout de son nom ; une plaque par son lasermark
@@ -29,21 +30,11 @@ function initTopbarSearch() {
   let timer = null;
   let seq = 0;
 
-  // un résultat : {type: "microproject", slug, code, name, area}, {type: "lot", code, title,
-  // status, priority, wafer}, {type: "plate", sample_id, count, microprojects, latest} ou
-  // {type: "fdl", fdl, sample_id, experience, microproject}
+  // un résultat (GET /api/search) : {type, label, detail, badge, url} - l'adresse vient du serveur
   const open = (hit) => {
-    window.location.href =
-      hit.type === "fdl"
-        ? `/microprojets/${encodeURIComponent(hit.microproject.slug)}/experiences/${encodeURIComponent(hit.experience.id)}`
-        : hit.type === "plate"
-          ? `/plaques/${encodeURIComponent(hit.sample_id)}`
-          : hit.type === "lot"
-            ? `/lots/${encodeURIComponent(hit.code)}`
-            : `/microprojets/${encodeURIComponent(hit.slug)}`;
+    window.location.href = hit.url;
   };
-  const GROUP_LABELS = { microproject: "µprojets", lot: "Lots", plate: "Plaques", fdl: "FDL" };
-  const LOT_WHERE = { planned: "en préparation", wip: "en cours", hold: "en pause", done: "sorti", cancelled: "annulé" };
+  const GROUP_LABELS = { microproject: "µprojets", lot: "Lots", wafer: "Plaques", fdl: "FDL" };
   const close = () => {
     list.hidden = true;
     input.setAttribute("aria-expanded", "false");
@@ -56,28 +47,14 @@ function initTopbarSearch() {
     } else {
       let previousType = null;
       list.innerHTML = results
-        .map((p, i) => {
-          const group = p.type !== previousType ? `<li class="topbar-search__group" role="presentation">${GROUP_LABELS[p.type]}</li>` : "";
-          previousType = p.type;
-          const body =
-            p.type === "fdl"
-              ? `<span class="topbar-search__code topbar-search__code--fdl">${escapeHtml(p.fdl)}</span>
-                 <span class="topbar-search__name">${escapeHtml(p.experience.title)}${p.sample_id ? ` · ${escapeHtml(p.sample_id)}` : ""}</span>
-                 <span class="topbar-search__area">${escapeHtml(p.microproject.code || p.microproject.name)}</span>`
-              : p.type === "lot"
-                ? `<span class="topbar-search__code topbar-search__code--lot">${escapeHtml(p.code)}</span>
-                   <span class="topbar-search__name">${escapeHtml(p.wafer ? `contient ${p.wafer}` : p.title || "Lot")}</span>
-                   <span class="topbar-search__area">${escapeHtml([p.priority, LOT_WHERE[p.status]].filter(Boolean).join(" · "))}</span>`
-              : p.type === "plate"
-                ? `<span class="topbar-search__code topbar-search__code--plate">${escapeHtml(p.sample_id)}</span>
-                   <span class="topbar-search__name">${p.count > 1 ? `${p.count} études` : escapeHtml(p.latest.title)}</span>
-                   <span class="topbar-search__area">${escapeHtml(p.microprojects.slice(0, 2).join(", "))}${p.microprojects.length > 2 ? "…" : ""}</span>`
-                : `${p.code ? `<span class="topbar-search__code">${escapeHtml(p.code)}</span>` : ""}
-                 <span class="topbar-search__name">${escapeHtml(p.name)}</span>
-                 ${p.area ? `<span class="topbar-search__area">${escapeHtml(p.area.name)}</span>` : ""}`;
+        .map((hit, i) => {
+          const group = hit.type !== previousType ? `<li class="topbar-search__group" role="presentation">${escapeHtml(GROUP_LABELS[hit.type] || hit.type)}</li>` : "";
+          previousType = hit.type;
           return `${group}
           <li class="topbar-search__item${i === active ? " is-active" : ""}" id="topbar-search-${i}" role="option" aria-selected="${i === active}" data-index="${i}">
-            ${body}
+            <span class="topbar-search__code topbar-search__code--${escapeHtml(hit.type)}">${escapeHtml(hit.label)}</span>
+            ${hit.detail ? `<span class="topbar-search__name">${escapeHtml(hit.detail)}</span>` : ""}
+            ${hit.badge ? `<span class="topbar-search__area">${escapeHtml(hit.badge)}</span>` : ""}
           </li>`;
         })
         .join("");
@@ -97,23 +74,8 @@ function initTopbarSearch() {
       return;
     }
     try {
-      const longEnough = query.replace(/[\s_\-./#:]/g, "").length >= 2;
-      const [projects, plateHits, fdlHits, lotHits] = await Promise.all([
-        microprojectsApi.list({ q: query }),
-        longEnough ? wafersApi.search(query).catch(() => []) : Promise.resolve([]),
-        /\d/.test(query) ? microprojectsApi.searchFdl(query).catch(() => []) : Promise.resolve([]),
-        longEnough ? lotsApi.search(query).catch(() => []) : Promise.resolve([]),
-      ]);
+      const found = await searchApi.search(query);
       if (mine !== seq) return; // une frappe plus récente a déjà relancé la recherche
-      const projectHits = projects.map((p) => ({ ...p, type: "microproject" }));
-      const plateItems = plateHits.map((h) => ({ ...h, type: "plate" }));
-      const fdlItems = fdlHits.map((h) => ({ ...h, type: "fdl" }));
-      const lotItems = lotHits.map((h) => ({ ...h, type: "lot" }));
-      // « 1234 », « FDL 12 » : on cherche d'abord une FDL ; sinon les µprojets, les lots, puis les plaques
-      const fdlFirst = /^\s*(fdl)?[\s_\-#:]*\d+\s*$/i.test(query);
-      const found = fdlFirst
-        ? [...fdlItems, ...plateItems, ...lotItems, ...projectHits]
-        : [...projectHits, ...lotItems, ...plateItems, ...fdlItems];
       results = found;
       active = found.length ? 0 : -1;
       paint(found.length ? "" : `Rien pour « ${query} » (µprojet, lot, plaque ou FDL)`);

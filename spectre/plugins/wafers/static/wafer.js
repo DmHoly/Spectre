@@ -11,10 +11,14 @@ function showError(err) {
   box.style.display = "block";
 }
 
+// Une étude d'un µprojet dont on n'est pas membre : son µprojet, son statut et sa date, sans titre
+// ni lien (le serveur ne les donne pas).
 function trailItemHtml(o) {
-  const exp = o.experience;
-  const mp = o.microproject;
-  const url = `/microprojets/${encodeURIComponent(mp.slug)}/experiences/${encodeURIComponent(exp.id)}`;
+  const exp = o.experiment;
+  const mp = exp.microproject;
+  const title = exp.member
+    ? `<a class="plate-trail__title" href="/microprojets/${encodeURIComponent(mp.slug)}/experiences/${encodeURIComponent(exp.id)}">${escapeHtml(exp.title)}</a>`
+    : `<span class="plate-trail__title help">Étude d'un µprojet dont vous n'êtes pas membre</span>`;
   return `
     <li class="plate-trail__item">
       <span class="plate-trail__dot" aria-hidden="true"></span>
@@ -24,7 +28,7 @@ function trailItemHtml(o) {
           <a class="fiche-code" href="/microprojets/${encodeURIComponent(mp.slug)}" title="µprojet ${escapeHtml(mp.name)}">${escapeHtml(mp.code || mp.name)}</a>
           <span class="plate-trail__date">mise à jour le ${formatDate(exp.updated_at)}</span>
         </div>
-        <a class="plate-trail__title" href="${url}">${escapeHtml(exp.title)}</a>
+        ${title}
         <div class="plate-trail__meta">
           <span>${escapeHtml(mp.name)}</span>
           ${o.variant ? `<span>Variante&nbsp;: <strong class="mono">${escapeHtml(o.variant)}</strong></span>` : ""}
@@ -40,12 +44,12 @@ async function init() {
   document.getElementById("crumb").textContent = `/ Plaques / ${lasermark}`;
   document.title = `${lasermark} — Spectre`;
   try {
-    const plate = await wafersApi.get(lasermark);
+    const [plate, lots] = await Promise.all([wafersApi.get(lasermark), lotsApi.list({ wafer: lasermark, view: "summary" })]);
     const n = plate.occurrences.length;
-    document.getElementById("plate-lasermark").textContent = plate.sample_id;
+    document.getElementById("plate-lasermark").textContent = plate.lasermark;
     document.getElementById("plate-summary").textContent = n
       ? `Suivie dans ${n} étude${n > 1 ? "s" : ""}${plate.microprojects.length > 1 ? `, sur ${plate.microprojects.length} µprojets` : ""}.`
-      : "Aucune étude de vos µprojets ne suit cette plaque.";
+      : "Aucune étude ne suit cette plaque.";
     document.getElementById("plate-location").textContent = plate.last_location || "—";
     document.getElementById("plate-fdl").innerHTML = plate.fdl.length ? fdlChipsHtml(plate.fdl, { label: false }) : "—";
     document.getElementById("plate-microprojects").innerHTML = plate.microprojects.length
@@ -54,13 +58,13 @@ async function init() {
           .join(" ")
       : "—";
     // le(s) lot(s) de fabrication qui la contiennent (suivi de lots, /lots)
-    document.getElementById("plate-lots").innerHTML = (plate.lots || []).length
-      ? plate.lots.map((l) => `<a class="fiche-code" href="/lots/${encodeURIComponent(l.code)}" title="${escapeHtml(l.title || "Lot")}">${escapeHtml(l.code)}</a>`).join(" ")
+    document.getElementById("plate-lots").innerHTML = lots.length
+      ? lots.map((l) => `<a class="fiche-code" href="/lots/${encodeURIComponent(l.code)}" title="${escapeHtml(l.title || "Lot")}">${escapeHtml(l.code)}</a>`).join(" ")
       : "—";
     document.getElementById("plate-trail").innerHTML = n
       ? plate.occurrences.map(trailItemHtml).join("")
       : `<li class="help">Le lasermark se renseigne dans la carte « Plaques & entités physiques » d'une fiche, ou au lancement d'une expérience.</li>`;
-    if (n) renderWaferDbLinks(document.querySelectorAll(".js-db-link"), [plate.sample_id]);
+    if (n) renderWaferDbLinks(document.querySelectorAll(".js-db-link"), [plate.lasermark]);
   } catch (err) {
     showError(err);
   }

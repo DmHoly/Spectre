@@ -79,9 +79,9 @@ def test_every_client_function_used_by_the_front_exists_and_every_function_is_us
 @pytest.mark.parametrize(
     ("before", "after", "function"),
     [
-        ('"/api/lots/recherche"', '"/api/lot/recherche"', "search"),
-        # un segment littéral renommé que la route paramétrée GET /api/lots/{code} couvrirait
-        ('"/api/lots/selection"', '"/api/lots/selectionXX"', "selection"),
+        ('"/api/lot-priorities"', '"/api/lot-prioritiesXX"', "priorities"),
+        # un segment littéral ajouté que la route paramétrée GET /api/lots/{lot_id} couvrirait
+        ('api.withQuery("/api/lots",', 'api.withQuery("/api/lots/selection",', "list"),
     ],
 )
 def test_a_client_function_renamed_url_is_caught(app, tmp_path, before, after, function):

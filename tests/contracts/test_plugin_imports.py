@@ -32,14 +32,7 @@ def _is_http_module(module: str) -> bool:
 KERNEL_COMPOSITION_ROOT = ("spectre.kernel.app", "spectre.plugins")
 
 # (module qui importe, module importé) -> ce qui supprimera l'import.
-ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {
-    ("spectre.plugins.microprojects.api", "spectre.plugins.wafers.fdl"): "GET /api/wafers?fdl=",
-    ("spectre.plugins.microprojects.api", "spectre.plugins.wafers.service"): "GET /api/wafers?fdl=",
-    ("spectre.plugins.experiments.lineage", "spectre.plugins.lots.service"): (
-        "GET /api/microprojects/{mp}/lineage sans badge de lot : le front compose les badges via lotsApi"
-    ),
-    ("spectre.plugins.wafers.api", "spectre.plugins.lots.service"): "GET /api/wafers/{wafer_key} sans les lots : le front appelle GET /api/lots?wafer=",
-}
+ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {}
 
 # Modules du domaine qui lèvent encore HTTPException -> ce qui la remplacera.
 ALLOWED_FASTAPI: dict[str, str] = {}
@@ -106,7 +99,7 @@ def test_the_scanner_sees_the_plugin_imports():
     # garde-fou : un analyseur cassé ne trouverait rien, et tout le reste passerait
     graph = _graph()
     assert ("spectre.plugins.lots.api", "spectre.plugins.lots.service") in graph
-    assert ("spectre.plugins.experiments.lineage", "spectre.plugins.lots.service") in graph  # import paresseux
+    assert KERNEL_COMPOSITION_ROOT in graph  # import paresseux, dans create_app()
 
 
 def test_the_kernel_imports_no_plugin():

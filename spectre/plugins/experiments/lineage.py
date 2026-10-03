@@ -20,12 +20,8 @@ def lineage_graph(repo: Any) -> dict:
     repository - shared with the frise of a thématique (:mod:`spectre.plugins.experiments.insights`),
     which lays out the same nodes on a time axis, and with the lots (:mod:`spectre.plugins.lots.api`).
     Each node is a version (``version_id``, also its ``id`` in ``edges``) of a line of study
-    (``experiment_id``), the line's tip or not (``is_tip``).
-
-    The badge of the lots holding a node's wafers reads the lots plugin, listed after this one,
-    from inside the function."""
-    from ..lots import service as lots
-
+    (``experiment_id``), the line's tip or not (``is_tip``). The lots holding a node's wafers are
+    the lots plugin's own (``GET /api/lots?wafer=``) : the page composes their badges."""
     experiments = {exp.id: exp for exp in repo}
     if not experiments:
         return {"nodes": [], "edges": []}
@@ -113,10 +109,9 @@ def lineage_graph(repo: Any) -> dict:
             edges.extend({"parent": display_id[exp_id], "child": tip_id} for tip_id in resolved_tips)
 
     # When the work moved on from a node: its first child's start - what ends the elapsed time of a
-    # draft that was never concluded but continued into a new version (« poursuivie »). And the lots
-    # (spectre.plugins.lots.service) holding one of the wafers it tracks - the badge beside its node.
+    # draft that was never concluded but continued into a new version (« poursuivie »). And the
+    # wafers it tracks - the badge beside its node.
     started = {node["id"]: node["started_at"] for node in nodes}
-    lots_index = lots.lots_by_wafer()
     for node in nodes:
         children = [started[edge["child"]] for edge in edges if edge["parent"] == node["id"]]
         node["continued_at"] = min(children) if children else None
@@ -130,7 +125,6 @@ def lineage_graph(repo: Any) -> dict:
             if compact(lasermark) not in seen:
                 seen.add(compact(lasermark))
                 node["wafers"].append(lasermark)
-        node["lots"] = [{"code": lot["code"], "status": lot["status"]} for lot in lots.lots_for_lasermarks(tracked, lots_index)]
 
     return {"nodes": nodes, "edges": edges}
 

@@ -1,91 +1,60 @@
-"""Suivi de lots (:mod:`spectre.plugins.lots.service`) : la liste (vue Gantt), la fiche d'un lot, la recherche de
-la topbar, et la saisie déclarative (priorité P10/P20..., début, fin prévisionnelle, fin déclarée,
-wafers, thématiques visées).
+"""Suivi de lots (``/api/lots``, domaine dans :mod:`.service`) : la liste (vue Gantt, ou résumée pour
+un sélecteur ou des badges), la fiche d'un lot et sa saisie déclarative (priorité P10/P20..., début,
+fin prévisionnelle, fin déclarée, wafers, thématiques visées).
 
 Ce que la base ne stocke pas est déduit ici, à chaque lecture : les **expériences** d'un lot sont
-les études (pointes de branche, comme l'index des plaques) qui suivent un de ses wafers - toutes,
-même terminées avant que le wafer n'y entre -, et ses
-**thématiques** celles des µprojets de ces études, plus les thématiques déclarées à la main. Comme
-la page d'une thématique, un lot est visible de tous : ses expériences dans un µprojet dont on n'est
-pas membre n'y montrent que leur µprojet, leur statut et leurs dates - ni titre ni lien.
+les études (pointes de piste, comme l'index des plaques) qui suivent un de ses wafers - toutes,
+même terminées avant que le wafer n'y entre -, et ses **thématiques** celles des µprojets de ces
+études, plus les thématiques déclarées à la main. Un lot est visible de tous ; ses expériences le
+sont selon la règle de visibilité des plaques (:mod:`spectre.plugins.wafers.service`) : dans un
+µprojet dont on n'est pas membre, seulement leur µprojet, leur statut et leurs dates.
 """
 
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Header, Query, Response
 
+from ...kernel.http import created, etag, if_match_version
 from ..accounts import service as accounts
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from ..areas import service as management
-from ..areas.service import ManagementAreaNotFoundError, ThematicNotFoundError
-from ..experiments.entities import compact
+from ..areas import service as areas
 from ..experiments.lineage import lineage_graph
 from ..experiments.repository import get_repository
-from ..microprojects import service as microprojects
-from ..wafers import service as plates
+from ..wafers import service as wafers
 from . import service as lots
-from .service import Lot, LotNotFoundError
+from .schemas import LotCreate, LotPatch, LotThematics, LotWafersAdd
+from .service import Lot, LotWafer
 
-router = APIRouter(prefix="/api/lots", tags=["lots"])
-
-
-class CreateLotRequest(BaseModel):
-    code: str | None = None  # vide = LOT-0001...
-    title: str = ""
-    description: str = ""
-    priority: str = ""  # P10, P20...
-    started_on: str | None = None
-    forecast_exit_on: str | None = None
-    wafers: list[str] = []
-    thematic_ids: list[int] = []
-
-
-class UpdateLotRequest(BaseModel):
-    code: str
-    title: str = ""
-    description: str = ""
-    priority: str = ""
-    status: str
-    started_on: str | None = None
-    forecast_exit_on: str | None = None
-    exited_on: str | None = None  # fin déclarée
-    hold_reason: str = ""
-
-
-class WafersRequest(BaseModel):
-    lasermarks: list[str]
-
-
-class ThematicsRequest(BaseModel):
-    thematic_ids: list[int]
+router = APIRouter(prefix="/api", tags=["lots"])
 
 
 class _Context:
-    """Ce qu'une requête relit pour tous ses lots une seule fois : l'index des plaques de tous les
-    µprojets, les rôles de l'utilisateur, la filiation (dates, issue) de chaque µprojet concerné."""
+    """Ce qu'une requête lit une seule fois pour tous ses lots : leurs wafers et leurs thématiques
+    déclarées, les études qui suivent ces wafers (vues par l'utilisateur), la filiation (dates,
+    issue) de chaque µprojet concerné, les thématiques, les auteurs."""
 
-    def __init__(self, user: User):
+    def __init__(self, user: User, selected: list[Lot]):
         self.user = user
-        self.roles = {mp.id: role for mp, role in microprojects.list_for_user(user.id)}
-        self._plates: dict[str, list[tuple[Any, dict]]] | None = None
+        ids = [lot.id for lot in selected]
+        self.wafers = lots.wafers_of(ids)
+        self.declared = lots.declared_thematic_ids(ids)
+        self._occurrences: dict[str, list[wafers.Occurrence]] | None = None
         self._nodes: dict[str, dict[str, dict]] = {}
-        self._thematics: dict[int, dict | None] = {}
+        self._thematics: dict[int, dict] | None = None
         self._users: dict[int, str | None] = {}
 
-    def plates_by_wafer(self) -> dict[str, list[tuple[Any, dict]]]:
-        if self._plates is None:
-            self._plates = {}
-            for microproject in microprojects.list_all():
-                for entry in plates.entries_for(microproject.slug):
-                    key = compact(entry.get("sample_id"))
-                    if key:
-                        self._plates.setdefault(key, []).append((microproject, entry))
-        return self._plates
+    def occurrences(self, key: str) -> list[wafers.Occurrence]:
+        """Les études qui suivent le wafer ``key`` - lues une fois pour tous les wafers des lots."""
+        if self._occurrences is None:
+            keys = {wafer.key for found in self.wafers.values() for wafer in found}
+            self._occurrences = {}
+            for occurrence in wafers.occurrences(self.user.id, keys=keys) if keys else []:
+                self._occurrences.setdefault(occurrence.key, []).append(occurrence)
+        return self._occurrences.get(key, [])
 
     def node(self, slug: str, experiment_id: str) -> dict | None:
         """Le nœud de filiation de la pointe de la piste ``experiment_id``."""
@@ -95,21 +64,14 @@ class _Context:
         return self._nodes[slug].get(experiment_id)
 
     def thematic(self, thematic_id: int | None) -> dict | None:
-        if thematic_id is None:
-            return None
-        if thematic_id not in self._thematics:
-            try:
-                thematic = management.get_thematic_by_id(thematic_id)
-                area = management.get_by_id(thematic.management_area_id)
-                self._thematics[thematic_id] = {
-                    "id": thematic.id,
-                    "slug": thematic.slug,
-                    "name": thematic.name,
-                    "area": {"slug": area.slug, "name": area.name},
-                }
-            except (ThematicNotFoundError, ManagementAreaNotFoundError):
-                self._thematics[thematic_id] = None
-        return self._thematics[thematic_id]
+        if self._thematics is None:
+            by_area = {area.id: area for area in areas.list_all()}
+            self._thematics = {
+                t.id: {"id": t.id, "slug": t.slug, "name": t.name, "area": {"slug": by_area[t.management_area_id].slug, "name": by_area[t.management_area_id].name}}
+                for t in areas.list_thematics()
+                if t.management_area_id in by_area
+            }
+        return self._thematics.get(thematic_id) if thematic_id is not None else None
 
     def user_name(self, user_id: int | None) -> str | None:
         if user_id is None:
@@ -120,13 +82,6 @@ class _Context:
         return self._users[user_id]
 
 
-def _get_lot(code: str) -> Lot:
-    try:
-        return lots.get_by_code(code)
-    except LotNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"lot « {code} » introuvable") from exc
-
-
 def _days(a: str | None, b: str | None) -> int | None:
     return (date.fromisoformat(b) - date.fromisoformat(a)).days if a and b else None
 
@@ -135,8 +90,7 @@ def _schedule_payload(lot: Lot) -> dict:
     """Ce que les dates disent du lot : son retard (pas encore sorti, fin prévisionnelle dépassée),
     l'écart de sa fin déclarée sur la prévision (+ = en retard, - = en avance), ses durées."""
     today = date.today().isoformat()
-    active = lot.status in lots.ACTIVE_STATUSES
-    late = _days(lot.forecast_exit_on, today) if active and lot.forecast_exit_on and lot.forecast_exit_on < today else None
+    late = _days(lot.forecast_exit_on, today) if lot.is_active and lot.forecast_exit_on and lot.forecast_exit_on < today else None
     return {
         "late_days": late,
         "exit_delta_days": _days(lot.forecast_exit_on, lot.exited_on),
@@ -145,204 +99,163 @@ def _schedule_payload(lot: Lot) -> dict:
     }
 
 
-def _lot_payload(lot: Lot, ctx: _Context) -> dict:
-    wafers = lots.list_wafers(lot.id)
-    plates_by_wafer = ctx.plates_by_wafer()
+def _wafer_ref(wafer: LotWafer) -> dict:
+    return {"key": wafer.key, "lasermark": wafer.lasermark}
 
-    experiences: dict[tuple[str, str], dict] = {}
-    wafer_rows = []
-    for lasermark in wafers:
-        used_in = []
-        for microproject, entry in plates_by_wafer.get(compact(lasermark), []):
-            member = microproject.id in ctx.roles
-            exp = entry["experience"]
-            key = (microproject.slug, exp["id"])
-            node = ctx.node(microproject.slug, exp["id"])
-            used_in.append(
-                {
-                    "microproject": microproject.code or microproject.name,
-                    **({"id": exp["id"], "slug": microproject.slug, "title": exp["title"]} if member else {}),
-                }
-            )
-            if key not in experiences:
-                experiences[key] = {
-                    "microproject": {
-                        "slug": microproject.slug,
-                        "code": microproject.code,
-                        "name": microproject.name,
-                        "thematic_id": microproject.thematic_id,
-                    },
-                    "member": member,
-                    "status": node["status"] if node else exp["status"],
-                    "decision": node["decision"] if node else None,
-                    "started_at": node["started_at"] if node else exp["updated_at"],
-                    "ended_at": node["ended_at"] if node else None,
-                    "continued_at": node["continued_at"] if node else None,
-                    "wafers": [],
-                    **({"id": exp["id"], "title": exp["title"]} if member else {}),
-                }
-            if lasermark not in experiences[key]["wafers"]:
-                experiences[key]["wafers"].append(lasermark)
-        wafer_rows.append({"lasermark": lasermark, "experiences": used_in})
 
-    thematics: dict[int, dict] = {}
-    for thematic_id in lots.declared_thematic_ids(lot.id):
-        found = ctx.thematic(thematic_id)
-        if found:
-            thematics[thematic_id] = {**found, "declared": True, "via_experiences": False}
-    for experience in experiences.values():
-        found = ctx.thematic(experience["microproject"].pop("thematic_id"))
-        if found:
-            thematics.setdefault(found["id"], {**found, "declared": False, "via_experiences": False})["via_experiences"] = True
-
+def _summary_payload(lot: Lot, ctx: _Context) -> dict:
+    """Un lot en bref : pour un sélecteur, ou les badges d'une plaque ou d'un graphe."""
     return {
+        "id": lot.id,
         "code": lot.code,
         "title": lot.title,
-        "description": lot.description,
         "priority": lot.priority,
         "status": lot.status,
+        "is_active": lot.is_active,
         "source": lot.source,
-        "started_on": lot.started_on,
         "forecast_exit_on": lot.forecast_exit_on,
         "exited_on": lot.exited_on,
+        "wafers": [_wafer_ref(wafer) for wafer in ctx.wafers[lot.id]],
+    }
+
+
+def _lot_payload(lot: Lot, ctx: _Context) -> dict:
+    experiments: dict[tuple[str, str], dict] = {}
+    thematics: dict[int, dict] = {}
+    wafer_rows = []
+    for wafer in ctx.wafers[lot.id]:
+        used_in = []
+        for occurrence in ctx.occurrences(wafer.key):
+            used_in.append(wafers.experiment_payload(occurrence, {}))
+            key = (occurrence.microproject.slug, occurrence.experiment_id)
+            if key not in experiments:
+                node = ctx.node(*key) or {}
+                experiments[key] = wafers.experiment_payload(
+                    occurrence,
+                    {
+                        "status": node.get("status", occurrence.entry["experiment"]["status"]),
+                        "decision": node.get("decision"),
+                        "started_at": node.get("started_at", occurrence.updated_at),
+                        "ended_at": node.get("ended_at"),
+                        "continued_at": node.get("continued_at"),
+                        "wafers": [],
+                    },
+                )
+                found = ctx.thematic(occurrence.microproject.thematic_id)
+                if found:
+                    thematics.setdefault(found["id"], {**found, "declared": False, "via_experiments": False})["via_experiments"] = True
+            if wafer.lasermark not in experiments[key]["wafers"]:
+                experiments[key]["wafers"].append(wafer.lasermark)
+        wafer_rows.append({**_wafer_ref(wafer), "experiments": used_in})
+
+    for thematic_id in ctx.declared[lot.id]:
+        found = ctx.thematic(thematic_id)
+        if found:
+            thematics.setdefault(found["id"], {**found, "declared": False, "via_experiments": False})["declared"] = True
+
+    return {
+        **_summary_payload(lot, ctx),
+        "description": lot.description,
+        "started_on": lot.started_on,
         "hold_reason": lot.hold_reason,
         **_schedule_payload(lot),
         "wafers": wafer_rows,
-        "experiences": sorted(experiences.values(), key=lambda e: e["started_at"] or ""),
-        "thematiques": sorted(thematics.values(), key=lambda t: (t["area"]["name"], t["name"])),
+        "experiments": sorted(experiments.values(), key=lambda e: e["started_at"] or ""),
+        "thematics": sorted(thematics.values(), key=lambda t: (t["area"]["name"], t["name"])),
         "created_by": ctx.user_name(lot.created_by),
         "created_at": lot.created_at,
         "updated_at": lot.updated_at,
-        "can_delete": ctx.user.is_admin or lot.created_by == ctx.user.id,
+        "can_delete": lots.can_delete(lot, ctx.user.id, ctx.user.is_admin),
     }
 
 
-def _detail(lot: Lot, user: User) -> dict:
-    return _lot_payload(lots.get_by_id(lot.id), _Context(user))
+def _respond(response: Response, lot: Lot, user: User) -> dict:
+    """Le lot entier, avec sa version en ``ETag`` (à renvoyer en ``If-Match`` pour le modifier)."""
+    response.headers["ETag"] = etag(lot.updated_at)
+    return _lot_payload(lot, _Context(user, [lot]))
 
 
-_FILTERS = {"actifs": lots.ACTIVE_STATUSES, "sortis": {"done"}, "annules": {"cancelled"}, "tous": None}
+def _csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
-@router.get("")
-def list_lots(statut: str = Query("actifs"), user: User = Depends(current_user)) -> dict:
-    """Les lots à suivre (``actifs`` : en préparation, en cours ou en pause), ou ``sortis``,
-    ``annules``, ``tous`` - par priorité (P10 d'abord), chacun avec ses dates, ses wafers, ses
-    expériences et ses thématiques."""
-    if statut not in _FILTERS:
-        raise HTTPException(status_code=422, detail="statut doit être actifs, sortis, annules ou tous")
-    ctx = _Context(user)
-    return {
-        "lots": [_lot_payload(lot, ctx) for lot in lots.list_all(_FILTERS[statut])],
-        "today": date.today().isoformat(),
-        "priorities": list(lots.PRIORITIES),
-    }
+@router.get("/lots")
+def list_lots(
+    status: str = "",
+    q: str = Query("", max_length=80),
+    wafer: str = "",
+    code: str | None = None,
+    view: Literal["full", "summary"] = "full",
+    user: User = Depends(current_user),
+) -> list[dict]:
+    """Les lots par priorité (P10 d'abord) - ou, avec ``q``, par pertinence (code, intitulé, wafer).
+    ``status`` : des statuts séparés par des virgules (tous par défaut) ; ``wafer`` : des clés de
+    wafer séparées par des virgules (les lots qui contiennent l'une d'elles) ; ``code`` : le code
+    exact (sans la casse) ; ``view=summary`` : sans expériences ni thématiques."""
+    statuses = lots.check_statuses(_csv(status)) or None
+    filters: dict[str, Any] = {"statuses": statuses, "code": code}
+    if wafer:
+        filters["wafer_keys"] = _csv(wafer)
+    if q.strip():
+        selected = [lot for lot, _wafer in lots.search(q, statuses=statuses)]
+        if wafer or code is not None:
+            kept = {lot.id for lot in lots.list_lots(**filters)}
+            selected = [lot for lot in selected if lot.id in kept]
+    else:
+        selected = lots.list_lots(**filters)
+    ctx = _Context(user, selected)
+    payload = _summary_payload if view == "summary" else _lot_payload
+    return [payload(lot, ctx) for lot in selected]
 
 
-@router.post("", status_code=201)
-def create_lot(body: CreateLotRequest, user: User = Depends(current_user)) -> dict:
-    try:
-        lot = lots.create(
-            code=body.code,
-            title=body.title,
-            description=body.description,
-            priority=body.priority,
-            started_on=body.started_on,
-            forecast_exit_on=body.forecast_exit_on,
-            wafers=body.wafers,
-            thematic_ids=body.thematic_ids,
-            created_by=user.id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _detail(lot, user)
+@router.get("/lot-priorities")
+def list_priorities(user: User = Depends(current_user)) -> list[str]:
+    """Les priorités proposées à la saisie (toute valeur courte est acceptée)."""
+    return list(lots.PRIORITIES)
 
 
-@router.get("/recherche")
-def search_lots(q: str = Query("", max_length=80), user: User = Depends(current_user)) -> list[dict]:
-    """La topbar : les lots par code / intitulé, ou par un de leurs wafers (``wafer``)."""
-    return [
-        {"code": hit["lot"].code, "title": hit["lot"].title, "status": hit["lot"].status, "priority": hit["lot"].priority, "wafer": hit["wafer"]}
-        for hit in lots.search(q)
-    ]
+@router.post("/lots", status_code=201)
+def create_lot(body: LotCreate, response: Response, user: User = Depends(current_user)) -> dict:
+    lot = lots.create(**body.model_dump(), created_by=user.id)
+    created(response, f"/api/lots/{lot.id}")
+    return _respond(response, lot, user)
 
 
-@router.get("/selection")
-def lot_choices(user: User = Depends(current_user)) -> list[dict]:
-    """Les lots où l'on peut mettre un wafer, à tout moment : ceux pas encore sortis (P10 d'abord),
-    puis ceux déjà sortis (les plus récents d'abord) - pas les annulés -, avec leurs wafers. Léger,
-    pour le sélecteur « Ajouter au lot » d'un µprojet (graphe, fiche d'une expérience)."""
-    done = sorted(lots.list_all({"done"}), key=lambda lot: lot.exited_on or "", reverse=True)
-    return [
-        {
-            "code": lot.code,
-            "title": lot.title,
-            "priority": lot.priority,
-            "status": lot.status,
-            "forecast_exit_on": lot.forecast_exit_on,
-            "wafers": lots.list_wafers(lot.id),
-        }
-        for lot in [*lots.list_all(lots.ACTIVE_STATUSES), *done]
-    ]
+@router.get("/lots/{lot_id}")
+def get_lot(lot_id: int, response: Response, user: User = Depends(current_user)) -> dict:
+    return _respond(response, lots.get(lot_id), user)
 
 
-@router.get("/thematiques")
-def thematic_options(user: User = Depends(current_user)) -> list[dict]:
-    """Toutes les thématiques, par projet corporate - pour déclarer celles qu'un lot vise."""
-    options = []
-    for area in management.list_all():
-        thematics = management.list_thematics(area.id)
-        if thematics:
-            options.append({"area": {"slug": area.slug, "name": area.name}, "thematiques": [{"id": t.id, "name": t.name} for t in thematics]})
-    return options
+@router.patch("/lots/{lot_id}")
+def update_lot(lot_id: int, body: LotPatch, response: Response, if_match: str | None = Header(None), user: User = Depends(current_user)) -> dict:
+    """Les champs envoyés seulement ; ``If-Match`` : la version affichée (``updated_at``), sinon 412."""
+    lot = lots.update(lot_id, body.model_dump(exclude_unset=True), expected_version=if_match_version(if_match))
+    return _respond(response, lot, user)
 
 
-@router.get("/{code}")
-def get_lot(code: str, user: User = Depends(current_user)) -> dict:
-    return _detail(_get_lot(code), user)
+@router.delete("/lots/{lot_id}", status_code=204)
+def delete_lot(lot_id: int, user: User = Depends(current_user)) -> Response:
+    lots.delete(lot_id, user_id=user.id, is_admin=user.is_admin)
+    return Response(status_code=204)
 
 
-@router.put("/{code}")
-def update_lot(code: str, body: UpdateLotRequest, user: User = Depends(current_user)) -> dict:
-    lot = _get_lot(code)
-    try:
-        lot = lots.update(lot.id, **body.model_dump())
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _detail(lot, user)
+@router.post("/lots/{lot_id}/wafers", status_code=201)
+def add_wafers(lot_id: int, body: LotWafersAdd, response: Response, user: User = Depends(current_user)) -> dict:
+    """Ajoute des wafers au lot : 201 et le lot ; 200 si tous y étaient déjà (rien n'est écrit).
+    Sans ``Location`` : un wafer d'un lot n'a pas de route propre, il se lit dans le lot."""
+    if not lots.add_wafers(lot_id, body.lasermarks):
+        response.status_code = 200
+    return _respond(response, lots.get(lot_id), user)
 
 
-@router.delete("/{code}")
-def delete_lot(code: str, user: User = Depends(current_user)) -> dict:
-    lot = _get_lot(code)
-    if not (user.is_admin or lot.created_by == user.id):
-        raise HTTPException(status_code=403, detail="seule la personne qui a créé le lot (ou un admin) peut le supprimer")
-    lots.delete(lot.id)
-    return {"deleted": lot.code}
+@router.delete("/lots/{lot_id}/wafers/{wafer_key}", status_code=204)
+def remove_wafer(lot_id: int, wafer_key: str, user: User = Depends(current_user)) -> Response:
+    lots.remove_wafer(lot_id, wafer_key)
+    return Response(status_code=204)
 
 
-@router.post("/{code}/wafers")
-def add_wafers(code: str, body: WafersRequest, user: User = Depends(current_user)) -> dict:
-    lot = _get_lot(code)
-    try:
-        lots.add_wafers(lot.id, body.lasermarks)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _detail(lot, user)
-
-
-@router.delete("/{code}/wafers/{lasermark}")
-def remove_wafer(code: str, lasermark: str, user: User = Depends(current_user)) -> dict:
-    lot = _get_lot(code)
-    lots.remove_wafer(lot.id, lasermark)
-    return _detail(lot, user)
-
-
-@router.put("/{code}/thematiques")
-def set_thematics(code: str, body: ThematicsRequest, user: User = Depends(current_user)) -> dict:
-    lot = _get_lot(code)
-    try:
-        lots.set_thematics(lot.id, body.thematic_ids)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _detail(lot, user)
+@router.put("/lots/{lot_id}/thematics")
+def set_thematics(lot_id: int, body: LotThematics, response: Response, user: User = Depends(current_user)) -> dict:
+    """Les thématiques déclarées « visées » (ids de ``GET /api/thematics``), remplacées en bloc."""
+    lots.set_thematics(lot_id, body.thematic_ids)
+    return _respond(response, lots.get(lot_id), user)

@@ -6,10 +6,6 @@ const microprojectsApi = {
   list(params) {
     return api.get(api.withQuery("/api/microprojects", params));
   },
-  // transitoire, jusqu'à la recherche par FDL du plugin wafers
-  searchFdl(query) {
-    return api.get(api.withQuery("/api/microprojets/recherche-fdl", { q: query }));
-  },
   // {name, description, area, thematic}
   create(body) {
     return api.post("/api/microprojects", body);
