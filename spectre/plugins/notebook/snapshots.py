@@ -1,7 +1,8 @@
 """Jeux de données du cahier d'une expérience : ce qu'une requête PRISM (paquet
 ``prism-aledia-datahook``) a renvoyé pour un lot de plaques, **figé en instantané** - un fichier JSON
-du µprojet (à côté de ses pièces jointes, voir :func:`spectre.plugins.attachments.store.attachments_dir`).
-Le cahier et le rapport se relisent ainsi tels qu'ils étaient, sans retaper la base à chaque
+du µprojet, dans son dossier ``snapshots/`` (les instantanés d'avant, rangés avec les pièces jointes,
+restent lisibles : :func:`spectre.plugins.attachments.store.attachments_dir`). Un instantané ne change
+jamais. Le cahier et le rapport se relisent ainsi tels qu'ils étaient, sans retaper la base à chaque
 affichage ; « Actualiser » prend un nouvel instantané.
 
 Pour rester léger, un instantané écarte les colonnes 2D (un spectre par point de balayage...) et
@@ -21,11 +22,13 @@ import json
 import re
 import secrets
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from ...kernel.errors import NotFound
 from ..attachments.store import attachments_dir
 from ..characterization import service as characterization
+from ..microprojects.service import microproject_dir
 
 MAX_ROWS = 20000
 MAX_VECTOR_POINTS = 150
@@ -79,21 +82,37 @@ def fetch(hook_key: str, wafers: list[str], *, refresh: bool = False) -> dict[st
     }
 
 
+def snapshots_dir(slug: str) -> Path:
+    path = microproject_dir(slug) / "snapshots"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def store(slug: str, dataset: dict[str, Any]) -> str:
     snapshot_id = f"snap_{secrets.token_hex(10)}"
-    path = attachments_dir(slug) / f"{snapshot_id}.json"
+    path = snapshots_dir(slug) / f"{snapshot_id}.json"
     path.write_text(json.dumps(dataset, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     return snapshot_id
 
 
-def load(slug: str, snapshot_id: str) -> dict[str, Any]:
+def _path(slug: str, snapshot_id: str) -> Path | None:
+    """Le fichier de l'instantané : dans ``snapshots/``, ou parmi les pièces jointes pour un
+    instantané d'avant ce dossier - ``None`` pour un id mal formé ou un instantané absent."""
     if not SNAPSHOT_ID_RE.fullmatch(snapshot_id or ""):
-        raise NotFound("instantané introuvable")
-    path = attachments_dir(slug) / f"{snapshot_id}.json"
-    if not path.is_file():
-        raise NotFound("instantané introuvable")
+        return None
+    for directory in (snapshots_dir(slug), attachments_dir(slug)):
+        path = directory / f"{snapshot_id}.json"
+        if path.is_file():
+            return path
+    return None
+
+
+def load(slug: str, snapshot_id: str) -> dict[str, Any]:
+    path = _path(slug, snapshot_id)
+    if path is None:
+        raise NotFound("instantané introuvable", code="snapshot_not_found")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def exists(slug: str, snapshot_id: str) -> bool:
-    return bool(SNAPSHOT_ID_RE.fullmatch(snapshot_id or "")) and (attachments_dir(slug) / f"{snapshot_id}.json").is_file()
+    return _path(slug, snapshot_id) is not None

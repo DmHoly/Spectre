@@ -1,245 +1,107 @@
-"""Cahier de données d'une expérience : des vues sur les données de caractérisation de ses plaques
-(PRISM), chacune avec ses observations / sa conclusion - le cahier de labo de l'étude, repris tel
-quel dans son rapport.
+"""Les routes du cahier de données, sous ``/api/microprojects/{microproject_slug}`` (le domaine est
+dans :mod:`.service` et :mod:`.snapshots`) :
 
-- ``GET  /{slug}/donnees/sources`` : les types de données qu'on peut charger (requêtes PRISM implémentées).
-- ``POST /{slug}/donnees/instantanes`` : charger un type de données pour des plaques et le figer
-  (:mod:`spectre.plugins.notebook.snapshots`) ; ``GET .../instantanes/{id}`` le relit.
-- ``POST/PUT/DELETE /{slug}/experiences/{ref}/cahier[/{entry_id}]`` : ajouter / modifier / retirer
-  une vue. Comme tout le reste de la fiche, chaque changement est une nouvelle version (écriture
-  légère sur la piste) - la traçabilité d'un cahier de labo, pour rien.
+- ``POST /snapshots`` : charger un type de données de caractérisation pour des plaques et le figer ;
+  ``GET /snapshots/{snapshot_id}`` le relit (un instantané ne change jamais : il se met en cache).
+- ``GET /experiments/{experiment_id}/notebook-entries`` : les vues du cahier (``?version=`` pour une
+  version passée) ; ``POST``, ``PATCH`` et ``DELETE`` les ajoutent, les modifient (``position``
+  pour les déplacer) et les retirent - chaque fois une écriture sur la piste, avec ``If-Match``
+  (412 si elle a avancé), et l'``ETag`` de la nouvelle version dans la réponse.
 
-Une vue = un instantané + un composant de visualisation (``component``, une clé du registre
-``DataViz`` côté page, ``notebook/static/dataviz/``) + ses réglages (``options``, libres : c'est le composant qui
-les lit) + des observations (``note``) et, au besoin, l'objectif qu'elle sert. Le serveur ne connaît
-pas les composants : ajouter une visualisation ne demande que d'écrire son fichier JS.
+Les types de données qu'on peut charger se lisent dans le catalogue de caractérisation
+(``GET /api/characterization/data-types?by_wafer=true&status=implemented``).
 """
 
 from __future__ import annotations
 
-import json
-import re
-import secrets
-from datetime import datetime, timezone
-from typing import Any, Callable
+from fastapi import APIRouter, Depends, Header, Response
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
-
+from ...kernel.http import created, etag, if_match_version
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from ...kernel.errors import NotFound
-from ...kernel.http import if_match_version
-from ..characterization import service as characterization
-from ..experiments import service as experiments
-from ..microprojects.deps import require_role
+from ..microprojects.deps import get_microproject, require_role
 from ..microprojects.service import Microproject
-from . import snapshots
+from . import service, snapshots
+from .schemas import EntryInput, EntryUpdate, SnapshotRequest
 
-router = APIRouter(prefix="/api/microprojets", tags=["notebook"])
+router = APIRouter(prefix="/api/microprojects/{microproject_slug}", tags=["notebook"])
 
-NOTEBOOK_KEY = "data_notebook"
-MAX_ENTRIES = 60
-_COMPONENT_RE = re.compile(r"^[a-z0-9][a-z0-9.\-]{1,48}$")
-_ENTRY_ID_RE = re.compile(r"^nb_[0-9a-f]{12}$")
-
-
-class SnapshotRequest(BaseModel):
-    hook: str
-    wafers: list[str] = []
-    refresh: bool = False
+# Un instantané ne change jamais (un nouvel id à chaque chargement) : le navigateur le garde.
+IMMUTABLE = "private, max-age=31536000, immutable"
 
 
-class EntryInput(BaseModel):
-    title: str
-    snapshot_id: str
-    component: str
-    options: dict[str, Any] = {}
-    note: str | None = None
-    objective: str | None = None
-    in_report: bool = True
+def _member(min_role: str):
+    """:func:`require_role` pour une route dont le paramètre de chemin est ``{microproject_slug}``.
+    Transitoire : à remplacer par ``Depends(require_role(...))`` quand ``microprojects.deps`` lira
+    ce paramètre (il lit encore ``{slug}``)."""
+    check = require_role(min_role)
+
+    def dependency(microproject_slug: str, user: User = Depends(current_user)) -> Microproject:
+        return check(user=user, microproject=get_microproject(microproject_slug))
+
+    return dependency
 
 
-class EntryUpdate(BaseModel):
-    title: str | None = None
-    snapshot_id: str | None = None
-    component: str | None = None
-    options: dict[str, Any] | None = None
-    note: str | None = None
-    objective: str | None = None
-    in_report: bool | None = None
-    move: int | None = None  # -1 : remonter d'un cran, +1 : descendre
-
-
-@router.get("/{slug}/donnees/sources")
-def notebook_sources(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    sources = [t.summary() for t in characterization.list_types(status="implemented")]
-    return {"sources": sources, "demo": characterization.demo_enabled()}
-
-
-@router.post("/{slug}/donnees/instantanes", status_code=201)
-def take_snapshot(body: SnapshotRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+@router.post("/snapshots", status_code=201)
+def take_snapshot(body: SnapshotRequest, response: Response, microproject: Microproject = Depends(_member("editor"))) -> dict:
     dataset = snapshots.fetch(body.hook, body.wafers, refresh=body.refresh)
     snapshot_id = snapshots.store(microproject.slug, dataset)
+    created(response, f"/api/microprojects/{microproject.slug}/snapshots/{snapshot_id}")
     return {"snapshot_id": snapshot_id, **dataset}
 
 
-@router.get("/{slug}/donnees/instantanes/{snapshot_id}")
-def read_snapshot(snapshot_id: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    return {"snapshot_id": snapshot_id, **snapshots.load(microproject.slug, snapshot_id)}
+@router.get("/snapshots/{snapshot_id}")
+def read_snapshot(snapshot_id: str, response: Response, microproject: Microproject = Depends(_member("viewer"))) -> dict:
+    dataset = snapshots.load(microproject.slug, snapshot_id)
+    response.headers["Cache-Control"] = IMMUTABLE
+    return {"snapshot_id": snapshot_id, **dataset}
 
 
-def _clean_text(value: str | None, limit: int) -> str | None:
-    value = (value or "").strip()
-    return value[:limit] or None
+@router.get("/experiments/{experiment_id}/notebook-entries")
+def list_entries(experiment_id: str, version: str | None = None, microproject: Microproject = Depends(_member("viewer"))) -> list[dict]:
+    return service.entries(microproject.slug, experiment_id, version)
 
 
-def _check_options(options: dict[str, Any]) -> dict[str, Any]:
-    if len(json.dumps(options, ensure_ascii=False)) > 20000:
-        raise HTTPException(status_code=422, detail="réglages de la vue trop volumineux")
-    return options
-
-
-def _check_component(component: str) -> str:
-    if not _COMPONENT_RE.fullmatch(component or ""):
-        raise HTTPException(status_code=422, detail="composant de visualisation invalide")
-    return component
-
-
-def _check_objective(objective: str | None, parent: Any) -> str | None:
-    objective = _clean_text(objective, 200)
-    if objective and not any(o.name == objective for o in parent.objectives):
-        raise HTTPException(status_code=422, detail=f"objectif « {objective} » introuvable sur cette expérience")
-    return objective
-
-
-def _snapshot_summary(slug: str, snapshot_id: str) -> dict[str, Any]:
-    try:
-        dataset = snapshots.load(slug, snapshot_id)
-    except NotFound as exc:
-        raise HTTPException(status_code=422, detail="instantané de données introuvable - rechargez les données") from exc
-    return {
-        "snapshot_id": snapshot_id,
-        "hook": dataset.get("hook"),
-        "hook_title": dataset.get("hook_title"),
-        "wafers": dataset.get("wafers", []),
-        "source": dataset.get("source"),
-        "fetched_at": dataset.get("fetched_at"),
-        "row_count": len(dataset.get("rows", [])),
-    }
-
-
-def _commit(microproject: Microproject, ref: str, user: User, if_match: str | None, mutate: Callable[[list[dict], Any], dict]) -> dict:
-    """Une écriture légère sur la piste ``ref`` qui ne change que le cahier (tout le reste reporté
-    tel quel, :func:`spectre.plugins.experiments.service.amend` ; ``If-Match`` périmé : 412)."""
-    result: dict = {}
-
-    def change(builder: Any, parent: Any) -> None:
-        entries = [dict(e) for e in parent.metadata.get(NOTEBOOK_KEY, [])]
-        result.update(mutate(entries, parent))
-        builder.metadata[NOTEBOOK_KEY] = entries
-
-    experiment = experiments.amend(microproject.slug, ref, author=user.name, expected_version=if_match_version(if_match), change=change)
-    return {"id": ref, "version_id": experiment.id, **result}
-
-
-def _find(entries: list[dict], entry_id: str) -> int:
-    for i, entry in enumerate(entries):
-        if entry.get("id") == entry_id:
-            return i
-    raise HTTPException(status_code=404, detail="vue introuvable dans le cahier de cette version")
-
-
-@router.post("/{slug}/experiences/{ref}/cahier", status_code=201)
+@router.post("/experiments/{experiment_id}/notebook-entries", status_code=201)
 def add_entry(
-    ref: str,
+    experiment_id: str,
     body: EntryInput,
+    response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(require_role("editor")),
+    microproject: Microproject = Depends(_member("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    title = _clean_text(body.title, 200)
-    if not title:
-        raise HTTPException(status_code=422, detail="donnez un titre à cette vue")
-    snapshot = _snapshot_summary(microproject.slug, body.snapshot_id)
-
-    def mutate(entries: list[dict], parent: Any) -> dict:
-        if len(entries) >= MAX_ENTRIES:
-            raise HTTPException(status_code=422, detail=f"{MAX_ENTRIES} vues au maximum par cahier")
-        now = datetime.now(timezone.utc).isoformat()
-        entry = {
-            "id": f"nb_{secrets.token_hex(6)}",
-            "title": title,
-            **snapshot,
-            "component": _check_component(body.component),
-            "options": _check_options(body.options),
-            "note": _clean_text(body.note, 20000),
-            "objective": _check_objective(body.objective, parent),
-            "in_report": body.in_report,
-            "created_by": user.name,
-            "created_at": now,
-            "updated_by": user.name,
-            "updated_at": now,
-        }
-        entries.append(entry)
-        return {"entry_id": entry["id"]}
-
-    return _commit(microproject, ref, user, if_match, mutate)
+    """Une vue de plus en fin de cahier - sans ``Location`` : une vue n'a pas de route de lecture
+    propre, elle se lit dans le cahier."""
+    entry, tip = service.add_entry(microproject.slug, experiment_id, body, author=user.name, expected_version=if_match_version(if_match))
+    response.headers["ETag"] = etag(tip.id)
+    return entry
 
 
-@router.put("/{slug}/experiences/{ref}/cahier/{entry_id}")
+@router.patch("/experiments/{experiment_id}/notebook-entries/{entry_id}")
 def update_entry(
-    ref: str,
+    experiment_id: str,
     entry_id: str,
     body: EntryUpdate,
+    response: Response,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(require_role("editor")),
+    microproject: Microproject = Depends(_member("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    if not _ENTRY_ID_RE.fullmatch(entry_id):
-        raise HTTPException(status_code=404, detail="vue introuvable")
-    snapshot = _snapshot_summary(microproject.slug, body.snapshot_id) if body.snapshot_id else None
-
-    def mutate(entries: list[dict], parent: Any) -> dict:
-        index = _find(entries, entry_id)
-        entry = entries[index]
-        if body.title is not None:
-            title = _clean_text(body.title, 200)
-            if not title:
-                raise HTTPException(status_code=422, detail="donnez un titre à cette vue")
-            entry["title"] = title
-        if snapshot:
-            entry.update(snapshot)
-        if body.component is not None:
-            entry["component"] = _check_component(body.component)
-        if body.options is not None:
-            entry["options"] = _check_options(body.options)
-        if body.note is not None:
-            entry["note"] = _clean_text(body.note, 20000)
-        if body.objective is not None:
-            entry["objective"] = _check_objective(body.objective, parent)
-        if body.in_report is not None:
-            entry["in_report"] = body.in_report
-        entry["updated_by"] = user.name
-        entry["updated_at"] = datetime.now(timezone.utc).isoformat()
-        if body.move:
-            target = max(0, min(len(entries) - 1, index + (1 if body.move > 0 else -1)))
-            entries.insert(target, entries.pop(index))
-        return {"entry_id": entry_id}
-
-    return _commit(microproject, ref, user, if_match, mutate)
+    entry, tip = service.update_entry(
+        microproject.slug, experiment_id, entry_id, body, author=user.name, expected_version=if_match_version(if_match)
+    )
+    response.headers["ETag"] = etag(tip.id)
+    return entry
 
 
-@router.delete("/{slug}/experiences/{ref}/cahier/{entry_id}")
+@router.delete("/experiments/{experiment_id}/notebook-entries/{entry_id}", status_code=204)
 def remove_entry(
-    ref: str,
+    experiment_id: str,
     entry_id: str,
     if_match: str | None = Header(None),
-    microproject: Microproject = Depends(require_role("editor")),
+    microproject: Microproject = Depends(_member("editor")),
     user: User = Depends(current_user),
-) -> dict:
-    def mutate(entries: list[dict], parent: Any) -> dict:
-        entries.pop(_find(entries, entry_id))
-        return {}
-
-    return _commit(microproject, ref, user, if_match, mutate)
+) -> Response:
+    tip = service.remove_entry(microproject.slug, experiment_id, entry_id, author=user.name, expected_version=if_match_version(if_match))
+    return Response(status_code=204, headers={"ETag": etag(tip.id)})

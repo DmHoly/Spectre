@@ -29,8 +29,10 @@ from support.experiments import (
     track_entities,
     versions,
 )
-from support.http import PNG_1PX, assert_handler_404
+from support.external_images import create_image_set, delete_image_set, image_sets, image_sets_url, pin_image, png_files
+from support.http import assert_handler_404
 from support.microprojects import signup_with_microproject
+from support.notebook import add_entry, entries, entries_url, take_snapshot, update_entry
 from support.structures import steps, upload_structure_image
 
 FUTURE_KEY = "champ_spectre_futur"  # un champ que Spectre rangerait demain dans les métadonnées
@@ -45,6 +47,7 @@ def study(client, tmp_path, monkeypatch):
     from spectre.plugins.experiments import service
 
     monkeypatch.setenv("SPECTRE_DEMO_DATA", "1")
+    monkeypatch.setenv("SPECTRE_EXTERNAL_IMAGE_ROOTS", str(tmp_path))
     slug = signup_with_microproject(client, "writes@example.com", name="Ada")
     schema = {"image_id": upload_structure_image(client, slug), "kind": "schema", "caption": None}
     launched = launch_image(
@@ -60,16 +63,10 @@ def study(client, tmp_path, monkeypatch):
     line = launched["id"]
     picture = upload_image(client, slug)
     evidence = add_evidence(client, slug, line, "Coupe TEM", links=["https://exemple.fr/tem"], interpretation="Net", images=[{"image_id": picture}])
-    snapshot = client.post(f"/api/microprojets/{slug}/donnees/instantanes", json={"hook": "eqe", "wafers": ["W12-A3"]}).json()
-    entry = client.post(
-        f"/api/microprojets/{slug}/experiences/{line}/cahier",
-        json={"title": "EQE", "snapshot_id": snapshot["snapshot_id"], "component": "table"},
-    ).json()
-    paths = []
-    for name in ("tem-1.png", "tem-2.png"):
-        (tmp_path / name).write_bytes(PNG_1PX)
-        paths.append(str(tmp_path / name))
-    data = client.post(f"/api/microprojets/{slug}/experiences/{line}/data", json={"image_paths": paths}).json()
+    snapshot = take_snapshot(client, slug, wafers=["W12-A3"])
+    entry = add_entry(client, slug, line, snapshot["snapshot_id"], title="EQE")
+    paths = png_files(tmp_path)
+    data = create_image_set(client, slug, line, paths)
     service.amend(slug, line, author="Ada", change=lambda builder, parent: builder.metadata.update({FUTURE_KEY: {"garde": True}}))
     other = launch_image(client, slug, [{"image_id": upload_structure_image(client, slug), "kind": "coupe"}], title="Autre", entities=[{"sample_id": "W2"}])
     return {
@@ -78,18 +75,13 @@ def study(client, tmp_path, monkeypatch):
         "schema": schema,
         "picture": picture,
         "evidence_id": evidence["id"],
-        "entry_id": entry["entry_id"],
+        "entry_id": entry["id"],
         "snapshot_id": snapshot["snapshot_id"],
-        "data_id": data["data_item"]["id"],
+        "data_id": data["id"],
         "paths": paths,
         "other": other["id"],
         "before": get_experiment(client, slug, line),
     }
-
-
-def _old(client, method, s, path, **kwargs):
-    response = client.request(method, f"/api/microprojets/{s['slug']}/experiences/{s['line']}/{path}", **kwargs)
-    assert response.status_code in (200, 201), response.text
 
 
 WRITES = {
@@ -105,9 +97,9 @@ WRITES = {
     ),
     "preuve": lambda c, s: add_evidence(c, s["slug"], s["line"], "Autre mesure"),
     "annotations": lambda c, s: annotate(c, s["slug"], s["line"], s["evidence_id"], [{"attachment_id": s["picture"], "type": "box", "x": 1.0, "y": 2.0}]),
-    "cahier": lambda c, s: _old(c, "PUT", s, f"cahier/{s['entry_id']}", json={"note": "Vu"}),
-    "galerie-epingle": lambda c, s: _old(c, "PATCH", s, f"data/{s['data_id']}/epingle", json={"pinned_index": 1}),
-    "galerie-retrait": lambda c, s: _old(c, "DELETE", s, f"data/{s['data_id']}"),
+    "cahier": lambda c, s: update_entry(c, s["slug"], s["line"], s["entry_id"], note="Vu"),
+    "galerie-epingle": lambda c, s: pin_image(c, s["slug"], s["line"], s["data_id"], 1),
+    "galerie-retrait": lambda c, s: delete_image_set(c, s["slug"], s["line"], s["data_id"]),
 }
 
 
@@ -127,9 +119,9 @@ def test_every_lightweight_write_carries_the_whole_parent(client, study, write):
     assert own["interpretation"] == "Net" and own["kind"] == "image"
     assert own["links"] == ["https://exemple.fr/tem"]
     assert [image["id"] for image in own["images"]] == [study["picture"]]
-    assert [e["id"] for e in after["data_notebook"]] == [study["entry_id"]]
+    assert [e["id"] for e in entries(client, study["slug"], study["line"])] == [study["entry_id"]]
     if write != "galerie-retrait":
-        assert [d["id"] for d in after["data_items"]] == [study["data_id"]]
+        assert [d["id"] for d in image_sets(client, study["slug"], study["line"])] == [study["data_id"]]
     if write != "entites":
         assert after["physical_tracking"] == before["physical_tracking"]
     if write not in ("statut", "pause", "conclusion"):
@@ -152,17 +144,13 @@ STALE_WRITES = {
     "delete": lambda c, s, h: c.delete(experiment_url(s["slug"], s["line"]), headers=h),
     "evidence": lambda c, s, h: c.post(evidence_url(s["slug"], s["line"]), headers=h, json={"description": "x"}),
     "annotations": lambda c, s, h: c.put(f"{evidence_url(s['slug'], s['line'])}/{s['evidence_id']}/annotations", headers=h, json={"annotations": []}),
-    # les anciennes routes des plugins de la vague 3, qui écrivent elles aussi sur la piste
-    "cahier-ajout": lambda c, s, h: c.post(
-        f"/api/microprojets/{s['slug']}/experiences/{s['line']}/cahier", headers=h, json={"title": "x", "snapshot_id": s["snapshot_id"], "component": "table"}
-    ),
-    "cahier": lambda c, s, h: c.put(f"/api/microprojets/{s['slug']}/experiences/{s['line']}/cahier/{s['entry_id']}", headers=h, json={"note": "x"}),
-    "cahier-retrait": lambda c, s, h: c.delete(f"/api/microprojets/{s['slug']}/experiences/{s['line']}/cahier/{s['entry_id']}", headers=h),
-    "galerie-ajout": lambda c, s, h: c.post(f"/api/microprojets/{s['slug']}/experiences/{s['line']}/data", headers=h, json={"image_paths": s["paths"]}),
-    "galerie-epingle": lambda c, s, h: c.patch(
-        f"/api/microprojets/{s['slug']}/experiences/{s['line']}/data/{s['data_id']}/epingle", headers=h, json={"pinned_index": 1}
-    ),
-    "galerie-retrait": lambda c, s, h: c.delete(f"/api/microprojets/{s['slug']}/experiences/{s['line']}/data/{s['data_id']}", headers=h),
+    # le cahier et la galerie, qui écrivent eux aussi sur la piste
+    "cahier-ajout": lambda c, s, h: c.post(entries_url(s["slug"], s["line"]), headers=h, json={"title": "x", "snapshot_id": s["snapshot_id"], "component": "table"}),
+    "cahier": lambda c, s, h: c.patch(f"{entries_url(s['slug'], s['line'])}/{s['entry_id']}", headers=h, json={"note": "x"}),
+    "cahier-retrait": lambda c, s, h: c.delete(f"{entries_url(s['slug'], s['line'])}/{s['entry_id']}", headers=h),
+    "galerie-ajout": lambda c, s, h: c.post(image_sets_url(s["slug"], s["line"]), headers=h, json={"image_paths": s["paths"]}),
+    "galerie-epingle": lambda c, s, h: c.patch(f"{image_sets_url(s['slug'], s['line'])}/{s['data_id']}", headers=h, json={"pinned_index": 1}),
+    "galerie-retrait": lambda c, s, h: c.delete(f"{image_sets_url(s['slug'], s['line'])}/{s['data_id']}", headers=h),
 }
 
 

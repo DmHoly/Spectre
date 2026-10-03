@@ -105,8 +105,6 @@ def _detail(repo: follow.Repository, experiment_id: str, version: follow.Experim
         "has_editable_process": "structureforge_process" in version.metadata,
         "evidence_count": len(version.evidence),
         "physical_tracking": version.metadata.get("physical_tracking", []),
-        "data_notebook": version.metadata.get("data_notebook", []),
-        "data_items": version.metadata.get("data_items", []),
         "form_answers": dict(version.form_answers),
     }
 

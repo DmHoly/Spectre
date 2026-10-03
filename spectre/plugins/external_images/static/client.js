@@ -1,30 +1,36 @@
 /* Client de l'API du plugin external_images : galerie d'images externes (TEM, scans) d'une
-   expérience, parcours des dossiers autorisés et URL d'une image. Les écritures sur la galerie
-   envoient la version affichée (`versionId`, en-tête If-Match) : 412 si la piste a avancé. */
+   expérience et parcours des dossiers autorisés. Chaque image d'un jeu porte son `url` (le chemin
+   reste côté serveur). Les écritures sur la galerie envoient la version affichée (`versionId`,
+   en-tête If-Match) : 412 si la piste a avancé. */
 
 const externalImagesApi = {
+  // version : une version passée de la piste (la pointe sinon)
+  list(microprojectSlug, experimentId, version) {
+    return api.get(
+      api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/image-sets`, { version })
+    );
+  },
+  // body : {title, note, entity_index, image_paths, pinned_index}
   create(microprojectSlug, experimentId, versionId, body) {
-    return api.post(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(experimentId)}/data`, body, {
+    return api.post(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/image-sets`, body, {
       ifMatch: versionId && `"${versionId}"`,
     });
   },
-  remove(microprojectSlug, experimentId, versionId, itemId) {
-    return api.del(
-      `/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(experimentId)}/data/${encodeURIComponent(itemId)}`,
-      { ifMatch: versionId && `"${versionId}"` }
-    );
-  },
-  pin(microprojectSlug, experimentId, versionId, itemId, body) {
+  pin(microprojectSlug, experimentId, versionId, setId, pinnedIndex) {
     return api.patch(
-      `/api/microprojets/${encodeURIComponent(microprojectSlug)}/experiences/${encodeURIComponent(experimentId)}/data/${encodeURIComponent(itemId)}/epingle`,
-      body,
+      `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/image-sets/${encodeURIComponent(setId)}`,
+      { pinned_index: pinnedIndex },
       { ifMatch: versionId && `"${versionId}"` }
     );
   },
-  browse(microprojectSlug, folder) {
-    return api.get(api.withQuery(`/api/microprojets/${encodeURIComponent(microprojectSlug)}/data/parcourir`, { dossier: folder }));
+  remove(microprojectSlug, experimentId, versionId, setId) {
+    return api.del(
+      `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/image-sets/${encodeURIComponent(setId)}`,
+      { ifMatch: versionId && `"${versionId}"` }
+    );
   },
-  imageUrl(microprojectSlug, path) {
-    return `/api/microprojets/${encodeURIComponent(microprojectSlug)}/data/image?chemin=${encodeURIComponent(path)}`;
+  // les images d'un dossier autorisé : [{name, path, size, displayable}]
+  browse(microprojectSlug, directory) {
+    return api.get(api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/external-images`, { directory }));
   },
 };
