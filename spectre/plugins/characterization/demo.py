@@ -1,8 +1,13 @@
-"""Données de démonstration pour le cahier de données, **uniquement** quand ``SPECTRE_DEMO_DATA=1``
-(voir :mod:`spectre.plugins.characterization.source`) : une instance de démo sans accès aux bases de caractérisation
-doit pouvoir montrer les vues du cahier. Des jeux synthétiques mais plausibles, aux mêmes colonnes
-que les requêtes PRISM (``hook.yml`` de chaque type) - déterministes par plaque (même lasermark,
-mêmes données), toujours marqués ``source: "demo"`` dans l'instantané et à l'écran.
+"""La source de démonstration, **uniquement** quand ``SPECTRE_DEMO_DATA=1`` (voir
+:func:`spectre.plugins.characterization.service.current_source`) : une instance de démo sans accès
+aux bases de caractérisation doit pouvoir montrer la page Data et les vues du cahier. Des jeux
+synthétiques mais plausibles, aux mêmes colonnes que les requêtes PRISM (``hook.yml`` de chaque
+type) - déterministes par plaque (même lasermark, mêmes données), toujours marqués
+``source: "demo"``.
+
+Elle respecte le contrat de la source PRISM qu'elle remplace : elle ne liste que les types qu'elle
+sait servir (leurs fiches sont celles du catalogue PRISM, lisibles sans base) et répond 404 pour
+tout autre.
 """
 
 from __future__ import annotations
@@ -12,6 +17,9 @@ import math
 import random
 from datetime import date, timedelta
 from typing import Any
+
+from ...kernel.errors import NotFound
+from .source import WAFER_PARAMETER, DataSource, DataType, QueryResult
 
 
 def _rng(*parts: str) -> random.Random:
@@ -124,12 +132,27 @@ def _waferlist(wafers: list[str]) -> tuple[list[str], list[list[Any]]]:
 GENERATORS = {"eqe": _eqe, "pl": _pl, "ncel": _ncel, "waferlist": _waferlist}
 
 
-def generate(hook_key: str, wafers: list[str]) -> tuple[list[str], list[list[Any]]]:
-    from .source import DataSourceError
+class DemoSource:
+    name = "demo"
 
-    generator = GENERATORS.get(hook_key)
-    if generator is None:
-        raise DataSourceError(422, f"pas de données de démonstration pour « {hook_key} »")
-    if hook_key != "waferlist" and not wafers:
-        raise DataSourceError(422, "indiquez au moins une plaque (lasermark)")
-    return generator(wafers)
+    def __init__(self, catalogue: DataSource) -> None:
+        self._catalogue = catalogue  # les fiches documentaires (PRISM)
+
+    def list_types(self) -> list[DataType]:
+        return [t for t in self._catalogue.list_types() if t.key in GENERATORS and t.implemented]
+
+    def describe(self, key: str) -> DataType:
+        if key not in GENERATORS:
+            raise NotFound(f"type de données inconnu : {key}")
+        return self._catalogue.describe(key)
+
+    def query(self, key: str, parameters: dict[str, list[str]], *, refresh: bool = False) -> QueryResult:
+        generator = GENERATORS.get(key)
+        if generator is None:
+            raise NotFound(f"type de données inconnu : {key}")
+        columns, rows = generator(parameters.get(WAFER_PARAMETER, []))
+        return QueryResult(source=self.name, columns=columns, rows=rows)
+
+    def chart(self, key: str, chart_key: str) -> bytes:
+        self.describe(key)
+        return self._catalogue.chart(key, chart_key)

@@ -12,7 +12,7 @@ celles que renvoie PRISM, rien n'est renommé : ce sont les composants de visual
 
 Données de démonstration : avec ``SPECTRE_DEMO_DATA=1`` (instance de démo sans accès aux bases),
 les instantanés viennent de :mod:`spectre.plugins.characterization.demo` au lieu de PRISM, et le
-disent (``source: "demo"``) - voir :func:`spectre.plugins.characterization.source.query`.
+disent (``source: "demo"``) - voir :func:`spectre.plugins.characterization.service.query`.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ import secrets
 from datetime import datetime, timezone
 from typing import Any
 
+from ...kernel.errors import NotFound
 from ..attachments.store import attachments_dir
-from ..characterization import source as characterization
-from ..characterization.source import DataSourceError
+from ..characterization import service as characterization
 
 MAX_ROWS = 20000
 MAX_VECTOR_POINTS = 150
@@ -68,15 +68,14 @@ def compact(columns: list[str], rows: list[list[Any]]) -> dict[str, Any]:
 
 def fetch(hook_key: str, wafers: list[str], *, refresh: bool = False) -> dict[str, Any]:
     """Charge un jeu de données (PRISM, ou la démo si elle est activée) et le compacte."""
-    wafers = [w.strip() for w in wafers if w and w.strip()][:50]
-    source, columns, rows = characterization.query(hook_key, wafers, refresh=refresh)
+    result = characterization.query(hook_key, {"wafer_names": wafers}, refresh=refresh)
     return {
         "hook": hook_key,
-        "hook_title": characterization.title_of(hook_key),
-        "wafers": wafers,
-        "source": source,
+        "hook_title": characterization.describe(hook_key).title,
+        "wafers": result.wafers,
+        "source": result.source,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
-        **compact(columns, rows),
+        **compact(result.columns, result.rows),
     }
 
 
@@ -89,10 +88,10 @@ def store(slug: str, dataset: dict[str, Any]) -> str:
 
 def load(slug: str, snapshot_id: str) -> dict[str, Any]:
     if not SNAPSHOT_ID_RE.fullmatch(snapshot_id or ""):
-        raise DataSourceError(404, "instantané introuvable")
+        raise NotFound("instantané introuvable")
     path = attachments_dir(slug) / f"{snapshot_id}.json"
     if not path.is_file():
-        raise DataSourceError(404, "instantané introuvable")
+        raise NotFound("instantané introuvable")
     return json.loads(path.read_text(encoding="utf-8"))
 
 

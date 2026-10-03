@@ -1,20 +1,19 @@
-/* Client de l'API du plugin characterization : catalogue des types de données (hooks PRISM),
-   exécution d'une requête et URL des graphiques documentaires. */
+/* Client de l'API du plugin characterization : catalogue des types de données (PRISM, ou démo),
+   fiche d'un type et requête. Les graphiques documentaires d'une fiche portent leur `url`. */
 
 const characterizationApi = {
-  hooks() {
-    return api.get("/api/donnees/hooks");
+  // filters : {category, status: "implemented" | "planned", by_wafer: true | false}
+  list(filters) {
+    return api.get(api.withQuery("/api/characterization/data-types", filters));
   },
   categories() {
-    return api.get("/api/donnees/categories");
+    return api.get("/api/characterization/categories");
   },
-  hook(key) {
-    return api.get(`/api/donnees/hooks/${encodeURIComponent(key)}`);
+  get(dataTypeKey) {
+    return api.get(`/api/characterization/data-types/${encodeURIComponent(dataTypeKey)}`);
   },
-  run(key, body) {
-    return api.post(`/api/donnees/hooks/${encodeURIComponent(key)}/executer`, body);
-  },
-  chartUrl(key, chartKey) {
-    return `/api/donnees/hooks/${encodeURIComponent(key)}/graphiques/${encodeURIComponent(chartKey)}`;
+  // body : {parameters: {wafer_names: [...]}, refresh}
+  query(dataTypeKey, body) {
+    return api.post(`/api/characterization/data-types/${encodeURIComponent(dataTypeKey)}/queries`, body);
   },
 };

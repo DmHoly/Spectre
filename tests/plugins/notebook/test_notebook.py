@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from spectre.plugins.attachments.store import attachments_dir
-from spectre.plugins.characterization.source import DataSourceError
+from spectre.kernel.errors import NotFound
 from spectre.plugins.notebook import snapshots
 
 from support.accounts import login, signup
@@ -85,16 +85,15 @@ def test_a_snapshot_id_cannot_reach_outside_the_attachments(client):
     # a snapshot id (an encoded "../" never gets that far: the router has no route for it)
     assert_handler_404(client.get(f"/api/microprojets/{slug}/donnees/instantanes/secret"), "instantané introuvable")
     for snapshot_id in ("secret", "../secret", r"..\secret", "../attachments/secret"):
-        with pytest.raises(DataSourceError) as exc_info:
+        with pytest.raises(NotFound):
             snapshots.load(slug, snapshot_id)
-        assert exc_info.value.status_code == 404
         assert not snapshots.exists(slug, snapshot_id)
 
 
 def test_a_snapshot_needs_plates_and_a_known_type(client, demo_data):
     slug, _ = _setup(client)
     assert _snapshot(client, slug, wafers=()).status_code == 422
-    assert _snapshot(client, slug, hook="inconnu").status_code == 422
+    assert_handler_404(_snapshot(client, slug, hook="inconnu"), "type de données inconnu")
 
 
 def test_without_demo_data_prism_errors_are_readable(client, monkeypatch):
@@ -110,7 +109,7 @@ def test_without_demo_data_prism_errors_are_readable(client, monkeypatch):
 
     monkeypatch.setattr(prism, "run_hook_cached", broken)
     response = _snapshot(client, slug)
-    assert response.status_code == 400 and "PRISM" in response.json()["detail"]
+    assert response.status_code == 503 and "PRISM" in response.json()["detail"]
 
 
 def test_notebook_entries_are_versioned_with_their_notes(client, demo_data):
