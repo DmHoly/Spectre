@@ -117,6 +117,24 @@ def test_a_page_without_the_marker_is_served_as_is(showcase):
     assert response.headers["cache-control"] == "no-cache"
 
 
+@pytest.mark.parametrize("url", ["/vitrine", "/vitrine/brute"])
+def test_a_page_carries_an_etag_and_an_unchanged_one_comes_back_304(showcase, url):
+    first = showcase.get(url)
+    etag = first.headers["etag"]
+    assert first.status_code == 200 and etag.startswith('"') and first.headers["last-modified"]
+    assert first.headers["content-type"].startswith("text/html")
+    again = showcase.get(url, headers={"If-None-Match": etag})
+    assert again.status_code == 304 and again.content == b"" and again.headers["etag"] == etag
+    assert showcase.get(url, headers={"If-None-Match": '"autre"'}).status_code == 200
+
+
+def test_the_etag_of_a_page_follows_its_rendered_html(showcase, tmp_path):
+    before = showcase.get("/vitrine/brute").headers["etag"]
+    (tmp_path / "plugins" / "vitrine" / "pages" / "brute.html").write_text("<html><body>changée</body></html>", encoding="utf-8")
+    after = showcase.get("/vitrine/brute", headers={"If-None-Match": before})
+    assert after.status_code == 200 and after.text == "<html><body>changée</body></html>" and after.headers["etag"] != before
+
+
 def test_a_plugin_static_folder_is_served_under_its_name(showcase):
     response = showcase.get("/static/vitrine/client.js")
     assert response.status_code == 200 and "vitrineApi" in response.text

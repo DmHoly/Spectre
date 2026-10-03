@@ -13,12 +13,15 @@ l'un ni l'autre, la barre n'a pas de fil d'Ariane.
 
 from __future__ import annotations
 
+import hashlib
 import re
+from email.utils import formatdate
 from html import escape
 from pathlib import Path
 from typing import Callable, Iterable
 
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi import Request
+from fastapi.responses import HTMLResponse, Response
 
 from .plugin import NavEntry
 
@@ -91,17 +94,34 @@ def _replace_marker(match: re.Match, nav: str) -> str:
     return render_topbar(nav, attributes.get("id"), attributes.get("text"))
 
 
-def page_response(path: Path, nav: str) -> Response:
-    """La page ``path``, avec la barre du haut (navigation ``nav``) à la place du marqueur s'il y
-    figure - sinon le fichier lui-même (et son ``ETag``)."""
+def render_page(path: Path, nav: str) -> str:
+    """Le HTML de la page ``path``, avec la barre du haut (navigation ``nav``) à la place du
+    marqueur s'il y figure - sinon le fichier tel quel."""
     html = path.read_text(encoding="utf-8")
-    if TOPBAR_MARKER_RE.search(html):
-        return HTMLResponse(TOPBAR_MARKER_RE.sub(lambda m: _replace_marker(m, nav), html))
-    return FileResponse(path)
+    return TOPBAR_MARKER_RE.sub(lambda m: _replace_marker(m, nav), html)
 
 
-def page_handler(path: Path, nav: str) -> Callable[[], Response]:
-    def handler() -> Response:
-        return page_response(path, nav)
+def _etag_matches(if_none_match: str | None, etag: str) -> bool:
+    if not if_none_match:
+        return False
+    tags = [tag.strip().removeprefix("W/") for tag in if_none_match.split(",")]
+    return "*" in tags or etag in tags
+
+
+def page_response(path: Path, nav: str, request: Request | None = None) -> Response:
+    """La page rendue (:func:`render_page`), avec un ``ETag`` (empreinte du HTML servi, barre du
+    haut comprise) et un ``Last-Modified`` (date du fichier) ; une revalidation dont le
+    ``If-None-Match`` porte cet ``ETag`` reçoit un 304 sans corps."""
+    html = render_page(path, nav)
+    etag = '"' + hashlib.sha256(html.encode("utf-8")).hexdigest()[:32] + '"'
+    headers = {"ETag": etag, "Last-Modified": formatdate(path.stat().st_mtime, usegmt=True)}
+    if request is not None and _etag_matches(request.headers.get("if-none-match"), etag):
+        return Response(status_code=304, headers=headers)
+    return HTMLResponse(html, headers=headers)
+
+
+def page_handler(path: Path, nav: str) -> Callable[[Request], Response]:
+    def handler(request: Request) -> Response:
+        return page_response(path, nav, request)
 
     return handler

@@ -55,8 +55,9 @@ def create_app(plugins: Sequence[Plugin] | None = None) -> FastAPI:
     @app.middleware("http")
     async def _revalidate_pages_and_assets(request, call_next):
         """The HTML pages and everything under ``/static`` are served straight from files that
-        change on every deploy - tell the browser to revalidate (cheap: the responses already
-        carry an ETag, so an unchanged file comes back 304) instead of serving a stale copy.
+        change on every deploy - tell the browser to revalidate (cheap: the responses carry an
+        ETag - ``StaticFiles`` for the assets, :func:`~spectre.kernel.pages.page_response` for the
+        pages - so an unchanged one comes back 304) instead of serving a stale copy.
         Without this a JS/CSS/HTML change only shows after a manual hard-refresh.
         """
         response = await call_next(request)

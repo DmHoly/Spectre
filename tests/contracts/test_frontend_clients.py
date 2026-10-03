@@ -14,7 +14,7 @@ Les pages du plugin ``docs`` citent des routes dans leur texte : elles restent h
 
 from __future__ import annotations
 
-import re
+import pytest
 
 from contracts.frontend_calls import client_files, client_globals, matching_route, openapi_routes, scan_api_strings, scan_client_uses, scan_clients
 from spectre.plugins import PLUGINS
@@ -48,7 +48,7 @@ def test_each_client_declares_one_global_named_after_its_plugin():
 
 def test_every_client_function_targets_an_existing_route(app):
     routes = openapi_routes(app)
-    dead = [str(f) for f in scan_clients() if matching_route(f.method, f.path, routes) is None]
+    dead = [str(f) for f in scan_clients() if matching_route(f.method, f.path, routes, strict=True) is None]
     assert not dead, "Fonctions de client vers une route qui n'existe pas :\n  " + "\n  ".join(dead)
 
 
@@ -76,16 +76,24 @@ def test_every_client_function_used_by_the_front_exists_and_every_function_is_us
     assert not problems, "\n".join(problems)
 
 
-def test_a_client_function_renamed_url_is_caught(app, tmp_path):
+@pytest.mark.parametrize(
+    ("before", "after", "function"),
+    [
+        ('"/api/lots/recherche"', '"/api/lot/recherche"', "search"),
+        # un segment littéral renommé que la route paramétrée GET /api/lots/{code} couvrirait
+        ('"/api/lots/selection"', '"/api/lots/selectionXX"', "selection"),
+    ],
+)
+def test_a_client_function_renamed_url_is_caught(app, tmp_path, before, after, function):
     # l'expérience « je renomme une URL dans un client.js » : le contrat échoue
     source = next(path for path in client_files() if path.parent.parent.name == "lots")
     root = tmp_path / "spectre"
     target = root / "plugins" / "lots" / "static" / "client.js"
     target.parent.mkdir(parents=True)
     text = source.read_text(encoding="utf-8")
-    renamed = re.sub(r'"/api/lots/recherche"', '"/api/lot/recherche"', text)
+    renamed = text.replace(before, after)
     assert renamed != text
     target.write_text(renamed, encoding="utf-8")
     routes = openapi_routes(app)
-    dead = [f for f in scan_clients(root) if matching_route(f.method, f.path, routes) is None]
-    assert [(f.client, f.name) for f in dead] == [("lotsApi", "search")]
+    dead = [f for f in scan_clients(root) if matching_route(f.method, f.path, routes, strict=True) is None]
+    assert [(f.client, f.name) for f in dead] == [("lotsApi", function)]

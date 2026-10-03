@@ -130,21 +130,32 @@ def openapi_routes(app: Any) -> dict[str, set[str]]:
     return {path: {method.upper() for method in operations} for path, operations in app.openapi()["paths"].items()}
 
 
-def matching_route(method: str | None, path: str, routes: dict[str, set[str]]) -> str | None:
+def matching_route(method: str | None, path: str, routes: dict[str, set[str]], *, strict: bool = False) -> str | None:
     """La route (un chemin d'``openapi_routes``) qu'un appel ``method path`` atteint, ou ``None`` ;
     ``method=None`` accepte n'importe quelle méthode. Un segment de route ``{nom}`` accepte
     n'importe quel segment ; un segment littéral doit être identique, :data:`PARAM` compris (un
-    segment variable du front n'atteint pas un littéral)."""
+    segment variable du front n'atteint pas un littéral).
+
+    ``strict`` (les fonctions d'un client, dont chaque partie variable est un ``${...}``) : un
+    segment ``{nom}`` n'accepte que :data:`PARAM`, et chaque segment littéral doit égaler un
+    segment littéral de la route - sans quoi ``/api/lots/selectionXX`` passerait par
+    ``/api/lots/{code}``."""
     segments = path.strip("/").split("/")
     for route, methods in routes.items():
         if method is not None and method not in methods:
             continue
         route_segments = route.strip("/").split("/")
         if len(route_segments) == len(segments) and all(
-            (r.startswith("{") and r.endswith("}") and s) or r == s for r, s in zip(route_segments, segments)
+            _segment_matches(r, s, strict) for r, s in zip(route_segments, segments)
         ):
             return route
     return None
+
+
+def _segment_matches(route_segment: str, segment: str, strict: bool) -> bool:
+    if route_segment.startswith("{") and route_segment.endswith("}"):
+        return segment == PARAM if strict else bool(segment)
+    return route_segment == segment
 
 
 # -- lexeur ---------------------------------------------------------------------------------------

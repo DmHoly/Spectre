@@ -1,10 +1,16 @@
 const form = document.getElementById("login-form");
 const errorBox = document.getElementById("error");
 
-// la page d'où l'on venait (posée par api.js sur un 401) - un chemin de Spectre seulement
+// la page d'où l'on venait (posée par api.js sur un 401) - une page de Spectre seulement : l'URL
+// est résolue comme le navigateur le fera (« /\hote », « /<tab>/hote »... visent un autre site)
 function suiteUrl() {
   const suite = new URLSearchParams(window.location.search).get("suite") || "/";
-  return suite.startsWith("/") && !suite.startsWith("//") ? suite : "/";
+  try {
+    const url = new URL(suite, window.location.origin);
+    return url.origin === window.location.origin ? url.pathname + url.search + url.hash : "/";
+  } catch {
+    return "/";
+  }
 }
 
 form.addEventListener("submit", async (event) => {
