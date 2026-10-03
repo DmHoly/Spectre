@@ -9,8 +9,6 @@ pour qu'une correction à la main reste possible.
 
 - :class:`ItemStore` : une liste d'éléments ``{"items": [...]}``, chacun porteur de son ``id`` - les
   bibliothèques de ``process_library``.
-- :class:`KeyedJsonStore` : un dict d'éléments indexés par leur nom (``{"<champ>": {nom: ...}}``) -
-  les formulaires d'intention.
 """
 
 from __future__ import annotations
@@ -22,7 +20,7 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Generic, TypeVar, get_args
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -31,7 +29,6 @@ from .locks import keyed_lock
 
 logger = logging.getLogger(__name__)
 
-LibraryT = TypeVar("LibraryT", bound=BaseModel)
 ItemT = TypeVar("ItemT", bound=BaseModel)
 
 _LOCK_NAMESPACE = "json_store"
@@ -105,57 +102,3 @@ class ItemStore(Generic[ItemT]):
             items = list(data.get("items") or [])
             yield items
             write_json(self.path, {**data, "items": items})
-
-
-class KeyedJsonStore(Generic[LibraryT, ItemT]):
-    """Persists a ``library_cls`` instance (a :class:`~pydantic.BaseModel` with a single
-    ``dict[str, ItemT]`` field named ``items_field``) as JSON at ``path``. Items are keyed by
-    their own ``.name`` on :meth:`upsert`/:meth:`rename`.
-    """
-
-    def __init__(self, path: str | Path, library_cls: type[LibraryT], items_field: str):
-        self.path = Path(path)
-        self._library_cls = library_cls
-        self._items_field = items_field
-        self._item_cls = get_args(library_cls.model_fields[items_field].annotation)[1]  # dict[str, ItemT]
-
-    def load(self) -> LibraryT:
-        return self._library_cls.model_validate({self._items_field: self.load_items()})
-
-    def save(self, library: LibraryT) -> None:
-        with path_lock(self.path):
-            write_json(self.path, library.model_dump(mode="json"))
-
-    def load_items(self) -> dict[str, ItemT]:
-        """The valid items, by name - an invalid one is logged and left out."""
-        with path_lock(self.path):
-            raw_items = read_json(self.path, strict=False).get(self._items_field) or {}
-        items = {name: _valid(self._item_cls, raw, self.path, repr(name)) for name, raw in raw_items.items()}
-        return {name: item for name, item in items.items() if item is not None}
-
-    @contextmanager
-    def _edit(self) -> Iterator[dict[str, Any]]:
-        with path_lock(self.path):
-            data = read_json(self.path, strict=True)
-            items = dict(data.get(self._items_field) or {})
-            yield items
-            write_json(self.path, {**data, self._items_field: items})
-
-    def upsert(self, item: ItemT) -> LibraryT:
-        with self._edit() as items:
-            items[item.name] = item.model_dump(mode="json")
-        return self.load()
-
-    def rename(self, old_name: str, item: ItemT) -> LibraryT:
-        """Replace whatever is saved under ``old_name`` with ``item`` - used when editing an
-        entry in place also changes its name, so the old key doesn't linger.
-        """
-        with self._edit() as items:
-            items.pop(old_name, None)
-            items[item.name] = item.model_dump(mode="json")
-        return self.load()
-
-    def remove(self, name: str) -> LibraryT:
-        with self._edit() as items:
-            items.pop(name, None)
-        return self.load()

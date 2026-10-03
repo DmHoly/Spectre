@@ -1,118 +1,55 @@
-"""Unit tests for :mod:`spectre.kernel.json_store` in isolation: :class:`KeyedJsonStore` (the
-intent forms) and :class:`ItemStore` (the process libraries) - atomic, locked writes and
-item-by-item validation.
+"""Unit tests for :mod:`spectre.kernel.json_store` in isolation: :class:`ItemStore` (the process
+libraries) - atomic, locked writes and item-by-item validation.
 """
 
 from __future__ import annotations
 
 import json
 import threading
-from pathlib import Path
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from spectre.kernel import json_store
 from spectre.kernel.errors import Unavailable
-from spectre.kernel.json_store import ItemStore, KeyedJsonStore
-
-
-class _Item(BaseModel):
-    name: str
-    value: int = 0
-
-
-class _Library(BaseModel):
-    items: dict[str, _Item] = Field(default_factory=dict)
-
-
-def _store(tmp_path: Path, filename: str = "lib.json") -> KeyedJsonStore[_Library, _Item]:
-    return KeyedJsonStore(tmp_path / filename, _Library, "items")
-
-
-def test_load_with_no_file_yet_returns_an_empty_library(tmp_path):
-    store = _store(tmp_path)
-    assert store.load().items == {}
-    assert store.load_items() == {}
-
-
-def test_upsert_writes_the_file_and_is_readable_back(tmp_path):
-    store = _store(tmp_path)
-    store.upsert(_Item(name="A", value=1))
-    assert (tmp_path / "lib.json").exists()
-    assert store.load_items()["A"].value == 1
-
-
-def test_upsert_overwrites_an_existing_entry_with_the_same_name(tmp_path):
-    store = _store(tmp_path)
-    store.upsert(_Item(name="A", value=1))
-    store.upsert(_Item(name="A", value=2))
-    assert len(store.load_items()) == 1
-    assert store.load_items()["A"].value == 2
-
-
-def test_rename_moves_the_entry_to_the_new_key(tmp_path):
-    store = _store(tmp_path)
-    store.upsert(_Item(name="A", value=1))
-    store.rename("A", _Item(name="B", value=1))
-    items = store.load_items()
-    assert "A" not in items
-    assert items["B"].value == 1
-
-
-def test_rename_to_the_same_name_just_replaces_it(tmp_path):
-    store = _store(tmp_path)
-    store.upsert(_Item(name="A", value=1))
-    store.rename("A", _Item(name="A", value=9))
-    assert store.load_items()["A"].value == 9
-
-
-def test_remove_deletes_the_entry(tmp_path):
-    store = _store(tmp_path)
-    store.upsert(_Item(name="A", value=1))
-    store.remove("A")
-    assert store.load_items() == {}
-
-
-def test_remove_of_a_missing_name_is_a_no_op(tmp_path):
-    store = _store(tmp_path)
-    store.upsert(_Item(name="A", value=1))
-    store.remove("does-not-exist")
-    assert list(store.load_items()) == ["A"]
-
-
-def test_two_stores_over_the_same_path_see_each_others_writes(tmp_path):
-    path = tmp_path / "lib.json"
-    store_a = KeyedJsonStore(path, _Library, "items")
-    store_b = KeyedJsonStore(path, _Library, "items")
-    store_a.upsert(_Item(name="A", value=1))
-    assert store_b.load_items()["A"].value == 1
-
-
-def test_an_invalid_item_is_left_out_of_the_reading_and_kept_on_the_next_write(tmp_path):
-    path = tmp_path / "lib.json"
-    path.write_text(json.dumps({"items": {"A": {"name": "A", "value": 1}, "B": {"name": "B", "value": "pas un entier"}}}), encoding="utf-8")
-    store = KeyedJsonStore(path, _Library, "items")
-
-    assert list(store.load_items()) == ["A"]
-    store.upsert(_Item(name="C", value=3))
-    assert json.loads(path.read_text(encoding="utf-8"))["items"]["B"] == {"name": "B", "value": "pas un entier"}
-
-
-def test_an_unreadable_file_reads_as_empty_but_is_never_overwritten(tmp_path):
-    path = tmp_path / "lib.json"
-    path.write_text("{ pas du json", encoding="utf-8")
-    store = KeyedJsonStore(path, _Library, "items")
-
-    assert store.load_items() == {}
-    with pytest.raises(Unavailable):
-        store.upsert(_Item(name="A"))
-    assert path.read_text(encoding="utf-8") == "{ pas du json"
+from spectre.kernel.json_store import ItemStore
 
 
 class _Element(BaseModel):
     id: str
     name: str
+
+
+def test_two_stores_over_the_same_path_see_each_others_writes(tmp_path):
+    path = tmp_path / "items.json"
+    store_a = ItemStore(path, _Element)
+    store_b = ItemStore(path, _Element)
+    with store_a.edit() as items:
+        items.append({"id": "1", "name": "A"})
+    assert store_b.load() == [_Element(id="1", name="A")]
+
+
+def test_an_invalid_item_is_left_out_of_the_reading_and_kept_on_the_next_write(tmp_path):
+    path = tmp_path / "items.json"
+    path.write_text(json.dumps({"items": [{"id": "1", "name": "A"}, {"id": "2", "name": ["pas un nom"]}]}), encoding="utf-8")
+    store = ItemStore(path, _Element)
+
+    assert [item.id for item in store.load()] == ["1"]
+    with store.edit() as items:
+        items.append({"id": "3", "name": "C"})
+    assert json.loads(path.read_text(encoding="utf-8"))["items"][1] == {"id": "2", "name": ["pas un nom"]}
+
+
+def test_an_unreadable_file_reads_as_empty_but_is_never_overwritten(tmp_path):
+    path = tmp_path / "items.json"
+    path.write_text("{ pas du json", encoding="utf-8")
+    store = ItemStore(path, _Element)
+
+    assert store.load() == []
+    with pytest.raises(Unavailable):
+        with store.edit() as items:
+            items.append({"id": "1", "name": "A"})
+    assert path.read_text(encoding="utf-8") == "{ pas du json"
 
 
 def test_item_store_round_trip_and_invalid_items(tmp_path):
