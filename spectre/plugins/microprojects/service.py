@@ -339,6 +339,8 @@ def add_member(microproject_id: int, microproject_name: str, email: str, role: s
                 "ON CONFLICT(microproject_id, user_id) DO UPDATE SET role = excluded.role",
                 (microproject_id, user.id, role),
             )
+            # a member now: an invitation still pending for this address is stale
+            conn.execute("DELETE FROM invitations WHERE microproject_id = ? AND email = ?", (microproject_id, email))
         return "added"
 
     token = security.new_token()
@@ -390,22 +392,34 @@ def get_invitation(token: str) -> dict | None:
     return dict(row) if row else None
 
 
-def accept_invitation(token: str, user_id: int, user_email: str) -> bool:
-    """Consume an invitation for a just-registered user - only if its email matches the one the
+def accept_invitation(token: str, user_id: int, user_email: str) -> str | None:
+    """Consume an invitation for a signed-in user - only if its email matches the one the
     invitation was addressed to (a token alone isn't proof of that email address, since it
-    travels inside a plain URL). Returns whether it was accepted.
+    travels inside a plain URL). Returns the user's role in the microproject afterwards, or
+    ``None`` if the invitation wasn't accepted.
+
+    An invitation never lowers a role: someone who became a member in the meantime (added
+    directly, promoted owner...) keeps the higher of their current role and the invited one -
+    a stale link must not demote the last owner behind the "at least one owner" rule.
     """
     invitation = get_invitation(token)
     if invitation is None or invitation["email"] != user_email.strip().lower():
-        return False
+        return None
     with get_conn() as conn:
+        row = conn.execute(
+            "SELECT role FROM memberships WHERE microproject_id = ? AND user_id = ?",
+            (invitation["microproject_id"], user_id),
+        ).fetchone()
+        role = invitation["role"]
+        if row is not None and ROLE_ORDER[row["role"]] >= ROLE_ORDER[role]:
+            role = row["role"]
         conn.execute(
             "INSERT INTO memberships (microproject_id, user_id, role) VALUES (?, ?, ?) "
             "ON CONFLICT(microproject_id, user_id) DO UPDATE SET role = excluded.role",
-            (invitation["microproject_id"], user_id, invitation["role"]),
+            (invitation["microproject_id"], user_id, role),
         )
         conn.execute("DELETE FROM invitations WHERE token = ?", (token,))
-    return True
+    return role
 
 
 def delete(microproject: Microproject) -> None:

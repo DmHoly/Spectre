@@ -241,8 +241,15 @@ class Microproject:
 
     def save_structure(self, session: Session, *, name, substrate, steps, partagee=False, derived_from=None):
         session.post(
-            f"/api/microprojets/{self.slug}/structures-sauvegardees",
-            json={"name": name, "substrate": substrate, "steps": steps, "derived_from": derived_from, "partagee": partagee},
+            "/api/saved-structures",
+            json={
+                "name": name,
+                "substrate": substrate,
+                "steps": steps,
+                "derived_from": derived_from,
+                "scope": "shared" if partagee else "microproject",
+                "microproject": None if partagee else self.slug,
+            },
         )
 
 

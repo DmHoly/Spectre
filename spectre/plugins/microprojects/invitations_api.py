@@ -40,8 +40,9 @@ def get_invitation(token: str) -> dict:
 @router.post("/{token}/acceptance", status_code=201)
 def accept_invitation(token: str, response: Response, user: User = Depends(current_user)) -> dict:
     invitation = _pending(token)
-    if not microprojects.accept_invitation(token, user.id, user.email):
+    role = microprojects.accept_invitation(token, user.id, user.email)
+    if role is None:
         raise Forbidden("cette invitation est adressée à une autre adresse e-mail", code="email_mismatch")
     microproject = microprojects.get_by_id(invitation["microproject_id"])
     response.headers["Location"] = f"/api/microprojects/{microproject.slug}/members/{user.id}"
-    return {"microproject": {"slug": microproject.slug, "name": microproject.name}, "role": invitation["role"]}
+    return {"microproject": {"slug": microproject.slug, "name": microproject.name}, "role": role}

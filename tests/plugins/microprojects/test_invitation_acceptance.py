@@ -101,3 +101,31 @@ def test_accepting_requires_a_session(client, outbox):
 def test_accepting_an_unknown_invitation_404s(client):
     signup(client, "someone@example.com", name="S")
     assert_handler_404(_accept(client, "not-a-real-token"), "invitation")
+
+
+def test_a_stale_invitation_never_lowers_a_role(client, outbox):
+    slug = _owner_microproject(client)
+    viewer_token = _invite(client, outbox, slug, "bob@example.com", "viewer")
+    owner_token = _invite(client, outbox, slug, "bob@example.com", "owner")
+
+    signup(client, "bob@example.com", name="Bob")
+    assert _accept(client, owner_token).json()["role"] == "owner"
+    # the older, lower invitation is still consumed, but Bob stays owner
+    response = _accept(client, viewer_token)
+    assert response.status_code == 201
+    assert response.json()["role"] == "owner"
+    assert _role_in(client, slug) == "owner"
+
+
+def test_adding_a_member_directly_drops_their_pending_invitations(client, outbox):
+    slug = _owner_microproject(client)
+    token = _invite(client, outbox, slug, "bob@example.com", "viewer")
+    signup(client, "bob@example.com", name="Bob")
+
+    login(client, "owner@example.com")
+    add_member(client, slug, "bob@example.com", "owner")
+    assert client.get(f"/api/microprojets/{slug}/invitations").json() == []
+
+    login(client, "bob@example.com")
+    assert_handler_404(_accept(client, token), "invitation")
+    assert _role_in(client, slug) == "owner"

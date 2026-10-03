@@ -5,7 +5,9 @@ qu'une équipe le fasse évoluer sans toucher au code ni redémarrer le serveur.
 - **Emplacement** : ``$SPECTRE_LIBRARY_DIR`` si la variable est définie, sinon ``<données>/library``.
   Un dossier absent est créé une fois, à la première lecture, depuis les fichiers livrés
   (``spectre/plugins/library/defaults/``) ; il appartient ensuite à l'instance : une édition ne
-  touche pas au dépôt, et une mise à jour du code n'écrase pas les éditions.
+  touche pas au dépôt, et une mise à jour du code n'écrase pas les éditions. Une installation
+  d'avant ce dossier éditait ``<dépôt>/library`` : les ``*.yml`` qui y restent sont repris par
+  dessus les fichiers livrés lors de cette création, pour ne pas perdre ces éditions.
 - **Registre** : cette bibliothèque ne connaît aucun type métier. Chaque plugin propriétaire déclare
   ses fichiers (:func:`register_library_file`) avec la fonction qui en interprète le contenu - et
   lève ``ValueError`` s'il est invalide - et son repli intégré.
@@ -35,6 +37,8 @@ from ...kernel.locks import keyed_lock
 logger = logging.getLogger(__name__)
 
 DEFAULTS_DIR = Path(__file__).resolve().parent / "defaults"
+# le dossier actif d'avant <données>/library, édité par l'admin d'une installation existante
+LEGACY_DIR = Path(__file__).resolve().parents[3] / "library"
 
 
 @dataclass(frozen=True)
@@ -78,8 +82,24 @@ def library_dir() -> Path:
     if not path.exists():
         with keyed_lock("library", "init"):
             if not path.exists():
-                shutil.copytree(DEFAULTS_DIR, path, ignore=shutil.ignore_patterns("*.md"))
+                _create(path)
     return path
+
+
+def _create(path: Path) -> None:
+    """Remplit ``path`` des fichiers livrés, puis des ``*.yml`` de :data:`LEGACY_DIR` s'il en
+    reste (les éditions d'avant ``<données>/library`` priment sur les fichiers livrés). Le dossier
+    est assemblé à côté puis renommé : un échec en route ne laisse pas un dossier à moitié rempli,
+    que plus rien ne compléterait."""
+    staging = path.with_name(f".{path.name}.tmp")
+    shutil.rmtree(staging, ignore_errors=True)
+    shutil.copytree(DEFAULTS_DIR, staging, ignore=shutil.ignore_patterns("*.md"))
+    legacy = sorted(LEGACY_DIR.glob("*.yml")) if LEGACY_DIR.is_dir() else []
+    for source in legacy:
+        shutil.copy2(source, staging / source.name)
+    if legacy:
+        logger.warning("Bibliothèque reprise de %s : %s", LEGACY_DIR, ", ".join(source.name for source in legacy))
+    staging.rename(path)
 
 
 def read_text(file: LibraryFile) -> str | None:

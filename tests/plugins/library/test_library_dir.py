@@ -41,3 +41,21 @@ def test_without_the_variable_the_library_lives_in_the_data_directory(tmp_path, 
 def test_every_shipped_file_is_valid():
     for file in service.library_files():
         service.parse_text(file, (service.DEFAULTS_DIR / file.filename).read_text(encoding="utf-8"))
+
+
+def test_an_older_install_keeps_its_edits_from_the_repository_library(tmp_path, monkeypatch):
+    """Avant <données>/library, l'admin éditait <dépôt>/library : à la création du dossier, ses
+    *.yml priment sur les fichiers livrés (les autres viennent des fichiers livrés)."""
+    legacy = tmp_path / "depot" / "library"
+    legacy.mkdir(parents=True)
+    (legacy / "presets.yml").write_text("presets: []\n", encoding="utf-8")
+    (legacy / "README.md").write_text("doc\n", encoding="utf-8")
+    monkeypatch.setattr(service, "LEGACY_DIR", legacy)
+    target = tmp_path / "library"
+    monkeypatch.setenv("SPECTRE_LIBRARY_DIR", str(target))
+
+    service.library_dir()
+    assert sorted(path.name for path in target.iterdir()) == SHIPPED
+    assert (target / "presets.yml").read_text(encoding="utf-8") == "presets: []\n"
+    assert (target / "briques.yml").read_text(encoding="utf-8") == (service.DEFAULTS_DIR / "briques.yml").read_text(encoding="utf-8")
+    assert not (tmp_path / ".library.tmp").exists()

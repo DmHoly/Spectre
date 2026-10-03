@@ -214,9 +214,11 @@ def list_forms(user: User, *, microproject: str | None = None, scope: str | None
 
 
 def get_form(user: User, form_id: str) -> LibraryEntry:
+    """L'entrée ``form_id`` ; introuvable aussi pour qui n'est pas membre de son µprojet (la même
+    règle de lecture que les éléments de process_library)."""
     entry = _find(form_id)
-    if entry.microproject is not None:
-        require_role(user, entry.microproject, "viewer")
+    if entry.microproject is not None and _role(user, entry.microproject) is None:
+        raise NotFound(f"Formulaire d'intention {form_id!r} introuvable.")
     return entry
 
 
@@ -255,7 +257,7 @@ def create_form(user: User, *, name: str, yaml_text: str, scope: str, microproje
 def update_form(user: User, form_id: str, *, name: str | None = None, yaml_text: str | None = None) -> LibraryEntry:
     """Renomme l'entrée ou remplace ses questions. Le formulaire actif d'un µprojet qui l'a
     activée n'en change pas : il faut la réactiver (voir :func:`get_active`, ``outdated``)."""
-    entry = _find(form_id)
+    entry = get_form(user, form_id)
     _require_edit(user, entry)
     changes: dict = {}
     if name is not None:
@@ -280,7 +282,7 @@ def update_form(user: User, form_id: str, *, name: str | None = None, yaml_text:
 
 def delete_form(user: User, form_id: str) -> None:
     """Retire l'entrée de sa bibliothèque. Les µprojets qui l'avaient activée gardent leur copie."""
-    entry = _find(form_id)
+    entry = get_form(user, form_id)
     _require_edit(user, entry)
     path = _shelf_path(entry.microproject)
     with _shelf_lock(entry.microproject):

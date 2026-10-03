@@ -3,11 +3,12 @@ const errorBox = document.getElementById("error");
 
 // la page d'où l'on venait (posée par api.js sur un 401) - une page de Spectre seulement : l'URL
 // est résolue comme le navigateur le fera (« /\hote », « /<tab>/hote »... visent un autre site)
+// et rendue absolue : un chemin relatif « //hote » (issu de « /.//hote ») viserait un autre site
 function suiteUrl() {
   const suite = new URLSearchParams(window.location.search).get("suite") || "/";
   try {
     const url = new URL(suite, window.location.origin);
-    return url.origin === window.location.origin ? url.pathname + url.search + url.hash : "/";
+    return url.origin === window.location.origin ? url.href : "/";
   } catch {
     return "/";
   }

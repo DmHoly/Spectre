@@ -185,7 +185,10 @@ def test_a_non_member_sees_neither_the_library_nor_the_active_form(client):
 
     switch_user(client, "stranger@example.com")
     assert client.get("/api/intent-forms", params={"microproject": slug}).status_code == 403
-    assert client.get(f"/api/intent-forms/{own['id']}").status_code == 403
+    # l'entrée d'un µprojet dont on n'est pas membre est introuvable, comme dans process_library
+    assert_handler_404(client.get(f"/api/intent-forms/{own['id']}"), "introuvable")
+    assert_handler_404(client.patch(f"/api/intent-forms/{own['id']}", json={"name": "X"}), "introuvable")
+    assert_handler_404(client.delete(f"/api/intent-forms/{own['id']}"), "introuvable")
     assert client.get(active_path(slug)).status_code == 403
     assert list_intent_forms(client) == []
 
