@@ -3,6 +3,92 @@
 Actions restantes convenues au fil des échanges, par ordre approximatif de priorité. Une fois
 faite, déplacer la ligne dans la section « Fait » du bas (ou simplement la retirer).
 
+## Prochaines évolutions (après le passage en plugins)
+
+Demandées le 2026-10-03, à démarrer une fois la branche `refactor/plugins` fusionnée. Chacune suit
+le contrat d'`ARCHITECTURE.md` : un plugin propriétaire, des routes REST en anglais, le front par
+son `client.js`.
+
+### 1. Équipes, managers et administrateurs
+
+- [ ] **Trois niveaux de droits.**
+      - **admin** : accès à tout. C'est l'actuel `users.is_admin`. Il doit aussi passer outre les
+        rôles de µprojet, ce que `require_role` ne fait pas aujourd'hui.
+      - **manager** : tous les droits sur ce qui appartient à **son équipe**, dont créer, renommer
+        et supprimer les thèmes (projets corporate), les thématiques et les objectifs, et
+        administrer les µprojets de l'équipe (membres, rattachement).
+      - **membre** : les rôles de µprojet actuels (viewer, editor, owner).
+- [ ] **Nouveau plugin `teams`.**
+      - Tables `teams` et `team_members(team_id, user_id, role: manager|member)`.
+      - Routes `/api/teams`, `/api/teams/{team_slug}/members`.
+      - Page « Équipes ».
+      - Le rattachement d'un thème (`areas.team_id`) et d'un µprojet à une équipe se fait par
+        `PATCH` sur la ressource concernée.
+- [ ] **Une seule règle d'autorisation.** Partir de `accounts.deps.require_admin` et
+      `microprojects.deps.require_role` et en faire une fonction de politique unique (ex.
+      `can_manage(user, area | microproject)`) appelée par ces deux dépendances, au lieu de
+      contrôles dispersés.
+      **Pas de moteur de règles générique : YAGNI.**
+- [ ] **À trancher avant de commencer :**
+      - un utilisateur peut-il être dans plusieurs équipes ?
+      - un thème ou un µprojet appartient-il à une seule équipe ?
+      - un manager voit-il les µprojets de son équipe sans en être membre ?
+      - quelle équipe par défaut pour l'existant, à la migration ?
+      - faut-il anticiper le SSO (voir `REVIEW.md` § 2, identité) ?
+
+### 2. Page dédiée à l'évolution des structures et aux refs
+
+- [ ] **Constat.** On peut déjà promouvoir une version en ref (`POST /api/microprojects/{mp}/refs`,
+      bouton « + ref » de la fiche), et chaque version porte un numéro majeur.mineur.correctif
+      (`experiments/versioning.py`). Mais rien ne le met en valeur : la page `/microprojets/{slug}/refs`
+      n'est liée depuis aucun écran.
+- [ ] **Page dédiée** dans le plugin `experiments` (ou un plugin `refs` s'il grossit), liée depuis la
+      page µprojet et depuis la fiche. Elle montre un **diagramme façon git** de l'évolution des
+      structures :
+      - une colonne par piste ;
+      - un nœud par version structurelle, étiqueté `vX.Y.Z`, avec les changements majeurs et mineurs
+        distingués ;
+      - les fourches, les fusions et les refs en badges.
+
+      D3 est déjà embarqué, et `lineage-graph.js` sait dessiner la filiation.
+- [ ] **Actions sur la page :**
+      - « Promouvoir en ref » sur n'importe quel nœud ;
+      - comparer deux nœuds (`GET .../structure-diff`) ;
+      - partir d'une ref (fourche explicite, `POST .../experiments` avec `from_version`) ;
+      - suivre l'évolution d'une ref donnée, c'est-à-dire tout ce qui en descend.
+- [ ] **API.** Enrichir `GET /api/microprojects/{mp}/lineage` (ou une ressource
+      `.../structure-history`) avec le numéro de version, le niveau de changement et les refs posées
+      sur chaque nœud, pour que la page ne recalcule rien côté client.
+- [ ] **À trancher :**
+      - une ref reste-t-elle propre au µprojet, ou peut-elle être publiée dans la bibliothèque
+        partagée (structures enregistrées de `process_library`) ?
+      - peut-on renommer ou retirer une ref ?
+
+### 3. Résultats de données rattachés à une étape du procédé
+
+- [ ] **Besoin.** Sur un procédé de 10 étapes, dire « à cette étape, on vérifie tel point » et y
+      rattacher le résultat. Trois sources possibles :
+      - un **connecteur PRISM** quand il existe : instantané d'un type de données du plugin
+        `characterization`, comme le cahier ;
+      - un **lien vers la donnée** (dossier, fichier, URL) ;
+      - un **copier-coller** : tableau collé, analysé en TSV, texte ou image. Le collage d'images
+        existe déjà dans `attachments/static/image-drop.js`.
+- [ ] **Ce qui existe déjà.** Une preuve Follow porte déjà un `step_index`, et le plugin `evidence`
+      gère liens et images. Il faut :
+      - étendre la preuve, ou ajouter une ressource `.../experiments/{exp}/step-results`, avec
+        `step` et `source: prism | link | paste` ;
+      - afficher, dans la vue du procédé (`experiments/static/structure-view.js`), un badge de
+        résultats par étape et une action « Rattacher un résultat ».
+- [ ] **Préalable : une identité stable pour chaque étape.** Aujourd'hui une étape est désignée par
+      sa position, si bien qu'insérer une étape à l'évolution suivante décale tous les rattachements.
+      La revue l'a relevé (`REVIEW.md`, front du constructeur : l'identité positionnelle des étapes
+      gêne déjà le DOE). Il faut donc un `step_id` dans les métadonnées du procédé, et que les
+      facteurs DOE le référencent aussi.
+- [ ] **À trancher :**
+      - un résultat rattaché suit-il l'étape aux versions suivantes si elle n'a pas changé ?
+      - faut-il « point de contrôle attendu » (déclaré à la conception) en plus de « résultat
+        obtenu » ?
+
 ## Couche Management — Phase 2 (analytique)
 
 La Phase 1 (thèmes, hiérarchie, navigation) est livrée ; la page `/pilotage` (compteurs +
