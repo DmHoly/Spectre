@@ -2,41 +2,30 @@
    coupe TEM d'ensemble, un zoom...), dans l'ordre où les lire, chacune avec son type et sa légende.
    On en ajoute en collant (Ctrl+V), en glissant-déposant (un ou plusieurs fichiers) ou en les
    choisissant ; on les réordonne (← →), les remplace (bouton, ou fichier déposé sur l'image) ou les
-   retire. Chaque image part aussitôt au serveur (POST /structures/images, voir
-   spectre.api.structures) - la planche ne garde que son id. Partagée par la page « structure en
+   retire. Chaque image part aussitôt au serveur (attachmentsApi.uploadStructureImage, voir
+   attachments/static/client.js) - la planche ne garde que son id. Partagée par la page « structure en
    image » (nouvelle expérience, évolution), la fenêtre « Modifier les images » de la fiche et le
    formulaire de preuve (sans type d'image, en version compacte - options withKind/compact).
    Coller marche partout dans la page (ou la fenêtre) tant que `isActive()` le permet : une image
    dans le presse-papiers ne se colle nulle part ailleurs, donc rien n'est volé à un champ texte.
-   L'affichage d'une planche (structureBoardHtml, libellés des types) est dans common.js. */
+   L'affichage d'une planche (structureBoardHtml, libellés des types) est dans
+   structures/static/structure-images.js. */
 
 const STRUCTURE_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 const STRUCTURE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const STRUCTURE_IMAGE_MAX_COUNT = 12; // spectre.core.structures.MAX_STRUCTURE_IMAGES
 
-async function uploadStructureImage(slug, file, url = null) {
+// `purpose` : "structure" (une image de structure) ou "evidence" (une image collée dans une preuve).
+async function uploadStructureImage(slug, file, purpose = "structure") {
   const form = new FormData();
   form.append("file", file, file.name || "image-collee.png");
-  const response = await fetch(url || `/api/microprojets/${encodeURIComponent(slug)}/structures/images`, {
-    method: "POST",
-    credentials: "same-origin",
-    body: form,
-  });
-  if (response.status === 401) {
-    window.location.href = "/connexion?suite=" + encodeURIComponent(window.location.pathname);
-    return new Promise(() => {});
-  }
-  let data = null;
   try {
-    data = await response.json();
-  } catch (e) {
-    data = null;
+    return purpose === "evidence" ? await attachmentsApi.uploadImage(slug, form) : await attachmentsApi.uploadStructureImage(slug, form);
+  } catch (err) {
+    const detail = err.data && err.data.detail;
+    if (!detail) err.message = "L'envoi de l'image a échoué.";
+    throw err;
   }
-  if (!response.ok) {
-    const detail = data && typeof data.detail === "string" ? data.detail : "L'envoi de l'image a échoué.";
-    throw new Error(detail);
-  }
-  return data;
 }
 
 // Une coupe TEM/MEB se reconnaît souvent à son nom de fichier - un coup de pouce pour le type
@@ -71,12 +60,12 @@ function boardColumns(count) {
 
 /* Monte la planche dans `zone`. `onChange(images)` reçoit la liste à jour ({image_id, kind,
    caption}, images déjà enregistrées côté serveur seulement) ; `onError(err)` un souci d'envoi ou
-   de format. `uploadUrl` : où envoyer chaque image (par défaut /structures/images) ; `withKind` :
+   de format. `purpose` : à quoi sert chaque image ("structure" par défaut, "evidence" pour une preuve) ; `withKind` :
    le choix du type (schéma, coupe...) sur chaque image ; `compact` : une planche plus basse, pour
    un formulaire. Renvoie {get, set, isUploading, add}. */
 function mountImageDrop(
   zone,
-  { slug, onChange = () => {}, onError = () => {}, isActive = () => true, pasteTarget = document, uploadUrl = null, withKind = true, compact = false } = {}
+  { slug, onChange = () => {}, onError = () => {}, isActive = () => true, pasteTarget = document, purpose = "structure", withKind = true, compact = false } = {}
 ) {
   let items = []; // {key, image_id, url, filename, kind, caption, uploading}
   let nextKey = 1;
@@ -190,7 +179,7 @@ function mountImageDrop(
     Object.assign(item, { url: localUrl, filename: file.name || "Image collée", uploading: true });
     render();
     try {
-      const result = await uploadStructureImage(slug, file, uploadUrl);
+      const result = await uploadStructureImage(slug, file, purpose);
       if (!items.includes(item)) return; // retirée entre-temps
       Object.assign(item, { image_id: result.image_id, url: result.url, filename: result.filename, uploading: false });
       render();

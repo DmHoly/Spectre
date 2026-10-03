@@ -8,7 +8,7 @@
    tel quel (conflits de noms avec les propres constantes d'atlas.js).
 */
 
-// Code d'un nœud, par issue (experimentOutcome, common.js - la même clé que les badges) : jamais la
+// Code d'un nœud, par issue (experimentOutcome, experiments/static/status.js - la même clé que les badges) : jamais la
 // couleur seule. Creux = pas encore terminée (brouillon : anneau gris ; en cours : anneau bleu + point
 // central ; en pause : anneau ambre + ‖), plein = terminée ou reprise ailleurs, avec un pictogramme
 // blanc qui dit l'issue (continuée : chevron vers la suite, en dessous dans le graphe). Avant,

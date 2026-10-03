@@ -1,0 +1,225 @@
+/* Pages de documentation. */
+
+/* -- documentation ------------------------------------------------------------------------ */
+
+.docs-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .docs-shell {
+    grid-template-columns: 1fr;
+  }
+  .docs-nav {
+    position: static !important;
+    max-height: none !important;
+  }
+}
+
+.docs-nav {
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--space-5));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: calc(100vh - var(--topbar-h) - var(--space-7));
+  overflow-y: auto;
+  padding-right: var(--space-2);
+}
+
+.docs-nav__group {
+  margin-top: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+.docs-nav__group:first-child {
+  margin-top: 0;
+}
+
+.docs-nav a {
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-soft);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+}
+.docs-nav a:hover {
+  background: var(--accent-tint);
+  color: var(--navy);
+}
+.docs-nav a.active {
+  background: var(--accent-tint);
+  color: var(--navy);
+  font-weight: 600;
+  border-left-color: var(--gold);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.docs-content {
+  min-width: 0;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.docs-content section {
+  margin-bottom: var(--space-7);
+  scroll-margin-top: calc(var(--topbar-h) + var(--space-5));
+}
+
+.docs-content h1 {
+  font-size: 26px;
+  margin-bottom: var(--space-2);
+}
+
+.docs-content h2 {
+  font-size: 18px;
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.docs-content h3 {
+  font-size: 15px;
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.docs-content p {
+  margin-bottom: var(--space-3);
+  color: var(--text-soft);
+  max-width: 74ch;
+}
+
+.docs-content ul,
+.docs-content ol {
+  margin: 0 0 var(--space-3) var(--space-4);
+  color: var(--text-soft);
+}
+.docs-content li {
+  margin-bottom: var(--space-1);
+}
+
+.docs-content code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--accent-tint);
+  color: var(--navy);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.docs-content pre {
+  background: var(--navy);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+  margin-bottom: var(--space-3);
+}
+.docs-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  color: #e6e9f2;
+}
+
+.docs-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: var(--space-4);
+  font-size: 13px;
+}
+.docs-content th,
+.docs-content td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+.docs-content th {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom-color: var(--border);
+}
+
+.docs-callout {
+  border-left: 3px solid var(--gold);
+  background: var(--gold-tint);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  font-size: 13px;
+  color: var(--navy);
+}
+
+.docs-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-5);
+}
+
+.docs-shot {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lift);
+  margin: var(--space-3) 0 var(--space-4);
+}
+
+.docs-shot-caption {
+  margin-top: -10px;
+  margin-bottom: var(--space-4);
+  font-size: 12px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.docs-recipe-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 var(--space-4);
+}
+
+.docs-recipe-step {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.docs-recipe-step__num {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--navy);
+  color: var(--gold-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.docs-recipe-step__body strong {
+  display: block;
+  margin-bottom: 2px;
+}

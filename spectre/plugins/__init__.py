@@ -22,11 +22,13 @@ from .lots import PLUGIN as lots
 from .microprojects import PLUGIN as microprojects
 from .notebook import PLUGIN as notebook
 from .process_library import PLUGIN as process_library
+from .search import PLUGIN as search
 from .structures import PLUGIN as structures
 from .wafers import PLUGIN as wafers
 
 PLUGINS = (
     accounts,
+    search,
     library,
     areas,
     microprojects,

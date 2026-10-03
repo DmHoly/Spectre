@@ -1,17 +1,17 @@
 /* Bloc KPI réutilisable : une tendance mensuelle par onglet, un onglet par KPI.
 
-   Usage (dépend de d3, common.js pour escapeHtml, api.js) :
+   Usage (dépend de d3 et de kernel/static/ui.js pour escapeHtml) :
 
      KpiTrendBlock.mount(document.getElementById("trends"), {
-       kpisUrl: "/api/management/native-pt2/tendances",           // -> { kpis: [{key, label, status, variants...}] }
-       seriesUrl: (key, months, variant) => `/api/.../tendances/${key}?mois=${months}&variante=${variant}`,
+       loadKpis: () => kpisApi.list("native-pt2"),                 // -> { kpis: [{key, label, status, variants...}] }
+       loadSeries: (key, months, variant) => kpisApi.series("native-pt2", key, months, variant),
        ranges: [6, 12, 24],       // boutons de période, en mois
        defaultRange: 12,
        storageKey: "trends:native-pt2",   // mémorise l'onglet/période/variante choisis (confort, facultatif)
        onPointClick: (point, series) => {}, // clic sur un point porteur d'une étude (`point.study`)
      });
 
-   `kpis` peut aussi être passé directement (tableau) à la place de `kpisUrl`. Chaque onglet charge
+   `kpis` peut aussi être passé directement (tableau) à la place de `loadKpis`. Chaque onglet charge
    sa série à la demande et la garde en cache : un KPI lent (requête PRISM) ne retarde ni la page ni
    les autres onglets. Une série répond au format :
      { status: "live"|"placeholder"|"error", unit, better: "up"|"down"|null, description, source,
@@ -129,7 +129,7 @@
     function fetchSeries(key, months, variant) {
       const cacheKey = `${key}:${months}:${variant || ""}`;
       if (!state.cache.has(cacheKey)) {
-        const p = api.get(opts.seriesUrl(key, months, variant)).catch((err) => {
+        const p = opts.loadSeries(key, months, variant).catch((err) => {
           state.cache.delete(cacheKey); // on retentera au prochain affichage
           throw err;
         });
@@ -477,7 +477,7 @@
 
     (async () => {
       try {
-        state.kpis = opts.kpis || (await api.get(opts.kpisUrl)).kpis;
+        state.kpis = opts.kpis || (await opts.loadKpis()).kpis;
       } catch (err) {
         panel.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div>`;
         return;

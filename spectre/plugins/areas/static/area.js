@@ -7,8 +7,7 @@
    Chaque µprojet porte son numéro (Nat_0004) : la recherche de la topbar y mène directement.
    Voir spectre.api.management. */
 
-const slug = window.location.pathname.split("/").filter(Boolean)[1];
-const areaUrl = `/api/management/${encodeURIComponent(slug)}`;
+const { slug } = routeParams("/management/{slug}");
 document.getElementById("atlas-link").href = `/management/${encodeURIComponent(slug)}/atlas`;
 
 // Tendances, juste sous les objectifs : bloc KPI à onglets réutilisable (kpis/static/kpi-trend.js), un
@@ -16,9 +15,8 @@ document.getElementById("atlas-link").href = `/management/${encodeURIComponent(s
 KpiTrendBlock.mount(document.getElementById("trends"), {
   eyebrow: "Tendances",
   title: "Évolution des KPI",
-  kpisUrl: `${areaUrl}/tendances`,
-  seriesUrl: (key, months, variant) =>
-    `${areaUrl}/tendances/${encodeURIComponent(key)}?mois=${months}${variant ? `&variante=${encodeURIComponent(variant)}` : ""}`,
+  loadKpis: () => kpisApi.list(slug),
+  loadSeries: (key, months, variant) => kpisApi.series(slug, key, months, variant),
   storageKey: `spectre:tendances:${slug}`,
   // un point jalon (étude) d'une tendance -> sa fiche (aujourd'hui : données de démo EQE)
   onPointClick: (point, series) => openStudy(series.key, point.study),
@@ -251,7 +249,7 @@ function render(area) {
 
 async function load() {
   try {
-    render(await api.get(areaUrl));
+    render(await areasApi.get(slug));
   } catch (err) {
     showError(err);
   }
@@ -309,14 +307,14 @@ document.getElementById("objective-form").addEventListener("submit", (event) => 
   const o = editingObjective;
   save(
     objDialog,
-    () => (o ? api.put(`${areaUrl}/objectifs/${o.id}`, body) : api.post(`${areaUrl}/objectifs`, body)),
+    () => (o ? areasApi.updateObjective(slug, o.id, body) : areasApi.createObjective(slug, body)),
     o ? "Objectif mis à jour." : "Objectif ajouté."
   );
 });
 document.getElementById("obj-delete").addEventListener("click", () => {
   const o = editingObjective;
   if (!o || !window.confirm(`Supprimer l'objectif « ${o.title} » ?`)) return;
-  save(objDialog, () => api.del(`${areaUrl}/objectifs/${o.id}`), "Objectif supprimé.");
+  save(objDialog, () => areasApi.removeObjective(slug, o.id), "Objectif supprimé.");
 });
 
 document.getElementById("objectives").addEventListener("click", (event) => {
@@ -344,14 +342,14 @@ document.getElementById("thematic-form").addEventListener("submit", (event) => {
   const t = editingThematic;
   save(
     thDialog,
-    () => (t ? api.put(`${areaUrl}/thematiques/${encodeURIComponent(t.slug)}`, body) : api.post(`${areaUrl}/thematiques`, body)),
+    () => (t ? areasApi.updateThematic(slug, t.slug, body) : areasApi.createThematic(slug, body)),
     t ? "Thématique mise à jour." : "Thématique créée."
   );
 });
 document.getElementById("th-delete").addEventListener("click", () => {
   const t = editingThematic;
   if (!t || !window.confirm(`Supprimer la thématique « ${t.name} » ? Ses µprojets restent dans le projet, sans thématique.`)) return;
-  save(thDialog, () => api.del(`${areaUrl}/thematiques/${encodeURIComponent(t.slug)}`), "Thématique supprimée.");
+  save(thDialog, () => areasApi.removeThematic(slug, t.slug), "Thématique supprimée.");
 });
 
 document.getElementById("thematics").addEventListener("click", (event) => {
@@ -373,7 +371,7 @@ document.getElementById("mp-cancel").addEventListener("click", () => mpDialog.cl
 document.getElementById("microprojet-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    const p = await api.post("/api/microprojets", {
+    const p = await microprojectsApi.create({
       name: document.getElementById("mp-name").value,
       description: document.getElementById("mp-description").value,
       management_area_slug: slug,
@@ -404,7 +402,7 @@ document.getElementById("edit-area-form").addEventListener("submit", (event) => 
   save(
     eaDialog,
     () =>
-      api.put(areaUrl, {
+      areasApi.update(slug, {
         name: document.getElementById("ea-name").value,
         description: document.getElementById("ea-description").value,
         strategy: document.getElementById("ea-strategy").value,
@@ -417,7 +415,7 @@ document.getElementById("edit-area-form").addEventListener("submit", (event) => 
 document.getElementById("ea-delete").addEventListener("click", async () => {
   if (!window.confirm(`Supprimer le projet « ${current.name} » ? Ses thématiques et objectifs sont supprimés, ses µprojets repassent en « Non classé ».`)) return;
   try {
-    await api.del(areaUrl);
+    await areasApi.remove(slug);
     window.location.href = "/";
   } catch (err) {
     eaDialog.close();
@@ -430,7 +428,7 @@ document.getElementById("ea-delete").addEventListener("click", async () => {
 const attachDialog = document.getElementById("attach-dialog");
 document.getElementById("attach-microprojet-btn").addEventListener("click", async () => {
   try {
-    const all = await api.get("/api/microprojets/tous");
+    const all = await microprojectsApi.listAll();
     const select = document.getElementById("attach-select");
     select.innerHTML = all.length
       ? all
@@ -453,7 +451,7 @@ document.getElementById("attach-confirm").addEventListener("click", () => {
   save(
     attachDialog,
     () =>
-      api.post(`${areaUrl}/microprojets`, {
+      areasApi.assignMicroproject(slug, {
         microproject_slug: microprojectSlug,
         thematique_slug: document.getElementById("attach-thematic").value || null,
       }),
@@ -562,7 +560,7 @@ async function openStudy(kpiKey, studyId) {
     studyDialog.showModal();
   }
   try {
-    const study = await api.get(`${areaUrl}/tendances/${encodeURIComponent(kpiKey)}/etudes/${encodeURIComponent(studyId)}`);
+    const study = await kpisDemoApi.study(slug, kpiKey, studyId);
     box.innerHTML = studyHtml(study);
     box.dataset.kpi = kpiKey;
     document.getElementById("study-close").focus();

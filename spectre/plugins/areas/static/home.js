@@ -51,7 +51,7 @@ function microprojectCard(microproject) {
 
 async function load() {
   try {
-    const [mgmt, mine] = await Promise.all([api.get("/api/management"), api.get("/api/microprojets")]);
+    const [mgmt, mine] = await Promise.all([areasApi.list(), microprojectsApi.list()]);
 
     // "Non classé" ne s'affiche que s'il contient vraiment quelque chose - sinon il encombre.
     // « Non classé » n'est pas un projet : il sort de la grille, replié en bas comme « Mes µprojets »
@@ -84,7 +84,7 @@ document.getElementById("cancel-theme").addEventListener("click", () => dialog.c
 document.getElementById("new-theme-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    const area = await api.post("/api/management", {
+    const area = await areasApi.create({
       name: document.getElementById("theme-name").value,
       description: document.getElementById("theme-description").value,
       strategy: document.getElementById("theme-strategy").value,
@@ -103,7 +103,7 @@ unclassifiedDetails.addEventListener("toggle", async () => {
   const box = document.getElementById("unclassified");
   box.innerHTML = `<div class="skeleton" style="height:84px;"></div>`;
   try {
-    const area = await api.get("/api/management/non-classe");
+    const area = await areasApi.get("non-classe");
     unclassifiedDetails.dataset.loaded = "1";
     box.innerHTML = area.microprojets
       .map((p) => {

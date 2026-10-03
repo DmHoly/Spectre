@@ -88,7 +88,7 @@ function intentFormErrorMessage(err) {
 
 async function loadIntentForm() {
   try {
-    activeIntentForm = await api.get(`/api/microprojets/${slug}/formulaire-actif`);
+    activeIntentForm = await intentFormsApi.active(slug);
   } catch (err) {
     activeIntentForm = null;
   }

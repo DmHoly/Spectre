@@ -201,12 +201,15 @@ Le contrat d'architecture est [`ARCHITECTURE.md`](ARCHITECTURE.md) (le pourquoi 
 - `spectre/kernel/` - le noyau, sans métier : base SQLite et migrations versionnées par plugin
   (`db.py`), manifeste d'un plugin (`plugin.py`), erreurs, verrous, e-mail, service des pages et
   construction de l'application (`app.py`, `create_app()` lancé par uvicorn en mode factory) ; son
-  front (`static/`, servi sous `/static/kernel/`) : client HTTP, `common.js`, `style.css`, logo et
+  front (`static/`, servi sous `/static/kernel/`) : client HTTP (`api.js`), utilitaires d'affichage
+  (`ui.js`), barre du haut (`shell.js`), feuille de style de la charte (`kernel.css`), logo et
   bibliothèques embarquées (`vendor/`).
 - `spectre/plugins/<plugin>/` - une fonctionnalité par plugin (comptes, projets corporate,
   µprojets, structures, expériences, lots...), chacun avec ses routes (`api.py`), son domaine
   (`service.py`...), ses tables (`migrations.py`), ses pages HTML (`pages/`) et son front JS/CSS
-  vanilla (`static/`, servi sous `/static/<plugin>/`) ; la liste ordonnée est `spectre/plugins/__init__.py`.
+  vanilla (`static/`, servi sous `/static/<plugin>/` : son `client.js` - le global `<plugin>Api`,
+  seul endroit où s'écrivent ses URL d'API -, ses contrôleurs de page et sa `<plugin>.css`) ; la
+  liste ordonnée est `spectre/plugins/__init__.py`.
   Aucune logique de simulation, de diff ou de versioning n'est réécrite : elle est importée depuis
   StructureForge et Follow. De même, aucune requête ni formule KPI de caractérisation : le plugin
   `characterization` n'est que l'adaptateur de PRISM.

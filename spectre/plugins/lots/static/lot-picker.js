@@ -2,7 +2,7 @@
    carte « Plaques » de la fiche d'une expérience (experiment.js) : met un ou plusieurs wafers de
    l'expérience (ses lasermarks) dans un lot - en cours ou déjà sorti, à tout moment, autant de fois
    qu'on veut - ou dans un nouveau lot créé sur place. Voir /lots et spectre.api.lots (GET /selection,
-   POST /{code}/wafers, POST ""). Dépend de common.js. */
+   POST /{code}/wafers, POST ""). Dépend de lotsApi (lots/static/client.js). */
 
 let lotAssignCount = 0;
 
@@ -106,7 +106,7 @@ function mountLotAssign(container, { lasermarks = [], onChange } = {}) {
 
   async function load(message, isError, preferred) {
     try {
-      lots = await api.get("/api/lots/selection");
+      lots = await lotsApi.selection();
       render(message, isError, preferred);
     } catch (err) {
       container.innerHTML = `<p class="help">Lots indisponibles : ${escapeHtml(err.message || String(err))}</p>`;
@@ -138,7 +138,7 @@ function mountLotAssign(container, { lasermarks = [], onChange } = {}) {
         note = " (lot existant)";
       } else {
         try {
-          target = (await api.get(`/api/lots/${encodeURIComponent(typedCode)}`)).code; // annulé : absent de la liste
+          target = (await lotsApi.get(typedCode)).code; // annulé : absent de la liste
           note = " (lot existant)";
         } catch (err) {
           /* introuvable : on le crée */
@@ -150,13 +150,13 @@ function mountLotAssign(container, { lasermarks = [], onChange } = {}) {
     try {
       const lot =
         target === "__new"
-          ? await api.post("/api/lots", {
+          ? await lotsApi.create({
               code: typedCode || null,
               priority: container.querySelector(`#${id}-priority`).value,
               forecast_exit_on: container.querySelector(`#${id}-forecast`).value || null,
               wafers,
             })
-          : await api.post(`/api/lots/${encodeURIComponent(target)}/wafers`, { lasermarks: wafers });
+          : await lotsApi.addWafers(target, { lasermarks: wafers });
       await load(
         `${escapeHtml(wafers.join(", "))} ${wafers.length > 1 ? "ajoutés" : "ajouté"} au lot <a href="/lots/${encodeURIComponent(lot.code)}">${escapeHtml(lot.code)}</a>${note} - l'expérience y est rattachée.`,
         false,

@@ -2,7 +2,7 @@
    disponibles (partagés entre projets, propres à ce µprojet), lequel est actif, et l'ajout d'un
    nouveau depuis un fichier YAML. */
 
-const slug = window.location.pathname.split("/").filter(Boolean)[1];
+const { slug } = routeParams("/microprojets/{slug}/formulaire-intention");
 document.getElementById("crumb").textContent = "/ " + slug;
 document.getElementById("microproject-link").href = `/microprojets/${slug}`;
 
@@ -43,7 +43,7 @@ function renderActiveForm() {
   if (deactivateBtn) {
     deactivateBtn.addEventListener("click", async () => {
       try {
-        await api.post(`/api/microprojets/${slug}/formulaire-actif`, { name: null });
+        await intentFormsApi.setActive(slug, { name: null });
         await loadAll();
       } catch (err) {
         showError(err);
@@ -84,7 +84,7 @@ function renderLibrary(library) {
   box.querySelectorAll(".js-activate").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
-        await api.post(`/api/microprojets/${slug}/formulaire-actif`, { name: btn.dataset.name, partagee: btn.dataset.partagee === "true" });
+        await intentFormsApi.setActive(slug, { name: btn.dataset.name, partagee: btn.dataset.partagee === "true" });
         await loadAll();
       } catch (err) {
         showError(err);
@@ -94,7 +94,7 @@ function renderLibrary(library) {
   box.querySelectorAll(".js-delete-form").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
-        await api.del(`/api/microprojets/${slug}/formulaires-intention/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.partagee}`);
+        await intentFormsApi.remove(slug, btn.dataset.name, btn.dataset.partagee === "true");
         await loadAll();
       } catch (err) {
         showError(err);
@@ -107,8 +107,8 @@ async function loadAll() {
   clearError();
   try {
     const [library, active] = await Promise.all([
-      api.get(`/api/microprojets/${slug}/formulaires-intention`),
-      api.get(`/api/microprojets/${slug}/formulaire-actif`),
+      intentFormsApi.list(slug),
+      intentFormsApi.active(slug),
     ]);
     activeForm = active;
     renderActiveForm();
@@ -140,7 +140,7 @@ document.getElementById("upload-form-btn").addEventListener("click", () => {
   const reader = new FileReader();
   reader.onload = async () => {
     try {
-      await api.post(`/api/microprojets/${slug}/formulaires-intention`, { name, yaml: reader.result, partagee });
+      await intentFormsApi.create(slug, { name, yaml: reader.result, partagee });
       document.getElementById("new-form-name").value = "";
       fileInput.value = "";
       document.getElementById("new-form-shared").checked = false;
@@ -154,7 +154,7 @@ document.getElementById("upload-form-btn").addEventListener("click", () => {
 
 async function init() {
   try {
-    const microproject = await api.get(`/api/microprojets/${slug}`);
+    const microproject = await microprojectsApi.get(slug);
     currentRole = microproject.role;
   } catch (err) {
     showError(err);

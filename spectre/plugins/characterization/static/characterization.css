@@ -1,0 +1,69 @@
+/* Menu « Données en base » (wafer-data-links.js). */
+
+/* « Données en base » : les requêtes PRISM ouvertes sur les plaques de l'expérience */
+.db-menu {
+  position: relative;
+}
+.db-menu > summary {
+  list-style: none;
+}
+.db-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.db-menu__btn {
+  min-height: 32px;
+  padding: 5px 11px;
+  font-size: 12.5px;
+}
+.db-menu__pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  width: 280px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lift);
+}
+.fiche-hero__plates .db-menu__pop {
+  left: 0;
+  right: auto;
+}
+@media (max-width: 640px) {
+  .plate-hero__actions .db-menu__pop {
+    left: 0;
+    right: auto;
+  }
+}
+.db-menu__title {
+  padding: 2px 6px 6px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.db-menu__pop ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.db-menu__pop a {
+  display: flex;
+  flex-direction: column;
+  padding: 7px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+.db-menu__pop a span {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+.db-menu__pop a:hover,
+.db-menu__pop a:focus-visible {
+  outline: none;
+  background: var(--accent-tint);
+}

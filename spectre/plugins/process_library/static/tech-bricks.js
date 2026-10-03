@@ -2,8 +2,7 @@
    la composition elle-même se fait dans le constructeur de structure, en "mode brique" (voir
    structure-builder/brick-mode.js), pas ici. */
 
-const pathParts = window.location.pathname.split("/").filter(Boolean);
-const slug = pathParts[1];
+const { slug } = routeParams("/microprojets/{slug}/briques-technologiques");
 
 const state = {
   bricks: { presets: [], partagees: [], projet: [] },
@@ -65,9 +64,7 @@ function renderList() {
   document.querySelectorAll(".js-remove").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
-        state.bricks = await api.del(
-          `/api/microprojets/${encodeURIComponent(slug)}/briques-technologiques/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.scope === "partagee"}`
-        );
+        state.bricks = await processLibraryApi.removeTechBrick(slug, btn.dataset.name, btn.dataset.scope === "partagee");
         renderList();
         showFlash("Brique supprimée.");
       } catch (err) {
@@ -79,7 +76,7 @@ function renderList() {
 
 async function init() {
   try {
-    const microproject = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
+    const microproject = await microprojectsApi.get(slug);
     state.currentRole = microproject.role;
     document.getElementById("crumb").textContent = "/ " + microproject.name;
     document.getElementById("back-link").href = "/bibliotheque";
@@ -92,7 +89,7 @@ async function init() {
     return;
   }
   try {
-    state.bricks = await api.get(`/api/microprojets/${encodeURIComponent(slug)}/briques-technologiques`);
+    state.bricks = await processLibraryApi.techBricks(slug);
     renderList();
   } catch (err) {
     showError(err);

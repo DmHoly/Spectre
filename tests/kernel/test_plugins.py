@@ -70,7 +70,8 @@ def showcase(tmp_path, monkeypatch, data_dir):
     (root / "pages").mkdir(parents=True)
     (root / "static").mkdir()
     (root / "pages" / "vitrine.html").write_text(
-        f"<html><body><div class='topbar'>{pages.TOPBAR_MARKER}</div></body></html>", encoding="utf-8"
+        f'<html><body>\n  {pages.TOPBAR_MARKER}\n  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Vitrine" --></body></html>',
+        encoding="utf-8",
     )
     (root / "pages" / "brute.html").write_text("<html><body>sans barre commune</body></html>", encoding="utf-8")
     (root / "static" / "client.js").write_text("const vitrineApi = {};", encoding="utf-8")
@@ -79,7 +80,11 @@ def showcase(tmp_path, monkeypatch, data_dir):
     plugin = Plugin(
         "vitrine",
         pages=(Page("/vitrine", "vitrine.html"), Page("/vitrine/brute", "brute.html")),
-        nav=(NavEntry("Docs", "/docs", order=20), NavEntry("Vitrine & co", "/vitrine", order=10, match=r"^/vitrine")),
+        nav=(
+            NavEntry("Docs", "/docs", order=20),
+            NavEntry("Vitrine & co", "/vitrine", order=10, match=r"^/vitrine"),
+            NavEntry("Brute", "#", order=15, id="brute-link", pages=("/vitrine/brute",)),
+        ),
         page_router=redirects,
     )
     with TestClient(create_app([plugin])) as client:
@@ -88,10 +93,22 @@ def showcase(tmp_path, monkeypatch, data_dir):
 
 def test_the_topbar_marker_is_replaced_by_the_navigation_of_every_plugin(showcase):
     html = showcase.get("/vitrine").text
-    assert pages.TOPBAR_MARKER not in html
-    nav = re.search(r'<nav class="topbar__nav".*?</nav>', html).group(0)
-    assert re.findall(r'href="([^"]+)"', nav) == ["/vitrine", "/docs"]  # dans l'ordre des entrées
+    assert "spectre:topbar" not in html
+    bars = re.findall(r'<div class="topbar">.*?<div class="topbar__actions">', html, re.DOTALL)
+    assert len(bars) == 2  # un marqueur, une barre
+    nav = re.search(r'<nav class="topbar__nav".*?</nav>', bars[0], re.DOTALL).group(0)
+    assert re.findall(r'href="([^"]+)"', nav) == ["/vitrine", "/docs"]  # dans l'ordre ; « Brute » est réservée à sa page
     assert 'data-match="^/vitrine"' in nav and "Vitrine &amp; co" in nav
+    assert "topbar__crumb" not in bars[0]  # sans fil d'Ariane
+    assert '<span class="topbar__crumb" id="crumb">/ Vitrine</span>' in bars[1]
+    assert 'class="js-user-name topbar__user-name"' in html and "js-logout" in html  # la place de la session
+
+
+def test_a_nav_entry_reserved_to_some_pages_only_shows_there():
+    entries = [NavEntry("Projets", "/", order=10), NavEntry("Atlas", "#", order=15, id="atlas-link", pages=("/management/{slug}",))]
+    on_area = pages.render_nav(pages.nav_entries_for(entries, "/management/{slug}"))
+    assert '<a href="#" class="topbar__link" id="atlas-link">Atlas</a>' in on_area
+    assert "Atlas" not in pages.render_nav(pages.nav_entries_for(entries, "/lots"))
 
 
 def test_a_page_without_the_marker_is_served_as_is(showcase):

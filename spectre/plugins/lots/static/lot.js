@@ -3,8 +3,8 @@
    thématiques et ses expériences liées (retrouvées par ses wafers). Tout est saisi à la main pour
    l'instant - voir spectre.api.lots. */
 
-const code = decodeURIComponent(window.location.pathname.split("/").filter(Boolean)[1] || "");
-let lotApi = `/api/lots/${encodeURIComponent(code)}`;
+const { code } = routeParams("/lots/{code}");
+let lotCode = code;
 let lot = null;
 
 const errorBox = document.getElementById("error");
@@ -151,7 +151,7 @@ function render(data) {
   if (lot.code !== code) {
     // le code a changé (modification) : l'adresse suit
     history.replaceState(null, "", lotUrl(lot.code));
-    lotApi = `/api/lots/${encodeURIComponent(lot.code)}`;
+    lotCode = lot.code;
   }
   renderHead();
   renderKpis();
@@ -163,7 +163,7 @@ function render(data) {
 
 async function load() {
   try {
-    render(await api.get(lotApi));
+    render(await lotsApi.get(lotCode));
   } catch (err) {
     showError(err);
     document.getElementById("lot-code").textContent = code || "Lot introuvable";
@@ -228,7 +228,7 @@ document.getElementById("edit-form").addEventListener("submit", (event) => {
   event.preventDefault();
   save(
     () =>
-      api.put(lotApi, {
+      lotsApi.update(lotCode, {
         code: document.getElementById("ed-code").value,
         priority: document.getElementById("ed-priority").value,
         status: statusField.value,
@@ -246,7 +246,7 @@ document.getElementById("edit-form").addEventListener("submit", (event) => {
 document.getElementById("delete-lot-btn").addEventListener("click", async () => {
   if (!window.confirm(`Supprimer le lot ${lot.code} ? Ses wafers et ses expériences ne sont pas touchés - seul le suivi du lot disparaît.`)) return;
   try {
-    await api.del(lotApi);
+    await lotsApi.remove(lotCode);
     window.location.href = "/lots";
   } catch (err) {
     showError(err);
@@ -260,7 +260,7 @@ document.getElementById("wafer-form").addEventListener("submit", (event) => {
   const input = document.getElementById("wafer-input");
   const lasermarks = input.value.split(/[\s,;]+/).filter(Boolean);
   if (!lasermarks.length) return;
-  save(() => api.post(`${lotApi}/wafers`, { lasermarks }), `${lasermarks.length} wafer${lasermarks.length > 1 ? "s" : ""} ajouté${lasermarks.length > 1 ? "s" : ""}.`).then((ok) => {
+  save(() => lotsApi.addWafers(lotCode, { lasermarks }), `${lasermarks.length} wafer${lasermarks.length > 1 ? "s" : ""} ajouté${lasermarks.length > 1 ? "s" : ""}.`).then((ok) => {
     if (ok) input.value = "";
   });
 });
@@ -269,7 +269,7 @@ document.getElementById("wafers").addEventListener("click", (event) => {
   if (!button) return;
   const lasermark = button.dataset.remove;
   if (!window.confirm(`Retirer ${lasermark} du lot ${lot.code} ?`)) return;
-  save(() => api.del(`${lotApi}/wafers/${encodeURIComponent(lasermark)}`), `${lasermark} retiré du lot.`);
+  save(() => lotsApi.removeWafer(lotCode, lasermark), `${lasermark} retiré du lot.`);
 });
 
 // --- thématiques visées --------------------------------------------------------------------------
@@ -277,7 +277,7 @@ document.getElementById("wafers").addEventListener("click", (event) => {
 const thematicsDialog = document.getElementById("thematics-dialog");
 document.getElementById("edit-thematics-btn").addEventListener("click", async () => {
   try {
-    const options = await api.get("/api/lots/thematiques");
+    const options = await lotsApi.thematicOptions();
     const declared = new Set(lot.thematiques.filter((t) => t.declared).map((t) => t.id));
     document.getElementById("thematic-picker").innerHTML = options.length
       ? options
@@ -297,7 +297,7 @@ document.getElementById("thematics-cancel").addEventListener("click", () => them
 document.getElementById("thematics-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const ids = [...document.querySelectorAll("#thematic-picker input:checked")].map((i) => Number(i.value));
-  save(() => api.put(`${lotApi}/thematiques`, { thematic_ids: ids }), "Thématiques enregistrées.", thematicsDialog);
+  save(() => lotsApi.setThematics(lotCode, { thematic_ids: ids }), "Thématiques enregistrées.", thematicsDialog);
 });
 
 mountGanttTooltip(ganttScroll);

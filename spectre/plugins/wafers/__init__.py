@@ -5,7 +5,7 @@ from .api import router
 
 PLUGIN = Plugin(
     name="wafers",
-    depends_on=("experiments",),
+    depends_on=("experiments", "search"),
     router=router,
     pages=(Page("/plaques/{lasermark}", "wafer.html"),),
 )

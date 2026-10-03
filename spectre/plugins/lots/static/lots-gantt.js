@@ -4,7 +4,7 @@
    pause), le reste jusqu'à la fin prévisionnelle en pointillé (une prévision) ; une fois sorti, la
    barre pleine jusqu'à la fin déclarée, l'éventuel dépassement de la prévision en rouge. Dépliée,
    une sous-ligne par expérience liée (au code du graphe de filiation, lineage-graph.js). Saisie
-   déclarative pour l'instant : voir spectre.api.lots. Dépend de common.js, lineage-graph.js,
+   déclarative pour l'instant : voir spectre.api.lots. Dépend de experiments/static/status.js, lineage-graph.js,
    timeline.js et d3. */
 
 const LOT_STATUS = {

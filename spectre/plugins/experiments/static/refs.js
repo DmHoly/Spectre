@@ -4,7 +4,7 @@
    l'algorithme), donc un arbre texte navigue aussi bien et reste lisible sans bibliothèque de
    rendu supplémentaire. */
 
-const slug = window.location.pathname.split("/").filter(Boolean)[1];
+const { slug } = routeParams("/microprojets/{slug}/refs");
 document.getElementById("crumb").textContent = "/ " + slug;
 document.getElementById("microproject-link").href = `/microprojets/${slug}`;
 
@@ -43,7 +43,7 @@ function renderTree(nodesById, childrenOf, roots, depth = 0) {
 
 async function init() {
   try {
-    const graph = await api.get(`/api/microprojets/${slug}/refs/graphe`);
+    const graph = await experimentsApi.refsGraph(slug);
     if (graph.nodes.length === 0) {
       document.getElementById("empty-note").style.display = "block";
       return;

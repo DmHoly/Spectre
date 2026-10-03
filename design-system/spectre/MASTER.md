@@ -10,7 +10,10 @@ fichier).
 ## Contraintes
 
 - **Vanilla uniquement** : HTML + CSS + JS sans framework ni bundler (balises `<script>`).
-- Tout passe par les tokens de `kernel/static/style.css` (`:root`) - pas de hex en dur dans les pages/JS.
+- Tout passe par les tokens de `kernel/static/kernel.css` (`:root`) - pas de hex en dur dans les pages/JS.
+  Les composants d'une fonctionnalité vivent dans `/static/<plugin>/<plugin>.css` ; une page charge
+  `kernel.css` puis les feuilles des plugins dont elle affiche les composants, dans l'ordre de
+  l'ancienne feuille unique (celle de `structures`, qui porte l'atelier du constructeur, en dernier).
   Les noms historiques (`--accent`, `--text-faint`, `--done`...) sont conservés : ils sont
   référencés par des centaines de styles inline.
 
@@ -44,12 +47,13 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
   interlettrage large. **Pas d'uppercase sur un texte contenant « µ »** (devient « Μ »).
 - Chiffres : `font-variant-numeric: tabular-nums` (composant `.kpi`).
 
-## Composants clés (style.css)
+## Composants clés (kernel.css, sauf mention)
 
 - **Topbar** commune (`.topbar`, sticky 60px) : logo Aledia (`/static/kernel/img/aledia-logo.svg`) |
   SPECTRE | fil d'Ariane · nav principale identique sur toutes les pages (Projets, Bibliothèque,
-  Lots, Data, Documentation - plus Atlas sur un projet), état actif `aria-current="page"` posé par
-  `common.js` (`NAV_SECTIONS`) ·
+  Lots, Data, Documentation - plus Atlas sur un projet), rendue par le noyau (`kernel/pages.py`, marqueur
+  `<!-- spectre:topbar -->`) à partir des `NavEntry` des plugins ; état actif `aria-current="page"` posé
+  par `kernel/static/shell.js` (`data-match` de chaque lien) ·
   utilisateur + déconnexion (icône avec `aria-label`). Filet or dégradé sous le bandeau.
 - **Boutons** : `.btn-primary` navy (survol : filet or interne), `.btn-line`, `.btn-tint`,
   `.btn-danger` ; hauteur min 36px.
@@ -57,7 +61,7 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 - **KPI** : `.kpi > .kpi__value + .kpi__label` (valeur légère + libellé mono).
 - **Chargement** : `.skeleton` (réserve la place, pas de saut de mise en page).
 - **Onglets** `.tab.active` : souligné or · **bascule** `.view-toggle__btn.active` : pastille navy.
-- **Issue d'une expérience** : une seule clé (`experimentOutcome`, `common.js`) pour le badge, le
+- **Issue d'une expérience** : une seule clé (`experimentOutcome`, `experiments/static/status.js`) pour le badge, le
   nœud du graphe et la frise d'une thématique. Nœud (`lineage-graph.js`) : **creux = pas terminée**
   (brouillon anneau gris, en cours anneau bleu + point, en pause anneau ambre + ‖), **plein =
   terminée ou reprise** avec pictogramme (⌄ continuée = brouillon repris par une version suivante,
@@ -81,7 +85,7 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 - [ ] Focus clavier visible (`:focus-visible`, anneau navy ; or sur fond navy)
 - [ ] Contraste texte ≥ 4.5:1 ; l'or n'est jamais porteur de texte sur blanc
 - [ ] `cursor: pointer` sur tout élément cliquable ; transitions 150-200ms
-- [ ] `prefers-reduced-motion` respecté (coupé globalement en fin de style.css)
+- [ ] `prefers-reduced-motion` respecté (coupé globalement en fin de kernel.css)
 - [ ] Icônes SVG (trait 1.8-2, `currentColor`, `aria-hidden` si décoratives), pas d'emoji
 - [ ] Responsive testé à 375 / 768 / 1024 / 1440 - aucun scroll horizontal
 - [ ] Même navigation sur toutes les pages connectées

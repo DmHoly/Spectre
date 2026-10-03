@@ -344,7 +344,7 @@ async function groupSelectionIntoBrick() {
   }
   try {
     const selectedSteps = indices.map((idx) => stripBrickTag(state.steps[idx]));
-    state.techBricks = await api.post(`/api/microprojets/${slug}/briques-technologiques`, {
+    state.techBricks = await processLibraryApi.createTechBrick(slug, {
       name,
       steps: selectedSteps,
       declared_params: declaredParamsPayload(selectedSteps),

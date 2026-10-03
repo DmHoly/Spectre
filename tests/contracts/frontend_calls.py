@@ -1,12 +1,15 @@
-"""Extraction statique des appels HTTP du front vers l'API : chaque ``api.get/post/put/patch/del``
+"""Extraction statique des appels HTTP du front vers l'API : chaque ``api.get/post/put/patch/del/upload``
 et ``api.request`` (``kernel/static/api.js``) et chaque ``fetch`` du front (``static/`` du noyau,
 ``static/`` et ``pages/`` de chaque plugin), avec la méthode et le chemin qu'il vise - sans navigateur
-ni interpréteur JavaScript. Un petit lexeur sait seulement ce que sont un commentaire, une chaîne, un
+ni interpréteur JavaScript. Les URL de l'API ne s'écrivent que dans le ``static/client.js`` de chaque
+plugin (``ARCHITECTURE.md`` § 1) : :func:`scan_clients` y lit chaque fonction (son nom, sa méthode,
+son gabarit d'URL), :func:`scan_client_uses` relève les appels ``<plugin>Api.<fonction>(`` du reste
+du front, et :func:`scan_api_strings` toute chaîne ``/api/`` écrite ailleurs. Un petit lexeur sait seulement ce que sont un commentaire, une chaîne, un
 gabarit (`...${...}...`) et une expression régulière littérale : de quoi lire les arguments d'un appel.
 
-Le chemin d'un appel est connu quand son URL commence par un littéral : chaque ``${...}`` (et chaque
-opérande non littéral d'une concaténation) devient le segment générique :data:`PARAM`, la query
-string est retirée. Sinon - une variable, une expression - l'appel est « dynamique » : ``path`` vaut
+Le chemin d'un appel est connu quand son URL commence par un littéral (éventuellement passé à
+``api.withQuery(url, params)``) : chaque ``${...}`` (et chaque opérande non littéral d'une
+concaténation) devient le segment générique :data:`PARAM`, la query string est retirée. Sinon - une variable, une expression - l'appel est « dynamique » : ``path`` vaut
 ``None``, et c'est à l'appelant de dire, par une liste explicite, quelle route il vise.
 
 Une URL rangée dans une variable (``const areaUrl = `/api/...```), passée en ``src`` ou renvoyée par
@@ -33,9 +36,15 @@ DEFAULT_INCLUDES = ("kernel/static/*", "plugins/*/static/*", "plugins/*/pages/*"
 # Les bibliothèques embarquées et le plugin docs (dont les pages citent des appels en exemple).
 DEFAULT_EXCLUDES = ("kernel/static/vendor/*", "plugins/docs/*")
 
-METHODS = {"get": "GET", "post": "POST", "put": "PUT", "patch": "PATCH", "del": "DELETE"}
+METHODS = {"get": "GET", "post": "POST", "put": "PUT", "patch": "PATCH", "del": "DELETE", "upload": "POST"}
 
-_CALL_RE = re.compile(r"(?<![\w$.])(?:api\s*\.\s*(get|post|put|patch|del|request)|fetch)\s*\(")
+_CALL_RE = re.compile(r"(?<![\w$.])(?:api\s*\.\s*(get|post|put|patch|del|upload|request)|fetch)\s*\(")
+_WITH_QUERY_RE = re.compile(r"^api\s*\.\s*withQuery\s*\(")
+CLIENT_FILE = "client.js"
+# Le client d'un plugin : « const <plugin>Api = { ... }; » ; chaque fonction, une méthode de l'objet.
+_CLIENT_GLOBAL_RE = re.compile(r"^const\s+([A-Za-z_$][\w$]*)\s*=\s*\{", re.M)
+_CLIENT_METHOD_RE = re.compile(r"^  ([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{", re.M)
+_CLIENT_USE_RE = re.compile(r"(?<![\w$.])([a-z][A-Za-z]*Api)\s*\.\s*([A-Za-z_$][\w$]*)\s*\(")
 _METHOD_OPTION_RE = re.compile(r"""\bmethod\s*:\s*["'`](\w+)["'`]""")
 _INLINE_SCRIPT_RE = re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE)
 # Une URL de l'API dans le texte d'un littéral : en tête, ou après un guillemet, un « = »... (le
@@ -305,6 +314,10 @@ def _url_of(argument: str) -> tuple[bool, str | None]:
     """``(est_littérale, url)`` du premier argument d'un appel : l'URL d'une concaténation qui
     commence par un texte littéral (opérandes non littéraux remplacés par :data:`PARAM`), sinon
     ``(False, None)`` - un gabarit qui commence par ``${...}`` (```${base}/wafers```) est dynamique."""
+    with_query = _WITH_QUERY_RE.match(argument.strip())
+    if with_query:
+        inner, _ = _split_top_level(argument.strip()[with_query.end() :], ",")
+        return _url_of(inner[0])
     operands, _ = _split_top_level(argument, "+")
     texts = [_literal_text(operand) for operand in operands]
     if texts[0] is None or texts[0].startswith(PARAM):
@@ -416,3 +429,101 @@ def _urls_in(relative: str, code: str) -> list[FrontendUrl]:
             line = code.count("\n", 0, start) + 1
             urls += [FrontendUrl(relative, line, _without_glued_suffix(base + tail)) for base in sorted(assigned[leading.group(1)])]
     return urls
+
+
+# -- les clients des plugins ------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ClientFunction:
+    file: str  # plugins/<plugin>/static/client.js
+    line: int
+    plugin: str
+    client: str  # le global déclaré (lotsApi)
+    name: str  # la fonction (get)
+    method: str | None  # None : la fonction renvoie une URL (une <img src>), elle n'appelle rien
+    path: str | None  # "/api/..." avec PARAM pour chaque partie variable
+
+    def __str__(self) -> str:
+        return f"{self.file}:{self.line} {self.client}.{self.name} -> {self.method or 'URL'} {self.path}"
+
+
+@dataclass(frozen=True)
+class ClientUse:
+    file: str
+    line: int
+    client: str
+    name: str
+
+    def __str__(self) -> str:
+        return f"{self.file}:{self.line} {self.client}.{self.name}()"
+
+
+def client_files(root: Path = SPECTRE_DIR) -> list[Path]:
+    return sorted(root.glob(f"plugins/*/static/{CLIENT_FILE}"))
+
+
+def client_globals(path: Path) -> list[str]:
+    """Les noms déclarés au premier niveau d'un ``client.js`` (il ne doit y en avoir qu'un)."""
+    code = _without_comments(path.read_text(encoding="utf-8"))
+    return re.findall(r"^(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)", code, re.M)
+
+
+def scan_clients(root: Path = SPECTRE_DIR) -> list[ClientFunction]:
+    """Chaque fonction du client de chaque plugin, avec la méthode et le chemin de l'appel qu'elle
+    fait - ou, pour une fonction qui renvoie une URL, ce chemin sans méthode."""
+    functions: list[ClientFunction] = []
+    for path in client_files(root):
+        relative = path.relative_to(root).as_posix()
+        plugin = path.parent.parent.name
+        code = _without_comments(path.read_text(encoding="utf-8"))
+        declared = _CLIENT_GLOBAL_RE.search(code)
+        client = declared.group(1) if declared else ""
+        methods = list(_CLIENT_METHOD_RE.finditer(code))
+        for i, match in enumerate(methods):
+            end = methods[i + 1].start() if i + 1 < len(methods) else len(code)
+            # le corps de la fonction seul, aux mêmes positions (pour les numéros de ligne)
+            body = re.sub(r"[^\n]", " ", code[: match.end()]) + code[match.end() : end]
+            line = code.count("\n", 0, match.start()) + 1
+            calls = [c for c in _calls_in(relative, body) if c.path]
+            if calls:
+                functions += [ClientFunction(relative, line, plugin, client, match.group(1), c.method, c.path) for c in calls]
+                continue
+            urls = _urls_in(relative, body)
+            functions += [ClientFunction(relative, line, plugin, client, match.group(1), None, u.path) for u in urls] or [
+                ClientFunction(relative, line, plugin, client, match.group(1), None, None)
+            ]
+    return functions
+
+
+def scan_client_uses(
+    root: Path = SPECTRE_DIR, includes: Iterable[str] = DEFAULT_INCLUDES, excludes: Iterable[str] = DEFAULT_EXCLUDES
+) -> list[ClientUse]:
+    """Chaque appel ``<plugin>Api.<fonction>(`` du front."""
+    uses = []
+    for relative, code in _sources(root, includes, excludes):
+        uses += [ClientUse(relative, code.count("\n", 0, m.start()) + 1, m.group(1), m.group(2)) for m in _CLIENT_USE_RE.finditer(code)]
+    return uses
+
+
+def scan_api_strings(
+    root: Path = SPECTRE_DIR, includes: Iterable[str] = DEFAULT_INCLUDES, excludes: Iterable[str] = DEFAULT_EXCLUDES
+) -> list[FrontendUrl]:
+    """Chaque chaîne ou gabarit du front qui contient ``/api/`` (une URL, un préfixe de sélecteur...),
+    et chaque ``/api/`` du balisage d'une page (hors commentaires et scripts, lus à part)."""
+    found = []
+    for relative, code in _sources(root, includes, excludes):
+        for start, end in _literal_spans(code):
+            text = _literal_text(code[start:end]) or code[start:end]
+            if API_PREFIX in text:
+                found.append(FrontendUrl(relative, code.count("\n", 0, start) + 1, " ".join(text.split())[:120]))
+    blank = lambda m: re.sub(r"[^\n]", " ", m.group(0))  # noqa: E731
+    for path in sorted(root.rglob("*.html")):
+        relative = path.relative_to(root).as_posix()
+        if not any(fnmatch.fnmatch(relative, p) for p in includes) or any(fnmatch.fnmatch(relative, p) for p in excludes):
+            continue
+        html = re.sub(r"<!--.*?-->", blank, path.read_text(encoding="utf-8"), flags=re.S)
+        html = _INLINE_SCRIPT_RE.sub(blank, html)
+        for m in re.finditer(re.escape(API_PREFIX), html):
+            found.append(FrontendUrl(relative, html.count("\n", 0, m.start()) + 1, html[m.start() : m.start() + 80].split('"')[0]))
+    return found

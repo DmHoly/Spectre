@@ -46,9 +46,9 @@ Le noyau ne connaît **aucune** fonctionnalité métier. Il fournit :
 | `errors.py` | `DomainError` → `NotFound` (404), `Forbidden` (403), `Conflict` (409), `PreconditionFailed` (412), `InvalidInput` (422), `UpstreamError` (502), `Unavailable` (503) ; un handler unique renvoie `{"detail": str, "code": str}` |
 | `locks.py` | `keyed_lock(namespace, key)` : un `threading.Lock` par clé (le serveur tourne en un seul processus) |
 | `mail.py` | `send_email(to, subject, body)` : SMTP si `SPECTRE_SMTP_HOST`, sinon journalisation **sans le corps** hors `SPECTRE_EMAIL_DEBUG=1` |
-| `pages.py` | Service des pages HTML d'un plugin, avec inclusion de la barre de navigation (marqueur `<!-- spectre:topbar -->`), construite à partir des `NavEntry` de tous les plugins |
+| `pages.py` | Service des pages HTML d'un plugin, avec la barre du haut commune à la place du marqueur `<!-- spectre:topbar -->` (fil d'Ariane déclaré dans le marqueur : `crumb-id`, `crumb-text`) : marque, navigation construite à partir des `NavEntry` de tous les plugins (une entrée peut être réservée à certaines pages : `NavEntry.pages`), place de la session |
 | `http.py` | Petits helpers HTTP : `created(response, location)`, conversion `ETag` / `If-Match` |
-| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles), `ui.js` (`escapeHtml`, dates, durées, `routeParams(pattern)`, `showError`, `showFlash`), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
+| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
 
 ```python
 @dataclass(frozen=True)

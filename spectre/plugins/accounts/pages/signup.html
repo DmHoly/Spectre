@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Créer un compte — Spectre</title>
-  <link rel="stylesheet" href="/static/kernel/style.css">
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/accounts/accounts.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -56,46 +57,9 @@
   </div>
 
   <script src="/static/kernel/api.js"></script>
-  <script>
-    const form = document.getElementById("register-form");
-    const errorBox = document.getElementById("error");
-    const invitationToken = new URLSearchParams(window.location.search).get("invitation");
-
-    async function loadInvitation() {
-      if (!invitationToken) return;
-      try {
-        const invitation = await api.get(`/api/auth/invitation/${invitationToken}`, { redirectOn401: false });
-        document.getElementById("subtitle").textContent = `Vous rejoignez le µprojet « ${invitation.microproject_name} ».`;
-        const emailField = document.getElementById("email");
-        emailField.value = invitation.email;
-        emailField.readOnly = true;
-      } catch (err) {
-        document.getElementById("invitation-note").className = "error";
-        document.getElementById("invitation-note").textContent = "Ce lien d'invitation est invalide ou a expiré - vous pouvez tout de même créer un compte.";
-        document.getElementById("invitation-note").style.display = "block";
-      }
-    }
-
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      errorBox.style.display = "none";
-      const name = document.getElementById("name").value;
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
-      try {
-        await api.post(
-          "/api/auth/register",
-          { name, email, password, invitation: invitationToken || null },
-          { redirectOn401: false }
-        );
-        window.location.href = "/";
-      } catch (err) {
-        errorBox.textContent = err.message;
-        errorBox.style.display = "block";
-      }
-    });
-
-    loadInvitation();
-  </script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/accounts/signup.js"></script>
 </body>
 </html>

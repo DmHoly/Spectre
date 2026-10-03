@@ -63,7 +63,7 @@ function applyIntentionCopy(cfg) {
 
 (async function loadIntentionCopy() {
   try {
-    const cfg = await api.get(`/api/microprojets/${slug}/structures/intention-form`);
+    const cfg = await libraryApi.intentionForm(slug);
     applyIntentionCopy(cfg || {});
   } catch (err) {
     console.warn("Copie de la section « Objectifs et intention » : non chargée, texte par défaut conservé.", err);

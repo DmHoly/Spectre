@@ -9,9 +9,9 @@
    objectives.js / intention-copy.js / intent-form.js du constructeur sont repris tels quels : ils
    lisent `slug` et `state`, définis ici. */
 
-const pathParts = window.location.pathname.split("/").filter(Boolean);
-const slug = pathParts[1];
-const evolveExperienceId = pathParts[2] === "experiences" ? pathParts[3] : null;
+const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experience_id}/evoluer-image");
+const { slug } = evolveRoute || routeParams("/microprojets/{slug}/structures/image");
+const evolveExperienceId = evolveRoute ? evolveRoute.experience_id : null;
 const state = { objectives: [] };
 
 let imageDrop = null;
@@ -36,7 +36,7 @@ function setPageTitle(text) {
 
 async function loadEntityHistory() {
   try {
-    const history = await api.get(`/api/microprojets/${slug}/entites/historique`);
+    const history = await wafersApi.entityHistory(slug);
     document.getElementById("entity-sample-id-history").innerHTML = history.sample_ids.map((v) => `<option value="${escapeHtml(v)}">`).join("");
     document.getElementById("entity-location-history").innerHTML = history.locations.map((v) => `<option value="${escapeHtml(v)}">`).join("");
     document.getElementById("entity-fdl-history").innerHTML = (history.fdls || []).map((v) => `<option value="${escapeHtml(v)}">`).join("");
@@ -46,7 +46,7 @@ async function loadEntityHistory() {
 }
 
 async function loadParent() {
-  const detail = await api.get(`/api/microprojets/${slug}/experiences/${evolveExperienceId}`);
+  const detail = await experimentsApi.get(slug, evolveExperienceId);
   document.getElementById("exp-title").value = detail.title;
   document.getElementById("exp-intent").value = detail.intent;
   document.getElementById("exp-hypothesis").value = detail.hypothesis || "";
@@ -115,10 +115,9 @@ async function launch() {
   const button = document.getElementById("launch-btn");
   button.disabled = true;
   try {
-    const endpoint = evolveExperienceId
-      ? `/api/microprojets/${slug}/experiences/${evolveExperienceId}/evoluer-image`
-      : `/api/microprojets/${slug}/experiences/image`;
-    const result = await api.post(endpoint, payload);
+    const result = evolveExperienceId
+      ? await experimentsApi.evolveWithImage(slug, evolveExperienceId, payload)
+      : await experimentsApi.launchImage(slug, payload);
     window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
   } catch (err) {
     const formMessage = intentFormErrorMessage(err);
@@ -176,7 +175,7 @@ async function initStructureImagePage() {
   renderObjectives();
   loadEntityHistory();
   try {
-    const microproject = await api.get(`/api/microprojets/${slug}`);
+    const microproject = await microprojectsApi.get(slug);
     if (microproject.role !== "editor" && microproject.role !== "owner") {
       showError(new Error("Vous n'avez qu'un accès en lecture à ce µprojet : impossible d'y lancer une expérience."));
       document.getElementById("launch-btn").disabled = true;
@@ -190,3 +189,7 @@ async function initStructureImagePage() {
   }
   if (!evolveExperienceId) document.getElementById("exp-title").focus({ preventScroll: true });
 }
+
+// la page s'initialise une fois les modules du constructeur chargés (objectives.js, intention-copy.js,
+// intent-form.js : après ce fichier, voir image-structure.html)
+document.addEventListener("DOMContentLoaded", initStructureImagePage);

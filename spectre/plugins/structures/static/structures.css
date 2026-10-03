@@ -1,5 +1,351 @@
+/* Composants des structures : objectifs, constructeur (grille, aperçu, étapes, légende), carrousel des
+   variantes d'une campagne (campaign-carousel.js), structure en images (structure-images.js) ;
+   puis l'atelier plein écran du constructeur (builder.html, image-structure.html). */
+
+.objectives-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.objective-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.objective-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--gold);
+}
+
+.objective-direction-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* -- constructeur de structure ---------------------------------------------------------- */
+
+/* -- constructeur de structure : grille structure (gauche) / panneau contextuel (droite) - le
+   reste (campagne, objectifs) vit en accordéons pleine largeur en dessous, la page défile
+   normalement comme les autres écrans (plus de colonne verrouillée à la hauteur de l'écran). */
+
+.builder-grid {
+  display: grid;
+  grid-template-columns: 300px 1fr 340px;
+  gap: var(--space-5);
+  align-items: stretch;
+}
+
+.builder-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.builder-col__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+@media (max-width: 1100px) {
+  .builder-grid {
+    grid-template-columns: 1fr;
+  }
+  .builder-col {
+    min-height: unset;
+  }
+  .builder-col__scroll {
+    flex: none;
+    overflow: visible;
+  }
+}
+
+.builder-canvas-svg {
+  height: 340px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle, rgba(13, 27, 62, 0.07) 1px, transparent 1px) 0 0 / 16px 16px,
+    var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: auto;
+  padding: 12px;
+}
+
+.builder-canvas-svg svg {
+  max-height: 100%;
+  max-width: 100%;
+  transform-origin: center top;
+}
+
+.variation-thumb {
+  width: 90px;
+}
+
+.variation-thumb svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.step-row:hover {
+  border-color: var(--border);
+}
+
+.step-row.current {
+  border-color: var(--navy-600);
+  background: var(--accent-tint);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.step-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.step-remove {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px;
+  flex: none;
+  border-radius: 4px;
+}
+.step-remove:hover {
+  color: var(--danger);
+  background: var(--danger-tint);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.objective-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 100px auto;
+  gap: 8px;
+  align-items: center;
+}
+
+/* -- carrousel de structure (panneau atlas, un nœud de campagne) -------------------------- */
+
+.atlas-carousel {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  background: var(--surface);
+}
+
+.atlas-carousel__badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 6px;
+}
+
+.atlas-carousel__stage svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.atlas-carousel__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.atlas-carousel:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.atlas-carousel__dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 60%;
+}
+.atlas-carousel__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.atlas-carousel__dot:hover {
+  background: var(--navy-500);
+}
+.atlas-carousel__dot.is-active {
+  background: var(--gold);
+  transform: scale(1.25);
+}
+.atlas-carousel__nav button {
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.structure-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.structure-board[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.structure-picture {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+.structure-picture__frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+  padding: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  cursor: zoom-in;
+  transition: border-color var(--dur) var(--ease);
+}
+.structure-picture__frame:hover {
+  border-color: var(--border);
+}
+.structure-picture__frame img {
+  display: block;
+  max-width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+}
+.structure-board:not([data-count="1"]) .structure-picture__frame img {
+  max-height: 240px;
+}
+.structure-picture__caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+.structure-picture__num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gold-dark);
+}
+.structure-picture__kind {
+  padding: 1px 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold-dark);
+  background: var(--gold-tint);
+  border-radius: var(--radius-pill);
+}
+@media (max-width: 560px) {
+  .structure-board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* aperçu (graphe du µprojet, atlas, galerie de données) : la première image, « +N » s'il y en a d'autres */
+.structure-thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  cursor: zoom-in;
+}
+.structure-thumb img {
+  display: block;
+  max-width: 100%;
+  max-height: 140px;
+  object-fit: contain;
+}
+.structure-thumb__more {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--navy);
+  border-radius: var(--radius-pill);
+}
+
 /* Constructeur de structure - « atelier » plein écran (builder.html uniquement).
-   Charte Aledia via les tokens de style.css (aucune couleur en dur ici, hors couleurs par type
+   Charte Aledia via les tokens de kernel.css (aucune couleur en dur ici, hors couleurs par type
    d'étape qui viennent du registre STEP_KIND_DEFS en variables --kind / --kind-tint, et couleurs de
    matériaux --mat renvoyées par la simulation).
 

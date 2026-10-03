@@ -514,7 +514,7 @@ function renderVariationTable(rows, factorLabels) {
       state.variationEntities[i] = { ...state.variationEntities[i], location: input.value };
     });
   });
-  // FDL (feuilles de lancement JIRA) : plusieurs par wafer, empilées (mountFdlField, common.js)
+  // FDL (feuilles de lancement JIRA) : plusieurs par wafer, empilées (mountFdlField, wafers/static/fdl.js)
   wrap.querySelectorAll(".js-wafer-fdl").forEach((el) => {
     const i = parseInt(el.dataset.index, 10);
     mountFdlField(el, {
@@ -564,7 +564,7 @@ async function refreshVariationTable() {
     factors: state.variationFactors.map(({ step_index, field, values, scale, field_label }) => ({ step_index, field, values, scale: scale || "linear", label: field_label })),
   };
   try {
-    const result = await api.post(`/api/microprojets/${slug}/structures/variantes`, {
+    const result = await structuresApi.previewCampaign(slug, {
       substrate: substrateSpec(),
       steps: state.steps,
       declared_params: declaredParamsPayload(state.steps),

@@ -2,7 +2,7 @@
    enregistrer/dupliquer une structure dans la bibliothèque (projet ou partagée). */
 
 async function fetchSavedStructures() {
-  return api.get(`/api/microprojets/${slug}/structures-sauvegardees`);
+  return processLibraryApi.savedStructures(slug);
 }
 
 function findSavedStructure(list, name, scope) {
@@ -55,13 +55,9 @@ async function saveLibraryStructure(forceNew) {
   };
   try {
     if (!forceNew && state.editingLibraryName) {
-      await api.put(
-        `/api/microprojets/${slug}/structures-sauvegardees/${encodeURIComponent(state.editingLibraryName)}` +
-          `?partagee=${state.editingLibraryScope === "partagee"}`,
-        payload
-      );
+      await processLibraryApi.updateSavedStructure(slug, state.editingLibraryName, state.editingLibraryScope === "partagee", payload);
     } else {
-      await api.post(`/api/microprojets/${slug}/structures-sauvegardees`, payload);
+      await processLibraryApi.createSavedStructure(slug, payload);
     }
     const scope = partagee ? "partagee" : "microprojet";
     if (returnTo === "nouvelle-experience") {

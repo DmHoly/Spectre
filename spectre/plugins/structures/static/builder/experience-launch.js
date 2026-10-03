@@ -6,7 +6,7 @@
    ci-dessous - seule la provenance des `entities` diffère (les deux champs d'entité en évolution,
    le tableau de variations.js en nouveau lancement). */
 
-// FDL de l'entité (écran intention, en évolution) - voir mountFdlField (common.js)
+// FDL de l'entité (écran intention, en évolution) - voir mountFdlField (wafers/static/fdl.js)
 const entityFdlField = mountFdlField(document.getElementById("exp-entity-fdl"), { label: "FDL du wafer" });
 document.querySelector("#exp-entity-fdl .fdl-field__input").id = "exp-entity-fdl-input";
 
@@ -16,7 +16,7 @@ async function loadExistingProcess() {
     // Une expérience dont la structure n'est qu'une image (image-structure.html) n'a pas de procédé
     // à rouvrir : on la redessine à partir du seul substrat, le reste (intention, objectifs,
     // entité) est repris comme pour toute évolution.
-    const data = await api.get(`/api/microprojets/${slug}/experiences/${evolveExperienceId}/process`).catch((err) => {
+    const data = await experimentsApi.process(slug, evolveExperienceId).catch((err) => {
       if (err.status === 404) return null;
       throw err;
     });
@@ -28,7 +28,7 @@ async function loadExistingProcess() {
     }
     setPageTitle(data ? "Éditer la fiche" : "Redessiner la structure");
 
-    const detail = await api.get(`/api/microprojets/${slug}/experiences/${evolveExperienceId}`);
+    const detail = await experimentsApi.get(slug, evolveExperienceId);
     document.getElementById("exp-title").value = detail.title;
     document.getElementById("exp-intent").value = detail.intent;
     document.getElementById("exp-hypothesis").value = detail.hypothesis || "";
@@ -92,19 +92,19 @@ async function commitExperience(entities) {
     payload.new_branch = branchName;
   }
   try {
-    let endpoint;
+    let launch;
     if (state.campaignPlan) {
       payload.plan = state.campaignPlan;
       // Campagne partie d'une ref / d'une expérience : on garde le lien de filiation (voir
       // launch_campaign::from_ref) - `payload.new_branch` est déjà posé plus haut si "fork".
       if (evolveExperienceId) payload.from_ref = evolveExperienceId;
-      endpoint = `/api/microprojets/${slug}/experiences/campagne`;
+      launch = () => experimentsApi.launchCampaign(slug, payload);
     } else if (evolveExperienceId) {
-      endpoint = `/api/microprojets/${slug}/experiences/${evolveExperienceId}/evoluer`;
+      launch = () => experimentsApi.evolve(slug, evolveExperienceId, payload);
     } else {
-      endpoint = `/api/microprojets/${slug}/experiences`;
+      launch = () => experimentsApi.launch(slug, payload);
     }
-    const result = await api.post(endpoint, payload);
+    const result = await launch();
     window.location.href = `/microprojets/${slug}/experiences/${result.id}`;
   } catch (err) {
     const formMessage = intentFormErrorMessage(err);
@@ -173,7 +173,7 @@ async function loadTemplateProcess() {
   if (!templateExperienceId) return;
   setPageTitle("Nouvelle expérience (structure reprise)");
   try {
-    const data = await api.get(`/api/microprojets/${slug}/experiences/${templateExperienceId}/process`);
+    const data = await experimentsApi.process(slug, templateExperienceId);
     setSubstrateFields(data.substrate);
     state.steps = attachDeclaredParams(data.steps, data.declared_params);
     selectLastStep();

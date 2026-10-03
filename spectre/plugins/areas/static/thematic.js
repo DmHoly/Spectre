@@ -6,12 +6,8 @@
    bas, le bloc « Perspectives » - un aperçu (placeholder) de la future feuille de route.
    Voir spectre.api.management::get_thematic. */
 
-const [areaSlug, thematicSlug] = (() => {
-  const parts = window.location.pathname.split("/").filter(Boolean); // management/{projet}/thematiques/{thématique}
-  return [decodeURIComponent(parts[1] || ""), decodeURIComponent(parts[3] || "")];
-})();
+const { slug: areaSlug, thematique_slug: thematicSlug } = routeParams("/management/{slug}/thematiques/{thematique_slug}");
 const areaPath = `/management/${encodeURIComponent(areaSlug)}`;
-const thematicUrl = `/api/management/${encodeURIComponent(areaSlug)}/thematiques/${encodeURIComponent(thematicSlug)}`;
 document.getElementById("atlas-link").href = `${areaPath}/atlas`;
 
 const errorBox = document.getElementById("error");
@@ -422,7 +418,7 @@ document.getElementById("mp-cancel").addEventListener("click", () => mpDialog.cl
 document.getElementById("microprojet-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    const p = await api.post("/api/microprojets", {
+    const p = await microprojectsApi.create({
       name: document.getElementById("mp-name").value,
       description: document.getElementById("mp-description").value,
       management_area_slug: areaSlug,
@@ -440,7 +436,7 @@ document.getElementById("microprojet-form").addEventListener("submit", async (ev
 async function load() {
   document.getElementById("frise-legend").innerHTML = lineageLegendHtml({ tip: false });
   try {
-    current = await api.get(thematicUrl);
+    current = await areasApi.getThematic(areaSlug, thematicSlug);
   } catch (err) {
     showError(err);
     document.getElementById("th-name").textContent = "Thématique introuvable";

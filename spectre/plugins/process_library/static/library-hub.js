@@ -50,7 +50,7 @@ function applyMicroproject(microproject) {
 async function init() {
   let microprojects;
   try {
-    microprojects = await api.get("/api/microprojets");
+    microprojects = await microprojectsApi.list();
   } catch (err) {
     showError(err);
     return;

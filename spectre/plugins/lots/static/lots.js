@@ -82,7 +82,7 @@ async function load() {
     b.setAttribute("aria-pressed", String(on));
   });
   try {
-    lots = (await api.get(`/api/lots?statut=${encodeURIComponent(filter)}`)).lots;
+    lots = (await lotsApi.list(filter)).lots;
   } catch (err) {
     showError(err);
     scroll.innerHTML = "";
@@ -138,7 +138,7 @@ document.getElementById("lot-cancel").addEventListener("click", () => lotDialog.
 document.getElementById("lot-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    const lot = await api.post("/api/lots", {
+    const lot = await lotsApi.create({
       code: document.getElementById("lot-code").value.trim() || null,
       title: document.getElementById("lot-title").value,
       priority: document.getElementById("lot-priority").value,

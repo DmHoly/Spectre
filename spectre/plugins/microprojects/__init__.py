@@ -7,7 +7,7 @@ from .migrations import MIGRATIONS
 
 PLUGIN = Plugin(
     name="microprojects",
-    depends_on=("accounts", "areas"),
+    depends_on=("accounts", "areas", "search"),
     router=router,
     page_router=page_router,
     pages=(Page("/microprojets/{slug}", "microproject.html"),),

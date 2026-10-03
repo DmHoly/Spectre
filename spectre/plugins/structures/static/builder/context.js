@@ -2,19 +2,22 @@
    état partagé entre tous les modules de ce dossier, et petits utilitaires de formulaire communs.
    Chargé en premier - tous les autres modules lisent `state` et utilisent `showError`/`clearError`. */
 
-const pathParts = window.location.pathname.split("/").filter(Boolean);
-const slug = pathParts[1];
-const isLibraryMode = pathParts[2] === "structures" && pathParts[3] === "bibliotheque";
-const libraryStructureName = isLibraryMode && pathParts[4] !== "nouvelle" ? decodeURIComponent(pathParts[4]) : null;
+// Les routes du constructeur (spectre/plugins/structures/__init__.py) ; « nouvelle » tient lieu de {name}.
+const libraryRoute = routeParams("/microprojets/{slug}/structures/bibliotheque/{name}");
+const brickRoute = routeParams("/microprojets/{slug}/briques-technologiques/bibliotheque/{name}");
+const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experience_id}/evoluer");
+const { slug } = libraryRoute || brickRoute || evolveRoute || routeParams("/microprojets/{slug}/structures/nouvelle");
+const isLibraryMode = Boolean(libraryRoute);
+const libraryStructureName = isLibraryMode && libraryRoute.name !== "nouvelle" ? libraryRoute.name : null;
 // Mode brique : réutilise ce même constructeur pour composer/éditer une brique technologique (une
 // séquence d'étapes réutilisable, sans substrat propre - voir brick-mode.js). Mutuellement exclusif
 // avec le mode bibliothèque, mêmes conventions d'URL (bibliotheque/{nom|nouvelle}, ?scope=/?dupliquer=1).
-const isBrickMode = pathParts[2] === "briques-technologiques" && pathParts[3] === "bibliotheque";
-const brickName = isBrickMode && pathParts[4] !== "nouvelle" ? decodeURIComponent(pathParts[4]) : null;
+const isBrickMode = Boolean(brickRoute);
+const brickName = isBrickMode && brickRoute.name !== "nouvelle" ? brickRoute.name : null;
 const queryParams = new URLSearchParams(window.location.search);
 const librarySourceScope = queryParams.get("scope") || "microprojet";
 const libraryDuplicateMode = queryParams.get("dupliquer") === "1";
-const evolveExperienceId = !isLibraryMode && !isBrickMode && pathParts[2] === "experiences" ? pathParts[3] : null;
+const evolveExperienceId = evolveRoute ? evolveRoute.experience_id : null;
 const templateExperienceId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("depuis") : null;
 const chosenStructureName = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("structure") : null;
 const chosenStructureScope = queryParams.get("scope") || "microprojet";

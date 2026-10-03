@@ -17,7 +17,7 @@ function loadSnapshot(snapshotId) {
   if (!notebookSnapshots.has(snapshotId)) {
     notebookSnapshots.set(
       snapshotId,
-      api.get(`/api/microprojets/${slug}/donnees/instantanes/${encodeURIComponent(snapshotId)}`).catch((err) => {
+      notebookApi.snapshot(slug, snapshotId).catch((err) => {
         notebookSnapshots.delete(snapshotId);
         throw err;
       })
@@ -27,15 +27,15 @@ function loadSnapshot(snapshotId) {
 }
 
 async function getNotebookSources() {
-  if (!notebookSources) notebookSources = api.get(`/api/microprojets/${slug}/donnees/sources`).catch(() => ({ sources: [], demo: false }));
+  if (!notebookSources) notebookSources = notebookApi.sources(slug).catch(() => ({ sources: [], demo: false }));
   return notebookSources;
 }
 
-async function notebookChange(method, path, body) {
+// `write` : l'appel de notebookApi qui enregistre le changement (il renvoie la nouvelle version).
+async function notebookChange(write) {
   clearError();
   try {
-    const url = `/api/microprojets/${slug}/experiences/${experienceId}/cahier${path}`;
-    const result = method === "DELETE" ? await api.del(url) : method === "PUT" ? await api.put(url, body) : await api.post(url, body);
+    const result = await write();
     goToVersion(result.id); // chaque changement est une nouvelle version : on la suit (onglet gardé)
   } catch (err) {
     showError(err);
@@ -143,7 +143,7 @@ function wireNotebookEntry(article, entry, entries) {
   note.addEventListener("input", () => {
     noteActions.hidden = note.value === (entry.note || "");
   });
-  article.querySelector(".nb-note-save").addEventListener("click", () => notebookChange("PUT", `/${entry.id}`, { note: note.value }));
+  article.querySelector(".nb-note-save").addEventListener("click", () => notebookChange(() => notebookApi.updateEntry(slug, experienceId, entry.id, { note: note.value })));
   article.querySelector(".nb-note-cancel").addEventListener("click", () => {
     note.value = entry.note || "";
     noteActions.hidden = true;
@@ -152,17 +152,17 @@ function wireNotebookEntry(article, entry, entries) {
     const btn = event.target.closest("[data-act]");
     if (!btn) return;
     const act = btn.dataset.act;
-    if (act === "up" || act === "down") return notebookChange("PUT", `/${entry.id}`, { move: act === "up" ? -1 : 1 });
+    if (act === "up" || act === "down") return notebookChange(() => notebookApi.updateEntry(slug, experienceId, entry.id, { move: act === "up" ? -1 : 1 }));
     if (act === "remove") {
-      if (window.confirm(`Retirer « ${entry.title} » du cahier ? (Elle reste dans l'historique de la fiche.)`)) notebookChange("DELETE", `/${entry.id}`);
+      if (window.confirm(`Retirer « ${entry.title} » du cahier ? (Elle reste dans l'historique de la fiche.)`)) notebookChange(() => notebookApi.removeEntry(slug, experienceId, entry.id));
       return;
     }
     if (act === "refresh") {
       btn.disabled = true;
       clearError();
       try {
-        const snap = await api.post(`/api/microprojets/${slug}/donnees/instantanes`, { hook: entry.hook, wafers: entry.wafers || [], refresh: true });
-        notebookChange("PUT", `/${entry.id}`, { snapshot_id: snap.snapshot_id });
+        const snap = await notebookApi.takeSnapshot(slug, { hook: entry.hook, wafers: entry.wafers || [], refresh: true });
+        notebookChange(() => notebookApi.updateEntry(slug, experienceId, entry.id, { snapshot_id: snap.snapshot_id }));
       } catch (err) {
         showError(err);
         btn.disabled = false;
@@ -225,13 +225,15 @@ async function toggleEntrySettings(article, entry, btn) {
   panel.querySelector(".nb-settings__options").addEventListener("change", preview);
   panel.querySelector(".nb-settings-cancel").addEventListener("click", () => btn.click());
   panel.querySelector(".nb-settings-apply").addEventListener("click", () =>
-    notebookChange("PUT", `/${entry.id}`, {
-      title: panel.querySelector(`#nbs-${entry.id}-title`).value,
-      component,
-      options: DataViz.readOptions(panel.querySelector(".nb-settings__options")),
-      objective: panel.querySelector(`#nbs-${entry.id}-objective`).value,
-      in_report: panel.querySelector(`#nbs-${entry.id}-report`).checked,
-    })
+    notebookChange(() =>
+      notebookApi.updateEntry(slug, experienceId, entry.id, {
+        title: panel.querySelector(`#nbs-${entry.id}-title`).value,
+        component,
+        options: DataViz.readOptions(panel.querySelector(".nb-settings__options")),
+        objective: panel.querySelector(`#nbs-${entry.id}-objective`).value,
+        in_report: panel.querySelector(`#nbs-${entry.id}-report`).checked,
+      })
+    )
   );
 }
 
@@ -304,7 +306,7 @@ async function loadNotebookData() {
   btn.disabled = true;
   status.textContent = "Chargement depuis la base…";
   try {
-    const ds = await api.post(`/api/microprojets/${slug}/donnees/instantanes`, { hook: nbAdd.source.key, wafers });
+    const ds = await notebookApi.takeSnapshot(slug, { hook: nbAdd.source.key, wafers });
     nbAdd.dataset = ds;
     notebookSnapshots.set(ds.snapshot_id, Promise.resolve(ds));
     const nWafers = DataViz.byWafer(ds).size;
@@ -377,14 +379,16 @@ function wireNotebookDialog() {
       return;
     }
     dialog.close();
-    notebookChange("POST", "", {
-      title,
-      snapshot_id: nbAdd.dataset.snapshot_id,
-      component: nbAdd.component,
-      options: DataViz.readOptions(document.getElementById("nb-preview-options")),
-      note: document.getElementById("nb-note").value,
-      objective: document.getElementById("nb-objective").value || null,
-    });
+    notebookChange(() =>
+      notebookApi.addEntry(slug, experienceId, {
+        title,
+        snapshot_id: nbAdd.dataset.snapshot_id,
+        component: nbAdd.component,
+        options: DataViz.readOptions(document.getElementById("nb-preview-options")),
+        note: document.getElementById("nb-note").value,
+        objective: document.getElementById("nb-objective").value || null,
+      })
+    );
   });
 }
 

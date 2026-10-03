@@ -1,0 +1,111 @@
+/* Preuves d'une expérience. */
+
+/* -- preuves : liens (dossier, PowerPoint...) et images ------------------------------------------ */
+
+.evidence-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.evidence-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.evidence-link__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--navy);
+  background: var(--accent-tint);
+  border-radius: var(--radius-sm);
+}
+.evidence-link--slides .evidence-link__icon {
+  color: var(--abandoned);
+  background: var(--abandoned-tint);
+}
+.evidence-link--folder .evidence-link__icon {
+  color: var(--gold-dark);
+  background: var(--gold-tint);
+}
+.evidence-link__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.evidence-link__name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.evidence-link__path {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.evidence-link__action {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--link);
+  text-decoration: none;
+  white-space: nowrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.evidence-link__action:hover {
+  background: var(--accent-tint);
+  border-color: var(--navy-500);
+}
+.evidence-link__action:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.evidence-images {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.evidence-images[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.evidence-image {
+  min-width: 0;
+  margin: 0;
+}
+.evidence-image__caption {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+@media (max-width: 560px) {
+  .evidence-images {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

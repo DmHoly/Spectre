@@ -4,37 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nouvelle structure — Spectre</title>
-  <link rel="stylesheet" href="/static/kernel/style.css">
-  <link rel="stylesheet" href="/static/structures/builder.css">
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/experiments/experiments.css">
+  <link rel="stylesheet" href="/static/wafers/wafers.css">
+  <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
 </head>
 <body class="sb-body">
-  <div class="topbar">
-    <div class="topbar__brand">
-      <a href="/" class="topbar__home" aria-label="Spectre - accueil">
-        <img class="brand-logo" src="/static/kernel/img/aledia-logo.svg" alt="Aledia" width="71" height="28">
-        <span class="topbar__sep" aria-hidden="true"></span>
-        <span class="topbar__product">Spectre</span>
-      </a>
-      <span class="topbar__crumb" id="crumb"></span>
-    </div>
-    <nav class="topbar__nav" aria-label="Navigation principale">
-      <a href="/" class="topbar__link">Projets</a>
-      <a href="/bibliotheque" class="topbar__link">Bibliothèque</a>
-      <a href="/lots" class="topbar__link">Lots</a>
-      <a href="/donnees" class="topbar__link">Data</a>
-      <a href="/docs" class="topbar__link">Documentation</a>
-    </nav>
-    <div class="topbar__actions">
-      <a href="/profil" class="topbar__user" title="Mon profil">
-        <span class="js-user-name topbar__user-name"></span>
-        <span class="avatar js-user-initials" aria-hidden="true"></span>
-      </a>
-      <a href="#" class="js-logout topbar__icon-btn" aria-label="Se déconnecter" title="Se déconnecter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></a>
-    </div>
-  </div>
+  <!-- spectre:topbar crumb-id="crumb" -->
 
   <!-- Atelier plein écran (sous la topbar, sans défilement de page sur desktop) : un bandeau
        d'identité/actions propre au mode, le process flow (stepper horizontal qui pilote à la fois
@@ -451,7 +431,21 @@
   </dialog>
 
   <script src="/static/kernel/api.js"></script>
-  <script src="/static/kernel/common.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/wafers/client.js"></script>
+  <script src="/static/lots/client.js"></script>
+  <script src="/static/structures/client.js"></script>
+  <script src="/static/process_library/client.js"></script>
+  <script src="/static/experiments/client.js"></script>
+  <script src="/static/intent_forms/client.js"></script>
+  <script src="/static/library/client.js"></script>
+  <script src="/static/structures/campaign-carousel.js"></script>
+  <script src="/static/wafers/fdl.js"></script>
   <script src="/static/structures/builder/context.js"></script>
   <script src="/static/structures/builder/substrate.js"></script>
   <script src="/static/structures/builder/form-widgets.js"></script>

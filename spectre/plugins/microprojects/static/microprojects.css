@@ -1,0 +1,67 @@
+/* Page d'un µprojet. */
+
+/* choix du mode dans « Nouvelle expérience » (microproject.html) : constructeur ou image */
+.new-exp-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.new-exp-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 44px;
+  padding: 14px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.new-exp-mode:hover {
+  border-color: var(--navy-500);
+  box-shadow: var(--shadow);
+}
+.new-exp-mode:focus-visible {
+  outline: none;
+  border-color: var(--navy-500);
+  box-shadow: var(--ring);
+}
+.new-exp-mode__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--navy);
+  background: var(--accent-tint);
+  border-radius: var(--radius-md);
+}
+.new-exp-mode--image .new-exp-mode__icon {
+  color: var(--gold-dark);
+  background: var(--gold-tint);
+}
+.new-exp-mode__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy);
+}
+.new-exp-mode__desc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+.btn-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 520px) {
+  .new-exp-modes,
+  .btn-pair {
+    grid-template-columns: 1fr;
+  }
+}

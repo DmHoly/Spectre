@@ -22,8 +22,8 @@ function clearError() {
 }
 
 function currentHookKey() {
-  const match = window.location.pathname.match(/^\/donnees\/([^/]+)$/);
-  return match ? decodeURIComponent(match[1]) : null;
+  const params = routeParams("/donnees/{key}");
+  return params ? params.key : null;
 }
 
 function setBreadcrumb(parts) {
@@ -76,7 +76,7 @@ async function renderHub() {
     <div id="categories-grid" class="category-grid"><p class="help">Chargement…</p></div>`;
 
   try {
-    const body = await api.get("/api/donnees/categories");
+    const body = await characterizationApi.categories();
     document.getElementById("categories-grid").innerHTML = body.categories.map(categoryCardHtml).join("");
   } catch (err) {
     showError(err);
@@ -236,7 +236,7 @@ function hookChartsHtml(hook) {
       <div style="margin-top:14px;">
         <div style="font-weight:600;font-size:13.5px;margin-bottom:2px;">${escapeHtml(c.title)}</div>
         <p class="help" style="margin-bottom:8px;">${escapeHtml(c.description || "")}</p>
-        <img src="/api/donnees/hooks/${encodeURIComponent(hook.key)}/graphiques/${encodeURIComponent(c.key)}"
+        <img src="${characterizationApi.chartUrl(hook.key, c.key)}"
              alt="${escapeHtml(c.title)}" style="max-width:100%;border-radius:var(--radius-sm);border:1px solid var(--border-soft);">
       </div>`
     )
@@ -262,7 +262,7 @@ function wireRunner(hook) {
     submitBtn.disabled = true;
     submitBtn.textContent = "Requête en cours…";
     try {
-      const result = await api.post(`/api/donnees/hooks/${encodeURIComponent(hook.key)}/executer`, { parameters, refresh });
+      const result = await characterizationApi.run(hook.key, { parameters, refresh });
       renderRunnerResults(result);
     } catch (err) {
       showError(err);
@@ -301,7 +301,7 @@ async function renderHookPage(key) {
   root.innerHTML = `<p class="help">Chargement…</p>`;
   let hook;
   try {
-    hook = await api.get(`/api/donnees/hooks/${encodeURIComponent(key)}`);
+    hook = await characterizationApi.hook(key);
   } catch (err) {
     showError(err);
     root.innerHTML = "";

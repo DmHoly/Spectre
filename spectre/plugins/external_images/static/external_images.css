@@ -1,0 +1,25 @@
+/* Galerie d'images externes d'une expérience (gallery.js). */
+
+/* -- galerie DATA (images externes vs structure simulée) ------------------------------------ */
+
+.data-item-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* The structure SVG carries its own explicit width/height attributes (frame_to_svg) - without
+   this it forces the grid track (and the whole page) wider than the viewport instead of shrinking
+   to fit its column, the same way .builder-canvas-svg already handles it elsewhere on this page. */
+.data-item-grid svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+@media (max-width: 1100px) {
+  .data-item-grid {
+    grid-template-columns: 1fr;
+  }
+}

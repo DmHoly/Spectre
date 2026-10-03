@@ -16,7 +16,7 @@
    d'une vue, les façons habituelles de regarder ce type (voir presets.js).
 
    Tout le reste ici : lire les colonnes, échelles et axes SVG, couleurs (tokens --viz-* de
-   style.css), statistiques, infobulles, formulaire de réglages. */
+   kernel.css), statistiques, infobulles, formulaire de réglages. */
 
 const DataViz = (() => {
   const registry = new Map();
@@ -109,7 +109,7 @@ const DataViz = (() => {
     return i < 0 ? undefined : ds.rows[rowIndex][i];
   }
 
-  // -- couleurs (tokens de style.css) -------------------------------------------------------------
+  // -- couleurs (tokens de kernel.css) -------------------------------------------------------------
   const tokenCache = {};
   function token(name) {
     if (!(name in tokenCache)) tokenCache[name] = getComputedStyle(document.documentElement).getPropertyValue(name).trim();

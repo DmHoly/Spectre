@@ -24,12 +24,16 @@ class Page:
 @dataclass(frozen=True)
 class NavEntry:
     """Une entrée de la barre du haut. ``match`` : l'expression régulière (sur le chemin de la
-    page) qui la marque comme section courante ; à défaut, son ``href`` exact."""
+    page) qui la marque comme section courante ; à défaut, son ``href`` exact. ``pages`` : les
+    gabarits de route (``Page.path``) des seules pages qui l'affichent - toutes si vide. ``id`` :
+    l'id du lien, pour une page qui en complète l'adresse (le lien « Atlas » d'un projet)."""
 
     label: str
     href: str
     order: int = 100
     match: str | None = None
+    pages: tuple[str, ...] = ()
+    id: str | None = None
 
 
 @dataclass(frozen=True)

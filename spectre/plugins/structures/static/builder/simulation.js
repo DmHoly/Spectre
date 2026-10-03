@@ -345,7 +345,7 @@ async function simulateNow() {
   const busy = document.getElementById("sim-busy");
   const busyTimer = setTimeout(() => (busy.hidden = false), 250);
   try {
-    const result = await api.post(`/api/microprojets/${slug}/structures/simulate`, {
+    const result = await structuresApi.simulate(slug, {
       substrate: substrateSpec(),
       steps: state.steps,
       declared_params: declaredParamsPayload(state.steps),

@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Connexion — Spectre</title>
-  <link rel="stylesheet" href="/static/kernel/style.css">
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/accounts/accounts.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -51,28 +52,8 @@
   </div>
 
   <script src="/static/kernel/api.js"></script>
-  <script>
-    const form = document.getElementById("login-form");
-    const errorBox = document.getElementById("error");
-
-    function suiteUrl() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get("suite") || "/";
-    }
-
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      errorBox.style.display = "none";
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
-      try {
-        await api.post("/api/auth/login", { email, password }, { redirectOn401: false });
-        window.location.href = suiteUrl();
-      } catch (err) {
-        errorBox.textContent = err.message;
-        errorBox.style.display = "block";
-      }
-    });
-  </script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/accounts/login.js"></script>
 </body>
 </html>

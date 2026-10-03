@@ -7,9 +7,7 @@
    L'onglet ouvert est dans l'adresse (#structure / #donnees / #conclusion) et survit aux actions
    qui enregistrent une nouvelle version (voir goToVersion). Le rapport téléchargé reprend les trois. */
 
-const pathParts = window.location.pathname.split("/").filter(Boolean);
-const slug = pathParts[1];
-const experienceId = pathParts[3];
+const { slug, experience_id: experienceId } = routeParams("/microprojets/{slug}/experiences/{experience_id}");
 
 const REFERENCE_ROLE_LABELS = {
   baseline: "Référence",
@@ -73,7 +71,7 @@ function goToVersion(id) {
 let batchVariationPromise = null;
 function getBatchVariation() {
   if (!batchVariationPromise) {
-    batchVariationPromise = api.get(`/api/microprojets/${slug}/experiences/${experienceId}/matrice`).catch((err) => {
+    batchVariationPromise = experimentsApi.variants(slug, experienceId).catch((err) => {
       batchVariationPromise = null;
       throw err;
     });
@@ -370,7 +368,7 @@ async function changeStatus(targetStatus, btn) {
   }
   if (btn) btn.disabled = true;
   try {
-    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/statut`, body);
+    const result = await experimentsApi.setStatus(slug, experienceId, body);
     goToVersion(result.id);
   } catch (err) {
     showError(err);
@@ -687,7 +685,7 @@ document.getElementById("layer-modal-close-btn").addEventListener("click", () =>
   document.getElementById("layer-modal").close();
 });
 
-// Les champs FDL (mountFdlField, common.js) de chaque plaque affichée, par index - remplis par
+// Les champs FDL (mountFdlField, wafers/static/fdl.js) de chaque plaque affichée, par index - remplis par
 // mountEntityFdlFields une fois le HTML posé, relus à l'enregistrement.
 let entityFdlFields = {};
 
@@ -960,7 +958,7 @@ function renderConcludeForm(detail, prefill) {
       reasoning: document.getElementById(`obj-reasoning-${i}`).value.trim() || null,
     }));
     try {
-      const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/conclure`, {
+      const result = await experimentsApi.conclude(slug, experienceId, {
         status: document.getElementById("conclude-status").value,
         decision: document.getElementById("conclude-decision").value || null,
         summary: document.getElementById("conclude-summary").value || null,
@@ -979,7 +977,7 @@ function renderConcludeForm(detail, prefill) {
 async function populateCompareMicroprojectSelect() {
   const microprojectSelect = document.getElementById("compare-microproject-select");
   try {
-    const myMicroprojects = await api.get("/api/microprojets");
+    const myMicroprojects = await microprojectsApi.list();
     microprojectSelect.innerHTML = myMicroprojects
       .map((p) => `<option value="${p.slug}">${escapeHtml(p.name)}${p.slug === slug ? " (ce µprojet)" : ""}</option>`)
       .join("");
@@ -993,7 +991,7 @@ async function populateCompareMicroprojectSelect() {
 async function populateCompareExperienceSelect(targetSlug) {
   const select = document.getElementById("compare-select");
   try {
-    const data = await api.get(`/api/microprojets/${targetSlug}/experiences?status=all&limit=200`);
+    const data = await experimentsApi.list(targetSlug, { status: "all", limit: 200 });
     const others = data.items.filter((item) => !(targetSlug === slug && item.id === experienceId));
     select.innerHTML = others.length
       ? others.map((item) => `<option value="${item.id}">${escapeHtml(item.title)}</option>`).join("")
@@ -1013,11 +1011,10 @@ document.getElementById("compare-btn").addEventListener("click", async () => {
   if (!target) return;
   const box = document.getElementById("compare-result");
   try {
-    const endpoint =
+    const diff =
       targetMicroproject === slug
-        ? `/api/microprojets/${slug}/experiences/${experienceId}/diff?against=${target}`
-        : `/api/microprojets/${slug}/experiences/${experienceId}/diff-externe?autre_projet=${targetMicroproject}&autre_experience=${target}`;
-    const diff = await api.get(endpoint);
+        ? await experimentsApi.diff(slug, experienceId, target)
+        : await experimentsApi.diffExternal(slug, experienceId, targetMicroproject, target);
     if (diff.note) {
       box.innerHTML = `<div class="help">${escapeHtml(diff.note)}</div>`;
     } else if (diff.entries.length === 0) {
@@ -1036,7 +1033,7 @@ document.getElementById("compare-btn").addEventListener("click", async () => {
 async function saveAnnotations(evidenceId, annotations) {
   clearError();
   try {
-    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/preuves/${evidenceId}/annotations`, {
+    const result = await evidenceApi.updateAnnotations(slug, experienceId, evidenceId, {
       annotations,
     });
     goToVersion(result.id);
@@ -1082,7 +1079,7 @@ function evidenceImagesHtml(detail, e) {
   const all = e.image_annotations || [];
   return `<div class="evidence-images" data-count="${Math.min(images.length, 3)}">${images
     .map((attachment) => {
-      const url = `/api/microprojets/${encodeURIComponent(slug)}/pieces-jointes/${encodeURIComponent(attachment.id)}`;
+      const url = attachmentsApi.contentUrl(slug, attachment.id);
       const mine = all.map((a, i) => ({ ...a, globalIndex: i })).filter((a) => !a.attachment_id || a.attachment_id === attachment.id);
       const annotationsListHtml = mine
         .map(
@@ -1310,7 +1307,7 @@ function mountEvidenceImagesDrop() {
   evidenceImagesDrop = zone
     ? mountImageDrop(zone, {
         slug,
-        uploadUrl: `/api/microprojets/${encodeURIComponent(slug)}/images`,
+        purpose: "evidence",
         withKind: false,
         compact: true,
         onChange: () => clearError(),
@@ -1499,7 +1496,7 @@ function renderEvidence(detail) {
       const metricNameEl = document.getElementById("evidence-metric-name");
       const metricValueEl = document.getElementById("evidence-metric-value");
       const stepSelect = document.getElementById("evidence-step-select");
-      const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/preuves`, {
+      const result = await evidenceApi.add(slug, experienceId, {
         description: document.getElementById("evidence-description").value,
         source,
         kind,
@@ -1656,7 +1653,7 @@ function renderTags(detail) {
 async function updateTags(tags) {
   clearError();
   try {
-    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/etiquettes`, { tags });
+    const result = await experimentsApi.setTags(slug, experienceId, { tags });
     // like conclure/preuves, tagging records a new version - follow it there.
     goToVersion(result.id);
   } catch (err) {
@@ -1699,8 +1696,8 @@ function renderRefs(detail) {
 async function createRef(name) {
   clearError();
   try {
-    await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/ref`, { name: name || null });
-    currentDetail = await api.get(`/api/microprojets/${slug}/experiences/${experienceId}`);
+    await experimentsApi.createRef(slug, experienceId, { name: name || null });
+    currentDetail = await experimentsApi.get(slug, experienceId);
     renderRefs(currentDetail);
   } catch (err) {
     showError(err);
@@ -1725,7 +1722,7 @@ async function renderIntentFormInfo(detail) {
   }
   let activeForm = null;
   try {
-    const active = await api.get(`/api/microprojets/${slug}/formulaire-actif`);
+    const active = await intentFormsApi.active(slug);
     activeForm = active ? active.form : null;
   } catch (err) {
     // pas bloquant : on retombe sur les noms de champs bruts
@@ -1744,7 +1741,7 @@ async function renderIntentFormInfo(detail) {
 
 async function populateCombineSelect() {
   try {
-    const data = await api.get(`/api/microprojets/${slug}/experiences?status=all&limit=200`);
+    const data = await experimentsApi.list(slug, { status: "all", limit: 200 });
     const options = data.items
       .filter((exp) => exp.id !== experienceId)
       .map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`)
@@ -1765,7 +1762,7 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
     return;
   }
   try {
-    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/combiner`, {
+    const result = await experimentsApi.combine(slug, experienceId, {
       other_id: otherId,
       title,
       intent,
@@ -1779,7 +1776,7 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
 async function savePhysicalTracking(entities) {
   clearError();
   try {
-    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/entites`, { entities });
+    const result = await experimentsApi.setEntities(slug, experienceId, { entities });
     // like tags/preuves, this records a new version - follow it there.
     goToVersion(result.id);
   } catch (err) {
@@ -1829,7 +1826,7 @@ async function renderPhysicalTracking(detail) {
   });
 }
 
-// « Données en base » (common.js::renderWaferDbLinks) : les requêtes PRISM ouvertes sur les plaques de l'expérience.
+// « Données en base » (characterization/static/wafer-data-links.js::renderWaferDbLinks) : les requêtes PRISM ouvertes sur les plaques de l'expérience.
 function renderDbLinks(detail) {
   renderWaferDbLinks(document.querySelectorAll(".js-db-link"), (detail.physical_tracking || []).map((e) => e.sample_id));
 }
@@ -1872,20 +1869,24 @@ function cleanSectionForReport(el, inlined = {}) {
     if (src && inlined[src]) img.setAttribute("src", inlined[src]);
     img.removeAttribute("loading");
   });
-  clone.querySelectorAll("a[href^='/api/']").forEach((link) => link.removeAttribute("href"));
+  clone.querySelectorAll("a[href]").forEach((link) => {
+    if (api.isApiUrl(link.getAttribute("href"))) link.removeAttribute("href");
+  });
   return clone.outerHTML;
 }
 
 async function inlineReportImages(roots) {
   const sources = new Set();
   roots.forEach((root) =>
-    root.querySelectorAll("img[src^='/api/']").forEach((img) => sources.add(img.getAttribute("src")))
+    root.querySelectorAll("img[src]").forEach((img) => {
+      if (api.isApiUrl(img.getAttribute("src"))) sources.add(img.getAttribute("src"));
+    })
   );
   const inlined = {};
   await Promise.all(
     [...sources].map(async (src) => {
       try {
-        const blob = await fetch(src, { credentials: "same-origin" }).then((r) => (r.ok ? r.blob() : Promise.reject(r)));
+        const blob = await api.get(src, { as: "blob", redirectOn401: false });
         inlined[src] = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result);
@@ -1901,7 +1902,9 @@ async function inlineReportImages(roots) {
 }
 
 async function generateReportHtml() {
-  const css = await fetch("/static/kernel/style.css").then((r) => r.text());
+  // toutes les feuilles de style de la page (noyau puis plugins, dans leur ordre) - lues dans ses <link>
+  const sheets = [...document.querySelectorAll('link[rel="stylesheet"]')].filter((link) => new URL(link.href).origin === window.location.origin);
+  const css = (await Promise.all(sheets.map((link) => fetch(link.href).then((r) => (r.ok ? r.text() : ""))))).join("\n");
   // styles propres à la page (infobulles de couches...) : repris tels quels
   const pageCss = [...document.querySelectorAll("head style")].map((el) => el.textContent).join("\n");
   const panelEls = ["panel-structure", "panel-donnees", "panel-conclusion"].map((id) => document.getElementById(id)).filter((el) => el);
@@ -2002,7 +2005,7 @@ async function saveReplacedDrawing() {
   const button = document.getElementById("replace-drawing-save");
   button.disabled = true;
   try {
-    const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/dessin`, {
+    const result = await experimentsApi.replaceDrawing(slug, experienceId, {
       images: images.map((img) => ({ ...img, caption: (img.caption || "").trim() || null })),
     });
     if (result.id === experienceId) {
@@ -2033,7 +2036,7 @@ function wireDeleteExperience() {
     btn.disabled = true;
     clearError();
     try {
-      const result = await api.del(`/api/microprojets/${slug}/experiences/${experienceId}`);
+      const result = await experimentsApi.remove(slug, experienceId);
       hint.textContent = `${result.count} version(s) supprimée(s).`;
       window.location.href = `/microprojets/${slug}`;
     } catch (err) {
@@ -2062,8 +2065,8 @@ function applyModeVisibility() {
 
 async function init() {
   try {
-    currentDetail = await api.get(`/api/microprojets/${slug}/experiences/${experienceId}`);
-    const microproject = await api.get(`/api/microprojets/${slug}`);
+    currentDetail = await experimentsApi.get(slug, experienceId);
+    const microproject = await microprojectsApi.get(slug);
     currentRole = microproject.role;
     currentMicroprojectName = microproject.name;
     currentMicroprojectCode = microproject.code || null;
@@ -2102,12 +2105,12 @@ async function init() {
     applyModeVisibility();
 
     const [timeline, diff, process, entityHistory] = await Promise.all([
-      api.get(`/api/microprojets/${slug}/experiences/${experienceId}/timeline`),
-      api.get(`/api/microprojets/${slug}/experiences/${experienceId}/diff`),
+      experimentsApi.timeline(slug, experienceId),
+      experimentsApi.diff(slug, experienceId),
       currentDetail.has_editable_process
-        ? api.get(`/api/microprojets/${slug}/experiences/${experienceId}/process`).catch(() => null)
+        ? experimentsApi.process(slug, experienceId).catch(() => null)
         : Promise.resolve(null),
-      api.get(`/api/microprojets/${slug}/entites/historique`).catch(() => ({ sample_ids: [], locations: [], fdls: [] })),
+      wafersApi.entityHistory(slug).catch(() => ({ sample_ids: [], locations: [], fdls: [] })),
     ]);
     currentProcess = process;
     document.getElementById("entity-sample-id-history").innerHTML = entityHistory.sample_ids.map((v) => `<option value="${escapeHtml(v)}">`).join("");

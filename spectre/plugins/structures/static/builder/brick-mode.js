@@ -4,7 +4,7 @@
    étapes pendant la composition ; il n'est jamais envoyé à l'API ni enregistré avec la brique. */
 
 async function fetchTechBricks() {
-  return api.get(`/api/microprojets/${slug}/briques-technologiques`);
+  return processLibraryApi.techBricks(slug);
 }
 
 function findTechBrick(list, name, scope) {
@@ -37,13 +37,9 @@ async function saveTechBrick(forceNew) {
   };
   try {
     if (!forceNew && state.editingBrickName) {
-      await api.put(
-        `/api/microprojets/${slug}/briques-technologiques/${encodeURIComponent(state.editingBrickName)}` +
-          `?partagee=${state.editingBrickScope === "partagee"}`,
-        payload
-      );
+      await processLibraryApi.updateTechBrick(slug, state.editingBrickName, state.editingBrickScope === "partagee", payload);
     } else {
-      await api.post(`/api/microprojets/${slug}/briques-technologiques`, payload);
+      await processLibraryApi.createTechBrick(slug, payload);
     }
     window.location.href = returnTo === "bibliotheque" ? "/bibliotheque" : `/microprojets/${slug}/briques-technologiques`;
   } catch (err) {

@@ -1,5 +1,5 @@
 /* Illustrations des technologies des projets corporate - des schémas SVG sobres, dessinés sur fond
-   navy (couleurs via les classes .tech-art__* de style.css, donc les tokens de la charte ; les
+   navy (couleurs via les classes .tech-art__* de areas.css, donc les tokens de la charte ; les
    couleurs d'émission InGaN --emit-* sont réservées à ces schémas) :
 
      Native (PT2)     -> réseau hexagonal de nanofils axiaux, un fil = un sous-pixel : chaque fil

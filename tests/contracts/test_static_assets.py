@@ -38,7 +38,8 @@ def test_every_local_asset_of_a_page_is_served(client):
 
 
 def test_every_static_path_written_in_a_script_is_served(client):
+    # aucun script n'en écrit aujourd'hui (le rapport d'une expérience lit les <link> de sa page) ;
+    # s'il en vient un, il doit être servi
     urls = scan_static_urls()
-    assert urls  # le rapport d'une expérience embarque la feuille de style du noyau
     missing = [str(url) for url in urls if client.get(url.path).status_code != 200]
     assert not missing, "Chemins /static/ écrits dans le front mais non servis :\n  " + "\n  ".join(missing)

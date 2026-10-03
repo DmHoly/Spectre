@@ -3,8 +3,10 @@ navigateur, sur le texte des pages (voir :mod:`contracts.frontend_calls`). C'est
 renommage de routes vérifiable : une URL oubliée côté front fait échouer ce test au lieu de ne
 répondre 404 qu'en production.
 
-Les appels dont l'URL est une variable ne se lisent pas tels quels : chacun est listé ci-dessous
-(fichier, méthode, expression telle qu'écrite) avec la ou les routes qu'il atteint, et la liste
+Les URL de l'API s'écrivent dans le ``static/client.js`` de chaque plugin (voir aussi
+``test_frontend_clients.py``). Les appels dont l'URL est une variable ne se lisent pas tels quels :
+chacun est listé ci-dessous (fichier, méthode, expression telle qu'écrite) avec la ou les routes
+qu'il atteint, et la liste
 elle-même est vérifiée dans les deux sens - une entrée qui ne correspond plus à aucun appel, ou un
 nouvel appel dynamique qui n'y figure pas, fait échouer le test. Ce que DYNAMIC_CALLS affirme n'est
 pas lu dans le JS : c'est :func:`contracts.frontend_calls.scan_urls` qui vérifie, elle, chaque URL
@@ -16,69 +18,29 @@ from __future__ import annotations
 
 from contracts.frontend_calls import matching_route, openapi_routes, scan, scan_urls
 
-_EXP = "/api/microprojets/{slug}/experiences"
-_LOT = "/api/lots/{code}"
-_AREA = "/api/management/{slug}"
-
 # (fichier, méthode, expression de l'URL) -> les routes (chemins OpenAPI) qu'elle peut désigner.
+# Les URL de l'API sont littérales dans les client.js : il ne reste que l'URL d'une ressource que la
+# page a déjà affichée.
 DYNAMIC_CALLS: dict[tuple[str, str, str], tuple[str, ...]] = {
-    # notebookChange(method, path, body) : url = `${...}/cahier${path}`, path "" ou "/<id de la vue>"
-    ("plugins/notebook/static/notebook.js", "POST", "url"): (f"{_EXP}/{{ref}}/cahier",),
-    ("plugins/notebook/static/notebook.js", "PUT", "url"): (f"{_EXP}/{{ref}}/cahier/{{entry_id}}",),
-    ("plugins/notebook/static/notebook.js", "DELETE", "url"): (f"{_EXP}/{{ref}}/cahier/{{entry_id}}",),
-    # « Comparer » : la même expérience du µprojet ou celle d'un autre µprojet
-    ("plugins/experiments/static/experiment.js", "GET", "endpoint"): (f"{_EXP}/{{ref}}/diff", f"{_EXP}/{{ref}}/diff-externe"),
-    # le rapport embarque ses images (img[src^='/api/']) : pièces jointes et galerie DATA
-    ("plugins/experiments/static/experiment.js", "GET", "src"): ("/api/microprojets/{slug}/pieces-jointes/{attachment_id}", "/api/microprojets/{slug}/data/image"),
-    # uploadStructureImage(slug, file, url) : une image de structure, ou (uploadUrl de la preuve) une image collée
-    ("plugins/attachments/static/image-drop.js", "POST", "url || `/api/microprojets/${encodeURIComponent(slug)}/structures/images`"): (
-        "/api/microprojets/{slug}/structures/images",
-        "/api/microprojets/{slug}/images",
+    # le rapport embarque ses images (attachmentsApi.contentUrl, externalImagesApi.imageUrl)
+    ("plugins/experiments/static/experiment.js", "GET", "src"): (
+        "/api/microprojets/{slug}/pieces-jointes/{attachment_id}",
+        "/api/microprojets/{slug}/data/image",
     ),
-    # KpiTrendBlock, monté par area.js avec kpisUrl / seriesUrl = `${areaUrl}/tendances[/clé]`
-    ("plugins/kpis/static/kpi-trend.js", "GET", "opts.kpisUrl"): (f"{_AREA}/tendances",),
-    ("plugins/kpis/static/kpi-trend.js", "GET", "opts.seriesUrl(key, months, variant)"): (f"{_AREA}/tendances/{{kpi_key}}",),
-    # lot.js : lotApi = `/api/lots/${code}`
-    ("plugins/lots/static/lot.js", "GET", "lotApi"): (_LOT,),
-    ("plugins/lots/static/lot.js", "PUT", "lotApi"): (_LOT,),
-    ("plugins/lots/static/lot.js", "DELETE", "lotApi"): (_LOT,),
-    ("plugins/lots/static/lot.js", "POST", "`${lotApi}/wafers`"): (f"{_LOT}/wafers",),
-    ("plugins/lots/static/lot.js", "DELETE", "`${lotApi}/wafers/${encodeURIComponent(lasermark)}`"): (f"{_LOT}/wafers/{{lasermark}}",),
-    ("plugins/lots/static/lot.js", "PUT", "`${lotApi}/thematiques`"): (f"{_LOT}/thematiques",),
-    # area.js : areaUrl = `/api/management/${slug}`
-    ("plugins/areas/static/area.js", "GET", "areaUrl"): (_AREA,),
-    ("plugins/areas/static/area.js", "PUT", "areaUrl"): (_AREA,),
-    ("plugins/areas/static/area.js", "DELETE", "areaUrl"): (_AREA,),
-    ("plugins/areas/static/area.js", "POST", "`${areaUrl}/objectifs`"): (f"{_AREA}/objectifs",),
-    ("plugins/areas/static/area.js", "PUT", "`${areaUrl}/objectifs/${o.id}`"): (f"{_AREA}/objectifs/{{objective_id}}",),
-    ("plugins/areas/static/area.js", "DELETE", "`${areaUrl}/objectifs/${o.id}`"): (f"{_AREA}/objectifs/{{objective_id}}",),
-    ("plugins/areas/static/area.js", "POST", "`${areaUrl}/thematiques`"): (f"{_AREA}/thematiques",),
-    ("plugins/areas/static/area.js", "PUT", "`${areaUrl}/thematiques/${encodeURIComponent(t.slug)}`"): (f"{_AREA}/thematiques/{{thematique_slug}}",),
-    ("plugins/areas/static/area.js", "DELETE", "`${areaUrl}/thematiques/${encodeURIComponent(t.slug)}`"): (f"{_AREA}/thematiques/{{thematique_slug}}",),
-    ("plugins/areas/static/area.js", "POST", "`${areaUrl}/microprojets`"): (f"{_AREA}/microprojets",),
-    ("plugins/areas/static/area.js", "GET", "`${areaUrl}/tendances/${encodeURIComponent(kpiKey)}/etudes/${encodeURIComponent(studyId)}`"): (
-        f"{_AREA}/tendances/{{kpi_key}}/etudes/{{study_id}}",
-    ),
-    # thematic.js : thematicUrl = `/api/management/${area}/thematiques/${thematique}`
-    ("plugins/areas/static/thematic.js", "GET", "thematicUrl"): (f"{_AREA}/thematiques/{{thematique_slug}}",),
-    # le constructeur : une campagne, une évolution ou un lancement
-    ("plugins/structures/static/builder/experience-launch.js", "POST", "endpoint"): (f"{_EXP}/campagne", f"{_EXP}/{{ref}}/evoluer", _EXP),
-    # la structure en images : une évolution ou un lancement
-    ("plugins/structures/static/image-structure.js", "POST", "endpoint"): (f"{_EXP}/{{ref}}/evoluer-image", f"{_EXP}/image"),
 }
 
 # Appels dynamiques qui ne visent pas une route de Spectre.
 NOT_ROUTE_CALLS: dict[tuple[str, str, str], str] = {
-    ("kernel/static/api.js", "GET", "path"): "le client HTTP lui-même : chaque api.* est vérifié là où il est appelé",
+    ("kernel/static/api.js", "GET", "path"): "le client HTTP lui-même : chaque client.js est vérifié là où il l'appelle",
     ("plugins/experiments/static/experiment.js", "GET", "mount.dataset.url"): "graph_config.data_source_url : un service de données externe",
+    ("plugins/experiments/static/experiment.js", "GET", "link.href"): "le rapport embarque les feuilles de style de la page",
 }
 
 
 def test_the_scanner_sees_the_frontend_calls():
     # garde-fou : un lexeur cassé ne trouverait rien, et tout le reste passerait sans rien vérifier
     calls = scan()
-    assert len([c for c in calls if c.path]) > 100
-    assert any(c.file.endswith(".html") for c in calls)
+    assert len([c for c in calls if c.path and c.file.endswith("/client.js")]) > 100
 
 
 def test_every_literal_frontend_call_targets_an_existing_route(app):

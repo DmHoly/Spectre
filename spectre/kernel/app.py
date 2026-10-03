@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .db import data_dir, run_migrations
 from .errors import install_error_handlers
-from .pages import KERNEL_STATIC_DIR, page_handler, plugin_dir, render_nav, resolve_page
+from .pages import KERNEL_STATIC_DIR, nav_entries_for, page_handler, plugin_dir, render_nav, resolve_page
 from .plugin import Plugin, check_dependencies
 
 
@@ -65,10 +65,11 @@ def create_app(plugins: Sequence[Plugin] | None = None) -> FastAPI:
             response.headers["Cache-Control"] = "no-cache"
         return response
 
-    topbar = render_nav(entry for plugin in active for entry in plugin.nav)
+    nav_entries = [entry for plugin in active for entry in plugin.nav]
     for plugin in active:
         for page in plugin.pages:
-            app.get(page.path)(page_handler(resolve_page(plugin.name, page.file), topbar))
+            nav = render_nav(nav_entries_for(nav_entries, page.path))
+            app.get(page.path)(page_handler(resolve_page(plugin.name, page.file), nav))
         if plugin.page_router is not None:
             app.include_router(plugin.page_router)
 

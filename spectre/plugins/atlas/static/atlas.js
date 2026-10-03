@@ -121,7 +121,7 @@ function renderMicroprojectPanel(d) {
       event.preventDefault();
       clearPanelError();
       try {
-        await api.post("/api/liens-projets", {
+        await linksApi.createMicroprojectLink({
           microproject_a: d.slug,
           microproject_b: document.getElementById("microproject-link-select").value,
           note: document.getElementById("microproject-link-note").value.trim(),
@@ -136,7 +136,7 @@ function renderMicroprojectPanel(d) {
     btn.addEventListener("click", async () => {
       clearPanelError();
       try {
-        await api.del(`/api/liens-projets/${btn.dataset.id}`);
+        await linksApi.removeMicroprojectLink(btn.dataset.id);
         await refresh(`microproject:${d.slug}`);
       } catch (err) {
         showPanelError(err);
@@ -178,7 +178,7 @@ function renderExperiencePanel(d) {
 async function loadStructurePreview(d) {
   const container = document.getElementById("atlas-structure-preview");
   try {
-    const detail = await api.get(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}`);
+    const detail = await experimentsApi.get(d.microprojectSlug, d.id);
     if (!document.getElementById("atlas-structure-preview")) return; // sélection déjà changée entre-temps
     if (detail.structure_images) {
       container.innerHTML = structureBoardHtml(d.microprojectSlug, detail.structure_images, { compact: true });
@@ -188,7 +188,7 @@ async function loadStructurePreview(d) {
       container.innerHTML = detail.structure_svg ? `<div class="atlas-carousel"><div class="atlas-carousel__stage">${detail.structure_svg}</div></div>` : "";
       return;
     }
-    const variation = await api.get(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/experiences/${encodeURIComponent(d.id)}/matrice`);
+    const variation = await experimentsApi.variants(d.microprojectSlug, d.id);
     if (!document.getElementById("atlas-structure-preview")) return;
     renderStructureCarousel(container, variation);
   } catch (err) {
@@ -197,7 +197,7 @@ async function loadStructurePreview(d) {
 }
 
 function renderStructureCarousel(container, variation) {
-  mountStructureCarousel(container, variation); // composant partagé, voir common.js
+  mountStructureCarousel(container, variation); // composant partagé, voir structures/static/campaign-carousel.js
 }
 
 // L'atlas ne montre que la pointe de chaque piste (une bulle par étude toujours en cours ou
@@ -208,7 +208,7 @@ function renderStructureCarousel(container, variation) {
 async function loadMiniTree(d) {
   const container = document.getElementById("atlas-mini-tree");
   try {
-    const body = await api.get(`/api/microprojets/${encodeURIComponent(d.microprojectSlug)}/filiation`);
+    const body = await experimentsApi.lineage(d.microprojectSlug);
     if (!document.getElementById("atlas-mini-tree")) return; // sélection déjà changée entre-temps
     if (!body.nodes.length) {
       container.innerHTML = `<p class="help">Aucun historique.</p>`;
@@ -343,7 +343,7 @@ function renderEntityPanel(d) {
         return;
       }
       try {
-        await api.post("/api/liens-entites", {
+        await linksApi.createEntityLink({
           a: { microproject_slug: d.microprojectSlug, experience_id: d.experienceId, entity_index: d.entityIndex },
           b: { microproject_slug: bMicroprojectSlug, experience_id: bExperienceId, entity_index: parseInt(bEntityIndexRaw, 10) },
           note: document.getElementById("entity-link-note").value.trim(),
@@ -358,7 +358,7 @@ function renderEntityPanel(d) {
     btn.addEventListener("click", async () => {
       clearPanelError();
       try {
-        await api.del(`/api/liens-entites/${btn.dataset.id}`);
+        await linksApi.removeEntityLink(btn.dataset.id);
         await refresh(entityKey({ experience_id: d.experienceId, entity_index: d.entityIndex }));
       } catch (err) {
         showPanelError(err);
@@ -658,10 +658,10 @@ function build(atlas) {
 // /management/{slug}/atlas - un atlas par thème (voir spectre/api/atlas.py::get_atlas), pas un
 // atlas transverse à toute la société : mélanger des µprojets de thèmes stratégiques sans rapport
 // dans une seule bulle de force-layout n'était lisible pour personne.
-const themeSlug = window.location.pathname.split("/").filter(Boolean)[1];
+const { slug: themeSlug } = routeParams("/management/{slug}/atlas");
 
 async function refresh(reselectId) {
-  const atlas = await api.get(`/api/atlas?theme=${encodeURIComponent(themeSlug)}`);
+  const atlas = await atlasApi.get(themeSlug);
   currentAtlas = atlas;
   document.getElementById("theme-link").href = `/management/${encodeURIComponent(themeSlug)}`;
   document.getElementById("theme-link").textContent = atlas.theme.name;

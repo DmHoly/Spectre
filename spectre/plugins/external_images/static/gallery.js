@@ -19,7 +19,7 @@ function dataGalleryClearError() {
 }
 
 function dataImageUrl(path) {
-  return `/api/microprojets/${slug}/data/image?chemin=${encodeURIComponent(path)}`;
+  return externalImagesApi.imageUrl(slug, path);
 }
 
 // Un chemin Windows (C:\Users\...) interpolé tel quel dans un attribut onerror="..." se fait
@@ -115,7 +115,7 @@ async function renderDataGallery(detail) {
         // autre image enregistre une nouvelle version - on navigue dessus plutôt que de rafraîchir
         // sur place, sans quoi la page resterait sur une version désormais figée (immuable) qui ne
         // porte plus ce changement.
-        const result = await api.patch(`/api/microprojets/${slug}/experiences/${experienceId}/data/${el.dataset.itemId}/epingle`, {
+        const result = await externalImagesApi.pin(slug, experienceId, el.dataset.itemId, {
           pinned_index: parseInt(el.dataset.index, 10),
         });
         goToVersion(result.id);
@@ -129,7 +129,7 @@ async function renderDataGallery(detail) {
     btn.addEventListener("click", async () => {
       dataGalleryClearError();
       try {
-        const result = await api.del(`/api/microprojets/${slug}/experiences/${experienceId}/data/${btn.dataset.itemId}`);
+        const result = await externalImagesApi.remove(slug, experienceId, btn.dataset.itemId);
         goToVersion(result.id);
       } catch (err) {
         dataGalleryShowError(err.message || String(err));
@@ -208,7 +208,7 @@ function renderDataGalleryAddForm(detail) {
     const folder = document.getElementById("data-add-folder").value.trim();
     if (!folder) return;
     try {
-      const result = await api.get(`/api/microprojets/${slug}/data/parcourir?dossier=${encodeURIComponent(folder)}`);
+      const result = await externalImagesApi.browse(slug, folder);
       browsedImages = result.images || [];
       const resultsEl = document.getElementById("data-add-browse-results");
       if (!browsedImages.length) {
@@ -268,7 +268,7 @@ function renderDataGalleryAddForm(detail) {
       ...extra,
     };
     try {
-      const result = await api.post(`/api/microprojets/${slug}/experiences/${experienceId}/data`, body);
+      const result = await externalImagesApi.create(slug, experienceId, body);
       goToVersion(result.id);
     } catch (err) {
       dataGalleryShowError(err.message || String(err));

@@ -3,7 +3,7 @@
    statut, la variante qu'elle porte dans une campagne, l'emplacement et les FDL notés dans cette
    étude. On y arrive depuis la recherche de la topbar ou un lasermark cliqué sur une fiche. */
 
-const lasermark = decodeURIComponent(window.location.pathname.split("/").filter(Boolean)[1] || "");
+const { lasermark } = routeParams("/plaques/{lasermark}");
 
 function showError(err) {
   const box = document.getElementById("error");
@@ -40,7 +40,7 @@ async function init() {
   document.getElementById("crumb").textContent = `/ Plaques / ${lasermark}`;
   document.title = `${lasermark} — Spectre`;
   try {
-    const plate = await api.get(`/api/plaques/${encodeURIComponent(lasermark)}`);
+    const plate = await wafersApi.get(lasermark);
     const n = plate.occurrences.length;
     document.getElementById("plate-lasermark").textContent = plate.sample_id;
     document.getElementById("plate-summary").textContent = n

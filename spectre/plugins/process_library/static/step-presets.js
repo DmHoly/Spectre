@@ -3,8 +3,7 @@
    recipes) dans le formulaire d'étape du constructeur (structures/static/builder/) - il n'est jamais
    référencé par nom au moment de la simulation. */
 
-const pathParts = window.location.pathname.split("/").filter(Boolean);
-const slug = pathParts[1];
+const { slug } = routeParams("/microprojets/{slug}/presets-etapes");
 
 const MODE_LABELS = { conformal: "conforme", directional: "directionnel", isotropic: "isotrope" };
 
@@ -156,9 +155,7 @@ function renderList() {
   document.querySelectorAll(".js-remove").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
-        state.presets = await api.del(
-          `/api/microprojets/${encodeURIComponent(slug)}/presets-etapes/${encodeURIComponent(btn.dataset.name)}?partagee=${btn.dataset.scope === "partagee"}`
-        );
+        state.presets = await processLibraryApi.removeStepPreset(slug, btn.dataset.name, btn.dataset.scope === "partagee");
         if (state.editing && state.editing.name === btn.dataset.name) resetForm();
         renderList();
         showFlash("Préset supprimé.");
@@ -170,7 +167,7 @@ function renderList() {
 }
 
 async function loadPresets() {
-  state.presets = await api.get(`/api/microprojets/${encodeURIComponent(slug)}/presets-etapes`);
+  state.presets = await processLibraryApi.stepPresets(slug);
   renderList();
 }
 
@@ -187,13 +184,10 @@ document.getElementById("preset-form").addEventListener("submit", async (event) 
   };
   try {
     if (state.editing) {
-      state.presets = await api.put(
-        `/api/microprojets/${encodeURIComponent(slug)}/presets-etapes/${encodeURIComponent(state.editing.name)}?partagee=${state.editing.partagee}`,
-        body
-      );
+      state.presets = await processLibraryApi.updateStepPreset(slug, state.editing.name, state.editing.partagee, body);
       showFlash("Préset mis à jour.");
     } else {
-      state.presets = await api.post(`/api/microprojets/${encodeURIComponent(slug)}/presets-etapes`, body);
+      state.presets = await processLibraryApi.createStepPreset(slug, body);
       showFlash("Préset créé.");
     }
     resetForm();
@@ -205,7 +199,7 @@ document.getElementById("preset-form").addEventListener("submit", async (event) 
 
 async function init() {
   try {
-    const microproject = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
+    const microproject = await microprojectsApi.get(slug);
     state.currentRole = microproject.role;
     document.getElementById("crumb").textContent = "/ " + microproject.name;
     document.getElementById("back-link").href = "/bibliotheque";
@@ -217,7 +211,7 @@ async function init() {
     return;
   }
   try {
-    state.recipes = await api.get(`/api/microprojets/${encodeURIComponent(slug)}/recettes`);
+    state.recipes = await structuresApi.recipes(slug);
   } catch (err) {
     state.recipes = { deposition: [], etch: [] };
   }

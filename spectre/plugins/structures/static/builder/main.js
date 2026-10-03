@@ -4,10 +4,10 @@
 
 async function loadPickers() {
   [state.materials, state.recipes, state.stepPresets, state.techBricks] = await Promise.all([
-    api.get(`/api/microprojets/${slug}/materials`),
-    api.get(`/api/microprojets/${slug}/recettes`),
-    api.get(`/api/microprojets/${slug}/presets-etapes`),
-    api.get(`/api/microprojets/${slug}/briques-technologiques`),
+    structuresApi.materials(slug),
+    structuresApi.recipes(slug),
+    processLibraryApi.stepPresets(slug),
+    processLibraryApi.techBricks(slug),
   ]);
   document.getElementById("substrate-material").innerHTML = materialOptions("Si");
   populateKindSelect();

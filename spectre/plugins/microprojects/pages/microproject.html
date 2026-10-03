@@ -4,7 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>µProjet — Spectre</title>
-  <link rel="stylesheet" href="/static/kernel/style.css">
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/experiments/experiments.css">
+  <link rel="stylesheet" href="/static/wafers/wafers.css">
+  <link rel="stylesheet" href="/static/microprojects/microprojects.css">
+  <link rel="stylesheet" href="/static/lots/lots.css">
+  <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -154,30 +160,7 @@
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="topbar__brand">
-      <a href="/" class="topbar__home" aria-label="Spectre - accueil">
-        <img class="brand-logo" src="/static/kernel/img/aledia-logo.svg" alt="Aledia" width="71" height="28">
-        <span class="topbar__sep" aria-hidden="true"></span>
-        <span class="topbar__product">Spectre</span>
-      </a>
-      <span class="topbar__crumb" id="crumb"></span>
-    </div>
-    <nav class="topbar__nav" aria-label="Navigation principale">
-      <a href="/" class="topbar__link">Projets</a>
-      <a href="/bibliotheque" class="topbar__link">Bibliothèque</a>
-      <a href="/lots" class="topbar__link">Lots</a>
-      <a href="/donnees" class="topbar__link">Data</a>
-      <a href="/docs" class="topbar__link">Documentation</a>
-    </nav>
-    <div class="topbar__actions">
-      <a href="/profil" class="topbar__user" title="Mon profil">
-        <span class="js-user-name topbar__user-name"></span>
-        <span class="avatar js-user-initials" aria-hidden="true"></span>
-      </a>
-      <a href="#" class="js-logout topbar__icon-btn" aria-label="Se déconnecter" title="Se déconnecter"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></a>
-    </div>
-  </div>
+  <!-- spectre:topbar crumb-id="crumb" -->
 
   <div class="page">
     <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">Projets</a> / <a id="area-crumb" href="/">…</a><span id="thematic-crumb"></span></p>
@@ -298,269 +281,27 @@
   </dialog>
 
   <script src="/static/kernel/api.js"></script>
-  <script src="/static/kernel/common.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/wafers/client.js"></script>
+  <script src="/static/lots/client.js"></script>
+  <script src="/static/attachments/client.js"></script>
+  <script src="/static/experiments/client.js"></script>
+  <script src="/static/process_library/client.js"></script>
+  <script src="/static/experiments/status.js"></script>
+  <script src="/static/microprojects/roles.js"></script>
+  <script src="/static/structures/campaign-carousel.js"></script>
+  <script src="/static/structures/structure-images.js"></script>
+  <script src="/static/wafers/fdl.js"></script>
   <!-- D3 vendored localement (voir spectre/kernel/static/vendor/D3-LICENSE) - même raison qu'atlas.js. -->
   <script src="/static/kernel/vendor/d3.v7.9.0.min.js"></script>
   <script src="/static/experiments/lineage-graph.js"></script>
   <script src="/static/lots/lot-picker.js"></script>
   <script src="/static/experiments/lineage-view.js"></script>
-  <script>
-    const slug = window.location.pathname.split("/")[2];
-    const errorBox = document.getElementById("error");
-    let currentUser = null;
-    let currentRole = null;
-    let currentMicroprojectName = null;
-
-    function showError(err) {
-      errorBox.textContent = err.message || String(err);
-      errorBox.style.display = "block";
-    }
-
-    function clearErrorFlash() {
-      errorBox.style.display = "none";
-      document.getElementById("flash").style.display = "none";
-    }
-
-    function showFlash(message) {
-      const flashBox = document.getElementById("flash");
-      flashBox.textContent = message;
-      flashBox.style.display = "block";
-    }
-
-    function memberRow(member) {
-      const canManage = currentRole === "owner";
-      return `
-        <tr style="border-top:1px solid var(--border-soft);">
-          <td style="padding:10px 0;">
-            <div style="font-weight:600;">${escapeHtml(member.name)}</div>
-            <div style="color:var(--text-faint);font-size:12px;">${escapeHtml(member.email)}</div>
-          </td>
-          <td><span class="badge badge-role">${escapeHtml(roleLabel(member.role))}</span></td>
-          <td style="text-align:right;">
-            ${canManage ? `<button class="btn btn-line js-remove-member" data-user-id="${member.id}" style="padding:5px 10px;font-size:12px;">Retirer</button>` : ""}
-          </td>
-        </tr>`;
-    }
-
-    async function loadMembers() {
-      try {
-        const members = await api.get(`/api/microprojets/${encodeURIComponent(slug)}/members`);
-        document.getElementById("members-body").innerHTML = members.map(memberRow).join("");
-        document.querySelectorAll(".js-remove-member").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            try {
-              await api.del(`/api/microprojets/${encodeURIComponent(slug)}/members/${btn.dataset.userId}`);
-              loadMembers();
-            } catch (err) {
-              showError(err);
-            }
-          });
-        });
-      } catch (err) {
-        showError(err);
-      }
-    }
-
-    function invitationRow(invitation) {
-      return `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border-soft);">
-          <div>
-            <div style="font-size:13px;">${escapeHtml(invitation.email)}</div>
-            <div style="font-size:11.5px;color:var(--text-faint);">Invitation envoyée &middot; ${escapeHtml(roleLabel(invitation.role))}</div>
-          </div>
-          <button class="btn btn-line js-cancel-invitation" data-token="${escapeHtml(invitation.token)}" style="padding:5px 10px;font-size:12px;">Annuler</button>
-        </div>`;
-    }
-
-    async function loadInvitations() {
-      const wrap = document.getElementById("invitations-wrap");
-      if (currentRole !== "owner") {
-        wrap.innerHTML = "";
-        return;
-      }
-      try {
-        const invitations = await api.get(`/api/microprojets/${encodeURIComponent(slug)}/invitations`);
-        wrap.innerHTML = invitations.length
-          ? `<div style="margin-top:14px;"><div class="section-title" style="margin-bottom:4px;">Invitations en attente</div>${invitations.map(invitationRow).join("")}</div>`
-          : "";
-        document.querySelectorAll(".js-cancel-invitation").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            try {
-              await api.del(`/api/microprojets/${encodeURIComponent(slug)}/invitations/${btn.dataset.token}`);
-              loadInvitations();
-            } catch (err) {
-              showError(err);
-            }
-          });
-        });
-      } catch (err) {
-        // silent: owner-only, non-critical secondary list
-      }
-    }
-
-    const membersDialog = document.getElementById("members-dialog");
-    document.getElementById("members-btn").addEventListener("click", () => {
-      clearErrorFlash();
-      membersDialog.showModal();
-    });
-    document.getElementById("close-members-dialog").addEventListener("click", () => membersDialog.close());
-
-    document.getElementById("delete-microproject-btn").addEventListener("click", async () => {
-      const typed = document.getElementById("delete-confirm-name").value.trim();
-      if (typed !== currentMicroprojectName) {
-        showError(new Error("Le nom saisi ne correspond pas au nom du µprojet."));
-        return;
-      }
-      try {
-        await api.del(`/api/microprojets/${encodeURIComponent(slug)}?confirm_name=${encodeURIComponent(typed)}`);
-        window.location.href = "/";
-      } catch (err) {
-        showError(err);
-      }
-    });
-
-    document.getElementById("add-member-form").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      clearErrorFlash();
-      const email = document.getElementById("member-email").value;
-      const role = document.getElementById("member-role").value;
-      try {
-        const result = await api.post(`/api/microprojets/${encodeURIComponent(slug)}/members`, { email, role });
-        document.getElementById("member-email").value = "";
-        showFlash(result.status === "invited" ? "Invitation envoyée par e-mail." : "Personne ajoutée au µprojet.");
-        loadMembers();
-        loadInvitations();
-      } catch (err) {
-        showError(err);
-      }
-    });
-
-    const newExperienceDialog = document.getElementById("new-experience-dialog");
-
-    async function fetchSavedStructures() {
-      return api.get(`/api/microprojets/${encodeURIComponent(slug)}/structures-sauvegardees`);
-    }
-
-    function savedStructureOptionsHtml(library) {
-      const entries = [
-        ...(library.presets || []).map((s) => ({ ...s, scope: "preset" })),
-        ...library.partagees.map((s) => ({ ...s, scope: "partagee" })),
-        ...library.microprojet.map((s) => ({ ...s, scope: "microprojet" })),
-      ];
-      if (!entries.length) return { html: `<option value="">Aucune structure enregistrée</option>`, empty: true };
-      const scopeSuffix = { preset: " (préset)", partagee: " (partagée)", microprojet: "" };
-      const html = entries
-        .map((s) => `<option value="${s.scope}::${encodeURIComponent(s.name)}">${escapeHtml(s.name)}${scopeSuffix[s.scope]}</option>`)
-        .join("");
-      return { html, empty: false };
-    }
-
-    async function openNewExperienceDialog() {
-      clearErrorFlash();
-      try {
-        const [experiences, library] = await Promise.all([
-          api.get(`/api/microprojets/${encodeURIComponent(slug)}/experiences?status=all&limit=200`),
-          fetchSavedStructures(),
-        ]);
-        const expOptions = experiences.items.map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`).join("");
-        document.getElementById("continue-select").innerHTML = experiences.items.length
-          ? expOptions
-          : `<option value="">Aucune expérience pour l'instant</option>`;
-        document.getElementById("template-select").innerHTML = savedStructureOptionsHtml(library).html;
-
-        newExperienceDialog.showModal();
-      } catch (err) {
-        showError(err);
-      }
-    }
-
-    document.getElementById("option-scratch").addEventListener("click", () => {
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle`;
-    });
-
-    document.getElementById("option-image").addEventListener("click", () => {
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/image`;
-    });
-
-    document.getElementById("option-template").addEventListener("click", () => {
-      const source = document.getElementById("template-select").value;
-      if (!source) return;
-      const [scope, name] = source.split("::");
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle?structure=${name}&scope=${scope}`;
-    });
-
-    document.getElementById("option-new-library-structure").addEventListener("click", (event) => {
-      event.preventDefault();
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle?retour=nouvelle-experience`;
-    });
-
-    document.getElementById("option-continue").addEventListener("click", () => {
-      const source = document.getElementById("continue-select").value;
-      if (!source) return;
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
-    });
-
-    document.getElementById("option-continue-image").addEventListener("click", () => {
-      const source = document.getElementById("continue-select").value;
-      if (!source) return;
-      window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer-image`;
-    });
-
-    document.getElementById("cancel-new-experience").addEventListener("click", () => newExperienceDialog.close());
-
-    async function init() {
-      try {
-        const microproject = await api.get(`/api/microprojets/${encodeURIComponent(slug)}`);
-        currentRole = microproject.role;
-        currentMicroprojectName = microproject.name;
-        document.getElementById("microproject-name").textContent = microproject.name;
-        document.getElementById("microproject-description").textContent = microproject.description;
-        const codeEl = document.getElementById("microproject-code");
-        if (microproject.code) {
-          codeEl.textContent = `µprojet ${microproject.code}`;
-          codeEl.style.display = "";
-          document.title = `${microproject.code} · ${microproject.name} — Spectre`;
-        }
-        const area = microproject.management_area;
-        const areaCrumb = document.getElementById("area-crumb");
-        if (area) {
-          areaCrumb.textContent = area.name;
-          areaCrumb.href = `/management/${encodeURIComponent(area.slug)}`;
-        } else {
-          areaCrumb.textContent = "Non classé";
-        }
-        const thematic = microproject.thematique;
-        const thematicCrumb = document.getElementById("thematic-crumb");
-        thematicCrumb.innerHTML =
-          thematic && area
-            ? ` / <a href="/management/${encodeURIComponent(area.slug)}/thematiques/${encodeURIComponent(thematic.slug)}">${escapeHtml(thematic.name)}</a>`
-            : thematic
-              ? ` / ${escapeHtml(thematic.name)}`
-              : "";
-        document.getElementById("microproject-owner").innerHTML = ownerChipHtml(microproject.owners);
-        document.getElementById("crumb").textContent =
-          "/ " + [area && area.name, thematic && thematic.name, microproject.code || microproject.name].filter(Boolean).join(" / ");
-
-        if (currentRole === "editor" || currentRole === "owner") {
-          document.getElementById("new-structure-btn").style.display = "";
-          document.getElementById("new-structure-btn").addEventListener("click", openNewExperienceDialog);
-        }
-        if (currentRole === "owner") {
-          document.getElementById("add-member-form").style.display = "grid";
-          document.getElementById("danger-zone").style.display = "block";
-        }
-      } catch (err) {
-        showError(err);
-        return;
-      }
-
-      document.getElementById("lineage-legend").innerHTML = lineageLegendHtml({ lot: true, wafers: true });
-      loadLineage();
-      loadMembers();
-      loadInvitations();
-    }
-
-    init();
-  </script>
+  <script src="/static/microprojects/microproject.js"></script>
 </body>
 </html>

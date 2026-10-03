@@ -6,7 +6,7 @@ from .migrations import MIGRATIONS
 
 PLUGIN = Plugin(
     name="lots",
-    depends_on=("wafers", "areas", "experiments"),
+    depends_on=("wafers", "areas", "experiments", "search"),
     router=router,
     pages=(Page("/lots", "lots.html"), Page("/lots/{code}", "lot.html")),
     nav=(NavEntry("Lots", "/lots", order=30, match=r"^/lots"),),

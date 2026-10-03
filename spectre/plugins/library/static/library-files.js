@@ -61,7 +61,7 @@ document.getElementById("library-editor-save-btn").addEventListener("click", asy
   saveBtn.disabled = true;
   try {
     const content = getLibraryCodeMirror().getValue();
-    await api.put(`/api/bibliotheque/fichiers/${encodeURIComponent(libraryEditingKey)}`, { content });
+    await libraryApi.saveFile(libraryEditingKey, { content });
     saveBtn.textContent = "Enregistré ✓";
     setTimeout(() => (saveBtn.textContent = "Enregistrer"), 1500);
   } catch (err) {
@@ -79,7 +79,7 @@ async function openLibraryEditor(key) {
   document.getElementById("library-editor-filename").textContent = "";
   libraryModal.showModal();
   try {
-    const detail = await api.get(`/api/bibliotheque/fichiers/${encodeURIComponent(key)}`);
+    const detail = await libraryApi.getFile(key);
     libraryEditingKey = key;
     document.getElementById("library-editor-title").textContent = detail.title;
     document.getElementById("library-editor-filename").textContent = `library/${detail.filename}`;
@@ -102,7 +102,7 @@ async function openLibraryEditor(key) {
 async function initLibraryFiles() {
   const list = document.getElementById("library-files-list");
   try {
-    const body = await api.get("/api/bibliotheque/fichiers");
+    const body = await libraryApi.listFiles();
     list.innerHTML = body.files.map(libraryCardHtml).join("");
     list.querySelectorAll(".js-open-library-editor").forEach((btn) => {
       btn.addEventListener("click", () => openLibraryEditor(btn.dataset.key));

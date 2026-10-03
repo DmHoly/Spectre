@@ -1,0 +1,257 @@
+/* Page d'une plaque (wafer.html) et FDL (fdl.js). */
+
+/* -- page d'une plaque (wafer.html) : son passeport, puis son parcours d'une étude à l'autre --- */
+.plate-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "main actions" "facts facts";
+  gap: 14px 24px;
+  padding: 20px 24px;
+  border-top: 3px solid var(--navy);
+}
+.plate-hero__main {
+  grid-area: main;
+  min-width: 0;
+}
+.plate-hero__lasermark {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--navy);
+}
+.plate-hero__summary {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-soft);
+}
+.plate-hero__actions {
+  grid-area: actions;
+  align-self: start;
+}
+.plate-hero__facts {
+  grid-area: facts;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px 24px;
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+}
+.plate-hero__facts dt {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.plate-hero__facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.plate-hero__facts dd a.fiche-code {
+  text-decoration: none;
+}
+.plate-trail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0 0 0 22px;
+  list-style: none;
+}
+.plate-trail::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--border-soft);
+}
+.plate-trail__item {
+  position: relative;
+}
+.plate-trail__dot {
+  position: absolute;
+  left: -21px;
+  top: 18px;
+  width: 12px;
+  height: 12px;
+  background: var(--surface);
+  border: 2px solid var(--navy);
+  border-radius: 50%;
+}
+.plate-trail__item:first-child .plate-trail__dot {
+  background: var(--gold);
+  border-color: var(--gold-dark);
+}
+.plate-trail__card {
+  padding: 14px 16px;
+}
+.plate-trail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.plate-trail__head a.fiche-code {
+  text-decoration: none;
+}
+.plate-trail__date {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.plate-trail__title {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--navy);
+  text-decoration: none;
+}
+.plate-trail__title:hover {
+  color: var(--link);
+  text-decoration: underline;
+}
+.plate-trail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+.plate-trail__fdl {
+  margin-top: 8px;
+}
+@media (max-width: 640px) {
+  .plate-hero {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main" "actions" "facts";
+    padding: 16px;
+  }
+  .plate-trail__date {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* -- FDL (feuilles de lancement JIRA) -----------------------------------------------------------
+   Le numéro de suivi d'un wafer, celui qu'on cite pour le retrouver : pastilles mono navy, bien
+   visibles (en-tête de fiche, graphe, atlas), et champ de saisie où elles s'empilent. */
+
+.fdl-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.fdl-chips__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+}
+.fdl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--navy);
+  white-space: nowrap;
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-tint-strong);
+  border-radius: var(--radius-pill);
+}
+.fiche-head__fdl:not(:empty) {
+  margin-top: 8px;
+}
+.fiche-head__fdl .fdl-chip {
+  font-size: 12.5px;
+  padding: 3px 11px;
+}
+
+.fdl-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-height: 38px;
+  padding: 4px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: text;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.fdl-field:focus-within {
+  border-color: var(--navy-500);
+  box-shadow: var(--ring);
+}
+.fdl-field__chips {
+  display: contents;
+}
+.fdl-field__input {
+  flex: 1;
+  min-width: 90px;
+  min-height: 28px;
+  padding: 2px 4px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+.fdl-field .fdl-chip {
+  padding-right: 3px;
+}
+.fdl-chip__x {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-soft);
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.fdl-chip__x:hover {
+  color: var(--danger);
+  background: var(--danger-tint);
+}
+.fdl-chip__x:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.fdl-field--compact {
+  min-height: 32px;
+  padding: 2px 4px;
+}
+.fdl-field--compact .fdl-chip {
+  font-size: 11px;
+  padding: 1px 3px 1px 7px;
+}
+.fdl-field--compact .fdl-field__input {
+  min-width: 64px;
+  min-height: 24px;
+  font-size: 11.5px;
+}
