@@ -23,6 +23,16 @@ const notebookApi = {
       })
     );
   },
+  // {step_id: n} : pour chaque étape, le nombre d'entrées qui s'appliquent à la version et y ont une
+  // mesure (les badges de la vue du procédé)
+  stepCounts(microprojectSlug, experimentId, version) {
+    return api.get(
+      api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/notebook-entries`, {
+        version,
+        summary: "steps",
+      })
+    );
+  },
   // body : {kind: "prism" | "manual", title, note, objective, interpretation, wafers, measurements, in_report}
   addEntry(microprojectSlug, experimentId, versionId, body) {
     return api.post(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/notebook-entries`, body, {

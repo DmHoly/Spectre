@@ -346,7 +346,4 @@ node --test --experimental-test-coverage
 
 Les évolutions prévues et les dettes notées sont dans [`TODO.md`](TODO.md), notamment :
 
-- le cahier unique côté interface : le stepper du procédé à l'ajout et à la lecture d'une donnée,
-  la saisie d'une entrée manuelle, les badges des étapes (le serveur est prêt : voir
-  `ARCHITECTURE.md` § 5, notebook) ;
 - la réécriture de la documentation intégrée (`/docs`), en dernier.

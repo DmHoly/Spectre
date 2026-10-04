@@ -24,7 +24,16 @@
                                         If-Match ; réussie, la fiche se recharge ; refusée, showError
                                         (la saisie reste en place) ; renvoie true si elle est passée
      setDataCount(key, n)             - un panneau de l'onglet « Données » qui lit sa propre ressource
-                                        y dit combien d'éléments il montre (le repère de l'onglet) */
+                                        y dit combien d'éléments il montre (le repère de l'onglet)
+     notebook, setNotebook(summary)   - ce que la fiche sait du cahier de données, déclaré par son
+                                        panneau (plugin notebook, qui dépend d'experiments et non
+                                        l'inverse) : {entries: [{id, title, kind, objective, applies}],
+                                        stepCounts: {step_id: n}} ; null tant qu'il n'est pas lu
+     filterNotebook(stepId)           - montre l'onglet « Données », le cahier filtré sur cette étape
+                                        (null : sans filtre)
+   Les panneaux de la fiche qui se servent du cahier (vue du procédé : badges par étape ; conclusion :
+   entrées citées) s'abonnent, au chargement de leur script, à ExperiencePage.onNotebook(fn) ; le
+   panneau du cahier s'abonne au filtre par ExperiencePage.onNotebookFilter(fn). */
 
 const ExperiencePage = (() => {
   const { slug: microprojectSlug, experiment_id: experimentId } = routeParams("/microprojets/{slug}/experiences/{experiment_id}");
@@ -88,10 +97,36 @@ const ExperiencePage = (() => {
     showError,
     write,
     setDataCount,
+    notebook: null,
+    setNotebook,
+    filterNotebook,
   };
 
   function registerPanel(panel) {
     panels.push(panel);
+  }
+
+  // --- le cahier vu par la fiche ------------------------------------------------------------------
+
+  const notebookListeners = [];
+  const notebookFilterListeners = [];
+
+  function onNotebook(fn) {
+    notebookListeners.push(fn);
+  }
+
+  function onNotebookFilter(fn) {
+    notebookFilterListeners.push(fn);
+  }
+
+  function setNotebook(summary) {
+    ctx.notebook = summary;
+    notebookListeners.forEach((fn) => fn(summary));
+  }
+
+  function filterNotebook(stepId) {
+    showTab("donnees");
+    notebookFilterListeners.forEach((fn) => fn(stepId || null));
   }
 
   // --- adresses -----------------------------------------------------------------------------------
@@ -238,6 +273,7 @@ const ExperiencePage = (() => {
       isTip,
       role: microproject.role,
       canEdit: isTip && (microproject.role === "editor" || microproject.role === "owner"),
+      notebook: null, // relu par le panneau du cahier pour cette version
     });
     variantsPromise = null;
     othersCache.clear();
@@ -270,5 +306,5 @@ const ExperiencePage = (() => {
     reload();
   });
 
-  return { registerPanel, showTab, pageUrl, evolveUrl, otherExperiments };
+  return { registerPanel, onNotebook, onNotebookFilter, showTab, pageUrl, evolveUrl, otherExperiments };
 })();

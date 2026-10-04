@@ -117,7 +117,7 @@
   vertical-align: middle;
 }
 
-/* Un commit qui n'a pas fait bouger la version (une preuve, un tag, un titre...) - toujours dans
+/* Un commit qui n'a pas fait bouger la version (une donnée du cahier, un tag, un titre...) - toujours dans
    l'historique complet, mais visuellement en retrait par rapport à un vrai changement de version. */
 .timeline-item.no-version-change {
   opacity: 0.7;
@@ -856,6 +856,95 @@ a.plate-row__lasermark {
   max-height: 420px;
   overflow: auto;
 }
+/* Les étapes du procédé (structure-view.js) : une pastille numérotée par étape, rouge quand le cahier a
+   des données à cette étape (comme les bulles mesurées du stepper du cahier), et le nombre de ces
+   données en bouton, qui filtre le cahier sur l'étape. */
+#process-card[hidden] {
+  display: none;
+}
+.process-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.process-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+.process-step.has-data {
+  border-color: var(--danger-tint);
+}
+.process-step__num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+}
+.process-step.has-data .process-step__num {
+  color: var(--surface);
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.process-step__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.process-step__name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.process-step__kind {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.process-step__data {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 3px 9px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-tint);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease);
+}
+.process-step__data:hover {
+  border-color: var(--danger);
+}
+.process-step__data:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
 /* une campagne : la structure devient un carrousel (référence + chaque variante) */
 .fiche-structure-carousel .atlas-carousel__stage {
   height: 290px;
@@ -1299,4 +1388,60 @@ a.plate-row__lasermark {
 .evo-diff div {
   padding: 2px 0;
   overflow-wrap: anywhere;
+}
+
+/* La conclusion cite des entrées du cahier (conclusion.js) : leurs titres sous un verdict, des cases
+   à cocher sous chaque objectif du formulaire. */
+.conclusion-cites {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.conclusion-cites:empty {
+  display: none;
+}
+.conclusion-cites__label {
+  font-weight: 600;
+}
+.conclusion-cites__missing {
+  font-style: italic;
+  color: var(--text-faint);
+}
+.conclusion-cites-form {
+  margin: 8px 0 0;
+  padding: 6px 10px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.conclusion-cites-form legend {
+  padding: 0 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+.conclusion-cites-form__list {
+  display: flex;
+  flex-direction: column;
+  max-height: 168px;
+  overflow-y: auto;
+}
+.conclusion-cite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-height: 30px;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+.conclusion-cite__tag {
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--done);
+  background: var(--done-tint);
+  border-radius: var(--radius-pill);
 }

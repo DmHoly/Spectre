@@ -186,6 +186,7 @@ spectre/plugins/<plugin>/
 | `register(KpiDefinition)` | `kpis` | activité, wafers, démo EQE |
 | `DataViz.register(component)` | `notebook/static/dataviz/core.js` | table, carte de wafer, distribution, nuage de points, courbes… |
 | `ExperiencePage.registerPanel({key, mount(el, ctx)})` (voir § 6) | `experiments/static/page.js` | les panneaux de la fiche elle-même, puis external_images (`gallery.js`), lots (`lot-picker.js`), notebook (`notebook.js`) |
+| `ctx.setNotebook(summary)` / `ExperiencePage.onNotebook(fn)`, `ctx.filterNotebook(stepId)` / `ExperiencePage.onNotebookFilter(fn)` (voir § 6) | `experiments/static/page.js` | le cahier (notebook) déclare ses entrées et leur nombre par étape ; la vue du procédé (`structure-view.js`, badges) et la conclusion (`conclusion.js`, citations) s'en servent ; un badge filtre le cahier |
 
 **Clés de type de structure figées.** `ProcessLot` et `StructureImage` surchargent
 `registry_key()` pour renvoyer leur chaîne historique (`spectre.core.structures.…`). Follow
@@ -687,11 +688,12 @@ Supprimée : `/microprojets/{slug}/graphe`.
     `structures/structure-images.js`, `structures/campaign-carousel.js`,
     `characterization/wafer-data-links.js`, `intent_forms/intent-form-section.js`,
     `areas/totals.js` (`experimentTotals`), `areas/area-art.js`, `lots/lots-gantt.js`,
-    `lots/lot-picker.js` (`mountLotAssign`), `library/library-files.js`, `accounts/session.js`. Une
+    `lots/lot-picker.js` (`mountLotAssign`), `notebook/stepper.js` (`mountStepper`, le stepper du
+    procédé), `library/library-files.js`, `accounts/session.js`. Une
     page qui en utilise une la charge elle-même ; un nom nouveau ne doit pas en recouvrir un de
     cette liste ;
-  - `notebook.js` et `external_images/gallery.js` gardent un état de premier niveau (`notebookCtx`,
-    `galleryCtx`, `galleryMounts`…) mais ne lisent que le `ctx` reçu (voir plus bas).
+  - `external_images/gallery.js` garde un état de premier niveau (`galleryCtx`, `galleryMounts`…)
+    mais ne lit que le `ctx` reçu (voir plus bas).
 - Ordre de chargement d'une page :
   1. noyau : `/static/kernel/api.js`, `ui.js`, `shell.js` ;
   2. session et recherche : `/static/accounts/session.js`, `/static/search/client.js`,
@@ -726,6 +728,24 @@ Supprimée : `/microprojets/{slug}/graphe`.
   d'une campagne, un appel par chargement), `write(call, box?)` et `setDataCount(key, n)`, par
   lequel un panneau de l'onglet « Données » qui lit sa propre ressource (cahier, galerie) déclare
   son compte. Aucun module ne lit de globale de la page.
+- **Le cahier vu par la fiche.** notebook dépend d'experiments, pas l'inverse : la fiche ne lit pas
+  le cahier. Son panneau (`notebook.js`) le lit (`notebookApi.entries`, et `notebookApi.stepCounts`,
+  `?summary=steps`) et le déclare par `ctx.setNotebook({entries: [{id, title, kind, objective,
+  applies}], stepCounts})` - `ctx.notebook`, `null` à chaque chargement jusque-là. Les panneaux de la
+  fiche qui s'en servent s'abonnent au chargement de leur script, par
+  `ExperiencePage.onNotebook(fn)` : la vue du procédé (`structure-view.js`) en fait un badge par
+  étape, la conclusion (`conclusion.js`) la liste des entrées qu'un verdict peut citer
+  (`evidence_ids`) et leurs titres. Un clic sur un badge appelle `ctx.filterNotebook(stepId)`, qui
+  ouvre l'onglet « Données » et prévient le cahier (`ExperiencePage.onNotebookFilter(fn)`) : il masque
+  les entrées sans mesure à cette étape, à l'écran seulement.
+- **Le cahier, côté page** (`notebook/static/`) : `notebook.js` (le panneau : chaque entrée avec son
+  stepper statique et ses mesures côte à côte, les entrées d'autres plaques repliées, les
+  annotations des images, le filtre), `entry-dialog.js` (global `NotebookEntryDialog`, la boîte
+  d'ajout et d'édition : type, plaques, stepper à cocher, une mesure par bulle, tableau collé en TSV,
+  images par `mountImageDrop` avec `purpose: "notebook"`, fichiers, liens) et `stepper.js`
+  (`mountStepper(el, {steps, measured, retired, selectable, onChange})`). Le rapport les reprend
+  tels qu'affichés : `data-report-show` y montre ce que l'écran masque ou replie (entrées hors du
+  filtre, « Autres plaques »).
 - `mount` est rappelé, sur le même élément, à chaque `ctx.reload()` : il remplit l'élément de
   nouveau ; ce qu'un module branche une fois pour toutes (modales, champs fixes de la page), il le
   branche au chargement de son script.
@@ -745,9 +765,7 @@ Supprimée : `/microprojets/{slug}/graphe`.
   est dans `experiments/static/vocabulary.js` (global `ExperimentVocabulary`), chargé par la fiche
   et l'atlas.
 - Écarts : `lot-picker.js` sert aussi au graphe de filiation, où `ExperiencePage` n'existe pas ; il
-  ne s'enregistre donc que `if (typeof ExperiencePage !== "undefined")`. `notebook.js` garde des
-  déclarations de premier niveau (état du cahier, rendu d'une vue) mais ne lit que le `ctx` reçu.
-  Chaque panneau de l'onglet « Données » lit sa propre sous-ressource, pour la version affichée
+  ne s'enregistre donc que `if (typeof ExperiencePage !== "undefined")`. Chaque panneau de l'onglet « Données » lit sa propre sous-ressource, pour la version affichée
   (`?version=`) ; le repère de l'onglet
   additionne `detail.notebook_count` et ce que déclarent les autres panneaux (`ctx.setDataCount` :
   la galerie).

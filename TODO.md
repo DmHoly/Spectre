@@ -6,55 +6,14 @@ faite, déplacer la ligne dans la section « Fait » du bas (ou simplement la re
 ## Prochaines évolutions (après le passage en plugins)
 
 Demandées le 2026-10-03. Chacune suit le contrat d'`ARCHITECTURE.md` : un plugin propriétaire, des
-routes REST en anglais, le front par son `client.js`. Les points 1 (équipes) et 2 (page d'évolution
-et refs) sont livrés, comme le préalable du point 3 (identité des étapes) : voir « Fait ».
-
-### 3. Un seul cahier de données, rattaché aux étapes du procédé
-
-Demandé le 2026-10-04. Ce point remplace l'ancien « résultats rattachés à une étape ». Le
-**serveur est livré** (voir « Fait ») : il reste l'interface.
-
-- [ ] **Le panneau du cahier, côté fiche.** Le plugin `evidence` a disparu ; son panneau aussi. Le
-      panneau du cahier (`notebook/static/notebook.js`) ne fait encore que lire le nouveau format :
-      une entrée PRISM par sa première vue, une entrée manuelle telle quelle. Reste à faire :
-      - la saisie d'une **donnée chargée à la main** (`kind: "manual"`) : image, capture d'écran,
-        fichier (`attachmentsApi.upload`, `purpose: "notebook"`) ; valeur mesurée, texte, tableau
-        collé (analysé en TSV par la page, envoyé en `{columns, rows}`) ; lien web ; objectif servi,
-        interprétation ; les annotations d'une image (ex-`evidence-panel.js`, dans l'historique
-        git) ;
-      - les entrées d'**autres plaques** (`applies: false`) rangées à part, les mesures d'une
-        **étape retirée** (`step_retired`) signalées ;
-      - le **rapport** (`experiments/static/report.js`) et la **conclusion**, qui peut citer des
-        entrées (`objective_results[].evidence_ids`, `conclusion.js`).
-- [ ] **Situer chaque donnée dans le procédé, sur plusieurs étapes.**
-      - À l'ajout comme à la lecture d'une donnée, on affiche un **stepper** du procédé (les étapes
-        et leurs ids : `GET .../process`) : une bulle par étape, avec en **rouge** les étapes où la
-        mesure est faite (les `step_id` de ses `measurements`). Dans la boîte d'ajout, on coche les
-        bulles : une mesure par bulle.
-      - Dans la vue du procédé (`experiments/static/structure-view.js`), chaque étape affiche un
-        badge avec le nombre de données qui la concernent (`notebookApi.entries` avec
-        `?summary=steps` : `{step_id: n}`). Un clic filtre le cahier sur cette étape (`?step=`).
-- [ ] **Décidé le 2026-10-04 :**
-      - une donnée est attachée à l'**entité physique** (la plaque mesurée) autant qu'aux étapes.
-        Elle reste valable aux versions suivantes de la piste **tant que la piste suit la même
-        plaque**, même si on ajoute du procédé derrière. Exemple : étape 1, une mesure sur
-        l'épitaxie ; aux étapes suivantes on ajoute un etch back puis des contacts électriques ;
-        la mesure d'épitaxie reste.
-        Une entrée porte donc les plaques mesurées (`wafers`, clés de wafer) en plus de ses étapes.
-        Si une étape est supprimée à une évolution, la donnée reste, marquée « étape retirée » ;
-      - une même mesure faite à plusieurs moments : **une seule entrée, avec une valeur par étape**
-        (`measurements: [{step_id, contenu}]`). Le stepper montre toutes ses bulles en rouge, et on
-        compare avant/après dans la même entrée. Cela vaut pour les deux types : une entrée PRISM a
-        un instantané par étape, une entrée manuelle sa valeur, son image, son fichier ou son
-        tableau par étape ;
-      - **pas de mesures prévues dans le constructeur** : il ne décrit que la structure (épi ou
-        procédé). Les mesures vivent à côté, dans le cahier ;
-      - la conversion d'une entrée manuelle en entrée PRISM n'est pas prévue (YAGNI).
+routes REST en anglais, le front par son `client.js`. Les points 1 (équipes), 2 (page d'évolution
+et refs) et 3 (un seul cahier de données, rattaché aux étapes du procédé, et son préalable,
+l'identité des étapes) sont livrés : voir « Fait ».
 
 ### 4. Documentation intégrée (en tout dernier)
 
 Volontairement à faire **après** les points 1 à 3, pour ne pas réécrire la documentation une fois
-de plus. `ARCHITECTURE.md` et le README sont à jour des points 1 et 2 et de l'identité des étapes ;
+de plus. `ARCHITECTURE.md` et le README sont à jour des points 1 à 3 ;
 les pages `/docs` non : `docs/guide.html` décrit encore l'ancienne page « Refs » et
 `docs/architecture.html` l'ancien `require_role`.
 
@@ -136,6 +95,18 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 ## Fait (pour mémoire, pas d'action)
 
+- **Un seul cahier de données, côté interface** (2026-10-04, point 3). Le panneau « Données » de la
+  fiche n'a plus que le cahier (et la galerie d'images externes) : chaque entrée montre son type,
+  ses plaques, son objectif, son interprétation, le **stepper** du procédé (`notebook/static/stepper.js`,
+  les étapes mesurées en rouge, une bulle « étape retirée ») et ses mesures côte à côte, une par
+  étape ; les entrées d'autres plaques sont repliées dans « Autres plaques ». La boîte d'ajout et
+  d'édition (`entry-dialog.js`) : PRISM (un instantané par étape cochée, une vue commune) ou à la
+  main (valeur, texte, tableau collé d'Excel, images collées ou déposées, fichiers, liens), plaques
+  mesurées, bulles à cocher ; les annotations des images se posent sur la fiche. La vue du procédé
+  porte un badge par étape (`?summary=steps`) qui filtre le cahier ; la conclusion cite des entrées
+  (`evidence_ids`) ; le rapport reprend tout le cahier. Décisions appliquées (2026-10-04) : la donnée
+  suit la plaque mesurée, une seule entrée par mesure avec une valeur par étape, pas de mesures
+  prévues dans le constructeur, pas de conversion d'une entrée manuelle en PRISM.
 - **Un seul cahier de données, côté serveur** (2026-10-04, point 3). Le plugin `evidence` a disparu :
   `notebook` porte toutes les données d'une étude (`.../notebook-entries`, `kind: prism | manual`,
   une seule forme : plaques mesurées `wafers`, une mesure par étape `measurements[].step_id`), avec

@@ -862,7 +862,7 @@ input[type="range"] {
   margin-top: 4px;
 }
 
-/* Item de liste distinctif (un objectif, une preuve) - même motif que .docs-callout (liseré +
+/* Item de liste distinctif (un objectif, une donnée) - même motif que .docs-callout (liseré +
    fond teinté) mais pensé pour s'empiler dans une liste plutôt que ponctuer de la prose. */
 .marked-card {
   border-left: 3px solid var(--gold);
