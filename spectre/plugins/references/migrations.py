@@ -1,5 +1,6 @@
 """Les tables du plugin references : les références de structure (un objet de toute l'application),
-leurs versions, et les µprojets dont les refs locales ont déjà été lues (``local_refs``).
+leurs versions, les µprojets dont les refs locales ont déjà été lues (``local_refs``) et les slugs
+des références retirées (jamais redonnés).
 
 ``structure_references`` plutôt que ``references`` : ``REFERENCES`` est un mot réservé de SQL."""
 
@@ -54,4 +55,13 @@ CREATE TABLE IF NOT EXISTS reference_import_scans (
 );
 """
 
-MIGRATIONS = (Migration("0001_initial", SCHEMA),)
+RETIRED_SLUGS = """
+-- Les slugs des références retirées qui avaient des versions : jamais redonnés (service._unique_slug),
+-- pour que les études parties d'une version retirée ne passent pas à une autre référence du même nom.
+CREATE TABLE IF NOT EXISTS retired_reference_slugs (
+    slug TEXT PRIMARY KEY,
+    retired_at TEXT NOT NULL
+);
+"""
+
+MIGRATIONS = (Migration("0001_initial", SCHEMA), Migration("0002_retired_slugs", RETIRED_SLUGS))

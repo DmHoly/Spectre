@@ -130,7 +130,7 @@ const EvolutionGraph = (() => {
   }
 
   // Le corps d'une comparaison de structures (la réponse d'un structure-diff : `summary` ou
-  // `entries`, puis à part les paramètres déclarés et les étiquettes de couches).
+  // `entries`, puis à part les étapes renommées, les paramètres déclarés et les étiquettes de couches).
   function diffBodyHtml(result) {
     let body;
     if (result.summary) body = result.summary.map((line) => `<div>${escapeHtml(line)}</div>`).join("") || "<div>Aucune différence de structure.</div>";
@@ -142,6 +142,7 @@ const EvolutionGraph = (() => {
         result.entries.map((e) => `<div>${escapeHtml(e.path)} : ${escapeHtml(JSON.stringify(e.before))} → ${escapeHtml(JSON.stringify(e.after))}</div>`).join("");
     }
     [
+      ["Étapes", result.step_changes || []],
       ["Paramètres", result.param_changes || []],
       ["Étiquettes", result.label_changes || []],
     ].forEach(([key, changes]) => {

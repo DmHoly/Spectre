@@ -364,9 +364,11 @@ def structure_diff(
     (``against_experiment``), d'un autre µprojet au besoin (``against_microproject``, lisible par
     l'appelant). Sans rien : la version de structure précédente (:func:`service.structural_baseline`).
     ``{target: {experiment_id, version_id, title, microproject} | null, entries, summary?,
-    label_changes, param_changes}`` - avec une cible, à part : ce qui change aux étiquettes de
-    couches et à leur regroupement par brique (``label_changes``, :func:`kinds.describe_label_changes`)
-    et aux paramètres déclarés (``param_changes``, :func:`kinds.describe_param_changes`)."""
+    label_changes, param_changes, step_changes}`` - avec une cible, à part : ce qui change aux
+    étiquettes de couches et à leur regroupement par brique (``label_changes``,
+    :func:`kinds.describe_label_changes`), aux paramètres déclarés (``param_changes``,
+    :func:`kinds.describe_param_changes`) et aux noms des étapes (``step_changes``,
+    :func:`kinds.describe_step_changes`)."""
     repo = get_repository(microproject.slug)
     base = service.version_of(repo, experiment_id, version)
     target_repo, target_microproject = repo, None

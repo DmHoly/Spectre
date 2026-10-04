@@ -9,8 +9,8 @@
    que la page a lue), sinon la dernière référence où a été publiée une version dont elle descend
    (`ancestors`, les ids que la page d'évolution lit dans son graphe ; sans eux - la fiche, sur la
    pointe -, une version de la même piste ; referencesApi.publishedFrom). On peut en choisir une autre, ou en créer une. La version dont elle
-   dérive (le parent) est proposée de même - la version d'origine, ou la dernière publiée depuis la
-   piste -, « automatique » laissant le serveur décider. Le numéro (1.1, 2.0...) est calculé par le
+   dérive (le parent) est proposée de même - la dernière publiée depuis la piste, sinon la version
+   d'origine -, « automatique » laissant le serveur décider (la même règle). Le numéro (1.1, 2.0...) est calculé par le
    serveur et montré après la publication ; un refus (« identique à la version 1.1 ») s'affiche tel
    quel. Une référence créée ici puis refusée (structure identique, droits) est retirée aussitôt :
    on ne laisse pas une référence vide derrière un échec. */
@@ -82,11 +82,19 @@ const ReferencePublishDialog = (() => {
   }
 
   // La référence d'où vient l'étude : son origine, sinon la plus récente où la piste a été publiée.
-  // `ancestors` (facultatif) : les ids des versions dont descend celle qu'on publie - une version
-  // publiée plus loin sur la piste n'en est alors pas la source.
+  // Le parent : la dernière version de cette référence publiée depuis la piste (republier une étude
+  // partie d'une référence continue sa suite : 1.1 puis 1.2, pas deux branches de 1.0), sinon la
+  // version d'origine. `published` : les plus récentes d'abord ; `ancestors` (facultatif) : les ids
+  // des versions dont descend celle qu'on publie - une version publiée plus loin sur la piste n'en
+  // est alors pas la source.
   function suggestion(origin, published, experimentId, ancestors) {
-    if (origin && origin.reference) return { slug: origin.reference, parent: origin.version, why: "l'étude en est partie" };
-    const same = published.find((entry) => (ancestors ? ancestors.has(entry.version_id) : entry.experiment_id === experimentId));
+    const fromLine = (entry) => (ancestors ? ancestors.has(entry.version_id) : entry.experiment_id === experimentId);
+    if (origin && origin.reference) {
+      const same = published.find((entry) => entry.reference.slug === origin.reference && fromLine(entry));
+      if (same) return { slug: origin.reference, parent: same.number, why: `l'étude en est partie (${origin.version}) et y a été publiée (${same.number})` };
+      return { slug: origin.reference, parent: origin.version, why: "l'étude en est partie" };
+    }
+    const same = published.find(fromLine);
     if (same) return { slug: same.reference.slug, parent: same.number, why: `une version dont elle descend y a été publiée (${same.number})` };
     return null;
   }

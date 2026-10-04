@@ -5,7 +5,9 @@ l'autre et dont on suit l'évolution.
 - **Une référence** : un nom (unique, comparé sans casse, ni accents, ni ponctuation :
   :func:`normalized_name`), une description, son créateur. Son ``slug`` est fixé à la création : une
   étude cite la version dont elle part par lui (``reference_origin``, plugin experiments), il ne
-  change donc pas quand on la renomme.
+  change donc pas quand on la renomme, et celui d'une référence retirée qui avait des versions n'est
+  **jamais redonné** (``retired_reference_slugs``) : les études qui en étaient parties ne passent
+  pas à une autre référence du même nom.
 - **Une version** : un numéro ``MAJEUR.MINEUR`` **calculé** (:func:`next_number`), la version de
   référence dont elle dérive (``parent``), sa source (le µprojet, la piste et la version Follow
   publiées), son auteur, sa date, une note, et un **instantané** de la structure
@@ -55,6 +57,7 @@ LOCK_NAMESPACE = "references"
 WRITE_LOCK_KEY = "write"  # toutes les écritures des références : une à la fois (numéros uniques)
 MAX_NAME_LENGTH = 120
 MAX_TEXT_LENGTH = 2000
+MAX_SLUG_LENGTH = 80  # celle du slug d'une origine (experiments.schemas.ReferenceOrigin)
 NUMBER_RE = re.compile(r"^([1-9][0-9]{0,4})\.([0-9]{1,5})$")
 
 # Ce que l'instantané d'une version garde des métadonnées de la version Follow publiée : ce qui décrit
@@ -155,11 +158,15 @@ def find_by_name(conn: sqlite3.Connection, name: str) -> Reference | None:
 
 
 def _unique_slug(conn: sqlite3.Connection, name: str) -> str:
-    base = normalized_name(name)[:80].strip("-") or "reference"
-    taken = {row["slug"] for row in conn.execute("SELECT slug FROM structure_references")}
+    """Le slug d'une nouvelle référence : son nom normalisé, suffixé (« -2 »...) s'il est pris par une
+    référence ou par une référence retirée (jamais redonné) - :data:`MAX_SLUG_LENGTH` caractères au
+    plus, suffixe compris, pour qu'une étude puisse la citer."""
+    base = normalized_name(name)[:MAX_SLUG_LENGTH].strip("-") or "reference"
+    taken = {row["slug"] for row in conn.execute("SELECT slug FROM structure_references UNION SELECT slug FROM retired_reference_slugs")}
     slug, suffix = base, 2
     while slug in taken:
-        slug = f"{base}-{suffix}"
+        tail = f"-{suffix}"
+        slug = base[: MAX_SLUG_LENGTH - len(tail)].strip("-") + tail
         suffix += 1
     return slug
 
@@ -209,6 +216,32 @@ def next_number(existing: Iterable[tuple[int, int]], parent: tuple[int, int] | N
     if parent is None or level in ("initial", "major"):
         return (max(major for major, _minor in taken) + 1, 0)
     return (parent[0], max(minor for major, minor in taken if major == parent[0]) + 1)
+
+
+# -- filiation -------------------------------------------------------------------------------------
+
+
+def descends(repo: follow.Repository, version: follow.Experiment, ancestor_id: str) -> bool:
+    """Si ``version`` (lue dans ``repo``) est ``ancestor_id`` ou en descend (par tous ses parents)."""
+    frontier, seen = [version.id], set()
+    while frontier:
+        current = frontier.pop()
+        if current == ancestor_id:
+            return True
+        if current in seen:
+            continue
+        seen.add(current)
+        try:
+            frontier.extend(repo.get(current).parents)
+        except (KeyError, follow.FollowError):
+            continue
+    return False
+
+
+def published_on_line(versions: list[ReferenceVersion], microproject: Microproject, repo: follow.Repository, version: follow.Experiment) -> list[ReferenceVersion]:
+    """Les ``versions`` d'une référence publiées depuis ``microproject`` dont ``version`` (lue dans
+    son dépôt ``repo``) descend - ou qu'elle est -, dans leur ordre de publication."""
+    return [v for v in versions if v.microproject_id == microproject.id and descends(repo, version, v.version_id)]
 
 
 # -- instantané ------------------------------------------------------------------------------------
@@ -513,8 +546,8 @@ def get_version(user: User, slug: str, number: str) -> dict[str, Any]:
 def version_diff(slug: str, number: str, against: str | None) -> dict[str, Any]:
     """La structure de la version ``number`` comparée à la version ``against`` de la même référence
     (sa version parente par défaut) - le diff des structures (:func:`experiments.compare_states`),
-    étiquettes (``label_changes``) et paramètres déclarés (``param_changes``) compris. Sans parent
-    ni ``against`` : ``{target: null, entries: []}``."""
+    étiquettes (``label_changes``), paramètres déclarés (``param_changes``) et noms d'étape
+    (``step_changes``) compris. Sans parent ni ``against`` : ``{target: null, entries: []}``."""
     _ensure_imported()
     with get_conn() as conn:
         reference = _get(conn, slug)
@@ -598,7 +631,9 @@ def update_reference(user: User, slug: str, changes: dict[str, Any]) -> Referenc
 def delete_reference(user: User, slug: str) -> None:
     """Retirer une référence : son créateur ou un admin (403) ; une référence qui a des versions, un
     admin seulement (409 ``reference_has_versions`` pour son créateur), ses versions partent avec
-    elle - les études qui en sont parties gardent leur origine, lue alors comme inconnue."""
+    elle - les études qui en sont parties gardent leur origine, lue alors comme inconnue : son slug
+    n'est plus jamais redonné (``retired_reference_slugs``). Celui d'une référence sans version
+    (aucune étude n'a pu en partir : une version ne se retire pas seule) se libère."""
     _ensure_imported()
     with keyed_lock(LOCK_NAMESPACE, WRITE_LOCK_KEY), get_conn() as conn:
         reference = _get(conn, slug)
@@ -609,6 +644,8 @@ def delete_reference(user: User, slug: str) -> None:
             raise Conflict(
                 "Cette référence a des versions : seul un administrateur peut la retirer.", code="reference_has_versions"
             )
+        if has_versions:
+            conn.execute("INSERT OR IGNORE INTO retired_reference_slugs (slug, retired_at) VALUES (?, ?)", (reference.slug, now()))
         conn.execute("DELETE FROM structure_references WHERE id = ?", (reference.id,))
 
 
@@ -624,10 +661,13 @@ def publish_version(
 ) -> str:
     """Publier une version Follow (la pointe de la piste par défaut) comme nouvelle version de la
     référence ``slug`` - le rôle ``editor`` sur son µprojet. Son parent : ``parent`` (un numéro de
-    cette référence) s'il est donné ; sinon la version de cette référence dont part la piste source
+    cette référence) s'il est donné ; sinon la dernière version de cette référence publiée depuis ce
+    µprojet dont la version publiée descend (:func:`published_on_line` : republier une étude après
+    l'avoir fait évoluer continue sa suite) ; sinon la version dont part la piste source
     (``reference_origin``) ; sinon sa dernière version publiée. Son numéro : :func:`next_number`
     selon le changement de structure depuis le parent (:func:`experiments.structure_change_level`).
-    409 ``reference_version_identical`` si rien ne change ; 422 ``reference_needs_process`` pour
+    409 ``reference_version_identical`` si rien ne change, ``reference_version_already_published``
+    pour une version Follow déjà publiée dans cette référence ; 422 ``reference_needs_process`` pour
     une structure qui n'est pas un procédé dessiné. Renvoie le numéro donné."""
     _ensure_imported()
     try:
@@ -652,15 +692,22 @@ def publish_version(
                 raise InvalidInput(f"Version parente « {parent} » introuvable pour cette référence.", code="unknown_parent_version")
             base = _version(versions, parent)
         else:
+            on_line = published_on_line(versions, microproject, repo, version)
             from_origin = None
             if origin is not None and origin["reference"] == reference.slug:
                 from_origin = next((v for v in versions if v.number == origin["version"]), None)
-            base = from_origin or (versions[-1] if versions else None)
+            base = (on_line[-1] if on_line else None) or from_origin or (versions[-1] if versions else None)
         level = experiments.structure_change_level(base.snapshot.get("metadata") if base else None, snapshot["metadata"])
         if level == "none" and base is not None:
             raise Conflict(
                 f"Cette structure est identique à la version {base.number} de la référence : rien à publier.",
                 code="reference_version_identical",
+            )
+        already = next((v for v in versions if v.microproject_id == microproject.id and v.version_id == version.id), None)
+        if already is not None:
+            raise Conflict(
+                f"Cette version de l'étude est déjà la version {already.number} de la référence.",
+                code="reference_version_already_published",
             )
         number = next_number((v.key for v in versions), base.key if base else None, level)
         insert_version(

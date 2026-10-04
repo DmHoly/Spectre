@@ -64,23 +64,6 @@ def _pending(conn) -> list[int]:
     return [row["id"] for row in rows]
 
 
-def _descends(repo: Any, version: follow.Experiment, ancestor_id: str) -> bool:
-    """Si ``version`` est ``ancestor_id`` ou en descend (par tous ses parents)."""
-    frontier, seen = [version.id], set()
-    while frontier:
-        current = frontier.pop()
-        if current == ancestor_id:
-            return True
-        if current in seen:
-            continue
-        seen.add(current)
-        try:
-            frontier.extend(repo.get(current).parents)
-        except (KeyError, follow.FollowError):
-            continue
-    return False
-
-
 def _candidates(microproject: Microproject) -> list[_Candidate]:
     repo = get_repository(microproject.slug)
     found = []
@@ -138,9 +121,7 @@ def _import(conn, candidate: _Candidate) -> None:
     versions = service.versions_of(conn, reference.id)
     if any(v.microproject_id == candidate.microproject.id and v.local_tag == candidate.name for v in versions):
         return
-    same_line = [
-        v for v in versions if v.microproject_id == candidate.microproject.id and _descends(candidate.repo, candidate.version, v.version_id)
-    ]
+    same_line = service.published_on_line(versions, candidate.microproject, candidate.repo, candidate.version)
     parent, inferred = (same_line[-1], False) if same_line else ((versions[-1], True) if versions else (None, False))
     level = experiments.structure_change_level(parent.snapshot.get("metadata") if parent else None, candidate.snapshot["metadata"])
     number = service.next_number((v.key for v in versions), parent.key if parent else None, level)

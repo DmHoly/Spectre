@@ -51,13 +51,15 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   publiées depuis les études de n'importe quel µprojet (« Publier comme référence » : tout editor du
   µprojet source), chacune comparée à la version de référence dont elle dérive - un changement
   majeur donne le majeur suivant, un réglage, une étiquette ou une unité seule le mineur suivant,
-  une structure identique est refusée ; deux dérivations d'une même version reçoivent 1.1 et 1.2.
+  une structure identique est refusée ; deux dérivations d'une même version reçoivent 1.1 et 1.2,
+  et republier une étude qui a évolué continue sa suite (1.1 puis 1.2, pas une nouvelle branche).
   Chaque version garde un instantané de la structure (procédé, paramètres déclarés et leur unité,
   étiquettes, briques), qui se dessine et se reprend même si l'étude source disparaît, et dit d'où
   elle vient (qui, quand, quel µprojet, quelle piste et version : seulement le nom du µprojet pour
   qui n'en est pas membre). Une étude lancée depuis une référence retient la version dont elle part
   (`reference_origin`, reportée à ses versions suivantes et à ses fourches) : la référence en compte
-  les usages. Renommer, décrire ou retirer une référence revient à son créateur ou à un admin. Les
+  les usages. Renommer, décrire ou retirer une référence revient à son créateur ou à un admin ; le
+  nom (slug) d'une référence retirée n'est jamais redonné à une autre. Les
   refs locales nommées à la main avant les références (la même « epitaxie-standard » dans deux
   µprojets) y ont été regroupées par nom, sans toucher aux dépôts Follow.
   Côté pages : **Références** dans la barre du haut (`/references`, aussi depuis la Bibliothèque)

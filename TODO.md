@@ -93,6 +93,17 @@ Décisions (font foi) :
 - [x] **Publier comme référence** (page d'évolution d'un µprojet, fiche) à la place de « Promouvoir
       en ref » et de « Publier dans la bibliothèque ».
 - [x] **Badges « R nom 1.1 »** sur les nœuds de la page d'évolution d'un µprojet.
+- [x] **Relecture** : republier une étude partie d'une référence continue sa suite, slug d'une
+      référence retirée jamais redonné, slug de 80 caractères au plus, étapes renommées dites par
+      le diff, origine retenue seulement une fois la version chargée. Fait : voir « Fait »
+      (« Relecture des références »).
+- [ ] **À décider** : le regroupement des refs locales fait de **chaque** ref locale nommée
+      (pas seulement celles dont le nom est dans au moins deux µprojets) une référence globale,
+      dont l'instantané (procédé, étapes, recettes, épaisseurs) est lisible par tout compte
+      connecté, sans qu'un éditeur du µprojet source ait choisi de la publier ; son créateur est
+      celui du µprojet (il peut la renommer). Garder (une ref nommée était déjà un point de départ
+      voulu, et la demande est de partager), n'importer que les noms présents dans deux µprojets,
+      ou demander confirmation à un éditeur du µprojet source ? Rien n'est changé en attendant.
 - [x] **Nouvelle expérience depuis une référence** (page µprojet, accueil, après la création d'un
       µprojet, « Partir de cette version » d'une référence) ; l'origine sur la fiche.
 
@@ -172,6 +183,31 @@ d'étapes (jugé trop lourd à saisir). Reste :
       au fil des besoins réels (le fichier explique le format en commentaire).
 
 ## Fait (pour mémoire, pas d'action)
+
+- **Relecture des références** (2026-10-05, point 3 quater ; `ARCHITECTURE.md` § 3, § 4 « Diff »,
+  § 5 « references »).
+  - *Republier depuis une étude partie d'une référence* : le parent par défaut est la dernière
+    version de la référence publiée depuis le même µprojet dont la version publiée descend
+    (`service.published_on_line`, la règle de filiation du regroupement des refs locales, sortie
+    de `local_refs.py`), puis l'origine, puis la dernière ; la boîte « Publier comme référence »
+    propose de même la version publiée depuis la piste avant l'origine. Une version Follow déjà
+    publiée dans la référence → 409 `reference_version_already_published` (avant : 1.1, 1.2 et
+    1.3 en trois branches de 1.0, dont un doublon exact).
+  - *Slug d'une référence retirée* : jamais redonné (table `retired_reference_slugs`, migration
+    `0002_retired_slugs`) - une nouvelle référence du même nom reçoit `-2` et ne reprend ni les
+    usages ni la filiation des études parties de l'ancienne. Écart : celui d'une référence retirée
+    **sans version** se libère (aucune étude n'a pu en partir, et la boîte de publication retire
+    la référence qu'elle vient de créer quand la publication échoue).
+  - *Slug long* : 80 caractères au plus, suffixe compris (`MAX_SLUG_LENGTH`, la limite de
+    `reference_origin`).
+  - *Étape renommée* (hérité des études) : un correctif dont le diff était vide ; `structure-diff`
+    (études et références) rend `step_changes` (`kinds.describe_step_changes`), écrit « Étapes : … »
+    sur la fiche, la page d'évolution et celle d'une référence.
+  - *Constructeur* : `reference_origin` n'est envoyé que si la version demandée a été chargée
+    (`requestedReference` / `referenceOrigin`) ; une adresse vers une référence retirée ou
+    inconnue ne laisse plus de fausse origine.
+  - À décider (non codé) : le regroupement de **toutes** les refs locales nommées en références
+    lisibles de tous - voir le point 3 quater.
 
 - **Références de structure, pages** (2026-10-04, point 3 quater ; `ARCHITECTURE.md` § 5
   « Pages », § 6 « Les références, côté pages »).

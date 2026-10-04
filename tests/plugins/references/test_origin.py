@@ -8,7 +8,7 @@ from __future__ import annotations
 from support.experiments import combine, evolve, experiments_url, get_experiment, launch, post_launch, tag
 from support.microprojects import create_microproject, signup_with_microproject
 from support.references import create_reference, get_reference, get_version, origin, post_version, publish, references, version_graph
-from support.structures import steps
+from support.structures import layer_label, steps
 
 
 def _published(client, email):
@@ -68,6 +68,45 @@ def test_publishing_from_a_study_derives_from_the_version_it_started_from(client
     create_reference(client, "Autre")
     c = launch(client, slug, title="C", intent="x", steps=steps(35), reference_origin=origin("autre", "1.0"))
     assert publish(client, "base", slug, c["id"])["parent"] == "1.2"
+
+
+def test_republishing_a_study_that_started_from_a_reference_continues_its_line(client):
+    """Le cas courant : une étude part d'une version de référence, évolue, est publiée, évolue encore
+    et est republiée - sa nouvelle version dérive de la dernière publiée depuis sa piste, pas de
+    nouveau de son origine (pas de branches parallèles, pas de doublon)."""
+    slug = _published(client, "origin-line@example.com")
+    process = get_version(client, "base", "1.0")["process"]
+    study = launch(client, slug, title="Depuis la base", intent="x", steps=process["steps"], reference_origin=origin("base", "1.0"))
+    evolve(client, slug, study["id"], title="Depuis la base", intent="y", steps=steps(25))
+    first = publish(client, "base", slug, study["id"])
+    assert (first["number"], first["parent"], first["change_level"]) == ("1.1", "1.0", "minor")
+
+    # la même pointe : identique à 1.1, sa dernière version publiée
+    same = post_version(client, "base", slug, study["id"])
+    assert same.status_code == 409 and same.json()["code"] == "reference_version_identical"
+    # rattachée à la main à 1.0 : elle est déjà 1.1
+    again = post_version(client, "base", slug, study["id"], parent="1.0")
+    assert again.status_code == 409 and again.json()["code"] == "reference_version_already_published"
+
+    # une étiquette seule : un correctif de 1.1
+    evolve(client, slug, study["id"], title="Depuis la base", intent="z", steps=steps(25), layer_labels={"0": layer_label("Oxyde", "thickness")})
+    patch = publish(client, "base", slug, study["id"])
+    assert (patch["number"], patch["parent"], patch["change_level"]) == ("1.2", "1.1", "patch")
+    graph = version_graph(client, "base")
+    assert [(e["parent"], e["child"], e["kind"]) for e in graph["edges"]] == [("1.0", "1.1", "parent"), ("1.1", "1.2", "parent")]
+    assert len(graph["lanes"]) == 1
+
+
+def test_a_long_name_gives_a_slug_a_study_can_cite(client):
+    slug = signup_with_microproject(client, "origin-long@example.com", "Epi")
+    prefix = "Epitaxie " + "tres longue " * 7  # plus de 80 caractères une fois normalisé
+    first = create_reference(client, prefix + "A")
+    second = create_reference(client, prefix + "B")
+    assert len(first["slug"]) == 80 and len(second["slug"]) <= 80
+    assert second["slug"] != first["slug"] and second["slug"].endswith("-2")
+    publish(client, second["slug"], slug, launch(client, slug, title="Source", intent="x", steps=steps(20))["id"])
+    launch(client, slug, title="Depuis", intent="x", steps=steps(20), reference_origin=origin(second["slug"], "1.0"))
+    assert get_reference(client, second["slug"])["usage_count"] == 1
 
 
 def test_an_unknown_origin_is_shown_as_is(client):

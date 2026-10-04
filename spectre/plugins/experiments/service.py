@@ -172,15 +172,20 @@ def structure_diff(before_repo: follow.Repository, before: follow.Experiment, af
 
 
 def compare_states(before: StructureState, after: StructureState) -> dict[str, Any]:
-    """``{entries, label_changes, param_changes}`` : Follow's leaf-by-leaf diff from ``before``'s
-    structure to ``after``'s - or, when one of them is given as pictures, ``{entries: [], summary}``
-    in plain French (position by position, a reordering would read as "everything changed") - and,
-    apart, what changed to the layer labels and to their grouping by brick
-    (:func:`kinds.describe_label_changes`) and to the declared parameters, which the geometry does
-    not carry (:func:`kinds.describe_param_changes`). The steps are matched by id, by position
-    between two versions that share none."""
+    """``{entries, label_changes, param_changes, step_changes}`` : Follow's leaf-by-leaf diff from
+    ``before``'s structure to ``after``'s - or, when one of them is given as pictures,
+    ``{entries: [], summary}`` in plain French (position by position, a reordering would read as
+    "everything changed") - and, apart, what changed to the layer labels and to their grouping by
+    brick (:func:`kinds.describe_label_changes`), to the declared parameters
+    (:func:`kinds.describe_param_changes`) and to the step names (:func:`kinds.describe_step_changes`),
+    which the geometry does not carry - a renamed step alone is a patch, never an empty diff. The
+    steps are matched by id, by position between two versions that share none."""
     compared = (before.metadata, after.metadata, before.step_ids, after.step_ids)
-    apart = {"label_changes": kinds.describe_label_changes(*compared), "param_changes": kinds.describe_param_changes(*compared)}
+    apart = {
+        "label_changes": kinds.describe_label_changes(*compared),
+        "param_changes": kinds.describe_param_changes(*compared),
+        "step_changes": kinds.describe_step_changes(*compared),
+    }
     summary = kinds.describe_image_changes(before.structure_type, before.structure, after.structure_type, after.structure)
     if summary is not None:
         return {"entries": [], "summary": summary, **apart}

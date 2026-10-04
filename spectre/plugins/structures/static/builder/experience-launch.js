@@ -103,7 +103,7 @@ async function commitExperience(entities) {
     entities,
     form_answers: intentFormSection ? intentFormSection.collect() : {},
   };
-  // une nouvelle étude partie d'une version de référence la retient (suivi des usages de la référence)
+  // une nouvelle étude partie d'une version de référence (chargée) la retient (suivi des usages de la référence)
   if (referenceOrigin && !evolveExperienceId) payload.reference_origin = referenceOrigin;
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
     const branchName = document.getElementById("new-branch-name").value.trim();
@@ -197,10 +197,10 @@ document.getElementById("branch-fork").addEventListener("change", () => {
 // `process` : étapes avec leur id, étiquettes, briques). Les étapes gardent leurs ids : l'étude
 // descend de cette version, et une version publiée ensuite s'y compare étape par étape.
 async function loadReferenceProcess() {
-  if (!referenceOrigin) return;
+  if (!requestedReference) return;
   setPageTitle("Nouvelle expérience (depuis une référence)");
   try {
-    const version = await referencesApi.version(referenceOrigin.reference, referenceOrigin.version);
+    const version = await referencesApi.version(requestedReference.reference, requestedReference.version);
     const data = version.process;
     setSubstrateFields(data.substrate);
     state.steps = attachBricks(attachLayerLabels(attachDeclaredParams(data.steps, data.declared_params), data.layer_labels), data.bricks);
@@ -212,6 +212,7 @@ async function loadReferenceProcess() {
     const link = document.getElementById("edit-structure-link");
     link.textContent = "voir son évolution";
     link.href = `/references/${encodeURIComponent(version.reference.slug)}?version=${encodeURIComponent(version.number)}`;
+    referenceOrigin = { reference: version.reference.slug, version: version.number }; // chargée : l'étude la retiendra
   } catch (err) {
     showError(err);
   }

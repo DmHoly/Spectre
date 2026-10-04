@@ -46,6 +46,19 @@ def test_two_versions_compare_structure_labels_and_parameters(client):
     assert_handler_404(client.get("/api/references/led/versions/1.0/structure-diff", params={"against": "5.0"}))
 
 
+def test_a_renamed_step_is_a_patch_the_diff_tells(client):
+    slug = signup_with_microproject(client, "ref-diff-rename@example.com", "Epi")
+    study = launch(client, slug, title="LED", intent="x", steps=STACK)
+    create_reference(client, "LED")
+    publish(client, "led", slug, study["id"])
+    evolve(client, slug, study["id"], title="LED", intent="y", steps=[{**STACK[0], "name": "n-GaN dopé"}, STACK[1]])
+    assert publish(client, "led", slug, study["id"])["change_level"] == "patch"
+
+    diff = version_diff(client, "led", "1.1")
+    assert (diff["entries"], diff["label_changes"], diff["param_changes"]) == ([], [], [])
+    assert [c["line"] for c in diff["step_changes"]] == ["étape « n-GaN » renommée « n-GaN dopé »"]
+
+
 def test_the_evolution_page_can_show_the_published_versions(client):
     slug = signup_with_microproject(client, "ref-badges@example.com", "Epi")
     study = launch(client, slug, title="LED", intent="x", steps=STACK)

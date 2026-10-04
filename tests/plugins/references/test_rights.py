@@ -105,6 +105,28 @@ def test_retiring_a_reference(client):
     assert suite["reference_origin"] == {"reference": "epitaxie-standard", "version": "1.0"}
 
 
+def test_the_slug_of_a_retired_reference_is_never_given_again(client):
+    """Les études parties d'une référence retirée gardent une origine inconnue : une nouvelle
+    référence du même nom reçoit un autre slug et ne compte pas leurs usages."""
+    slug, _study = _setup(client)
+    login(client, "admin@example.com")
+    assert delete_reference(client, "epitaxie-standard").status_code == 204
+
+    signup(client, "eve@example.com", name="Eve")
+    eve_slug = create_microproject(client, "Eve")["slug"]
+    again = create_reference(client, "Epitaxie standard", "Sans rapport")
+    assert again["slug"] == "epitaxie-standard-2"
+    publish(client, again["slug"], eve_slug, launch(client, eve_slug, title="Autre", intent="x", steps=steps(30))["id"])
+    node = version_graph(client, again["slug"])["nodes"][0]
+    assert (node["number"], node["usage_count"], node["usages"]) == ("1.0", 0, [])
+    assert client.get("/api/references/epitaxie-standard").status_code == 404
+
+    # une référence sans version (aucune étude n'a pu en partir) libère son slug
+    create_reference(client, "Brouillon")
+    assert delete_reference(client, "brouillon").status_code == 204
+    assert create_reference(client, "Brouillon")["slug"] == "brouillon"
+
+
 def test_sources_and_usages_are_masked_for_non_members(client):
     slug, study = _setup(client)
     member_view = version_graph(client, "epitaxie-standard")["nodes"][0]
