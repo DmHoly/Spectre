@@ -15,7 +15,9 @@ the area is attached to (``management_areas.team_id``, plugin teams). It covers 
 thématiques and its objectives; the µprojets of the area follow from it
 (:func:`spectre.plugins.microprojects.service.access`). Creating an area: an admin, or a manager
 who attaches it to one of the teams they manage (:func:`check_can_create`); changing an area's team
-is the admin's alone. A fresh or migrated area has no team: only an admin manages it.
+is the admin's alone. A fresh or migrated area has no team: only an admin manages it. Placing a
+µprojet in an area (creating it there, moving it there) is :func:`can_place_microproject`: open to
+all in an area without team, to its team's members and the admins otherwise.
 
 « Non classé » is the **system** area (:attr:`ManagementArea.is_system`): it holds the µprojets not
 sorted yet, so it can't be deleted, numbers nothing and takes neither thématique nor objective.
@@ -31,6 +33,7 @@ import re
 import sqlite3
 import unicodedata
 from dataclasses import dataclass
+from typing import Collection
 
 from ...kernel.db import get_conn
 from ...kernel.errors import Conflict, Forbidden, InvalidInput, NotFound
@@ -262,6 +265,17 @@ def can_manage(user: User, area: ManagementArea) -> bool:
     """The one rule for writing an area, its thématiques and its objectives: an admin, or a
     manager of the area's team."""
     return user.is_admin or (area.team_id is not None and area.team_id in teams.managed_team_ids(user.id))
+
+
+def can_place_microproject(user: User, area: ManagementArea, *, my_team_ids: Collection[int] | None = None) -> bool:
+    """Who may put a µprojet in ``area`` - create it there, or move it there: anyone when the area
+    has no team (« Non classé » never has one), otherwise an admin or a member of its team, whatever
+    their role (its managers, who :func:`can_manage` it, included). ``my_team_ids``: the teams
+    ``user`` belongs to, when the caller has already read them for a whole list. Enforced by
+    :func:`spectre.plugins.microprojects.service.check_placement`."""
+    if user.is_admin or area.is_system or area.team_id is None:
+        return True
+    return area.team_id in (my_team_ids if my_team_ids is not None else teams.roles_of(user.id))
 
 
 def require_manage(user: User, area: ManagementArea) -> None:

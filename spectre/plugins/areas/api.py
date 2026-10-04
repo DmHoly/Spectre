@@ -2,7 +2,8 @@
 ranked objectives, plus the flat list of every thématique (``/api/thematics``). Every signed-in
 user reads them; every write goes through one rule, :func:`service.can_manage` (an admin, or a
 manager of the project's team), and each project says what the caller may do with it
-(``can_manage``, ``can_delete``) so the page computes nothing. Attaching a project to a team
+(``can_manage``, ``can_delete``, and ``can_place_microproject``: creating or moving a µprojet
+there, :func:`service.can_place_microproject`) so the page computes nothing. Attaching a project to a team
 (``PATCH {team}``) is the admin's alone.
 
 What the µprojets of a project are doing (their counts, the thématique's frise) is read from the
@@ -36,9 +37,13 @@ class _Viewer:
         self.user = user
         self._teams = {team.id: team for team in teams.list_all()}
         self._managed = areas.managed_area_ids(user)
+        self._my_teams = set(teams.roles_of(user.id))
 
     def can_manage(self, area: ManagementArea) -> bool:
         return self.user.is_admin or area.id in self._managed
+
+    def can_place_microproject(self, area: ManagementArea) -> bool:
+        return areas.can_place_microproject(self.user, area, my_team_ids=self._my_teams)
 
     def team(self, area: ManagementArea) -> dict | None:
         team = self._teams.get(area.team_id)
@@ -60,6 +65,7 @@ def _area_payload(area: ManagementArea, viewer: _Viewer) -> dict:
         "team": viewer.team(area),
         "can_manage": can_manage,
         "can_delete": can_manage and not area.is_system,
+        "can_place_microproject": viewer.can_place_microproject(area),
     }
 
 

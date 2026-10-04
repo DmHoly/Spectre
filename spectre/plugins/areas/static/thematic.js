@@ -5,7 +5,8 @@
    plein = terminée, pictogramme = issue). À droite d'« aujourd'hui », la zone à venir et, plus
    bas, le bloc « Perspectives » - un aperçu (placeholder) de la future feuille de route.
    La thématique et son projet viennent de areasApi, la frise et les compteurs de experimentsApi
-   (timeline, stats - champs réservés aux membres d'un µprojet). */
+   (timeline, stats - champs réservés aux membres d'un µprojet). « + Nouveau µprojet » n'est offert
+   qu'à qui peut placer un µprojet dans le projet (can_place_microproject, renvoyé par l'API). */
 
 const { slug: areaSlug, thematique_slug: thematicSlug } = routeParams("/management/{slug}/thematiques/{thematique_slug}");
 const areaPath = `/management/${encodeURIComponent(areaSlug)}`;
@@ -238,7 +239,10 @@ let friseLanes = [];
 function renderFrise(t) {
   const scroll = document.getElementById("frise-scroll");
   if (!t.microprojects.length) {
-    scroll.innerHTML = `<div class="empty-state"><div style="font-weight:600;color:var(--text-soft);">Aucun µprojet dans cette thématique pour l'instant</div><div style="font-size:13px;">« + Nouveau µprojet » pour démarrer sa chronologie.</div></div>`;
+    const hint = t.can_place_microproject
+      ? `<div style="font-size:13px;">« + Nouveau µprojet » pour démarrer sa chronologie.</div>`
+      : `<div style="font-size:13px;">Les membres de l'équipe du projet y créent ses µprojets.</div>`;
+    scroll.innerHTML = `<div class="empty-state"><div style="font-weight:600;color:var(--text-soft);">Aucun µprojet dans cette thématique pour l'instant</div>${hint}</div>`;
     return;
   }
   const geo = friseGeometry(t, scroll.clientWidth || 1000);
@@ -451,6 +455,8 @@ function pageData(thematic, area, timeline, stats) {
     area: { ...thematic.area, objectives_period: area.objectives_period, horizon_months: area.horizon_months },
     thematics: area.thematics.map((t) => ({ slug: t.slug, name: t.name, microproject_count: countIn(t) })),
     microprojects,
+    // créer un µprojet ici : ouvert à tous dans un projet sans équipe, sinon à ses membres et à l'admin
+    can_place_microproject: area.can_place_microproject,
   };
 }
 
@@ -471,6 +477,7 @@ async function load() {
     document.getElementById("frise-scroll").innerHTML = "";
     return;
   }
+  document.getElementById("new-microprojet-btn").style.display = current.can_place_microproject ? "" : "none";
   renderHead(current);
   renderTravel(current);
   renderKpis(current);

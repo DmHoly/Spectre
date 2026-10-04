@@ -1,7 +1,8 @@
 /* Client de l'API du plugin areas : projets corporate, leurs thématiques et leurs objectifs. */
 
 const areasApi = {
-  // tous les projets ; {team} : ceux d'une équipe. Chacun porte team, can_manage et can_delete
+  // tous les projets ; {team} : ceux d'une équipe. Chacun porte team, can_manage, can_delete et
+  // can_place_microproject (y créer ou y déplacer un µprojet)
   list(params) {
     return api.get(api.withQuery("/api/areas", params));
   },
