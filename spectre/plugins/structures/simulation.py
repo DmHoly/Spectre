@@ -412,7 +412,7 @@ def layer_labels_by_index(raw: dict[str, LayerLabel] | None, step_count: int) ->
     position hors du procédé est refusée (422 ``invalid_layer_label``)."""
     labels: dict[int, LayerLabel] = {}
     for key, label in (raw or {}).items():
-        index = int(key) if key.isdigit() else -1
+        index = int(key) if key.isascii() and key.isdigit() else -1  # "²".isdigit(), mais int("²") échoue
         if not 0 <= index < step_count:
             raise InvalidInput(f"Étiquette de couche sur une étape inconnue ({key!r}).", code="invalid_layer_label")
         labels[index] = label

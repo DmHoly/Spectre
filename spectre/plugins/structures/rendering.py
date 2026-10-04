@@ -95,13 +95,10 @@ class LayerAnnotation:
     layers: tuple[int, ...]
 
 
-def _short(value: float) -> str:
-    return f"{value:.3g}"
-
-
 def length_text(nm: float) -> str:
-    """A length in a readable unit: ``80 nm``, ``1.5 µm``."""
-    return f"{_short(nm / 1000)} µm" if abs(nm) >= 1000 else f"{_short(nm)} nm"
+    """A length in a readable unit, with the value as entered (:func:`format_number`, not rounded
+    to 3 digits): ``80 nm``, ``1.5 µm``, ``1.234 µm``, ``1.005 µm``."""
+    return f"{format_number(nm / 1000)} µm" if abs(nm) >= 1000 else f"{format_number(nm)} nm"
 
 
 def _value_text(value: Any) -> str:

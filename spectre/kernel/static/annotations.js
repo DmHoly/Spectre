@@ -142,6 +142,7 @@ const ImageAnnotations = (() => {
     let tool = null;
     let start = null; // le départ d'une flèche posée en deux clics
     let drag = null; // {from, to} pendant un cliquer-glisser
+    let swallowClick = false; // le clic qui suit un geste d'annotation (l'outil est déjà rendu)
 
     host.classList.add("annot-host");
     host.innerHTML = `
@@ -203,6 +204,7 @@ const ImageAnnotations = (() => {
 
     tools.querySelectorAll("[data-tool]").forEach((btn) => btn.addEventListener("click", () => setTool(tool === btn.dataset.tool ? null : btn.dataset.tool)));
     img.addEventListener("pointerdown", (event) => {
+      swallowClick = false;
       if (!tool || event.button !== 0) return;
       event.preventDefault();
       img.setPointerCapture?.(event.pointerId);
@@ -220,6 +222,7 @@ const ImageAnnotations = (() => {
       const { from } = drag;
       const to = pointAt(img, event);
       drag = null;
+      swallowClick = true;
       if (far(from, to)) return add({ type: tool, x: from.x, y: from.y, x2: to.x, y2: to.y });
       if (tool === "arrow" && !start) {
         start = from; // un simple clic : le départ d'une flèche en deux clics
@@ -227,9 +230,11 @@ const ImageAnnotations = (() => {
         render({ type: "point", x: from.x, y: from.y });
       } else render();
     });
-    // dans un lien (l'image en grand), un clic d'annotation n'ouvre rien
+    // dans un lien (l'image en grand), un clic d'annotation n'ouvre rien - ni celui qui termine un
+    // tracé, arrivé après que l'ajout a rendu l'outil
     img.addEventListener("click", (event) => {
-      if (tool) event.preventDefault();
+      if (tool || swallowClick) event.preventDefault();
+      swallowClick = false;
     });
     host.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && tool) setTool(null);

@@ -81,6 +81,10 @@ def test_annotations_are_checked_and_written_by_an_editor_only(client):
     url = f"{experiment_url(slug, line)}/structure-images"
     for bad in ([{"type": "cercle", "x": 1, "y": 1}], [{**BOX, "couleur": "rouge"}], [BOX] * 101):
         assert client.put(url, json={"images": [{**schema, "annotations": bad}, tem]}).status_code == 422
+    # une position hors de l'image (en % : entre 0 et 100)
+    for outside in ({"x": -1e308}, {"y": 100.5}, {"x2": 5000}, {"y2": -3}):
+        response = client.put(url, json={"images": [{**schema, "annotations": [{**BOX, **outside}]}, tem]})
+        assert response.status_code == 422 and response.json()["code"] == "invalid_annotation", outside
     assert len(versions(client, slug, line)) == 1
 
     annotated = replace_structure_images(client, slug, line, [{**schema, "annotations": [BOX]}, tem])

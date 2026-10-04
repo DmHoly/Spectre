@@ -109,6 +109,10 @@ def test_a_label_must_name_a_step_and_known_values(client):
     body = {"substrate": substrate(), "steps": STACK}
     response = simulate(client, {**body, "layer_labels": {"4": layer_label("hors")}})
     assert response.status_code == 422 and response.json()["code"] == "invalid_layer_label"
+    # des chiffres que int() ne lit pas (un exposant) ou pas en ASCII : une position inconnue, pas une 500
+    for key in ("²", "٣", "-0", " 0", "0x"):
+        response = simulate(client, {**body, "layer_labels": {key: layer_label("x")}})
+        assert response.status_code == 422 and response.json()["code"] == "invalid_layer_label", key
     assert simulate(client, {**body, "layer_labels": {"0": layer_label("x", "couleur")}}).status_code == 422
     assert simulate(client, {**body, "layer_labels": {"0": {"text": "x" * 41}}}).status_code == 422
 
@@ -129,3 +133,11 @@ def test_lengths_keep_their_value_whatever_unit_they_were_given_in(client):
     process_steps = [{**deposition("Oxyde"), "thickness": length(1.25, "um")}]
     svg = simulate(client, {"substrate": substrate(), "steps": process_steps, "layer_labels": {"0": layer_label("", "thickness")}}).json()["frames"][-1]["svg"]
     assert label_texts(svg) == ["SiO2", "1.25 µm"]
+
+
+def test_a_length_is_written_as_entered_not_rounded(client):
+    signup(client, "precision@example.com")
+    for value, unit, text in ((1.234, "um", "1.234 µm"), (1005, "nm", "1.005 µm"), (12.5, "nm", "12.5 nm")):
+        process_steps = [{**deposition("Contact", "ITO"), "thickness": length(value, unit)}]
+        svg = simulate(client, {"substrate": substrate(), "steps": process_steps, "layer_labels": {"0": layer_label("", "thickness")}}).json()["frames"][-1]["svg"]
+        assert label_texts(svg) == ["ITO", text]

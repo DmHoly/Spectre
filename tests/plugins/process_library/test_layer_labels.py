@@ -38,6 +38,10 @@ def test_a_label_outside_the_steps_is_refused(client):
         "/api/tech-bricks", json={**tech_brick("Hors", layer_labels={"0": layer_label("x", "poids")}), "scope": "microproject", "microproject": slug}
     )
     assert response.status_code == 422
+    # un chiffre en exposant n'est pas une position : le même refus, avec son code
+    for kind, item in (("saved-structures", saved_structure("Exposant", steps=TWO_STEPS)), ("tech-bricks", tech_brick("Exposant", steps=TWO_STEPS))):
+        response = client.post(f"/api/{kind}", json={**item, "layer_labels": {"²": layer_label("x")}, "scope": "microproject", "microproject": slug})
+        assert response.status_code == 422 and response.json()["code"] == "invalid_layer_label", kind
 
 
 def test_a_structure_published_from_a_study_keeps_its_labels(client):

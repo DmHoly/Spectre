@@ -51,7 +51,7 @@ Le noyau ne connaît **aucune** fonctionnalité métier. Il fournit :
 | `errors.py` | `DomainError` → `Unauthorized` (401, `unauthorized` : pas de session, levée par `accounts.deps.current_user`), `NotFound` (404), `Forbidden` (403), `Conflict` (409), `PreconditionFailed` (412), `InvalidInput` (422), `UpstreamError` (502), `Unavailable` (503) ; un handler unique renvoie `{"detail": str, "code": str}`. Un plugin peut sous-classer `DomainError` pour un statut qui lui est propre (`attachments.store.TooLarge` : 413, `too_large`), le même handler s'en charge |
 | `locks.py` | `keyed_lock(namespace, key)` : un `threading.Lock` par clé (le serveur tourne en un seul processus) |
 | `fs.py` | `replace(src, dst)` : le `os.replace` de toute écriture atomique (fichier temporaire du même dossier, puis remplacement), réessayé quelques fois, à intervalles croissants, sur `PermissionError` - sous Windows, un antivirus ou un lecteur tient la cible un instant (de même pour le dossier de bibliothèque assemblé puis renommé, `library.service`) ; `write_text(path, text)` : l'écriture atomique complète (temporaire unique, `fsync`, `replace`), celle des dépôts Follow (`experiments.repository`) |
-| `annotations.py` | La forme des annotations d'une image, la même pour toute image que Spectre montre : `ImageAnnotation` (`{type: "arrow" \| "box", x, y, x2, y2, label}`, en % de l'image, champs en plus refusés) et `clean_annotations(raw, limit=100)` (positions finies, libellé de 200 caractères au plus ; 422 `invalid_annotation`). Le noyau ne sait pas à quelle image une annotation appartient : le cahier la range dans la mesure par une clé d'image, une structure en images sur l'image elle-même. Au noyau plutôt qu'à `attachments` : une image externe n'est pas une pièce jointe, et `notebook` et `structures` s'en servent tous deux |
+| `annotations.py` | La forme des annotations d'une image, la même pour toute image que Spectre montre : `ImageAnnotation` (`{type: "arrow" \| "box", x, y, x2, y2, label}`, en % de l'image, champs en plus refusés) et `clean_annotations(raw, limit=100)` (positions dans l'image : des nombres finis entre 0 et 100 ; libellé de 200 caractères au plus ; 422 `invalid_annotation`). Le noyau ne sait pas à quelle image une annotation appartient : le cahier la range dans la mesure par une clé d'image, une structure en images sur l'image elle-même. Au noyau plutôt qu'à `attachments` : une image externe n'est pas une pièce jointe, et `notebook` et `structures` s'en servent tous deux |
 | `json_store.py` | Collections JSON `{"items": [...]}` d'éléments à `id`, lues et écrites sous un verrou par chemin, de façon atomique ; un élément illisible est écarté à la lecture et gardé tel quel à l'écriture (`ItemStore`, `read_json`, `write_json`, `path_lock`) - les bibliothèques de `process_library` |
 | `mail.py` | `send_email(to, subject, body)` : SMTP si `SPECTRE_SMTP_HOST`, sinon journalisation **sans le corps** hors `SPECTRE_EMAIL_DEBUG=1` |
 | `pages.py` | Service des pages HTML d'un plugin, avec la barre du haut commune à la place du marqueur `<!-- spectre:topbar -->` (fil d'Ariane déclaré dans le marqueur : `crumb-id`, `crumb-text`) : marque, navigation construite à partir des `NavEntry` de tous les plugins (une entrée peut être réservée à certaines pages : `NavEntry.pages`), place de la session |
@@ -400,15 +400,16 @@ désignent une étape, et non plus par sa position.
 
 Une étape choisie (par défaut aucune) peut porter une **étiquette** dessinée à droite de la
 structure et reliée par un trait à la couche qu'elle a créée : un texte (« p-GaN » ; vide, le nom
-du matériau) et, dessous, des valeurs de l'étape - `thickness` (dans une unité lisible : `150 nm`,
-`2.5 µm`), `composition` (le taux d'In ou d'Al d'un nitrure à composition : `In 20 %`) et
+du matériau) et, dessous, des valeurs de l'étape - `thickness` (dans une unité lisible, la valeur saisie sans arrondi : `150 nm`,
+`2.5 µm`, `1.234 µm`), `composition` (le taux d'In ou d'Al d'un nitrure à composition : `In 20 %`) et
 `declared:<nom>` (un paramètre déclaré, son unité lue dans l'obtention `unit` s'il y en a une).
 Modèle `structures.simulation.LayerLabel` (`{text, values}`, 40 caractères et 6 valeurs au plus ; une
 valeur d'un autre type → 422 ; une valeur que l'étape n'a pas n'est pas écrite).
 
 - **Requêtes** (simulation, aperçu de campagne, lancement, évolution, fourche, campagne, structures
   enregistrées, briques) : `layer_labels`, par **position** d'étape comme `declared_params` (une
-  position hors du procédé → 422 `invalid_layer_label`).
+  position hors du procédé, ou qui n'est pas un entier écrit en chiffres ASCII - `²`, `٣` - → 422
+  `invalid_layer_label`).
 - **Étude** : par **id d'étape**, sous la clé de métadonnées `process_layer_labels`, à part du
   procédé comme `process_step_ids` ; avec elles, `process_layer_steps` : l'id de l'étape qui a créé
   chaque couche de la structure enregistrée (`null` : le substrat), une liste par entité (une par

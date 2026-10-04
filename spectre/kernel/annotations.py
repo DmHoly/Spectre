@@ -38,13 +38,15 @@ class ImageAnnotation(BaseModel):
 
 
 def clean_annotations(raw: list[ImageAnnotation], *, limit: int = MAX_ANNOTATIONS) -> list[dict[str, Any]]:
-    """Les annotations reçues, telles qu'on les range : ``limit`` au plus, des positions finies, un
-    libellé sans espaces autour (``None`` s'il est vide), de ``MAX_LABEL`` caractères au plus. Refus :
-    ``InvalidInput`` (``invalid_annotation``)."""
+    """Les annotations reçues, telles qu'on les range : ``limit`` au plus, des positions dans l'image
+    (des nombres finis entre 0 et 100 %), un libellé sans espaces autour (``None`` s'il est vide),
+    de ``MAX_LABEL`` caractères au plus. Refus : ``InvalidInput`` (``invalid_annotation``)."""
     if len(raw) > limit:
         raise InvalidInput(f"{limit} annotations au maximum.", code="invalid_annotation")
     if not all(number is None or math.isfinite(number) for a in raw for number in (a.x, a.y, a.x2, a.y2)):
         raise InvalidInput("Une annotation a une position qui n'est pas un nombre fini.", code="invalid_annotation")
+    if not all(number is None or 0 <= number <= 100 for a in raw for number in (a.x, a.y, a.x2, a.y2)):
+        raise InvalidInput("Une annotation sort de l'image (positions entre 0 et 100 %).", code="invalid_annotation")
     return [
         {"type": a.type, "x": a.x, "y": a.y, "x2": a.x2, "y2": a.y2, "label": (a.label or "").strip()[:MAX_LABEL] or None} for a in raw
     ]

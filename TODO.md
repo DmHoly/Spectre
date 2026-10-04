@@ -106,7 +106,7 @@ d'étapes (jugé trop lourd à saisir). Reste :
 - **Étiquettes de couches** (2026-10-04, point 3 ter). Dans l'inspecteur du constructeur, une étape
   qui crée une couche (dépôt, croissances, lithographie) a la section « Afficher sur la structure » :
   une case, le texte (prérempli du matériau, l'épaisseur cochée d'office) et les valeurs écrites
-  dessous - épaisseur (unité lisible : `150 nm`, `2.5 µm`), composition d'un nitrure à composition
+  dessous - épaisseur (unité lisible, valeur saisie sans arrondi : `150 nm`, `2.5 µm`, `1.234 µm`), composition d'un nitrure à composition
   (`In 20 %`), paramètres déclarés de l'étape (`dopage Mg : 7e18 cm-3`) ; une pastille sur la puce
   de l'étape. Le serveur dessine (`structures.rendering.labelled_svg`) : la structure de
   StructureForge à gauche, les étiquettes empilées à droite sans chevauchement, un trait fin vers la
@@ -136,7 +136,7 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 - **Annotations sur toute image** (2026-10-04, point 3 ter). Un seul modèle, dans le noyau
   (`spectre/kernel/annotations.py` : `{type: arrow | box, x, y, x2, y2, label}` en % de l'image,
-  `clean_annotations`), et un seul composant de page (`kernel/static/annotations.js`, global
+  `clean_annotations` : une position hors de l'image, hors de 0 à 100, est refusée en 422), et un seul composant de page (`kernel/static/annotations.js`, global
   `ImageAnnotations` : dessin numéroté, liste des libellés, outils d'un éditeur). Le cahier annote
   ses images externes comme ses images téléversées : une annotation d'une mesure désigne son image
   par `attachment_id` ou `external_image` (le chemin, unique dans la mesure : réordonner les images
@@ -154,7 +154,8 @@ d'étapes (jugé trop lourd à saisir). Reste :
   qui les gardent et les montrent (remplacer une image retire ses annotations ; retirer une image
   externe aussi) ; une image externe que le serveur ne montre plus garde ses annotations rangées,
   sans les montrer ; dessiner demande un pointeur (outils, libellés et retraits se font au clavier,
-  Échap annule l'outil en cours) ; les libellés sont numérotés sur l'image et écrits dans la liste,
+  Échap annule l'outil en cours) ; sur la fiche, l'image d'une structure en images reste un lien
+  vers l'image en grand, mais aucun geste d'annotation (ni le clic qui termine un tracé) ne l'ouvre ; les libellés sont numérotés sur l'image et écrits dans la liste,
   pas sur l'image ; les images documentaires (graphiques d'exemple d'un type de données de
   caractérisation, captures de la documentation) ne s'annotent pas : ce ne sont pas des images
   d'utilisateur. Pas de test JS du composant (`node` absent du poste de développement) : vérifié

@@ -77,6 +77,7 @@ def test_an_annotation_targets_an_image_of_its_measurement(client, root):
         [{**BOX}],  # aucune image désignée
         [{"attachment_id": image, "external_image": inside, **BOX}],  # deux à la fois
         [{"external_image": inside, **BOX, "x": float("inf")}],
+        [{"external_image": inside, **BOX, "x2": 100.01}],  # hors de l'image (en % : entre 0 et 100)
         [{"external_image": inside, **BOX}] * 101,
     ]
     for annotations in refused:
