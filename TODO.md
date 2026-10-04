@@ -29,12 +29,15 @@ son `client.js`.
       `can_manage(user, area | microproject)`) appelée par ces deux dépendances, au lieu de
       contrôles dispersés.
       **Pas de moteur de règles générique : YAGNI.**
-- [ ] **À trancher avant de commencer :**
-      - un utilisateur peut-il être dans plusieurs équipes ?
-      - un thème ou un µprojet appartient-il à une seule équipe ?
-      - un manager voit-il les µprojets de son équipe sans en être membre ?
-      - quelle équipe par défaut pour l'existant, à la migration ?
-      - faut-il anticiper le SSO (voir `REVIEW.md` § 2, identité) ?
+- [ ] **Décidé le 2026-10-04 :**
+      - un utilisateur peut appartenir à **plusieurs équipes**, et être manager dans certaines seulement ;
+      - un manager a d'office les **droits owner** sur tous les µprojets de son équipe, même sans en
+        être membre ;
+      - un µprojet **hérite de l'équipe de son thème**. Un µprojet « Non classé » n'a pas d'équipe :
+        seuls l'admin et ses membres y ont accès ;
+      - à la migration, **rien n'est rattaché** : les droits restent ceux d'aujourd'hui jusqu'à ce
+        qu'un admin crée les équipes et y rattache les thèmes ;
+      - le SSO n'est pas anticipé (YAGNI).
 
 ### 2. Page dédiée à l'évolution des structures et aux refs
 
@@ -59,10 +62,12 @@ son `client.js`.
 - [ ] **API.** Enrichir `GET /api/microprojects/{mp}/lineage` (ou une ressource
       `.../structure-history`) avec le numéro de version, le niveau de changement et les refs posées
       sur chaque nœud, pour que la page ne recalcule rien côté client.
-- [ ] **À trancher :**
-      - une ref reste-t-elle propre au µprojet, ou peut-elle être publiée dans la bibliothèque
-        partagée (structures enregistrées de `process_library`) ?
-      - peut-on renommer ou retirer une ref ?
+- [ ] **Décidé le 2026-10-04 :**
+      - une ref reste **propre au µprojet**. Une action « Publier dans la bibliothèque » copie sa
+        structure en structure enregistrée partagée, avec un lien vers son origine ;
+      - un **editor** peut renommer ou retirer une ref ; la version, elle, reste ;
+      - le diagramme montre par défaut les **versions structurelles** (majeur, mineur) et les refs,
+        avec une bascule « toutes les versions ».
 
 ### 3. Un seul cahier de données, rattaché aux étapes du procédé
 
@@ -149,14 +154,14 @@ de plus.
 
 La Phase 1 (thèmes, hiérarchie, navigation) est livrée ; la page `/pilotage` (compteurs +
 leaderboard) a été retirée - la page d'un projet corporate porte désormais ses objectifs classés et
-un bloc de tendances à onglets (`spectre/core/trends.py`, `plugins/kpis/static/kpi-trend.js`). Reste :
+un bloc de tendances à onglets (`spectre/plugins/kpis/service.py`, `plugins/kpis/static/kpi-trend.js`). Reste :
 
 - [ ] **Définir les indicateurs clés société** à suivre dans le temps : lesquelles des mesures
       d'objectif (`Objective.metric`) ou de preuve (`Evidence.metric_value`) comptent comme un
       indicateur stratégique, sur quel µprojet/thème, avec quelle cible. Préalable obligatoire aux
       deux points suivants - sans ça il n'y a rien à tracer.
 - [ ] **Brancher les KPI de tendance** (EQE, PL, défectivité, rendement - aujourd'hui des
-      aperçus « à venir ») : écrire leur `provider` dans `spectre/core/trends.py`, typiquement un
+      aperçus « à venir ») : écrire leur `provider` et l'enregistrer par `kpis.service.register`, typiquement un
       hook PRISM sur les wafers suivis par les µprojets du projet.
 - [ ] **« Hero perfs »** : mettre en avant les meilleures valeurs atteintes à date pour chaque
       indicateur clé (quel µprojet/expérience, quelle valeur, quand).
@@ -164,14 +169,15 @@ un bloc de tendances à onglets (`spectre/core/trends.py`, `plugins/kpis/static/
 ## Suivi de lots — Phase 2 (données réelles)
 
 La Phase 1 (déclarative) est livrée : `/lots` (Gantt), `/lots/{code}`, recherche, badge de lot sur les
-nœuds d'un µprojet, lot rappelé sur la page d'une plaque (`spectre/core/lots.py`, `api/lots.py`). Un
+nœuds d'un µprojet, lot rappelé sur la page d'une plaque (plugin `lots`). Un
 lot = priorité (P10, P20...), début, fin prévisionnelle, fin déclarée, wafers - pas de parcours
 d'étapes (jugé trop lourd à saisir). Reste :
 
 - [ ] **Brancher les champs sur la base de production** via des datahooks PRISM : priorité, début,
-      fin prévisionnelle et fin réelle, liste des wafers d'un lot. `lots.source` vaut `declaratif`
-      aujourd'hui - prévoir la valeur pour un lot alimenté par hook et ce qui reste saisissable à
-      la main (thématiques visées, notes).
+      fin prévisionnelle et fin réelle, liste des wafers d'un lot. Le refactor a préparé le terrain :
+      `lots.source` (`declaratif` ou `prism`, les champs d'un lot PRISM sont en lecture seule) et
+      `PATCH /api/lots/{lot_id}` avec précondition. Reste à écrire la synchro (`lots.sync`) et son
+      adaptateur PRISM.
 
 ## Polish navigation / rename
 
@@ -182,11 +188,11 @@ d'étapes (jugé trop lourd à saisir). Reste :
       dans « Non classé ») - décider s'ils doivent illustrer un des 3 thèmes phares.
 ## Petites dettes notées en cours de route
 
-- [ ] `DELETE /experiences/{ref}` (suppression d'une étude) : les blobs de pièces jointes
-      orphelins ne sont pas nettoyés (inoffensif, dans `data/`, gitignoré, mais pourrait l'être).
+- [ ] `DELETE /api/microprojects/{mp}/experiments/{exp}` (suppression d'une piste) : les blobs de
+      pièces jointes orphelins ne sont pas nettoyés (inoffensif, dans `data/`, gitignoré, mais pourrait l'être).
 - [ ] Brique technologique : pas d'aperçu de structure dédié au-delà du canevas live existant
       (décidé suffisant pour l'instant - revoir si le besoin revient).
-- [ ] `library/recettes.yml` / `library/briques.yml` : un seul exemple fourni chacun - à enrichir
+- [ ] `recettes.yml` / `briques.yml` (`spectre/plugins/library/defaults/`, copiés dans `data/library/`) : un seul exemple fourni chacun - à enrichir
       au fil des besoins réels (le fichier explique le format en commentaire).
 
 ## Fait (pour mémoire, pas d'action)
