@@ -39,7 +39,7 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   deux études ne bougent pas.
 - **Numéro de version.** Chaque version porte un numéro `X.Y.Z` calculé depuis la structure
   (`experiments/versioning.py`) : majeur si le substrat ou la suite d'étapes change, mineur si un
-  paramètre d'étape change, correctif si seul un nom d'étape change.
+  paramètre d'étape change, correctif si seul un nom d'étape ou une étiquette de couche change.
 - **Ref.** Une ref est une version promue en point de départ réutilisable (une étiquette Follow
   nommée, « ref vX.Y.Z » par défaut), propre au µprojet. Un editor peut la renommer ou la retirer ;
   la version, elle, reste.
@@ -53,6 +53,13 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
 - **Étapes.** Chaque étape d'un procédé a un identifiant stable, conservé quand on insère, déplace
   ou supprime d'autres étapes à une évolution : une campagne DOE désigne ses étapes par cet
   identifiant, et non plus par leur position.
+- **Étiquettes de couches.** Dans le constructeur, une étape qui crée une couche peut être
+  « affichée sur la structure » : son nom (« p-GaN », le matériau par défaut) et, dessous, son
+  épaisseur, sa composition ou ses paramètres déclarés (un dopage), écrits à droite du dessin et
+  reliés à la couche - pour qu'une capture d'écran porte l'essentiel. Seules les étapes choisies en
+  portent une ; elles sont enregistrées avec la version (sans compter comme un changement de
+  structure) et avec les structures et briques de la bibliothèque, et se retrouvent sur la fiche
+  (bouton « Étiquettes : masquer / afficher »), la page d'évolution et le rapport.
 - **Cahier de données.** Toutes les données d'une expérience sont dans un seul cahier (onglet
   « Données » de la fiche) : des entrées PRISM (un instantané par étape et une vue DataViz) ou
   saisies à la main (valeur, texte, tableau collé d'Excel, images annotées, fichiers, images

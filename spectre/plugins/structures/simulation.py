@@ -11,16 +11,16 @@ from __future__ import annotations
 
 import re
 import secrets
-from typing import Any
+from typing import Any, NamedTuple
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from structureforge.core.materials import Material, MaterialLibrary, aluminum_gan, default_library, indium_gan
 from structureforge.core.recipes import RecipeLibrary, default_recipes
 from structureforge.core.traced import Traced
 from structureforge.core.units import Length
 from structureforge.geometry.engine import Geometry, LayerProvenance
 from structureforge.process.simulate import Frame, SimulationError, simulate
-from structureforge.process.steps import ProcessStep
+from structureforge.process.steps import Flip, ProcessStep
 
 from ...kernel.errors import InvalidInput
 
@@ -174,41 +174,85 @@ def recipes_library() -> RecipeLibrary:
     return base.with_recipes(deposition=deposition, etch=etch) if (deposition or etch) else base
 
 
-def _apply_declared_params(frames: list[Frame], declared_params: dict[int, list[DeclaredParam]]) -> None:
-    """Merge user-declared parameters (see :class:`DeclaredParam`) onto the layer(s) each step
-    actually produced. Walks frames in step order tracking how many layers existed before each
-    one - a step that appended new layers (growth, deposition, lithography...) gets its declared
-    params attached to exactly those new layers; a step that didn't append any (etch,
-    planarization, flip, chemical...) is skipped, since there's no safe way to know which existing
-    layer a new declared param should be attributed to.
-    """
-    prev_count = 0
-    for frame in frames:
-        # `simulate()` prepends an implicit frame 0 ("initial", the starting geometry) before any
-        # real step - so a real step at `frame.step_index == i` (1-based there) is the user's step
-        # `i - 1` (0-based, how `declared_params` is keyed). Frame 0 itself never has a step to
-        # attach declared params to.
-        params = declared_params.get(frame.step_index - 1) if frame.step_index > 0 else None
-        new_layers = frame.layers[prev_count:] if len(frame.layers) > prev_count else []
-        if params and new_layers:
-            for layer in new_layers:
-                if layer.provenance is None:
-                    layer.provenance = LayerProvenance(step_kind=frame.step_kind, step_name=frame.step_name, parameters={})
-                for param in params:
-                    layer.provenance.parameters[param.name] = Traced.declared(param.value, **param.obtention)
-        prev_count = len(frame.layers)
+SUBSTRATE_ORIGIN = -1  # l'« étape » d'une couche du substrat de départ
 
 
-def run_simulation(
+class SimulationResult(NamedTuple):
+    """Une simulation et la provenance de ses couches : ``layer_origins[k][j]`` est la position
+    (à partir de 0) de l'étape qui a créé la ``j``-ième couche de ``frames[k]`` (dans l'ordre de
+    ``frame.layers``), :data:`SUBSTRATE_ORIGIN` pour le substrat."""
+
+    geometry: Geometry
+    frames: list[Frame]
+    materials: MaterialLibrary
+    layer_origins: list[list[int]]
+
+
+def _simulate_tracking(geometry: Geometry, steps: list[ProcessStep], materials: MaterialLibrary, recipes: RecipeLibrary) -> tuple[list[Frame], list[list[int]]]:
+    """``structureforge.process.simulate.simulate``, une étape à la fois - mêmes images, mêmes
+    erreurs - pour savoir quelle étape a créé chaque couche. StructureForge ne le dit que pour une
+    croissance (``LayerProvenance``, sans la position de l'étape) : on suit donc les couches de la
+    géométrie elles-mêmes, entre deux étapes. Une couche y garde son objet tant qu'elle existe (une
+    gravure change son contour, pas l'objet) ; une étape ajoute les siennes à la fin ; un
+    retournement (``Flip``) recrée toutes les couches, dans l'ordre inverse."""
+    frames = simulate(geometry, [], materials, recipes)
+    alive: list[Any] = list(geometry.layers)  # garde chaque couche vivante : son id() n'est jamais redonné
+    origin = {id(layer): SUBSTRATE_ORIGIN for layer in geometry.layers}
+    origins = [[origin[id(layer)] for layer in geometry.frame_layers()]]
+    for index, step in enumerate(steps):
+        before = list(geometry.layers)
+        try:
+            frame = simulate(geometry, [step], materials, recipes)[-1]
+        except SimulationError as exc:
+            raise SimulationError(index + 1, step, exc.original) from exc.original
+        if isinstance(step, Flip):
+            # les couches retournées, dans l'ordre inverse (moins celles devenues vides)
+            survivors = [layer for layer in reversed(before) if not layer.polygon.is_empty]
+            if len(survivors) == len(geometry.layers):
+                for old, new in zip(survivors, geometry.layers):
+                    origin.setdefault(id(new), origin.get(id(old), index))
+        for layer in geometry.layers:
+            origin.setdefault(id(layer), index)
+        alive.extend(geometry.layers)
+        frames.append(Frame(index + 1, frame.step_kind, frame.step_name, frame.layers, frame.domain_width_nm))
+        origins.append([origin[id(layer)] for layer in geometry.frame_layers()])
+    return frames, origins
+
+
+def _apply_declared_params(
+    frames: list[Frame], origins: list[list[int]], declared_params: dict[int, list[DeclaredParam]], steps: list[ProcessStep]
+) -> None:
+    """Merge user-declared parameters (see :class:`DeclaredParam`) onto every layer each step
+    created, in every frame where it shows - the provenance of the layers (``origins``, see
+    :class:`SimulationResult`) says which step that is. A step that created no layer (etch,
+    planarization, flip, chemical...) has nowhere to put them."""
+    for frame, frame_origins in zip(frames, origins):
+        for layer, step_index in zip(frame.layers, frame_origins):
+            params = declared_params.get(step_index)
+            if not params:
+                continue
+            provenance = layer.provenance
+            parameters = dict(provenance.parameters) if provenance is not None else {}
+            for param in params:
+                parameters[param.name] = Traced.declared(param.value, **param.obtention)
+            step = steps[step_index]
+            layer.provenance = LayerProvenance(
+                step_kind=provenance.step_kind if provenance is not None else step.kind,
+                step_name=provenance.step_name if provenance is not None else step.name,
+                parameters=parameters,
+            )
+
+
+def simulate_process(
     substrate: SubstrateSpec,
     steps: list[ProcessStep],
     declared_params: dict[int, list[DeclaredParam]] | None = None,
-) -> tuple[Geometry, list[Frame], MaterialLibrary]:
+) -> SimulationResult:
     """Build the starting geometry and apply ``steps`` to it, the same way
     ``structureforge.api.app`` does for its own ``/api/simulate`` - returns the live objects
-    (geometry, one frame per step, the material library used) for a caller that needs them for
-    more than just a preview (e.g. to commit the result as a Follow experiment). Every microproject
-    shares the same material/step/recipe physics.
+    (geometry, one frame per step, the material library used) and which step created each layer of
+    each frame, for a caller that needs them for more than just a preview (e.g. to commit the
+    result as a Follow experiment). Every microproject shares the same material/step/recipe physics.
 
     ``declared_params`` (step_index -> extra parameters the user attached in the builder, see
     :class:`DeclaredParam`) is Spectre-only bookkeeping never seen by ``structureforge`` itself -
@@ -224,12 +268,22 @@ def run_simulation(
 
     geometry = Geometry.substrate(substrate.material, substrate.domain_width.to_nm(), substrate.thickness.to_nm())
     try:
-        frames = simulate(geometry, steps, materials, recipes)
+        frames, origins = _simulate_tracking(geometry, steps, materials, recipes)
     except SimulationError as exc:
         raise SimulationFailedError(str(exc)) from exc
     if declared_params:
-        _apply_declared_params(frames, declared_params)
-    return geometry, frames, materials
+        _apply_declared_params(frames, origins, declared_params, steps)
+    return SimulationResult(geometry, frames, materials, origins)
+
+
+def run_simulation(
+    substrate: SubstrateSpec,
+    steps: list[ProcessStep],
+    declared_params: dict[int, list[DeclaredParam]] | None = None,
+) -> tuple[Geometry, list[Frame], MaterialLibrary]:
+    """:func:`simulate_process` without the provenance of the layers: (geometry, frames, materials)."""
+    result = simulate_process(substrate, steps, declared_params)
+    return result.geometry, result.frames, result.materials
 
 
 def declared_params_by_index(raw: dict[str, list[DeclaredParam]] | None) -> dict[int, list[DeclaredParam]]:
@@ -299,3 +353,72 @@ def process_metadata(
     if declared:
         process["declared_params"] = declared
     return process
+
+
+# -- les étiquettes de couches ---------------------------------------------------------------------
+#
+# Une étape choisie peut porter une étiquette, dessinée à droite de la structure et reliée à la
+# couche qu'elle a créée : un texte (« p-GaN » ; vide, le nom du matériau) et, dessous, des valeurs
+# de l'étape (épaisseur, composition d'un nitrure, paramètres déclarés), pour qu'une capture d'écran
+# porte l'essentiel. Une requête (simulation, lancement, bibliothèque) les range par position
+# d'étape, comme les paramètres déclarés ; une étude, par id d'étape, sous
+# :data:`LAYER_LABELS_METADATA_KEY` - à part du procédé, comme les ids (le versionnage n'en fait
+# qu'un changement de niveau correctif). Avec elles, la provenance des couches de la structure
+# enregistrée (:data:`LAYER_STEPS_METADATA_KEY`), qui seule relie une couche à son étape.
+
+LAYER_LABELS_METADATA_KEY = "process_layer_labels"
+# l'id de l'étape qui a créé chaque couche de la structure (None : le substrat), une liste par entité
+# (une pour une étude simple, une par variante d'une campagne) - enregistrée avec les étiquettes
+LAYER_STEPS_METADATA_KEY = "process_layer_steps"
+
+LABEL_THICKNESS = "thickness"
+LABEL_COMPOSITION = "composition"
+LABEL_DECLARED_PREFIX = "declared:"
+MAX_LABEL_TEXT = 40
+MAX_LABEL_VALUES = 6
+
+
+class LayerLabel(BaseModel):
+    """L'étiquette d'une étape : son texte et les valeurs à écrire dessous, dans l'ordre -
+    ``"thickness"``, ``"composition"`` (le taux d'In/Al d'un nitrure à composition) ou
+    ``"declared:<nom>"`` (un :class:`DeclaredParam` de l'étape). Une valeur que l'étape n'a pas
+    n'est simplement pas écrite."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field("", max_length=MAX_LABEL_TEXT)
+    values: list[str] = Field(default_factory=list, max_length=MAX_LABEL_VALUES)
+
+    @field_validator("text")
+    @classmethod
+    def _strip(cls, text: str) -> str:
+        return text.strip()
+
+    @field_validator("values")
+    @classmethod
+    def _known_values(cls, values: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for value in values:
+            declared = value.startswith(LABEL_DECLARED_PREFIX) and 0 < len(value) - len(LABEL_DECLARED_PREFIX) <= 100
+            if value not in (LABEL_THICKNESS, LABEL_COMPOSITION) and not declared:
+                raise ValueError(f"valeur d'étiquette inconnue : {value!r} (thickness, composition ou declared:<nom>)")
+            if value not in cleaned:
+                cleaned.append(value)
+        return cleaned
+
+
+def layer_labels_by_index(raw: dict[str, LayerLabel] | None, step_count: int) -> dict[int, LayerLabel]:
+    """Les étiquettes d'une requête (clés : la position de l'étape, en texte) par position - une
+    position hors du procédé est refusée (422 ``invalid_layer_label``)."""
+    labels: dict[int, LayerLabel] = {}
+    for key, label in (raw or {}).items():
+        index = int(key) if key.isdigit() else -1
+        if not 0 <= index < step_count:
+            raise InvalidInput(f"Étiquette de couche sur une étape inconnue ({key!r}).", code="invalid_layer_label")
+        labels[index] = label
+    return labels
+
+
+def layer_labels_json(labels: dict[int, LayerLabel] | None) -> dict[str, dict[str, Any]]:
+    """Les étiquettes rangées par position d'étape, telles qu'une bibliothèque les enregistre."""
+    return {str(i): label.model_dump(mode="json") for i, label in sorted((labels or {}).items())}

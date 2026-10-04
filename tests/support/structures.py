@@ -52,6 +52,20 @@ def campaign_plan(values: list, *, step_id: str = fixed_step_id(1), field: str =
     return {"factors": [{"step_id": step_id, "field": field, "values": list(values), **factor}]}
 
 
+def layer_label(text: str = "", *values: str) -> dict:
+    """L'étiquette de couche d'une étape : son texte (vide : le matériau) et les valeurs écrites
+    dessous (``"thickness"``, ``"composition"``, ``"declared:<nom>"``)."""
+    return {"text": text, "values": list(values)}
+
+
+def label_texts(svg: str) -> list[str]:
+    """Les textes des étiquettes de couches d'un SVG, dans l'ordre où elles sont dessinées."""
+    import re
+
+    labels = re.search(r'<g class="sp-layer-labels"[^>]*>(.*)</g></svg>$', svg, re.S)
+    return re.findall(r"<text[^>]*>([^<]*)</text>", labels.group(1)) if labels else []
+
+
 def simulate(client: Any, body: dict) -> Any:
     """POST /api/simulations, tel quel (la réponse, pour en vérifier un refus)."""
     return client.post("/api/simulations", json=body)

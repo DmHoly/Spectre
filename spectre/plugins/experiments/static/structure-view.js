@@ -3,11 +3,69 @@
    images), le détail de chaque couche (aperçu au survol, paramètres de l'étape au clic), les étapes
    du procédé avec le nombre de données du cahier de chacune (un clic filtre le cahier), la
    cartographie et la feuille de split d'une campagne, la comparaison avec une autre étude, et la
-   modification des images d'une structure en images. */
+   modification des images d'une structure en images. Les étiquettes de couches, dessinées par le
+   serveur à droite de la structure, se masquent et s'affichent (préférence de ce navigateur). */
 
 (() => {
   let ctx = null;
   let variantIndex = 0; // la variante affichée par le carrousel d'une campagne (0 = la référence)
+
+  // --- les étiquettes de couches : affichées par défaut, masquées au choix ---------------------------
+
+  const LABELS_PREF_KEY = "spectre.structure-labels";
+  const labelsBtn = document.getElementById("structure-labels-btn");
+
+  // la préférence de ce navigateur (le stockage peut manquer : navigation privée...)
+  let labelsVisible = true;
+  try {
+    labelsVisible = window.localStorage.getItem(LABELS_PREF_KEY) !== "hidden";
+  } catch (err) {
+    labelsVisible = true;
+  }
+  const labelsShown = () => labelsVisible;
+
+  // Chaque structure étiquetée (svg.sp-labelled-structure, rendering.labelled_svg) : avec ses
+  // étiquettes, ou réduite au seul dessin (data-bare-viewbox) quand on les masque.
+  function applyLabels(root) {
+    const shown = labelsShown();
+    root.querySelectorAll("svg.sp-labelled-structure").forEach((svg) => {
+      if (!svg.dataset.labelledViewbox) svg.dataset.labelledViewbox = svg.getAttribute("viewBox");
+      const viewBox = shown ? svg.dataset.labelledViewbox : svg.dataset.bareViewbox;
+      const [, , width, height] = viewBox.split(" ");
+      svg.setAttribute("viewBox", viewBox);
+      svg.setAttribute("width", width);
+      svg.setAttribute("height", height);
+      const labels = svg.querySelector(".sp-layer-labels");
+      if (labels) labels.style.display = shown ? "" : "none";
+    });
+    const container = document.getElementById("structure-svg");
+    const labelled = Boolean(container.querySelector("svg.sp-labelled-structure"));
+    container.classList.toggle("has-layer-labels", labelled && shown);
+  }
+
+  function refreshLabelsButton() {
+    const any = Boolean(document.querySelector("#panel-structure svg.sp-labelled-structure"));
+    labelsBtn.style.display = any ? "" : "none";
+    const shown = labelsShown();
+    labelsBtn.setAttribute("aria-pressed", String(shown));
+    labelsBtn.title = shown ? "Masquer les étiquettes des couches (ce navigateur s'en souvient)" : "Afficher les étiquettes des couches";
+    document.getElementById("structure-labels-btn-text").textContent = shown ? "Étiquettes : masquer" : "Étiquettes : afficher";
+  }
+
+  function applyLabelsEverywhere() {
+    applyLabels(document.getElementById("panel-structure"));
+    refreshLabelsButton();
+  }
+
+  labelsBtn.addEventListener("click", () => {
+    labelsVisible = !labelsVisible;
+    try {
+      window.localStorage.setItem(LABELS_PREF_KEY, labelsVisible ? "shown" : "hidden");
+    } catch (err) {
+      // pas de stockage : le choix vaut pour cette page
+    }
+    applyLabelsEverywhere();
+  });
 
   // Ce qui a changé quand une structure en images est en jeu : le résumé en clair calculé par le
   // serveur plutôt que les chemins bruts (images[1].image_id...).
@@ -48,6 +106,7 @@
             variantIndex = index;
             hideTooltip();
             hint.style.display = ctx.process && index === 0 ? "" : "none";
+            applyLabelsEverywhere();
           },
         });
       } catch (err) {
@@ -60,6 +119,7 @@
       container.innerHTML = detail.structure_svg || "<div class='help'>Pas de schéma pour ce type de structure.</div>";
       hint.style.display = ctx.process ? "" : "none";
     }
+    applyLabelsEverywhere();
 
     const diff = await diffPromise;
     const lines = diff.summary || [];
@@ -234,6 +294,7 @@
           })
           .join("")}
       </div>`;
+    applyLabelsEverywhere();
 
     const el = document.getElementById("matrix-content");
     const hasFactors = variation.factor_labels && variation.factor_labels.length > 0;

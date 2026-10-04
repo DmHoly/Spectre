@@ -8,8 +8,20 @@ faite, déplacer la ligne dans la section « Fait » du bas (ou simplement la re
 Demandées le 2026-10-03. Chacune suit le contrat d'`ARCHITECTURE.md` : un plugin propriétaire, des
 routes REST en anglais, le front par son `client.js`. Les points 1 (équipes), 2 (page d'évolution
 et refs), 3 (un seul cahier de données, rattaché aux étapes du procédé, et son préalable,
-l'identité des étapes) et 3 bis (ses suites : images externes dans le cahier, combinaison en une
-nouvelle étude) sont livrés, serveur et interface : voir « Fait ».
+l'identité des étapes), 3 bis (ses suites : images externes dans le cahier, combinaison en une
+nouvelle étude) et les étiquettes de couches du 3 ter sont livrés, serveur et interface : voir
+« Fait ».
+
+### 3 ter. Images et structure
+
+Demandé le 2026-10-04 : « pouvoir mettre des valeurs clés à côté de la structure : au niveau de la
+couche, sur le côté, le nom (ex. p-GaN) et en dessous un paramètre (épaisseur, dopage ou les deux),
+pour qu'une capture d'écran porte les infos importantes ».
+
+- [x] **Étiquettes de couches** : seules les couches choisies (aucune par défaut), réglées dans le
+      constructeur par étape, enregistrées avec la version sans compter comme un changement de
+      structure ; sur la fiche (bouton masquer / afficher), la page d'évolution et le rapport.
+      Fait : voir « Fait ».
 
 ### 4. Documentation intégrée (en tout dernier)
 
@@ -87,6 +99,37 @@ d'étapes (jugé trop lourd à saisir). Reste :
       au fil des besoins réels (le fichier explique le format en commentaire).
 
 ## Fait (pour mémoire, pas d'action)
+
+- **Étiquettes de couches** (2026-10-04, point 3 ter). Dans l'inspecteur du constructeur, une étape
+  qui crée une couche (dépôt, croissances, lithographie) a la section « Afficher sur la structure » :
+  une case, le texte (prérempli du matériau, l'épaisseur cochée d'office) et les valeurs écrites
+  dessous - épaisseur (unité lisible : `150 nm`, `2.5 µm`), composition d'un nitrure à composition
+  (`In 20 %`), paramètres déclarés de l'étape (`dopage Mg : 7e18 cm-3`) ; une pastille sur la puce
+  de l'étape. Le serveur dessine (`structures.rendering.labelled_svg`) : la structure de
+  StructureForge à gauche, les étiquettes empilées à droite sans chevauchement, un trait fin vers la
+  couche, jetons de couleur avec leur valeur en repli (SVG autonome) ; aperçu du constructeur, fiche
+  (avec « Étiquettes : masquer / afficher », préférence du navigateur), carrousel et cartographie
+  d'une campagne (chaque variante ses valeurs), page d'évolution (la structure de la version choisie
+  dans le panneau, agrandie au clic) et rapport. Enregistrées par id d'étape
+  (`process_layer_labels`) avec la provenance des couches (`process_layer_steps`), reprises au
+  chargement (évolution, fourche, modèle) et gardées par les structures et briques de la
+  bibliothèque (par position, comme les paramètres déclarés ; une ref publiée garde celles de sa
+  version). La provenance des couches vient du serveur : la simulation suit les couches de la
+  géométrie étape par étape (`simulation.simulate_process`, `step_index` de chaque couche) ;
+  l'ancien alignement de matériaux du constructeur (`computeLayerOrigins`) a disparu, la sélection
+  et le survol d'une couche lisent la provenance du serveur. Écarts retenus : ne changer que les
+  étiquettes fait une version de niveau **correctif** qui **garde la conclusion** (renommer une
+  étape la réinitialise toujours) ; une version sans étiquette n'enregistre aucune des deux clés
+  (les anciennes versions n'en ont pas, sans migration) ; un paramètre déclaré n'a pas de champ
+  unité : elle est lue dans son obtention (`unit=cm-3`) ; une étape qui a créé plusieurs couches
+  pointe vers la plus grande ; la largeur du texte est estimée par le serveur (texte tronqué à 40
+  caractères, une valeur à 48) ; les vignettes de l'écran « Variations » restent sans étiquettes
+  (90 px de large ; la route d'aperçu les accepte) ; la vignette du panneau de la page d'évolution
+  est petite (340 px), d'où l'agrandissement ; le graphe de filiation de la page µprojet et l'atlas
+  montrent le SVG tel quel ; une campagne relit les valeurs de chaque variante depuis son plan et
+  ses valeurs enregistrées. Correction annexe : les paramètres déclarés d'une étape sont rattachés
+  à ses couches dans toutes les images de l'aperçu, et non plus seulement dans celle où elles
+  apparaissent.
 
 - **Images externes et combinaison, côté interface** (2026-10-04, point 3 bis). La galerie « Images
   de mesure » a quitté l'onglet « Données » : tout est dans le cahier (le repère de l'onglet, le

@@ -99,7 +99,7 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         "references": [r.model_dump(mode="json") for r in version.references],
         "tags": list(version.tags),
         "ref_names": refs.ref_names_for(repo, version.id),
-        "structure_svg": kinds.render_structure_svg(version.structure_type, version.structure),
+        "structure_svg": kinds.render_structure_svg(version.structure_type, version.structure, version.metadata),
         "is_batch": version.structure_type == kinds.ProcessLot.registry_key(),
         # a structure given as pictures: [{image_id, kind, caption, url}, ...] in reading order
         "structure_images": kinds.structure_images_payload(slug, version.structure_type, version.structure),
@@ -403,7 +403,7 @@ def experiment_variants(
     lot = kinds.ProcessLot.model_validate(experiment.structure)
     variation = campaigns.analyze_variants(lot.entries)
     payload: dict[str, Any] = variation.model_dump(mode="json")
-    payload["svgs"] = kinds.render_lot_svgs(lot)
+    payload["svgs"] = kinds.render_lot_svgs(lot, experiment.metadata)
     payload["factor_labels"] = experiment.metadata.get("campaign_factor_labels", [])
     payload["factor_values"] = experiment.metadata.get("campaign_factor_values", [])
     payload["factor_scales"] = experiment.metadata.get("campaign_factor_scales", [])

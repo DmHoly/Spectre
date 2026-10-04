@@ -15,7 +15,9 @@ Rules, from the coarsest to the finest-grained:
   ``name`` differs (a material, a recipe, a thickness, an orientation...) - anything that can
   actually change the simulated geometry.
 - **patch (Z)** - the only difference is a step's ``name`` - a label with zero effect on the
-  simulation (see ``structureforge.process.simulate._apply``, which never reads ``name``).
+  simulation (see ``structureforge.process.simulate._apply``, which never reads ``name``) - or the
+  layer labels drawn beside the structure (``process_layer_labels``, see
+  :class:`spectre.plugins.structures.simulation.LayerLabel`), which never touch the process.
 - **none** - the process is byte-identical; whatever changed on this commit (a tag, a title, a
   piece of evidence...) isn't a process/structure change at all.
 
@@ -35,6 +37,8 @@ from __future__ import annotations
 from collections import deque
 from typing import Any, Literal
 
+from ..structures.simulation import LAYER_LABELS_METADATA_KEY
+
 ChangeLevel = Literal["initial", "major", "minor", "patch", "none"]
 
 VERSION_CHANGE_LEVELS: tuple[ChangeLevel, ...] = ("initial", "major", "minor", "patch", "none")
@@ -49,12 +53,14 @@ def _step_without_name(step: dict) -> dict:
 
 
 def structure_signature(metadata: dict[str, Any]) -> dict[str, Any] | None:
-    """What versioning compares for one commit: its StructureForge process, or - for a structure
-    given as a picture - its revision token (see the module docstring). ``None`` when there is
-    neither."""
+    """What versioning compares for one commit: its StructureForge process (with its layer labels
+    under ``"layer_labels"``, when it has some - a version without any compares as before them), or
+    - for a structure given as a picture - its revision token (see the module docstring). ``None``
+    when there is neither."""
     process = metadata.get("structureforge_process")
     if process is not None:
-        return process
+        labels = metadata.get(LAYER_LABELS_METADATA_KEY)
+        return {**process, "layer_labels": labels} if labels else process
     revision = metadata.get("structure_image_revision")
     if revision is not None:
         return {"image_revision": revision}
@@ -93,6 +99,7 @@ def classify_process_change(before: dict[str, Any] | None, after: dict[str, Any]
     if before.get("declared_params", {}) != after.get("declared_params", {}):
         return "minor"
 
+    # a step renamed, or only the layer labels changed: nothing the simulation reads
     return "patch"
 
 

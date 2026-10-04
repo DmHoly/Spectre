@@ -40,6 +40,7 @@ class NewSavedStructure(_NewItem):
     substrate: simulation.SubstrateSpec
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
+    layer_labels: dict[str, simulation.LayerLabel] = {}
     derived_from: str | ExperimentOrigin | None = None
 
 
@@ -47,6 +48,7 @@ class SavedStructureChanges(_ItemChanges):
     substrate: simulation.SubstrateSpec | None = None
     steps: list[ProcessStep] | None = None
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
+    layer_labels: dict[str, simulation.LayerLabel] | None = None
 
 
 class NewStepPreset(_NewItem):
@@ -62,17 +64,20 @@ class StepPresetChanges(_ItemChanges):
 class NewTechBrick(_NewItem):
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
+    layer_labels: dict[str, simulation.LayerLabel] = {}
     notes: str | None = None
 
 
 class TechBrickChanges(_ItemChanges):
     steps: list[ProcessStep] | None = None
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
+    layer_labels: dict[str, simulation.LayerLabel] | None = None
     notes: str | None = None
 
 
 def _content(body: BaseModel) -> dict[str, Any]:
-    """Les champs envoyés, sans la portée ; les paramètres déclarés rangés par indice d'étape."""
+    """Les champs envoyés, sans la portée ; les paramètres déclarés (et les étiquettes de couches,
+    qui suivent la même règle) rangés par indice d'étape."""
     fields = body.model_dump(mode="json", exclude_unset=True, exclude={"scope", "microproject"})
     declared = getattr(body, "declared_params", None)
     if declared is not None:

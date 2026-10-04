@@ -3,7 +3,8 @@
    combinaisons (une version à deux parents : une nouvelle piste issue de deux études, ou une
    fusion d'avant, sur la piste de son premier parent) -, et le panneau d'une version : ses refs (promouvoir, renommer, retirer), la comparer à
    une autre (structure-diff), partir d'elle (l'éditeur sur ?version=, une nouvelle piste), suivre
-   une ref (ses descendants en évidence) et publier une ref dans la bibliothèque (une structure
+   une ref (ses descendants en évidence), voir sa structure (étiquettes de couches comprises,
+   agrandie au clic) et publier une ref dans la bibliothèque (une structure
    enregistrée partagée, avec son origine). Le serveur donne tout ce qui est dessiné : numéros,
    niveaux, pistes, arêtes ; la page ne fait que poser chaque chose à sa place.
 
@@ -39,6 +40,7 @@
     editing: null, // {kind: "rename" | "remove", ref}
     flash: "",
     panelError: "",
+    structures: {}, // version_id -> le SVG de sa structure (étiquettes de couches comprises), null sans dessin
   };
 
   const errorBox = document.getElementById("error");
@@ -253,7 +255,7 @@
     const items = [
       [{ change_level: "major" }, "Première version ou changement majeur"],
       [{ change_level: "minor" }, "Changement mineur"],
-      [{ change_level: "patch" }, "Correctif (nom d'étape)"],
+      [{ change_level: "patch" }, "Correctif (nom d'étape, étiquette de couche)"],
       [{ change_level: "none" }, "Sans changement de structure"],
       [{ change_level: "none", is_merge: true }, "Combinaison de deux études (deux parents)"],
       [{ change_level: "minor", refs: ["ref"] }, "Porte une ref"],
@@ -371,6 +373,39 @@
       </div>`;
   }
 
+  // La structure de la version choisie, telle que la fiche la montre (étiquettes de couches
+  // comprises) : lue une fois par version ; « Agrandir » l'ouvre en grand.
+  async function loadStructure(node) {
+    if (node.structure_kind === "images" || node.version_id in state.structures) return;
+    state.structures[node.version_id] = undefined;
+    let svg = null;
+    try {
+      svg = (await experimentsApi.getVersion(slug, node.experiment_id, node.version_id)).structure_svg || null;
+    } catch (err) {
+      svg = null; // la structure est secondaire ici : le reste du panneau suffit
+    }
+    state.structures[node.version_id] = svg;
+    if (state.selectedId === node.version_id) renderPanel();
+  }
+
+  function structureHtml(node) {
+    if (node.structure_kind === "images") return "";
+    const svg = state.structures[node.version_id];
+    if (svg === null) return "";
+    const body =
+      svg === undefined
+        ? `<div class="skeleton" style="height:120px;"></div>`
+        : `<button type="button" class="evo-structure js-enlarge" aria-label="Agrandir la structure de ${escapeHtml(node.label)}" title="Agrandir">${svg}</button>`;
+    return `
+      <div class="evo-panel__section">
+        <div class="section-title">Structure${node.structure_kind === "campaign" ? " · référence" : ""}</div>
+        ${body}
+      </div>`;
+  }
+
+  const structureDialog = document.getElementById("structure-dialog");
+  document.getElementById("structure-dialog-close").addEventListener("click", () => structureDialog.close());
+
   function renderPanel() {
     const node = nodeById(state.selectedId);
     if (!node) {
@@ -401,12 +436,14 @@
         ${state.canEdit ? `<a class="btn btn-line" href="${forkUrl(node)}" title="Ouvre l'éditeur sur cette version : enregistrer crée une nouvelle piste qui en part (ou continue la piste depuis sa dernière version)">Partir de cette version</a>` : ""}
       </div>
       ${diffHtml()}
+      ${structureHtml(node)}
       <div class="evo-panel__section">
         <div class="section-title">Refs</div>
         <div class="evo-panel__refs">${refs}</div>
         ${promote}
       </div>
       ${publishHtml(node)}`;
+    loadStructure(node);
   }
 
   function render() {
@@ -528,6 +565,15 @@
       const name = target.dataset.ref;
       act(() => experimentsApi.deleteRef(slug, name), `Ref « ${escapeHtml(name)} » retirée ; la version reste.`);
     }
+  });
+
+  panel.addEventListener("click", (event) => {
+    const enlarge = event.target.closest(".js-enlarge");
+    if (!enlarge) return;
+    const node = nodeById(state.selectedId);
+    document.getElementById("structure-dialog-title").textContent = node ? `${node.title} · ${node.label}` : "Structure";
+    document.getElementById("structure-dialog-body").innerHTML = enlarge.innerHTML;
+    structureDialog.showModal();
   });
 
   panel.addEventListener("submit", (event) => {

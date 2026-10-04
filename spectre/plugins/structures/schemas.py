@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from structureforge.process.steps import ProcessStep
 
 from .campaigns import VariantPlan
-from .simulation import DeclaredParam, SubstrateSpec
+from .simulation import DeclaredParam, LayerLabel, SubstrateSpec
 
 
 class ProcessInput(BaseModel):
@@ -25,6 +25,9 @@ class ProcessInput(BaseModel):
     # - JSON object keys are always strings, converted to the step-index ints run_simulation wants
     # just before calling it.
     declared_params: dict[str, list[DeclaredParam]] = {}
+    # the labels of the chosen steps, drawn beside the structure (see simulation.LayerLabel) - by
+    # step index, like declared_params
+    layer_labels: dict[str, LayerLabel] = {}
     _step_ids: list[str | None] = PrivateAttr(default_factory=list)
 
     @model_validator(mode="wrap")

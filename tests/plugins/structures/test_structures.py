@@ -108,8 +108,8 @@ def test_a_material_named_with_html_is_escaped_in_the_svg(client):
 def test_campaign_preview_over_the_cap_is_refused_before_any_simulation(client, monkeypatch):
     _owner_microproject(client)
     simulated = []
-    real = campaigns.run_simulation
-    monkeypatch.setattr(campaigns, "run_simulation", lambda *args: simulated.append(args) or real(*args))
+    real = campaigns.simulate_process
+    monkeypatch.setattr(campaigns, "simulate_process", lambda *args: simulated.append(args) or real(*args))
     monkeypatch.setattr(campaigns, "MAX_CAMPAIGN_ENTITIES", 4)
     # deux facteurs croisés : 3 x 2 = 6 variantes, au-delà du plafond
     plan = campaign_plan([10, 20, 30])

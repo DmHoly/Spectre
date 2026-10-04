@@ -11,11 +11,11 @@ from, similar in spirit to :mod:`spectre.plugins.process_library.step_presets`.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from structureforge.core.units import Length
 from structureforge.process.steps import Deposition, Etch, FacetedGrowth, Lithography, ProcessStep, ResistStrip
 
-from ..structures.simulation import DeclaredParam, SubstrateSpec
+from ..structures.simulation import DeclaredParam, LayerLabel, SubstrateSpec, layer_labels_by_index
 from .models import LibraryItem
 
 
@@ -37,6 +37,13 @@ class SavedStructure(LibraryItem):
     derived_from: str | ExperimentOrigin | None = None
     # the steps' declared parameters (see spectre.plugins.structures.simulation.DeclaredParam), by step index
     declared_params: dict[str, list[DeclaredParam]] = Field(default_factory=dict)
+    # the layer labels of the chosen steps (see spectre.plugins.structures.simulation.LayerLabel), by step index
+    layer_labels: dict[str, LayerLabel] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _labels_on_steps(self) -> "SavedStructure":
+        layer_labels_by_index(self.layer_labels, len(self.steps))
+        return self
 
 
 def _nanofil_vpit_inverse_preset() -> SavedStructure:

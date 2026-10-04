@@ -359,6 +359,7 @@ async function groupSelectionIntoBrick() {
       name,
       steps: selectedSteps,
       declared_params: declaredParamsPayload(selectedSteps),
+      layer_labels: layerLabelsPayload(selectedSteps),
       scope: "microproject",
       microproject: slug,
     });
@@ -444,6 +445,7 @@ function stepChipHtml(i) {
         <span class="sb-chip__sub">${escapeHtml(chipSubtitle(step))}</span>
       </span>
       ${declared ? `<span class="sb-chip__badge" title="${declared} paramètre(s) déclaré(s)">+${declared}</span>` : ""}
+      ${step.layerLabel ? `<span class="sb-chip__badge sb-chip__badge--label" title="Étiquetée sur la structure : ${escapeHtml(step.layerLabel.text || stepMaterial(step) || step.name)}" aria-label="Étiquetée sur la structure"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span>` : ""}
       ${hasFactor ? `<span class="sb-chip__badge sb-chip__badge--factor" title="Paramètre varié">×${factorCount}</span>` : ""}
       ${multi ? `<span class="sb-chip__check" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>` : ""}
     </div>`;
