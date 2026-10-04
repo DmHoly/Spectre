@@ -68,13 +68,14 @@ def test_launch_an_experiment_with_several_pictures(client):
     launched = _launch_response(client, slug, [{"image_id": image["id"], "kind": "schema"}, overview])
     assert launched.status_code == 201
     detail = launched.json()
-    # chaque image porte l'url de ses octets : le front ne la construit pas
+    # chaque image porte ses annotations (aucune ici) et l'url de ses octets : le front ne la construit pas
     assert detail["structure_images"] == [
-        {"image_id": image["id"], "kind": "schema", "caption": None, "url": image["url"]},
+        {"image_id": image["id"], "kind": "schema", "caption": None, "annotations": [], "url": image["url"]},
         {
             "image_id": overview["image_id"],
             "kind": "coupe",
             "caption": "Coupe FIB du wafer W7",
+            "annotations": [],
             "url": f"/api/microprojects/{slug}/attachments/{overview['image_id']}/content",
         },
     ]

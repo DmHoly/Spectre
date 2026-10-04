@@ -960,6 +960,15 @@ a.plate-row__lasermark {
   width: auto;
   max-width: 100%;
 }
+/* des variantes étiquetées (structure-view.js) : le cadre suit leur hauteur, le texte reste lisible */
+.fiche-structure-carousel.has-layer-labels .atlas-carousel__stage {
+  height: auto;
+  min-height: 290px;
+  max-height: 640px;
+}
+.fiche-structure-carousel.has-layer-labels .atlas-carousel__stage svg {
+  max-height: 620px;
+}
 .report-section-title {
   margin: 28px 0 14px;
   font-family: var(--font-mono);
@@ -1323,6 +1332,62 @@ a.plate-row__lasermark {
 .evo-panel__section > .section-title {
   margin-bottom: 8px;
 }
+/* la structure de la version choisie (étiquettes de couches comprises), et sa vue agrandie */
+.evo-structure {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  cursor: zoom-in;
+  transition: border-color var(--dur) var(--ease);
+}
+.evo-structure:hover {
+  border-color: var(--navy-600);
+}
+.evo-structure:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.evo-structure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+}
+.evo-structure-dialog {
+  border: none;
+  border-radius: 14px;
+  padding: 0;
+  box-shadow: var(--shadow-lift);
+  width: min(960px, 94vw);
+}
+.evo-structure-dialog__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 88vh;
+}
+.evo-structure-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.evo-structure-dialog__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.evo-structure-dialog__body {
+  overflow: auto;
+  text-align: center;
+}
+.evo-structure-dialog__body svg {
+  max-width: 100%;
+  height: auto;
+}
 .evo-panel__refs {
   display: flex;
   flex-direction: column;
@@ -1389,6 +1454,23 @@ a.plate-row__lasermark {
   padding: 2px 0;
   overflow-wrap: anywhere;
 }
+/* les étiquettes de couches (structure-diff : label_changes), à part de la structure */
+.evo-diff .evo-diff__labels {
+  margin-top: 4px;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+}
+.evo-diff__labels strong,
+.fiche-diff-labels__key {
+  font-weight: 600;
+  color: var(--text);
+}
+.fiche-diff-labels {
+  padding: 2px 0;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
 
 /* La conclusion cite des entrées du cahier (conclusion.js) : leurs titres sous un verdict, des cases
    à cocher sous chaque objectif du formulaire. */
@@ -1444,4 +1526,99 @@ a.plate-row__lasermark {
   color: var(--done);
   background: var(--done-tint);
   border-radius: var(--radius-pill);
+}
+
+/* -- « Combiner deux études » (advanced.js) ------------------------------------------------ */
+.combine-dialog {
+  width: min(620px, 96vw);
+  max-height: 94vh;
+  padding: 0;
+  border: none;
+  border-radius: 14px;
+  box-shadow: var(--shadow-lift);
+}
+.combine-dialog__form {
+  display: flex;
+  flex-direction: column;
+  max-height: 94vh;
+}
+.combine-dialog__head,
+.combine-dialog__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+}
+.combine-dialog__head {
+  border-bottom: 1px solid var(--border-soft);
+}
+.combine-dialog__head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.combine-dialog__foot {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-soft);
+}
+.combine-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px;
+}
+.combine-dialog__help {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--surface-2);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.combine-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.combine-dialog__field label {
+  margin: 0;
+}
+.combine-dialog__field .help {
+  margin: 0;
+}
+.combine-dialog__field select[size] {
+  height: auto;
+  padding: 4px;
+}
+.combine-dialog__field select[size] option {
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+}
+.combine-dialog__plate {
+  min-width: 0;
+  margin: 0;
+  padding: 10px 14px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+.combine-dialog__plate legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--navy);
+}
+.combine-dialog__plate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 600px) {
+  .combine-dialog__plate-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

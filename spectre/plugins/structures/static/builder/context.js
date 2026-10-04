@@ -45,10 +45,11 @@ const state = {
   selectedStepIndices: new Set(), // sélection multiple (Ctrl/Maj+clic) - pour grouper en brique ou supprimer en bloc ; vidée à chaque changement structurel
   selectedBrickGroup: null, // brick_group_id dont l'inspecteur montre les actions (clic sur l'étiquette d'une brique)
   formDeclaredParams: [], // paramètres déclarés (voir form-widgets.js) du formulaire d'étape actuellement ouvert
+  formLayerLabel: null, // étiquette de couche ({text, values}, voir layer-label.js) du formulaire d'étape ouvert
   collapsedBrickGroups: new Set(), // brick_group_id des blocs repliés dans le flow (purement visuel)
   previewMode: "step", // "step" : dessin après l'étape sélectionnée ; "final" : toujours la structure finale
   frameLock: null, // image gardée à l'écran quand on sélectionne une étape en cliquant une couche du dessin (sinon la vue sauterait à cette étape)
-  layerOrigins: null, // par image, l'étape d'origine de chaque couche (voir computeLayerOrigins, simulation.js)
+  layerOrigins: null, // par image, l'étape d'origine de chaque couche - donnée par le serveur (step_index de chaque couche)
   derivedFrom: null, // library mode only: name of the structure this one was derived from, if any
   editingLibraryId: null, // library mode only: id of the saved structure being edited in place (null = new)
   editingBrickId: null, // brick mode only: id of the tech brick being edited in place (null = new)

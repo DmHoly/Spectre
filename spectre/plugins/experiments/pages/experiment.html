@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="/static/experiments/experiments.css">
   <link rel="stylesheet" href="/static/wafers/wafers.css">
   <link rel="stylesheet" href="/static/characterization/characterization.css">
-  <link rel="stylesheet" href="/static/external_images/external_images.css">
   <link rel="stylesheet" href="/static/attachments/attachments.css">
   <link rel="stylesheet" href="/static/notebook/notebook.css">
   <link rel="stylesheet" href="/static/lots/lots.css">
@@ -150,6 +149,10 @@
             <div class="section-title" id="structure-title">Structure actuelle</div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <div style="font-size:12px;color:var(--text-faint);" id="diff-note"></div>
+              <button type="button" class="btn btn-line" id="structure-labels-btn" data-report-hide aria-pressed="true" style="display:none;min-height:32px;padding:5px 12px;font-size:12.5px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+                <span id="structure-labels-btn-text">Étiquettes : masquer</span>
+              </button>
               <button type="button" class="btn btn-line" id="structure-evolve-link" data-report-hide style="display:none;min-height:32px;padding:5px 12px;font-size:12.5px;">Modifier la structure</button>
               <button type="button" class="btn btn-line" id="structure-replace-btn" data-report-hide style="display:none;min-height:32px;padding:5px 12px;font-size:12.5px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
@@ -257,14 +260,6 @@
         <div class="nb-filter" id="notebook-filter" role="status" data-report-hide hidden></div>
         <div id="notebook-entries" class="nb-entries"></div>
       </div>
-
-      <div class="card card-pad" id="images-card">
-        <div class="section-title" style="margin-bottom:6px;">Images de mesure</div>
-        <div class="help" style="margin-bottom:12px;">Images de mesure rattachées à l'étude, comparées à la structure simulée.</div>
-
-        <!-- la galerie d'images externes (external_images/static/gallery.js) -->
-        <div data-panel="external_images"></div>
-      </div>
     </section>
 
     <!-- ───────────── Onglet 3 : conclusion ───────────── -->
@@ -276,11 +271,9 @@
       <summary style="cursor:pointer;font-size:13px;font-weight:700;">Actions avancées</summary>
       <div style="margin-top:14px;max-width:480px;">
         <div id="advanced-actions-editor-only">
-          <label>Combiner avec une autre expérience</label>
-          <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, relie l'historique de l'autre expérience choisie et reprend son cahier de données.</div>
-          <input class="field" type="search" id="combine-search" placeholder="Rechercher : titre, étiquette, piste…" aria-label="Rechercher l'expérience à combiner" autocomplete="off" style="margin-bottom:6px;">
-          <select class="field" id="combine-select" aria-label="Expérience à combiner" style="margin-bottom:8px;"></select>
-          <button class="btn btn-line" id="combine-btn" type="button">Combiner</button>
+          <label for="combine-open-btn">Combiner avec une autre étude</label>
+          <div class="help" style="margin-bottom:8px;">Crée une nouvelle étude issue de celle-ci et d'une autre ; elles ne changent pas ; son cahier démarre vide.</div>
+          <button class="btn btn-line" id="combine-open-btn" type="button">Combiner…</button>
 
           <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--danger-tint);">
             <label style="color:var(--danger);">Supprimer cette étude</label>
@@ -304,6 +297,56 @@
       <div style="display:flex;gap:10px;margin-top:4px;">
         <button type="button" class="btn btn-line btn-block" id="hold-cancel">Annuler</button>
         <button type="submit" class="btn btn-primary btn-block">Mettre en pause</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Combiner (advanced.js) : une nouvelle étude C issue de celle-ci (A) et d'une autre (B), avec
+       la structure de A, ses propres titre, intention, hypothèse et plaque ; A et B ne changent pas,
+       le cahier de C démarre vide (POST /experiments avec merge_of). -->
+  <dialog id="combine-dialog" class="combine-dialog" aria-labelledby="combine-dialog-title" aria-describedby="combine-dialog-help">
+    <form method="dialog" class="combine-dialog__form" id="combine-form" novalidate>
+      <div class="combine-dialog__head">
+        <h2 id="combine-dialog-title">Combiner deux études</h2>
+      </div>
+      <div class="combine-dialog__body">
+        <p class="combine-dialog__help" id="combine-dialog-help">
+          Crée une <strong>nouvelle étude</strong> issue de ces deux-là ; <strong>elles ne changent pas</strong> ; son <strong>cahier démarre vide</strong>
+          (les données restent sur les deux études, attachées à leurs plaques). Elle reprend la structure de <span id="combine-first-title"></span>
+          et suit une nouvelle plaque.
+        </p>
+        <div class="combine-dialog__field">
+          <label for="combine-search">Étude à combiner avec celle-ci</label>
+          <input class="field" type="search" id="combine-search" placeholder="Rechercher : titre, étiquette, piste…" autocomplete="off" aria-describedby="combine-search-state">
+          <select class="field" id="combine-select" size="5" aria-label="Étude à combiner"></select>
+          <span class="help" id="combine-search-state" role="status"></span>
+        </div>
+        <div class="combine-dialog__field">
+          <label for="combine-title">Titre de la nouvelle étude</label>
+          <input class="field" type="text" id="combine-title" maxlength="200" autocomplete="off" required>
+        </div>
+        <div class="combine-dialog__field">
+          <label for="combine-intent">Ce qu'on veut démontrer</label>
+          <textarea class="field" id="combine-intent" rows="2" required placeholder="ex : cumuler le gain du recuit et celui de la nouvelle couche tampon"></textarea>
+        </div>
+        <div class="combine-dialog__field">
+          <label for="combine-hypothesis">Hypothèse (optionnelle)</label>
+          <textarea class="field" id="combine-hypothesis" rows="2" placeholder="ex : les deux effets s'additionnent"></textarea>
+        </div>
+        <fieldset class="combine-dialog__plate">
+          <legend>Nouvelle plaque</legend>
+          <div class="combine-dialog__plate-grid">
+            <div><label for="combine-sample-id">Lasermark (obligatoire)</label><input class="field mono" id="combine-sample-id" list="entity-sample-id-history" placeholder="ex : W12-A3" autocomplete="off" required></div>
+            <div><label for="combine-location">Emplacement (optionnel)</label><input class="field" id="combine-location" list="entity-location-history" placeholder="ex : boîte B, tiroir 2" autocomplete="off"></div>
+          </div>
+          <div style="margin-top:10px;"><label for="combine-fdl-input">FDL <span class="help" style="display:inline;margin:0;font-weight:400;">- feuilles de lancement JIRA du wafer, Entrée pour en empiler plusieurs</span></label><div id="combine-fdl"></div></div>
+          <p class="help" id="combine-plate-help" style="margin:8px 0 0;">Chaque étude est reliée à un échantillon réel : c'est cet identifiant qui permet de la retrouver.</p>
+        </fieldset>
+        <div class="error" id="combine-error" role="alert" style="display:none;"></div>
+      </div>
+      <div class="combine-dialog__foot">
+        <button type="button" class="btn btn-line" id="combine-cancel">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="combine-submit">Créer l'étude combinée</button>
       </div>
     </form>
   </dialog>
@@ -418,6 +461,7 @@
   <script src="/static/kernel/api.js"></script>
   <script src="/static/kernel/ui.js"></script>
   <script src="/static/kernel/shell.js"></script>
+  <script src="/static/kernel/annotations.js"></script>
   <script src="/static/accounts/session.js"></script>
   <script src="/static/search/client.js"></script>
   <script src="/static/search/topbar-search.js"></script>
@@ -429,8 +473,8 @@
   <script src="/static/experiments/client.js"></script>
   <script src="/static/intent_forms/client.js"></script>
   <script src="/static/characterization/client.js"></script>
-  <script src="/static/notebook/client.js"></script>
   <script src="/static/external_images/client.js"></script>
+  <script src="/static/notebook/client.js"></script>
   <script src="/static/experiments/status.js"></script>
   <script src="/static/experiments/vocabulary.js"></script>
   <script src="/static/structures/campaign-carousel.js"></script>
@@ -439,7 +483,7 @@
   <script src="/static/characterization/wafer-data-links.js"></script>
   <script src="/static/attachments/image-drop.js"></script>
   <!-- La fiche : l'amorce et le registre des panneaux, puis ses panneaux, dans l'ordre où ils se
-       montent ; ensuite ceux des autres plugins (galerie, lots, cahier), qui s'y enregistrent. -->
+       montent ; ensuite ceux des autres plugins (lots, cahier), qui s'y enregistrent. -->
   <script src="/static/experiments/page.js"></script>
   <script src="/static/experiments/header.js"></script>
   <script src="/static/experiments/objectives.js"></script>
@@ -450,7 +494,6 @@
   <script src="/static/experiments/conclusion.js"></script>
   <script src="/static/experiments/advanced.js"></script>
   <script src="/static/experiments/report.js"></script>
-  <script src="/static/external_images/gallery.js"></script>
   <script src="/static/lots/lot-picker.js"></script>
   <!-- Visualisation de données : le registre, puis un fichier par composant, puis les préréglages
        par type de données (un composant de plus = un fichier de plus ici). -->

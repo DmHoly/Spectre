@@ -19,7 +19,6 @@ from support.experiments import (
     get_experiment,
     launch,
     launch_image,
-    merge,
     post_evolve,
     replace_structure_images,
     set_status,
@@ -28,10 +27,10 @@ from support.experiments import (
     track_entities,
     versions,
 )
-from support.external_images import create_image_set, delete_image_set, image_sets, image_sets_url, pin_image, png_files
+from support.external_images import png_files
 from support.http import assert_handler_404
 from support.microprojects import signup_with_microproject
-from support.notebook import add_entry, add_manual, entries, entries_by_id, entries_url, take_snapshot, update_entry, upload_notebook_file
+from support.notebook import add_entry, add_manual, delete_entry, entries, entries_by_id, entries_url, take_snapshot, update_entry, upload_notebook_file
 from support.structures import steps, upload_structure_image
 
 FUTURE_KEY = "champ_spectre_futur"  # un champ que Spectre rangerait demain dans les métadonnées
@@ -41,8 +40,8 @@ FUTURE_KEY = "champ_spectre_futur"  # un champ que Spectre rangerait demain dans
 def study(client, tmp_path, monkeypatch):
     """Une étude en images (toutes les écritures légères s'y appliquent) avec tout ce qu'une
     écriture légère doit reporter : hypothèse, contexte, objectif et sa méthode de vérification,
-    réponses au formulaire, une donnée manuelle du cahier à lien et image, une vue PRISM du cahier, une galerie DATA et un
-    champ Spectre que l'API ne connaît pas."""
+    réponses au formulaire, une donnée manuelle du cahier à lien et image, une vue PRISM du cahier, une donnée
+    manuelle à images externes et un champ Spectre que l'API ne connaît pas."""
     from spectre.plugins.experiments import service
 
     monkeypatch.setenv("SPECTRE_DEMO_DATA", "1")
@@ -65,7 +64,7 @@ def study(client, tmp_path, monkeypatch):
     snapshot = take_snapshot(client, slug, wafers=["W12-A3"])
     entry = add_entry(client, slug, line, snapshot["snapshot_id"], title="EQE")
     paths = png_files(tmp_path)
-    data = create_image_set(client, slug, line, paths)
+    external = add_manual(client, slug, line, "Coupe TEM externe", measurements=[{"external_images": [{"path": path} for path in paths]}])
     service.amend(slug, line, author="Ada", change=lambda builder, parent: builder.metadata.update({FUTURE_KEY: {"garde": True}}))
     other = launch_image(client, slug, [{"image_id": upload_structure_image(client, slug), "kind": "coupe"}], title="Autre", entities=[{"sample_id": "W2"}])
     return {
@@ -76,7 +75,7 @@ def study(client, tmp_path, monkeypatch):
         "manual_id": manual["id"],
         "entry_id": entry["id"],
         "snapshot_id": snapshot["snapshot_id"],
-        "data_id": data["id"],
+        "external_id": external["id"],
         "paths": paths,
         "other": other["id"],
         "before": get_experiment(client, slug, line),
@@ -99,15 +98,14 @@ WRITES = {
     "etiquettes": lambda c, s: tag(c, s["slug"], s["line"], ["a-suivre"]),
     "entites": lambda c, s: track_entities(c, s["slug"], s["line"], [{"sample_id": "W12-A3", "location": "boîte 2"}]),
     "images-structure": lambda c, s: replace_structure_images(c, s["slug"], s["line"], [{**s["schema"], "caption": "Schéma"}]),
-    "fusion": lambda c, s: merge(c, s["slug"], s["line"], s["other"]),
     "evolution-sans-hypothese": lambda c, s: evolve_image(
         c, s["slug"], s["line"], [s["schema"]], title="Coupe", intent="Mieux dit", form_answers={"operateur": "Ada"}
     ),
     "cahier-manuel": lambda c, s: add_manual(c, s["slug"], s["line"], "Autre mesure"),
     "annotations": lambda c, s: update_entry(c, s["slug"], s["line"], s["manual_id"], measurements=[annotated(s)]),
     "cahier": lambda c, s: update_entry(c, s["slug"], s["line"], s["entry_id"], note="Vu"),
-    "galerie-epingle": lambda c, s: pin_image(c, s["slug"], s["line"], s["data_id"], 1),
-    "galerie-retrait": lambda c, s: delete_image_set(c, s["slug"], s["line"], s["data_id"]),
+    "images-externes": lambda c, s: update_entry(c, s["slug"], s["line"], s["external_id"], measurements=[{"external_images": [{"path": p} for p in reversed(s["paths"])]}]),
+    "images-externes-retrait": lambda c, s: delete_entry(c, s["slug"], s["line"], s["external_id"]),
 }
 
 
@@ -128,8 +126,9 @@ def test_every_lightweight_write_carries_the_whole_parent(client, study, write):
     assert [link["url"] for link in own["measurements"][0]["links"]] == ["https://exemple.fr/tem"]
     assert [image["id"] for image in own["measurements"][0]["attachments"]] == [study["picture"]]
     assert [e["id"] for e in entries(client, study["slug"], study["line"])][:2] == [study["manual_id"], study["entry_id"]]
-    if write != "galerie-retrait":
-        assert [d["id"] for d in image_sets(client, study["slug"], study["line"])] == [study["data_id"]]
+    if write != "images-externes-retrait":
+        external = entries_by_id(client, study["slug"], study["line"])[study["external_id"]]
+        assert sorted(image["path"] for image in external["measurements"][0]["external_images"]) == sorted(study["paths"])
     if write != "entites":
         assert after["physical_tracking"] == before["physical_tracking"]
     if write not in ("statut", "pause", "conclusion"):
@@ -148,19 +147,19 @@ STALE_WRITES = {
     "status": lambda c, s, h: c.put(f"{experiment_url(s['slug'], s['line'])}/status", headers=h, json={"status": "running"}),
     "tags": lambda c, s, h: c.put(f"{experiment_url(s['slug'], s['line'])}/tags", headers=h, json={"tags": ["x"]}),
     "entities": lambda c, s, h: c.put(f"{experiment_url(s['slug'], s['line'])}/entities", headers=h, json={"entities": [{"sample_id": "W9"}]}),
-    "merges": lambda c, s, h: c.post(f"{experiment_url(s['slug'], s['line'])}/merges", headers=h, json={"other_experiment_id": s["other"]}),
     "delete": lambda c, s, h: c.delete(experiment_url(s["slug"], s["line"]), headers=h),
     "cahier-manuel": lambda c, s, h: c.post(entries_url(s["slug"], s["line"]), headers=h, json={"kind": "manual", "title": "x", "measurements": [{"text": "x"}]}),
     "annotations": lambda c, s, h: c.patch(f"{entries_url(s['slug'], s['line'])}/{s['manual_id']}", headers=h, json={"measurements": [annotated(s)]}),
-    # le cahier et la galerie, qui écrivent eux aussi sur la piste
+    # le cahier, qui écrit lui aussi sur la piste
     "cahier-ajout": lambda c, s, h: c.post(
         entries_url(s["slug"], s["line"]), headers=h, json={"kind": "prism", "title": "x", "measurements": [{"snapshot_id": s["snapshot_id"], "component": "table"}]}
     ),
     "cahier": lambda c, s, h: c.patch(f"{entries_url(s['slug'], s['line'])}/{s['entry_id']}", headers=h, json={"note": "x"}),
     "cahier-retrait": lambda c, s, h: c.delete(f"{entries_url(s['slug'], s['line'])}/{s['entry_id']}", headers=h),
-    "galerie-ajout": lambda c, s, h: c.post(image_sets_url(s["slug"], s["line"]), headers=h, json={"image_paths": s["paths"]}),
-    "galerie-epingle": lambda c, s, h: c.patch(f"{image_sets_url(s['slug'], s['line'])}/{s['data_id']}", headers=h, json={"pinned_index": 1}),
-    "galerie-retrait": lambda c, s, h: c.delete(f"{image_sets_url(s['slug'], s['line'])}/{s['data_id']}", headers=h),
+    "images-externes-ajout": lambda c, s, h: c.post(
+        entries_url(s["slug"], s["line"]), headers=h, json={"kind": "manual", "title": "x", "measurements": [{"external_images": [{"path": s["paths"][0]}]}]}
+    ),
+    "images-externes": lambda c, s, h: c.patch(f"{entries_url(s['slug'], s['line'])}/{s['external_id']}", headers=h, json={"measurements": [{"external_images": []}]}),
 }
 
 

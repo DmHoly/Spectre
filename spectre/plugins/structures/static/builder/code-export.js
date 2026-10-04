@@ -36,7 +36,7 @@ function generateStructureForgeCode() {
     const obtention = Object.entries(p.obtention || {})
       .map(([k, v]) => `${k}=${v}`)
       .join(", ");
-    return `    # declared: ${p.name}=${p.value}${obtention ? ` (${obtention})` : ""}`;
+    return `    # declared: ${p.name}=${p.value}${p.unit ? ` ${p.unit}` : ""}${obtention ? ` (${obtention})` : ""}`;
   };
   const stepsLines = state.steps.length
     ? state.steps

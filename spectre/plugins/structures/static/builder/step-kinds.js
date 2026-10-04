@@ -421,7 +421,7 @@ function stepIconHtml(kind) {
 function renderKindFields(kind) {
   const container = document.getElementById("kind-fields");
   const def = STEP_KIND_DEFS[kind];
-  container.innerHTML = def.renderFields() + declaredParamsSectionHtml(state.formDeclaredParams);
+  container.innerHTML = def.renderFields() + declaredParamsSectionHtml(state.formDeclaredParams) + layerLabelSectionHtml(kind);
   if (def.wire) def.wire();
   wireDeclaredParamsSection(state.formDeclaredParams, renderDeclaredParams);
 }
@@ -433,8 +433,13 @@ function buildStepFromForm() {
   const step = def.buildFromForm(name);
   const declaredParams = state.formDeclaredParams
     .filter((p) => p.name.trim() !== "")
-    .map((p) => ({ name: p.name.trim(), value: parseDeclaredValue(p.value), obtention: p.obtention || {} }));
+    .map((p) => {
+      const unit = (p.unit || "").trim();
+      return { name: p.name.trim(), value: parseDeclaredValue(p.value), obtention: p.obtention || {}, ...(unit ? { unit } : {}) };
+    });
   if (declaredParams.length) step.declaredParams = declaredParams;
+  const layerLabel = readLayerLabelFromForm(step); // layer-label.js
+  if (layerLabel) step.layerLabel = layerLabel;
   return step;
 }
 

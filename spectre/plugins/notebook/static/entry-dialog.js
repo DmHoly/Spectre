@@ -12,8 +12,10 @@
       et une vue (composant et réglages) commune à toutes les étapes, pour les comparer. À la main :
       valeur et unité, texte, tableau (un tableau copié d'Excel - du TSV - se colle tel quel et
       devient {columns, rows}), images collées ou déposées (attachments/static/image-drop.js : Ctrl+V
-      colle dans la mesure active), fichiers, liens web. Les annotations d'une image gardée sont
-      gardées.
+      colle dans la mesure active), images externes (TEM, scans : choisies dans un dossier autorisé
+      du serveur, légendées, ordonnées - la première est la principale), fichiers, liens web. Les
+      annotations d'une image gardée (téléversée ou externe) sont gardées, et dessinées sur son
+      aperçu ; elles se posent sur la fiche.
    5. Titre, objectif lié, interprétation, observations, et la place dans le rapport.
 
    L'écriture passe par ctx.write (la version affichée en If-Match) : réussie, la fiche se recharge et
@@ -33,13 +35,22 @@ const NotebookEntryDialog = (() => {
   const MAX_COLUMNS = 50;
   const MAX_ROWS = 1000;
   const MAX_CELL = 500;
+  const MAX_EXTERNAL = 100; // images externes par mesure (notebook/service.py)
+  const EXTERNAL_STATUS = {
+    missing: "fichier déplacé ou supprimé",
+    unsupported: "format que le navigateur n'affiche pas",
+    forbidden: "hors des dossiers autorisés",
+  };
   const ICONS = {
     file: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>`,
     remove: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+    up: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>`,
+    down: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`,
   };
 
   let state = null; // la saisie en cours (voir open)
   let sources = null; // Promise : les types de données qu'on peut charger (catalogue de caractérisation)
+  let rootsPromise = null; // Promise : les dossiers autorisés pour les images externes (un appel par page)
   let uid = 0;
 
   // --- étapes et mesures ---------------------------------------------------------------------------
@@ -397,6 +408,183 @@ const NotebookEntryDialog = (() => {
     }
   }
 
+  // --- images externes d'une mesure ----------------------------------------------------------------
+
+  // Des images (TEM, scans) lues à leur place sur le disque du serveur, sans copie : on part d'un
+  // dossier autorisé (externalImagesApi.roots), on en liste les images (externalImagesApi.browse), on
+  // coche celles de la mesure ; ou on donne le chemin d'une image. Le serveur vérifie chaque nouvelle
+  // image à l'enregistrement (dossier autorisé, format, fichier présent). Une image déjà sur la mesure
+  // s'aperçoit par son `url` (servie par l'entrée) ; une nouvelle, une fois enregistrée.
+
+  function externalName(image) {
+    return image.name || String(image.path).split(/[\\/]/).filter(Boolean).pop() || image.path;
+  }
+
+  function externalRoots() {
+    if (!rootsPromise) rootsPromise = externalImagesApi.roots(state.ctx.microprojectSlug).catch(() => []);
+    return rootsPromise;
+  }
+
+  function renderExternal(slot) {
+    const images = slot.external;
+    slot.externalList.innerHTML = images
+      .map((image, i) => {
+        const name = externalName(image);
+        const thumb =
+          image.url && image.status === "ok"
+            ? `<span class="annot-frame"><img src="${escapeHtml(image.url)}" alt="" loading="lazy"${ImageAnnotations.attr(slot.annotations.filter((a) => a.external_image === image.path))}></span>`
+            : `<span class="nb-ext-item__nothumb">${image.url ? "indisponible" : "aperçu à l'enregistrement"}</span>`;
+        const problem = image.status && image.status !== "ok" ? `<span class="nb-ext-item__problem">${escapeHtml(EXTERNAL_STATUS[image.status] || "indisponible")}</span>` : "";
+        return `
+          <li class="nb-ext-item">
+            <span class="nb-ext-item__thumb">${thumb}</span>
+            <span class="nb-ext-item__body">
+              <span class="nb-ext-item__name">${i === 0 && images.length > 1 ? `<span class="nb-ext-item__main">principale</span>` : ""}${escapeHtml(name)}${problem}</span>
+              <span class="nb-ext-item__path" title="${escapeHtml(image.path)}">${escapeHtml(image.path)}</span>
+              <input class="field" data-ext-caption="${i}" maxlength="200" value="${escapeHtml(image.caption)}" placeholder="Légende (optionnelle)" aria-label="Légende de ${escapeHtml(name)}">
+            </span>
+            <span class="nb-ext-item__actions">
+              <button type="button" class="nb-btn nb-btn--icon" data-ext-move="${i}" data-step="-1" aria-label="Monter ${escapeHtml(name)}" title="Monter"${i === 0 ? " disabled" : ""}>${ICONS.up}</button>
+              <button type="button" class="nb-btn nb-btn--icon" data-ext-move="${i}" data-step="1" aria-label="Descendre ${escapeHtml(name)}" title="Descendre"${i === images.length - 1 ? " disabled" : ""}>${ICONS.down}</button>
+              <button type="button" class="nb-btn nb-btn--icon" data-ext-remove="${i}" aria-label="Retirer ${escapeHtml(name)}" title="Retirer">${ICONS.remove}</button>
+            </span>
+          </li>`;
+      })
+      .join("");
+  }
+
+  function addExternal(slot, picked) {
+    const known = new Set(slot.external.map((image) => image.path));
+    const fresh = picked.filter((image) => !known.has(image.path));
+    if (slot.external.length + fresh.length > MAX_EXTERNAL) {
+      showError(new Error(`${MAX_EXTERNAL} images externes au maximum par mesure.`));
+      return false;
+    }
+    hideError();
+    slot.external.push(...fresh.map((image) => ({ path: image.path, caption: "", name: image.name || null, status: null, url: null })));
+    renderExternal(slot);
+    return true;
+  }
+
+  function renderBrowsed(slot, picker, listing) {
+    const known = new Set(slot.external.map((image) => image.path));
+    const results = picker.querySelector("[data-ext-results]");
+    const addable = listing.filter((image) => image.displayable && !known.has(image.path));
+    results.innerHTML = listing.length
+      ? `<p class="nb-ext-results__head">${listing.length} image${listing.length > 1 ? "s" : ""} dans <span class="mono">${escapeHtml(slot.browsedDir)}</span></p>
+         <ul class="nb-ext-results__list">${listing
+           .map((image, i) => {
+             const added = known.has(image.path);
+             const note = !image.displayable ? "TIFF : le navigateur ne l'affiche pas, exportez-la en PNG ou en JPEG" : added ? "déjà dans la mesure" : formatSize(image.size);
+             return `<li><label class="nb-ext-result${image.displayable && !added ? "" : " is-off"}">
+               <input type="checkbox" data-ext-pick="${i}"${image.displayable && !added ? "" : " disabled"}${added ? " checked" : ""}>
+               <span class="nb-ext-result__name">${escapeHtml(image.name)}</span>
+               <span class="nb-ext-result__note">${escapeHtml(note)}</span>
+             </label></li>`;
+           })
+           .join("")}</ul>`
+      : `<p class="help" style="margin:0;">Aucune image dans ce dossier (seules les images sont listées, pas les sous-dossiers).</p>`;
+    picker.querySelector("[data-ext-add-row]").hidden = !addable.length;
+    updatePickCount(picker);
+  }
+
+  function updatePickCount(picker) {
+    const n = picker.querySelectorAll("[data-ext-pick]:checked:not(:disabled)").length;
+    const btn = picker.querySelector("[data-ext-add]");
+    btn.disabled = !n;
+    btn.textContent = n ? `Ajouter ${n} image${n > 1 ? "s" : ""}` : "Cochez des images à ajouter";
+  }
+
+  async function browseExternal(slot, picker, directory) {
+    const results = picker.querySelector("[data-ext-results]");
+    if (!directory) return;
+    picker.querySelector("[data-ext-dir]").value = directory;
+    results.innerHTML = `<p class="help" style="margin:0;">Lecture du dossier…</p>`;
+    picker.querySelector("[data-ext-add-row]").hidden = true;
+    try {
+      slot.browsed = await externalImagesApi.browse(state.ctx.microprojectSlug, directory);
+      slot.browsedDir = directory;
+      renderBrowsed(slot, picker, slot.browsed);
+    } catch (err) {
+      slot.browsed = [];
+      results.innerHTML = `<p class="nb-table-error" role="alert">${escapeHtml(err.message || String(err))}</p>`;
+    }
+  }
+
+  async function openPicker(slot, picker) {
+    const list = await externalRoots();
+    if (!state || !picker.isConnected) return;
+    const rootsBox = picker.querySelector("[data-ext-roots]");
+    picker.querySelector("[data-ext-browse-row]").hidden = !list.length;
+    rootsBox.innerHTML = list.length
+      ? `<span class="nb-ext-picker__label">Dossiers autorisés</span>${list
+          .map((root, i) => `<button type="button" class="nb-ext-root mono" data-ext-root="${i}" title="Lister les images de ce dossier">${escapeHtml(root)}</button>`)
+          .join("")}`
+      : `<p class="help" style="margin:0;">Le parcours des dossiers est désactivé sur ce serveur (aucun dossier autorisé, <span class="mono">SPECTRE_EXTERNAL_IMAGE_ROOTS</span>) : donnez le chemin d'une image.</p>`;
+    rootsBox.querySelectorAll("[data-ext-root]").forEach((btn) => btn.addEventListener("click", () => browseExternal(slot, picker, list[Number(btn.dataset.extRoot)])));
+  }
+
+  function wireExternalImages(slot, el) {
+    slot.externalList = el.querySelector(".nb-ext-list");
+    slot.browsed = [];
+    slot.browsedDir = "";
+    renderExternal(slot);
+    const picker = el.querySelector(".nb-ext-picker");
+    const toggle = el.querySelector("[data-ext-toggle]");
+    toggle.addEventListener("click", () => {
+      const opening = picker.hidden;
+      picker.hidden = !opening;
+      toggle.setAttribute("aria-expanded", String(opening));
+      toggle.textContent = opening ? "Fermer le choix des images" : "Choisir des images externes…";
+      if (opening) openPicker(slot, picker).then(() => picker.querySelector("[data-ext-root], [data-ext-path]")?.focus());
+    });
+    const dir = picker.querySelector("[data-ext-dir]");
+    picker.querySelector("[data-ext-browse]").addEventListener("click", () => browseExternal(slot, picker, dir.value.trim()));
+    dir.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      browseExternal(slot, picker, dir.value.trim());
+    });
+    picker.querySelector("[data-ext-results]").addEventListener("change", () => updatePickCount(picker));
+    picker.querySelector("[data-ext-add]").addEventListener("click", () => {
+      const picked = [...picker.querySelectorAll("[data-ext-pick]:checked:not(:disabled)")].map((box) => slot.browsed[Number(box.dataset.extPick)]);
+      if (addExternal(slot, picked)) renderBrowsed(slot, picker, slot.browsed);
+    });
+    const path = picker.querySelector("[data-ext-path]");
+    const addPath = () => {
+      const value = path.value.trim();
+      if (!value) return path.focus();
+      if (addExternal(slot, [{ path: value }])) path.value = "";
+    };
+    picker.querySelector("[data-ext-add-path]").addEventListener("click", addPath);
+    path.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      addPath();
+    });
+    slot.externalList.addEventListener("input", (event) => {
+      const input = event.target.closest("[data-ext-caption]");
+      if (input) slot.external[Number(input.dataset.extCaption)].caption = input.value;
+    });
+    slot.externalList.addEventListener("click", (event) => {
+      const move = event.target.closest("[data-ext-move]");
+      const remove = event.target.closest("[data-ext-remove]");
+      if (move) {
+        const i = Number(move.dataset.extMove);
+        const j = i + Number(move.dataset.step);
+        [slot.external[i], slot.external[j]] = [slot.external[j], slot.external[i]];
+        renderExternal(slot);
+        const again = slot.externalList.querySelector(`[data-ext-move="${j}"][data-step="${move.dataset.step}"]`);
+        (again && !again.disabled ? again : slot.externalList.querySelector(`[data-ext-caption="${j}"]`)).focus();
+      } else if (remove) {
+        slot.external.splice(Number(remove.dataset.extRemove), 1);
+        renderExternal(slot);
+        if (slot.browsed.length && !picker.hidden) renderBrowsed(slot, picker, slot.browsed);
+        toggle.focus();
+      }
+    });
+  }
+
   function setActive(slot) {
     state.activeKey = slot.key;
     document.querySelectorAll("#nb-measures .nb-mform").forEach((el) => el.classList.toggle("is-active", el === slot.form.el));
@@ -434,6 +622,30 @@ const NotebookEntryDialog = (() => {
           <span class="nb-mform__label">Images <span class="help" style="display:inline;margin:0;font-weight:400;">- Ctrl+V colle dans la mesure active (encadrée)</span></span>
           <div class="nb-mform__images"></div>
         </div>
+        <div class="nb-mform__field nb-mform__field--wide">
+          <span class="nb-mform__label" id="nbm-${n}-ext">Images externes <span class="help" style="display:inline;margin:0;font-weight:400;">- TEM, scans : lues à leur place sur le serveur, jamais copiées ; la première est l'image principale</span></span>
+          <ul class="nb-ext-list" aria-labelledby="nbm-${n}-ext"></ul>
+          <button type="button" class="btn btn-line nb-mform__add" data-ext-toggle aria-expanded="false" aria-controls="nbm-${n}-ext-picker">Choisir des images externes…</button>
+          <div class="nb-ext-picker" id="nbm-${n}-ext-picker" hidden>
+            <div class="nb-ext-picker__roots" data-ext-roots></div>
+            <div class="nb-ext-picker__browse" data-ext-browse-row hidden>
+              <label for="nbm-${n}-ext-dir">Dossier</label>
+              <div class="nb-ext-picker__bar">
+                <input class="field mono" id="nbm-${n}-ext-dir" data-ext-dir placeholder="chemin absolu d'un dossier autorisé" autocomplete="off">
+                <button type="button" class="btn btn-line" data-ext-browse>Parcourir</button>
+              </div>
+            </div>
+            <div class="nb-ext-results" data-ext-results aria-live="polite"></div>
+            <div class="nb-ext-picker__add" data-ext-add-row hidden>
+              <button type="button" class="btn btn-primary" data-ext-add>Ajouter la sélection</button>
+            </div>
+            <label for="nbm-${n}-ext-path">Ou le chemin d'une image</label>
+            <div class="nb-ext-picker__bar">
+              <input class="field mono" id="nbm-${n}-ext-path" data-ext-path placeholder="chemin absolu d'une image (PNG, JPEG, GIF, WebP, BMP)" autocomplete="off">
+              <button type="button" class="btn btn-line" data-ext-add-path>Ajouter</button>
+            </div>
+          </div>
+        </div>
         <div class="nb-mform__field">
           <span class="nb-mform__label" id="nbm-${n}-files">Fichiers</span>
           <ul class="nb-files" aria-labelledby="nbm-${n}-files"></ul>
@@ -462,7 +674,9 @@ const NotebookEntryDialog = (() => {
     };
     slot.form = form;
     slot.files = (m.attachments || []).filter((a) => !(a.content_type || "").startsWith("image/")).map((a) => ({ ...a, uploading: false }));
-    slot.annotations = (m.annotations || []).filter((a) => a.attachment_id && (a.type === "arrow" || a.type === "box"));
+    slot.annotations = (m.annotations || []).filter((a) => (a.attachment_id || a.external_image) && (a.type === "arrow" || a.type === "box"));
+    // les images externes déjà sur la mesure gardent leur aperçu (leur `url`, servie par l'entrée)
+    slot.external = (m.external_images || []).map((image) => ({ path: image.path, caption: image.caption || "", name: image.name, status: image.status, url: image.url }));
     if (m.value) {
       form.name.value = m.value.name || "";
       form.number.value = String(m.value.number);
@@ -472,6 +686,7 @@ const NotebookEntryDialog = (() => {
     form.table.value = form.tableInitial;
     form.links.innerHTML = (m.links || []).map(linkRowHtml).join("");
     renderFiles(slot);
+    wireExternalImages(slot, el);
 
     const refreshTable = () => {
       try {
@@ -506,7 +721,7 @@ const NotebookEntryDialog = (() => {
     slot.images.set(
       (m.attachments || [])
         .filter((a) => (a.content_type || "").startsWith("image/"))
-        .map((a) => ({ image_id: a.id, url: a.url, filename: a.filename, caption: a.caption || "", kind: "schema" }))
+        .map((a) => ({ image_id: a.id, url: a.url, filename: a.filename, caption: a.caption || "", kind: "schema", annotations: slot.annotations.filter((n) => n.attachment_id === a.id) }))
     );
 
     el.addEventListener("focusin", () => setActive(slot));
@@ -584,6 +799,7 @@ const NotebookEntryDialog = (() => {
     const attachments = [...images.map((img) => ({ id: img.image_id, caption: (img.caption || "").trim() || null })), ...slot.files.map((f) => ({ id: f.id, caption: f.caption || null }))];
     if (attachments.length > MAX_FILES) throw new Error(`${title} : ${MAX_FILES} fichiers au maximum, images comprises.`);
     const kept = new Set(images.map((img) => img.image_id));
+    const keptExternal = new Set(slot.external.map((image) => image.path));
     const links = [...form.links.querySelectorAll(".nb-link-row")]
       .map((row) => ({ label: row.querySelector("[data-link-label]").value.trim() || null, url: row.querySelector("[data-link-url]").value.trim() }))
       .filter((link) => link.url);
@@ -595,14 +811,17 @@ const NotebookEntryDialog = (() => {
       text: form.text.value.trim() || null,
       table,
       attachments,
+      // les images externes (TEM, scans référencés sur le serveur), dans l'ordre choisi
+      external_images: slot.external.map((image) => ({ path: image.path, caption: (image.caption || "").trim() || null })),
       links,
-      annotations: slot.annotations.filter((a) => kept.has(a.attachment_id)),
+      // les annotations des images gardées (fichiers et images externes) ; celles d'une image retirée partent avec elle
+      annotations: slot.annotations.filter((a) => (a.attachment_id ? kept.has(a.attachment_id) : keptExternal.has(a.external_image))),
     };
   }
 
   function manualMeasurements() {
     const measurements = state.keys.map((key) => manualMeasurement(slotFor(key)));
-    const empty = (m) => !m.value && !m.text && !m.table && !m.attachments.length && !m.links.length;
+    const empty = (m) => !m.value && !m.text && !m.table && !m.attachments.length && !m.external_images.length && !m.links.length;
     // une seule mesure, non située et vide : l'entrée n'a pas de mesure
     return measurements.length === 1 && !measurements[0].step_id && empty(measurements[0]) ? [] : measurements;
   }

@@ -1,8 +1,10 @@
 /* Évolution des structures d'un µprojet (pages/evolution.html) : le diagramme façon git de
    GET .../structure-history - une colonne par piste, une rangée par version, les fourches et les
-   fusions -, et le panneau d'une version : ses refs (promouvoir, renommer, retirer), la comparer à
+   combinaisons (une version à deux parents : une nouvelle piste issue de deux études, ou une
+   fusion d'avant, sur la piste de son premier parent) -, et le panneau d'une version : ses refs (promouvoir, renommer, retirer), la comparer à
    une autre (structure-diff), partir d'elle (l'éditeur sur ?version=, une nouvelle piste), suivre
-   une ref (ses descendants en évidence) et publier une ref dans la bibliothèque (une structure
+   une ref (ses descendants en évidence), voir sa structure (étiquettes de couches comprises,
+   agrandie au clic ; une structure en images : sa première image, annotations comprises) et publier une ref dans la bibliothèque (une structure
    enregistrée partagée, avec son origine). Le serveur donne tout ce qui est dessiné : numéros,
    niveaux, pistes, arêtes ; la page ne fait que poser chaque chose à sa place.
 
@@ -38,6 +40,9 @@
     editing: null, // {kind: "rename" | "remove", ref}
     flash: "",
     panelError: "",
+    // version_id -> {svg} (le dessin, étiquettes de couches comprises) ou {images} (une structure en
+    // images, annotations comprises) ; undefined pendant la lecture, null sans rien à montrer
+    structures: {},
   };
 
   const errorBox = document.getElementById("error");
@@ -81,7 +86,7 @@
   function followedNode() {
     return state.follow ? state.history.nodes.find((node) => node.refs.includes(state.follow)) || null : null;
   }
-  // la version suivie et tout ce qui en descend (fourches et fusions comprises)
+  // la version suivie et tout ce qui en descend (fourches et combinaisons comprises)
   function followedSet() {
     const start = followedNode();
     if (!start) return null;
@@ -132,23 +137,36 @@
     const y2 = rowY(child.row);
     if (x1 === x2) return `M${x1},${y1} L${x2},${y2}`;
     if (edge.kind === "merge") {
-      // descend la piste fusionnée, puis rejoint la version de fusion
+      // descend la piste d'un parent, puis rejoint la combinaison (sur une autre piste)
       return `M${x1},${y1} L${x1},${y2 - ROW * 0.8} C${x1},${y2 - ROW * 0.3} ${x2},${y2 - ROW * 0.5} ${x2},${y2}`;
     }
     // une fourche : quitte la version de départ, puis descend la nouvelle piste
     return `M${x1},${y1} C${x1},${y1 + ROW * 0.5} ${x2},${y1 + ROW * 0.3} ${x2},${y1 + ROW * 0.8} L${x2},${y2}`;
   }
 
-  function rowLabel(node) {
+  function rowLabel(node, index) {
     const lane = laneOf(node);
     const parts = [node.label, LEVEL_TEXT[node.change_level] || node.change_level, node.title, `piste ${lane.experiment_id}`];
-    if (node.is_merge) parts.push("fusion");
+    if (node.is_merge) parts.push(`combinaison${mergeParents(node, index) ? ` de ${mergeParents(node, index)}` : ""}`);
     if (node.refs.length) parts.push(`refs : ${node.refs.join(", ")}`);
     if (node.is_tip) parts.push("dernière version de la piste");
     return parts.join(", ");
   }
 
+  // Les deux parents d'une combinaison, « v1.2.0 (piste 1) et v2.0.0 (piste 2) » ; "" sinon.
+  function mergeParents(node, index) {
+    if (!node.is_merge) return "";
+    const parents = state.history.edges
+      .filter((edge) => edge.child === node.version_id)
+      .map((edge) => index.get(edge.parent))
+      .filter(Boolean)
+      .map(({ node: parent }) => `${parent.label} (piste ${laneOf(parent).index + 1})`);
+    return parents.length > 1 ? parents.join(" et ") : "";
+  }
+
   function forkNote(node, index) {
+    const parents = mergeParents(node, index);
+    if (parents) return `<span class="evo-row__fork">· issue de ${escapeHtml(parents)}</span>`;
     const fork = state.history.edges.find((edge) => edge.child === node.version_id && edge.kind === "fork");
     if (!fork) return "";
     const from = index.get(fork.parent);
@@ -208,10 +226,10 @@
         return `
           <li class="evo-row${dimmed}" role="option" id="row-${node.version_id}" data-id="${node.version_id}"
               aria-selected="${node.version_id === state.selectedId}" tabindex="${node.version_id === state.focusId ? 0 : -1}"
-              aria-label="${escapeHtml(rowLabel(node))}" title="${escapeHtml(node.title)}">
+              aria-label="${escapeHtml(rowLabel(node, index))}" title="${escapeHtml(node.title)}">
             ${compareTag}
             <span class="evo-row__label">${escapeHtml(node.label)}</span>
-            <span class="evo-row__level">${escapeHtml(node.is_merge ? "fusion" : LEVEL_TEXT[node.change_level] || "")}</span>
+            <span class="evo-row__level">${escapeHtml(node.is_merge ? "combinaison" : LEVEL_TEXT[node.change_level] || "")}</span>
             <span class="evo-row__title">${escapeHtml(node.title)} ${forkNote(node, index)}</span>
             <span class="evo-row__refs">${refs}</span>
             <span class="evo-row__meta" title="Piste ${escapeHtml(lane.experiment_id)}"><span class="evo-lanes__tag evo-lanes__tag--inline${lane.is_active ? "" : " is-retired"}">${lane.index + 1}</span> ${escapeHtml(formatDate(node.created_at))}</span>
@@ -239,9 +257,9 @@
     const items = [
       [{ change_level: "major" }, "Première version ou changement majeur"],
       [{ change_level: "minor" }, "Changement mineur"],
-      [{ change_level: "patch" }, "Correctif (nom d'étape)"],
+      [{ change_level: "patch" }, "Correctif (nom d'étape, étiquette de couche)"],
       [{ change_level: "none" }, "Sans changement de structure"],
-      [{ change_level: "none", is_merge: true }, "Fusion de deux pistes"],
+      [{ change_level: "none", is_merge: true }, "Combinaison de deux études (deux parents)"],
       [{ change_level: "minor", refs: ["ref"] }, "Porte une ref"],
       [{ change_level: "minor", is_tip: true }, "Dernière version d'une piste"],
     ];
@@ -330,6 +348,14 @@
           .map((e) => `<div>${escapeHtml(e.path)} : ${escapeHtml(JSON.stringify(e.before))} → ${escapeHtml(JSON.stringify(e.after))}</div>`)
           .join("");
     }
+    // les paramètres déclarés (que la géométrie ne porte pas) et les étiquettes de couches (et leur
+    // regroupement par brique), à part de la structure
+    [
+      ["Paramètres", diff.result.param_changes || []],
+      ["Étiquettes", diff.result.label_changes || []],
+    ].forEach(([key, changes]) => {
+      if (changes.length) body += `<div class="evo-diff__labels"><strong>${key} :</strong> ${changes.map((c) => escapeHtml(c.line)).join(" ; ")}</div>`;
+    });
     return `
       <div class="evo-panel__section">
         <div class="section-title">Comparaison ${title}</div>
@@ -357,6 +383,43 @@
       </div>`;
   }
 
+  // La structure de la version choisie, telle que la fiche la montre : le dessin (étiquettes de
+  // couches comprises, « Agrandir » l'ouvre en grand) ou, pour une structure en images, sa première
+  // image avec ses annotations (structure-images.js, un clic l'ouvre). Lue une fois par version.
+  async function loadStructure(node) {
+    if (node.version_id in state.structures) return;
+    state.structures[node.version_id] = undefined;
+    let shown = null;
+    try {
+      const detail = await experimentsApi.getVersion(slug, node.experiment_id, node.version_id);
+      if (detail.structure_svg) shown = { svg: detail.structure_svg };
+      else if ((detail.structure_images || []).length) shown = { images: detail.structure_images };
+    } catch (err) {
+      shown = null; // la structure est secondaire ici : le reste du panneau suffit
+    }
+    state.structures[node.version_id] = shown;
+    if (state.selectedId === node.version_id) renderPanel();
+  }
+
+  function structureHtml(node) {
+    const shown = state.structures[node.version_id];
+    if (shown === null) return "";
+    let body = `<div class="skeleton" style="height:120px;"></div>`;
+    if (shown && shown.svg) {
+      body = `<button type="button" class="evo-structure js-enlarge" aria-label="Agrandir la structure de ${escapeHtml(node.label)}" title="Agrandir">${shown.svg}</button>`;
+    } else if (shown) {
+      body = structureBoardHtml(shown.images, { compact: true });
+    }
+    return `
+      <div class="evo-panel__section">
+        <div class="section-title">Structure${node.structure_kind === "campaign" ? " · référence" : ""}</div>
+        ${body}
+      </div>`;
+  }
+
+  const structureDialog = document.getElementById("structure-dialog");
+  document.getElementById("structure-dialog-close").addEventListener("click", () => structureDialog.close());
+
   function renderPanel() {
     const node = nodeById(state.selectedId);
     if (!node) {
@@ -364,7 +427,7 @@
       return;
     }
     const lane = laneOf(node);
-    const level = node.is_merge ? "fusion" : LEVEL_TEXT[node.change_level] || node.change_level;
+    const level = node.is_merge ? "combinaison" : LEVEL_TEXT[node.change_level] || node.change_level;
     const refs = node.refs.length ? node.refs.map(refRowHtml).join("") : `<p class="help" style="margin:0;">Aucune ref sur cette version.</p>`;
     const promote = state.canEdit
       ? `<form class="evo-inline-form js-promote-form">
@@ -387,12 +450,14 @@
         ${state.canEdit ? `<a class="btn btn-line" href="${forkUrl(node)}" title="Ouvre l'éditeur sur cette version : enregistrer crée une nouvelle piste qui en part (ou continue la piste depuis sa dernière version)">Partir de cette version</a>` : ""}
       </div>
       ${diffHtml()}
+      ${structureHtml(node)}
       <div class="evo-panel__section">
         <div class="section-title">Refs</div>
         <div class="evo-panel__refs">${refs}</div>
         ${promote}
       </div>
       ${publishHtml(node)}`;
+    loadStructure(node);
   }
 
   function render() {
@@ -514,6 +579,15 @@
       const name = target.dataset.ref;
       act(() => experimentsApi.deleteRef(slug, name), `Ref « ${escapeHtml(name)} » retirée ; la version reste.`);
     }
+  });
+
+  panel.addEventListener("click", (event) => {
+    const enlarge = event.target.closest(".js-enlarge");
+    if (!enlarge) return;
+    const node = nodeById(state.selectedId);
+    document.getElementById("structure-dialog-title").textContent = node ? `${node.title} · ${node.label}` : "Structure";
+    document.getElementById("structure-dialog-body").innerHTML = enlarge.innerHTML;
+    structureDialog.showModal();
   });
 
   panel.addEventListener("submit", (event) => {

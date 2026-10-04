@@ -6,10 +6,11 @@ Toute écriture sur une piste passe par :func:`amend`, sous le verrou du µproje
 refuse une version attendue périmée (``expected_version``, l'``If-Match`` du front : jamais de
 fourche implicite), reporte **tout** le parent, applique le changement et ne commite que s'il y a
 une différence. Les écritures légères (statut, conclusion, étiquettes, entités, images de la
-structure, fusion, et celles des plugins qui écrivent dans une étude : cahier, galerie)
-sont des ``change`` passés à :func:`amend` ; une évolution (:func:`evolve`) aussi, formulaire
-d'intention revalidé. Bifurquer, c'est créer une nouvelle piste à partir d'une version
-(:func:`create` avec ``from_version``).
+structure, et celles des plugins qui écrivent dans une étude : le cahier) sont des ``change``
+passés à :func:`amend` ; une évolution (:func:`evolve`) aussi, formulaire d'intention revalidé.
+Bifurquer, c'est créer une nouvelle piste à partir d'une version (:func:`create` avec
+``from_version``) ; combiner deux études aussi : une nouvelle piste à deux parents (:func:`create`
+avec ``merge_of``).
 """
 
 from __future__ import annotations
@@ -50,11 +51,13 @@ CONTEXT_METADATA_KEY = "context"
 # d'avant le cahier unique restent lisibles, sans qu'aucune version soit réécrite : les vues de
 # l'ancien cahier (LEGACY_NOTEBOOK_KEY), les preuves Follow (``Experiment.evidence``) et ce que les
 # métadonnées rangeaient par id de preuve (LEGACY_EVIDENCE_KEYED_METADATA ; les images d'une preuve,
-# dans ATTACHMENTS_KEY, portent son ``evidence_id``). Le plugin notebook les convertit à la lecture et
-# les remplace au premier changement du cahier ; experiments n'en connaît que les ids - pour les
-# compter (le détail), les citer (la conclusion) et réunir deux cahiers (une fusion).
+# dans ATTACHMENTS_KEY, portent son ``evidence_id``), et les jeux de l'ancienne galerie d'images
+# externes (LEGACY_IMAGE_SETS_KEY). Le plugin notebook les convertit à la lecture et les remplace au
+# premier changement du cahier ; experiments n'en connaît que les ids - pour les compter (le détail)
+# et les citer (la conclusion).
 NOTEBOOK_KEY = "notebook_entries"
 LEGACY_NOTEBOOK_KEY = "data_notebook"
+LEGACY_IMAGE_SETS_KEY = "data_items"
 LEGACY_EVIDENCE_KEYED_METADATA = ("evidence_links", "evidence_extra")
 ATTACHMENTS_KEY = "attachments"
 _LINEAGE_FIELDS = {"id", "created_at", "author", "parents", "references"}
@@ -124,30 +127,37 @@ def _ids(items: Any) -> list[str]:
     return [item["id"] for item in items or [] if isinstance(item, dict) and isinstance(item.get("id"), str)]
 
 
-def notebook_entry_ids(version: follow.Experiment | follow.ExperimentBuilder) -> list[str]:
-    """Les ids des entrées du cahier de ``version`` (une version, ou un builder en cours), sans
-    doublon : celles enregistrées sous :data:`NOTEBOOK_KEY`, puis les données d'avant que le plugin
-    notebook convertit à la lecture - les vues de l'ancien cahier, puis les preuves Follow (une
-    preuve convertie garde son id)."""
+def notebook_entry_ids(version: follow.Experiment) -> list[str]:
+    """Les ids des entrées du cahier de ``version``, sans doublon : celles enregistrées sous :data:`NOTEBOOK_KEY`, puis les données d'avant que le plugin
+    notebook convertit à la lecture - les vues de l'ancien cahier, les preuves Follow, puis les jeux
+    de l'ancienne galerie d'images externes (une preuve ou un jeu converti garde son id)."""
     ids: list[str] = []
     for entry_id in [
         *_ids(version.metadata.get(NOTEBOOK_KEY)),
         *_ids(version.metadata.get(LEGACY_NOTEBOOK_KEY)),
         *(evidence.id for evidence in version.evidence),
+        *_ids(version.metadata.get(LEGACY_IMAGE_SETS_KEY)),
     ]:
         if entry_id not in ids:
             ids.append(entry_id)
     return ids
 
 
-def structure_diff(before: follow.Experiment, after: follow.Experiment) -> dict[str, Any]:
-    """``{entries}`` : Follow's leaf-by-leaf diff from ``before``'s structure to ``after``'s - or,
-    when one of them is given as pictures, ``{entries: [], summary}`` in plain French (position by
-    position, a reordering would read as "everything changed")."""
+def structure_diff(before_repo: follow.Repository, before: follow.Experiment, after_repo: follow.Repository, after: follow.Experiment) -> dict[str, Any]:
+    """``{entries, label_changes, param_changes}`` : Follow's leaf-by-leaf diff from ``before``'s
+    structure to ``after``'s (each read in its own repository, ``before_repo`` and ``after_repo``) -
+    or, when one of them is given as pictures, ``{entries: [], summary}`` in plain French (position
+    by position, a reordering would read as "everything changed") - and, apart, what changed to the
+    layer labels and to their grouping by brick (:func:`kinds.describe_label_changes`) and to the
+    declared parameters, which the geometry does not carry (:func:`kinds.describe_param_changes`).
+    The steps are matched by id (:func:`step_ids_of`), by position between two versions that share
+    none."""
+    compared = (before.metadata, after.metadata, step_ids_of(before_repo, before), step_ids_of(after_repo, after))
+    apart = {"label_changes": kinds.describe_label_changes(*compared), "param_changes": kinds.describe_param_changes(*compared)}
     summary = kinds.describe_image_changes(before.structure_type, before.structure, after.structure_type, after.structure)
     if summary is not None:
-        return {"entries": [], "summary": summary}
-    return follow.diff_structures(before.structure, after.structure).model_dump(mode="json")
+        return {"entries": [], "summary": summary, **apart}
+    return {**follow.diff_structures(before.structure, after.structure).model_dump(mode="json"), **apart}
 
 
 # -- l'identité des étapes -------------------------------------------------------------------------
@@ -242,13 +252,22 @@ def step_id_at(repo: follow.Repository, version: follow.Experiment, index: int) 
 
 def editable_process(repo: follow.Repository, version: follow.Experiment) -> dict[str, Any] | None:
     """Le procédé éditable de ``version`` (substrat, étapes, paramètres déclarés), chaque étape
-    portant son ``id`` (:func:`step_ids_of`) - ``None`` sans procédé éditable (une structure en
-    images)."""
+    portant son ``id`` (:func:`step_ids_of`), les étiquettes de couches (``layer_labels``, par
+    position d'étape comme les paramètres déclarés ; ``{}`` sans étiquette) et les briques dont les
+    étapes font partie (``bricks``, par positions d'étape ; ``[]`` sans brique) - ``None`` sans
+    procédé éditable (une structure en images)."""
     process = version.metadata.get("structureforge_process")
     if process is None:
         return None
     payload = copy.deepcopy(process)
-    payload["steps"] = [{"id": step_id, **step} for step_id, step in zip(step_ids_of(repo, version), payload.get("steps") or [])]
+    ids = step_ids_of(repo, version)
+    payload["steps"] = [{"id": step_id, **step} for step_id, step in zip(ids, payload.get("steps") or [])]
+    labels = version.metadata.get(simulation.LAYER_LABELS_METADATA_KEY)
+    position = {step_id: i for i, step_id in enumerate(ids)}
+    payload["layer_labels"] = {
+        str(position[step_id]): copy.deepcopy(label) for step_id, label in (labels if isinstance(labels, dict) else {}).items() if step_id in position
+    }
+    payload["bricks"] = simulation.bricks_json(simulation.bricks_from_metadata(version.metadata.get(simulation.BRICKS_METADATA_KEY), ids))
     return payload
 
 
@@ -343,8 +362,6 @@ def _unchanged(builder: follow.ExperimentBuilder, parent: follow.Experiment, car
     métadonnées reportées sont ``carried`` (:func:`_metadata_with_step_ids`). Les ids d'étape que
     ``parent`` n'avait pas écrits comptent ainsi comme écrits : les recevoir, sans rien changer
     d'autre, ne fait pas une version."""
-    if len(builder.parents) > 1:
-        return False
     candidate = follow.Experiment(
         id="pending",
         parents=builder.parents,
@@ -484,12 +501,18 @@ class _PreparedStructure:
         self.requested_step_ids: list[str | None] = []
         self.plan: campaigns.VariantPlan | None = None
         self.factor_indexes: list[int] = []
+        self.labels: dict[int, simulation.LayerLabel] = {}
+        self.bricks: list[simulation.ProcessBrick] = []
+        # par entité, la position de l'étape qui a créé chaque couche de la structure (-1 : le substrat)
+        self.layer_origins: list[list[int]] = []
         if isinstance(payload, ImagesPayload):
             self.structure = kinds.structure_image_from_input(slug, payload.images)
             self.steps: list = []
             self.metadata[kinds.IMAGE_REVISION_KEY] = kinds.new_image_revision()
             return
         declared = simulation.declared_params_by_index(payload.declared_params)
+        self.labels = simulation.layer_labels_by_index(payload.layer_labels, len(payload.steps))
+        self.bricks = simulation.checked_bricks(payload.bricks, len(payload.steps))
         self.steps = follow_adapter.to_steps(payload.steps)
         self.requested_step_ids = payload.step_ids
         self.metadata["structureforge_process"] = simulation.process_metadata(payload.substrate, payload.steps, declared)
@@ -498,9 +521,10 @@ class _PreparedStructure:
             if start is not None and not any(factor_ids):
                 reader, source = start
                 factor_ids = list(_settled_step_ids(factor_ids, self.metadata["structureforge_process"], source, step_ids_of(reader, source)))
-            result = campaigns.generate_campaign_variants(payload.substrate, payload.steps, payload.plan, declared, factor_ids)
+            result = campaigns.generate_campaign_variants(payload.substrate, payload.steps, payload.plan, declared, factor_ids, self.labels, self.bricks)
             self.structure = kinds.ProcessLot(entries=result.entries)
             self.campaign_size = len(result.entries)
+            self.layer_origins = result.layer_origins
             self.plan = payload.plan
             self.factor_indexes = result.factor_indexes
             self.metadata.update(
@@ -513,32 +537,47 @@ class _PreparedStructure:
                 }
             )
             return
-        geometry, _frames, _materials = simulation.run_simulation(payload.substrate, payload.steps)
-        self.structure = follow_adapter.to_structure(geometry)
+        simulated = simulation.simulate_process(payload.substrate, payload.steps)
+        self.structure = follow_adapter.to_structure(simulated.geometry)
+        self.layer_origins = [simulated.layer_origins[-1]]
 
     def step_metadata(self, parent: follow.Experiment | None, parent_ids: list[str]) -> dict[str, Any]:
         """What the new version records of its steps' ids, settled against ``parent`` (the version
         it continues or forks from, ``None`` for a brand-new line), whose steps carry
         ``parent_ids`` (:func:`step_ids_of`) - see :func:`_settled_step_ids` -
-        and, for a campaign, its plan, whose factors name their step by that final id. Nothing for
-        pictures."""
+        and, for a campaign, its plan, whose factors name their step by that final id; with layer
+        labels, the labels and the step that created each layer of each entity, by those ids too
+        (nothing without labels: a version without them keeps its former shape); with bricks, the
+        steps each one groups, by those ids (nothing without bricks either). Nothing for pictures."""
         if self.kind == "images":
             return {}
         step_ids = _settled_step_ids(self.requested_step_ids, self.metadata["structureforge_process"], parent, parent_ids)
         recorded: dict[str, Any] = {simulation.STEP_IDS_METADATA_KEY: step_ids}
         if self.plan is not None:
             recorded["campaign_plan"] = campaigns.plan_metadata(self.plan, self.factor_indexes, step_ids)
+        if self.labels:
+            recorded[simulation.LAYER_LABELS_METADATA_KEY] = {
+                step_ids[i]: label.model_dump(mode="json") for i, label in sorted(self.labels.items())
+            }
+            recorded[simulation.LAYER_STEPS_METADATA_KEY] = [
+                [None if origin == simulation.SUBSTRATE_ORIGIN else step_ids[origin] for origin in origins] for origins in self.layer_origins
+            ]
+        if self.bricks:
+            recorded[simulation.BRICKS_METADATA_KEY] = simulation.bricks_metadata(self.bricks, step_ids)
         return recorded
 
 
 def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.Experiment:
-    """Une nouvelle piste : à partir de rien, ou d'une version existante (``from_version`` : la
-    filiation est gardée - référence « baseline », diff, graphe). Une piste partie d'une version en
-    reprend, faute de mieux dans la requête, les objectifs, le contexte et l'entité suivie - pas
-    les preuves, les étiquettes ni la conclusion : c'est une nouvelle étude. Titre, intention et
-    entité physique obligatoires ; le formulaire d'intention du µprojet s'applique ; la toute
-    première étude d'un µprojet devient sa première ref."""
+    """Une nouvelle piste : à partir de rien, d'une version existante (``from_version`` : la
+    filiation est gardée - référence « baseline », diff, graphe), ou de deux études combinées
+    (``merge_of`` : :func:`combine`). Une piste partie d'une version en reprend, faute de mieux dans
+    la requête, les objectifs, le contexte et l'entité suivie - pas le cahier de données, les
+    étiquettes ni la conclusion : c'est une nouvelle étude. Titre, intention et entité physique
+    obligatoires ; le formulaire d'intention du µprojet s'applique ; la toute première étude d'un
+    µprojet devient sa première ref."""
     _require_title_and_intent(body)
+    if body.merge_of is not None:
+        return combine(slug, body, author=author)
     start = None
     if body.from_version and isinstance(body.structure, CampaignPayload) and not any(body.structure.step_ids):
         reader = get_repository(slug)
@@ -564,7 +603,7 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
             _set_objectives(builder, body.objectives)
         builder.metadata.update(prepared.metadata)
         builder.metadata.update(prepared.step_metadata(source, step_ids_of(repo, source) if source is not None else []))
-        builder.metadata["physical_tracking"] = _launch_tracking(prepared, entities)
+        builder.metadata["physical_tracking"] = _launch_tracking(prepared.kind, prepared.campaign_size, entities)
         apply_context(builder.metadata, body.context)
         builder.form_answers = dict(body.form_answers)
         experiment = _commit(builder, "Impossible de lancer cette expérience")
@@ -580,20 +619,87 @@ def _source_of(repo: follow.Repository, origin: FromVersion) -> follow.Experimen
         raise NotFound(f"Version de départ introuvable : {exc}", code="source_not_found") from exc
 
 
-def _launch_tracking(prepared: _PreparedStructure, entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The physical tracking of a new line of study: at least one named sample; exactly one slot
-    per variant of a campaign (the samples given fill the first ones), one sample for pictures."""
-    if prepared.kind == "images":
+def _launch_tracking(kind: str, campaign_size: int, entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The physical tracking of a new line of study whose structure is of ``kind`` (``process``,
+    ``campaign`` of ``campaign_size`` variants, or ``images``): at least one named sample; exactly
+    one slot per variant of a campaign (the samples given fill the first ones), one sample for
+    pictures."""
+    if kind == "images":
         tracked = first_tracked_entity(entities)
         if not tracked:
             raise _entity_required("pour lancer une expérience")
         return tracked
     if not any(e["sample_id"] for e in entities):
-        raise _entity_required("pour lancer une campagne" if prepared.kind == "campaign" else "pour lancer une expérience")
-    if prepared.kind == "campaign":
-        padding = [{"sample_id": None, "location": None}] * max(0, prepared.campaign_size - len(entities))
-        return (entities + padding)[: prepared.campaign_size]
+        raise _entity_required("pour lancer une campagne" if kind == "campaign" else "pour lancer une expérience")
+    if kind == "campaign":
+        padding = [{"sample_id": None, "location": None}] * max(0, campaign_size - len(entities))
+        return (entities + padding)[:campaign_size]
     return entities
+
+
+# Ce qui, dans les métadonnées d'une version, décrit sa structure (le procédé du constructeur, les ids
+# de ses étapes, une campagne, la révision d'une structure en images) : ce qu'une combinaison reprend
+# de sa première étude, avec la structure elle-même.
+_STRUCTURE_METADATA_KEYS = (*kinds.DRAWN_STRUCTURE_METADATA_KEYS, kinds.IMAGE_REVISION_KEY)
+
+
+def _structure_kind(structure_type: str) -> str:
+    kind = kinds.KINDS.get(structure_type)
+    return "images" if kind is kinds.IMAGES else "campaign" if kind is kinds.CAMPAIGN else "process"
+
+
+def combine(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.Experiment:
+    """Combiner deux études du µprojet (``body.merge_of`` : deux versions, la pointe de chaque piste
+    par défaut) : une **nouvelle piste** C dont elles sont les deux parents (« baseline » pour la
+    première, « merge_source » pour la seconde : la filiation et l'évolution des structures montrent
+    les deux). Sa structure est la structure combinée, selon la règle de Follow sans résolution de
+    conflit : celle de la première étude (structure, protocole, et ce que ses métadonnées disent de
+    la structure, ids d'étape compris) ; les deux doivent être deux versions différentes, chacune de
+    sa piste (pas d'avant sa fourche), et du même type de structure. C a ses
+    propres titre, intention, hypothèse et plaque (obligatoires comme pour un lancement) ; objectifs
+    et contexte, faute de mieux dans la requête, viennent de la première étude. Son cahier démarre
+    vide, sans étiquettes ni conclusion : les données restent sur A et B, attachées à leurs plaques.
+    A et B ne bougent pas (aucune version ne s'y ajoute).
+
+    Follow sait faire un commit à deux parents sur une nouvelle branche :
+    ``Repository.merge(a, b, branch=<nouvelle piste>)`` - la voie retenue."""
+    first, second = body.merge_of or []
+    entities = clean_entity_entries(body.entities)
+    with writing(slug) as repo:
+        a, b = _source_of(repo, first), _source_of(repo, second)
+        if first.experiment_id == second.experiment_id or a.id == b.id:
+            raise InvalidInput("Choisissez deux études différentes à combiner.", code="same_experiment")
+        # l'histoire d'une piste partie d'une version contient celles d'avant sa fourche, qui ne sont
+        # pas à elle : combiner avec l'une d'elles l'attribuerait à la mauvaise piste
+        for origin, version in ((first, a), (second, b)):
+            if version.branch != origin.experiment_id:
+                raise InvalidInput(
+                    f"Cette version précède la piste « {origin.experiment_id} » : choisissez une de ses propres versions.",
+                    code="version_before_line",
+                )
+        if a.structure_type != b.structure_type:
+            raise InvalidInput(
+                "Ces deux expériences ne peuvent pas être combinées (par exemple une expérience simple et une campagne).",
+                code="different_structure_kinds",
+            )
+        branch = _new_branch_name(slug, repo, body.branch, body.title)
+        builder = repo.merge(
+            a.id, b.id, branch=branch, title=body.title.strip(), intent=body.intent.strip(), author=author, hypothesis=body.hypothesis or None
+        )
+        structure = _metadata_with_step_ids(repo, a)
+        builder.metadata = {key: structure[key] for key in _STRUCTURE_METADATA_KEYS if key in structure}
+        if body.objectives:
+            _set_objectives(builder, body.objectives)
+        elif "objective_verification" in a.metadata:
+            builder.metadata["objective_verification"] = copy.deepcopy(a.metadata["objective_verification"])
+        if CONTEXT_METADATA_KEY in a.metadata:
+            builder.metadata[CONTEXT_METADATA_KEY] = a.metadata[CONTEXT_METADATA_KEY]
+        apply_context(builder.metadata, body.context)
+        builder.metadata["physical_tracking"] = _launch_tracking(
+            _structure_kind(a.structure_type), kinds.entity_count(a.structure_type, a.structure), entities
+        )
+        builder.form_answers = dict(body.form_answers)
+        return _commit(builder, "Impossible de combiner ces deux études")
 
 
 def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, expected_version: str | None) -> follow.Experiment:
@@ -625,8 +731,10 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
         builder.structure = prepared.structure
         builder.steps = prepared.steps
         if prepared.kind == "images":
+            # les mêmes images (leurs annotations n'y comptent pas) : la même structure
             same = kinds.is_image_structure(parent.structure_type) and bool(parent.metadata.get(kinds.IMAGE_REVISION_KEY)) and (
-                prepared.structure.model_dump()["images"] == kinds.structure_images(parent.structure_type, parent.structure)
+                kinds.without_annotations(prepared.structure.model_dump()["images"])
+                == kinds.without_annotations(kinds.structure_images(parent.structure_type, parent.structure))
             )
             for key in kinds.DRAWN_STRUCTURE_METADATA_KEYS:
                 builder.metadata.pop(key, None)
@@ -640,10 +748,18 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
             builder.metadata["physical_tracking"] = tracked
         else:
             process = prepared.metadata["structureforge_process"]
-            same = parent.structure_type == ProcessStructure.registry_key() and versioning.structure_signature(parent.metadata) == process
+            # les étiquettes de couches et les briques ne changent pas la structure, ni l'unité ajoutée
+            # à un paramètre déclaré : la conclusion reste
+            same = parent.structure_type == ProcessStructure.registry_key() and versioning.same_settings(
+                parent.metadata.get("structureforge_process"), process
+            )
             # continuing an image-mode experiment in the builder: its structure is drawn from now on
             builder.metadata.pop(kinds.IMAGE_REVISION_KEY, None)
             builder.metadata["structureforge_process"] = process
+            # les étiquettes et les briques sont celles de cette évolution (aucune : il n'y en a plus)
+            builder.metadata.pop(simulation.LAYER_LABELS_METADATA_KEY, None)
+            builder.metadata.pop(simulation.LAYER_STEPS_METADATA_KEY, None)
+            builder.metadata.pop(simulation.BRICKS_METADATA_KEY, None)
             builder.metadata.update(prepared.step_metadata(parent, parent_ids))
             if entities:
                 builder.metadata["physical_tracking"] = entities
@@ -743,8 +859,9 @@ def replace_structure_images(
     slug: str, experiment_id: str, images: list[StructureImageInput], *, author: str, expected_version: str | None
 ) -> follow.Experiment:
     """Les images d'une structure donnée en images - tout le jeu, dans l'ordre de lecture : un dessin
-    plus propre, la coupe TEM une fois faite, une légende... Même révision de structure : pas de
-    nouvelle version de structure. Une structure dessinée change par une évolution."""
+    plus propre, la coupe TEM une fois faite, une légende, les annotations d'une image... Même
+    révision de structure : pas de nouvelle version de structure. Une structure dessinée change par
+    une évolution."""
     image = kinds.structure_image_from_input(slug, images)
 
     def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
@@ -756,66 +873,6 @@ def replace_structure_images(
         builder.structure = image
 
     return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
-
-
-def merge(slug: str, experiment_id: str, other_experiment_id: str, *, author: str, expected_version: str | None) -> follow.Experiment:
-    """Réunir deux pistes : une nouvelle version de ``experiment_id`` dont l'autre pointe est le
-    second parent. La structure et le protocole restent ceux de cette piste ; les cahiers de données
-    des deux côtés sont réunis (:func:`_merge_notebook`)."""
-
-    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
-        other = tip_of(builder.repo, other_experiment_id)
-        if other.id == parent.id:
-            raise InvalidInput("Choisissez deux expériences différentes.", code="same_experiment")
-        if other.structure_type != parent.structure_type:
-            raise InvalidInput(
-                "Ces deux expériences ne peuvent pas être combinées (par exemple une expérience simple et une campagne).",
-                code="different_structure_kinds",
-            )
-        builder.parents.append(other.id)
-        builder.add_reference(role="merge_source", experiment_id=other.id, label=f"{other.branch}: {other.title}")
-        builder.metadata.pop(HOLD_KEY, None)
-        _merge_notebook(builder, other)
-
-    return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
-
-
-def _merge_notebook(builder: follow.ExperimentBuilder, other: follow.Experiment) -> None:
-    """Reporte dans ``builder`` (cette piste) les entrées du cahier de ``other`` qu'il n'a pas déjà,
-    dédoublonnées par id (:func:`notebook_entry_ids` : une entrée des deux côtés garde la forme de
-    cette piste, quel que soit le format où chaque côté la range), chacune dans son format : une
-    entrée enregistrée, une vue de l'ancien cahier, une preuve Follow avec ce que les métadonnées
-    rangent pour elle. Chaque format reçoit celles de l'autre piste après celles-ci, et l'ordre lu
-    reste celui des formats (:func:`notebook_entry_ids`) : si cette piste est encore à l'ancien format,
-    les entrées enregistrées de l'autre passent devant les siennes - experiments ne convertit pas
-    les données d'avant, c'est le plugin notebook qui le fait. Ce qui y désigne une preuve absente
-    (métadonnées par id, images d'une preuve) est retiré."""
-    known = set(notebook_entry_ids(builder))
-
-    for key in (NOTEBOOK_KEY, LEGACY_NOTEBOOK_KEY):
-        added = [copy.deepcopy(item) for item in other.metadata.get(key) or [] if isinstance(item, dict) and item.get("id") not in known]
-        if added:
-            builder.metadata[key] = [*builder.metadata.get(key, []), *added]
-            known.update(item["id"] for item in added)
-
-    added_evidence = [evidence for evidence in other.evidence if evidence.id not in known]
-    builder.evidence = [*builder.evidence, *added_evidence]
-    kept = {evidence.id for evidence in builder.evidence}
-    added_ids = {evidence.id for evidence in added_evidence}
-
-    for key in LEGACY_EVIDENCE_KEYED_METADATA:
-        if key not in builder.metadata and key not in other.metadata:
-            continue
-        merged = {**copy.deepcopy(other.metadata.get(key, {})), **builder.metadata.get(key, {})}
-        builder.metadata[key] = {evidence_id: value for evidence_id, value in merged.items() if evidence_id in kept}
-
-    attachments = list(builder.metadata.get(ATTACHMENTS_KEY, []))
-    present = {attachment.get("id") for attachment in attachments}
-    attachments += [
-        copy.deepcopy(a) for a in other.metadata.get(ATTACHMENTS_KEY, []) if a.get("evidence_id") in added_ids and a.get("id") not in present
-    ]
-    if attachments or ATTACHMENTS_KEY in builder.metadata:
-        builder.metadata[ATTACHMENTS_KEY] = [a for a in attachments if a.get("evidence_id") is None or a.get("evidence_id") in kept]
 
 
 def delete(slug: str, experiment_id: str, *, expected_version: str | None) -> list[str]:

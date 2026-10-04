@@ -1,7 +1,8 @@
 /* Le cahier de données de la fiche (onglet « Données ») : toutes les données de l'étude, le cahier de
    labo repris tel quel dans le rapport téléchargé. Deux types d'entrée (notebook/service.py), une
    seule forme : PRISM (des vues DataViz sur des instantanés des mesures des plaques) et chargée à la
-   main (valeur, texte, tableau, images annotées, fichiers, liens - dont les anciennes preuves).
+   main (valeur, texte, tableau, images, fichiers, liens - dont les anciennes preuves) ; toute image
+   montrée, téléversée ou externe, porte ses annotations (kernel/static/annotations.js).
 
    Chaque entrée montre son titre, son type, ses plaques, son objectif, le stepper du procédé (les
    étapes mesurées en rouge, notebook/static/stepper.js) et ses mesures côte à côte, une par étape,
@@ -107,20 +108,33 @@
 
   // --- écritures -----------------------------------------------------------------------------------
 
+  // L'image qu'une annotation désigne, par une clé qui ne bouge pas quand on réordonne les images :
+  // un fichier téléversé (son id) ou une image externe (son chemin).
+  const imageKey = (a) => (a.attachment_id ? `a:${a.attachment_id}` : a.external_image ? `e:${a.external_image}` : null);
+  const keyed = (key, shape) => (key.startsWith("a:") ? { attachment_id: key.slice(2), ...shape } : { external_image: key.slice(2), ...shape });
+
+  function measurementImageKeys(m) {
+    return new Set([
+      ...(m.attachments || []).filter((a) => (a.content_type || "").startsWith("image/")).map((a) => `a:${a.id}`),
+      ...(m.external_images || []).map((i) => `e:${i.path}`),
+    ]);
+  }
+
   // Une mesure telle qu'une écriture la renvoie : sans ce que le serveur calcule (étape retirée,
   // résumé de l'instantané, url et description des fichiers) ; une annotation qui ne désigne aucune
   // image de la mesure (une ancienne preuve sans image) n'est pas renvoyée.
   function measurementInput(kind, m) {
     if (kind === "prism") return { step_id: m.step_id, snapshot_id: m.snapshot_id, component: m.component, options: m.options || {} };
-    const images = new Set((m.attachments || []).filter((a) => (a.content_type || "").startsWith("image/")).map((a) => a.id));
+    const images = measurementImageKeys(m);
     return {
       step_id: m.step_id,
       value: m.value || null,
       text: m.text || null,
       table: m.table || null,
       attachments: (m.attachments || []).map((a) => ({ id: a.id, caption: a.caption || null })),
+      external_images: (m.external_images || []).map((i) => ({ path: i.path, caption: i.caption || null })),
       links: (m.links || []).map((l) => ({ url: l.url, label: l.label || null })),
-      annotations: (m.annotations || []).filter((a) => images.has(a.attachment_id) && (a.type === "arrow" || a.type === "box")),
+      annotations: (m.annotations || []).filter((a) => images.has(imageKey(a)) && (a.type === "arrow" || a.type === "box")),
     };
   }
 
@@ -130,63 +144,44 @@
 
   // --- une mesure ----------------------------------------------------------------------------------
 
-  // Les annotations d'une image (en % de l'image), dessinées une fois l'image chargée, dans un repère
-  // aux proportions de l'image : flèches et cadres gardent leur forme. Pas de <marker> (le rapport
-  // retire les id) : la pointe d'une flèche est un triangle.
-  function annotationsSvg(annotations, width, height) {
-    const ratio = height / width;
-    const shapes = annotations
-      .map((a) => {
-        const x = a.x;
-        const y = a.y * ratio;
-        const x2 = a.x2 ?? a.x;
-        const y2 = (a.y2 ?? a.y) * ratio;
-        if (a.type === "arrow") {
-          const angle = Math.atan2(y2 - y, x2 - x);
-          const head = (side) => `${x2 - 3.2 * Math.cos(angle + side)},${y2 - 3.2 * Math.sin(angle + side)}`;
-          return `<g class="nb-annot"><line class="nb-annot__halo" x1="${x}" y1="${y}" x2="${x2}" y2="${y2}"/><line x1="${x}" y1="${y}" x2="${x2}" y2="${y2}"/><polygon points="${x2},${y2} ${head(0.45)} ${head(-0.45)}"/></g>`;
-        }
-        const rect = `x="${Math.min(x, x2)}" y="${Math.min(y, y2)}" width="${Math.abs(x2 - x)}" height="${Math.abs(y2 - y)}"`;
-        return `<g class="nb-annot nb-annot--box"><rect class="nb-annot__halo" ${rect}/><rect ${rect}/></g>`;
-      })
-      .join("");
-    return `<svg class="nb-annots" viewBox="0 0 100 ${100 * ratio}" aria-hidden="true">${shapes}</svg>`;
-  }
-
-  function annotationListHtml(annotations, editable) {
-    if (!annotations.length) return "";
-    return `<ol class="nb-annot-list">${annotations
-      .map(
-        (a, i) => `<li>${a.type === "arrow" ? "Flèche" : "Cadre"}${a.label ? ` - ${escapeHtml(a.label)}` : ""}${
-          editable ? ` <button type="button" class="nb-annot-remove" data-remove-annotation="${i}" data-report-hide aria-label="Retirer l'annotation ${i + 1}">×</button>` : ""
-        }</li>`
-      )
-      .join("")}</ol>`;
-  }
-
-  function imageHtml(entry, m, attachment, editable) {
-    const mine = (m.annotations || []).filter((a) => a.attachment_id === attachment.id);
+  // Une image de la mesure, téléversée : ses annotations (ImageAnnotations, kernel/static/annotations.js)
+  // sont montées sous elle, avec leurs outils pour un éditeur.
+  function imageHtml(attachment) {
     return `
-      <figure class="nb-figure" data-attachment="${escapeHtml(attachment.id)}">
-        <div class="nb-figure__frame${editable ? " is-editable" : ""}">
+      <figure class="nb-figure" data-image="a:${escapeHtml(attachment.id)}">
+        <div class="nb-figure__frame annot-frame">
           <img src="${escapeHtml(attachment.url)}" alt="${escapeHtml(attachment.caption || attachment.filename || "Image de la mesure")}" draggable="false">
         </div>
         ${attachment.caption ? `<figcaption class="nb-figure__caption">${escapeHtml(attachment.caption)}</figcaption>` : ""}
-        <div class="nb-figure__annotations">${annotationListHtml(mine, editable)}</div>
-        ${
-          editable
-            ? `<div class="nb-annot-tools" data-report-hide>
-                 <button type="button" class="nb-btn" data-tool="arrow" aria-pressed="false">Flèche</button>
-                 <button type="button" class="nb-btn" data-tool="box" aria-pressed="false">Cadre</button>
-                 <button type="button" class="btn btn-primary nb-annot-save" hidden>Enregistrer les annotations</button>
-                 <span class="nb-annot-hint" role="status"></span>
-               </div>`
-            : ""
-        }
+        <div class="nb-figure__annotations"></div>
       </figure>`;
   }
 
-  function manualContentHtml(entry, m, editable) {
+  // Une image externe (TEM, scan) : référencée à son emplacement sur le serveur, servie par l'entrée
+  // et son rang (`url`) ; son chemin reste affiché, et une image que le serveur ne peut pas montrer
+  // dit pourquoi.
+  const EXTERNAL_STATUS = {
+    missing: "Fichier déplacé ou supprimé",
+    unsupported: "Format que le navigateur n'affiche pas",
+    forbidden: "Hors des dossiers autorisés",
+  };
+
+  function externalImageHtml(image) {
+    const shown =
+      image.status === "ok"
+        ? `<img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.caption || image.name || "Image externe")}" draggable="false">`
+        : `<div class="nb-figure__unavailable">${escapeHtml(EXTERNAL_STATUS[image.status] || "Image indisponible")}</div>`;
+    // une image que le serveur ne peut pas montrer ne s'annote pas (ses annotations restent rangées)
+    return `
+      <figure class="nb-figure nb-figure--external"${image.status === "ok" ? ` data-image="e:${escapeHtml(image.path)}"` : ""}>
+        <div class="nb-figure__frame annot-frame">${shown}</div>
+        ${image.caption ? `<figcaption class="nb-figure__caption">${escapeHtml(image.caption)}</figcaption>` : ""}
+        <div class="nb-figure__path" title="${escapeHtml(image.path)}">${escapeHtml(image.path)}</div>
+        <div class="nb-figure__annotations"></div>
+      </figure>`;
+  }
+
+  function manualContentHtml(m) {
     const value = m.value
       ? `<div class="nb-value">${m.value.name ? `<span class="nb-value__name">${escapeHtml(m.value.name)}</span>` : ""}<span class="nb-value__number">${escapeHtml(String(m.value.number))}</span>${
           m.value.unit ? `<span class="nb-value__unit">${escapeHtml(m.value.unit)}</span>` : ""
@@ -201,7 +196,11 @@
     const attachments = m.attachments || [];
     const images = attachments.filter((a) => (a.content_type || "").startsWith("image/"));
     const documents = attachments.filter((a) => !(a.content_type || "").startsWith("image/"));
-    const figures = images.length ? `<div class="nb-figures" data-count="${Math.min(images.length, 2)}">${images.map((a) => imageHtml(entry, m, a, editable)).join("")}</div>` : "";
+    const figures = images.length ? `<div class="nb-figures" data-count="${Math.min(images.length, 2)}">${images.map(imageHtml).join("")}</div>` : "";
+    const external = m.external_images || [];
+    const externalFigures = external.length
+      ? `<div class="nb-figures" data-count="${Math.min(external.length, 2)}">${external.map(externalImageHtml).join("")}</div>`
+      : "";
     const files = documents.length
       ? `<ul class="nb-files">${documents
           .map(
@@ -218,11 +217,11 @@
           )
           .join("")}</ul>`
       : "";
-    const body = value + text + table + figures + files + links;
+    const body = value + text + table + figures + externalFigures + files + links;
     return body || `<p class="help" style="margin:0;">Mesure faite à cette étape, sans contenu joint.</p>`;
   }
 
-  function measurementHtml(entry, m, { titled, editable }) {
+  function measurementHtml(entry, m, { titled }) {
     const title = measurementTitle(m);
     const snap = m.snapshot || {};
     const head = titled
@@ -233,7 +232,7 @@
         ? `<div class="nb-measure__viz"><p class="help">Chargement des données…</p></div>${
             snap.fetched_at ? `<div class="nb-measure__src">données du ${escapeHtml(formatDate(snap.fetched_at))}${snap.row_count != null ? ` · ${snap.row_count} ligne${snap.row_count > 1 ? "s" : ""}` : ""}</div>` : ""
           }`
-        : manualContentHtml(entry, m, editable);
+        : manualContentHtml(m);
     return `<section class="nb-measure" data-step="${escapeHtml(m.step_id || "")}">${head}${content}</section>`;
   }
 
@@ -278,7 +277,7 @@
           <div class="nb-entry__viz">
             <div class="nb-measures" data-count="${Math.min(measurements.length, 3)}">${
               measurements.length
-                ? measurements.map((m) => measurementHtml(entry, m, { titled: measurements.length > 1 || situated, editable: canEdit && !prism })).join("")
+                ? measurements.map((m) => measurementHtml(entry, m, { titled: measurements.length > 1 || situated })).join("")
                 : `<p class="help" style="margin:0;">Pas encore de mesure.</p>`
             }</div>
             ${entry.interpretation ? `<div class="nb-interpretation"><div class="nb-entry__note-label">Interprétation</div><p class="nb-note-text">${escapeHtml(entry.interpretation)}</p></div>` : ""}
@@ -325,94 +324,31 @@
           });
       });
     }
-    article.querySelectorAll(".nb-figure").forEach((figure) => wireFigure(figure, entry));
+    // toute image montrée, téléversée ou externe, porte ses annotations
+    article.querySelectorAll(".nb-figure[data-image]").forEach((figure) => mountFigure(figure, entry));
     if (ctx.canEdit) wireEntry(article, entry, position);
   }
 
-  // Une image : ses annotations dessinées une fois chargée ; pour un éditeur, poser une flèche (clic
-  // au départ puis à l'arrivée) ou un cadre (cliquer-glisser), retirer une annotation, puis enregistrer
-  // (les annotations de la mesure, par un PATCH de ses mesures).
-  function wireFigure(figure, entry) {
+  // Une image : ses annotations (ImageAnnotations) ; un éditeur les pose, les légende et les retire,
+  // puis les enregistre - celles de cette image remplacées dans la mesure, par un PATCH de ses mesures.
+  function mountFigure(figure, entry) {
     const stepId = figure.closest(".nb-measure").dataset.step || null;
     const measurement = (entry.measurements || []).find((m) => (m.step_id || null) === stepId);
-    const attachmentId = figure.dataset.attachment;
-    const frame = figure.querySelector(".nb-figure__frame");
-    const img = frame.querySelector("img");
-    const others = (measurement.annotations || []).filter((a) => a.attachment_id !== attachmentId);
-    let local = (measurement.annotations || []).filter((a) => a.attachment_id === attachmentId);
-    const editable = frame.classList.contains("is-editable");
-
-    const draw = () => {
-      frame.querySelector(".nb-annots")?.remove();
-      if (img.naturalWidth && local.length) frame.insertAdjacentHTML("beforeend", annotationsSvg(local, img.naturalWidth, img.naturalHeight));
-      figure.querySelector(".nb-figure__annotations").innerHTML = annotationListHtml(local, editable);
-    };
-    if (img.complete && img.naturalWidth) draw();
-    else img.addEventListener("load", draw, { once: true });
-    if (!editable) return;
-
-    const tools = figure.querySelector(".nb-annot-tools");
-    const hint = tools.querySelector(".nb-annot-hint");
-    const save = tools.querySelector(".nb-annot-save");
-    let tool = null;
-    let start = null;
-    const setTool = (next) => {
-      tool = next;
-      start = null;
-      tools.querySelectorAll("[data-tool]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tool === tool)));
-      frame.classList.toggle("is-drawing", Boolean(tool));
-      hint.textContent = tool === "arrow" ? "Cliquez le départ puis l'arrivée de la flèche." : tool === "box" ? "Cliquez-glissez pour dessiner le cadre." : "";
-    };
-    const changed = () => {
-      save.hidden = false;
-      draw();
-    };
-    const at = (event) => {
-      const rect = img.getBoundingClientRect();
-      return {
-        x: Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100)),
-        y: Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100)),
-      };
-    };
-    const finish = (shape) => {
-      const label = window.prompt("Libellé de l'annotation (facultatif)");
-      local = [...local, { attachment_id: attachmentId, ...shape, label: (label || "").trim() || null }];
-      setTool(null);
-      changed();
-    };
-    tools.querySelectorAll("[data-tool]").forEach((btn) => btn.addEventListener("click", () => setTool(tool === btn.dataset.tool ? null : btn.dataset.tool)));
-    frame.addEventListener("pointerdown", (event) => {
-      if (tool !== "box") return;
-      event.preventDefault();
-      start = at(event);
-    });
-    frame.addEventListener("pointerup", (event) => {
-      if (tool !== "box" || !start) return;
-      const end = at(event);
-      if (Math.abs(end.x - start.x) < 1 && Math.abs(end.y - start.y) < 1) return; // un simple clic : pas de cadre
-      finish({ type: "box", x: start.x, y: start.y, x2: end.x, y2: end.y });
-    });
-    frame.addEventListener("click", (event) => {
-      if (tool !== "arrow") return;
-      const point = at(event);
-      if (!start) {
-        start = point;
-        hint.textContent = "Cliquez l'arrivée de la flèche.";
-      } else finish({ type: "arrow", x: start.x, y: start.y, x2: point.x, y2: point.y });
-    });
-    figure.querySelector(".nb-figure__annotations").addEventListener("click", (event) => {
-      const btn = event.target.closest("[data-remove-annotation]");
-      if (!btn) return;
-      local = local.filter((_, i) => i !== Number(btn.dataset.removeAnnotation));
-      changed();
-    });
-    save.addEventListener("click", () => {
-      save.disabled = true;
-      writeEntry(entry, {
-        measurements: entry.measurements.map((m) => measurementInput(entry.kind, m === measurement ? { ...m, annotations: [...others, ...local] } : m)),
-      }).then((done) => {
-        if (!done) save.disabled = false;
-      });
+    const key = figure.dataset.image;
+    const mine = (measurement.annotations || []).filter((a) => imageKey(a) === key);
+    const img = figure.querySelector("img");
+    ImageAnnotations.mount(figure.querySelector(".nb-figure__annotations"), {
+      img,
+      annotations: mine,
+      editable: ctx.canEdit && entry.kind === "manual",
+      name: img.getAttribute("alt"),
+      onSave: (shapes) => {
+        const others = (measurement.annotations || []).filter((a) => imageKey(a) !== key);
+        const annotations = [...others, ...shapes.map((shape) => keyed(key, shape))];
+        return writeEntry(entry, {
+          measurements: entry.measurements.map((m) => measurementInput(entry.kind, m === measurement ? { ...m, annotations } : m)),
+        });
+      },
     });
   }
 

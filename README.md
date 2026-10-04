@@ -32,16 +32,22 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
 - **Piste et versions.** Une expérience est une **piste** (une branche Follow, nommée d'après son
   titre : `epitaxie-a-20-nm`). Chaque écriture crée une **version** immuable (`exp_<hex>`) ; la
   piste désigne toujours sa dernière version. Partir d'une version existante crée une nouvelle
-  piste (fourche explicite) ; deux pistes peuvent se fusionner.
+  piste (fourche explicite). **Combiner** deux études (« Actions avancées » de la fiche, puis
+  « Combiner… ») crée une nouvelle étude, issue des deux (le graphe de filiation et l'évolution des
+  structures montrent ses deux parents), avec la structure de la première, son titre (proposé
+  « A + B »), son intention, son hypothèse et une nouvelle plaque ; son cahier démarre vide et les
+  deux études ne bougent pas.
 - **Numéro de version.** Chaque version porte un numéro `X.Y.Z` calculé depuis la structure
   (`experiments/versioning.py`) : majeur si le substrat ou la suite d'étapes change, mineur si un
-  paramètre d'étape change, correctif si seul un nom d'étape change.
+  paramètre d'étape change, correctif si seul un nom d'étape, l'unité ajoutée à un paramètre
+  déclaré ou une étiquette de couche change ; regrouper des étapes en brique ne change pas la
+  version (au plus un correctif, quand cela regroupe des étiquettes).
 - **Ref.** Une ref est une version promue en point de départ réutilisable (une étiquette Follow
   nommée, « ref vX.Y.Z » par défaut), propre au µprojet. Un editor peut la renommer ou la retirer ;
   la version, elle, reste.
 - **Évolution des structures.** La page `/microprojets/{slug}/evolution` (bouton « Évolution des
   structures » de la page µprojet et de la fiche) dessine les pistes en colonnes, façon git : un
-  nœud `vX.Y.Z` par version structurelle (majeure, mineure), les fourches, les fusions et les refs
+  nœud `vX.Y.Z` par version structurelle (majeure, mineure), les fourches, les combinaisons et les refs
   en badges, avec une bascule « Toutes les versions ». Sur un nœud : promouvoir en ref, renommer
   ou retirer une ref, comparer à une autre version, suivre une ref (ce qui en descend), partir de
   cette version, et publier une ref dans la bibliothèque partagée (structure enregistrée qui garde
@@ -49,14 +55,37 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
 - **Étapes.** Chaque étape d'un procédé a un identifiant stable, conservé quand on insère, déplace
   ou supprime d'autres étapes à une évolution : une campagne DOE désigne ses étapes par cet
   identifiant, et non plus par leur position.
+- **Étiquettes de couches.** Dans le constructeur, une étape qui crée une couche peut être
+  « affichée sur la structure » : son nom (« p-GaN », le matériau par défaut) et, dessous, son
+  épaisseur, sa composition ou ses paramètres déclarés (un dopage), écrits à droite du dessin et
+  reliés à la couche - pour qu'une capture d'écran porte l'essentiel. Seules les étapes choisies en
+  portent une ; elles sont enregistrées avec la version (sans compter comme un changement de
+  structure) et avec les structures et briques de la bibliothèque, et se retrouvent sur la fiche
+  (bouton « Étiquettes : masquer / afficher »), la page d'évolution et le rapport.
+  Les étapes étiquetées d'une même brique n'ont qu'une étiquette, celle de la brique : son nom,
+  une ligne par étape (« p-GaN : 120 nm · dopage Mg 3e18 cm⁻³ ») et une accolade sur leurs
+  couches. Un paramètre déclaré a son unité (cm⁻³, %, °C...), écrite sur l'étiquette. Le diff
+  d'une version dit, à part de la structure, ce qui change aux étiquettes.
+- **Briques d'un procédé.** Une brique insérée dans le constructeur (ou formée d'étapes
+  choisies) reste un groupe d'étapes, enregistré avec la version, les structures et briques de
+  la bibliothèque, et retrouvé à la réouverture (évolution, fourche, modèle).
 - **Cahier de données.** Toutes les données d'une expérience sont dans un seul cahier (onglet
   « Données » de la fiche) : des entrées PRISM (un instantané par étape et une vue DataViz) ou
-  saisies à la main (valeur, texte, tableau collé d'Excel, images annotées, fichiers, liens). Une
+  saisies à la main (valeur, texte, tableau collé d'Excel, images annotées, fichiers, images
+  externes - TEM, scans référencés sur le serveur sans être copiés, choisies dans un dossier
+  autorisé et légendées -, liens). Les jeux de l'ancienne galerie « Images de mesure » y sont des
+  entrées comme les autres. Une
   entrée nomme les plaques mesurées et les étapes du procédé où la mesure a été faite, choisies sur
   un **stepper** ; la vue du procédé affiche un badge par étape mesurée. **La donnée suit la
   plaque** : si la piste ne suit plus ces plaques, l'entrée reste, repliée dans « Autres plaques ».
-  La conclusion cite des entrées du cahier. Les anciennes preuves s'y lisent comme des entrées
-  saisies à la main, sans migration.
+  La conclusion cite des entrées du cahier. Les anciennes preuves et les jeux de l'ancienne galerie
+  « Images de mesure » s'y lisent comme des entrées saisies à la main, sans migration.
+- **Annotations des images.** Toute image que Spectre montre s'annote : une image téléversée ou
+  externe d'une mesure du cahier, une image d'une structure en images. Des flèches et des cadres,
+  numérotés sur l'image et légendés dans une liste dessous, posés sur la fiche par un éditeur ;
+  ils restent à leur place quelle que soit la taille de l'image et suivent leur image quand on
+  réordonne. Les vignettes (graphe, atlas, planche du constructeur, aperçus du cahier) et le rapport
+  les montrent. Annoter une structure en images n'en change pas la version de structure.
 - **Droits.** Trois niveaux :
   - **administrateur** : tout ; il est propriétaire de tous les µprojets, même sans en être membre ;
   - **manager d'une équipe** : gère les projets corporate rattachés à son équipe (les renommer, les
@@ -220,7 +249,7 @@ Les deux scripts lisent `--data-dir`, sinon `SPECTRE_DATA_DIR`, sinon `./data`.
 - **`python scripts/seed_demo.py [--data-dir DOSSIER]`** crée le compte de démonstration
   `demo@spectre.local` / `demo1234`, deux coéquipiers (`lea@spectre.local`, `marc@spectre.local`,
   même mot de passe) et deux µprojets remplis sur des nanofils GaN pour LED (puits quantique simple ;
-  puits multiples avec et sans EBL), avec fourches, fusion et refs. Tout passe par les routes HTTP ;
+  puits multiples avec et sans EBL), avec fourches, combinaison et refs. Tout passe par les routes HTTP ;
   seules les dates de création sont recalées ensuite pour étaler l'historique sur un an. Le script
   **écrit directement** (pas de mode à blanc) et suppose un dossier de données neuf : relancé sur
   un dossier déjà semé, l'inscription des comptes échoue. Les µprojets de démo ne sont rattachés à
@@ -251,15 +280,15 @@ ses tables (`migrations.py`), ses pages (`pages/`) et son front (`static/`, serv
 | `attachments` | Fichiers téléversés d'un µprojet | `/api/microprojects/{mp}/attachments` | — |
 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu DOE, types de structure | `/api/materials`, `/api/recipes`, `/api/simulations`, `/api/campaign-previews` | constructeur et structure en images (`/microprojets/{slug}/structures/...`, `.../evoluer`, `.../evoluer-image`) |
 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques | `/api/saved-structures`, `/api/step-presets`, `/api/tech-bricks` | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
-| `experiments` | Pistes et versions Follow : création, évolution, statut, conclusion, étiquettes, entités, fusion, diff, filiation, refs, statistiques | `/api/microprojects/{mp}/experiments`, `.../lineage`, `.../refs`, `.../structure-history`, `/api/experiment-stats`, `/api/experiment-timeline` | `/microprojets/{slug}/experiences/{experiment_id}`, `/microprojets/{slug}/evolution` |
+| `experiments` | Pistes et versions Follow : création, évolution, statut, conclusion, étiquettes, entités, combinaison de deux études, diff, filiation, refs, statistiques | `/api/microprojects/{mp}/experiments`, `.../lineage`, `.../refs`, `.../structure-history`, `/api/experiment-stats`, `/api/experiment-timeline` | `/microprojets/{slug}/experiences/{experiment_id}`, `/microprojets/{slug}/evolution` |
 | `intent_forms` | Formulaires d'intention et formulaire actif d'un µprojet | `/api/intent-forms`, `/api/microprojects/{mp}/active-intent-form` | `/microprojets/{slug}/formulaire-intention` |
 | `wafers` | Index des plaques suivies, recherche par lasermark et FDL, visibilité | `/api/wafers` | `/plaques/{lasermark}` |
 | `lots` | Lots de fabrication, wafers, thématiques visées, Gantt | `/api/lots`, `/api/lot-priorities` | `/lots`, `/lots/{code}` |
 | `links` | Liens entre µprojets et entre entités physiques | `/api/microproject-links`, `/api/entity-links` | — |
 | `atlas` | Vue graphe d'un projet corporate | `/api/areas/{area_slug}/atlas` | `/management/{slug}/atlas` |
 | `characterization` | Adaptateur PRISM (ou source démo) : catalogue, requêtes, graphiques | `/api/characterization` | `/donnees`, `/donnees/{key}` |
-| `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, liens - les anciennes preuves), rattachées aux plaques mesurées et aux étapes du procédé | `/api/microprojects/{mp}/snapshots`, `.../experiments/{exp}/notebook-entries` | — (panneau de la fiche) |
-| `external_images` | Galerie d'images externes d'une étude, bornée aux racines autorisées | `/api/microprojects/{mp}/external-images`, `.../experiments/{exp}/image-sets` | — (panneau de la fiche) |
+| `external_images` | Politique des images externes (racines autorisées, formats) et parcours des dossiers ; les images sont un contenu du cahier | `/api/microprojects/{mp}/external-images` (et `.../roots`) | — |
+| `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens - les anciennes preuves et les anciens jeux d'images), rattachées aux plaques mesurées et aux étapes du procédé | `/api/microprojects/{mp}/snapshots`, `.../experiments/{exp}/notebook-entries` (et `.../{entry_id}/external-images/{index}`) | — (panneau de la fiche) |
 | `kpis` | Registre de KPI et séries mensuelles d'un projet corporate | `/api/areas/{area_slug}/kpis` | — |
 | `kpis_demo` | Séries et fiche d'étude fictives, actif seulement si `SPECTRE_DEMO_DATA=1` | `/api/areas/{area_slug}/kpis/{kpi_key}/studies` | — |
 | `docs` | Documentation dans l'application | — | `/docs`, `/docs/guide`, `/docs/exemples`, `/docs/architecture` |
@@ -306,7 +335,7 @@ dans [`REVIEW.md`](REVIEW.md).
 Résumé des conventions (détail : `ARCHITECTURE.md` § 4) :
 
 - Ressources en anglais, au pluriel, en kebab-case ; une action métier est une sous-ressource
-  (`PUT .../conclusion`, `POST .../merges`). JSON en `snake_case` ; collections paginées en
+  (`PUT .../conclusion`, `PUT .../status`). JSON en `snake_case` ; collections paginées en
   `{"items": [...], "total": n}`.
 - Une expérience est désignée par sa piste : `GET /api/microprojects/{mp}/experiments/{experiment_id}`
   renvoie la dernière version avec `ETag: "<version_id>"`. Toute écriture sur une piste accepte

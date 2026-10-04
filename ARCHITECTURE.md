@@ -51,11 +51,12 @@ Le noyau ne connaît **aucune** fonctionnalité métier. Il fournit :
 | `errors.py` | `DomainError` → `Unauthorized` (401, `unauthorized` : pas de session, levée par `accounts.deps.current_user`), `NotFound` (404), `Forbidden` (403), `Conflict` (409), `PreconditionFailed` (412), `InvalidInput` (422), `UpstreamError` (502), `Unavailable` (503) ; un handler unique renvoie `{"detail": str, "code": str}`. Un plugin peut sous-classer `DomainError` pour un statut qui lui est propre (`attachments.store.TooLarge` : 413, `too_large`), le même handler s'en charge |
 | `locks.py` | `keyed_lock(namespace, key)` : un `threading.Lock` par clé (le serveur tourne en un seul processus) |
 | `fs.py` | `replace(src, dst)` : le `os.replace` de toute écriture atomique (fichier temporaire du même dossier, puis remplacement), réessayé quelques fois, à intervalles croissants, sur `PermissionError` - sous Windows, un antivirus ou un lecteur tient la cible un instant (de même pour le dossier de bibliothèque assemblé puis renommé, `library.service`) ; `write_text(path, text)` : l'écriture atomique complète (temporaire unique, `fsync`, `replace`), celle des dépôts Follow (`experiments.repository`) |
+| `annotations.py` | La forme des annotations d'une image, la même pour toute image que Spectre montre : `ImageAnnotation` (`{type: "arrow" \| "box", x, y, x2, y2, label}`, en % de l'image, champs en plus refusés) et `clean_annotations(raw, limit=100)` (positions dans l'image : des nombres finis entre 0 et 100 ; libellé de 200 caractères au plus ; 422 `invalid_annotation`). Le noyau ne sait pas à quelle image une annotation appartient : le cahier la range dans la mesure par une clé d'image, une structure en images sur l'image elle-même. Au noyau plutôt qu'à `attachments` : une image externe n'est pas une pièce jointe, et `notebook` et `structures` s'en servent tous deux |
 | `json_store.py` | Collections JSON `{"items": [...]}` d'éléments à `id`, lues et écrites sous un verrou par chemin, de façon atomique ; un élément illisible est écarté à la lecture et gardé tel quel à l'écriture (`ItemStore`, `read_json`, `write_json`, `path_lock`) - les bibliothèques de `process_library` |
 | `mail.py` | `send_email(to, subject, body)` : SMTP si `SPECTRE_SMTP_HOST`, sinon journalisation **sans le corps** hors `SPECTRE_EMAIL_DEBUG=1` |
 | `pages.py` | Service des pages HTML d'un plugin, avec la barre du haut commune à la place du marqueur `<!-- spectre:topbar -->` (fil d'Ariane déclaré dans le marqueur : `crumb-id`, `crumb-text`) : marque, navigation construite à partir des `NavEntry` de tous les plugins (une entrée peut être réservée à certaines pages : `NavEntry.pages`), place de la session |
 | `http.py` | Petits helpers HTTP : `created(response, location)`, conversion `ETag` / `If-Match` |
-| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`), `timeline.js` (axe des mois et hachures des frises : lots, thématique), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
+| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`), `timeline.js` (axe des mois et hachures des frises : lots, thématique), `annotations.js` (global `ImageAnnotations` : les annotations d'une image dessinées et numérotées, leur liste et leurs outils - § 6), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
 
 ```python
 @dataclass(frozen=True)
@@ -97,15 +98,15 @@ placés au-dessus de lui.
 | 7 | `attachments` | Fichiers téléversés d'un µprojet (blob + sidecar), types, tailles, service des octets | microprojects | `data/microprojects/<slug>/attachments/` |
 | 8 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
 | 9 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library | JSON par portée |
-| 10 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, fusion, suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
+| 10 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, combinaison de deux études (une nouvelle piste à deux parents), suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
 | 11 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
 | 12 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité | experiments, search | cache mémoire |
 | 13 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
 | 14 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
 | 15 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
 | 16 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
-| 17 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, liens), rattachées aux plaques et aux étapes ; lit les vues et les preuves d'avant (`legacy.py`) | characterization, experiments, attachments | `snapshots/`, métadonnées Follow (`notebook_entries`) |
-| 18 | `external_images` | Galerie d'images externes référencées (TEM, scans) d'une étude, limitée aux racines autorisées | experiments | métadonnées Follow |
+| 17 | `external_images` | Politique des images externes référencées (TEM, scans) : racines autorisées, formats affichables, lecture bornée ; parcours des dossiers autorisés | microprojects | — |
+| 18 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens), rattachées aux plaques et aux étapes ; sert les images externes d'une entrée par identifiant ; lit les vues, les preuves et les jeux d'images d'avant (`legacy.py`) | characterization, experiments, attachments, external_images | `snapshots/`, métadonnées Follow (`notebook_entries`) |
 | 19 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
 | 20 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
 | 21 | `docs` | Pages de documentation (contenu inchangé) | — | — |
@@ -195,8 +196,17 @@ spectre/plugins/<plugin>/
 | `register_library_file(LibraryFile)` : clé en kebab-case anglais (le nom du fichier YAML reste le nom historique), `parse` (mapping YAML → contenu, `ValueError` si invalide : sert à valider avant l'écriture et à charger) et `fallback` (contenu quand le fichier est absent ou invalide) | `library` | structures (matériaux, recettes), process_library (présets, briques), library (textes de la section intention, servis par `GET /api/ui-texts/intention`) |
 | `register(KpiDefinition)` | `kpis` | activité, wafers, démo EQE |
 | `DataViz.register(component)` | `notebook/static/dataviz/core.js` | table, carte de wafer, distribution, nuage de points, courbes… |
-| `ExperiencePage.registerPanel({key, mount(el, ctx)})` (voir § 6) | `experiments/static/page.js` | les panneaux de la fiche elle-même, puis external_images (`gallery.js`), lots (`lot-picker.js`), notebook (`notebook.js`) |
+| `ExperiencePage.registerPanel({key, mount(el, ctx)})` (voir § 6) | `experiments/static/page.js` | les panneaux de la fiche elle-même, puis lots (`lot-picker.js`), notebook (`notebook.js`) |
 | `ctx.setNotebook(summary)` / `ExperiencePage.onNotebook(fn)`, `ctx.filterNotebook(stepId)` / `ExperiencePage.onNotebookFilter(fn)` (voir § 6) | `experiments/static/page.js` | le cahier (notebook) déclare ses entrées et leur nombre par étape ; la vue du procédé (`structure-view.js`, badges) et la conclusion (`conclusion.js`, citations) s'en servent ; un badge filtre le cahier |
+
+**Annotations d'une structure en images.** Chaque image de `StructureImage` porte un champ
+facultatif `annotations` (la forme de `kernel.annotations`) : une image enregistrée avant se relit
+sans, et une image sans annotation s'enregistre sans la clé (l'objet garde la forme d'avant). Le
+détail d'une étude renvoie toujours `annotations` (une liste) sur chaque image de
+`structure_images`. Des annotations ne changent pas la structure : `PUT .../structure-images` garde la
+révision, et une évolution qui ne change que des annotations (mêmes images, mêmes types et
+légendes) la garde aussi (`kinds.without_annotations`) ; le résumé du diff dit « Image n :
+annotations modifiées ».
 
 **Clés de type de structure figées.** `ProcessLot` et `StructureImage` surchargent
 `registry_key()` pour renvoyer leur chaîne historique (`spectre.core.structures.…`). Follow
@@ -208,7 +218,7 @@ déplacement de classe ne doit jamais la changer.
 - **Langue** : anglais pour l'API, les plugins et le code ; les URL de pages vues par les
   utilisateurs restent en **français**.
 - **Ressources** au pluriel, en kebab-case, sans verbe. Une action métier devient une
-  sous-ressource : `PUT .../conclusion`, `POST .../merges`.
+  sous-ressource : `PUT .../conclusion`, `PUT .../status`.
 - **Méthodes** : `GET` lit, `POST` crée dans une collection, `PUT` remplace (ensemble ou
   singleton), `PATCH` modifie partiellement (`exclude_unset`), `DELETE` supprime.
 - **Codes** :
@@ -233,7 +243,7 @@ déplacement de classe ne doit jamais la changer.
   `{<ressource>_slug}`, ou `{<ressource>_key}` pour une clé naturelle (`{wafer_key}`, `{kpi_key}`,
   `{data_type_key}`, `{chart_key}`, `{file_key}`) ; deux autres formes : `{token}` (le jeton d'une
   invitation, seul identifiant que connaît son destinataire) et `{index}` (la position d'une image
-  dans un jeu). Pas de convertisseur `:path` sous `/api` (une seule page en a un : la redirection
+  externe dans une entrée du cahier). Pas de convertisseur `:path` sous `/api` (une seule page en a un : la redirection
   héritée `/projets/{rest:path}`).
 - **JSON** : clés en `snake_case` anglais. Collections paginées : `{"items": [...], "total": n}` ;
   les autres sont un tableau. Les ressources binaires exposent leur `url` : le front ne la
@@ -276,14 +286,14 @@ déplacement de classe ne doit jamais la changer.
   ref ; Follow n'en offre pas le moyen). Le dépôt est ouvert sur le stockage JSON de Follow
   (même format sur disque), dont les écritures passent par `kernel.fs.write_text` : un `refs.json`
   tenu un instant par un lecteur, sous Windows, ne fait plus échouer un commit.
-- Les plugins qui écrivent dans une étude sans en être le propriétaire (notebook, external_images)
-  exposent leurs sous-ressources sous `.../experiments/{exp}/` et passent par `amend()` : `If-Match`
-  comme les autres (412 `stale_version`), et une écriture renvoie **la ressource écrite** (l'entrée
-  du cahier, le jeu d'images), pas l'étude, avec en `ETag` la version créée - c'est ce que la fiche
-  enverra en `If-Match` à l'écriture suivante. Leurs lectures acceptent `?version=`, sur le modèle de
-  `process?version=`, pour qu'une version passée ouverte en lecture seule montre ses propres
-  données. Le détail d'une étude ne porte que `notebook_count` (toutes les entrées du cahier de la
-  version, autres plaques comprises). La galerie garde sa clé (`data_items`).
+- Le plugin qui écrit dans une étude sans en être le propriétaire (notebook) expose ses
+  sous-ressources sous `.../experiments/{exp}/` et passe par `amend()` : `If-Match` comme les autres
+  (412 `stale_version`), et une écriture renvoie **la ressource écrite** (l'entrée du cahier), pas
+  l'étude, avec en `ETag` la version créée - c'est ce que la fiche enverra en `If-Match` à
+  l'écriture suivante. Ses lectures acceptent `?version=`, sur le modèle de `process?version=`,
+  pour qu'une version passée ouverte en lecture seule montre ses propres données. Le détail d'une
+  étude ne porte que `notebook_count` (toutes les entrées du cahier de la version, autres plaques
+  comprises, anciens jeux d'images compris).
 - **Le cahier unique et les données d'avant.** Les entrées du cahier sont rangées sous
   `notebook_entries` (`experiments.service.NOTEBOOK_KEY`). Avant le cahier unique, les données d'une
   étude étaient les vues de l'ancien cahier (`data_notebook`) et les preuves Follow
@@ -296,6 +306,16 @@ déplacement de classe ne doit jamais la changer.
   première écriture dans le cahier enregistre le cahier converti dans la version qu'elle crée, sans les anciennes clés
   ni la liste `evidence` de Follow. Une écriture sans effet n'enregistre rien ; une autre écriture
   (étiquette, statut...) reporte l'ancien format tel quel.
+- **Les jeux de l'ancienne galerie d'images externes** (`data_items`,
+  `experiments.service.LEGACY_IMAGE_SETS_KEY` : `{id, title, note, entity_index, image_paths,
+  pinned_index}`) suivent la même règle : `notebook.legacy` convertit chacun, à la lecture, en une
+  entrée `manual` **qui garde son id** (la conclusion peut la citer), titrée du nom du jeu (« Images
+  de mesure » sans nom), sa note conservée, d'une seule mesure non située qui porte ses images
+  externes, l'image épinglée en premier ; un jeu rattaché à une variante d'une campagne vaut pour la
+  plaque de cette variante dans la version lue (`wafers`), et sans plaque à cette variante, pour
+  toute la piste, la variante rappelée dans le texte. Ses images ne sont pas revérifiées à la
+  conversion : leur `status` dit ce qui ne se montre plus. La première écriture dans le cahier
+  l'enregistre au nouveau format et retire `data_items` de la version qu'elle crée.
 - **Les preuves Follow natives.** Spectre n'en écrit plus : le cahier est la seule source. La
   conclusion de Follow garde son champ `ObjectiveResult.evidence_ids`, qui cite désormais des ids
   d'entrées du cahier (Follow ne les vérifie pas ; `PUT .../conclusion` les vérifie, 422
@@ -305,25 +325,38 @@ déplacement de classe ne doit jamais la changer.
   recherche et les lots) donne `experiment.id` = la piste ; l'atlas nomme chaque étude par
   `experiment_id` (et `version_id`, sa pointe) ; un lien d'entité désigne
   `{microproject, experiment_id, entity_index}`.
-- Deux écritures traversent encore une frontière de plugin sans import, faute de dépendance dans
-  ce sens : une fusion (`experiments.service._merge_notebook`) réunit les cahiers des deux pistes,
-  dédoublonnés par id quel que soit le format où chaque côté les range (une entrée des deux côtés
-  garde la forme de la piste ; l'ordre reste celui de la lecture - entrées enregistrées, puis
-  anciennes vues, puis anciennes preuves -, la piste d'abord dans chacun : une piste encore à
-  l'ancien format voit les entrées enregistrées de l'autre passer devant les siennes),
-  et purge les métadonnées de preuve qui désignent une preuve absente - notebook dépend
-  d'experiments, pas l'inverse : experiments ne connaît que les ids des entrées
-  (`notebook_entry_ids`), pour les compter, les citer et les réunir ; supprimer une piste ne purge pas ses liens
-  d'entités (experiments ne dépend pas de links) - ils restent listés et supprimables, l'atlas ne
-  les dessine plus, et le nom de la piste n'est **jamais redonné** (`follow/retired_lines.json`,
-  `repository.retire_line`) : un lien désigne la piste par son nom, il passerait sinon à une étude
-  sans rapport. Supprimer un µprojet, lui, purge ses liens (`ON DELETE CASCADE`).
+- notebook dépend d'experiments, pas l'inverse : experiments ne connaît que les ids des entrées du
+  cahier (`notebook_entry_ids`), pour les compter et les citer. Une écriture traverse encore une
+  frontière de plugin sans import, faute de dépendance dans ce sens : supprimer une piste ne purge
+  pas ses liens d'entités (experiments ne dépend pas de links) - ils restent listés et supprimables,
+  l'atlas ne les dessine plus, et le nom de la piste n'est **jamais redonné**
+  (`follow/retired_lines.json`, `repository.retire_line`) : un lien désigne la piste par son nom, il
+  passerait sinon à une étude sans rapport. Supprimer un µprojet, lui, purge ses liens (`ON DELETE
+  CASCADE`).
 - Le nom d'une piste : tiré du titre (`epitaxie-a-20-nm`, accents retirés, suffixe `-2`... si pris),
   ou `branch` à la création - un seul segment sans `/`, ni `.`/`..`, ni la forme d'un id de version,
   libre parmi les pistes, les refs **et** les pistes supprimées (sinon 409 `branch_name_taken`).
 - Une piste créée depuis une version (`from_version`, `version_id` facultatif : la pointe par
   défaut) en reprend, faute de mieux dans la requête, les objectifs, le contexte et l'entité suivie -
   pas le cahier de données, les étiquettes ni la conclusion : c'est une nouvelle étude.
+- **Combiner deux études crée une nouvelle étude** (`POST .../experiments` avec `merge_of`,
+  `service.combine`) : deux versions du µprojet (la pointe de chaque piste par défaut), de deux
+  pistes différentes, et deux versions différentes (422 `same_experiment` : deux fois la même piste
+  ou la même version), chacune une version **de sa piste** et non d'avant sa fourche (422
+  `version_before_line` : l'histoire d'une piste partie d'une version contient celles d'avant), et du
+  même type de structure (422 `different_structure_kinds`), deviennent les deux parents d'une **nouvelle piste** C, construite
+  par `follow.Repository.merge(a, b, branch=<C>)` : Follow sait faire un commit à deux parents sur
+  une nouvelle branche (références `baseline` vers A, `merge_source` vers B). Sa structure est la
+  structure combinée selon la règle de Follow sans résolution de conflit, celle d'avant : celle de A
+  (structure, protocole, et les métadonnées qui la décrivent : procédé, ids d'étape, campagne,
+  révision d'une structure en images). C a ses titre, intention, hypothèse et plaque (obligatoires
+  comme pour un lancement) ; objectifs et contexte viennent de A faute de mieux dans la requête ; son
+  cahier démarre vide, sans étiquettes ni conclusion. A et B ne bougent pas : aucune version ne s'y
+  ajoute. Son numéro de version suit la règle d'une nouvelle piste (l'histoire de son premier
+  parent, A : celui de A tant que la structure ne change pas). Les fusions d'avant (une version de A
+  à deux parents) restent lisibles telles quelles. Les pages disent « combinaison » des deux : le
+  losange du graphe de filiation et de l'évolution des structures, « issue de vX (piste n) et vY
+  (piste m) » sur l'évolution, « Combinaison de » pour les deux liens de la fiche.
 - Le nom d'une ref (`refs.py`) : non vide, sans `/`, ni `.`/`..`, ni la forme d'un id de version
   (`repository.VERSION_ID_RE`, repris par `service.VERSION_ID_RE` ; Follow cherche un nom avant un
   id, une telle ref masquerait la version) - sinon 422 `invalid_ref_name` -, libre parmi les refs et
@@ -362,6 +395,129 @@ désignent une étape, et non plus par sa position.
   `campaign_plan` en `step_index`, toujours lisible.
 - Les bibliothèques (structures enregistrées, briques, présets) n'ont pas d'ids : leurs étapes sont
   des modèles, recopiées comme nouvelles étapes (`ProcessStep` ignore le champ `id`).
+
+### Étiquettes de couches
+
+Une étape choisie (par défaut aucune) peut porter une **étiquette** dessinée à droite de la
+structure et reliée par un trait à la couche qu'elle a créée : un texte (« p-GaN » ; vide, le nom
+du matériau) et, dessous, des valeurs de l'étape - `thickness` (dans une unité lisible, la valeur saisie sans arrondi : `150 nm`,
+`2.5 µm`, `1.234 µm`), `composition` (le taux d'In ou d'Al d'un nitrure à composition : `In 20 %`) et
+`declared:<nom>` (un paramètre déclaré, avec son unité : son champ `unit`, ou pour un paramètre
+enregistré avant ce champ, la clé `unit` de son obtention, toujours lue).
+Modèle `structures.simulation.LayerLabel` (`{text, values}`, 40 caractères et 6 valeurs au plus ; une
+valeur d'un autre type → 422 ; une valeur que l'étape n'a pas n'est pas écrite).
+
+- **Requêtes** (simulation, aperçu de campagne, lancement, évolution, fourche, campagne, structures
+  enregistrées, briques) : `layer_labels`, par **position** d'étape comme `declared_params` (une
+  position hors du procédé, ou qui n'est pas un entier écrit en chiffres ASCII - `²`, `٣` - → 422
+  `invalid_layer_label`).
+- **Étude** : par **id d'étape**, sous la clé de métadonnées `process_layer_labels`, à part du
+  procédé comme `process_step_ids` ; avec elles, `process_layer_steps` : l'id de l'étape qui a créé
+  chaque couche de la structure enregistrée (`null` : le substrat), une liste par entité (une par
+  variante d'une campagne). Une version sans étiquette n'enregistre ni l'une ni l'autre (elle garde
+  la forme d'avant ; les anciennes versions n'en ont pas, sans migration). `GET .../process` les
+  rend par position (`layer_labels`, `{}` sans étiquette). Une écriture légère les reporte ; une
+  évolution remplace celles du parent (aucune : il n'y en a plus) ; une combinaison prend celles de
+  sa première étude ; une structure en images les retire (`kinds.DRAWN_STRUCTURE_METADATA_KEYS`).
+- **Versionnage** : `versioning.structure_signature` les ajoute au procédé comparé, avec leur
+  regroupement par brique (`label_groups`, ci-dessous) ; ne changer qu'elles est une version de
+  niveau **correctif** (`patch`), comme renommer une étape, et garde la conclusion (elles ne
+  changent pas la structure).
+- **Regroupées par brique** : quand au moins deux étapes étiquetées (`MIN_GROUPED_LABELS`)
+  appartiennent à une même brique (ci-dessous), le dessin n'a qu'une étiquette pour elles : le nom
+  de la brique en titre, puis une ligne par étape (« p-GaN : 120 nm · dopage Mg 3e18 cm⁻³ »), de la
+  couche la plus haute à la plus basse, et une accolade (`.sp-layer-bracket`, à droite du dessin)
+  sur toute la hauteur des couches que ces étapes ont créées - pas celles des autres étapes de la
+  brique. Une étape étiquetée hors brique, ou seule étiquetée de sa brique, garde son étiquette.
+  Des accolades dont les hauteurs se recouvrent (sur un nanofil, les coquilles enveloppent le
+  cœur) ont chacune leur **colonne** (`rendering._bracket_columns` : la plus courte au plus près du
+  dessin, celle qui en contient une autre à sa droite ; deux briques empilées, qui se touchent,
+  partagent la leur) ; la colonne des étiquettes recule d'autant, et chaque trait fait son coude
+  au-delà de la dernière colonne, qu'il croise à angle droit (`data-x` : le trait vertical d'une
+  accolade).
+- **Largeur** : estimée par excès, caractère par caractère (`rendering._CHAR_WIDTHS` : la plus
+  large de DM Sans, Helvetica Neue et Arial, en 400 comme en 600, mesurée dans le navigateur), et
+  la colonne des étiquettes est aussi large que la plus large : aucune ne sort du SVG (40 « W »
+  mesurent 641,6 unités en DM Sans 600 ; l'ancienne estimation, 0,58 em par lettre et une colonne
+  plafonnée à 320, en laissait 307 dehors). Hors de l'ASCII, une lettre accentuée compte comme sa
+  lettre de base, tout autre caractère 1,2 em (« Œ » mesure 1,114 em, « 中 » 1 em) et un émoji ou
+  un pictogramme 1,6 em (« 🔬 » : 1,373 em) - l'ancienne règle (0,7 ou 0,8 em) en laissait
+  sortir 180 unités. Un titre est coupé à 40 caractères, une ligne à 48 (64 pour la ligne d'une
+  étape dans l'étiquette d'une brique).
+- **Diff** : `GET .../structure-diff` rend, à part des changements de structure, `label_changes`
+  (`kinds.describe_label_changes`) : par étape (`step_id`, `change` : `added`, `removed` ou
+  `modified` avec `text {before, after}`, `values_added`, `values_removed` - les noms lisibles :
+  « épaisseur », « composition », le nom du paramètre), puis par brique (`group_id`, `change` :
+  `grouped`, `ungrouped`, `renamed`, `regrouped`), chacun avec `subject` et `line`, la phrase
+  (« p-GaN — ajout : dopage Mg »). Les étapes s'apparient par id (`service.step_ids_of`) quand les
+  deux versions en ont en commun (une piste, une fourche), sinon **par position**, comme le diff de
+  structure (deux études lancées à part, ou reprises d'un modèle, que le constructeur copie sans
+  ids) ; une brique est son nom et ses étapes étiquetées, comme pour le versionnage, jamais son
+  `group_id` (dissocier puis regrouper les mêmes étapes ne change rien). Il rend aussi
+  `param_changes` (`kinds.describe_param_changes`) : les paramètres déclarés, que la géométrie
+  comparée ne porte pas, par étape (appariées de même) et par nom - `change` `added`, `removed` ou
+  `modified` (`value`, `unit` `{before, after}` ou `null`, `obtention_changed`), avec `step_id`,
+  `subject` (le nom de l'étape), `param` et `line` (« p-GaN — dopage Mg : unité « cm⁻³ » ajoutée ») ;
+  une unité passée de l'obtention au champ, la même, n'y est pas. La fiche, sa comparaison et la
+  page d'évolution les écrivent sur une ligne « Paramètres : … » puis « Étiquettes : … », et la
+  fiche ne dit plus « identique à la version précédente » quand seuls des paramètres déclarés ou
+  des étiquettes changent.
+
+### Briques d'un procédé
+
+Une brique technologique insérée dans le constructeur (ou formée d'étapes choisies, « Grouper en
+brique ») reste un **groupe d'étapes consécutives** de la structure : son identifiant de groupe
+(celui du constructeur, gardé d'une version à l'autre), son nom et la brique de bibliothèque d'où
+elle vient (`source`, son id). Modèle `structures.simulation.ProcessBrick` (`{group_id, name,
+source, step_indexes}`, champs en plus refusés ; un nom de 120 caractères au plus,
+`BRICK_NAME_MAX_LENGTH`).
+
+- **Requêtes** (simulation, aperçu de campagne, lancement, évolution, fourche, campagne,
+  structures enregistrées, briques) : `bricks`, par **positions** d'étape comme les étiquettes ;
+  des étapes du procédé, consécutives et dans l'ordre, aucune dans deux briques, un groupe une
+  seule fois (sinon 422 `invalid_brick`).
+- **Étude** : par **ids d'étape**, sous la clé de métadonnées `process_bricks`
+  (`[{group_id, name, source, step_ids}]`), à part du procédé ; une version sans brique ne
+  l'enregistre pas (la forme d'avant). `GET .../process` les rend par positions (`bricks`, `[]`
+  sans brique), et le constructeur les rattache aux étapes au chargement (évolution, fourche,
+  modèle, structure ou brique de bibliothèque). Une écriture légère les reporte ; une évolution
+  remplace celles du parent ; une combinaison prend celles de sa première étude ; une structure
+  en images les retire (`kinds.DRAWN_STRUCTURE_METADATA_KEYS`).
+- **Versionnage** : seules, elles ne changent pas la version (`none`) ; elles ne comptent que par
+  les étiquettes qu'elles regroupent (`label_groups` : le nom de la brique et ses étapes
+  étiquetées) - au plus un correctif.
+- **Bibliothèques** : une structure enregistrée et une brique les gardent par positions
+  (`bricks`) ; une brique insérée dans un procédé y devient un seul groupe (les briques ne
+  s'imbriquent pas), de `source` l'id de la brique insérée. Le nom d'une brique de bibliothèque,
+  que reprend ce groupe, a la même limite (`POST`, `PATCH /api/tech-bricks`, 422 au-delà ; les
+  champs du constructeur ont `maxlength`) ; celui d'une brique enregistrée avant la limite est
+  coupé à l'envoi (`bricksPayload`), et le mode brique demande de le raccourcir pour l'enregistrer.
+
+### Unité des paramètres déclarés
+
+Un paramètre déclaré (`simulation.DeclaredParam`) a un champ `unit` facultatif (20 caractères au
+plus), que le constructeur propose (« cm⁻³ », « % », « °C », « nm », « sccm », « W », « min »…) et
+que l'étiquette écrit ; sans unité, il s'enregistre sans la clé (la forme d'avant). L'ancienne
+astuce, `unit=` dans l'obtention, reste lue. Les paramètres déclarés font partie de la structure
+(un réglage : niveau mineur), mais **une unité ajoutée ou retirée seule** - ou passée de
+l'obtention au champ - ne fait qu'écrire la valeur : niveau **correctif**, conclusion gardée
+(`versioning.same_settings`) ; une unité remplacée par une autre change la valeur : niveau
+**mineur**.
+- **Provenance des couches** : toujours celle du serveur. `simulation.simulate_process` simule une
+  étape à la fois (mêmes images, mêmes erreurs que `simulate` de StructureForge, qui ne dit l'étape
+  d'une couche que pour une croissance, et sans sa position) et suit les couches de la géométrie :
+  une couche garde son objet tant qu'elle existe, une étape ajoute les siennes, un retournement les
+  recrée dans l'ordre inverse. `layer_origins[k][j]` : la position de l'étape qui a créé la
+  `j`-ième couche de l'image `k` (`-1` : le substrat). Jamais d'alignement de matériaux côté client.
+- **Rendu** (`structures.rendering.labelled_svg`) : le dessin de StructureForge devient un `<svg>`
+  imbriqué, ajusté dans un carré de 400 unités, les étiquettes empilées à droite sans chevauchement
+  (poussées sous la précédente, remontées si la pile dépasse le dessin), le trait partant d'un point
+  de la couche vers son bord droit (la plus grande, si l'étape en a créé plusieurs). Textes échappés,
+  couleurs et police en jetons de la charte avec leur valeur en repli (`var(--text, #1b2440)`) : le
+  SVG reste autonome (capture, rapport). Sans étiquette, le SVG est celui d'avant. L'élément porte
+  `data-bare-viewbox`, la vue sans les étiquettes (`.sp-layer-labels`). Une campagne écrit, sur
+  chaque variante, ses propres valeurs (`campaigns.apply_combination`, relu depuis le plan et les
+  valeurs de la variante).
 
 ## 5. Table de correspondance des routes
 
@@ -471,8 +627,8 @@ l'équipe.
 |---|---|
 | `GET /api/microprojets/{slug}/materials` | `GET /api/materials` |
 | `GET /api/microprojets/{slug}/recettes` | `GET /api/recipes` → `{deposition: [...], etch: [...]}` (exception à « les autres sont un tableau » : le constructeur lit les recettes par sorte d'étape) |
-| `POST /api/microprojets/{slug}/structures/simulate` | `POST /api/simulations` → 200 (calcul, rien n'est stocké) ; la réponse porte `step_ids`, l'id de chaque étape (§ 4, identité d'une étape) |
-| `POST /api/microprojets/{slug}/structures/variantes` | `POST /api/campaign-previews` → 200 (plafond `MAX_CAMPAIGN_ENTITIES`, 422 au-delà) ; chaque facteur désigne son étape par `step_id` (`"substrate"` pour le substrat ; id inconnu → 422, `step_index` refusé) |
+| `POST /api/microprojets/{slug}/structures/simulate` | `POST /api/simulations` → 200 (calcul, rien n'est stocké) ; la réponse porte `step_ids`, l'id de chaque étape (§ 4, identité d'une étape), et chaque couche d'une image, `step_index`, la position de l'étape qui l'a créée (`-1` : le substrat) ; `layer_labels` (§ 4, étiquettes de couches) : les SVG portent les étiquettes, regroupées par `bricks` (§ 4, briques d'un procédé) |
+| `POST /api/microprojets/{slug}/structures/variantes` | `POST /api/campaign-previews` → 200 (plafond `MAX_CAMPAIGN_ENTITIES`, 422 au-delà) ; chaque facteur désigne son étape par `step_id` (`"substrate"` pour le substrat ; id inconnu → 422, `step_index` refusé) ; `layer_labels` : chaque variante écrit ses propres valeurs ; `bricks` les regroupe |
 | `GET /api/microprojets/{slug}/structures/intention-form` | `GET /api/ui-texts/intention` (plugin library) |
 | `GET /api/bibliotheque/fichiers` | `GET /api/library/files` |
 | `GET /api/bibliotheque/fichiers/{key}` | `GET /api/library/files/{file_key}` |
@@ -505,6 +661,11 @@ Droits d'écriture :
 | `…/structures-sauvegardees[/{name}]` | `/api/saved-structures[/{structure_id}]` (même schéma) ; `derived_from` : un nom, ou l'origine `{microproject, experiment_id, version_id, ref}` d'une ref publiée depuis la page d'évolution (une étiquette, gardée telle qu'envoyée) |
 | `…/briques-technologiques[/{name}]` | `/api/tech-bricks[/{brick_id}]` (même schéma) |
 
+Une structure enregistrée et une brique gardent, comme `declared_params`, leurs étiquettes de couches
+par position d'étape (`layer_labels`, § 4 ; une position hors des étapes → 422) et l'appartenance
+de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`) ; publier une ref depuis la page
+d'évolution recopie celles de la version.
+
 ### experiments
 
 | Avant | Après |
@@ -518,23 +679,23 @@ Droits d'écriture :
 | *(nouveau)* | `GET …/experiments/{exp}/versions/{version_id}` (une version de l'histoire de la piste, `ETag`) |
 | `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 + `Location` vers la version ; **200 sans `Location`** si rien n'a changé (§ 4) ; une campagne y est refusée (422 `campaign_is_a_new_line`) : elle se lance avec `from_version` |
 | `POST …/{ref}/evoluer-image` | idem, avec `structure: {kind: "images", …}` |
-| `POST …/{ref}/dessin` | `PUT …/experiments/{exp}/structure-images` |
+| `POST …/{ref}/dessin` | `PUT …/experiments/{exp}/structure-images` (toute la planche, dans l'ordre : `{image_id, kind, caption, annotations}` ; écriture légère, même révision de structure - c'est aussi par elle que se posent les annotations d'une image) |
 | `POST …/{ref}/conclure` | `PUT …/experiments/{exp}/conclusion` (le verdict d'un objectif peut citer des entrées du cahier : `evidence_ids`, des ids d'entrées de la pointe, sinon 422 `notebook_entry_not_found`) |
 | `POST …/{ref}/statut` | `PUT …/experiments/{exp}/status` `{status, hold_reason}` |
 | `POST …/{ref}/etiquettes` | `PUT …/experiments/{exp}/tags` `{tags}` |
 | `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` |
-| `POST …/{ref}/combiner` | `POST …/experiments/{exp}/merges` `{other_experiment_id}` → 201 + `Location` vers la version (titre et intention restent ceux de la piste ; les cahiers des deux côtés sont réunis, dédoublonnés par id, et les métadonnées qui désignent une preuve absente purgées) |
-| `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=` (chaque étape porte son `id`) |
-| `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?}` ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
+| `POST …/{ref}/combiner` | `POST /api/microprojects/{mp}/experiments` `{merge_of: [{experiment_id, version_id?}, {experiment_id, version_id?}], title, intent, hypothesis, entities, objectives?, context?, branch?}` → 201 + `Location` vers la **nouvelle piste** (§ 4 : deux parents, la structure de la première, cahier vide ; les deux études ne changent pas). Exactement deux études, sans `structure` ni `from_version` (422) ; une version inconnue → 404 `source_not_found` ; deux fois la même piste ou la même version → 422 `same_experiment` ; une version d'avant la fourche de la piste désignée → 422 `version_before_line` ; une étude d'un autre µprojet n'y existe pas (404), et un champ de plus dans `merge_of` (`microproject`...) est refusé (422). `POST …/experiments/{exp}/merges` **supprimée** |
+| `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=` (chaque étape porte son `id` ; `layer_labels` : les étiquettes de couches par position d'étape, § 4 ; `bricks` : les briques du procédé par positions d'étape, § 4) |
+| `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} | null, entries, summary?, label_changes, param_changes}` (avec une cible, à part : les étiquettes de couches et leur regroupement par brique, `label_changes`, et les paramètres déclarés, `param_changes` ; étapes appariées par id, par position entre deux versions sans id commun, § 4)\| null, entries, summary?, label_changes}` (`label_changes`, avec une cible : à part, les étiquettes de couches et leur regroupement par brique, § 4) ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
 | `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
 | `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
 | `POST …/{ref}/ref` | `POST /api/microprojects/{mp}/refs` `{experiment_id, version_id?, name?}` → 201 + `Location` `.../refs/{ref_name}` (encodé : `ref%20v1.1.0`) et la ref telle que la liste la montre, plus `name` (`name` vide : « ref vX.Y.Z » ; nom invalide → 422, nom pris → 409 ; § 4) |
 | *(nouveau)* | `GET /api/microprojects/{mp}/refs/{ref_name}` (viewer) → l'entrée de la liste plus `name` ; inconnue → 404 `ref_not_found` |
 | *(nouveau)* | `PATCH …/refs/{ref_name}` `{name}` (editor) → renomme, la version reste ; 409 `ref_name_taken`, 422 nom vide ou invalide ; même nom ou `name` absent → 200 sans effet |
 | *(nouveau)* | `DELETE …/refs/{ref_name}` (editor) → 204, la version reste |
-| *(nouveau)* | `GET /api/microprojects/{mp}/structure-history?all_versions=` (viewer) → `{lanes, nodes, edges}` pour la page d'évolution (`experiments.lineage.structure_history`) : pistes dans l'ordre de leur début puis du nom (une nouvelle piste vient en dernier) ; nœuds `{version_id, experiment_id, lane, version, label, change_level, title, created_at, author, is_tip, is_merge, refs, structure_kind, has_process}` (`label` : « vX.Y.Z ») - par défaut les versions structurelles, celles qui portent une ref, les fusions et le début de chaque piste, toutes avec `all_versions=true` ; arêtes `{parent, child, kind}` (`parent`, `fork` ou `merge`), à travers les versions masquées |
+| *(nouveau)* | `GET /api/microprojects/{mp}/structure-history?all_versions=` (viewer) → `{lanes, nodes, edges}` pour la page d'évolution (`experiments.lineage.structure_history`) : pistes dans l'ordre de leur début puis du nom (une nouvelle piste vient en dernier) ; nœuds `{version_id, experiment_id, lane, version, label, change_level, title, created_at, author, is_tip, is_merge, refs, structure_kind, has_process}` (`label` : « vX.Y.Z ») - par défaut les versions structurelles, celles qui portent une ref, les fusions (combinaisons comprises) et le début de chaque piste, toutes avec `all_versions=true` ; arêtes `{parent, child, kind}` (`parent`, `fork` ou `merge` : vers une combinaison, depuis chacun de ses deux parents ; vers une fusion d'avant, depuis son second parent), à travers les versions masquées |
 | `GET …/refs`, `GET …/refs/graphe` | `GET /api/microprojects/{mp}/refs` → `{refs: [{version_id, experiment_id, names, title, status, decision, version, created_at}], edges: [{from, to}]}` (ids de version) |
-| `GET /api/microprojets/{slug}/filiation` | `GET /api/microprojects/{mp}/lineage` (les nœuds portent `version_id` et `experiment_id` - et `id`, égal à `version_id`, que citent les `edges` ; plus de badge de lot : le front le compose avec `GET /api/lots?wafer=`) |
+| `GET /api/microprojets/{slug}/filiation` | `GET /api/microprojects/{mp}/lineage` (les nœuds portent `version_id` et `experiment_id` - et `id`, égal à `version_id`, que citent les `edges` ; plus de badge de lot : le front le compose avec `GET /api/lots?wafer=`). Vers une version à deux parents (une combinaison), une arête depuis le nœud de chacune des deux études : une pointe est toujours un nœud, et deux pistes parties d'un même point sans changer sa structure n'y sont pas confondues avec ce point |
 | `GET /api/microprojets/{slug}/graphe.html` | **supprimée**, ainsi que la page `/microprojets/{slug}/graphe` |
 | *(dans les listes de µprojets)* | `GET /api/experiment-stats?microproject=&area=` → `[{microproject, running, concluded, abandoned, wafers, role_source}]` |
 | *(dans la thématique)* | `GET /api/experiment-timeline?area=&thematic=` (champs masqués pour les non-membres) |
@@ -573,24 +734,40 @@ in_report, created_at, created_by, updated_at, updated_by}`, plus, à la lecture
     de l'instantané : `hook`, `hook_title`, `wafers`, `source`, `fetched_at`, `row_count`) ;
   - `manual` (zéro ou plus ; une mesure vide marque l'étape où elle a été faite) : `{step_id, value:
     {number, unit, name} | null, text, table: {columns, rows} | null, attachments: [{id, caption,
-    filename, content_type, size, url}], links: [{label, url}], annotations: [{attachment_id, type:
-    "arrow" | "box", x, y, x2, y2, label}]}`. À l'écriture, `attachments` accepte des ids ou
+    filename, content_type, size, url}], links: [{label, url}], annotations: [{attachment_id |
+    external_image, type: "arrow" | "box", x, y, x2, y2, label}], external_images: [{index, name,
+    path, caption, status, url}]}`. À l'écriture, `attachments` accepte des ids ou
     `{id, caption}` (des fichiers `purpose=notebook` de ce µprojet, 12 au plus) ; `links` n'accepte
     que `http`/`https` (10 au plus, 422 `invalid_link`) ; un tableau a de 1 à 50 colonnes, 1000
     lignes au plus, une cellule par colonne (texte de 500 caractères au plus, nombre fini, booléen
-    ou vide ; 422 `invalid_table`) ; une annotation désigne une image de la mesure.
+    ou vide ; 422 `invalid_table`) ; une annotation (la forme du noyau, `kernel.annotations`, 100
+    au plus par mesure) désigne une image de la mesure par une clé qui ne bouge pas quand on
+    réordonne ses images : un fichier image (`attachment_id`) ou une image externe
+    (`external_image` : son chemin, unique dans la mesure) - l'un ou l'autre, sinon 422 ; une image
+    retirée de la mesure part avec ses annotations (la page ne les renvoie plus).
 - `objective` : un objectif de la version (422 sinon) - le lien d'une donnée à un objectif.
 
 | Avant | Après |
 |---|---|
-| *(dans le détail : `data_items`)* | `GET …/experiments/{exp}/image-sets?version=` → tableau ; chaque image `{index, name, path, status, url}`, `status` ∈ `ok`, `missing`, `unsupported`, `forbidden` |
-| `POST …/{ref}/data` | `POST …/experiments/{exp}/image-sets` → 201 + le jeu (`ETag`), **sans `Location`** (pas de route propre, comme une vue du cahier) |
-| `PATCH …/{ref}/data/{id}/epingle` | `PATCH …/experiments/{exp}/image-sets/{set_id}` `{pinned_index}` (sans effet → pas de version) |
-| `DELETE …/{ref}/data/{id}` | `DELETE …/experiments/{exp}/image-sets/{set_id}` → 204 |
-| `GET /api/microprojets/{slug}/data/image?chemin=` | `GET …/experiments/{exp}/image-sets/{set_id}/images/{index}?version=` (chemin lu dans les métadonnées, jamais reçu du client ; borné aux racines lui aussi : un ancien jeu qui pointe ailleurs répond 403) |
-| `GET /api/microprojets/{slug}/data/parcourir?dossier=` | `GET /api/microprojects/{mp}/external-images?directory=` (editor) → `[{name, path, size, displayable}]` ; limité à `SPECTRE_EXTERNAL_IMAGE_ROOTS` (racines connues telles qu'écrites et résolues : un nom court Windows passe), désactivé sans cette variable (503 `browsing_disabled` ; les chemins locaux restent acceptés à la création, les chemins UNC non) ; les TIFF sont listés, non affichables |
+| *(dans le détail : `data_items`)*, `POST …/{ref}/data`, `PATCH …/{ref}/data/{id}/epingle`, `DELETE …/{ref}/data/{id}` | **supprimées**, avec les routes `…/experiments/{exp}/image-sets` qui les avaient remplacées : les images externes sont un contenu d'une mesure manuelle du cahier (`external_images`, écrites par `POST`/`PATCH …/notebook-entries`), et les anciens jeux se lisent comme des entrées du cahier (§ 4) |
+| `GET /api/microprojets/{slug}/data/image?chemin=` | `GET …/experiments/{exp}/notebook-entries/{entry_id}/external-images/{index}?version=` (viewer ; `index` : le rang de l'image dans l'entrée, ses mesures dans l'ordre ; le chemin est lu dans le cahier de la version, jamais reçu du client, et revérifié à chaque lecture : une image d'avant qui pointe hors des racines répond 403) ; c'est l'`url` que porte chaque image, qui nomme toujours la version lue (`?version=`, la pointe comprise) : le rang d'une image change quand on réordonne ou retire les images d'une mesure, une adresse ne désigne ainsi qu'une seule image et le navigateur peut la garder en cache |
+| `GET /api/microprojets/{slug}/data/parcourir?dossier=` | `GET /api/microprojects/{mp}/external-images?directory=` (editor) → `[{name, path, size, displayable}]` ; limité à `SPECTRE_EXTERNAL_IMAGE_ROOTS` (racines connues telles qu'écrites et résolues : un nom court Windows passe), désactivé sans cette variable (503 `browsing_disabled` ; les chemins locaux restent acceptés à la création, les chemins UNC non) ; les TIFF sont listés, non affichables ; seules les images d'un dossier sont listées, pas ses sous-dossiers |
+| *(nouveau)* | `GET /api/microprojects/{mp}/external-images/roots` (editor) → `[chemin]` : les dossiers autorisés tels qu'écrits dans `SPECTRE_EXTERNAL_IMAGE_ROOTS` (absolus, sans doublon, sans toucher au disque), d'où partir pour choisir des images ; `[]` : le parcours est désactivé |
 
-Codes de la galerie : hors des racines → 403 `outside_roots` (contrôle lexical avant tout accès disque, revérifié après résolution des liens) ; dossier ou image absents → 404 `directory_not_found` / `image_missing` ; TIFF, fichier qui n'est pas une image, introuvable ou chemin relatif → 422 `unsupported_format`, `not_an_image`, `file_not_found`, `relative_path`.
+Une image externe d'une mesure : `{path, caption}` à l'écriture (100 au plus par mesure, sans
+doublon) ; chaque chemin doit être absolu, sous une racine de `SPECTRE_EXTERNAL_IMAGE_ROOTS`, dans un
+format que le navigateur affiche, et présent sur le disque (`external_images.service.checked_image`)
+- sauf s'il est déjà sur l'entrée (une image d'un ancien jeu, déplacée depuis, reste). À la lecture,
+`status` ∈ `ok`, `missing`, `unsupported`, `forbidden`, et l'`url` de ses octets. Une mesure sans image
+externe n'enregistre pas la clé (elle se lit `[]`) ; une mesure PRISM n'en a pas.
+
+Codes des images externes : hors des racines → 403 `outside_roots` (contrôle lexical avant tout accès disque, revérifié après résolution des liens) ; dossier ou image absents → 404 `directory_not_found` / `image_missing` ; rang hors de l'entrée → 404 `image_not_found` ; TIFF, fichier qui n'est pas une image, introuvable, chemin relatif ou chemin contenant un caractère NUL → 422 `unsupported_format` (le message dit d'exporter en PNG ou JPEG), `not_an_image`, `file_not_found`, `relative_path`, `invalid_path`.
+
+Le plugin external_images se réduit à cette politique (`service` : `configured_roots`, `roots`, `checked_image`,
+`image_status`, `readable_file`, `browse`) et au parcours des dossiers ; notebook en dépend. Garder un
+plugin plutôt que l'absorber dans notebook : l'accès au disque du serveur (racines, chemins réseau,
+formats) est une raison de changer à part, sensible, que le cahier n'a pas à porter ; le DAG reste
+propre (external_images ne dépend que de microprojects, placé avant notebook).
 
 ### intent_forms
 
@@ -691,7 +868,7 @@ Supprimée : `/microprojets/{slug}/graphe`.
     de leur page ;
   - le noyau expose ses helpers sans préfixe : `api`, `apiErrorMessage` (`api.js`), `escapeHtml`,
     `initials`, `formatDate`, `timeAgo`, `formatDuration`, `elapsedLabel`, `routeParams` (`ui.js`),
-    `timeline*` (`timeline.js`) ;
+    `timeline*` (`timeline.js`), `ImageAnnotations` (`annotations.js`) ;
   - des **bibliothèques de widgets** partagées entre plugins exposent plusieurs fonctions de
     premier niveau : `wafers/fdl.js` (`normalizeFdl`, `fdlChipsHtml`, `fdlsOfTracking`,
     `mountFdlField`, `plateUrl`, `waferKey`, `waferSuggestions`), `experiments/lineage-graph.js`
@@ -706,8 +883,6 @@ Supprimée : `/microprojets/{slug}/graphe`.
     procédé), `library/library-files.js`, `accounts/session.js`. Une
     page qui en utilise une la charge elle-même ; un nom nouveau ne doit pas en recouvrir un de
     cette liste ;
-  - `external_images/gallery.js` garde un état de premier niveau (`galleryCtx`, `galleryMounts`…)
-    mais ne lit que le `ctx` reçu (voir plus bas).
 - Ordre de chargement d'une page :
   1. noyau : `/static/kernel/api.js`, `ui.js`, `shell.js` ;
   2. session et recherche : `/static/accounts/session.js`, `/static/search/client.js`,
@@ -731,17 +906,34 @@ Supprimée : `/microprojets/{slug}/graphe`.
   est ignoré). Les modules de la fiche sont eux-mêmes des panneaux, un fichier chacun, sans global :
   `header.js` (bandeau, verdict, statut et pause), `objectives.js` (objectifs, réponses au
   formulaire d'intention), `tags-refs.js`, `structure-view.js` (structure, couches, campagne,
-  comparaison, images de la structure), `plates.js` (plaques suivies), `versions.js` (frise,
-  historique, pistes filles, liens), `conclusion.js`, `advanced.js` (fusion, suppression),
-  `report.js`. Ceux des autres plugins suivent : `external_images/static/gallery.js`,
+  comparaison, images de la structure ; le bouton « Étiquettes : masquer / afficher » des
+  étiquettes de couches, préférence de ce navigateur, affichées par défaut : il passe chaque
+  `svg.sp-labelled-structure` à sa `data-bare-viewbox`), `plates.js` (plaques suivies), `versions.js` (frise,
+  historique, pistes filles, liens - pour une combinaison, ses deux études d'origine), `conclusion.js`,
+  `advanced.js` (la boîte « Combiner deux études » : l'autre étude, cherchée parmi celles du
+  µprojet, le titre proposé « A + B », l'intention, l'hypothèse et la nouvelle plaque - lasermark,
+  emplacement, FDL, comme au lancement -, puis la fiche de la nouvelle étude ; suppression), `report.js`. Ceux des autres plugins suivent :
   `lots/static/lot-picker.js`, `notebook/static/notebook.js`.
+- **Les annotations d'une image** : un seul composant, `kernel/static/annotations.js` (global
+  `ImageAnnotations`), dans le noyau parce qu'il ne connaît aucun plugin ni aucune pièce jointe - il
+  reçoit une `<img>` et des formes, et rend la liste à enregistrer. Lecture seule sans rien monter :
+  une `<img>` marquée `ImageAnnotations.attr(annotations)` voit ses annotations dessinées à son
+  chargement (vignettes du graphe et de l'atlas, planche du constructeur `image-drop.js`, aperçus de
+  la boîte du cahier). `ImageAnnotations.mount(host, {img, annotations, editable, onSave, name})` :
+  les annotations numérotées, leur liste (les libellés) et, pour un éditeur, les outils (flèche,
+  cadre au cliquer-glisser, libellé modifiable, retrait, « Enregistrer » / « Annuler ») - le cahier
+  (`notebook.js`, chaque image d'une mesure) et la planche d'une structure en images
+  (`structure-view.js`, `PUT .../structure-images`) s'en servent. Le dessin est un SVG posé sur
+  l'image, au repère aux proportions de l'image (`preserveAspectRatio` « meet » : il épouse aussi une
+  image en `object-fit: contain`) ; l'image s'enveloppe dans `.annot-frame` (`kernel.css`), ou l'hôte
+  pose le dessin par une règle (`.img-tile__frame > .annot-layer`). Le rapport garde dessin et
+  libellés (les outils et les champs portent `data-report-hide`).
 - `ctx` est un objet explicite, le même d'un rechargement à l'autre : `microprojectSlug`,
   `experimentId`, `versionId`, `isTip` (la pointe, ouverte sans `?version=`), `role`, `canEdit`
   (éditeur sur la pointe), `detail`, `reload()`, `showError(err, box?)` ; s'y ajoutent, pour ne pas
   recharger chacun la même chose, `microproject`, `versions`, `process`, `variants()` (la matrice
-  d'une campagne, un appel par chargement), `write(call, box?)` et `setDataCount(key, n)`, par
-  lequel un panneau de l'onglet « Données » qui lit sa propre ressource (cahier, galerie) déclare
-  son compte. Aucun module ne lit de globale de la page.
+  d'une campagne, un appel par chargement) et `write(call, box?)`. Aucun module ne lit de globale
+  de la page.
 - **Le cahier vu par la fiche.** notebook dépend d'experiments, pas l'inverse : la fiche ne lit pas
   le cahier. Son panneau (`notebook.js`) le lit (`notebookApi.entries`, et `notebookApi.stepCounts`,
   `?summary=steps`) et le déclare par `ctx.setNotebook({entries: [{id, title, kind, objective,
@@ -754,9 +946,13 @@ Supprimée : `/microprojets/{slug}/graphe`.
   les entrées sans mesure à cette étape, à l'écran seulement.
 - **Le cahier, côté page** (`notebook/static/`) : `notebook.js` (le panneau : chaque entrée avec son
   stepper statique et ses mesures côte à côte, les entrées d'autres plaques repliées, les
-  annotations des images, le filtre), `entry-dialog.js` (global `NotebookEntryDialog`, la boîte
+  annotations de chaque image, téléversée ou externe (`ImageAnnotations`), les images externes d'une mesure - leur chemin affiché, et ce qui empêche
+  de montrer une image -, le filtre), `entry-dialog.js` (global `NotebookEntryDialog`, la boîte
   d'ajout et d'édition : type, plaques, stepper à cocher, une mesure par bulle, tableau collé en TSV,
-  images par `mountImageDrop` avec `purpose: "notebook"`, fichiers, liens) et `stepper.js`
+  images par `mountImageDrop` avec `purpose: "notebook"`, images externes - choisies dans un
+  dossier autorisé (`externalImagesApi.roots`, puis `browse`) ou par leur chemin, légendées,
+  réordonnées (la première est la principale), retirées ; une image déjà sur la mesure s'aperçoit
+  par son `url`, une nouvelle une fois enregistrée -, fichiers, liens) et `stepper.js`
   (`mountStepper(el, {steps, measured, retired, selectable, onChange})`). Le rapport les reprend
   tels qu'affichés : `data-report-show` y montre ce que l'écran masque ou replie (entrées hors du
   filtre, « Autres plaques »).
@@ -775,14 +971,24 @@ Supprimée : `/microprojets/{slug}/graphe`.
   (`POST /experiments` avec `from_version`). Un `?version=` qui désigne la pointe (lien d'une ref,
   par exemple) ouvre la fiche actuelle et le paramètre est retiré de l'adresse (`replaceState`) ;
   les liens construits par la fiche l'omettent déjà grâce à `is_tip` (frise, `children`).
+- **Les étiquettes de couches, côté pages.** Le constructeur (`structures/static/builder/layer-label.js`)
+  ajoute à l'inspecteur d'une étape qui crée une couche (dépôt, croissances, lithographie) la section
+  « Afficher sur la structure » : la case, le texte (prérempli du matériau, l'épaisseur cochée), les
+  valeurs possibles (épaisseur, composition d'un nitrure à composition, paramètres déclarés de
+  l'étape) ; l'étiquette vit sur l'étape (`step.layerLabel`), part par position
+  (`layerLabelsPayload`) et revient au chargement (`attachLayerLabels`) - procédé d'une étude,
+  structure enregistrée, brique (insérée ou éditée). L'aperçu est le SVG du serveur ; le lien
+  couche ↔ étape du dessin (sélection, survol) lit lui aussi le `step_index` du serveur. La page
+  d'évolution montre, dans son panneau, la structure de la version choisie (agrandie dans une boîte
+  au clic) ; pour une structure en images, sa première image avec ses annotations
+  (`structureBoardHtml` compact, en lecture seule ; un clic l'ouvre). Les vignettes de l'écran « Variations » restent sans étiquettes (trop petites).
 - Le vocabulaire d'une étude (types d'étape et leurs paramètres, décisions, résultats d'un objectif)
   est dans `experiments/static/vocabulary.js` (global `ExperimentVocabulary`), chargé par la fiche
   et l'atlas.
 - Écarts : `lot-picker.js` sert aussi au graphe de filiation, où `ExperiencePage` n'existe pas ; il
-  ne s'enregistre donc que `if (typeof ExperiencePage !== "undefined")`. Chaque panneau de l'onglet « Données » lit sa propre sous-ressource, pour la version affichée
-  (`?version=`) ; le repère de l'onglet
-  additionne `detail.notebook_count` et ce que déclarent les autres panneaux (`ctx.setDataCount` :
-  la galerie).
+  ne s'enregistre donc que `if (typeof ExperiencePage !== "undefined")`. Le cahier, seul panneau de
+  l'onglet « Données », lit sa propre sous-ressource, pour la version affichée (`?version=`) ; le
+  repère de l'onglet est `detail.notebook_count`.
 
 ## 7. Tests
 

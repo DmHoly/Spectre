@@ -8,8 +8,10 @@ from typing import Annotated, Any, Literal, Union
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from structureforge.process.steps import ProcessStep
 
+from ...kernel.annotations import ImageAnnotation
+
 from .campaigns import VariantPlan
-from .simulation import DeclaredParam, SubstrateSpec
+from .simulation import DeclaredParam, LayerLabel, ProcessBrick, SubstrateSpec
 
 
 class ProcessInput(BaseModel):
@@ -25,6 +27,11 @@ class ProcessInput(BaseModel):
     # - JSON object keys are always strings, converted to the step-index ints run_simulation wants
     # just before calling it.
     declared_params: dict[str, list[DeclaredParam]] = {}
+    # the labels of the chosen steps, drawn beside the structure (see simulation.LayerLabel) - by
+    # step index, like declared_params
+    layer_labels: dict[str, LayerLabel] = {}
+    # the bricks the steps belong to (see simulation.ProcessBrick) - by step index, like layer_labels
+    bricks: list[ProcessBrick] = []
     _step_ids: list[str | None] = PrivateAttr(default_factory=list)
 
     @model_validator(mode="wrap")
@@ -53,6 +60,7 @@ class StructureImageInput(BaseModel):
     image_id: str  # the id of an attachment uploaded with purpose=structure
     kind: Literal["schema", "coupe", "autre"] = "schema"
     caption: str | None = None
+    annotations: list[ImageAnnotation] = []  # arrows and boxes drawn on it, in % of the picture
 
 
 class StructureImagesInput(BaseModel):

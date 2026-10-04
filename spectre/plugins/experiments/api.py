@@ -37,7 +37,6 @@ from .schemas import (
     CreateExperimentRequest,
     EntitiesRequest,
     EvolveRequest,
-    MergeRequest,
     RefChanges,
     RefRequest,
     StatusRequest,
@@ -100,7 +99,7 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         "references": [r.model_dump(mode="json") for r in version.references],
         "tags": list(version.tags),
         "ref_names": refs.ref_names_for(repo, version.id),
-        "structure_svg": kinds.render_structure_svg(version.structure_type, version.structure),
+        "structure_svg": kinds.render_structure_svg(version.structure_type, version.structure, version.metadata),
         "is_batch": version.structure_type == kinds.ProcessLot.registry_key(),
         # a structure given as pictures: [{image_id, kind, caption, url}, ...] in reading order
         "structure_images": kinds.structure_images_payload(slug, version.structure_type, version.structure),
@@ -163,8 +162,10 @@ def create_experiment(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    """Une nouvelle piste (structure ``process``, ``images`` ou ``campaign``), à partir de rien ou
-    d'une version existante (``from_version``)."""
+    """Une nouvelle piste (structure ``process``, ``images`` ou ``campaign``), à partir de rien,
+    d'une version existante (``from_version``), ou de deux études du µprojet combinées
+    (``merge_of``, sans structure : la nouvelle piste a les deux pour parents) - ``Location`` vers
+    la nouvelle piste."""
     experiment = service.create(microproject.slug, body, author=user.name)
     created(response, _experiment_url(microproject.slug, experiment.branch))
     return _respond(response, microproject.slug, experiment.branch, experiment.id)
@@ -332,23 +333,6 @@ def set_entities(
     return _written(response, microproject.slug, experiment_id, None, after)
 
 
-@router.post("/experiments/{experiment_id}/merges", status_code=201)
-def merge_experiments(
-    experiment_id: str,
-    body: MergeRequest,
-    response: Response,
-    if_match: str | None = Header(None),
-    microproject: Microproject = Depends(require_role("editor")),
-    user: User = Depends(current_user),
-) -> dict:
-    """Réunit l'autre piste dans celle-ci : une nouvelle version à deux parents (``Location`` vers elle)."""
-    after = service.merge(
-        microproject.slug, experiment_id, body.other_experiment_id, author=user.name, expected_version=if_match_version(if_match)
-    )
-    created(response, f"{_experiment_url(microproject.slug, experiment_id)}/versions/{after.id}")
-    return _respond(response, microproject.slug, experiment_id, after.id)
-
-
 @router.get("/experiments/{experiment_id}/process")
 def experiment_process(
     experiment_id: str, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
@@ -376,7 +360,10 @@ def structure_diff(
     même piste (``against_version``), la pointe ou une version d'une autre piste
     (``against_experiment``), d'un autre µprojet au besoin (``against_microproject``, lisible par
     l'appelant). Sans rien : la version de structure précédente (:func:`service.structural_baseline`).
-    ``{target: {experiment_id, version_id, title, microproject} | null, entries, summary?}``."""
+    ``{target: {experiment_id, version_id, title, microproject} | null, entries, summary?,
+    label_changes, param_changes}`` - avec une cible, à part : ce qui change aux étiquettes de
+    couches et à leur regroupement par brique (``label_changes``, :func:`kinds.describe_label_changes`)
+    et aux paramètres déclarés (``param_changes``, :func:`kinds.describe_param_changes`)."""
     repo = get_repository(microproject.slug)
     base = service.version_of(repo, experiment_id, version)
     target_repo, target_microproject = repo, None
@@ -402,7 +389,7 @@ def structure_diff(
             "title": target.title,
             "microproject": target_microproject.name if target_microproject else None,
         },
-        **service.structure_diff(target, base),
+        **service.structure_diff(target_repo, target, repo, base),
     }
 
 
@@ -419,7 +406,7 @@ def experiment_variants(
     lot = kinds.ProcessLot.model_validate(experiment.structure)
     variation = campaigns.analyze_variants(lot.entries)
     payload: dict[str, Any] = variation.model_dump(mode="json")
-    payload["svgs"] = kinds.render_lot_svgs(lot)
+    payload["svgs"] = kinds.render_lot_svgs(lot, experiment.metadata)
     payload["factor_labels"] = experiment.metadata.get("campaign_factor_labels", [])
     payload["factor_values"] = experiment.metadata.get("campaign_factor_values", [])
     payload["factor_scales"] = experiment.metadata.get("campaign_factor_scales", [])

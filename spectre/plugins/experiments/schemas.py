@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 import follow
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..structures.schemas import StructureImageInput, StructurePayload
 from .entities import EntityTrackingInput
@@ -30,6 +30,17 @@ class FromVersion(BaseModel):
     version_id: str | None = None
 
 
+class MergeSource(BaseModel):
+    """One of the two studies a combination starts from - the tip of ``experiment_id`` when
+    ``version_id`` is left out. A study of this microproject only: any other field (a
+    ``microproject``...) is refused rather than ignored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    experiment_id: str
+    version_id: str | None = None
+
+
 class _Intention(BaseModel):
     """What a launch and an evolution ask again: the intention, the objectives, the entity and the
     answers to the microproject's intention form."""
@@ -48,9 +59,22 @@ class _Intention(BaseModel):
 
 
 class CreateExperimentRequest(_Intention):
-    structure: StructurePayload
+    """A new line of study: a structure (from scratch, or from an existing version with
+    ``from_version``), or the combination of two studies of the microproject (``merge_of``, exactly
+    two : the new line's structure is the combined one, so no ``structure`` is sent)."""
+
+    structure: StructurePayload | None = None
     from_version: FromVersion | None = None
+    merge_of: list[MergeSource] | None = Field(None, min_length=2, max_length=2)
     branch: str | None = None  # the name of the new line of study - from its title by default
+
+    @model_validator(mode="after")
+    def _structure_or_combination(self) -> "CreateExperimentRequest":
+        if self.merge_of is None and self.structure is None:
+            raise ValueError("Une structure est nécessaire (ou merge_of, pour combiner deux études).")
+        if self.merge_of is not None and (self.structure is not None or self.from_version is not None):
+            raise ValueError("Une combinaison (merge_of) ne prend ni structure ni from_version : sa structure est la structure combinée.")
+        return self
 
 
 class EvolveRequest(_Intention):
@@ -92,10 +116,6 @@ class TagsRequest(BaseModel):
 
 class EntitiesRequest(BaseModel):
     entities: list[EntityTrackingInput]
-
-
-class MergeRequest(BaseModel):
-    other_experiment_id: str
 
 
 class RefRequest(BaseModel):

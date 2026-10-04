@@ -45,8 +45,46 @@ function generateBrickGroupId() {
 // n'existe que sur les copies vivantes dans une structure en cours, posée fraîche à chaque
 // groupement ou insertion.
 function stripBrickTag(step) {
-  const { brick_group_id, brick_name, ...rest } = step;
+  const { brick_group_id, brick_name, brick_source, ...rest } = step;
   return rest;
+}
+
+// L'appartenance des étapes aux briques voyage à part dans l'API, comme les étiquettes de couches :
+// [{group_id, name, source, step_indexes}] à l'envoi (source : l'id de la brique de bibliothèque
+// d'où elle vient, si on le connaît) ; rattachée à chaque étape (brick_group_id, brick_name,
+// brick_source) au chargement d'un procédé, d'une structure ou d'une brique enregistrés - le
+// serveur l'enregistre avec la version, sans en faire un changement de structure. Le nom d'une
+// brique fait au plus BRICK_NAME_MAX caractères (simulation.BRICK_NAME_MAX_LENGTH) : celui d'une
+// brique de bibliothèque enregistrée avant cette limite est coupé à l'envoi.
+const BRICK_NAME_MAX = 120;
+
+function bricksPayload(steps) {
+  const bricks = [];
+  steps.forEach((step, i) => {
+    if (!step.brick_group_id) return;
+    const last = bricks[bricks.length - 1];
+    if (last && last.group_id === step.brick_group_id && last.step_indexes[last.step_indexes.length - 1] === i - 1) {
+      last.step_indexes.push(i);
+    } else {
+      const name = Array.from((step.brick_name || "").trim() || "Brique").slice(0, BRICK_NAME_MAX).join("");
+      bricks.push({ group_id: step.brick_group_id, name, source: step.brick_source || null, step_indexes: [i] });
+    }
+  });
+  return bricks;
+}
+
+function attachBricks(steps, bricks) {
+  if (!bricks || !bricks.length) return steps;
+  const tagged = steps.map((step) => ({ ...step }));
+  bricks.forEach((brick) => {
+    (brick.step_indexes || []).forEach((i) => {
+      if (!tagged[i]) return;
+      tagged[i].brick_group_id = brick.group_id;
+      tagged[i].brick_name = brick.name;
+      if (brick.source) tagged[i].brick_source = brick.source;
+    });
+  });
+  return tagged;
 }
 
 // L'id d'une étape (step.id) vient toujours du serveur : le procédé relu (GET .../process), ou la
@@ -211,6 +249,7 @@ function insertStepOfKind(kind, at = defaultInsertIndex()) {
   if (groupId) {
     step.brick_group_id = groupId;
     step.brick_name = state.steps[at].brick_name;
+    if (state.steps[at].brick_source) step.brick_source = state.steps[at].brick_source;
   }
   insertSteps(at, [step]);
 }
@@ -223,7 +262,12 @@ function insertBrickAt(brick, at = defaultInsertIndex()) {
   clearError();
   const target = snapGapOutsideBricks(at, true);
   const groupId = generateBrickGroupId();
-  const copied = JSON.parse(JSON.stringify(brick.steps)).map((s) => ({ ...withoutStepId(stripBrickTag(s)), brick_group_id: groupId, brick_name: brick.name }));
+  const copied = JSON.parse(JSON.stringify(brick.steps)).map((s) => ({
+    ...withoutStepId(stripBrickTag(s)),
+    brick_group_id: groupId,
+    brick_name: brick.name,
+    ...(brick.id ? { brick_source: brick.id } : {}),
+  }));
   state.collapsedBrickGroups.add(groupId);
   insertSteps(target, copied);
   state.selectedBrickGroup = groupId;
@@ -359,13 +403,14 @@ async function groupSelectionIntoBrick() {
       name,
       steps: selectedSteps,
       declared_params: declaredParamsPayload(selectedSteps),
+      layer_labels: layerLabelsPayload(selectedSteps),
       scope: "microproject",
       microproject: slug,
     });
     state.techBricks = [...state.techBricks, created];
     const groupId = generateBrickGroupId();
     indices.forEach((idx) => {
-      state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name };
+      state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name, brick_source: created.id };
     });
     renderBrickList();
     nameInput.value = "";
@@ -444,6 +489,7 @@ function stepChipHtml(i) {
         <span class="sb-chip__sub">${escapeHtml(chipSubtitle(step))}</span>
       </span>
       ${declared ? `<span class="sb-chip__badge" title="${declared} paramètre(s) déclaré(s)">+${declared}</span>` : ""}
+      ${step.layerLabel ? `<span class="sb-chip__badge sb-chip__badge--label" title="Étiquetée sur la structure : ${escapeHtml(step.layerLabel.text || stepMaterial(step) || step.name)}" aria-label="Étiquetée sur la structure"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span>` : ""}
       ${hasFactor ? `<span class="sb-chip__badge sb-chip__badge--factor" title="Paramètre varié">×${factorCount}</span>` : ""}
       ${multi ? `<span class="sb-chip__check" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>` : ""}
     </div>`;

@@ -146,8 +146,8 @@ function lineageLayout(nodes, edges, { colWidth = 130, rowHeight = 100, margin =
 }
 
 function lineageNodeShapeHtml(node, { radius = 9, selected = false, tipRing = true } = {}) {
-  // Une fusion (/combiner - README : "visible dans le graphe du projet comme un losange") reste
-  // un losange ici ; une pointe de piste actuelle porte un anneau accent pointillé pour rester
+  // Une combinaison (une version à deux parents - README : "visible dans le graphe du projet comme
+  // un losange") reste un losange ici ; une pointe de piste actuelle porte un anneau accent pointillé pour rester
   // repérable même une fois qu'on a cliqué ailleurs. Le halo `.lineage-halo` marque la sélection
   // (visible avec `selected`, ou par la classe .lineage-node-selected du groupe - voir microproject.html).
   const style = lineageOutcomeStyle(node);
@@ -170,7 +170,7 @@ function lineageNodeShapeHtml(node, { radius = 9, selected = false, tipRing = tr
   return `${halo}${ring}${shape}${dot}${glyph}`;
 }
 
-// Légende du code ci-dessus (une puce par issue + fusion + pointe de piste) - affichée sous le graphe
+// Légende du code ci-dessus (une puce par issue + combinaison + pointe de piste) - affichée sous le graphe
 // d'un µprojet et au-dessus de la frise d'une thématique, pour qu'aucune couleur ne reste à deviner.
 function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = false } = {}) {
   const icon = (node) =>
@@ -186,7 +186,7 @@ function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = fal
     ["abandoned", { status: "abandoned" }],
   ].map(([key, node]) => `<li>${icon(node)}${LINEAGE_OUTCOME_STYLE[key].label}</li>`);
   if (merge || tip) items.push(`<li class="status-legend__sep" aria-hidden="true"></li>`);
-  if (merge) items.push(`<li>${icon({ status: "draft", is_merge: true })}Fusion de deux pistes</li>`);
+  if (merge) items.push(`<li>${icon({ status: "draft", is_merge: true })}Combinaison de deux études</li>`);
   if (tip) {
     items.push(
       `<li><svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true"><circle r="8.5" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 2"></circle><circle r="4.5" fill="var(--surface)" style="stroke:var(--draft);stroke-width:1.6px"></circle></svg>Dernière version d'une piste</li>`

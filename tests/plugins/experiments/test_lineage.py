@@ -10,9 +10,9 @@ from support.experiments import (
     launch,
     lineage,
     list_experiments,
-    merge,
     set_status,
     tag,
+    write_old_merge,
 )
 from support.microprojects import signup_with_microproject
 from support.structures import steps
@@ -62,18 +62,21 @@ def test_lineage_collapses_a_tag_only_commit_but_keeps_the_edge(client):
     assert {n["experiment_id"] for n in body["nodes"]} == {launched["id"]}  # une seule piste
 
 
-def test_lineage_marks_a_merged_experiment_as_a_merge(client):
+def test_lineage_marks_an_old_merge_as_a_merge(client):
+    # une fusion d'avant (une version de la piste à deux parents) ; une combinaison d'aujourd'hui,
+    # une nouvelle piste : test_combine.py
     slug = _owner_microproject(client)
     a = launch(client, slug, title="A", intent="Piste A")
     b = launch(client, slug, title="B", intent="Piste B", steps=steps(30), entities=[{"sample_id": "W2"}])
-    merged = merge(client, slug, a["id"], b["id"])
-    assert merged["id"] == a["id"]
+    merged_id = write_old_merge(slug, a["id"], b["id"])
+    merged = get_experiment(client, slug, a["id"])
+    assert merged["version_id"] == merged_id
     assert merged["parents"] == [a["version_id"], b["version_id"]]
 
     body = lineage(client, slug)
-    merged_node = next(n for n in body["nodes"] if n["id"] == merged["version_id"])
+    merged_node = next(n for n in body["nodes"] if n["id"] == merged_id)
     assert merged_node["is_merge"] is True
-    parents = {e["parent"] for e in body["edges"] if e["child"] == merged["version_id"]}
+    parents = {e["parent"] for e in body["edges"] if e["child"] == merged_id}
     assert parents == {a["version_id"], b["version_id"]}
 
 

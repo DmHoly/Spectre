@@ -950,6 +950,170 @@ dialog[open] {
   }
 }
 
+/* -- annotations d'une image (kernel/static/annotations.js) ---------------------------------
+   Le dessin (.annot-layer) se pose sur l'image qu'il suit : une image enveloppée dans
+   .annot-frame (qui épouse l'image), ou une règle de la feuille de l'hôte. Traits en navy sur un
+   halo blanc : lisibles sur une coupe TEM sombre comme sur un schéma clair. */
+
+.annot-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+  vertical-align: top;
+}
+.annot-frame > img {
+  display: block;
+  max-width: 100%;
+}
+.annot-frame.is-annotating > img {
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+.annot-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.annot line,
+.annot rect {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.annot polygon {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.annot--box rect:not(.annot__halo) {
+  fill: var(--accent);
+  fill-opacity: 0.14;
+}
+.annot .annot__halo {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 4.5;
+}
+.annot--pending line:not(.annot__halo),
+.annot--pending rect:not(.annot__halo) {
+  stroke-dasharray: 4 3;
+}
+.annot--pending circle:not(.annot__halo) {
+  fill: var(--accent);
+}
+.annot__badge {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.annot__num {
+  fill: #fff;
+  font-family: var(--font-mono);
+  font-size: 3.2px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.annot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+.annot-list__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.annot-list__num {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+}
+.annot-list__type {
+  flex: none;
+  font-weight: 600;
+  color: var(--text);
+}
+.annot-list__input.field {
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
+  padding: 3px 8px;
+  font-size: 12.5px;
+}
+/* à l'écran, le libellé se modifie dans son champ ; dans le rapport (champ retiré), il se lit */
+.annot-list__input + .annot-list__text {
+  display: none;
+}
+.annot-list__remove {
+  flex: none;
+  min-width: 28px;
+  min-height: 28px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.annot-list__remove:hover {
+  color: var(--danger);
+  background: var(--danger-tint);
+}
+.annot-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.annot-tools [hidden] {
+  display: none;
+}
+.annot-tools .btn {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+.annot-tools .annot-tool[aria-pressed="true"] {
+  color: #fff;
+  background: var(--navy);
+  border-color: var(--navy);
+}
+.annot-hint {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.annot-hint:empty {
+  display: none;
+}
+
 /* -- mouvement réduit : on coupe animations et transitions non essentielles --------------- */
 
 @media (prefers-reduced-motion: reduce) {

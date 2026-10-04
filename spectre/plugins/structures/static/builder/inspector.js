@@ -64,16 +64,19 @@ function populateKindSelect() {
 function fillKindFields(step) {
   document.getElementById("kind-select").value = step.kind;
   state.formDeclaredParams = JSON.parse(JSON.stringify(step.declaredParams || []));
+  state.formLayerLabel = step.layerLabel ? JSON.parse(JSON.stringify(step.layerLabel)) : null;
   renderKindFields(step.kind);
   document.getElementById("f-name").value = step.name;
   const def = STEP_KIND_DEFS[step.kind];
   if (def.fillFields) def.fillFields(step);
+  refreshLayerLabelValues(step);
 }
 
 // Les valeurs par défaut d'un type d'étape sont celles de son formulaire (step-kinds.js) - on le
 // rend dans l'inspecteur puis on le lit, plutôt que de dupliquer ces défauts ailleurs.
 function defaultStepOfKind(kind) {
   state.formDeclaredParams = [];
+  state.formLayerLabel = null;
   document.getElementById("kind-select").value = kind;
   renderKindFields(kind);
   return buildStepFromForm();
@@ -126,8 +129,10 @@ function livePreviewFromForm() {
   if (previous.brick_group_id) {
     step.brick_group_id = previous.brick_group_id;
     step.brick_name = previous.brick_name;
+    if (previous.brick_source) step.brick_source = previous.brick_source;
   }
   state.steps[i] = step;
+  refreshLayerLabelValues(step);
   updateStepInspectorHeader();
   invalidateVariations();
   renderRail();

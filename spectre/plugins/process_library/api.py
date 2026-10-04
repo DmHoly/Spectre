@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from structureforge.process.steps import ProcessStep
 
 from ..accounts import service as accounts
@@ -40,6 +40,8 @@ class NewSavedStructure(_NewItem):
     substrate: simulation.SubstrateSpec
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
+    layer_labels: dict[str, simulation.LayerLabel] = {}
+    bricks: list[simulation.ProcessBrick] = []
     derived_from: str | ExperimentOrigin | None = None
 
 
@@ -47,6 +49,8 @@ class SavedStructureChanges(_ItemChanges):
     substrate: simulation.SubstrateSpec | None = None
     steps: list[ProcessStep] | None = None
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
+    layer_labels: dict[str, simulation.LayerLabel] | None = None
+    bricks: list[simulation.ProcessBrick] | None = None
 
 
 class NewStepPreset(_NewItem):
@@ -60,19 +64,27 @@ class StepPresetChanges(_ItemChanges):
 
 
 class NewTechBrick(_NewItem):
+    # le nom que reprend la brique d'un procédé où on l'insère (ProcessBrick) : la même limite
+    name: str = Field(max_length=simulation.BRICK_NAME_MAX_LENGTH)
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
+    layer_labels: dict[str, simulation.LayerLabel] = {}
+    bricks: list[simulation.ProcessBrick] = []
     notes: str | None = None
 
 
 class TechBrickChanges(_ItemChanges):
+    name: str | None = Field(None, max_length=simulation.BRICK_NAME_MAX_LENGTH)
     steps: list[ProcessStep] | None = None
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
+    layer_labels: dict[str, simulation.LayerLabel] | None = None
+    bricks: list[simulation.ProcessBrick] | None = None
     notes: str | None = None
 
 
 def _content(body: BaseModel) -> dict[str, Any]:
-    """Les champs envoyés, sans la portée ; les paramètres déclarés rangés par indice d'étape."""
+    """Les champs envoyés, sans la portée ; les paramètres déclarés (et les étiquettes de couches,
+    qui suivent la même règle) rangés par indice d'étape."""
     fields = body.model_dump(mode="json", exclude_unset=True, exclude={"scope", "microproject"})
     declared = getattr(body, "declared_params", None)
     if declared is not None:

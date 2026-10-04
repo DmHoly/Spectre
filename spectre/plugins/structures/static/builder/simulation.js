@@ -28,30 +28,10 @@ function currentFrameIndex() {
   return Math.max(0, Math.min(last, index));
 }
 
-// Pour chaque image, l'étape d'origine de chacune de ses couches (-1 = substrat, null = inconnue)
-// - en alignant la suite de matériaux d'une image sur la précédente : une couche retrouvée dans
-// le même ordre garde son origine, une couche nouvelle vient de l'étape de cette image, une couche
-// disparue (résine retirée, couche entièrement gravée) est simplement sautée.
-function computeLayerOrigins(frames) {
-  const origins = [];
-  let previous = [];
-  frames.forEach((frame, f) => {
-    const current = [];
-    let p = 0;
-    frame.layers.forEach((layer) => {
-      let q = p;
-      while (q < previous.length && previous[q].material !== layer.material) q += 1;
-      if (q < previous.length) {
-        current.push({ material: layer.material, origin: previous[q].origin });
-        p = q + 1;
-      } else {
-        current.push({ material: layer.material, origin: f === 0 ? -1 : f - 1 });
-      }
-    });
-    origins.push(current.map((c) => c.origin));
-    previous = current;
-  });
-  return origins;
+// Pour chaque image, l'étape d'origine de chacune de ses couches (-1 = substrat, null = inconnue) :
+// celle que le serveur a suivie pendant la simulation (step_index de chaque couche).
+function layerOriginsOf(frames) {
+  return frames.map((frame) => frame.layers.map((layer) => (layer.step_index == null ? null : layer.step_index)));
 }
 
 function layerOrigin(frameIndex, layerIndex) {
@@ -367,13 +347,15 @@ async function simulateNow() {
       substrate: substrateSpec(),
       steps: sent,
       declared_params: declaredParamsPayload(sent),
+      layer_labels: layerLabelsPayload(sent),
+      bricks: bricksPayload(sent),
     });
     if (seq !== simulateSeq) return;
     adoptStepIds(sent, result.step_ids);
     const colorsChanged = JSON.stringify(result.material_colors) !== JSON.stringify(state.materialColors);
     state.frames = result.frames;
     state.materialColors = result.material_colors;
-    state.layerOrigins = computeLayerOrigins(state.frames);
+    state.layerOrigins = layerOriginsOf(state.frames);
     clearSimulationError();
     renderFrame();
     if (colorsChanged) renderRail(); // pastilles de matériau des puces, aux couleurs du dessin

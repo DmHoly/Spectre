@@ -43,7 +43,9 @@ def structure_history(repo: Any, *, all_versions: bool = False) -> dict:
       line through which it can be opened (its own, or one whose history contains it).
     - ``edges``: ``{parent, child, kind}`` between shown nodes, through the hidden ones
       (:func:`versioning.collapsed_dag`) ; ``kind`` is ``parent`` (same line), ``fork`` (a line
-      starting from another) or ``merge`` (the second parent of a merge).
+      starting from another) or ``merge`` - into a merge, from each parent on another line: both
+      parents of a combination (a new line made of two studies), the second parent of a merge
+      recorded on its first parent's line (before combinations made a new line).
     """
     experiments = {exp.id: exp for exp in repo}
     if not experiments:
@@ -127,11 +129,13 @@ def structure_history(repo: Any, *, all_versions: bool = False) -> dict:
     edges = []
     collapsed = versioning.collapsed_dag(dag, keep)
     for child in (node["version_id"] for node in nodes):  # dans l'ordre des nœuds
+        merge = len(dag[child]) > 1
         for i, parent in enumerate(collapsed[child]):
-            if i > 0:
+            same_line = experiments[parent].branch == experiments[child].branch
+            if i > 0 or (merge and not same_line):
                 kind = "merge"
             else:
-                kind = "parent" if experiments[parent].branch == experiments[child].branch else "fork"
+                kind = "parent" if same_line else "fork"
             edges.append({"parent": parent, "child": child, "kind": kind})
     return {"lanes": lanes, "nodes": nodes, "edges": edges}
 
@@ -221,11 +225,22 @@ def lineage_graph(repo: Any) -> dict:
                     node_payload(tip_id, is_tip=True, is_merge_id=exp_id, started_at=line_start(tip_id, exp_id))
                 )
 
-    edges = [
-        {"parent": display_id[parent], "child": display_id[child]}
-        for child, parents in collapsed.items()
-        for parent in parents
-    ]
+    def shown_as(exp_id: str) -> str:
+        """The node that shows ``exp_id``: itself for a tip (always a node), else its structural
+        point's (the tip displayed in its place, say)."""
+        if exp_id in tips:
+            return exp_id
+        return display_id[exp_id if exp_id in structural_ids else nearest_structural_ancestor(exp_id)]
+
+    edges = []
+    for child, parents in collapsed.items():
+        if len(dag[child]) > 1:
+            # a combination: an edge from the node of each study it was made of - two tips forked
+            # off the same structural point are two nodes, which collapsing would fold into one
+            parents = list(dict.fromkeys(shown_as(parent) for parent in dag[child]))
+        else:
+            parents = [display_id[parent] for parent in parents]
+        edges.extend({"parent": parent, "child": display_id[child]} for parent in parents)
     for exp_id, resolved_tips in tips_by_anchor.items():
         if len(resolved_tips) > 1:
             edges.extend({"parent": display_id[exp_id], "child": tip_id} for tip_id in resolved_tips)

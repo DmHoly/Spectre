@@ -1,35 +1,14 @@
-/* Client de l'API du plugin external_images : galerie d'images externes (TEM, scans) d'une
-   expérience et parcours des dossiers autorisés. Chaque image d'un jeu porte son `url` (le chemin
-   reste côté serveur). Les écritures sur la galerie envoient la version affichée (`versionId`,
-   en-tête If-Match) : 412 si la piste a avancé. */
+/* Client de l'API du plugin external_images : choisir des images externes (TEM, scans) sur le disque
+   du serveur, sans les copier - les dossiers autorisés d'où partir, puis les images d'un dossier. Les
+   images choisies sont un contenu d'une mesure du cahier (notebookApi), qui les sert par son `url`. */
 
 const externalImagesApi = {
-  // version : une version passée de la piste (la pointe sinon)
-  list(microprojectSlug, experimentId, version) {
-    return api.get(
-      api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/image-sets`, { version })
-    );
+  // les dossiers autorisés, tels qu'écrits dans SPECTRE_EXTERNAL_IMAGE_ROOTS : [chemin] ; vide, le
+  // parcours est désactivé sur ce serveur
+  roots(microprojectSlug) {
+    return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/external-images/roots`);
   },
-  // body : {title, note, entity_index, image_paths, pinned_index}
-  create(microprojectSlug, experimentId, versionId, body) {
-    return api.post(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/image-sets`, body, {
-      ifMatch: versionId && `"${versionId}"`,
-    });
-  },
-  pin(microprojectSlug, experimentId, versionId, setId, pinnedIndex) {
-    return api.patch(
-      `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/image-sets/${encodeURIComponent(setId)}`,
-      { pinned_index: pinnedIndex },
-      { ifMatch: versionId && `"${versionId}"` }
-    );
-  },
-  remove(microprojectSlug, experimentId, versionId, setId) {
-    return api.del(
-      `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/image-sets/${encodeURIComponent(setId)}`,
-      { ifMatch: versionId && `"${versionId}"` }
-    );
-  },
-  // les images d'un dossier autorisé : [{name, path, size, displayable}]
+  // les images d'un dossier autorisé : [{name, path, size, displayable}] (un TIFF : displayable false)
   browse(microprojectSlug, directory) {
     return api.get(api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/external-images`, { directory }));
   },
