@@ -10,6 +10,25 @@ routes REST en anglais, le front par son `client.js`. Les points 1 (équipes), 2
 et refs) et 3 (un seul cahier de données, rattaché aux étapes du procédé, et son préalable,
 l'identité des étapes) sont livrés : voir « Fait ».
 
+### 3 bis. Suites du cahier unique (décidé le 2026-10-04)
+
+- [ ] **La galerie « Images de mesure » devient un élément du cahier.** Aujourd'hui les images
+      externes (TEM, scans référencés par chemin, plugin `external_images`) ont leur propre
+      galerie à côté du cahier. Elles deviennent un contenu possible d'une mesure manuelle,
+      comme les pièces jointes, mais référencées sans être copiées.
+      - La politique des chemins reste celle d'aujourd'hui : racines `SPECTRE_EXTERNAL_IMAGE_ROOTS`,
+        formats affichables, image servie par identifiant et jamais par un chemin reçu du client.
+      - Les jeux d'images existants sont convertis à la lecture en entrées du cahier, en gardant
+        leurs ids.
+      - Le panneau séparé disparaît.
+- [ ] **Combiner deux études crée une nouvelle étude.** Aujourd'hui, combiner B dans A ajoute une
+      version à la piste A.
+      - Désormais, la combinaison crée une **nouvelle étude C**, c'est-à-dire une nouvelle piste.
+        Elle est issue de A et de B (le graphe montre les deux parents) et elle a son titre, son
+        intention et une **nouvelle plaque** à saisir.
+      - Son cahier démarre **vide** : les données restent sur A et B, attachées à leurs plaques.
+      - A et B ne bougent pas.
+
 ### 4. Documentation intégrée (en tout dernier)
 
 Volontairement à faire **après** les points 1 à 3, pour ne pas réécrire la documentation une fois
