@@ -49,6 +49,14 @@ def _setup(client, email="external@example.com"):
     return slug, line
 
 
+def _versionless(measurements: list[dict]) -> list[dict]:
+    """Les mesures lues, l'url de leurs images externes sans sa version (qui change à chaque écriture)."""
+    return [
+        {**m, "external_images": [{**i, "url": i["url"].split("?")[0]} for i in m.get("external_images") or []]}
+        for m in measurements
+    ]
+
+
 def _manual(images: list[dict], **fields) -> dict:
     return {"kind": "manual", "title": "Coupe TEM", "measurements": [{"external_images": images, **fields}]}
 
@@ -60,10 +68,12 @@ def test_a_manual_measurement_references_external_images_served_by_id(client, ro
     assert response.status_code == 201
     entry = response.json()
     base = f"/api/microprojects/{slug}/experiments/{line}/notebook-entries/{entry['id']}/external-images"
+    created = get_experiment(client, slug, line)["version_id"]
     [measurement] = entry["measurements"]
+    # l'url nomme la version lue : le rang d'une image change quand on les réordonne
     assert [(i["index"], i["name"], i["path"], i["caption"], i["status"], i["url"]) for i in measurement["external_images"]] == [
-        (0, "tem-1.png", first, "centre", "ok", f"{base}/0"),
-        (1, "tem-2.png", second, None, "ok", f"{base}/1"),
+        (0, "tem-1.png", first, "centre", "ok", f"{base}/0?version={created}"),
+        (1, "tem-2.png", second, None, "ok", f"{base}/1?version={created}"),
     ]
     assert measurement["text"] == "coupe" and measurement["attachments"] == []
     assert entries_by_id(client, slug, line)[entry["id"]] == entry
@@ -80,6 +90,20 @@ def test_a_manual_measurement_references_external_images_served_by_id(client, ro
     assert old_url == f"{base}/0?version={tip}" and client.get(old_url).content == PNG_1PX
     assert entries_by_id(client, slug, line)[entry["id"]]["measurements"][0]["external_images"] == []
     assert_handler_404(get_external_image(client, slug, line, entry["id"], 0), "introuvable")
+
+
+def test_a_reordered_image_gets_another_url(client, root):
+    """Réordonner les images d'une mesure change leur rang : l'adresse d'un rang change avec la version,
+    et une adresse déjà lue (gardée en cache par le navigateur) sert toujours la même image."""
+    slug, line = _setup(client)
+    first, second = png_files(root, "tem-1.png", "tem-2.png")
+    pathlib.Path(second).write_bytes(PNG_1PX + b"-2")
+    entry = post_entry(client, slug, line, **_manual([{"path": first}, {"path": second}])).json()
+    before = [image["url"] for image in entry["measurements"][0]["external_images"]]
+    reordered = update_entry(client, slug, line, entry["id"], measurements=[{"external_images": [{"path": second}, {"path": first}]}])
+    after = [image["url"] for image in reordered["measurements"][0]["external_images"]]
+    assert not set(before) & set(after)
+    assert client.get(after[0]).content == PNG_1PX + b"-2" and client.get(before[0]).content == PNG_1PX
 
 
 def test_images_are_counted_across_the_measurements_of_an_entry(client, root):
@@ -222,16 +246,25 @@ def test_the_first_write_records_the_converted_sets_and_drops_the_old_key(client
     tem = converted["data_" + "1" * 20]
     # renvoyer la mesure telle que lue suffit, même avec une image déplacée depuis
     kept = update_entry(client, slug, line, tem["id"], measurements=[as_input(m) for m in tem["measurements"]], title="Coupe TEM revue")
-    assert kept["measurements"] == tem["measurements"]
+    assert _versionless(kept["measurements"]) == _versionless(tem["measurements"])
 
     tip = get_repository(slug).get(get_experiment(client, slug, line)["version_id"])
+    assert all(i["url"].endswith(f"?version={tip.id}") for i in kept["measurements"][0]["external_images"])
     assert "data_items" not in tip.metadata
     stored = {entry["id"]: entry for entry in tip.metadata[experiments.NOTEBOOK_KEY]}
     assert list(stored) == ["data_" + "1" * 20, "data_" + "2" * 20]
     assert [i["path"] for i in stored[tem["id"]]["measurements"][0]["external_images"]] == [old["second"], old["first"], old["moved"], old["tiff"]]
     now = entries_by_id(client, slug, line)
-    assert now["data_" + "2" * 20] == converted["data_" + "2" * 20]
-    assert {**now[tem["id"]], "title": None, "updated_at": None, "updated_by": None} == {**tem, "title": None, "updated_at": None, "updated_by": None}
+    assert {**now["data_" + "2" * 20], "measurements": _versionless(now["data_" + "2" * 20]["measurements"])} == {
+        **converted["data_" + "2" * 20],
+        "measurements": _versionless(converted["data_" + "2" * 20]["measurements"]),
+    }
+    unchanged = {"title": None, "updated_at": None, "updated_by": None}
+    assert {**now[tem["id"]], **unchanged, "measurements": _versionless(now[tem["id"]]["measurements"])} == {
+        **tem,
+        **unchanged,
+        "measurements": _versionless(tem["measurements"]),
+    }
     # aucun objet Follow réécrit ; l'ancienne version se lit toujours convertie
     after = objects_checksums(slug)
     assert {name: after[name] for name in before} == before

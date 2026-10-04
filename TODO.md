@@ -9,25 +9,7 @@ Demandées le 2026-10-03. Chacune suit le contrat d'`ARCHITECTURE.md` : un plugi
 routes REST en anglais, le front par son `client.js`. Les points 1 (équipes), 2 (page d'évolution
 et refs), 3 (un seul cahier de données, rattaché aux étapes du procédé, et son préalable,
 l'identité des étapes) et 3 bis (ses suites : images externes dans le cahier, combinaison en une
-nouvelle étude) sont livrés côté serveur : voir « Fait ».
-
-### 3 bis. Suites du cahier unique : ce qui reste à l'interface
-
-Le serveur est livré (voir « Fait ») ; la fiche a reçu le strict nécessaire (les images externes
-s'affichent dans le cahier et survivent à une modification, la combinaison passe par un petit
-formulaire des « Actions avancées »). Reste :
-
-- [ ] **Choisir les images externes d'une mesure** dans la boîte d'ajout du cahier
-      (`entry-dialog.js`) : parcourir un dossier autorisé (`GET .../external-images?directory=`, à
-      rendre au client `externalImagesApi.browse`, retiré faute d'appelant), cocher des images,
-      les légender, les retirer, les réordonner (l'ancienne galerie épinglait une image : la
-      première tient lieu d'épinglée). Le TIFF est refusé par le serveur avec la marche à suivre.
-- [ ] **Une vraie boîte « Combiner »** à la place du formulaire minimal : choisir l'autre étude et
-      sa version, titre, intention, hypothèse, plaque (autocomplétion `waferSuggestions`), et
-      peut-être objectifs et contexte (repris de la première étude s'ils ne sont pas envoyés).
-- [ ] **La page d'évolution et le graphe de filiation** dessinent les deux arêtes `merge` d'une
-      combinaison (nouvelle piste) : vérifier le rendu (`evolution.js` dessinait une fusion sur la
-      piste de son premier parent) et la légende « Fusion de deux pistes » (« Combinaison » ?).
+nouvelle étude) sont livrés, serveur et interface : voir « Fait ».
 
 ### 4. Documentation intégrée (en tout dernier)
 
@@ -106,6 +88,35 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 ## Fait (pour mémoire, pas d'action)
 
+- **Images externes et combinaison, côté interface** (2026-10-04, point 3 bis). La galerie « Images
+  de mesure » a quitté l'onglet « Données » : tout est dans le cahier (le repère de l'onglet, le
+  rapport et la conclusion ne connaissent que ses entrées ; les anciens jeux s'y lisent comme des
+  entrées). La boîte d'ajout du cahier (`entry-dialog.js`) choisit les **images externes** d'une
+  mesure manuelle : les dossiers autorisés (nouvelle route `GET .../external-images/roots`, editor,
+  les racines telles qu'écrites, `[]` : parcours désactivé), les images d'un dossier à cocher (un
+  TIFF listé mais non cochable, avec la marche à suivre ; une image déjà dans la mesure, cochée et
+  grisée), ou le chemin d'une image ; légende, ordre (la première est la principale, l'ancienne
+  épinglée) et retrait ; une image déjà enregistrée s'aperçoit par l'`url` de l'entrée. **Combiner**
+  (« Actions avancées » de la fiche, `advanced.js`) ouvre une boîte : l'autre étude (la recherche
+  existante), le titre proposé « A + B » (il suit le choix tant qu'on ne l'a pas changé),
+  l'intention, l'hypothèse et la nouvelle plaque (lasermark, emplacement, FDL, avec
+  l'autocomplétion du µprojet), et l'aide « crée une nouvelle étude issue de ces deux-là ; elles ne
+  changent pas ; son cahier démarre vide » ; créée, sa fiche s'ouvre. La filiation, l'évolution
+  des structures (« issue de vX (piste n) et vY (piste m) ») et les liens de la fiche (« Combinaison
+  de ») montrent les deux parents ; les légendes disent « Combinaison de deux études ». Écarts
+  retenus : **pas d'annotations sur une image externe** (une annotation désigne un fichier
+  téléversé, `attachment_id` : l'étendre aux images externes change le format enregistré, pas
+  simple) ; une nouvelle image externe ne s'aperçoit qu'une fois enregistrée (aucune route ne sert
+  un chemin reçu du client, et c'est voulu) ; le parcours liste les images d'un dossier, pas ses
+  sous-dossiers (on tape le chemin) ; l'autre étude se combine à sa pointe (le serveur accepte une
+  version, la boîte ne la propose pas) ; objectifs et contexte restent ceux de la première étude ;
+  pour une campagne, la plaque saisie est celle de la première variante. Deux corrections côté
+  serveur, trouvées en vérifiant l'interface : l'`url` d'une image externe nomme toujours la
+  version lue (`?version=`, la pointe comprise) - sans elle, réordonner ou retirer des images
+  faisait désigner à une même adresse une autre image, que le navigateur pouvait garder en cache ;
+  la filiation (`GET .../lineage`) tire l'arête d'une combinaison depuis le nœud de chacune des
+  deux études - deux pistes parties d'un même point sans changer sa structure étaient repliées sur
+  ce point, et la combinaison n'y montrait qu'un parent.
 - **Les images externes deviennent un contenu du cahier** (2026-10-04, point 3 bis, côté serveur).
   Une mesure manuelle porte `external_images: [{path, caption}]`, validées à l'écriture par la
   politique du plugin `external_images` (racines `SPECTRE_EXTERNAL_IMAGE_ROOTS`, chemin réseau hors

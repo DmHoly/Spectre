@@ -95,13 +95,14 @@ def tracked_wafers(version: follow.Experiment) -> set[str]:
 
 class _Reading:
     """Ce qu'une lecture du cahier d'une version sait d'elle : ses plaques et ses étapes. La version
-    est celle de la pointe de ``experiment_id``, sauf si elle a été demandée (``version_id``) : les
-    images externes se lisent alors sur elle."""
+    est celle de la pointe de ``experiment_id``, ou celle qui a été demandée ; l'``url`` d'une image
+    externe la nomme toujours (``?version=``) : le rang d'une image dans l'entrée change quand on
+    réordonne ou retire ses images, une adresse sans version désignerait alors une autre image que
+    celle que le navigateur garde en cache."""
 
-    def __init__(self, slug: str, experiment_id: str, repo: follow.Repository, version: follow.Experiment, version_id: str | None = None) -> None:
+    def __init__(self, slug: str, experiment_id: str, repo: follow.Repository, version: follow.Experiment) -> None:
         self.slug = slug
         self.experiment_id = experiment_id
-        self.version_id = version_id
         self.version = version
         self.wafers = tracked_wafers(version)
         self.steps = set(experiments.step_ids_of(repo, version))
@@ -119,7 +120,7 @@ class _Reading:
         shown = copy.deepcopy(entry)
         shown["applies"] = self.applies(entry)
         base = f"/api/microprojects/{self.slug}/experiments/{self.experiment_id}/notebook-entries/{quote(entry['id'], safe='')}/external-images"
-        query = f"?version={quote(self.version_id)}" if self.version_id else ""
+        query = f"?version={quote(self.version.id)}"
         index = 0
         for measurement in shown.get("measurements") or []:
             step_id = measurement.get("step_id")
@@ -139,7 +140,7 @@ class _Reading:
 
 def _reading(slug: str, experiment_id: str, version_id: str | None) -> _Reading:
     repo = get_repository(slug)
-    return _Reading(slug, experiment_id, repo, experiments.version_of(repo, experiment_id, version_id), version_id)
+    return _Reading(slug, experiment_id, repo, experiments.version_of(repo, experiment_id, version_id))
 
 
 def _selected(reading: _Reading, *, step: str | None, wafer: str | None, kind: str | None) -> list[dict[str, Any]]:

@@ -32,9 +32,11 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
 - **Piste et versions.** Une expérience est une **piste** (une branche Follow, nommée d'après son
   titre : `epitaxie-a-20-nm`). Chaque écriture crée une **version** immuable (`exp_<hex>`) ; la
   piste désigne toujours sa dernière version. Partir d'une version existante crée une nouvelle
-  piste (fourche explicite). **Combiner** deux études crée une nouvelle étude, issue des deux (le
-  graphe montre ses deux parents), avec la structure de la première, son titre, son intention et
-  une nouvelle plaque ; son cahier démarre vide et les deux études ne bougent pas.
+  piste (fourche explicite). **Combiner** deux études (« Actions avancées » de la fiche, puis
+  « Combiner… ») crée une nouvelle étude, issue des deux (le graphe de filiation et l'évolution des
+  structures montrent ses deux parents), avec la structure de la première, son titre (proposé
+  « A + B »), son intention, son hypothèse et une nouvelle plaque ; son cahier démarre vide et les
+  deux études ne bougent pas.
 - **Numéro de version.** Chaque version porte un numéro `X.Y.Z` calculé depuis la structure
   (`experiments/versioning.py`) : majeur si le substrat ou la suite d'étapes change, mineur si un
   paramètre d'étape change, correctif si seul un nom d'étape change.
@@ -54,7 +56,9 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
 - **Cahier de données.** Toutes les données d'une expérience sont dans un seul cahier (onglet
   « Données » de la fiche) : des entrées PRISM (un instantané par étape et une vue DataViz) ou
   saisies à la main (valeur, texte, tableau collé d'Excel, images annotées, fichiers, images
-  externes - TEM, scans référencés sur le serveur sans être copiés -, liens). Une
+  externes - TEM, scans référencés sur le serveur sans être copiés, choisies dans un dossier
+  autorisé et légendées -, liens). Les jeux de l'ancienne galerie « Images de mesure » y sont des
+  entrées comme les autres. Une
   entrée nomme les plaques mesurées et les étapes du procédé où la mesure a été faite, choisies sur
   un **stepper** ; la vue du procédé affiche un badge par étape mesurée. **La donnée suit la
   plaque** : si la piste ne suit plus ces plaques, l'entrée reste, repliée dans « Autres plaques ».
@@ -261,7 +265,7 @@ ses tables (`migrations.py`), ses pages (`pages/`) et son front (`static/`, serv
 | `links` | Liens entre µprojets et entre entités physiques | `/api/microproject-links`, `/api/entity-links` | — |
 | `atlas` | Vue graphe d'un projet corporate | `/api/areas/{area_slug}/atlas` | `/management/{slug}/atlas` |
 | `characterization` | Adaptateur PRISM (ou source démo) : catalogue, requêtes, graphiques | `/api/characterization` | `/donnees`, `/donnees/{key}` |
-| `external_images` | Politique des images externes (racines autorisées, formats) et parcours des dossiers ; les images sont un contenu du cahier | `/api/microprojects/{mp}/external-images` | — |
+| `external_images` | Politique des images externes (racines autorisées, formats) et parcours des dossiers ; les images sont un contenu du cahier | `/api/microprojects/{mp}/external-images` (et `.../roots`) | — |
 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens - les anciennes preuves et les anciens jeux d'images), rattachées aux plaques mesurées et aux étapes du procédé | `/api/microprojects/{mp}/snapshots`, `.../experiments/{exp}/notebook-entries` (et `.../{entry_id}/external-images/{index}`) | — (panneau de la fiche) |
 | `kpis` | Registre de KPI et séries mensuelles d'un projet corporate | `/api/areas/{area_slug}/kpis` | — |
 | `kpis_demo` | Séries et fiche d'étude fictives, actif seulement si `SPECTRE_DEMO_DATA=1` | `/api/areas/{area_slug}/kpis/{kpi_key}/studies` | — |

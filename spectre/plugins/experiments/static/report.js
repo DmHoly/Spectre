@@ -32,8 +32,9 @@
     return clone.outerHTML;
   }
 
-  // Les images servies par l'API (structure en images, galerie, cahier) ne s'ouvriraient pas hors de
-  // Spectre : le rapport les embarque en data: URL ; une image indisponible garde son lien d'origine.
+  // Les images servies par l'API (structure en images, cahier : images collées et images externes)
+  // ne s'ouvriraient pas hors de Spectre : le rapport les embarque en data: URL ; une image
+  // indisponible garde son lien d'origine.
   async function inlineReportImages(roots) {
     const sources = new Set();
     roots.forEach((root) =>

@@ -270,7 +270,7 @@
   }
 }
 
-/* aperçu (graphe du µprojet, atlas, galerie de données) : la première image, « +N » s'il y en a d'autres */
+/* aperçu (graphe du µprojet, atlas) : la première image, « +N » s'il y en a d'autres */
 .structure-thumb {
   position: relative;
   display: flex;

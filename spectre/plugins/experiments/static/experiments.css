@@ -1445,3 +1445,98 @@ a.plate-row__lasermark {
   background: var(--done-tint);
   border-radius: var(--radius-pill);
 }
+
+/* -- « Combiner deux études » (advanced.js) ------------------------------------------------ */
+.combine-dialog {
+  width: min(620px, 96vw);
+  max-height: 94vh;
+  padding: 0;
+  border: none;
+  border-radius: 14px;
+  box-shadow: var(--shadow-lift);
+}
+.combine-dialog__form {
+  display: flex;
+  flex-direction: column;
+  max-height: 94vh;
+}
+.combine-dialog__head,
+.combine-dialog__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+}
+.combine-dialog__head {
+  border-bottom: 1px solid var(--border-soft);
+}
+.combine-dialog__head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.combine-dialog__foot {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-soft);
+}
+.combine-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px;
+}
+.combine-dialog__help {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--surface-2);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.combine-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.combine-dialog__field label {
+  margin: 0;
+}
+.combine-dialog__field .help {
+  margin: 0;
+}
+.combine-dialog__field select[size] {
+  height: auto;
+  padding: 4px;
+}
+.combine-dialog__field select[size] option {
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+}
+.combine-dialog__plate {
+  min-width: 0;
+  margin: 0;
+  padding: 10px 14px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+.combine-dialog__plate legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--navy);
+}
+.combine-dialog__plate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 600px) {
+  .combine-dialog__plate-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

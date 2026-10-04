@@ -199,3 +199,20 @@ def test_the_lineage_and_the_structure_history_show_both_parents(client):
         (a["version_id"], "merge"),
         (b["version_id"], "merge"),
     }
+
+
+def test_the_lineage_shows_both_parents_of_two_forks_of_the_same_point(client):
+    """Deux pistes parties d'une même version sans changer sa structure sont deux nœuds de la
+    filiation (deux pointes au même point structurel) : leur combinaison part de chacune."""
+    slug = signup_with_microproject(client, "combine-forks@example.com", "Fourches")
+    root = launch(client, slug, title="Racine", intent="Depart", steps=steps(20))
+    fork = {"experiment_id": root["id"], "version_id": root["version_id"]}
+    a = launch(client, slug, title="Rouge", intent="Rouge", steps=steps(20), from_version=fork)
+    b = launch(client, slug, title="Verte", intent="Verte", steps=steps(20), from_version=fork)
+    c = combine(client, slug, a["id"], b["id"], title="Rouge + Verte")
+
+    body = lineage(client, slug)
+    ids = {n["id"] for n in body["nodes"]}
+    assert {a["version_id"], b["version_id"], c["version_id"]} <= ids
+    assert {e["parent"] for e in body["edges"] if e["child"] == c["version_id"]} == {a["version_id"], b["version_id"]}
+    assert all(e["parent"] in ids and e["child"] in ids for e in body["edges"])

@@ -225,11 +225,22 @@ def lineage_graph(repo: Any) -> dict:
                     node_payload(tip_id, is_tip=True, is_merge_id=exp_id, started_at=line_start(tip_id, exp_id))
                 )
 
-    edges = [
-        {"parent": display_id[parent], "child": display_id[child]}
-        for child, parents in collapsed.items()
-        for parent in parents
-    ]
+    def shown_as(exp_id: str) -> str:
+        """The node that shows ``exp_id``: itself for a tip (always a node), else its structural
+        point's (the tip displayed in its place, say)."""
+        if exp_id in tips:
+            return exp_id
+        return display_id[exp_id if exp_id in structural_ids else nearest_structural_ancestor(exp_id)]
+
+    edges = []
+    for child, parents in collapsed.items():
+        if len(dag[child]) > 1:
+            # a combination: an edge from the node of each study it was made of - two tips forked
+            # off the same structural point are two nodes, which collapsing would fold into one
+            parents = list(dict.fromkeys(shown_as(parent) for parent in dag[child]))
+        else:
+            parents = [display_id[parent] for parent in parents]
+        edges.extend({"parent": parent, "child": display_id[child]} for parent in parents)
     for exp_id, resolved_tips in tips_by_anchor.items():
         if len(resolved_tips) > 1:
             edges.extend({"parent": display_id[exp_id], "child": tip_id} for tip_id in resolved_tips)

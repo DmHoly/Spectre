@@ -342,7 +342,9 @@ déplacement de classe ne doit jamais la changer.
   cahier démarre vide, sans étiquettes ni conclusion. A et B ne bougent pas : aucune version ne s'y
   ajoute. Son numéro de version suit la règle d'une nouvelle piste (l'histoire de son premier
   parent, A : celui de A tant que la structure ne change pas). Les fusions d'avant (une version de A
-  à deux parents) restent lisibles telles quelles.
+  à deux parents) restent lisibles telles quelles. Les pages disent « combinaison » des deux : le
+  losange du graphe de filiation et de l'évolution des structures, « issue de vX (piste n) et vY
+  (piste m) » sur l'évolution, « Combinaison de » pour les deux liens de la fiche.
 - Le nom d'une ref (`refs.py`) : non vide, sans `/`, ni `.`/`..`, ni la forme d'un id de version
   (`repository.VERSION_ID_RE`, repris par `service.VERSION_ID_RE` ; Follow cherche un nom avant un
   id, une telle ref masquerait la version) - sinon 422 `invalid_ref_name` -, libre parmi les refs et
@@ -553,7 +555,7 @@ Droits d'écriture :
 | *(nouveau)* | `DELETE …/refs/{ref_name}` (editor) → 204, la version reste |
 | *(nouveau)* | `GET /api/microprojects/{mp}/structure-history?all_versions=` (viewer) → `{lanes, nodes, edges}` pour la page d'évolution (`experiments.lineage.structure_history`) : pistes dans l'ordre de leur début puis du nom (une nouvelle piste vient en dernier) ; nœuds `{version_id, experiment_id, lane, version, label, change_level, title, created_at, author, is_tip, is_merge, refs, structure_kind, has_process}` (`label` : « vX.Y.Z ») - par défaut les versions structurelles, celles qui portent une ref, les fusions (combinaisons comprises) et le début de chaque piste, toutes avec `all_versions=true` ; arêtes `{parent, child, kind}` (`parent`, `fork` ou `merge` : vers une combinaison, depuis chacun de ses deux parents ; vers une fusion d'avant, depuis son second parent), à travers les versions masquées |
 | `GET …/refs`, `GET …/refs/graphe` | `GET /api/microprojects/{mp}/refs` → `{refs: [{version_id, experiment_id, names, title, status, decision, version, created_at}], edges: [{from, to}]}` (ids de version) |
-| `GET /api/microprojets/{slug}/filiation` | `GET /api/microprojects/{mp}/lineage` (les nœuds portent `version_id` et `experiment_id` - et `id`, égal à `version_id`, que citent les `edges` ; plus de badge de lot : le front le compose avec `GET /api/lots?wafer=`) |
+| `GET /api/microprojets/{slug}/filiation` | `GET /api/microprojects/{mp}/lineage` (les nœuds portent `version_id` et `experiment_id` - et `id`, égal à `version_id`, que citent les `edges` ; plus de badge de lot : le front le compose avec `GET /api/lots?wafer=`). Vers une version à deux parents (une combinaison), une arête depuis le nœud de chacune des deux études : une pointe est toujours un nœud, et deux pistes parties d'un même point sans changer sa structure n'y sont pas confondues avec ce point |
 | `GET /api/microprojets/{slug}/graphe.html` | **supprimée**, ainsi que la page `/microprojets/{slug}/graphe` |
 | *(dans les listes de µprojets)* | `GET /api/experiment-stats?microproject=&area=` → `[{microproject, running, concluded, abandoned, wafers, role_source}]` |
 | *(dans la thématique)* | `GET /api/experiment-timeline?area=&thematic=` (champs masqués pour les non-membres) |
@@ -604,8 +606,9 @@ in_report, created_at, created_by, updated_at, updated_by}`, plus, à la lecture
 | Avant | Après |
 |---|---|
 | *(dans le détail : `data_items`)*, `POST …/{ref}/data`, `PATCH …/{ref}/data/{id}/epingle`, `DELETE …/{ref}/data/{id}` | **supprimées**, avec les routes `…/experiments/{exp}/image-sets` qui les avaient remplacées : les images externes sont un contenu d'une mesure manuelle du cahier (`external_images`, écrites par `POST`/`PATCH …/notebook-entries`), et les anciens jeux se lisent comme des entrées du cahier (§ 4) |
-| `GET /api/microprojets/{slug}/data/image?chemin=` | `GET …/experiments/{exp}/notebook-entries/{entry_id}/external-images/{index}?version=` (viewer ; `index` : le rang de l'image dans l'entrée, ses mesures dans l'ordre ; le chemin est lu dans le cahier de la version, jamais reçu du client, et revérifié à chaque lecture : une image d'avant qui pointe hors des racines répond 403) ; c'est l'`url` que porte chaque image |
-| `GET /api/microprojets/{slug}/data/parcourir?dossier=` | `GET /api/microprojects/{mp}/external-images?directory=` (editor) → `[{name, path, size, displayable}]` ; limité à `SPECTRE_EXTERNAL_IMAGE_ROOTS` (racines connues telles qu'écrites et résolues : un nom court Windows passe), désactivé sans cette variable (503 `browsing_disabled` ; les chemins locaux restent acceptés à la création, les chemins UNC non) ; les TIFF sont listés, non affichables |
+| `GET /api/microprojets/{slug}/data/image?chemin=` | `GET …/experiments/{exp}/notebook-entries/{entry_id}/external-images/{index}?version=` (viewer ; `index` : le rang de l'image dans l'entrée, ses mesures dans l'ordre ; le chemin est lu dans le cahier de la version, jamais reçu du client, et revérifié à chaque lecture : une image d'avant qui pointe hors des racines répond 403) ; c'est l'`url` que porte chaque image, qui nomme toujours la version lue (`?version=`, la pointe comprise) : le rang d'une image change quand on réordonne ou retire les images d'une mesure, une adresse ne désigne ainsi qu'une seule image et le navigateur peut la garder en cache |
+| `GET /api/microprojets/{slug}/data/parcourir?dossier=` | `GET /api/microprojects/{mp}/external-images?directory=` (editor) → `[{name, path, size, displayable}]` ; limité à `SPECTRE_EXTERNAL_IMAGE_ROOTS` (racines connues telles qu'écrites et résolues : un nom court Windows passe), désactivé sans cette variable (503 `browsing_disabled` ; les chemins locaux restent acceptés à la création, les chemins UNC non) ; les TIFF sont listés, non affichables ; seules les images d'un dossier sont listées, pas ses sous-dossiers |
+| *(nouveau)* | `GET /api/microprojects/{mp}/external-images/roots` (editor) → `[chemin]` : les dossiers autorisés tels qu'écrits dans `SPECTRE_EXTERNAL_IMAGE_ROOTS` (absolus, sans doublon, sans toucher au disque), d'où partir pour choisir des images ; `[]` : le parcours est désactivé |
 
 Une image externe d'une mesure : `{path, caption}` à l'écriture (100 au plus par mesure, sans
 doublon) ; chaque chemin doit être absolu, sous une racine de `SPECTRE_EXTERNAL_IMAGE_ROOTS`, dans un
@@ -616,7 +619,7 @@ externe n'enregistre pas la clé (elle se lit `[]`) ; une mesure PRISM n'en a pa
 
 Codes des images externes : hors des racines → 403 `outside_roots` (contrôle lexical avant tout accès disque, revérifié après résolution des liens) ; dossier ou image absents → 404 `directory_not_found` / `image_missing` ; rang hors de l'entrée → 404 `image_not_found` ; TIFF, fichier qui n'est pas une image, introuvable ou chemin relatif → 422 `unsupported_format` (le message dit d'exporter en PNG ou JPEG), `not_an_image`, `file_not_found`, `relative_path`.
 
-Le plugin external_images se réduit à cette politique (`service` : `roots`, `checked_image`,
+Le plugin external_images se réduit à cette politique (`service` : `configured_roots`, `roots`, `checked_image`,
 `image_status`, `readable_file`, `browse`) et au parcours des dossiers ; notebook en dépend. Garder un
 plugin plutôt que l'absorber dans notebook : l'accès au disque du serveur (racines, chemins réseau,
 formats) est une raison de changer à part, sensible, que le cahier n'a pas à porter ; le DAG reste
@@ -760,8 +763,10 @@ Supprimée : `/microprojets/{slug}/graphe`.
   `header.js` (bandeau, verdict, statut et pause), `objectives.js` (objectifs, réponses au
   formulaire d'intention), `tags-refs.js`, `structure-view.js` (structure, couches, campagne,
   comparaison, images de la structure), `plates.js` (plaques suivies), `versions.js` (frise,
-  historique, pistes filles, liens), `conclusion.js`, `advanced.js` (combinaison en une
-  nouvelle étude, suppression), `report.js`. Ceux des autres plugins suivent :
+  historique, pistes filles, liens - pour une combinaison, ses deux études d'origine), `conclusion.js`,
+  `advanced.js` (la boîte « Combiner deux études » : l'autre étude, cherchée parmi celles du
+  µprojet, le titre proposé « A + B », l'intention, l'hypothèse et la nouvelle plaque - lasermark,
+  emplacement, FDL, comme au lancement -, puis la fiche de la nouvelle étude ; suppression), `report.js`. Ceux des autres plugins suivent :
   `lots/static/lot-picker.js`, `notebook/static/notebook.js`.
 - `ctx` est un objet explicite, le même d'un rechargement à l'autre : `microprojectSlug`,
   `experimentId`, `versionId`, `isTip` (la pointe, ouverte sans `?version=`), `role`, `canEdit`
@@ -784,8 +789,10 @@ Supprimée : `/microprojets/{slug}/graphe`.
   annotations des images, les images externes d'une mesure - leur chemin affiché, et ce qui empêche
   de montrer une image -, le filtre), `entry-dialog.js` (global `NotebookEntryDialog`, la boîte
   d'ajout et d'édition : type, plaques, stepper à cocher, une mesure par bulle, tableau collé en TSV,
-  images par `mountImageDrop` avec `purpose: "notebook"`, fichiers, liens ; les images externes
-  d'une mesure y sont renvoyées telles quelles, on ne les y choisit pas encore) et `stepper.js`
+  images par `mountImageDrop` avec `purpose: "notebook"`, images externes - choisies dans un
+  dossier autorisé (`externalImagesApi.roots`, puis `browse`) ou par leur chemin, légendées,
+  réordonnées (la première est la principale), retirées ; une image déjà sur la mesure s'aperçoit
+  par son `url`, une nouvelle une fois enregistrée -, fichiers, liens) et `stepper.js`
   (`mountStepper(el, {steps, measured, retired, selectable, onChange})`). Le rapport les reprend
   tels qu'affichés : `data-report-show` y montre ce que l'écran masque ou replie (entrées hors du
   filtre, « Autres plaques »).

@@ -29,13 +29,23 @@ DISPLAYABLE = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 NOT_DISPLAYABLE = {".tif", ".tiff"}
 
 
+def configured_roots() -> list[str]:
+    """Les racines autorisées telles qu'écrites dans ``SPECTRE_EXTERNAL_IMAGE_ROOTS`` (absolues, sans
+    doublon, sans toucher au disque) : les dossiers d'où partir pour choisir des images. Vide si la
+    variable n'est pas définie (le parcours est alors désactivé)."""
+    written: list[str] = []
+    for raw in os.environ.get(ROOTS_ENV, "").split(os.pathsep):
+        if raw.strip() and (path := os.path.abspath(raw.strip())) not in written:
+            written.append(path)
+    return written
+
+
 def roots() -> list[Path] | None:
     """Les racines autorisées (``SPECTRE_EXTERNAL_IMAGE_ROOTS``), telles qu'écrites et résolues (un
     nom court Windows, un lien...), ou ``None`` si la variable n'est pas définie."""
     allowed: list[Path] = []
-    for raw in os.environ.get(ROOTS_ENV, "").split(os.pathsep):
-        if raw.strip():
-            allowed += [Path(os.path.abspath(raw.strip())), Path(raw.strip()).resolve()]
+    for raw in configured_roots():
+        allowed += [Path(raw), Path(raw).resolve()]
     return allowed or None
 
 

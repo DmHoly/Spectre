@@ -61,13 +61,22 @@
       <a href="/microprojets/${encodeURIComponent(ctx.microprojectSlug)}" style="font-size:12px;">Voir le µprojet &rarr;</a>`;
   }
 
+  // Une version à deux parents (une combinaison) : ses deux études d'origine plutôt qu'une
+  // « référence » et une « source combinée ».
+  const COMBINATION_ROLE_LABELS = {
+    baseline: "Combinaison de - structure reprise",
+    merge_source: "Combinaison de",
+  };
+
   function renderReferences(ctx) {
     const references = ctx.detail.references;
+    const combined = (ctx.detail.parents || []).length > 1;
     document.getElementById("references-card").style.display = references.length ? "" : "none";
     document.getElementById("references-list").innerHTML = references
       .map((r) => {
         const target = r.experiment_id ? `<a href="${ExperiencePage.pageUrl({ experiment_id: r.experiment_id, is_tip: true })}">${escapeHtml(r.label)}</a>` : escapeHtml(r.label);
-        return `<div style="font-size:13px;margin-bottom:8px;"><span style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(REFERENCE_ROLE_LABELS[r.role] || r.role)}</span><br>${target}</div>`;
+        const role = (combined && COMBINATION_ROLE_LABELS[r.role]) || REFERENCE_ROLE_LABELS[r.role] || r.role;
+        return `<div style="font-size:13px;margin-bottom:8px;"><span style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(role)}</span><br>${target}</div>`;
       })
       .join("");
   }

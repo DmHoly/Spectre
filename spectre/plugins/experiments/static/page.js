@@ -4,8 +4,8 @@
    dernière version, ou une version passée avec ?version=, en lecture seule. Tout ce qui s'affiche est
    un panneau, enregistré par ExperiencePage.registerPanel({key, mount(el, ctx)}) et monté dans
    l'élément [data-panel="<key>"] de la page (un panneau sans élément sur la page est ignoré) : ceux
-   de la fiche (header.js, objectives.js...), puis ceux des autres plugins (galerie, lots,
-   cahier), dans l'ordre de chargement de leurs scripts.
+   de la fiche (header.js, objectives.js...), puis ceux des autres plugins (lots, cahier), dans
+   l'ordre de chargement de leurs scripts.
 
    `mount` est rappelé, sur le même élément, à chaque rechargement de la fiche : il le remplit de
    nouveau. Il reçoit `ctx`, le même objet d'un rechargement à l'autre, dont les champs suivent la

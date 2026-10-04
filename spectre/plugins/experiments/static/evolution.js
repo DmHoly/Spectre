@@ -1,6 +1,7 @@
 /* Évolution des structures d'un µprojet (pages/evolution.html) : le diagramme façon git de
    GET .../structure-history - une colonne par piste, une rangée par version, les fourches et les
-   fusions -, et le panneau d'une version : ses refs (promouvoir, renommer, retirer), la comparer à
+   combinaisons (une version à deux parents : une nouvelle piste issue de deux études, ou une
+   fusion d'avant, sur la piste de son premier parent) -, et le panneau d'une version : ses refs (promouvoir, renommer, retirer), la comparer à
    une autre (structure-diff), partir d'elle (l'éditeur sur ?version=, une nouvelle piste), suivre
    une ref (ses descendants en évidence) et publier une ref dans la bibliothèque (une structure
    enregistrée partagée, avec son origine). Le serveur donne tout ce qui est dessiné : numéros,
@@ -81,7 +82,7 @@
   function followedNode() {
     return state.follow ? state.history.nodes.find((node) => node.refs.includes(state.follow)) || null : null;
   }
-  // la version suivie et tout ce qui en descend (fourches et fusions comprises)
+  // la version suivie et tout ce qui en descend (fourches et combinaisons comprises)
   function followedSet() {
     const start = followedNode();
     if (!start) return null;
@@ -132,23 +133,36 @@
     const y2 = rowY(child.row);
     if (x1 === x2) return `M${x1},${y1} L${x2},${y2}`;
     if (edge.kind === "merge") {
-      // descend la piste fusionnée, puis rejoint la version de fusion
+      // descend la piste d'un parent, puis rejoint la combinaison (sur une autre piste)
       return `M${x1},${y1} L${x1},${y2 - ROW * 0.8} C${x1},${y2 - ROW * 0.3} ${x2},${y2 - ROW * 0.5} ${x2},${y2}`;
     }
     // une fourche : quitte la version de départ, puis descend la nouvelle piste
     return `M${x1},${y1} C${x1},${y1 + ROW * 0.5} ${x2},${y1 + ROW * 0.3} ${x2},${y1 + ROW * 0.8} L${x2},${y2}`;
   }
 
-  function rowLabel(node) {
+  function rowLabel(node, index) {
     const lane = laneOf(node);
     const parts = [node.label, LEVEL_TEXT[node.change_level] || node.change_level, node.title, `piste ${lane.experiment_id}`];
-    if (node.is_merge) parts.push("fusion");
+    if (node.is_merge) parts.push(`combinaison${mergeParents(node, index) ? ` de ${mergeParents(node, index)}` : ""}`);
     if (node.refs.length) parts.push(`refs : ${node.refs.join(", ")}`);
     if (node.is_tip) parts.push("dernière version de la piste");
     return parts.join(", ");
   }
 
+  // Les deux parents d'une combinaison, « v1.2.0 (piste 1) et v2.0.0 (piste 2) » ; "" sinon.
+  function mergeParents(node, index) {
+    if (!node.is_merge) return "";
+    const parents = state.history.edges
+      .filter((edge) => edge.child === node.version_id)
+      .map((edge) => index.get(edge.parent))
+      .filter(Boolean)
+      .map(({ node: parent }) => `${parent.label} (piste ${laneOf(parent).index + 1})`);
+    return parents.length > 1 ? parents.join(" et ") : "";
+  }
+
   function forkNote(node, index) {
+    const parents = mergeParents(node, index);
+    if (parents) return `<span class="evo-row__fork">· issue de ${escapeHtml(parents)}</span>`;
     const fork = state.history.edges.find((edge) => edge.child === node.version_id && edge.kind === "fork");
     if (!fork) return "";
     const from = index.get(fork.parent);
@@ -208,10 +222,10 @@
         return `
           <li class="evo-row${dimmed}" role="option" id="row-${node.version_id}" data-id="${node.version_id}"
               aria-selected="${node.version_id === state.selectedId}" tabindex="${node.version_id === state.focusId ? 0 : -1}"
-              aria-label="${escapeHtml(rowLabel(node))}" title="${escapeHtml(node.title)}">
+              aria-label="${escapeHtml(rowLabel(node, index))}" title="${escapeHtml(node.title)}">
             ${compareTag}
             <span class="evo-row__label">${escapeHtml(node.label)}</span>
-            <span class="evo-row__level">${escapeHtml(node.is_merge ? "fusion" : LEVEL_TEXT[node.change_level] || "")}</span>
+            <span class="evo-row__level">${escapeHtml(node.is_merge ? "combinaison" : LEVEL_TEXT[node.change_level] || "")}</span>
             <span class="evo-row__title">${escapeHtml(node.title)} ${forkNote(node, index)}</span>
             <span class="evo-row__refs">${refs}</span>
             <span class="evo-row__meta" title="Piste ${escapeHtml(lane.experiment_id)}"><span class="evo-lanes__tag evo-lanes__tag--inline${lane.is_active ? "" : " is-retired"}">${lane.index + 1}</span> ${escapeHtml(formatDate(node.created_at))}</span>
@@ -241,7 +255,7 @@
       [{ change_level: "minor" }, "Changement mineur"],
       [{ change_level: "patch" }, "Correctif (nom d'étape)"],
       [{ change_level: "none" }, "Sans changement de structure"],
-      [{ change_level: "none", is_merge: true }, "Fusion de deux pistes"],
+      [{ change_level: "none", is_merge: true }, "Combinaison de deux études (deux parents)"],
       [{ change_level: "minor", refs: ["ref"] }, "Porte une ref"],
       [{ change_level: "minor", is_tip: true }, "Dernière version d'une piste"],
     ];
@@ -364,7 +378,7 @@
       return;
     }
     const lane = laneOf(node);
-    const level = node.is_merge ? "fusion" : LEVEL_TEXT[node.change_level] || node.change_level;
+    const level = node.is_merge ? "combinaison" : LEVEL_TEXT[node.change_level] || node.change_level;
     const refs = node.refs.length ? node.refs.map(refRowHtml).join("") : `<p class="help" style="margin:0;">Aucune ref sur cette version.</p>`;
     const promote = state.canEdit
       ? `<form class="evo-inline-form js-promote-form">

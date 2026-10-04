@@ -24,3 +24,8 @@ def png_files(directory: Path, *names: str) -> list[str]:
 def browse(client: Any, slug: str, directory: str) -> Any:
     """GET /external-images?directory= (la réponse)."""
     return client.get(f"/api/microprojects/{slug}/external-images", params={"directory": directory})
+
+
+def roots(client: Any, slug: str) -> Any:
+    """GET /external-images/roots (la réponse) : les dossiers autorisés d'où partir."""
+    return client.get(f"/api/microprojects/{slug}/external-images/roots")

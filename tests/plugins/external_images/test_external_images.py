@@ -4,6 +4,7 @@ elles-mêmes sont un contenu du cahier (voir ``tests/plugins/notebook/test_exter
 
 from __future__ import annotations
 
+import os
 import pathlib
 
 import pytest
@@ -12,7 +13,7 @@ from spectre.kernel.errors import Forbidden, InvalidInput
 from spectre.plugins.external_images import service
 
 from support.accounts import login, signup
-from support.external_images import browse, png_files
+from support.external_images import browse, png_files, roots
 from support.http import ROUTER_NOT_FOUND, assert_handler_404
 from support.microprojects import add_member, signup_with_microproject
 
@@ -41,6 +42,24 @@ def test_browsing_lists_the_images_of_an_allowed_folder(client, root):
     assert response.status_code == 200
     assert [(i["name"], i["displayable"]) for i in response.json()] == [("a.jpg", True), ("b.png", True), ("c.tif", False)]
     assert_handler_404(browse(client, slug, str(root / "absent")), "introuvable")
+
+
+def test_the_roots_are_listed_as_written_once_each(client, tmp_path, monkeypatch):
+    """Les dossiers d'où partir, tels qu'écrits (un même dossier une fois), sans toucher au disque :
+    une racine réseau absente se liste aussi."""
+    slug = signup_with_microproject(client, "roots@example.com")
+    first, second = tmp_path / "tem", tmp_path / "meb"
+    first.mkdir()
+    unc = r"\\serveur-inconnu\partage"
+    monkeypatch.setenv("SPECTRE_EXTERNAL_IMAGE_ROOTS", os.pathsep.join([str(first), f" {first} ", str(second), unc, ""]))
+    response = roots(client, slug)
+    assert response.status_code == 200
+    assert response.json() == [str(first), str(second), os.path.abspath(unc)]
+
+
+def test_without_roots_the_list_is_empty(client, no_roots):
+    slug = signup_with_microproject(client, "roots-off@example.com")
+    assert roots(client, slug).json() == []
 
 
 def test_browsing_stays_inside_the_roots(client, root, tmp_path):
@@ -99,6 +118,7 @@ def test_only_editors_browse(client, root):
     add_member(client, slug, "viewer-browse@example.com", "viewer")
     login(client, "viewer-browse@example.com")
     assert browse(client, slug, str(root)).status_code == 403
+    assert roots(client, slug).status_code == 403
     # membre (propriétaire, même) d'un autre µprojet, pas de celui-ci
     signup_with_microproject(client, "other-browse@example.com", "Ailleurs")
     assert browse(client, slug, str(root)).status_code == 403

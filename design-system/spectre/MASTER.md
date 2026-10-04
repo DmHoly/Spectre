@@ -65,7 +65,7 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
   nœud du graphe et la frise d'une thématique. Nœud (`lineage-graph.js`) : **creux = pas terminée**
   (brouillon anneau gris, en cours anneau bleu + point, en pause anneau ambre + ‖), **plein =
   terminée ou reprise** avec pictogramme (⌄ continuée = brouillon repris par une version suivante,
-  ✓ concluante, → à poursuivre, – non concluante, × abandonnée) ; losange = fusion. Jamais la
+  ✓ concluante, → à poursuivre, – non concluante, × abandonnée) ; losange = combinaison (une version à deux parents). Jamais la
   couleur seule : toujours la légende `lineageLegendHtml()` à côté. « En pause » et « continuée »
   sont propres à Spectre (Follow n'a que draft/running/concluded/abandoned) : voir
   `spectre/core/microprojects.py::display_status`.
