@@ -138,6 +138,11 @@ def process(client: Any, slug: str, ref: str, version: str | None = None) -> dic
     return assert_ok(client.get(f"{experiment_url(slug, ref)}/process", params={"version": version} if version else {}))
 
 
+def step_ids(client: Any, slug: str, ref: str, version: str | None = None) -> list[str]:
+    """GET /process : l'id de chaque étape du procédé, dans l'ordre."""
+    return [step["id"] for step in process(client, slug, ref, version)["steps"]]
+
+
 def structure_diff(client: Any, slug: str, ref: str, **params: Any) -> dict:
     """GET /structure-diff - ``version``, ``against_version``, ``against_experiment``, ``against_microproject``."""
     return assert_ok(client.get(f"{experiment_url(slug, ref)}/structure-diff", params=params))

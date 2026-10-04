@@ -18,7 +18,7 @@ from ...kernel.errors import InvalidInput
 from ..attachments.store import content_url, uploaded_image
 from .rendering import svg_for_process_structure
 from .schemas import StructureImageInput
-from .simulation import material_names_in_layers, materials_library
+from .simulation import STEP_IDS_METADATA_KEY, material_names_in_layers, materials_library
 
 
 # Clés de registre Follow de nos deux types de structure, figées sur leur valeur historique. Par
@@ -98,6 +98,7 @@ IMAGE_REVISION_KEY = "structure_image_revision"
 # continuing with an image, the same way the builder's evolution drops IMAGE_REVISION_KEY.
 DRAWN_STRUCTURE_METADATA_KEYS = (
     "structureforge_process",
+    STEP_IDS_METADATA_KEY,
     "campaign_labels",
     "campaign_factor_labels",
     "campaign_factor_values",

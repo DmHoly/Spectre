@@ -30,14 +30,26 @@ def lithography(name: str, resist: str = "Photoresist", *, thickness_nm: float, 
     return {"kind": "lithography", "name": name, "resist_material": resist, "thickness": length(thickness_nm), "openings": list(openings)}
 
 
+def fixed_step_id(n: int) -> str:
+    """Le n-ième id d'étape des tests (``st_00000001``...) - un id bien formé, comme ceux que le
+    serveur donne (le constructeur renvoie ceux qu'il a reçus)."""
+    return f"st_{n:08x}"
+
+
+def identified(process_steps: list[dict]) -> list[dict]:
+    """``process_steps``, chaque étape portant son id (``fixed_step_id(1)``, ``(2)``... dans l'ordre)."""
+    return [{"id": fixed_step_id(i + 1), **step} for i, step in enumerate(process_steps)]
+
+
 def steps(thickness_nm: float = 20) -> list[dict]:
-    """Le procédé par défaut des tests : une seule couche d'oxyde."""
-    return [deposition(thickness_nm=thickness_nm)]
+    """Le procédé par défaut des tests : une seule couche d'oxyde (id ``fixed_step_id(1)``)."""
+    return identified([deposition(thickness_nm=thickness_nm)])
 
 
-def campaign_plan(values: list, *, step_index: int = 0, field: str = "thickness", **factor: Any) -> dict:
-    """Un plan de campagne à un seul facteur - par défaut l'épaisseur de la première étape."""
-    return {"factors": [{"step_index": step_index, "field": field, "values": list(values), **factor}]}
+def campaign_plan(values: list, *, step_id: str = fixed_step_id(1), field: str = "thickness", **factor: Any) -> dict:
+    """Un plan de campagne à un seul facteur - par défaut l'épaisseur de la première étape
+    (``step_id`` : l'id de l'étape, ``"substrate"`` pour le substrat)."""
+    return {"factors": [{"step_id": step_id, "field": field, "values": list(values), **factor}]}
 
 
 def simulate(client: Any, body: dict) -> Any:

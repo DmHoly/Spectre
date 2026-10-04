@@ -15,6 +15,7 @@ d'intention revalidé. Bifurquer, c'est créer une nouvelle piste à partir d'un
 from __future__ import annotations
 
 import copy
+import hashlib
 import re
 import unicodedata
 from datetime import datetime, timezone
@@ -112,6 +113,94 @@ def structure_diff(before: follow.Experiment, after: follow.Experiment) -> dict[
     return follow.diff_structures(before.structure, after.structure).model_dump(mode="json")
 
 
+# -- l'identité des étapes -------------------------------------------------------------------------
+#
+# Chaque étape du procédé d'une version porte un id stable (``st_<8 hex>``, voir
+# ``structures.simulation.settle_step_ids``), rangé sous ``process_step_ids`` dans les métadonnées,
+# dans l'ordre des étapes de ``structureforge_process`` - à part du procédé : ni le versionnage
+# (``versioning.structure_signature``) ni StructureForge ne le voient. Une version n'est jamais
+# réécrite : celle qui a été enregistrée sans ids (avant eux) en reçoit à la lecture, dérivés de son
+# id et de la position (:func:`step_ids_of`, donc toujours les mêmes pour elle) ; toute version
+# écrite ensuite les enregistre (:func:`amend` reporte ceux du parent, une évolution, une fourche
+# ou une campagne les règle avec :meth:`_PreparedStructure.step_metadata`).
+
+
+def _derived_step_ids(version_id: str, count: int) -> list[str]:
+    """Les ids d'une version enregistrée sans eux : tirés de son id et de la position de l'étape,
+    distincts entre eux - les mêmes à chaque lecture."""
+    ids: list[str] = []
+    for index in range(count):
+        salt = 0
+        while True:
+            seed = f"{version_id}:{index}" + (f":{salt}" if salt else "")
+            candidate = "st_" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8]
+            if candidate not in ids:
+                break
+            salt += 1
+        ids.append(candidate)
+    return ids
+
+
+def step_ids_of(version: follow.Experiment) -> list[str]:
+    """L'id de chaque étape du procédé de ``version``, dans l'ordre (vide sans procédé éditable) :
+    ceux qu'elle a enregistrés, ou à défaut ceux dérivés de son id (:func:`_derived_step_ids`)."""
+    process = version.metadata.get("structureforge_process")
+    if not isinstance(process, dict):
+        return []
+    count = len(process.get("steps") or [])
+    stored = version.metadata.get(simulation.STEP_IDS_METADATA_KEY)
+    if (
+        isinstance(stored, list)
+        and len(stored) == count
+        and len(set(stored)) == count
+        and all(isinstance(step_id, str) and simulation.STEP_ID_RE.fullmatch(step_id) for step_id in stored)
+    ):
+        return list(stored)
+    return _derived_step_ids(version.id, count)
+
+
+def step_id_at(version: follow.Experiment, index: int) -> str | None:
+    """L'id de l'étape à la position ``index`` (à partir de 0) du procédé de ``version`` - ce que
+    devient un ancien ``step_index`` (celui d'une preuve, ou d'un facteur d'une campagne enregistrée
+    avant les ids d'étape : ``-1`` y désigne le substrat, ``campaigns.SUBSTRATE_STEP_ID``). ``None``
+    hors du procédé."""
+    ids = step_ids_of(version)
+    return ids[index] if 0 <= index < len(ids) else None
+
+
+def editable_process(version: follow.Experiment) -> dict[str, Any] | None:
+    """Le procédé éditable de ``version`` (substrat, étapes, paramètres déclarés), chaque étape
+    portant son ``id`` - ``None`` sans procédé éditable (une structure en images)."""
+    process = version.metadata.get("structureforge_process")
+    if process is None:
+        return None
+    payload = copy.deepcopy(process)
+    payload["steps"] = [{"id": step_id, **step} for step_id, step in zip(step_ids_of(version), payload.get("steps") or [])]
+    return payload
+
+
+def _metadata_with_step_ids(version: follow.Experiment) -> dict[str, Any]:
+    """Les métadonnées de ``version``, ses ids d'étape écrits (dérivés s'ils ne l'étaient pas) - ce
+    qu'une version suivante reporte : ses étapes gardent ainsi les ids qu'on lisait sur celle-ci."""
+    metadata = copy.deepcopy(version.metadata)
+    if isinstance(metadata.get("structureforge_process"), dict):
+        metadata[simulation.STEP_IDS_METADATA_KEY] = step_ids_of(version)
+    return metadata
+
+
+def _settled_step_ids(requested: list[str | None], parent: follow.Experiment | None, process: dict[str, Any]) -> list[str]:
+    """Les ids des étapes d'un nouveau procédé (``process``) qui part de ``parent`` : ceux que le
+    client renvoie (les ids reçus, conservés), un neuf pour une nouvelle étape, et pour une étape
+    dupliquée ou un id mal formé (:func:`simulation.settle_step_ids`). Un client qui n'envoie aucun
+    id (un script, une page d'avant) garde ceux du parent, par position, tant que la suite des types
+    d'étapes n'a pas changé - sinon, de nouveaux ids."""
+    if parent is not None and not any(requested):
+        before = parent.metadata.get("structureforge_process")
+        if isinstance(before, dict) and [s.get("kind") for s in before.get("steps") or []] == [s.get("kind") for s in process["steps"]]:
+            return step_ids_of(parent)
+    return simulation.settle_step_ids(requested)
+
+
 # -- écriture --------------------------------------------------------------------------------------
 
 
@@ -151,7 +240,7 @@ def amend(
         builder = repo.derive(
             parent.id, title=parent.title, intent=parent.intent, new_branch=experiment_id, author=author, hypothesis=parent.hypothesis
         )
-        builder.metadata = copy.deepcopy(parent.metadata)
+        builder.metadata = _metadata_with_step_ids(parent)
         builder.form_answers = copy.deepcopy(parent.form_answers)
         builder.evidence = list(parent.evidence)
         builder.tags = list(parent.tags)
@@ -174,7 +263,9 @@ def _own_references(experiment: follow.Experiment) -> list[dict]:
 
 
 def _unchanged(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> bool:
-    """Le builder ne dit rien de plus que ``parent`` (hors filiation, auteur et date)."""
+    """Le builder ne dit rien de plus que ``parent`` (hors filiation, auteur et date). Les ids
+    d'étape que ``parent`` n'avait pas écrits comptent comme écrits : les recevoir, sans rien
+    changer d'autre, ne fait pas une version."""
     if len(builder.parents) > 1:
         return False
     candidate = follow.Experiment(
@@ -195,7 +286,8 @@ def _unchanged(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> 
         metadata=builder.metadata,
         form_answers=builder.form_answers,
     )
-    return _content(candidate) == _content(parent) and _own_references(candidate) == _own_references(parent)
+    expected = parent.model_copy(update={"metadata": _metadata_with_step_ids(parent)})
+    return _content(candidate) == _content(expected) and _own_references(candidate) == _own_references(parent)
 
 
 def _commit(builder: follow.ExperimentBuilder, failure: str) -> follow.Experiment:
@@ -301,12 +393,16 @@ def _entity_required(what: str) -> InvalidInput:
 
 class _PreparedStructure:
     """A structure payload turned into what a commit needs, outside the lock (the simulation is the
-    slow part): the Follow structure, its protocol steps and the Spectre metadata that describes it."""
+    slow part): the Follow structure, its protocol steps and the Spectre metadata that describes it
+    - but its steps' ids, settled against the version it starts from (:meth:`step_metadata`)."""
 
     def __init__(self, slug: str, payload: Any) -> None:
         self.kind = payload.kind
         self.metadata: dict[str, Any] = {}
         self.campaign_size = 0
+        self.requested_step_ids: list[str | None] = []
+        self.plan: campaigns.VariantPlan | None = None
+        self.factor_indexes: list[int] = []
         if isinstance(payload, ImagesPayload):
             self.structure = kinds.structure_image_from_input(slug, payload.images)
             self.steps: list = []
@@ -314,11 +410,14 @@ class _PreparedStructure:
             return
         declared = simulation.declared_params_by_index(payload.declared_params)
         self.steps = follow_adapter.to_steps(payload.steps)
+        self.requested_step_ids = payload.step_ids
         self.metadata["structureforge_process"] = simulation.process_metadata(payload.substrate, payload.steps, declared)
         if isinstance(payload, CampaignPayload):
-            result = campaigns.generate_campaign_variants(payload.substrate, payload.steps, payload.plan, declared)
+            result = campaigns.generate_campaign_variants(payload.substrate, payload.steps, payload.plan, declared, payload.step_ids)
             self.structure = kinds.ProcessLot(entries=result.entries)
             self.campaign_size = len(result.entries)
+            self.plan = payload.plan
+            self.factor_indexes = result.factor_indexes
             self.metadata.update(
                 {
                     "campaign_labels": result.labels,
@@ -326,12 +425,24 @@ class _PreparedStructure:
                     "campaign_factor_values": result.factor_values,
                     # how each factor's values were laid out ("log" for a doping sweep over decades...)
                     "campaign_factor_scales": [factor.scale for factor in payload.plan.factors],
-                    "campaign_plan": payload.plan.model_dump(mode="json"),
                 }
             )
             return
         geometry, _frames, _materials = simulation.run_simulation(payload.substrate, payload.steps)
         self.structure = follow_adapter.to_structure(geometry)
+
+    def step_metadata(self, parent: follow.Experiment | None) -> dict[str, Any]:
+        """What the new version records of its steps' ids, settled against ``parent`` (the version
+        it continues or forks from, ``None`` for a brand-new line - see :func:`_settled_step_ids`) -
+        and, for a campaign, its plan, whose factors name their step by that final id. Nothing for
+        pictures."""
+        if self.kind == "images":
+            return {}
+        step_ids = _settled_step_ids(self.requested_step_ids, parent, self.metadata["structureforge_process"])
+        recorded: dict[str, Any] = {simulation.STEP_IDS_METADATA_KEY: step_ids}
+        if self.plan is not None:
+            recorded["campaign_plan"] = campaigns.plan_metadata(self.plan, self.factor_indexes, step_ids)
+        return recorded
 
 
 def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.Experiment:
@@ -362,6 +473,7 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
         if body.objectives:
             _set_objectives(builder, body.objectives)
         builder.metadata.update(prepared.metadata)
+        builder.metadata.update(prepared.step_metadata(source))
         builder.metadata["physical_tracking"] = _launch_tracking(prepared, entities)
         apply_context(builder.metadata, body.context)
         builder.form_answers = dict(body.form_answers)
@@ -440,6 +552,7 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
             # continuing an image-mode experiment in the builder: its structure is drawn from now on
             builder.metadata.pop(kinds.IMAGE_REVISION_KEY, None)
             builder.metadata["structureforge_process"] = process
+            builder.metadata.update(prepared.step_metadata(parent))
             if entities:
                 builder.metadata["physical_tracking"] = entities
             if not has_tracked_physical_entity(builder.metadata):
