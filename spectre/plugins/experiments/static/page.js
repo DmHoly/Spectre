@@ -4,7 +4,7 @@
    dernière version, ou une version passée avec ?version=, en lecture seule. Tout ce qui s'affiche est
    un panneau, enregistré par ExperiencePage.registerPanel({key, mount(el, ctx)}) et monté dans
    l'élément [data-panel="<key>"] de la page (un panneau sans élément sur la page est ignoré) : ceux
-   de la fiche (header.js, objectives.js...), puis ceux des autres plugins (preuves, galerie, lots,
+   de la fiche (header.js, objectives.js...), puis ceux des autres plugins (galerie, lots,
    cahier), dans l'ordre de chargement de leurs scripts.
 
    `mount` est rappelé, sur le même élément, à chaque rechargement de la fiche : il le remplit de
@@ -168,11 +168,12 @@ const ExperiencePage = (() => {
   });
   window.addEventListener("hashchange", () => showTab(window.location.hash.slice(1)));
 
-  // Repères sur les onglets : combien de données (le nombre de preuves du détail, plus ce que les
-  // panneaux qui lisent leur propre ressource déclarent), et si l'étude est conclue.
+  // Repères sur les onglets : combien de données (le nombre d'entrées du cahier, que donne le détail,
+  // plus ce que les autres panneaux qui lisent leur propre ressource déclarent - la galerie), et si
+  // l'étude est conclue.
   const dataCounts = new Map();
   function renderDataCount() {
-    const count = (ctx.detail.evidence_count || 0) + [...dataCounts.values()].reduce((sum, n) => sum + n, 0);
+    const count = (ctx.detail.notebook_count || 0) + [...dataCounts.values()].reduce((sum, n) => sum + n, 0);
     document.getElementById("tab-donnees-count").textContent = count ? String(count) : "";
   }
 

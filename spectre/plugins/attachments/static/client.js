@@ -2,8 +2,8 @@
    octets arrive toujours avec eux (`url`) : le front ne la construit pas. */
 
 const attachmentsApi = {
-  // `formData` : file, et purpose ("structure" : une image de structure ; "evidence" : une image de
-  // preuve) - renvoie {id, url, filename, content_type, size, purpose, uploaded_by, uploaded_at}
+  // `formData` : file, et purpose ("structure" : une image de structure ; "notebook" : une image ou
+  // un document d'une entrée du cahier) - renvoie {id, url, filename, content_type, size, purpose, uploaded_by, uploaded_at}
   upload(microprojectSlug, formData) {
     return api.upload(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/attachments`, formData);
   },

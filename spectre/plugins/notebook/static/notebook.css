@@ -172,6 +172,17 @@
   min-width: 0;
   padding: 14px 16px;
 }
+/* une mesure d'une entrée manuelle : valeur, texte, tableau, fichiers, liens */
+.nb-measure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.nb-measure + .nb-measure {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-soft);
+}
 .nb-entry__note {
   display: flex;
   flex-direction: column;

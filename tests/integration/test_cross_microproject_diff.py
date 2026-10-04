@@ -1,6 +1,6 @@
 """Comparer la structure d'une étude à celle d'une étude d'un autre µprojet (``structure-diff`` avec
-``against_microproject``), qui exige d'avoir accès aux deux. Les preuves sont testées dans
-``tests/plugins/evidence``."""
+``against_microproject``), qui exige d'avoir accès aux deux. Le cahier de données est testé
+dans ``tests/plugins/notebook``."""
 
 from __future__ import annotations
 

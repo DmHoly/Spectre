@@ -1,13 +1,12 @@
 """FDL (feuilles de lancement JIRA, spectre.plugins.wafers.fdl) stacked on each wafer - normalized, carried
 along the versions, searchable from the topbar - and the context description of an experience. The
-preuves (links, pasted images) are tested in ``tests/plugins/evidence``.
+the data notebook (links, pasted images) is tested in ``tests/plugins/notebook``.
 """
 
 from __future__ import annotations
 
 from spectre.plugins.experiments.entities import clean_fdl_list, normalize_fdl
 
-from support.evidence import upload_image
 from support.experiments import (
     conclude,
     evolve,
@@ -22,7 +21,7 @@ from support.experiments import (
 )
 from support.microprojects import signup_with_microproject
 from support.search import search as search_topbar
-from support.structures import campaign_plan, steps
+from support.structures import campaign_plan, steps, upload_structure_image
 from support.wafers import list_wafers
 
 
@@ -143,7 +142,7 @@ def test_editing_the_fiche_without_changing_the_structure_keeps_the_conclusion(c
 
 def test_editing_an_image_fiche_with_the_same_pictures_keeps_version_and_conclusion(client):
     slug = _owner_microproject(client)
-    image = {"image_id": upload_image(client, slug), "kind": "schema", "caption": None}
+    image = {"image_id": upload_structure_image(client, slug), "kind": "schema", "caption": None}
     launched = launch_image(client, slug, [image], intent="x", entities=[{"sample_id": "W7"}])
     conclude(client, slug, launched["id"], summary="OK")
     edited = evolve_image(client, slug, launched["id"], [image], intent="x, mieux dit", context="Contexte ajouté")

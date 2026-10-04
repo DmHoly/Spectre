@@ -213,11 +213,13 @@ class Microproject:
         return {"id": result["id"], "version_id": result["version_id"]}
 
     def evidence(self, session: Session, exp: dict, *, description, source, metric_name=None, metric_value=None, metric_unit=None, days_ago) -> dict:
-        # la réponse est la preuve : la version qu'elle a créée se lit sur la piste
+        """Une donnée chargée à la main dans le cahier (une entrée manuelle) : la mesure, et l'appareil
+        en texte. La réponse est l'entrée : la version qu'elle a créée se lit sur la piste."""
+        value = {"number": metric_value, "unit": metric_unit, "name": metric_name} if metric_value is not None else None
         session.request(
             "POST",
-            f"{self._experiments()}/{exp['id']}/evidence",
-            json={"description": description, "source": source, "metric_name": metric_name, "metric_value": metric_value, "metric_unit": metric_unit},
+            f"{self._experiments()}/{exp['id']}/notebook-entries",
+            json={"kind": "manual", "title": description, "measurements": [{"value": value, "text": f"Référence : {source}"}]},
             headers={"If-Match": f'"{exp["version_id"]}"'},
         )
         tip = session.get(f"{self._experiments()}/{exp['id']}")
@@ -236,7 +238,7 @@ class Microproject:
 
     def combine(self, session: Session, exp: dict, *, other: dict, days_ago) -> dict:
         """Merge two lines of work - keeps ``exp``'s structure/steps as-is, links ``other`` in as a
-        second parent and takes its evidence along (a real content merge, if wanted, is a normal
+        second parent and takes its data notebook along (a real content merge, if wanted, is a normal
         evolve() right after - see the "LED complète sur substrat SiC" beat)."""
         result = session.request(
             "POST",

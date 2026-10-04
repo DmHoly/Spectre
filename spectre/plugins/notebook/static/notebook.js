@@ -1,10 +1,13 @@
-/* Cahier de données de la fiche (onglet « Données ») : des vues sur les mesures des plaques de
-   l'expérience (PRISM), chacune avec ses observations et sa conclusion - le cahier de labo de
-   l'étude, repris tel quel dans le rapport téléchargé.
+/* Cahier de données de la fiche (onglet « Données ») : toutes les données mesurées de l'expérience,
+   chacune avec ses observations et sa conclusion - le cahier de labo de l'étude, repris tel quel dans
+   le rapport téléchargé. Deux types d'entrée (notebook/service.py) : PRISM, des vues sur les mesures
+   des plaques, et manuelle (valeur, texte, tableau, fichiers, liens - les anciennes preuves).
 
-   Une vue = un instantané des données (notebook/snapshots.py, chargé une fois puis relu, et gardé en
-   mémoire d'un rechargement de la fiche à l'autre : un instantané ne change jamais) + un composant
-   de visualisation du registre DataViz (notebook/static/dataviz/) + ses réglages + une note.
+   Une entrée PRISM = un instantané des données par mesure (notebook/snapshots.py, chargé une fois
+   puis relu, et gardé en mémoire d'un rechargement de la fiche à l'autre : un instantané ne change
+   jamais) + un composant de visualisation du registre DataViz (notebook/static/dataviz/) + ses
+   réglages + une note. Ce panneau montre la première mesure d'une entrée PRISM ; une entrée
+   manuelle se lit telle quelle (sa saisie viendra avec le stepper du procédé).
    Ajouter : choisir le type de données, les plaques (celles de l'expérience, cochées, plus
    d'autres pour comparer), charger, puis choisir une vue - d'abord les préréglages du type
    (notebook/static/dataviz/presets.js), puis toute vue qui convient à ces données - et l'ajuster en direct.
@@ -44,6 +47,26 @@ function notebookChange(write) {
   return notebookCtx.write(write);
 }
 
+// Une entrée PRISM se montre par sa première mesure (une vue d'un instantané).
+function prismMeasurement(entry) {
+  return (entry.measurements || [])[0] || {};
+}
+
+// Les mesures telles qu'une écriture les renvoie (sans ce que le serveur calcule : instantané
+// résumé, étape retirée, url des fichiers).
+function measurementsInput(entry, replaceFirst) {
+  return (entry.measurements || []).map((m, i) => {
+    const input = { step_id: m.step_id, snapshot_id: m.snapshot_id, component: m.component, options: m.options || {} };
+    return i === 0 && replaceFirst ? { ...input, ...replaceFirst } : input;
+  });
+}
+
+function stepName(stepId, retired) {
+  if (!stepId) return "";
+  const step = (notebookCtx.process?.steps || []).find((s) => s.id === stepId);
+  return step && !retired ? ExperimentVocabulary.stepLabel(step) : "étape retirée";
+}
+
 function experienceLasermarks() {
   return [...new Set((notebookCtx.detail.physical_tracking || []).map((e) => e.sample_id).filter(Boolean))];
 }
@@ -56,14 +79,43 @@ const NB_ICONS = {
   remove: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>`,
 };
 
+// Une mesure d'une entrée manuelle : valeur, texte, tableau, fichiers (images affichées, documents
+// à télécharger) et liens.
+function manualMeasurementHtml(m) {
+  const step = m.step_id ? `<span class="nb-chip">${escapeHtml(stepName(m.step_id, m.step_retired))}</span>` : "";
+  const value = m.value
+    ? `<div class="mono">${m.value.name ? escapeHtml(m.value.name) + " : " : ""}${escapeHtml(String(m.value.number))}${m.value.unit ? " " + escapeHtml(m.value.unit) : ""}</div>`
+    : "";
+  const text = m.text ? `<div class="nb-note-text">${escapeHtml(m.text)}</div>` : "";
+  const table = m.table
+    ? `<div class="viz-table-wrap"><table class="viz-table"><thead><tr>${m.table.columns.map((c) => `<th scope="col">${escapeHtml(c)}</th>`).join("")}</tr></thead><tbody>${m.table.rows
+        .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell == null ? "" : String(cell))}</td>`).join("")}</tr>`)
+        .join("")}</tbody></table></div>`
+    : "";
+  const files = (m.attachments || [])
+    .map((a) =>
+      (a.content_type || "").startsWith("image/")
+        ? `<figure><img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.caption || a.filename || "Image de la mesure")}" style="max-width:100%;border-radius:var(--radius-sm);">${a.caption ? `<figcaption class="help">${escapeHtml(a.caption)}</figcaption>` : ""}</figure>`
+        : `<div><a href="${escapeHtml(a.url)}" download>${escapeHtml(a.filename || "fichier")}</a></div>`
+    )
+    .join("");
+  const links = (m.links || [])
+    .map((l) => `<div><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label || l.url)}</a></div>`)
+    .join("");
+  return `<div class="nb-measure">${step}${value}${text}${table}${files}${links}</div>`;
+}
+
 function notebookEntryHtml(entry, index, total) {
   const canEdit = notebookCtx.canEdit;
-  const wafers = (entry.wafers || []).map((w) => `<a class="mono" href="${plateUrl(w)}">${escapeHtml(w)}</a>`).join(", ");
+  const prism = entry.kind === "prism";
+  const m = prismMeasurement(entry);
+  const snap = m.snapshot || {};
+  const wafers = ((prism ? snap.wafers : entry.wafers) || []).map((w) => `<a class="mono" href="${plateUrl(w)}">${escapeHtml(w)}</a>`).join(", ");
   const note = entry.note || "";
   const actions = canEdit
     ? `<div class="nb-entry__actions" data-report-hide>
-        <button type="button" class="nb-btn" data-act="settings" aria-expanded="false">${NB_ICONS.settings}Réglages</button>
-        <button type="button" class="nb-btn" data-act="refresh" title="Recharger les données de ces plaques depuis la base">${NB_ICONS.refresh}Actualiser</button>
+        ${prism ? `<button type="button" class="nb-btn" data-act="settings" aria-expanded="false">${NB_ICONS.settings}Réglages</button>` : ""}
+        ${prism ? `<button type="button" class="nb-btn" data-act="refresh" title="Recharger les données de ces plaques depuis la base">${NB_ICONS.refresh}Actualiser</button>` : ""}
         <button type="button" class="nb-btn nb-btn--icon" data-act="up" aria-label="Monter cette vue" title="Monter"${index === 0 ? " disabled" : ""}>${NB_ICONS.up}</button>
         <button type="button" class="nb-btn nb-btn--icon" data-act="down" aria-label="Descendre cette vue" title="Descendre"${index === total - 1 ? " disabled" : ""}>${NB_ICONS.down}</button>
         <button type="button" class="nb-btn nb-btn--icon nb-btn--danger" data-act="remove" aria-label="Retirer cette vue du cahier" title="Retirer">${NB_ICONS.remove}</button>
@@ -75,10 +127,11 @@ function notebookEntryHtml(entry, index, total) {
         <div class="nb-entry__heading">
           <h3 class="nb-entry__title">${escapeHtml(entry.title)}</h3>
           <div class="nb-entry__meta">
-            <span class="nb-chip">${escapeHtml(entry.hook_title || entry.hook)}</span>
+            ${prism ? `<span class="nb-chip">${escapeHtml(snap.hook_title || snap.hook || "")}</span>` : `<span class="nb-chip">Donnée manuelle</span>`}
             ${wafers ? `<span>${wafers}</span>` : ""}
-            <span>données du ${formatDate(entry.fetched_at)}</span>
-            ${entry.source === "demo" ? `<span class="nb-chip nb-chip--demo" title="Données de démonstration, pas des mesures réelles">démo</span>` : ""}
+            ${prism ? `<span>données du ${formatDate(snap.fetched_at)}</span>` : ""}
+            ${snap.source === "demo" ? `<span class="nb-chip nb-chip--demo" title="Données de démonstration, pas des mesures réelles">démo</span>` : ""}
+            ${entry.applies === false ? `<span class="nb-chip" title="Mesurée sur une plaque que cette version ne suit pas">autre plaque</span>` : ""}
             ${entry.objective ? `<span class="nb-chip nb-chip--objective">Objectif : ${escapeHtml(entry.objective)}</span>` : ""}
             ${entry.in_report === false ? `<span class="nb-chip">hors rapport</span>` : ""}
           </div>
@@ -87,7 +140,11 @@ function notebookEntryHtml(entry, index, total) {
       </header>
       <div class="nb-entry__settings" data-report-hide hidden></div>
       <div class="nb-entry__body">
-        <div class="nb-entry__viz"><p class="help">Chargement des données…</p></div>
+        <div class="nb-entry__viz">${
+          prism
+            ? `<p class="help">Chargement des données…</p>`
+            : `${(entry.measurements || []).map(manualMeasurementHtml).join("")}${entry.interpretation ? `<p class="nb-note-text"><em>${escapeHtml(entry.interpretation)}</em></p>` : ""}`
+        }</div>
         <aside class="nb-entry__note" aria-label="Observations et conclusion">
           <div class="nb-entry__note-label">Observations &amp; conclusion</div>
           ${
@@ -111,11 +168,11 @@ async function renderNotebook() {
   const ctx = notebookCtx;
   const entries = await notebookApi.entries(ctx.microprojectSlug, ctx.experimentId, ctx.isTip ? null : ctx.versionId);
   if (seq !== notebookMounts) return; // un rechargement plus récent est en route
-  ctx.setDataCount("notebook", entries.length);
+  // le repère de l'onglet « Données » compte les entrées du cahier par le détail (notebook_count)
   const host = document.getElementById("notebook-entries");
   const canEdit = ctx.canEdit;
   document.getElementById("notebook-add-btn").hidden = !canEdit;
-  document.getElementById("notebook-demo-note").hidden = !entries.some((e) => e.source === "demo");
+  document.getElementById("notebook-demo-note").hidden = !entries.some((e) => (e.measurements || []).some((m) => m.snapshot?.source === "demo"));
   if (!entries.length) {
     const marks = experienceLasermarks();
     host.innerHTML = `
@@ -133,11 +190,14 @@ async function renderNotebook() {
   entries.forEach((entry, index) => {
     const article = host.querySelector(`[data-entry="${entry.id}"]`);
     const viz = article.querySelector(".nb-entry__viz");
-    loadSnapshot(entry.snapshot_id)
-      .then((ds) => DataViz.render(viz, ds, entry.component, entry.options || {}))
-      .catch((err) => {
-        viz.innerHTML = `<div class="viz-empty">Données indisponibles : ${escapeHtml(err.message || String(err))}</div>`;
-      });
+    const m = prismMeasurement(entry);
+    if (entry.kind === "prism" && m.snapshot_id) {
+      loadSnapshot(m.snapshot_id)
+        .then((ds) => DataViz.render(viz, ds, m.component, m.options || {}))
+        .catch((err) => {
+          viz.innerHTML = `<div class="viz-empty">Données indisponibles : ${escapeHtml(err.message || String(err))}</div>`;
+        });
+    }
     if (canEdit) wireNotebookEntry(article, entry, index);
   });
 }
@@ -168,8 +228,13 @@ function wireNotebookEntry(article, entry, index) {
     if (act === "refresh") {
       btn.disabled = true;
       try {
-        const snap = await notebookApi.takeSnapshot(notebookCtx.microprojectSlug, { hook: entry.hook, wafers: entry.wafers || [], refresh: true });
-        notebookChange(() => notebookApi.updateEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id, { snapshot_id: snap.snapshot_id }));
+        const loaded = prismMeasurement(entry).snapshot || {};
+        const snap = await notebookApi.takeSnapshot(notebookCtx.microprojectSlug, { hook: loaded.hook, wafers: loaded.wafers || [], refresh: true });
+        notebookChange(() =>
+          notebookApi.updateEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id, {
+            measurements: measurementsInput(entry, { snapshot_id: snap.snapshot_id }),
+          })
+        );
       } catch (err) {
         notebookCtx.showError(err);
         btn.disabled = false;
@@ -192,15 +257,16 @@ async function toggleEntrySettings(article, entry, btn) {
   const viz = article.querySelector(".nb-entry__viz");
   const open = panel.hidden;
   btn.setAttribute("aria-expanded", String(open));
+  const measurement = prismMeasurement(entry);
   if (!open) {
     panel.hidden = true;
-    const ds = await loadSnapshot(entry.snapshot_id);
-    DataViz.render(viz, ds, entry.component, entry.options || {});
+    const ds = await loadSnapshot(measurement.snapshot_id);
+    DataViz.render(viz, ds, measurement.component, measurement.options || {});
     return;
   }
-  const ds = await loadSnapshot(entry.snapshot_id);
+  const ds = await loadSnapshot(measurement.snapshot_id);
   const components = DataViz.componentsFor(ds);
-  let component = entry.component;
+  let component = measurement.component;
   const paintOptions = (values) => {
     const def = DataViz.get(component);
     panel.querySelector(".nb-settings__options").innerHTML = def ? DataViz.optionsFormHtml(ds, def.options(ds), values, `nbs-${entry.id}`) : "";
@@ -222,7 +288,7 @@ async function toggleEntrySettings(article, entry, btn) {
       </div>
     </div>`;
   panel.hidden = false;
-  paintOptions({ ...(DataViz.get(component) ? DataViz.get(component).defaults(ds) : {}), ...(entry.options || {}) });
+  paintOptions({ ...(DataViz.get(component) ? DataViz.get(component).defaults(ds) : {}), ...(measurement.options || {}) });
   const preview = () => DataViz.render(viz, ds, component, DataViz.readOptions(panel.querySelector(".nb-settings__options")));
   panel.querySelector(`#nbs-${entry.id}-component`).addEventListener("change", (event) => {
     component = event.target.value;
@@ -235,8 +301,7 @@ async function toggleEntrySettings(article, entry, btn) {
     notebookChange(() =>
       notebookApi.updateEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, entry.id, {
         title: panel.querySelector(`#nbs-${entry.id}-title`).value,
-        component,
-        options: DataViz.readOptions(panel.querySelector(".nb-settings__options")),
+        measurements: measurementsInput(entry, { component, options: DataViz.readOptions(panel.querySelector(".nb-settings__options")) }),
         objective: panel.querySelector(`#nbs-${entry.id}-objective`).value,
         in_report: panel.querySelector(`#nbs-${entry.id}-report`).checked,
       })
@@ -381,10 +446,9 @@ function wireNotebookDialog() {
     dialog.close();
     notebookChange(() =>
       notebookApi.addEntry(notebookCtx.microprojectSlug, notebookCtx.experimentId, notebookCtx.versionId, {
+        kind: "prism",
         title,
-        snapshot_id: nbAdd.dataset.snapshot_id,
-        component: nbAdd.component,
-        options: DataViz.readOptions(document.getElementById("nb-preview-options")),
+        measurements: [{ step_id: null, snapshot_id: nbAdd.dataset.snapshot_id, component: nbAdd.component, options: DataViz.readOptions(document.getElementById("nb-preview-options")) }],
         note: document.getElementById("nb-note").value,
         objective: document.getElementById("nb-objective").value || null,
       })

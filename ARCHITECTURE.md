@@ -98,18 +98,17 @@ placés au-dessus de lui.
 | 8 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
 | 9 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library | JSON par portée |
 | 10 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, fusion, suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
-| 11 | `evidence` | Preuves d'une étude, liens, images, annotations | experiments, attachments | métadonnées Follow |
-| 12 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
-| 13 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité | experiments, search | cache mémoire |
-| 14 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
-| 15 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
-| 16 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
-| 17 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
-| 18 | `notebook` | Cahier de données d'une étude : instantanés et vues DataViz | characterization, experiments | `snapshots/`, métadonnées Follow |
-| 19 | `external_images` | Galerie d'images externes référencées (TEM, scans) d'une étude, limitée aux racines autorisées | experiments | métadonnées Follow |
-| 20 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
-| 21 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
-| 22 | `docs` | Pages de documentation (contenu inchangé) | — | — |
+| 11 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
+| 12 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité | experiments, search | cache mémoire |
+| 13 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
+| 14 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
+| 15 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
+| 16 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
+| 17 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, liens), rattachées aux plaques et aux étapes ; lit les vues et les preuves d'avant (`legacy.py`) | characterization, experiments, attachments | `snapshots/`, métadonnées Follow (`notebook_entries`) |
+| 18 | `external_images` | Galerie d'images externes référencées (TEM, scans) d'une étude, limitée aux racines autorisées | experiments | métadonnées Follow |
+| 19 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
+| 20 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
+| 21 | `docs` | Pages de documentation (contenu inchangé) | — | — |
 
 **Les tables d'un autre plugin.** Un plugin possède ses tables : il est seul à y écrire. Il peut
 en revanche les **lire par jointure SQL** chez les plugins dont il dépend, pour une liste qui en
@@ -186,7 +185,7 @@ spectre/plugins/<plugin>/
 | `register_library_file(LibraryFile)` : clé en kebab-case anglais (le nom du fichier YAML reste le nom historique), `parse` (mapping YAML → contenu, `ValueError` si invalide : sert à valider avant l'écriture et à charger) et `fallback` (contenu quand le fichier est absent ou invalide) | `library` | structures (matériaux, recettes), process_library (présets, briques), library (textes de la section intention, servis par `GET /api/ui-texts/intention`) |
 | `register(KpiDefinition)` | `kpis` | activité, wafers, démo EQE |
 | `DataViz.register(component)` | `notebook/static/dataviz/core.js` | table, carte de wafer, distribution, nuage de points, courbes… |
-| `ExperiencePage.registerPanel({key, mount(el, ctx)})` (voir § 6) | `experiments/static/page.js` | les panneaux de la fiche elle-même, puis evidence (`evidence-panel.js`), external_images (`gallery.js`), lots (`lot-picker.js`), notebook (`notebook.js`) |
+| `ExperiencePage.registerPanel({key, mount(el, ctx)})` (voir § 6) | `experiments/static/page.js` | les panneaux de la fiche elle-même, puis external_images (`gallery.js`), lots (`lot-picker.js`), notebook (`notebook.js`) |
 
 **Clés de type de structure figées.** `ProcessLot` et `StructureImage` surchargent
 `registry_key()` pour renvoyer leur chaîne historique (`spectre.core.structures.…`). Follow
@@ -266,22 +265,40 @@ déplacement de classe ne doit jamais la changer.
   ref ; Follow n'en offre pas le moyen). Le dépôt est ouvert sur le stockage JSON de Follow
   (même format sur disque), dont les écritures passent par `kernel.fs.write_text` : un `refs.json`
   tenu un instant par un lecteur, sous Windows, ne fait plus échouer un commit.
-- Les plugins qui écrivent dans une étude sans en être le propriétaire (evidence, notebook,
-  external_images) exposent leurs sous-ressources sous `.../experiments/{exp}/` et passent par
-  `amend()` : `If-Match` comme les autres (412 `stale_version`), et une écriture renvoie **la
-  ressource écrite** (la preuve, la vue du cahier, le jeu d'images), pas l'étude, avec en `ETag` la
-  version créée - c'est ce que la fiche enverra en `If-Match` à l'écriture suivante. Leurs lectures
-  acceptent `?version=`, sur le modèle de `process?version=`, pour qu'une version passée ouverte en
-  lecture seule montre ses propres données. Le détail d'une étude ne porte plus que
-  `evidence_count`. Les clés des métadonnées Follow (`evidence_links`, `image_annotations`,
-  `data_notebook`, `data_items`) ne changent pas : les études existantes restent lisibles.
+- Les plugins qui écrivent dans une étude sans en être le propriétaire (notebook, external_images)
+  exposent leurs sous-ressources sous `.../experiments/{exp}/` et passent par `amend()` : `If-Match`
+  comme les autres (412 `stale_version`), et une écriture renvoie **la ressource écrite** (l'entrée
+  du cahier, le jeu d'images), pas l'étude, avec en `ETag` la version créée - c'est ce que la fiche
+  enverra en `If-Match` à l'écriture suivante. Leurs lectures acceptent `?version=`, sur le modèle de
+  `process?version=`, pour qu'une version passée ouverte en lecture seule montre ses propres
+  données. Le détail d'une étude ne porte que `notebook_count` (toutes les entrées du cahier de la
+  version, autres plaques comprises). La galerie garde sa clé (`data_items`).
+- **Le cahier unique et les données d'avant.** Les entrées du cahier sont rangées sous
+  `notebook_entries` (`experiments.service.NOTEBOOK_KEY`). Avant le cahier unique, les données d'une
+  étude étaient les vues de l'ancien cahier (`data_notebook`) et les preuves Follow
+  (`Experiment.evidence`, plus `evidence_extra` - type, objectif, interprétation, graphique,
+  `image_annotations` -, `evidence_links` et les images de `attachments` qui portent leur
+  `evidence_id`). Elles ne sont **jamais réécrites** : `notebook.legacy` les convertit à la lecture
+  (une vue → une entrée `prism` non située ; une preuve → une entrée `manual` **qui garde son id**,
+  son `step_index` traduit par `step_id_at` sur la version qui l'a ajoutée), et la première écriture
+  dans le cahier enregistre le cahier converti dans la version qu'elle crée, sans les anciennes clés
+  ni la liste `evidence` de Follow. Une écriture sans effet n'enregistre rien ; une autre écriture
+  (étiquette, statut...) reporte l'ancien format tel quel.
+- **Les preuves Follow natives.** Spectre n'en écrit plus : le cahier est la seule source. La
+  conclusion de Follow garde son champ `ObjectiveResult.evidence_ids`, qui cite désormais des ids
+  d'entrées du cahier (Follow ne les vérifie pas ; `PUT .../conclusion` les vérifie, 422
+  `notebook_entry_not_found`) - comme une preuve convertie garde son id, une conclusion d'avant cite
+  toujours la bonne entrée. Retirer une entrée la retire des verdicts qui la citaient.
 - Toutes les lectures des autres plugins désignent la piste : l'index des plaques (wafers, donc la
   recherche et les lots) donne `experiment.id` = la piste ; l'atlas nomme chaque étude par
   `experiment_id` (et `version_id`, sa pointe) ; un lien d'entité désigne
   `{microproject, experiment_id, entity_index}`.
 - Deux écritures traversent encore une frontière de plugin sans import, faute de dépendance dans
-  ce sens : une fusion (`experiments.service`) reporte et purge les métadonnées de preuve par id
-  (evidence dépend d'experiments, pas l'inverse) ; supprimer une piste ne purge pas ses liens
+  ce sens : une fusion (`experiments.service._merge_notebook`) réunit les cahiers des deux pistes,
+  dédoublonnés par id quel que soit le format où chaque côté les range (celles de la piste d'abord),
+  et purge les métadonnées de preuve qui désignent une preuve absente - notebook dépend
+  d'experiments, pas l'inverse : experiments ne connaît que les ids des entrées
+  (`notebook_entry_ids`), pour les compter, les citer et les réunir ; supprimer une piste ne purge pas ses liens
   d'entités (experiments ne dépend pas de links) - ils restent listés et supprimables, l'atlas ne
   les dessine plus, et le nom de la piste n'est **jamais redonné** (`follow/retired_lines.json`,
   `repository.retire_line`) : un lien désigne la piste par son nom, il passerait sinon à une étude
@@ -291,7 +308,7 @@ déplacement de classe ne doit jamais la changer.
   libre parmi les pistes, les refs **et** les pistes supprimées (sinon 409 `branch_name_taken`).
 - Une piste créée depuis une version (`from_version`, `version_id` facultatif : la pointe par
   défaut) en reprend, faute de mieux dans la requête, les objectifs, le contexte et l'entité suivie -
-  pas les preuves, les étiquettes ni la conclusion : c'est une nouvelle étude.
+  pas le cahier de données, les étiquettes ni la conclusion : c'est une nouvelle étude.
 - Le nom d'une ref (`refs.py`) : non vide, sans `/`, ni `.`/`..`, ni la forme d'un id de version
   (`repository.VERSION_ID_RE`, repris par `service.VERSION_ID_RE` ; Follow cherche un nom avant un
   id, une telle ref masquerait la version) - sinon 422 `invalid_ref_name` -, libre parmi les refs et
@@ -303,8 +320,8 @@ déplacement de classe ne doit jamais la changer.
 ### Identité d'une étape
 
 Chaque étape d'un procédé a un id stable, `st_<8 hex>` (`structures.simulation.STEP_ID_RE`),
-conservé aux évolutions : c'est par lui qu'un facteur de campagne (et, plus tard, une donnée du
-cahier) désigne une étape, et non plus par sa position.
+conservé aux évolutions : c'est par lui qu'un facteur de campagne et une mesure du cahier
+désignent une étape, et non plus par sa position.
 
 - **Stockage** : à part du procédé, sous la clé de métadonnées `process_step_ids` (dans l'ordre des
   étapes). Le versionnage et StructureForge ne la voient pas ; `service.editable_process` ajoute
@@ -427,11 +444,11 @@ l'équipe.
 
 | Avant | Après |
 |---|---|
-| `POST /api/microprojets/{slug}/images` | `POST /api/microprojects/{mp}/attachments` (multipart, `purpose=evidence`) → 201 `{id, url, …}` |
+| `POST /api/microprojets/{slug}/images` | `POST /api/microprojects/{mp}/attachments` (multipart, `purpose=notebook`) → 201 `{id, url, …}` : une image (PNG, JPEG, GIF, WebP) ou un document d'une liste fermée (PDF, CSV, TSV, TXT, XLS, XLSX, DOCX, PPTX ; un type annoncé vague se lit sur l'extension), 10 Mo au plus (413) ; un document se sert en téléchargement (`Content-Disposition: attachment`, `nosniff`). L'usage `evidence` d'avant n'est plus accepté au téléversement, ses fichiers restent lisibles |
 | `POST /api/microprojets/{slug}/structures/images` | idem avec `purpose=structure` |
 | `GET /api/microprojets/{slug}/pieces-jointes/{id}` | `GET /api/microprojects/{mp}/attachments/{attachment_id}/content` |
 | *(nouveau)* | `GET /api/microprojects/{mp}/attachments/{attachment_id}` (métadonnées) |
-| `POST/DELETE …/experiences/{ref}/pieces-jointes[/{id}]` | **supprimées** (aucun appelant front : on passe par attachments puis evidence), avec les fonctions transitoires de `attachments.store` qui les servaient |
+| `POST/DELETE …/experiences/{ref}/pieces-jointes[/{id}]` | **supprimées** (aucun appelant front : on passe par attachments puis le cahier), avec les fonctions transitoires de `attachments.store` qui les servaient |
 
 ### structures · library
 
@@ -487,11 +504,11 @@ Droits d'écriture :
 | `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 + `Location` vers la version ; **200 sans `Location`** si rien n'a changé (§ 4) ; une campagne y est refusée (422 `campaign_is_a_new_line`) : elle se lance avec `from_version` |
 | `POST …/{ref}/evoluer-image` | idem, avec `structure: {kind: "images", …}` |
 | `POST …/{ref}/dessin` | `PUT …/experiments/{exp}/structure-images` |
-| `POST …/{ref}/conclure` | `PUT …/experiments/{exp}/conclusion` |
+| `POST …/{ref}/conclure` | `PUT …/experiments/{exp}/conclusion` (le verdict d'un objectif peut citer des entrées du cahier : `evidence_ids`, des ids d'entrées de la pointe, sinon 422 `notebook_entry_not_found`) |
 | `POST …/{ref}/statut` | `PUT …/experiments/{exp}/status` `{status, hold_reason}` |
 | `POST …/{ref}/etiquettes` | `PUT …/experiments/{exp}/tags` `{tags}` |
 | `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` |
-| `POST …/{ref}/combiner` | `POST …/experiments/{exp}/merges` `{other_experiment_id}` → 201 + `Location` vers la version (titre et intention restent ceux de la piste ; les preuves des deux côtés sont reportées, dédoublonnées par id, et les métadonnées qui désignent une preuve absente purgées) |
+| `POST …/{ref}/combiner` | `POST …/experiments/{exp}/merges` `{other_experiment_id}` → 201 + `Location` vers la version (titre et intention restent ceux de la piste ; les cahiers des deux côtés sont réunis, dédoublonnés par id, et les métadonnées qui désignent une preuve absente purgées) |
 | `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=` (chaque étape porte son `id`) |
 | `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?}` ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
 | `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
@@ -508,21 +525,49 @@ Droits d'écriture :
 | *(dans la thématique)* | `GET /api/experiment-timeline?area=&thematic=` (champs masqués pour les non-membres) |
 | *(nouveau)* | `GET /api/microprojects/{mp}/experiment-versions/{version_id}` → `{experiment_id, version_id}` (résolution des anciens liens) |
 
-### evidence · notebook · external_images
+### notebook · external_images
+
+Le plugin `evidence` a disparu (TODO § 3) : ses preuves sont les entrées manuelles du cahier.
 
 | Avant | Après |
 |---|---|
-| *(dans le détail : `evidence`, `evidence_links`, `attachments`)* | `GET …/experiments/{exp}/evidence?version=` → tableau ; chaque preuve porte les champs de Follow plus `kind`, `objective`, `interpretation`, `graph_config`, `annotations` (stockées sous `image_annotations`), `links` et `images: [{id, url, filename, content_type, size, caption}]` ; le détail ne garde que `evidence_count` |
-| `POST …/{ref}/preuves` | `POST …/experiments/{exp}/evidence` → 201 + `Location` + la preuve (`ETag` : la version créée) ; le type `graph`, qui allait chercher une URL arbitraire, est refusé à la création (422) et `graph_config` n'est plus reçu ; la fiche montre les anciennes en lecture - titre, axes, requête - sans rien aller chercher ; une image téléversée dans un autre µprojet → 422 |
-| *(nouveau)* | `GET …/experiments/{exp}/evidence/{evidence_id}?version=` (la cible du `Location`) |
-| `POST …/{ref}/preuves/{id}/annotations` | `PUT …/experiments/{exp}/evidence/{evidence_id}/annotations` → 200, la preuve (les mêmes annotations ne créent pas de version ; image étrangère à la preuve → 422) |
+| `GET …/experiments/{exp}/evidence[/{evidence_id}]`, `POST …/evidence`, `PUT …/evidence/{evidence_id}/annotations` (plugin evidence) | **supprimées** : `…/notebook-entries` (`kind: "manual"` ; les annotations sont celles d'une mesure, modifiées par un `PATCH` de ses `measurements`) |
 | `GET /api/microprojets/{slug}/donnees/sources` | `GET /api/characterization/data-types?by_wafer=true&status=implemented` |
 | `POST …/donnees/instantanes` | `POST /api/microprojects/{mp}/snapshots` `{hook, wafers, refresh}` → 201 + `Location` (la clé `hook` est celle que stockent instantanés et vues) |
 | `GET …/donnees/instantanes/{id}` | `GET /api/microprojects/{mp}/snapshots/{snapshot_id}` (immuable : `Cache-Control: private, max-age=31536000, immutable`) |
-| *(dans le détail : `data_notebook`)* | `GET …/experiments/{exp}/notebook-entries?version=` → tableau |
-| `POST …/{ref}/cahier` | `POST …/experiments/{exp}/notebook-entries` → 201 + la vue (`ETag` : la version créée), **sans `Location`** : une vue n'a pas de route propre, elle se lit dans la liste |
-| `PUT …/{ref}/cahier/{entry_id}` (+ `move`) | `PATCH …/experiments/{exp}/notebook-entries/{entry_id}` (`position` entier, ramené dans les bornes ; sans effet → pas de version) |
-| `DELETE …/{ref}/cahier/{entry_id}` | `DELETE …` → 204 |
+| *(dans le détail : `data_notebook`, `evidence`)* | `GET …/experiments/{exp}/notebook-entries?version=&step=&wafer=&kind=` → tableau (`ETag` : la version lue) ; `?summary=steps` → `{step_id: n}`, le nombre d'entrées qui s'appliquent à la version et ont une mesure à chaque étape (les badges du procédé) |
+| `POST …/{ref}/cahier` | `POST …/experiments/{exp}/notebook-entries` → 201 + `Location` `…/notebook-entries/{entry_id}` + l'entrée (`ETag` : la version créée) |
+| *(nouveau : cible du `Location`)* | `GET …/experiments/{exp}/notebook-entries/{entry_id}?version=` |
+| `PUT …/{ref}/cahier/{entry_id}` (+ `move`) | `PATCH …/experiments/{exp}/notebook-entries/{entry_id}` (`exclude_unset` ; `measurements` les remplace toutes ; `position` entier, ramené dans les bornes ; sans effet → pas de version) |
+| `DELETE …/{ref}/cahier/{entry_id}` | `DELETE …` → 204 (`ETag` : la version créée ; les verdicts de la conclusion ne la citent plus) |
+
+Une entrée du cahier, une seule forme pour ses deux types :
+`{id, kind: "prism" | "manual", title, note, objective, interpretation, wafers, measurements,
+in_report, created_at, created_by, updated_at, updated_by}`, plus, à la lecture, `applies`.
+
+- `wafers` : les plaques mesurées (clés de wafer : lasermark sans casse ni séparateur) ; vide, toute
+  la piste. À l'écriture, une plaque citée doit être suivie par la version (422 `unknown_wafer`),
+  sauf si l'entrée la portait déjà. **La donnée suit la plaque** : `applies` vaut `true` si `wafers`
+  est vide ou si l'une de ses plaques est suivie par la version lue (`physical_tracking`) ; sinon
+  l'entrée reste au cahier, à ranger parmi les « autres plaques ».
+- `measurements` : une mesure par étape au plus (`step_id`, un id de `GET …/process` de la version,
+  422 `unknown_step` sinon ; ou `null`, non située, une fois au plus), 30 au plus. Une même mesure
+  faite à plusieurs étapes est une seule entrée. À la lecture, `step_retired` marque une mesure dont
+  l'étape n'est plus dans le procédé de la version (l'entrée qui la porte peut la garder).
+  - `prism` (une au moins) : `{step_id, snapshot_id, component, options}`, plus `snapshot` (résumé
+    de l'instantané : `hook`, `hook_title`, `wafers`, `source`, `fetched_at`, `row_count`) ;
+  - `manual` (zéro ou plus ; une mesure vide marque l'étape où elle a été faite) : `{step_id, value:
+    {number, unit, name} | null, text, table: {columns, rows} | null, attachments: [{id, caption,
+    filename, content_type, size, url}], links: [{label, url}], annotations: [{attachment_id, type:
+    "arrow" | "box", x, y, x2, y2, label}]}`. À l'écriture, `attachments` accepte des ids ou
+    `{id, caption}` (des fichiers `purpose=notebook` de ce µprojet, 12 au plus) ; `links` n'accepte
+    que `http`/`https` (10 au plus, 422 `invalid_link`) ; un tableau a de 1 à 50 colonnes, 1000
+    lignes au plus, une cellule par colonne (texte de 500 caractères au plus, nombre fini, booléen
+    ou vide ; 422 `invalid_table`) ; une annotation désigne une image de la mesure.
+- `objective` : un objectif de la version (422 sinon) - le lien d'une donnée à un objectif.
+
+| Avant | Après |
+|---|---|
 | *(dans le détail : `data_items`)* | `GET …/experiments/{exp}/image-sets?version=` → tableau ; chaque image `{index, name, path, status, url}`, `status` ∈ `ok`, `missing`, `unsupported`, `forbidden` |
 | `POST …/{ref}/data` | `POST …/experiments/{exp}/image-sets` → 201 + le jeu (`ETag`), **sans `Location`** (pas de route propre, comme une vue du cahier) |
 | `PATCH …/{ref}/data/{id}/epingle` | `PATCH …/experiments/{exp}/image-sets/{set_id}` `{pinned_index}` (sans effet → pas de version) |
@@ -672,8 +717,8 @@ Supprimée : `/microprojets/{slug}/graphe`.
   formulaire d'intention), `tags-refs.js`, `structure-view.js` (structure, couches, campagne,
   comparaison, images de la structure), `plates.js` (plaques suivies), `versions.js` (frise,
   historique, pistes filles, liens), `conclusion.js`, `advanced.js` (fusion, suppression),
-  `report.js`. Ceux des autres plugins suivent : `evidence/static/evidence-panel.js`,
-  `external_images/static/gallery.js`, `lots/static/lot-picker.js`, `notebook/static/notebook.js`.
+  `report.js`. Ceux des autres plugins suivent : `external_images/static/gallery.js`,
+  `lots/static/lot-picker.js`, `notebook/static/notebook.js`.
 - `ctx` est un objet explicite, le même d'un rechargement à l'autre : `microprojectSlug`,
   `experimentId`, `versionId`, `isTip` (la pointe, ouverte sans `?version=`), `role`, `canEdit`
   (éditeur sur la pointe), `detail`, `reload()`, `showError(err, box?)` ; s'y ajoutent, pour ne pas
@@ -704,7 +749,8 @@ Supprimée : `/microprojets/{slug}/graphe`.
   déclarations de premier niveau (état du cahier, rendu d'une vue) mais ne lit que le `ctx` reçu.
   Chaque panneau de l'onglet « Données » lit sa propre sous-ressource, pour la version affichée
   (`?version=`) ; le repère de l'onglet
-  additionne `detail.evidence_count` et ce que déclarent les panneaux (`ctx.setDataCount`).
+  additionne `detail.notebook_count` et ce que déclarent les autres panneaux (`ctx.setDataCount` :
+  la galerie).
 
 ## 7. Tests
 

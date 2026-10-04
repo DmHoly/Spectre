@@ -6,7 +6,7 @@ Toute écriture sur une piste passe par :func:`amend`, sous le verrou du µproje
 refuse une version attendue périmée (``expected_version``, l'``If-Match`` du front : jamais de
 fourche implicite), reporte **tout** le parent, applique le changement et ne commite que s'il y a
 une différence. Les écritures légères (statut, conclusion, étiquettes, entités, images de la
-structure, fusion, et celles des plugins qui écrivent dans une étude : preuves, cahier, galerie)
+structure, fusion, et celles des plugins qui écrivent dans une étude : cahier, galerie)
 sont des ``change`` passés à :func:`amend` ; une évolution (:func:`evolve`) aussi, formulaire
 d'intention revalidé. Bifurquer, c'est créer une nouvelle piste à partir d'une version
 (:func:`create` avec ``from_version``).
@@ -44,10 +44,19 @@ from .repository import (
 from .schemas import ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput
 
 CONTEXT_METADATA_KEY = "context"
-# Ce que les métadonnées rangent par id de preuve (plugin evidence) : les liens d'une preuve et ses
-# champs propres à Spectre. Les images collées dans une preuve sont des « attachments » qui portent
-# son ``evidence_id``.
-EVIDENCE_KEYED_METADATA = ("evidence_links", "evidence_extra")
+
+# Le cahier de données d'une étude (plugin notebook, qui dépend d'experiments et non l'inverse) : ses
+# entrées sont rangées dans les métadonnées, sous NOTEBOOK_KEY, chacune avec son ``id``. Les données
+# d'avant le cahier unique restent lisibles, sans qu'aucune version soit réécrite : les vues de
+# l'ancien cahier (LEGACY_NOTEBOOK_KEY), les preuves Follow (``Experiment.evidence``) et ce que les
+# métadonnées rangeaient par id de preuve (LEGACY_EVIDENCE_KEYED_METADATA ; les images d'une preuve,
+# dans ATTACHMENTS_KEY, portent son ``evidence_id``). Le plugin notebook les convertit à la lecture et
+# les remplace au premier changement du cahier ; experiments n'en connaît que les ids - pour les
+# compter (le détail), les citer (la conclusion) et réunir deux cahiers (une fusion).
+NOTEBOOK_KEY = "notebook_entries"
+LEGACY_NOTEBOOK_KEY = "data_notebook"
+LEGACY_EVIDENCE_KEYED_METADATA = ("evidence_links", "evidence_extra")
+ATTACHMENTS_KEY = "attachments"
 _LINEAGE_FIELDS = {"id", "created_at", "author", "parents", "references"}
 _LINEAGE_ROLES = ("baseline", "merge_source")
 
@@ -109,6 +118,26 @@ def structural_baseline(repo: follow.Repository, version: follow.Experiment) -> 
     se fait donc avec la structure d'avant, pas avec son parent immédiat."""
     structural = versioning.structural_versions(list(reversed(repo.log(version.id))))
     return structural[-2] if len(structural) >= 2 else None
+
+
+def _ids(items: Any) -> list[str]:
+    return [item["id"] for item in items or [] if isinstance(item, dict) and isinstance(item.get("id"), str)]
+
+
+def notebook_entry_ids(version: follow.Experiment | follow.ExperimentBuilder) -> list[str]:
+    """Les ids des entrées du cahier de ``version`` (une version, ou un builder en cours), sans
+    doublon : celles enregistrées sous :data:`NOTEBOOK_KEY`, puis les données d'avant que le plugin
+    notebook convertit à la lecture - les vues de l'ancien cahier, puis les preuves Follow (une
+    preuve convertie garde son id)."""
+    ids: list[str] = []
+    for entry_id in [
+        *_ids(version.metadata.get(NOTEBOOK_KEY)),
+        *_ids(version.metadata.get(LEGACY_NOTEBOOK_KEY)),
+        *(evidence.id for evidence in version.evidence),
+    ]:
+        if entry_id not in ids:
+            ids.append(entry_id)
+    return ids
 
 
 def structure_diff(before: follow.Experiment, after: follow.Experiment) -> dict[str, Any]:
@@ -648,8 +677,10 @@ def set_status(
 
 
 def conclude(slug: str, experiment_id: str, body: ConclusionRequest, *, author: str, expected_version: str | None) -> follow.Experiment:
-    """Conclure (ou abandonner) l'étude : verdict par objectif, synthèse, décision, suite. Une
-    conclusion identique à celle en place ne crée pas de version (sa date reste)."""
+    """Conclure (ou abandonner) l'étude : verdict par objectif, synthèse, décision, suite. Le verdict
+    d'un objectif peut citer des entrées du cahier (``evidence_ids``, le champ de Follow : les ids
+    d'entrées, ceux des anciennes preuves compris) - toutes du cahier de la pointe. Une conclusion
+    identique à celle en place ne crée pas de version (sa date reste)."""
 
     def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
         if not has_tracked_physical_entity(parent.metadata):
@@ -657,6 +688,10 @@ def conclude(slug: str, experiment_id: str, body: ConclusionRequest, *, author: 
                 "Impossible de conclure : aucune entité physique (échantillon réel) n'a été renseignée sur cette expérience.",
                 code="entity_required",
             )
+        known = set(notebook_entry_ids(parent))
+        cited = [entry_id for result in body.objective_results for entry_id in result.evidence_ids if entry_id not in known]
+        if cited:
+            raise InvalidInput(f"Entrée du cahier introuvable : {', '.join(cited)}.", code="notebook_entry_not_found")
         builder.metadata.pop(HOLD_KEY, None)
         conclusion = follow.Conclusion(
             status=body.status,
@@ -725,9 +760,8 @@ def replace_structure_images(
 
 def merge(slug: str, experiment_id: str, other_experiment_id: str, *, author: str, expected_version: str | None) -> follow.Experiment:
     """Réunir deux pistes : une nouvelle version de ``experiment_id`` dont l'autre pointe est le
-    second parent. La structure et le protocole restent ceux de cette piste ; les preuves des deux
-    côtés sont reportées (dédoublonnées par id, celles de cette piste d'abord), avec ce que les
-    métadonnées rangent pour elles - et ce qui y désigne une preuve absente est retiré."""
+    second parent. La structure et le protocole restent ceux de cette piste ; les cahiers de données
+    des deux côtés sont réunis (:func:`_merge_notebook`)."""
 
     def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
         other = tip_of(builder.repo, other_experiment_id)
@@ -741,31 +775,43 @@ def merge(slug: str, experiment_id: str, other_experiment_id: str, *, author: st
         builder.parents.append(other.id)
         builder.add_reference(role="merge_source", experiment_id=other.id, label=f"{other.branch}: {other.title}")
         builder.metadata.pop(HOLD_KEY, None)
-        _merge_evidence(builder, other)
+        _merge_notebook(builder, other)
 
     return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
 
 
-def _merge_evidence(builder: follow.ExperimentBuilder, other: follow.Experiment) -> None:
-    known = {evidence.id for evidence in builder.evidence}
-    added = [evidence for evidence in other.evidence if evidence.id not in known]
-    builder.evidence = [*builder.evidence, *added]
-    kept = {evidence.id for evidence in builder.evidence}
-    added_ids = {evidence.id for evidence in added}
+def _merge_notebook(builder: follow.ExperimentBuilder, other: follow.Experiment) -> None:
+    """Reporte dans ``builder`` (cette piste) les entrées du cahier de ``other`` qu'il n'a pas déjà,
+    dédoublonnées par id (:func:`notebook_entry_ids` : celles de cette piste d'abord, quel que soit
+    le format où chaque côté les range), chacune dans son format : une entrée enregistrée, une vue de
+    l'ancien cahier, une preuve Follow avec ce que les métadonnées rangent pour elle. Ce qui y désigne
+    une preuve absente (métadonnées par id, images d'une preuve) est retiré."""
+    known = set(notebook_entry_ids(builder))
 
-    for key in EVIDENCE_KEYED_METADATA:
+    for key in (NOTEBOOK_KEY, LEGACY_NOTEBOOK_KEY):
+        added = [copy.deepcopy(item) for item in other.metadata.get(key) or [] if isinstance(item, dict) and item.get("id") not in known]
+        if added:
+            builder.metadata[key] = [*builder.metadata.get(key, []), *added]
+            known.update(item["id"] for item in added)
+
+    added_evidence = [evidence for evidence in other.evidence if evidence.id not in known]
+    builder.evidence = [*builder.evidence, *added_evidence]
+    kept = {evidence.id for evidence in builder.evidence}
+    added_ids = {evidence.id for evidence in added_evidence}
+
+    for key in LEGACY_EVIDENCE_KEYED_METADATA:
         if key not in builder.metadata and key not in other.metadata:
             continue
         merged = {**copy.deepcopy(other.metadata.get(key, {})), **builder.metadata.get(key, {})}
         builder.metadata[key] = {evidence_id: value for evidence_id, value in merged.items() if evidence_id in kept}
 
-    attachments = list(builder.metadata.get("attachments", []))
+    attachments = list(builder.metadata.get(ATTACHMENTS_KEY, []))
     present = {attachment.get("id") for attachment in attachments}
     attachments += [
-        copy.deepcopy(a) for a in other.metadata.get("attachments", []) if a.get("evidence_id") in added_ids and a.get("id") not in present
+        copy.deepcopy(a) for a in other.metadata.get(ATTACHMENTS_KEY, []) if a.get("evidence_id") in added_ids and a.get("id") not in present
     ]
-    if attachments or "attachments" in builder.metadata:
-        builder.metadata["attachments"] = [a for a in attachments if a.get("evidence_id") is None or a.get("evidence_id") in kept]
+    if attachments or ATTACHMENTS_KEY in builder.metadata:
+        builder.metadata[ATTACHMENTS_KEY] = [a for a in attachments if a.get("evidence_id") is None or a.get("evidence_id") in kept]
 
 
 def delete(slug: str, experiment_id: str, *, expected_version: str | None) -> list[str]:

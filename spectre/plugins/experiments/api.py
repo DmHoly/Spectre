@@ -5,8 +5,8 @@ son ``ETag`` ; toute écriture accepte ``If-Match`` (412 si la piste a avancé, 
 renvoie l'étude à jour avec son nouvel ``ETag``. Le domaine est dans :mod:`.service` ; ici, on lit
 la requête et on sérialise.
 
-Le détail d'une étude ne porte que le nombre de ses preuves : elles se lisent dans le plugin evidence
-(``GET .../experiments/{experiment_id}/evidence``).
+Le détail d'une étude ne porte que le nombre d'entrées de son cahier de données : elles se lisent
+dans le plugin notebook (``GET .../experiments/{experiment_id}/notebook-entries``).
 La page d'une étude (``page_router``) redirige un ancien lien vers un id de version sur sa piste.
 """
 
@@ -105,7 +105,9 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         # a structure given as pictures: [{image_id, kind, caption, url}, ...] in reading order
         "structure_images": kinds.structure_images_payload(slug, version.structure_type, version.structure),
         "has_editable_process": "structureforge_process" in version.metadata,
-        "evidence_count": len(version.evidence),
+        # le cahier de données se lit dans le plugin notebook (GET .../notebook-entries) : ici, son
+        # nombre d'entrées seulement (toutes, y compris celles d'autres plaques)
+        "notebook_count": len(service.notebook_entry_ids(version)),
         "physical_tracking": version.metadata.get("physical_tracking", []),
         "form_answers": dict(version.form_answers),
     }

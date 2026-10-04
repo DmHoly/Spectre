@@ -3,10 +3,12 @@ taille, usage, auteur, date) par fichier, rangés sous ``<dossier du µprojet>/a
 par un id frais (``att_<hex>``) plutôt que par le nom téléversé - rien ici n'a jamais à transformer
 un nom fourni par l'utilisateur en chemin sûr.
 
-Chaque fichier sert à quelque chose (:data:`PURPOSES`) : une image de structure, une image de preuve.
-C'est l'usage qui fixe les types et la taille acceptés. Les sidecars plus anciens restent lisibles :
-``role`` (``"structure"`` / ``"preuve"``) au lieu de ``purpose``, ou sans usage ni auteur du tout
-(les pièces jointes d'une expérience).
+Chaque fichier sert à quelque chose (:data:`PURPOSES`) : une image de structure, ou un fichier d'une
+entrée du cahier de données (une image, ou un document : PDF, tableur, texte...). C'est l'usage qui
+fixe les types et la taille acceptés. Les sidecars plus anciens restent lisibles : l'usage
+``"evidence"`` (une image de preuve, avant le cahier unique - on n'en téléverse plus), ``role``
+(``"structure"`` / ``"preuve"``) au lieu de ``purpose``, ou sans usage ni auteur du tout (les pièces
+jointes d'une expérience).
 """
 
 from __future__ import annotations
@@ -33,6 +35,24 @@ CHUNK_BYTES = 1024 * 1024
 IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 IMAGE_MAX_BYTES = 10 * 1024 * 1024
 
+# Les documents qu'une entrée du cahier peut porter - une liste fermée, par extension. Servis en
+# téléchargement seulement (``Content-Disposition: attachment``, ``nosniff`` : voir l'api), jamais
+# affichés par la page. Le type annoncé par le navigateur fait foi ; un type vague
+# (``application/octet-stream``, ou rien) est lu sur l'extension du nom.
+DOCUMENT_TYPES_BY_EXTENSION = {
+    ".pdf": "application/pdf",
+    ".csv": "text/csv",
+    ".tsv": "text/tab-separated-values",
+    ".txt": "text/plain",
+    ".xls": "application/vnd.ms-excel",  # aussi le type d'un .csv sous Windows, Excel installé
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+DOCUMENT_TYPES = frozenset(DOCUMENT_TYPES_BY_EXTENSION.values())
+NOTEBOOK_TYPES = IMAGE_TYPES | DOCUMENT_TYPES
+_VAGUE_TYPES = ("", "application/octet-stream")
+
 
 @dataclass(frozen=True)
 class Purpose:
@@ -43,7 +63,7 @@ class Purpose:
 # À quoi sert un fichier téléversé par POST .../attachments, et ce que cet usage accepte.
 PURPOSES = {
     "structure": Purpose(IMAGE_TYPES, IMAGE_MAX_BYTES),
-    "evidence": Purpose(IMAGE_TYPES, IMAGE_MAX_BYTES),
+    "notebook": Purpose(NOTEBOOK_TYPES, IMAGE_MAX_BYTES),
 }
 
 # Usage des sidecars écrits avant ``purpose`` (champ ``role``).
@@ -83,7 +103,7 @@ def attachments_dir(slug: str) -> Path:
 
 def content_url(slug: str, attachment_id: str) -> str:
     """L'URL des octets d'un fichier (``GET .../attachments/{attachment_id}/content``) : un plugin
-    qui montre une image téléversée (une preuve) en donne l'``url`` sans la construire lui-même."""
+    qui montre un fichier téléversé (une entrée du cahier) en donne l'``url`` sans la construire lui-même."""
     return f"/api/microprojects/{slug}/attachments/{attachment_id}/content"
 
 
@@ -91,10 +111,24 @@ def new_attachment_id() -> str:
     return f"att_{secrets.token_hex(10)}"
 
 
-def _type_problem(content_type: str) -> str:
+def _type_problem(content_type: str, accepted: frozenset[str]) -> str:
     if content_type in ("image/tiff", "image/tif", "image/bmp"):
         return "Format non affichable par le navigateur - copiez l'image depuis votre logiciel puis collez-la (Ctrl+V), ou exportez-la en PNG."
+    if accepted & DOCUMENT_TYPES:
+        documents = ", ".join(extension[1:].upper() for extension in DOCUMENT_TYPES_BY_EXTENSION)
+        return f"Type de fichier non pris en charge ({content_type or 'inconnu'}) : une image PNG, JPEG, GIF ou WebP, ou un document {documents}."
     return f"Type de fichier non pris en charge ({content_type or 'inconnu'}) : une image PNG, JPEG, GIF ou WebP."
+
+
+def _content_type(announced: str | None, filename: str | None, accepted: frozenset[str]) -> str:
+    """Le type d'un fichier téléversé : celui que le navigateur annonce, ou, s'il est vague, celui
+    que donne l'extension du nom parmi les documents acceptés."""
+    content_type = (announced or "").split(";")[0].strip().lower()
+    if content_type in _VAGUE_TYPES:
+        guessed = DOCUMENT_TYPES_BY_EXTENSION.get(Path(filename or "").suffix.lower())
+        if guessed in accepted:
+            return guessed
+    return content_type
 
 
 def save(slug: str, stream: BinaryIO, *, filename: str | None, content_type: str | None, purpose: str, uploaded_by: str) -> Attachment:
@@ -104,9 +138,9 @@ def save(slug: str, stream: BinaryIO, *, filename: str | None, content_type: str
     rules = PURPOSES.get(purpose)
     if rules is None:
         raise InvalidInput(f"Usage inconnu ({purpose or 'aucun'}) : {', '.join(PURPOSES)}.")
-    content_type = (content_type or "").split(";")[0].strip().lower()
+    content_type = _content_type(content_type, filename, rules.types)
     if content_type not in rules.types:
-        raise InvalidInput(_type_problem(content_type))
+        raise InvalidInput(_type_problem(content_type, rules.types))
 
     attachment_id = new_attachment_id()
     directory = attachments_dir(slug)
@@ -182,4 +216,17 @@ def uploaded_image(slug: str, image_id: str) -> dict:
     _blob_path, sidecar = found
     if sidecar.get("content_type") not in IMAGE_TYPES:
         raise InvalidInput("Ce fichier n'est pas une image affichable (PNG, JPEG, GIF ou WebP).")
+    return sidecar
+
+
+def uploaded_file(slug: str, attachment_id: str, types: frozenset[str]) -> dict:
+    """Le sidecar d'un fichier téléversé dans *ce* µprojet, d'un des ``types`` acceptés (une entrée
+    du cahier : :data:`NOTEBOOK_TYPES`) - :class:`InvalidInput` sinon, comme :func:`uploaded_image`."""
+    found = _read(slug, attachment_id)
+    if found is None:
+        raise InvalidInput("Fichier introuvable - déposez-le à nouveau.", code="attachment_not_found")
+    _blob_path, sidecar = found
+    if sidecar.get("content_type") not in types:
+        name = sidecar.get("filename") or attachment_id
+        raise InvalidInput(f"Ce fichier ({name}) n'est pas d'un type accepté ici.", code="attachment_type")
     return sidecar

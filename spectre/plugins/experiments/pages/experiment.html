@@ -11,7 +11,6 @@
   <link rel="stylesheet" href="/static/characterization/characterization.css">
   <link rel="stylesheet" href="/static/external_images/external_images.css">
   <link rel="stylesheet" href="/static/attachments/attachments.css">
-  <link rel="stylesheet" href="/static/evidence/evidence.css">
   <link rel="stylesheet" href="/static/notebook/notebook.css">
   <link rel="stylesheet" href="/static/lots/lots.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
@@ -187,7 +186,7 @@
       <div class="fiche-grid">
         <div class="card card-pad fiche-card" data-panel="versions">
           <div class="section-title" style="margin-bottom:4px;">Versions du procédé</div>
-          <div class="help" style="margin-bottom:12px;">Chaque changement de structure ou de procédé (X.Y.Z) - une preuve, un tag ou un titre modifié n'en crée pas ; retrouvez-les dans l'historique complet.</div>
+          <div class="help" style="margin-bottom:12px;">Chaque changement de structure ou de procédé (X.Y.Z) - une donnée, un tag ou un titre modifié n'en crée pas ; retrouvez-les dans l'historique complet.</div>
           <div class="timeline fiche-card__scroll" id="timeline"></div>
           <div id="forks-note" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);"></div>
           <div id="references-card" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
@@ -196,7 +195,7 @@
           </div>
           <details class="fiche-history" id="full-history-card" data-report-hide>
             <summary>Historique complet</summary>
-            <div class="help" style="margin:8px 0 12px;">Toutes les versions, et tout le reste : preuves, tags, titres, objectifs... Les entrées en retrait n'ont pas changé le procédé.</div>
+            <div class="help" style="margin:8px 0 12px;">Toutes les versions, et tout le reste : données, tags, titres, objectifs... Les entrées en retrait n'ont pas changé le procédé.</div>
             <div class="timeline" id="full-history"></div>
           </details>
         </div>
@@ -246,18 +245,12 @@
         <div id="notebook-entries" class="nb-entries"></div>
       </div>
 
-      <div class="card card-pad" id="evidence-card">
-        <div class="section-title" style="margin-bottom:6px;">Données mesurées</div>
-        <div class="help" style="margin-bottom:12px;">Images de mesure rattachées à l'étude (comparées à la structure simulée), puis les preuves enregistrées.</div>
+      <div class="card card-pad" id="images-card">
+        <div class="section-title" style="margin-bottom:6px;">Images de mesure</div>
+        <div class="help" style="margin-bottom:12px;">Images de mesure rattachées à l'étude, comparées à la structure simulée.</div>
 
         <!-- la galerie d'images externes (external_images/static/gallery.js) -->
         <div data-panel="external_images"></div>
-
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-soft);">
-          <div class="section-title" style="margin-bottom:4px;">Preuves</div>
-          <!-- les preuves, leur comparaison et le formulaire d'ajout (evidence/static/evidence-panel.js) -->
-          <div data-panel="evidence"></div>
-        </div>
       </div>
     </section>
 
@@ -271,7 +264,7 @@
       <div style="margin-top:14px;max-width:480px;">
         <div id="advanced-actions-editor-only">
           <label>Combiner avec une autre expérience</label>
-          <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, relie l'historique de l'autre expérience choisie et reprend ses preuves.</div>
+          <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, relie l'historique de l'autre expérience choisie et reprend son cahier de données.</div>
           <input class="field" type="search" id="combine-search" placeholder="Rechercher : titre, étiquette, piste…" aria-label="Rechercher l'expérience à combiner" autocomplete="off" style="margin-bottom:6px;">
           <select class="field" id="combine-select" aria-label="Expérience à combiner" style="margin-bottom:8px;"></select>
           <button class="btn btn-line" id="combine-btn" type="button">Combiner</button>
@@ -387,7 +380,6 @@
   <script src="/static/lots/client.js"></script>
   <script src="/static/attachments/client.js"></script>
   <script src="/static/experiments/client.js"></script>
-  <script src="/static/evidence/client.js"></script>
   <script src="/static/intent_forms/client.js"></script>
   <script src="/static/characterization/client.js"></script>
   <script src="/static/notebook/client.js"></script>
@@ -400,7 +392,7 @@
   <script src="/static/characterization/wafer-data-links.js"></script>
   <script src="/static/attachments/image-drop.js"></script>
   <!-- La fiche : l'amorce et le registre des panneaux, puis ses panneaux, dans l'ordre où ils se
-       montent ; ensuite ceux des autres plugins (preuves, galerie, lots, cahier), qui s'y enregistrent. -->
+       montent ; ensuite ceux des autres plugins (galerie, lots, cahier), qui s'y enregistrent. -->
   <script src="/static/experiments/page.js"></script>
   <script src="/static/experiments/header.js"></script>
   <script src="/static/experiments/objectives.js"></script>
@@ -411,7 +403,6 @@
   <script src="/static/experiments/conclusion.js"></script>
   <script src="/static/experiments/advanced.js"></script>
   <script src="/static/experiments/report.js"></script>
-  <script src="/static/evidence/evidence-panel.js"></script>
   <script src="/static/external_images/gallery.js"></script>
   <script src="/static/lots/lot-picker.js"></script>
   <!-- Visualisation de données : le registre, puis un fichier par composant, puis les préréglages

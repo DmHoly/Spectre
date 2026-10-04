@@ -1,5 +1,5 @@
 /* La carte « Versions du procédé » : la frise des versions de structure (X.Y.Z), l'historique complet
-   de la piste (preuves, étiquettes, titres... en retrait), les pistes qui partent de la version
+   de la piste (données, étiquettes, titres... en retrait), les pistes qui partent de la version
    affichée et ses liens (référence, témoin, source combinée...). Une version passée s'ouvre en
    lecture (?version=). */
 

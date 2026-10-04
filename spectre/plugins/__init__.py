@@ -10,7 +10,6 @@ from .atlas import PLUGIN as atlas
 from .attachments import PLUGIN as attachments
 from .characterization import PLUGIN as characterization
 from .docs import PLUGIN as docs
-from .evidence import PLUGIN as evidence
 from .experiments import PLUGIN as experiments
 from .external_images import PLUGIN as external_images
 from .intent_forms import PLUGIN as intent_forms
@@ -38,7 +37,6 @@ PLUGINS = (
     structures,
     process_library,
     experiments,
-    evidence,
     intent_forms,
     wafers,
     lots,

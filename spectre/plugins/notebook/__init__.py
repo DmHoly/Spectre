@@ -1,6 +1,9 @@
-"""Cahier de données d'une étude : instantanés de données de caractérisation et vues DataViz."""
+"""Cahier de données d'une étude : toutes ses données mesurées - instantanés de données de
+caractérisation et leurs vues DataViz (entrées PRISM), et ce qui se charge à la main (entrées
+manuelles : valeurs, textes, tableaux, fichiers, liens), chacune rattachée aux plaques mesurées et
+aux étapes du procédé."""
 
 from ...kernel.plugin import Plugin
 from .api import router
 
-PLUGIN = Plugin(name="notebook", depends_on=("characterization", "experiments"), router=router)
+PLUGIN = Plugin(name="notebook", depends_on=("characterization", "experiments", "attachments"), router=router)

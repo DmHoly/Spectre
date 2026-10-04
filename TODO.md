@@ -11,47 +11,29 @@ et refs) sont livrés, comme le préalable du point 3 (identité des étapes) : 
 
 ### 3. Un seul cahier de données, rattaché aux étapes du procédé
 
-Demandé le 2026-10-04. Ce point remplace l'ancien « résultats rattachés à une étape ».
+Demandé le 2026-10-04. Ce point remplace l'ancien « résultats rattachés à une étape ». Le
+**serveur est livré** (voir « Fait ») : il reste l'interface.
 
-- [ ] **Fondre les preuves dans le cahier.** Aujourd'hui, les données d'une étude sont réparties
-      entre deux modules : les **preuves** (plugin `evidence`) et le **cahier** (plugin `notebook`).
-      On regroupe tout dans le cahier. Ce qu'on appelait une preuve devient un type d'entrée du
-      cahier : la **donnée chargée à la main**. Elle couvre tout ce que PRISM ne peut pas prévoir :
-      - image, capture d'écran, fichier ;
-      - valeur mesurée, texte, tableau collé (analysé en TSV) ;
-      - lien vers un dossier ou une présentation.
-
-      C'est la donnée très R&D : une mesure faite une seule fois, qui ne vaut pas un connecteur,
-      ou dont le format n'est pas fixé. On ne peut pas la normaliser, mais on veut la garder.
-      Le cahier aura donc deux types d'entrée :
-      - **PRISM** : instantané d'un type de données de `characterization` et sa vue DataViz,
-        comme aujourd'hui ;
-      - **manuelle** : l'ex-preuve, qui garde son lien à un objectif et son interprétation.
-- [ ] **Conséquences sur l'architecture.**
-      - Le plugin `evidence` disparaît et son contenu passe dans `notebook` : panneau, routes
-        `.../notebook-entries` avec `kind: prism | manual`, client et tests.
-      - Une migration convertit les preuves existantes (preuves Follow, plus les champs Spectre de
-        `metadata`) en entrées manuelles du cahier, sans perte. Les images restent dans
-        `attachments`.
-      - Il faut aussi suivre ce que la fusion touche ailleurs :
-        - le compteur de l'onglet « Données » ;
-        - le rapport ;
-        - la conclusion, qui cite les preuves ;
-        - la fusion d'études (`experiments.service._merge_evidence`) ;
-        - le lien preuve ↔ objectif.
-      - Mettre à jour ARCHITECTURE.md (§ 3 et § 5) et le README.
-- [ ] **Convertir les `step_index` des anciennes preuves** en ids d'étape, avec
-      `experiments.service.step_id_at(repo, version, index)` (l'identité des étapes est livrée,
-      voir « Fait » ; il n'y a pas de migration des procédés, leurs ids se lisent de parent en
-      parent, si bien qu'une étape garde le même id dans les anciennes versions d'une piste).
+- [ ] **Le panneau du cahier, côté fiche.** Le plugin `evidence` a disparu ; son panneau aussi. Le
+      panneau du cahier (`notebook/static/notebook.js`) ne fait encore que lire le nouveau format :
+      une entrée PRISM par sa première vue, une entrée manuelle telle quelle. Reste à faire :
+      - la saisie d'une **donnée chargée à la main** (`kind: "manual"`) : image, capture d'écran,
+        fichier (`attachmentsApi.upload`, `purpose: "notebook"`) ; valeur mesurée, texte, tableau
+        collé (analysé en TSV par la page, envoyé en `{columns, rows}`) ; lien web ; objectif servi,
+        interprétation ; les annotations d'une image (ex-`evidence-panel.js`, dans l'historique
+        git) ;
+      - les entrées d'**autres plaques** (`applies: false`) rangées à part, les mesures d'une
+        **étape retirée** (`step_retired`) signalées ;
+      - le **rapport** (`experiments/static/report.js`) et la **conclusion**, qui peut citer des
+        entrées (`objective_results[].evidence_ids`, `conclusion.js`).
 - [ ] **Situer chaque donnée dans le procédé, sur plusieurs étapes.**
-      - À l'ajout comme à la lecture d'une donnée, on affiche un **stepper** du procédé : une bulle
-        par étape, avec en **rouge** les étapes où la mesure est faite.
-      - Une même mesure peut être faite à **plusieurs moments** du procédé. Une entrée porte donc
-        une **liste d'étapes** (`steps: [step_id, …]`, les ids `st_<8 hex>` de `process_step_ids`),
-        pas une étape unique. Dans la boîte d'ajout, on coche les bulles.
+      - À l'ajout comme à la lecture d'une donnée, on affiche un **stepper** du procédé (les étapes
+        et leurs ids : `GET .../process`) : une bulle par étape, avec en **rouge** les étapes où la
+        mesure est faite (les `step_id` de ses `measurements`). Dans la boîte d'ajout, on coche les
+        bulles : une mesure par bulle.
       - Dans la vue du procédé (`experiments/static/structure-view.js`), chaque étape affiche un
-        badge avec le nombre de données qui la concernent. Un clic filtre le cahier sur cette étape.
+        badge avec le nombre de données qui la concernent (`notebookApi.entries` avec
+        `?summary=steps` : `{step_id: n}`). Un clic filtre le cahier sur cette étape (`?step=`).
 - [ ] **Décidé le 2026-10-04 :**
       - une donnée est attachée à l'**entité physique** (la plaque mesurée) autant qu'aux étapes.
         Elle reste valable aux versions suivantes de la piste **tant que la piste suit la même
@@ -101,7 +83,7 @@ leaderboard) a été retirée - la page d'un projet corporate porte désormais s
 un bloc de tendances à onglets (`spectre/plugins/kpis/service.py`, `plugins/kpis/static/kpi-trend.js`). Reste :
 
 - [ ] **Définir les indicateurs clés société** à suivre dans le temps : lesquelles des mesures
-      d'objectif (`Objective.metric`) ou de preuve (`Evidence.metric_value`) comptent comme un
+      d'objectif (`Objective.metric`) ou du cahier (valeur d'une entrée manuelle, `value.name`) comptent comme un
       indicateur stratégique, sur quel µprojet/thème, avec quelle cible. Préalable obligatoire aux
       deux points suivants - sans ça il n'y a rien à tracer.
 - [ ] **Brancher les KPI de tendance** (EQE, PL, défectivité, rendement - aujourd'hui des
@@ -154,6 +136,14 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 ## Fait (pour mémoire, pas d'action)
 
+- **Un seul cahier de données, côté serveur** (2026-10-04, point 3). Le plugin `evidence` a disparu :
+  `notebook` porte toutes les données d'une étude (`.../notebook-entries`, `kind: prism | manual`,
+  une seule forme : plaques mesurées `wafers`, une mesure par étape `measurements[].step_id`), avec
+  la règle « la donnée suit la plaque » (`applies`) et l'étape retirée (`step_retired`). **Pas de
+  migration** : les vues de l'ancien cahier et les preuves (Follow + `metadata`) sont converties à
+  la lecture, sans perte, les preuves gardant leur id (la conclusion les cite toujours) et leur
+  `step_index` devenu un id d'étape ; la première écriture dans le cahier enregistre le cahier
+  converti. Spectre n'écrit plus de preuve Follow. Détail dans `ARCHITECTURE.md` § 4 et § 5.
 - **Équipes, managers et administrateurs** (2026-10-04, ex-point 1). Plugin `teams` (tables `teams`,
   `team_members`, pages `/equipes`, `/equipes/{slug}`), `management_areas.team_id`. Une seule
   règle : `areas.service.can_manage` pour un projet, `microprojects.service.access` pour un

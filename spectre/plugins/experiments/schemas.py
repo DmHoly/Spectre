@@ -65,6 +65,9 @@ class ObjectiveResultInput(BaseModel):
     objective: str
     status: Literal["met", "not_met", "partially_met", "inconclusive"]
     observed: follow.Quantity | None = None
+    # les entrées du cahier de données qui appuient ce verdict (leurs ids ; le nom est celui du champ
+    # de Follow, ``ObjectiveResult.evidence_ids``)
+    evidence_ids: list[str] = []
     reasoning: str | None = None
 
 

@@ -2,7 +2,7 @@
 
 Spectre suit les expériences de procédé d'une équipe, de la définition de la structure jusqu'à la
 conclusion. Chaque expérience a une **fiche d'identité** : intention, structure, plaques suivies,
-preuves, données et conclusion. Ce que Spectre apporte : des comptes, des µprojets avec des droits
+cahier de données et conclusion. Ce que Spectre apporte : des comptes, des µprojets avec des droits
 par membre, une couche de pilotage (projets corporate, thématiques, objectifs) et une interface web
 unique.
 
@@ -242,14 +242,13 @@ ses tables (`migrations.py`), ses pages (`pages/`) et son front (`static/`, serv
 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu DOE, types de structure | `/api/materials`, `/api/recipes`, `/api/simulations`, `/api/campaign-previews` | constructeur et structure en images (`/microprojets/{slug}/structures/...`, `.../evoluer`, `.../evoluer-image`) |
 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques | `/api/saved-structures`, `/api/step-presets`, `/api/tech-bricks` | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
 | `experiments` | Pistes et versions Follow : création, évolution, statut, conclusion, étiquettes, entités, fusion, diff, filiation, refs, statistiques | `/api/microprojects/{mp}/experiments`, `.../lineage`, `.../refs`, `.../structure-history`, `/api/experiment-stats`, `/api/experiment-timeline` | `/microprojets/{slug}/experiences/{experiment_id}`, `/microprojets/{slug}/evolution` |
-| `evidence` | Preuves d'une étude, liens, images, annotations | `.../experiments/{exp}/evidence` | — (panneau de la fiche) |
 | `intent_forms` | Formulaires d'intention et formulaire actif d'un µprojet | `/api/intent-forms`, `/api/microprojects/{mp}/active-intent-form` | `/microprojets/{slug}/formulaire-intention` |
 | `wafers` | Index des plaques suivies, recherche par lasermark et FDL, visibilité | `/api/wafers` | `/plaques/{lasermark}` |
 | `lots` | Lots de fabrication, wafers, thématiques visées, Gantt | `/api/lots`, `/api/lot-priorities` | `/lots`, `/lots/{code}` |
 | `links` | Liens entre µprojets et entre entités physiques | `/api/microproject-links`, `/api/entity-links` | — |
 | `atlas` | Vue graphe d'un projet corporate | `/api/areas/{area_slug}/atlas` | `/management/{slug}/atlas` |
 | `characterization` | Adaptateur PRISM (ou source démo) : catalogue, requêtes, graphiques | `/api/characterization` | `/donnees`, `/donnees/{key}` |
-| `notebook` | Cahier de données d'une étude : instantanés et vues DataViz | `/api/microprojects/{mp}/snapshots`, `.../experiments/{exp}/notebook-entries` | — (panneau de la fiche) |
+| `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, liens - les anciennes preuves), rattachées aux plaques mesurées et aux étapes du procédé | `/api/microprojects/{mp}/snapshots`, `.../experiments/{exp}/notebook-entries` | — (panneau de la fiche) |
 | `external_images` | Galerie d'images externes d'une étude, bornée aux racines autorisées | `/api/microprojects/{mp}/external-images`, `.../experiments/{exp}/image-sets` | — (panneau de la fiche) |
 | `kpis` | Registre de KPI et séries mensuelles d'un projet corporate | `/api/areas/{area_slug}/kpis` | — |
 | `kpis_demo` | Séries et fiche d'étude fictives, actif seulement si `SPECTRE_DEMO_DATA=1` | `/api/areas/{area_slug}/kpis/{kpi_key}/studies` | — |
@@ -347,6 +346,7 @@ node --test --experimental-test-coverage
 
 Les évolutions prévues et les dettes notées sont dans [`TODO.md`](TODO.md), notamment :
 
-- un seul cahier de données (les preuves deviennent l'entrée manuelle du cahier), chaque donnée
-  rattachée à une ou plusieurs étapes du procédé par leur identifiant ;
+- le cahier unique côté interface : le stepper du procédé à l'ajout et à la lecture d'une donnée,
+  la saisie d'une entrée manuelle, les badges des étapes (le serveur est prêt : voir
+  `ARCHITECTURE.md` § 5, notebook) ;
 - la réécriture de la documentation intégrée (`/docs`), en dernier.
