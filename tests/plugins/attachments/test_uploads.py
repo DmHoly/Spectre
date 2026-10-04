@@ -63,6 +63,18 @@ def test_a_notebook_entry_may_carry_documents_served_as_downloads(client):
     # une liste fermée : ni page web, ni exécutable, ni archive - même nommés comme un document
     for name, announced in (("page.html", "text/html"), ("outil.exe", "application/x-msdownload"), ("lot.zip", "application/zip"), ("x.svg", "image/svg+xml"), ("faux.pdf", "text/html")):
         assert post_attachment(client, slug, "notebook", name, b"x", announced).status_code == 422, name
+    # ni un document téléchargé sous un nom d'une autre extension que celle de son type
+    disguised = (
+        ("outil.exe", "application/pdf"),
+        ("run.bat", "text/csv"),
+        ("x.hta", "text/plain"),
+        ("page.html", "text/plain"),
+        ("macro.xlsm", "application/vnd.ms-excel"),
+        ("sans-extension", "application/pdf"),
+        ("rapport.pdf", "text/csv"),
+    )
+    for name, announced in disguised:
+        assert post_attachment(client, slug, "notebook", name, b"x", announced).status_code == 422, name
     # une structure n'accepte toujours que des images
     assert post_attachment(client, slug, "structure", "rapport.pdf", b"%PDF", "application/pdf").status_code == 422
     # la taille reste bornée

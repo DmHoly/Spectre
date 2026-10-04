@@ -36,9 +36,10 @@ IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 IMAGE_MAX_BYTES = 10 * 1024 * 1024
 
 # Les documents qu'une entrée du cahier peut porter - une liste fermée, par extension. Servis en
-# téléchargement seulement (``Content-Disposition: attachment``, ``nosniff`` : voir l'api), jamais
-# affichés par la page. Le type annoncé par le navigateur fait foi ; un type vague
-# (``application/octet-stream``, ou rien) est lu sur l'extension du nom.
+# téléchargement seulement (``Content-Disposition: attachment``, ``nosniff`` : voir l'api), sous leur
+# nom, jamais affichés par la page. Un document porte l'extension de son type (un ``outil.exe``
+# annoncé ``application/pdf`` est refusé) ; un type vague (``application/octet-stream``, ou rien) est
+# lu sur l'extension du nom.
 DOCUMENT_TYPES_BY_EXTENSION = {
     ".pdf": "application/pdf",
     ".csv": "text/csv",
@@ -50,6 +51,8 @@ DOCUMENT_TYPES_BY_EXTENSION = {
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 DOCUMENT_TYPES = frozenset(DOCUMENT_TYPES_BY_EXTENSION.values())
+# Un autre type qu'un navigateur annonce pour une extension (un .csv sous Windows, Excel installé).
+_ALSO_ANNOUNCED = {".csv": frozenset({"application/vnd.ms-excel"})}
 NOTEBOOK_TYPES = IMAGE_TYPES | DOCUMENT_TYPES
 _VAGUE_TYPES = ("", "application/octet-stream")
 
@@ -122,12 +125,15 @@ def _type_problem(content_type: str, accepted: frozenset[str]) -> str:
 
 def _content_type(announced: str | None, filename: str | None, accepted: frozenset[str]) -> str:
     """Le type d'un fichier téléversé : celui que le navigateur annonce, ou, s'il est vague, celui
-    que donne l'extension du nom parmi les documents acceptés."""
+    que donne l'extension du nom parmi les documents acceptés. Un document annoncé sous un nom d'une
+    autre extension est refusé : c'est sous ce nom qu'il se télécharge."""
     content_type = (announced or "").split(";")[0].strip().lower()
+    suffix = Path(filename or "").suffix.lower()
+    by_extension = DOCUMENT_TYPES_BY_EXTENSION.get(suffix)
     if content_type in _VAGUE_TYPES:
-        guessed = DOCUMENT_TYPES_BY_EXTENSION.get(Path(filename or "").suffix.lower())
-        if guessed in accepted:
-            return guessed
+        return by_extension if by_extension in accepted else content_type
+    if content_type in DOCUMENT_TYPES & accepted and content_type != by_extension and content_type not in _ALSO_ANNOUNCED.get(suffix, ()):
+        raise InvalidInput(f"Le nom du fichier ({filename or 'sans nom'}) ne correspond pas à son type ({content_type}) : un document porte l'extension de son format.")
     return content_type
 
 

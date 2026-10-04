@@ -37,7 +37,6 @@ import re
 import secrets
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlsplit
 
 import follow
 
@@ -47,7 +46,7 @@ from ..experiments import service as experiments
 from ..experiments.entities import compact as wafer_key
 from ..experiments.repository import get_repository
 from . import legacy, snapshots
-from .schemas import AttachmentRef, EntryInput, EntryUpdate, LinkInput, MeasurementInput, TableInput
+from .schemas import AttachmentRef, EntryInput, EntryUpdate, LinkInput, MeasurementInput, TableInput, is_web_link
 
 MAX_ENTRIES = 200
 MAX_MEASUREMENTS = 30
@@ -250,8 +249,7 @@ def _links(raw: list[LinkInput]) -> list[dict[str, Any]]:
     links: list[dict[str, Any]] = []
     for link in raw:
         url = link.url.strip()
-        parts = urlsplit(url)
-        if parts.scheme.lower() not in ("http", "https") or not parts.netloc or len(url) > 1000 or any(c.isspace() or ord(c) < 32 for c in url):
+        if not is_web_link(url):
             raise InvalidInput(f"Lien invalide ({url[:80] or 'vide'}) : une adresse http ou https.", code="invalid_link")
         if all(known["url"] != url for known in links):
             links.append({"label": _clean_text(link.label, 200), "url": url})

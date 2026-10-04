@@ -5,6 +5,7 @@ dans une mesure, et les bornes de chaque champ, sont vérifiés par :mod:`.servi
 from __future__ import annotations
 
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, model_validator
 
@@ -32,8 +33,16 @@ class TableInput(BaseModel):
 
 
 class LinkInput(BaseModel):
-    url: str  # http ou https
+    url: str  # http ou https : :func:`is_web_link`
     label: str | None = None
+
+
+def is_web_link(url: str) -> bool:
+    """Ce qu'un lien d'une mesure peut être : une adresse ``http`` ou ``https`` avec un hôte, sans
+    espace ni caractère de contrôle, de 1000 caractères au plus - la règle des liens écrits
+    aujourd'hui comme de ceux que donnent les données d'avant (:mod:`.legacy`)."""
+    parts = urlsplit(url)
+    return parts.scheme.lower() in ("http", "https") and bool(parts.netloc) and len(url) <= 1000 and not any(c.isspace() or ord(c) < 32 for c in url)
 
 
 class AttachmentRef(BaseModel):

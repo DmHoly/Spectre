@@ -16,10 +16,11 @@ version qu'elle crée).
 
 Rien n'est perdu : la description fait le titre (et la note, si elle dépasse la longueur d'un
 titre) ; une mesure chiffrée unique fait la valeur, plusieurs (ou une valeur non numérique, une
-incertitude...) un tableau ; les liens web restent des liens, un chemin réseau ou disque (un lien
-n'est qu'en ``http`` ou ``https``) passe dans le texte de la mesure, comme la référence (``source``)
-quand elle n'est pas l'un des liens, la description d'un ancien graphique, la somme de contrôle et
-une étape que le procédé de la version d'alors n'avait pas.
+incertitude...) un tableau ; les liens web restent des liens (leurs espaces encodés), un chemin réseau
+ou disque, ou un lien que la règle d'aujourd'hui refuse (:func:`.schemas.is_web_link`), passe dans le
+texte de la mesure, comme la référence (``source``) quand elle n'est pas l'un des liens, la
+description d'un ancien graphique, la somme de contrôle et une étape que le procédé de la version
+d'alors n'avait pas.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from typing import Any
 import follow
 
 from ..experiments import service as experiments
+from .schemas import is_web_link
 
 TITLE_LENGTH = 200
 
@@ -119,8 +121,23 @@ def _from_view(view: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _is_web(link: str) -> bool:
-    return link.lower().startswith(("http://", "https://"))
+def _sorted_links(links: list[str]) -> tuple[list[str], list[str]]:
+    """``(liens web, lignes du texte)`` : un lien que la règle d'aujourd'hui accepte
+    (:func:`.schemas.is_web_link`, ses espaces encodés - l'ancien code les gardait tels quels, le
+    navigateur les encodait au clic) reste un lien ; un autre lien ``http``, ou un chemin réseau ou
+    disque, passe dans le texte - une mesure relue se réenregistre donc telle quelle."""
+    web: list[str] = []
+    text: list[str] = []
+    for link in links:
+        url = link.replace(" ", "%20")
+        if is_web_link(url):
+            if url not in web:
+                web.append(url)
+        elif link.lower().startswith(("http://", "https://")):
+            text.append(f"Lien : {link}")
+        else:
+            text.append(f"Chemin : {link}")
+    return web, text
 
 
 def _metrics(metrics: dict[str, follow.Quantity]) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -170,7 +187,8 @@ def _from_evidence(
     text: list[str] = []
     if source and source not in links:
         text.append(f"Référence : {source}")
-    text += [f"Chemin : {link}" for link in links if not _is_web(link)]
+    web_links, link_lines = _sorted_links(links)
+    text += link_lines
     text += _graph_lines(extra.get("graph_config"))
     if evidence.checksum:
         text.append(f"Somme de contrôle : {evidence.checksum}")
@@ -219,7 +237,7 @@ def _from_evidence(
                 "text": "\n".join(text) or None,
                 "table": table,
                 "attachments": attachments,
-                "links": [{"label": None, "url": link} for link in links if _is_web(link)],
+                "links": [{"label": None, "url": url} for url in web_links],
                 "annotations": annotations,
             }
         ],

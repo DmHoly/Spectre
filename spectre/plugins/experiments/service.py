@@ -782,10 +782,14 @@ def merge(slug: str, experiment_id: str, other_experiment_id: str, *, author: st
 
 def _merge_notebook(builder: follow.ExperimentBuilder, other: follow.Experiment) -> None:
     """Reporte dans ``builder`` (cette piste) les entrées du cahier de ``other`` qu'il n'a pas déjà,
-    dédoublonnées par id (:func:`notebook_entry_ids` : celles de cette piste d'abord, quel que soit
-    le format où chaque côté les range), chacune dans son format : une entrée enregistrée, une vue de
-    l'ancien cahier, une preuve Follow avec ce que les métadonnées rangent pour elle. Ce qui y désigne
-    une preuve absente (métadonnées par id, images d'une preuve) est retiré."""
+    dédoublonnées par id (:func:`notebook_entry_ids` : une entrée des deux côtés garde la forme de
+    cette piste, quel que soit le format où chaque côté la range), chacune dans son format : une
+    entrée enregistrée, une vue de l'ancien cahier, une preuve Follow avec ce que les métadonnées
+    rangent pour elle. Chaque format reçoit celles de l'autre piste après celles-ci, et l'ordre lu
+    reste celui des formats (:func:`notebook_entry_ids`) : si cette piste est encore à l'ancien format,
+    les entrées enregistrées de l'autre passent devant les siennes - experiments ne convertit pas
+    les données d'avant, c'est le plugin notebook qui le fait. Ce qui y désigne une preuve absente
+    (métadonnées par id, images d'une preuve) est retiré."""
     known = set(notebook_entry_ids(builder))
 
     for key in (NOTEBOOK_KEY, LEGACY_NOTEBOOK_KEY):

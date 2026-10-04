@@ -291,8 +291,9 @@ déplacement de classe ne doit jamais la changer.
   `image_annotations` -, `evidence_links` et les images de `attachments` qui portent leur
   `evidence_id`). Elles ne sont **jamais réécrites** : `notebook.legacy` les convertit à la lecture
   (une vue → une entrée `prism` non située ; une preuve → une entrée `manual` **qui garde son id**,
-  son `step_index` traduit par `step_id_at` sur la version qui l'a ajoutée), et la première écriture
-  dans le cahier enregistre le cahier converti dans la version qu'elle crée, sans les anciennes clés
+  son `step_index` traduit par `step_id_at` sur la version qui l'a ajoutée, ses liens relus selon
+  la règle d'aujourd'hui : espaces encodés, un lien qu'elle refuse passe dans le texte), et la
+  première écriture dans le cahier enregistre le cahier converti dans la version qu'elle crée, sans les anciennes clés
   ni la liste `evidence` de Follow. Une écriture sans effet n'enregistre rien ; une autre écriture
   (étiquette, statut...) reporte l'ancien format tel quel.
 - **Les preuves Follow natives.** Spectre n'en écrit plus : le cahier est la seule source. La
@@ -306,7 +307,10 @@ déplacement de classe ne doit jamais la changer.
   `{microproject, experiment_id, entity_index}`.
 - Deux écritures traversent encore une frontière de plugin sans import, faute de dépendance dans
   ce sens : une fusion (`experiments.service._merge_notebook`) réunit les cahiers des deux pistes,
-  dédoublonnés par id quel que soit le format où chaque côté les range (celles de la piste d'abord),
+  dédoublonnés par id quel que soit le format où chaque côté les range (une entrée des deux côtés
+  garde la forme de la piste ; l'ordre reste celui de la lecture - entrées enregistrées, puis
+  anciennes vues, puis anciennes preuves -, la piste d'abord dans chacun : une piste encore à
+  l'ancien format voit les entrées enregistrées de l'autre passer devant les siennes),
   et purge les métadonnées de preuve qui désignent une preuve absente - notebook dépend
   d'experiments, pas l'inverse : experiments ne connaît que les ids des entrées
   (`notebook_entry_ids`), pour les compter, les citer et les réunir ; supprimer une piste ne purge pas ses liens
@@ -455,7 +459,7 @@ l'équipe.
 
 | Avant | Après |
 |---|---|
-| `POST /api/microprojets/{slug}/images` | `POST /api/microprojects/{mp}/attachments` (multipart, `purpose=notebook`) → 201 `{id, url, …}` : une image (PNG, JPEG, GIF, WebP) ou un document d'une liste fermée (PDF, CSV, TSV, TXT, XLS, XLSX, DOCX, PPTX ; un type annoncé vague se lit sur l'extension), 10 Mo au plus (413) ; un document se sert en téléchargement (`Content-Disposition: attachment`, `nosniff`). L'usage `evidence` d'avant n'est plus accepté au téléversement, ses fichiers restent lisibles |
+| `POST /api/microprojets/{slug}/images` | `POST /api/microprojects/{mp}/attachments` (multipart, `purpose=notebook`) → 201 `{id, url, …}` : une image (PNG, JPEG, GIF, WebP) ou un document d'une liste fermée (PDF, CSV, TSV, TXT, XLS, XLSX, DOCX, PPTX ; un document porte l'extension de son type - un `outil.exe` annoncé `application/pdf` → 422 - et un type annoncé vague se lit sur l'extension), 10 Mo au plus (413) ; un document se sert en téléchargement (`Content-Disposition: attachment`, `nosniff`). L'usage `evidence` d'avant n'est plus accepté au téléversement, ses fichiers restent lisibles |
 | `POST /api/microprojets/{slug}/structures/images` | idem avec `purpose=structure` |
 | `GET /api/microprojets/{slug}/pieces-jointes/{id}` | `GET /api/microprojects/{mp}/attachments/{attachment_id}/content` |
 | *(nouveau)* | `GET /api/microprojects/{mp}/attachments/{attachment_id}` (métadonnées) |

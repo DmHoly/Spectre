@@ -214,3 +214,36 @@ def test_an_old_evidence_keeps_its_step_across_evolutions_and_its_images_on_writ
     kept = update_entry(client, slug, line, "a1b2c3d4e5f6", measurements=[{**as_input(m), "annotations": []} for m in afm["measurements"]])
     assert [a["id"] for a in kept["measurements"][0]["attachments"]] == [study["tem"], study["sem"]]
     assert kept["measurements"][0]["annotations"] == []
+
+
+def test_old_links_are_read_under_todays_rule_so_the_entry_saves_as_read(client, demo_data):
+    """L'ancien code gardait un lien tel que collé (espaces compris) : relu, il suit la règle des
+    liens d'aujourd'hui, et la mesure se réenregistre telle quelle (une annotation, un titre)."""
+    slug = signup_with_microproject(client, "legacy-links@example.com")
+    line = launch(client, slug, steps=_three_steps())["id"]
+    image = upload_notebook_file(client, slug, "afm.png")
+
+    def old(builder, parent):
+        legacy_evidence(
+            builder,
+            "ev-liens",
+            "Rapport AFM",
+            links=[
+                "https://sharepoint.example/Documents partages/rapport AFM.pptx",
+                "https://sharepoint.example/Documents%20partages/rapport%20AFM.pptx",  # le même, déjà encodé
+                "https://",
+                "\\srv-data\R&D\Mes runs",
+            ],
+            images=[{"id": image, "filename": "afm.png", "content_type": "image/png", "size": 68, "caption": None}],
+            image_annotations=[{"attachment_id": image, "type": "box", "x": 1.0, "y": 2.0, "x2": 3.0, "y2": 4.0, "label": "grain"}],
+        )
+
+    write_legacy(slug, line, old)
+    [measurement] = entries_by_id(client, slug, line)["ev-liens"]["measurements"]
+    assert measurement["links"] == [{"label": None, "url": "https://sharepoint.example/Documents%20partages/rapport%20AFM.pptx"}]
+    assert measurement["text"] == "Lien : https://\nChemin : \\srv-data\R&D\Mes runs"
+
+    # retirer l'annotation (ce qu'envoie la fiche : toute la mesure), puis changer le titre
+    saved = update_entry(client, slug, line, "ev-liens", measurements=[{**as_input(measurement), "annotations": []}])
+    assert saved["measurements"][0]["links"] == measurement["links"] and saved["measurements"][0]["annotations"] == []
+    assert update_entry(client, slug, line, "ev-liens", title="Rapport AFM revu")["measurements"][0]["links"] == measurement["links"]
