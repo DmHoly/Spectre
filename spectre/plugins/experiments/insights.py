@@ -76,7 +76,7 @@ class _Summaries:
     def __init__(self, user: User, selected: list[Microproject]) -> None:
         self._areas = {area.id: area for area in areas.list_all()}
         self._thematics = {thematic.id: thematic for thematic in areas.list_thematics()}
-        self._roles = {microproject.id: role for microproject, role in microprojects.list_for_user(user.id)}
+        self._access = microprojects.accesses(user, selected)
         self._owners = microprojects.owners_by_microproject([m.id for m in selected])
 
     def __call__(self, microproject: Microproject) -> dict:
@@ -90,7 +90,8 @@ class _Summaries:
             "created_at": _utc_iso(microproject.created_at),
             "area": {"slug": area.slug, "name": area.name} if area else None,
             "thematic": {"slug": thematic.slug, "name": thematic.name} if thematic else None,
-            "role": self._roles.get(microproject.id),
+            "role": self._access[microproject.id].role,
+            "role_source": self._access[microproject.id].source,
             "owners": self._owners[microproject.id],
         }
 

@@ -35,9 +35,51 @@ def test_upload_creates_the_attachment_with_its_location(client):
     assert "attachment" not in content.headers.get("content-disposition", "")  # une image s'affiche
 
 
-def test_an_evidence_image_has_its_purpose(client):
-    slug = signup_with_microproject(client, "upload-evidence@example.com")
-    assert upload_file(client, slug, "evidence")["purpose"] == "evidence"
+def test_a_notebook_file_has_its_purpose_and_evidence_is_no_longer_uploaded(client):
+    slug = signup_with_microproject(client, "upload-notebook@example.com")
+    assert upload_file(client, slug, "notebook")["purpose"] == "notebook"
+    # l'usage d'avant le cahier unique : ses fichiers restent lisibles, on n'en téléverse plus
+    assert post_attachment(client, slug, "evidence").status_code == 422
+
+
+def test_a_notebook_entry_may_carry_documents_served_as_downloads(client):
+    slug = signup_with_microproject(client, "upload-documents@example.com")
+    documents = {
+        "rapport.pdf": ("application/pdf", "application/pdf"),
+        "mesures.csv": ("text/csv", "text/csv"),
+        "export.csv": ("application/vnd.ms-excel", "application/vnd.ms-excel"),  # un .csv sous Windows
+        "notes.txt": ("text/plain", "text/plain"),
+        "run.xlsx": ("application/octet-stream", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),  # type vague : l'extension
+        "revue.docx": ("", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        "revue.pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    }
+    for name, (announced, stored) in documents.items():
+        created = upload_file(client, slug, "notebook", name, content=b"%donnees", content_type=announced)
+        assert created["content_type"] == stored, name
+        content = client.get(created["url"])
+        assert content.status_code == 200 and content.content == b"%donnees"
+        assert content.headers["content-disposition"].startswith("attachment;"), name  # jamais affiché par la page
+        assert content.headers["x-content-type-options"] == "nosniff"
+    # une liste fermée : ni page web, ni exécutable, ni archive - même nommés comme un document
+    for name, announced in (("page.html", "text/html"), ("outil.exe", "application/x-msdownload"), ("lot.zip", "application/zip"), ("x.svg", "image/svg+xml"), ("faux.pdf", "text/html")):
+        assert post_attachment(client, slug, "notebook", name, b"x", announced).status_code == 422, name
+    # ni un document téléchargé sous un nom d'une autre extension que celle de son type
+    disguised = (
+        ("outil.exe", "application/pdf"),
+        ("run.bat", "text/csv"),
+        ("x.hta", "text/plain"),
+        ("page.html", "text/plain"),
+        ("macro.xlsm", "application/vnd.ms-excel"),
+        ("sans-extension", "application/pdf"),
+        ("rapport.pdf", "text/csv"),
+    )
+    for name, announced in disguised:
+        assert post_attachment(client, slug, "notebook", name, b"x", announced).status_code == 422, name
+    # une structure n'accepte toujours que des images
+    assert post_attachment(client, slug, "structure", "rapport.pdf", b"%PDF", "application/pdf").status_code == 422
+    # la taille reste bornée
+    big = post_attachment(client, slug, "notebook", "gros.pdf", b"0" * (store.IMAGE_MAX_BYTES + 1), "application/pdf")
+    assert big.status_code == 413
 
 
 def test_upload_refuses_an_unknown_or_missing_purpose(client):
@@ -48,13 +90,14 @@ def test_upload_refuses_an_unknown_or_missing_purpose(client):
     assert missing.status_code == 422
 
 
-@pytest.mark.parametrize("purpose", ["structure", "evidence"])
+@pytest.mark.parametrize("purpose", ["structure", "notebook"])
 def test_upload_refuses_what_the_browser_cannot_show(client, purpose):
     slug = signup_with_microproject(client, "upload-types@example.com")
     tiff = post_attachment(client, slug, purpose, "coupe.tif", b"II*\x00", "image/tiff")
     assert tiff.status_code == 422 and "collez" in tiff.json()["detail"]
     assert post_attachment(client, slug, purpose, "x.svg", b"<svg onload='alert(1)'/>", "image/svg+xml").status_code == 422
-    assert post_attachment(client, slug, purpose, "mesure.csv", b"a,b", "text/csv").status_code == 422
+    if purpose == "structure":  # une entrée du cahier, elle, accepte un tableur
+        assert post_attachment(client, slug, purpose, "mesure.csv", b"a,b", "text/csv").status_code == 422
     assert post_attachment(client, slug, purpose, content=b"").status_code == 422
 
 

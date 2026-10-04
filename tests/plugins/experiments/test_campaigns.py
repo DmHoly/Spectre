@@ -2,22 +2,22 @@ from __future__ import annotations
 
 from support.experiments import experiment_url, launch, post_evolve, post_launch, process, variants
 from support.microprojects import signup_with_microproject
-from support.structures import deposition, lithography, steps, substrate
+from support.structures import deposition, fixed_step_id, identified, lithography, steps, substrate
 
 
 def _steps_two():
-    return [deposition(), deposition("Nitrure", thickness_nm=10)]
+    return identified([deposition(), deposition("Nitrure", thickness_nm=10)])
 
 
 def _plan():
-    return {"factors": [{"step_index": 0, "field": "thickness", "values": [10, 20, 30]}]}
+    return {"factors": [{"step_id": fixed_step_id(1), "field": "thickness", "values": [10, 20, 30]}]}
 
 
 def _plan_two_factors():
     return {
         "factors": [
-            {"step_index": 0, "field": "thickness", "values": [10, 20]},
-            {"step_index": 1, "field": "thickness", "values": [5, 15, 25]},
+            {"step_id": fixed_step_id(1), "field": "thickness", "values": [10, 20]},
+            {"step_id": fixed_step_id(2), "field": "thickness", "values": [5, 15, 25]},
         ]
     }
 
@@ -41,7 +41,7 @@ def test_preview_campaign_returns_svgs_and_variation(client):
 
 def test_preview_campaign_rejects_numbers_for_a_name_field(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
-    bad_plan = {"factors": [{"step_index": 0, "field": "material", "values": [1, 2]}]}
+    bad_plan = {"factors": [{"step_id": fixed_step_id(1), "field": "material", "values": [1, 2]}]}
     response = client.post(
         "/api/campaign-previews",
         json={"substrate": substrate(), "steps": steps(), "plan": bad_plan},
@@ -110,7 +110,7 @@ def test_matrice_endpoint_rejects_non_batch_experience(client):
 
 def test_preview_campaign_rejects_an_unknown_field(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
-    bad_plan = {"factors": [{"step_index": 0, "field": "vitesse_imaginaire", "values": [1, 2]}]}
+    bad_plan = {"factors": [{"step_id": fixed_step_id(1), "field": "vitesse_imaginaire", "values": [1, 2]}]}
     response = client.post(
         "/api/campaign-previews",
         json={"substrate": substrate(), "steps": steps(), "plan": bad_plan},
@@ -128,7 +128,7 @@ def _preview(client, slug, process_steps, plan, declared_params=None):
 
 def test_campaign_can_vary_a_name_field_such_as_the_recipe(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
-    plan = {"factors": [{"step_index": 0, "field": "recipe", "values": ["CVD Conformal", "Sputter Metal (normal)"], "scale": "list"}]}
+    plan = {"factors": [{"step_id": fixed_step_id(1), "field": "recipe", "values": ["CVD Conformal", "Sputter Metal (normal)"], "scale": "list"}]}
     response = _preview(client, slug, steps(), plan)
     assert response.status_code == 200, response.text
     body = response.json()
@@ -140,6 +140,7 @@ def test_campaign_can_vary_a_plain_number_field(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     process_steps = [
         {
+            "id": fixed_step_id(1),
             "kind": "epitaxial_growth",
             "name": "Coquille",
             "material": "GaN",
@@ -149,7 +150,7 @@ def test_campaign_can_vary_a_plain_number_field(client):
             "seed_materials": [],
         }
     ]
-    plan = {"factors": [{"step_index": 0, "field": "angle_deg", "values": [20, 45]}]}
+    plan = {"factors": [{"step_id": fixed_step_id(1), "field": "angle_deg", "values": [20, 45]}]}
     response = _preview(client, slug, process_steps, plan)
     assert response.status_code == 200, response.text
     assert response.json()["labels"] == ["20", "45"]
@@ -157,8 +158,8 @@ def test_campaign_can_vary_a_plain_number_field(client):
 
 def test_campaign_can_vary_the_indium_rate_of_a_graded_nitride(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
-    process_steps = [deposition("Puits", "In0.20Ga0.80N", recipe="MOCVD Epitaxial")]
-    plan = {"factors": [{"step_index": 0, "field": "material.fraction", "values": [10, 30]}]}
+    process_steps = identified([deposition("Puits", "In0.20Ga0.80N", recipe="MOCVD Epitaxial")])
+    plan = {"factors": [{"step_id": fixed_step_id(1), "field": "material.fraction", "values": [10, 30]}]}
     response = _preview(client, slug, process_steps, plan)
     assert response.status_code == 200, response.text
     body = response.json()
@@ -168,7 +169,7 @@ def test_campaign_can_vary_the_indium_rate_of_a_graded_nitride(client):
 
 def test_campaign_can_vary_the_substrate(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
-    plan = {"factors": [{"step_index": -1, "field": "thickness", "values": [40, 80]}]}
+    plan = {"factors": [{"step_id": "substrate", "field": "thickness", "values": [40, 80]}]}
     response = _preview(client, slug, steps(), plan)
     assert response.status_code == 200, response.text
     body = response.json()
@@ -178,20 +179,20 @@ def test_campaign_can_vary_the_substrate(client):
 
 def test_campaign_can_vary_a_lithography_pitch(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
-    process_steps = [lithography("Masque", thickness_nm=30, openings=[[25, 55], [85, 115], [145, 175]])]
-    plan = {"factors": [{"step_index": 0, "field": "openings.pitch", "values": [50, 60]}]}
+    process_steps = identified([lithography("Masque", thickness_nm=30, openings=[[25, 55], [85, 115], [145, 175]])])
+    plan = {"factors": [{"step_id": fixed_step_id(1), "field": "openings.pitch", "values": [50, 60]}]}
     response = _preview(client, slug, process_steps, plan)
     assert response.status_code == 200, response.text
     assert response.json()["factor_labels"] == ["Pas du réseau — Masque"]
 
-    overlapping = {"factors": [{"step_index": 0, "field": "openings.pitch", "values": [20]}]}
+    overlapping = {"factors": [{"step_id": fixed_step_id(1), "field": "openings.pitch", "values": [20]}]}
     assert _preview(client, slug, process_steps, overlapping).status_code == 422  # 30 nm openings on a 20 nm pitch
 
 
 def test_campaign_varies_a_declared_parameter_on_a_log_scale_and_keeps_it(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     declared = {"0": [{"name": "dopage", "value": 1e18, "obtention": {"precurseur": "Cp2Mg"}}]}
-    plan = {"factors": [{"step_index": 0, "field": "declared:dopage", "values": [1e17, 1e18, 1e19], "scale": "log"}]}
+    plan = {"factors": [{"step_id": fixed_step_id(1), "field": "declared:dopage", "values": [1e17, 1e18, 1e19], "scale": "log"}]}
 
     preview = _preview(client, slug, steps(), plan, declared)
     assert preview.status_code == 200, preview.text
@@ -239,6 +240,7 @@ def test_campaign_varying_the_outline_shape_still_previews_and_launches(client):
     slug = signup_with_microproject(client, "owner@example.com", "Salle blanche")
     process_steps = [
         {
+            "id": fixed_step_id(1),
             "kind": "faceted_growth",
             "name": "Pointe",
             "material": "GaN",
@@ -250,7 +252,7 @@ def test_campaign_varying_the_outline_shape_still_previews_and_launches(client):
             "seed_materials": [],
         }
     ]
-    plan = {"factors": [{"step_index": 0, "field": "rate_sp", "values": [0.2, 0.9], "scale": "linear"}]}
+    plan = {"factors": [{"step_id": fixed_step_id(1), "field": "rate_sp", "values": [0.2, 0.9], "scale": "linear"}]}
     preview = _preview(client, slug, process_steps, plan)
     assert preview.status_code == 200, preview.text
     launched = post_launch(client, slug, kind="campaign", steps=process_steps, plan=plan, title="Facettes", intent="x")

@@ -97,13 +97,26 @@ const experimentsApi = {
       { ifMatch: versionId && `"${versionId}"` }
     );
   },
-  // les refs du µprojet et leur graphe condensé : {refs, edges}
-  refs(microprojectSlug) {
-    return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/refs`);
-  },
-  // body : {experiment_id, version_id?, name?}
+  // body : {experiment_id, version_id?, name?} -> la ref ({name, names, version_id, ...})
   createRef(microprojectSlug, body) {
     return api.post(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/refs`, body);
+  },
+  // renommer une ref (sa version ne change pas) : 409 si le nom est pris
+  renameRef(microprojectSlug, refName, newName) {
+    return api.patch(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/refs/${encodeURIComponent(refName)}`, { name: newName });
+  },
+  // retirer une ref ; la version reste
+  deleteRef(microprojectSlug, refName) {
+    return api.del(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/refs/${encodeURIComponent(refName)}`);
+  },
+  // l'évolution des structures, piste par piste : {lanes, nodes, edges} ; allVersions : les
+  // versions légères aussi (correctifs, versions sans changement de structure)
+  structureHistory(microprojectSlug, allVersions) {
+    return api.get(
+      api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/structure-history`, {
+        all_versions: allVersions ? "true" : undefined,
+      })
+    );
   },
   lineage(microprojectSlug) {
     return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/lineage`);

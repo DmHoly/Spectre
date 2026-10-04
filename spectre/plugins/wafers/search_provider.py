@@ -24,7 +24,7 @@ def _wafers(query: str, user: User) -> list[SearchHit]:
     if len(service.wafer_key(query)) < 2:
         return []
     hits = []
-    for wafer in service.wafers(service.occurrences(user.id), q=query)[:WAFER_LIMIT]:
+    for wafer in service.wafers(service.occurrences(user), q=query)[:WAFER_LIMIT]:
         latest = wafer["latest"]["experiment"]
         codes = [m["code"] or m["name"] for m in wafer["microprojects"]]
         hits.append(
@@ -40,7 +40,7 @@ def _wafers(query: str, user: User) -> list[SearchHit]:
 
 def _fdls(query: str, user: User) -> list[SearchHit]:
     found = []
-    for occurrence in service.occurrences(user.id):
+    for occurrence in service.occurrences(user):
         if not occurrence.member:
             continue
         for value in occurrence.entry["fdl"]:

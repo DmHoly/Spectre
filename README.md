@@ -2,7 +2,7 @@
 
 Spectre suit les expériences de procédé d'une équipe, de la définition de la structure jusqu'à la
 conclusion. Chaque expérience a une **fiche d'identité** : intention, structure, plaques suivies,
-preuves, données et conclusion. Ce que Spectre apporte : des comptes, des µprojets avec des droits
+cahier de données et conclusion. Ce que Spectre apporte : des comptes, des µprojets avec des droits
 par membre, une couche de pilotage (projets corporate, thématiques, objectifs) et une interface web
 unique.
 
@@ -37,11 +37,40 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   (`experiments/versioning.py`) : majeur si le substrat ou la suite d'étapes change, mineur si un
   paramètre d'étape change, correctif si seul un nom d'étape change.
 - **Ref.** Une ref est une version promue en point de départ réutilisable (une étiquette Follow
-  nommée, « ref vX.Y.Z » par défaut). Les refs d'un µprojet et leur graphe sont sur
-  `/microprojets/{slug}/refs`.
-- **Droits.** Les projets corporate et thématiques sont visibles par tout compte connecté ; seul un
-  administrateur les crée, les renomme ou les supprime. Un µprojet garde ses rôles par membre :
-  `viewer`, `editor`, `owner`. Un µprojet non rattaché tombe dans le projet « Non classé ».
+  nommée, « ref vX.Y.Z » par défaut), propre au µprojet. Un editor peut la renommer ou la retirer ;
+  la version, elle, reste.
+- **Évolution des structures.** La page `/microprojets/{slug}/evolution` (bouton « Évolution des
+  structures » de la page µprojet et de la fiche) dessine les pistes en colonnes, façon git : un
+  nœud `vX.Y.Z` par version structurelle (majeure, mineure), les fourches, les fusions et les refs
+  en badges, avec une bascule « Toutes les versions ». Sur un nœud : promouvoir en ref, renommer
+  ou retirer une ref, comparer à une autre version, suivre une ref (ce qui en descend), partir de
+  cette version, et publier une ref dans la bibliothèque partagée (structure enregistrée qui garde
+  le lien vers son origine). L'ancienne adresse `/microprojets/{slug}/refs` y redirige.
+- **Étapes.** Chaque étape d'un procédé a un identifiant stable, conservé quand on insère, déplace
+  ou supprime d'autres étapes à une évolution : une campagne DOE désigne ses étapes par cet
+  identifiant, et non plus par leur position.
+- **Cahier de données.** Toutes les données d'une expérience sont dans un seul cahier (onglet
+  « Données » de la fiche) : des entrées PRISM (un instantané par étape et une vue DataViz) ou
+  saisies à la main (valeur, texte, tableau collé d'Excel, images annotées, fichiers, liens). Une
+  entrée nomme les plaques mesurées et les étapes du procédé où la mesure a été faite, choisies sur
+  un **stepper** ; la vue du procédé affiche un badge par étape mesurée. **La donnée suit la
+  plaque** : si la piste ne suit plus ces plaques, l'entrée reste, repliée dans « Autres plaques ».
+  La conclusion cite des entrées du cahier. Les anciennes preuves s'y lisent comme des entrées
+  saisies à la main, sans migration.
+- **Droits.** Trois niveaux :
+  - **administrateur** : tout ; il est propriétaire de tous les µprojets, même sans en être membre ;
+  - **manager d'une équipe** : gère les projets corporate rattachés à son équipe (les renommer, les
+    supprimer, leurs thématiques et objectifs), peut en créer dans son équipe, et il est propriétaire
+    des µprojets de ces projets ;
+  - **membre d'un µprojet** : son rôle, `viewer`, `editor` ou `owner`.
+
+  Un compte peut être dans plusieurs équipes, manager dans certaines seulement. Un µprojet suit
+  l'équipe de son projet corporate ; un µprojet non rattaché tombe dans « Non classé », qui n'a pas
+  d'équipe (seuls l'administrateur et ses membres y ont accès). Projets et thématiques restent
+  visibles par tout compte connecté. Le badge de rôle dit d'où vient un droit : « Propriétaire
+  (manager) », « Propriétaire (admin) ». Créer un µprojet dans le projet d'une équipe, ou l'y
+  déplacer, est réservé aux membres de cette équipe (managers compris) et à l'administrateur ; un
+  projet sans équipe et « Non classé » restent ouverts à tous.
 
 ## Démarrer en local
 
@@ -157,6 +186,12 @@ sans accès aux bases.
 - **Premier administrateur.** Le tout premier compte inscrit devient administrateur
   (`users.is_admin`). Un administrateur gère les projets corporate, thématiques et objectifs, et
   modifie la bibliothèque YAML.
+- **Équipes.** La page `/equipes` liste les équipes ; tout compte connecté la lit. Un
+  administrateur crée les équipes, y ajoute un premier manager, puis rattache chaque projet
+  corporate à son équipe (champ « Équipe » du dialogue « Modifier » de la page du projet). Un manager ajoute ensuite les
+  membres de son équipe et en nomme d'autres managers ; une équipe garde toujours au moins un
+  manager. À la mise à jour, rien n'est rattaché : les droits ne changent pas tant qu'un
+  administrateur n'a pas créé d'équipes.
 - **Promouvoir ou rétrograder** un compte :
   ```bash
   spectre admin quelquun@exemple.com            # promouvoir
@@ -208,22 +243,22 @@ ses tables (`migrations.py`), ses pages (`pages/`) et son front (`static/`, serv
 | Plugin | Responsabilité | API | Pages |
 |---|---|---|---|
 | `accounts` | Comptes, sessions, mot de passe, profil, rôle admin | `/api/users`, `/api/sessions`, `/api/password-resets` | `/connexion`, `/inscription`, `/mot-de-passe-oublie`, `/reinitialiser`, `/profil` |
+| `teams` | Équipes, managers et membres | `/api/teams` | `/equipes`, `/equipes/{slug}` |
 | `search` | Recherche de la barre du haut, agrège les fournisseurs des autres plugins | `/api/search` | — |
 | `library` | Bibliothèque YAML de l'instance, édition admin, textes d'interface | `/api/library/files`, `/api/ui-texts` | — |
-| `areas` | Projets corporate, thématiques, objectifs | `/api/areas`, `/api/thematics` | `/`, `/management/{slug}`, `/management/{slug}/thematiques/{thematique_slug}` |
-| `microprojects` | µprojets, numéro, rattachement, membres, rôles, invitations | `/api/microprojects`, `/api/invitations` | `/microprojets/{slug}`, `/p/{code}` |
+| `areas` | Projets corporate et leur équipe, thématiques, objectifs | `/api/areas`, `/api/thematics` | `/`, `/management/{slug}`, `/management/{slug}/thematiques/{thematique_slug}` |
+| `microprojects` | µprojets, numéro, rattachement, membres, rôles, invitations, règle d'accès (admin, manager, membre) | `/api/microprojects`, `/api/invitations` | `/microprojets/{slug}`, `/p/{code}` |
 | `attachments` | Fichiers téléversés d'un µprojet | `/api/microprojects/{mp}/attachments` | — |
 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu DOE, types de structure | `/api/materials`, `/api/recipes`, `/api/simulations`, `/api/campaign-previews` | constructeur et structure en images (`/microprojets/{slug}/structures/...`, `.../evoluer`, `.../evoluer-image`) |
 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques | `/api/saved-structures`, `/api/step-presets`, `/api/tech-bricks` | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
-| `experiments` | Pistes et versions Follow : création, évolution, statut, conclusion, étiquettes, entités, fusion, diff, filiation, refs, statistiques | `/api/microprojects/{mp}/experiments`, `.../lineage`, `.../refs`, `/api/experiment-stats`, `/api/experiment-timeline` | `/microprojets/{slug}/experiences/{experiment_id}`, `/microprojets/{slug}/refs` |
-| `evidence` | Preuves d'une étude, liens, images, annotations | `.../experiments/{exp}/evidence` | — (panneau de la fiche) |
+| `experiments` | Pistes et versions Follow : création, évolution, statut, conclusion, étiquettes, entités, fusion, diff, filiation, refs, statistiques | `/api/microprojects/{mp}/experiments`, `.../lineage`, `.../refs`, `.../structure-history`, `/api/experiment-stats`, `/api/experiment-timeline` | `/microprojets/{slug}/experiences/{experiment_id}`, `/microprojets/{slug}/evolution` |
 | `intent_forms` | Formulaires d'intention et formulaire actif d'un µprojet | `/api/intent-forms`, `/api/microprojects/{mp}/active-intent-form` | `/microprojets/{slug}/formulaire-intention` |
 | `wafers` | Index des plaques suivies, recherche par lasermark et FDL, visibilité | `/api/wafers` | `/plaques/{lasermark}` |
 | `lots` | Lots de fabrication, wafers, thématiques visées, Gantt | `/api/lots`, `/api/lot-priorities` | `/lots`, `/lots/{code}` |
 | `links` | Liens entre µprojets et entre entités physiques | `/api/microproject-links`, `/api/entity-links` | — |
 | `atlas` | Vue graphe d'un projet corporate | `/api/areas/{area_slug}/atlas` | `/management/{slug}/atlas` |
 | `characterization` | Adaptateur PRISM (ou source démo) : catalogue, requêtes, graphiques | `/api/characterization` | `/donnees`, `/donnees/{key}` |
-| `notebook` | Cahier de données d'une étude : instantanés et vues DataViz | `/api/microprojects/{mp}/snapshots`, `.../experiments/{exp}/notebook-entries` | — (panneau de la fiche) |
+| `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, liens - les anciennes preuves), rattachées aux plaques mesurées et aux étapes du procédé | `/api/microprojects/{mp}/snapshots`, `.../experiments/{exp}/notebook-entries` | — (panneau de la fiche) |
 | `external_images` | Galerie d'images externes d'une étude, bornée aux racines autorisées | `/api/microprojects/{mp}/external-images`, `.../experiments/{exp}/image-sets` | — (panneau de la fiche) |
 | `kpis` | Registre de KPI et séries mensuelles d'un projet corporate | `/api/areas/{area_slug}/kpis` | — |
 | `kpis_demo` | Séries et fiche d'étude fictives, actif seulement si `SPECTRE_DEMO_DATA=1` | `/api/areas/{area_slug}/kpis/{kpi_key}/studies` | — |
@@ -321,7 +356,4 @@ node --test --experimental-test-coverage
 
 Les évolutions prévues et les dettes notées sont dans [`TODO.md`](TODO.md), notamment :
 
-- équipes, managers et administrateurs (plugin `teams`, règle d'autorisation unique) ;
-- une page dédiée à l'évolution des structures et aux refs (diagramme des versions par piste) ;
-- des résultats de données rattachés à une étape du procédé, qui demandent d'abord une identité
-  stable pour chaque étape.
+- la réécriture de la documentation intégrée (`/docs`), en dernier.

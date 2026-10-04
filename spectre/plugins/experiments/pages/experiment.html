@@ -11,7 +11,6 @@
   <link rel="stylesheet" href="/static/characterization/characterization.css">
   <link rel="stylesheet" href="/static/external_images/external_images.css">
   <link rel="stylesheet" href="/static/attachments/attachments.css">
-  <link rel="stylesheet" href="/static/evidence/evidence.css">
   <link rel="stylesheet" href="/static/notebook/notebook.css">
   <link rel="stylesheet" href="/static/lots/lots.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
@@ -177,6 +176,17 @@
         </div>
       </div>
 
+      <!-- Les étapes du procédé, chacune avec le nombre de données du cahier qui la concernent : un
+           clic filtre le cahier sur l'étape (structure-view.js ; les nombres viennent du panneau du
+           cahier, par ctx.setNotebook). -->
+      <div class="card card-pad fiche-card" id="process-card" hidden>
+        <div class="fiche-card__head">
+          <div class="section-title" id="process-steps-title">Étapes du procédé</div>
+          <div class="help" id="process-steps-note" style="margin:0;"></div>
+        </div>
+        <ol class="process-steps" id="process-steps" aria-labelledby="process-steps-title"></ol>
+      </div>
+
       <div class="card card-pad" id="matrix-card" style="display:none;">
         <div class="section-title" style="margin-bottom:16px;">Cartographie des variantes</div>
         <div id="atlas-content" style="margin-bottom:20px;"></div>
@@ -187,7 +197,7 @@
       <div class="fiche-grid">
         <div class="card card-pad fiche-card" data-panel="versions">
           <div class="section-title" style="margin-bottom:4px;">Versions du procédé</div>
-          <div class="help" style="margin-bottom:12px;">Chaque changement de structure ou de procédé (X.Y.Z) - une preuve, un tag ou un titre modifié n'en crée pas ; retrouvez-les dans l'historique complet.</div>
+          <div class="help" style="margin-bottom:12px;">Chaque changement de structure ou de procédé (X.Y.Z) - une donnée, un tag ou un titre modifié n'en crée pas ; retrouvez-les dans l'historique complet.</div>
           <div class="timeline fiche-card__scroll" id="timeline"></div>
           <div id="forks-note" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);"></div>
           <div id="references-card" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
@@ -196,7 +206,7 @@
           </div>
           <details class="fiche-history" id="full-history-card" data-report-hide>
             <summary>Historique complet</summary>
-            <div class="help" style="margin:8px 0 12px;">Toutes les versions, et tout le reste : preuves, tags, titres, objectifs... Les entrées en retrait n'ont pas changé le procédé.</div>
+            <div class="help" style="margin:8px 0 12px;">Toutes les versions, et tout le reste : données, tags, titres, objectifs... Les entrées en retrait n'ont pas changé le procédé.</div>
             <div class="timeline" id="full-history"></div>
           </details>
         </div>
@@ -229,35 +239,31 @@
 
     <!-- ───────────── Onglet 2 : données ───────────── -->
     <section class="fiche-panel" id="panel-donnees" role="tabpanel" aria-labelledby="tab-donnees" data-report-title="Données" hidden>
-      <!-- Cahier de données : des vues sur les mesures des plaques (PRISM), chacune avec ses
-           observations - voir notebook/static/notebook.js et les composants de notebook/static/dataviz/. -->
+      <!-- Cahier de données, le seul de l'étude : les mesures PRISM des plaques (vues DataViz) et les
+           données chargées à la main (valeurs, textes, tableaux, images, fichiers, liens), chacune
+           avec le stepper du procédé et ses mesures par étape - voir notebook/static/notebook.js. -->
       <div class="card card-pad nb-card" id="notebook-card" data-panel="notebook">
         <div class="nb-card__head">
           <div>
             <div class="section-title" style="margin-bottom:4px;">Cahier de données</div>
-            <div class="help" style="margin:0;">Les mesures des plaques (EQE, PL, NCEL… depuis la base), vues comme on a l'habitude de les regarder, avec ce qu'on y voit et ce qu'on en conclut - tout est repris dans le rapport.</div>
+            <div class="help" style="margin:0;">Toutes les données de l'étude : les mesures des plaques en base (EQE, PL, NCEL…) et ce qu'on charge à la main, situées dans le procédé, avec ce qu'on y voit et ce qu'on en conclut - tout est repris dans le rapport.</div>
           </div>
           <button class="btn btn-primary" id="notebook-add-btn" type="button" data-report-hide hidden>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            Ajouter une vue
+            Ajouter une donnée
           </button>
         </div>
         <div class="nb-demo-note" id="notebook-demo-note" hidden>Certaines vues reposent sur des <strong>données de démonstration</strong> (instance sans accès aux bases) - pas des mesures réelles.</div>
+        <div class="nb-filter" id="notebook-filter" role="status" data-report-hide hidden></div>
         <div id="notebook-entries" class="nb-entries"></div>
       </div>
 
-      <div class="card card-pad" id="evidence-card">
-        <div class="section-title" style="margin-bottom:6px;">Données mesurées</div>
-        <div class="help" style="margin-bottom:12px;">Images de mesure rattachées à l'étude (comparées à la structure simulée), puis les preuves enregistrées.</div>
+      <div class="card card-pad" id="images-card">
+        <div class="section-title" style="margin-bottom:6px;">Images de mesure</div>
+        <div class="help" style="margin-bottom:12px;">Images de mesure rattachées à l'étude, comparées à la structure simulée.</div>
 
         <!-- la galerie d'images externes (external_images/static/gallery.js) -->
         <div data-panel="external_images"></div>
-
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-soft);">
-          <div class="section-title" style="margin-bottom:4px;">Preuves</div>
-          <!-- les preuves, leur comparaison et le formulaire d'ajout (evidence/static/evidence-panel.js) -->
-          <div data-panel="evidence"></div>
-        </div>
       </div>
     </section>
 
@@ -271,7 +277,7 @@
       <div style="margin-top:14px;max-width:480px;">
         <div id="advanced-actions-editor-only">
           <label>Combiner avec une autre expérience</label>
-          <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, relie l'historique de l'autre expérience choisie et reprend ses preuves.</div>
+          <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, relie l'historique de l'autre expérience choisie et reprend son cahier de données.</div>
           <input class="field" type="search" id="combine-search" placeholder="Rechercher : titre, étiquette, piste…" aria-label="Rechercher l'expérience à combiner" autocomplete="off" style="margin-bottom:6px;">
           <select class="field" id="combine-select" aria-label="Expérience à combiner" style="margin-bottom:8px;"></select>
           <button class="btn btn-line" id="combine-btn" type="button">Combiner</button>
@@ -328,49 +334,83 @@
     </div>
   </dialog>
 
-  <!-- Ajouter une vue au cahier de données : type de données, plaques, chargement, puis la vue
-       (préréglages du type d'abord), ajustée en direct - voir notebook/static/notebook.js. -->
+  <!-- Ajouter ou modifier une donnée du cahier : son type (PRISM ou chargée à la main), les plaques
+       mesurées, les étapes du procédé où la mesure a été faite (le stepper : une mesure par bulle
+       cochée), puis le contenu de chaque mesure et sa lecture - voir notebook/static/entry-dialog.js. -->
   <dialog id="notebook-dialog" class="nb-dialog" aria-labelledby="nb-dialog-title">
     <div class="nb-dialog__inner">
       <div class="nb-dialog__head">
-        <h2 id="nb-dialog-title">Ajouter une vue au cahier</h2>
+        <h2 id="nb-dialog-title">Ajouter une donnée au cahier</h2>
         <button type="button" class="btn btn-line" id="nb-dialog-close">Fermer</button>
       </div>
       <div class="nb-dialog__body">
         <div class="nb-demo-note" id="nb-dialog-demo" hidden>Instance de démonstration : les données chargées sont <strong>fictives</strong>.</div>
-        <section class="nb-step">
-          <div class="nb-step__label"><span>1</span> Type de données</div>
-          <div class="nb-sources" id="nb-sources" role="radiogroup" aria-label="Type de données"></div>
+        <section class="nb-step" id="nb-kind-step" aria-labelledby="nb-kind-label">
+          <div class="nb-step__label" id="nb-kind-label"><span>1</span> Type de donnée</div>
+          <div class="nb-kinds" role="radiogroup" aria-labelledby="nb-kind-label">
+            <label class="nb-source">
+              <input type="radio" name="nb-kind" value="manual">
+              <span class="nb-source__title">Chargée à la main</span>
+              <span class="nb-source__cat">valeur, texte, tableau collé, images, fichiers, liens</span>
+            </label>
+            <label class="nb-source">
+              <input type="radio" name="nb-kind" value="prism">
+              <span class="nb-source__title">PRISM</span>
+              <span class="nb-source__cat">les mesures des plaques en base (EQE, PL, NCEL…)</span>
+            </label>
+          </div>
         </section>
-        <section class="nb-step">
-          <div class="nb-step__label"><span>2</span> Plaques</div>
-          <div class="nb-plates" id="nb-plates"></div>
+        <section class="nb-step" aria-labelledby="nb-plates-label">
+          <div class="nb-step__label" id="nb-plates-label"><span>2</span> Plaques mesurées</div>
+          <div class="nb-plates" id="nb-plates" role="group" aria-labelledby="nb-plates-label"></div>
+          <p class="help">La donnée suit la plaque : elle reste au cahier des versions suivantes tant que l'étude suit l'une de ces plaques. Aucune cochée : elle vaut pour toute la piste.</p>
+        </section>
+        <section class="nb-step" aria-labelledby="nb-steps-label">
+          <div class="nb-step__label" id="nb-steps-label"><span>3</span> Étapes mesurées</div>
+          <div id="nb-stepper-host"></div>
+          <p class="help" id="nb-stepper-help">Cochez l'étape (ou les étapes) du procédé après laquelle la mesure a été faite : une mesure par bulle, pour comparer avant et après. Aucune bulle : une mesure non située.</p>
+        </section>
+        <section class="nb-step" id="nb-prism" aria-labelledby="nb-prism-label" hidden>
+          <div class="nb-step__label" id="nb-prism-label"><span>4</span> Données PRISM</div>
+          <div class="nb-sources" id="nb-sources" role="radiogroup" aria-label="Type de données"></div>
           <div class="nb-plates__extra">
             <label for="nb-extra-plates">Autres plaques, pour comparer (lasermarks séparés par des virgules)</label>
             <input class="field mono" id="nb-extra-plates" placeholder="ex : W12-REF, W13-A1" autocomplete="off">
           </div>
-        </section>
-        <div class="nb-load">
-          <button type="button" class="btn btn-primary" id="nb-load-btn">Charger les données</button>
-          <span class="nb-load__status" id="nb-load-status" role="status"></span>
-        </div>
-        <section class="nb-step" id="nb-step-view" hidden>
-          <div class="nb-step__label"><span>3</span> Vue</div>
-          <div class="nb-views" id="nb-views"></div>
-          <div class="nb-preview">
-            <div class="nb-preview__viz" id="nb-preview-viz"></div>
-            <div class="nb-preview__side">
-              <div class="viz-options" id="nb-preview-options"></div>
-              <div class="viz-opt"><label for="nb-title">Titre de la vue</label><input class="field" id="nb-title" maxlength="200"></div>
-              <div class="viz-opt"><label for="nb-objective">Objectif servi (optionnel)</label><select class="field" id="nb-objective"></select></div>
-              <div class="viz-opt"><label for="nb-note">Observations (optionnel)</label><textarea class="field" id="nb-note" rows="3" placeholder="Ce qu'on voit, ce qu'on en conclut…"></textarea></div>
+          <ul class="nb-slots" id="nb-prism-slots" aria-label="Données chargées par étape"></ul>
+          <div class="nb-load">
+            <button type="button" class="btn btn-primary" id="nb-load-btn">Charger les données</button>
+            <span class="nb-load__status" id="nb-load-status" role="status"></span>
+          </div>
+          <div id="nb-step-view" hidden>
+            <div class="nb-views" id="nb-views"></div>
+            <div class="nb-preview">
+              <div class="nb-preview__viz" id="nb-preview-viz"></div>
+              <div class="nb-preview__side">
+                <div class="viz-options" id="nb-preview-options"></div>
+              </div>
             </div>
           </div>
         </section>
+        <section class="nb-step" id="nb-manual" aria-labelledby="nb-manual-label">
+          <div class="nb-step__label" id="nb-manual-label"><span>4</span> Mesures</div>
+          <div class="nb-measure-forms" id="nb-measures"></div>
+        </section>
+        <section class="nb-step" aria-labelledby="nb-reading-label">
+          <div class="nb-step__label" id="nb-reading-label"><span>5</span> Titre et lecture</div>
+          <div class="nb-reading">
+            <div class="viz-opt nb-reading__title"><label for="nb-title">Titre</label><input class="field" id="nb-title" maxlength="200" placeholder="ex : rugosité AFM avant et après recuit"></div>
+            <div class="viz-opt"><label for="nb-objective">Objectif lié (optionnel)</label><select class="field" id="nb-objective"></select></div>
+            <label class="viz-check viz-opt viz-opt--check"><input type="checkbox" id="nb-in-report" checked> Dans le rapport</label>
+            <div class="viz-opt nb-reading__wide"><label for="nb-interpretation">Interprétation (optionnelle)</label><textarea class="field" id="nb-interpretation" rows="2" placeholder="Ce que la mesure montre, au regard du changement fait"></textarea></div>
+            <div class="viz-opt nb-reading__wide"><label for="nb-note">Observations (optionnelles)</label><textarea class="field" id="nb-note" rows="2" placeholder="Ce qu'on voit, ce qu'il reste à vérifier…"></textarea></div>
+          </div>
+        </section>
+        <div class="error" id="nb-dialog-error" role="alert" style="display:none;"></div>
       </div>
       <div class="nb-dialog__foot">
         <button type="button" class="btn btn-line" id="nb-add-cancel">Annuler</button>
-        <button type="button" class="btn btn-primary" id="nb-add-submit" disabled>Ajouter au cahier</button>
+        <button type="button" class="btn btn-primary" id="nb-add-submit">Ajouter au cahier</button>
       </div>
     </div>
   </dialog>
@@ -387,7 +427,6 @@
   <script src="/static/lots/client.js"></script>
   <script src="/static/attachments/client.js"></script>
   <script src="/static/experiments/client.js"></script>
-  <script src="/static/evidence/client.js"></script>
   <script src="/static/intent_forms/client.js"></script>
   <script src="/static/characterization/client.js"></script>
   <script src="/static/notebook/client.js"></script>
@@ -400,7 +439,7 @@
   <script src="/static/characterization/wafer-data-links.js"></script>
   <script src="/static/attachments/image-drop.js"></script>
   <!-- La fiche : l'amorce et le registre des panneaux, puis ses panneaux, dans l'ordre où ils se
-       montent ; ensuite ceux des autres plugins (preuves, galerie, lots, cahier), qui s'y enregistrent. -->
+       montent ; ensuite ceux des autres plugins (galerie, lots, cahier), qui s'y enregistrent. -->
   <script src="/static/experiments/page.js"></script>
   <script src="/static/experiments/header.js"></script>
   <script src="/static/experiments/objectives.js"></script>
@@ -411,7 +450,6 @@
   <script src="/static/experiments/conclusion.js"></script>
   <script src="/static/experiments/advanced.js"></script>
   <script src="/static/experiments/report.js"></script>
-  <script src="/static/evidence/evidence-panel.js"></script>
   <script src="/static/external_images/gallery.js"></script>
   <script src="/static/lots/lot-picker.js"></script>
   <!-- Visualisation de données : le registre, puis un fichier par composant, puis les préréglages
@@ -425,6 +463,9 @@
   <script src="/static/notebook/dataviz/wafer-summary.js"></script>
   <script src="/static/notebook/dataviz/eqe-curves.js"></script>
   <script src="/static/notebook/dataviz/presets.js"></script>
+  <!-- Le cahier : le stepper du procédé, la boîte d'ajout et d'édition d'une donnée, puis le panneau. -->
+  <script src="/static/notebook/stepper.js"></script>
+  <script src="/static/notebook/entry-dialog.js"></script>
   <script src="/static/notebook/notebook.js"></script>
 </body>
 </html>

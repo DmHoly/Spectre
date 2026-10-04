@@ -11,7 +11,6 @@ import time
 
 import pytest
 
-from support.evidence import add_evidence, annotate, evidence_by_id, evidence_url, upload_image
 from support.experiments import (
     conclude,
     evolve,
@@ -32,7 +31,7 @@ from support.experiments import (
 from support.external_images import create_image_set, delete_image_set, image_sets, image_sets_url, pin_image, png_files
 from support.http import assert_handler_404
 from support.microprojects import signup_with_microproject
-from support.notebook import add_entry, entries, entries_url, take_snapshot, update_entry
+from support.notebook import add_entry, add_manual, entries, entries_by_id, entries_url, take_snapshot, update_entry, upload_notebook_file
 from support.structures import steps, upload_structure_image
 
 FUTURE_KEY = "champ_spectre_futur"  # un champ que Spectre rangerait demain dans les métadonnées
@@ -42,7 +41,7 @@ FUTURE_KEY = "champ_spectre_futur"  # un champ que Spectre rangerait demain dans
 def study(client, tmp_path, monkeypatch):
     """Une étude en images (toutes les écritures légères s'y appliquent) avec tout ce qu'une
     écriture légère doit reporter : hypothèse, contexte, objectif et sa méthode de vérification,
-    réponses au formulaire, une preuve à liens et image, une vue du cahier, une galerie DATA et un
+    réponses au formulaire, une donnée manuelle du cahier à lien et image, une vue PRISM du cahier, une galerie DATA et un
     champ Spectre que l'API ne connaît pas."""
     from spectre.plugins.experiments import service
 
@@ -61,8 +60,8 @@ def study(client, tmp_path, monkeypatch):
         entities=[{"sample_id": "W12-A3", "location": "boîte 1"}],
     )
     line = launched["id"]
-    picture = upload_image(client, slug)
-    evidence = add_evidence(client, slug, line, "Coupe TEM", links=["https://exemple.fr/tem"], interpretation="Net", images=[{"image_id": picture}])
+    picture = upload_notebook_file(client, slug)
+    manual = add_manual(client, slug, line, "Coupe TEM", measurements=[{"links": [{"url": "https://exemple.fr/tem"}], "attachments": [picture]}], interpretation="Net")
     snapshot = take_snapshot(client, slug, wafers=["W12-A3"])
     entry = add_entry(client, slug, line, snapshot["snapshot_id"], title="EQE")
     paths = png_files(tmp_path)
@@ -74,13 +73,22 @@ def study(client, tmp_path, monkeypatch):
         "line": line,
         "schema": schema,
         "picture": picture,
-        "evidence_id": evidence["id"],
+        "manual_id": manual["id"],
         "entry_id": entry["id"],
         "snapshot_id": snapshot["snapshot_id"],
         "data_id": data["id"],
         "paths": paths,
         "other": other["id"],
         "before": get_experiment(client, slug, line),
+    }
+
+
+def annotated(study: dict) -> dict:
+    """La mesure de la donnée manuelle de l'étude, son image annotée d'un cadre."""
+    return {
+        "links": [{"url": "https://exemple.fr/tem"}],
+        "attachments": [study["picture"]],
+        "annotations": [{"attachment_id": study["picture"], "type": "box", "x": 1.0, "y": 2.0}],
     }
 
 
@@ -95,8 +103,8 @@ WRITES = {
     "evolution-sans-hypothese": lambda c, s: evolve_image(
         c, s["slug"], s["line"], [s["schema"]], title="Coupe", intent="Mieux dit", form_answers={"operateur": "Ada"}
     ),
-    "preuve": lambda c, s: add_evidence(c, s["slug"], s["line"], "Autre mesure"),
-    "annotations": lambda c, s: annotate(c, s["slug"], s["line"], s["evidence_id"], [{"attachment_id": s["picture"], "type": "box", "x": 1.0, "y": 2.0}]),
+    "cahier-manuel": lambda c, s: add_manual(c, s["slug"], s["line"], "Autre mesure"),
+    "annotations": lambda c, s: update_entry(c, s["slug"], s["line"], s["manual_id"], measurements=[annotated(s)]),
     "cahier": lambda c, s: update_entry(c, s["slug"], s["line"], s["entry_id"], note="Vu"),
     "galerie-epingle": lambda c, s: pin_image(c, s["slug"], s["line"], s["data_id"], 1),
     "galerie-retrait": lambda c, s: delete_image_set(c, s["slug"], s["line"], s["data_id"]),
@@ -115,11 +123,11 @@ def test_every_lightweight_write_carries_the_whole_parent(client, study, write):
     assert after["objective_verification"] == {"EQE": "Banc EQE"}
     assert after["form_answers"] == {"operateur": "Ada"}
     assert [o["name"] for o in after["objectives"]] == ["EQE"]
-    own = evidence_by_id(client, study["slug"], study["line"])[study["evidence_id"]]
-    assert own["interpretation"] == "Net" and own["kind"] == "image"
-    assert own["links"] == ["https://exemple.fr/tem"]
-    assert [image["id"] for image in own["images"]] == [study["picture"]]
-    assert [e["id"] for e in entries(client, study["slug"], study["line"])] == [study["entry_id"]]
+    own = entries_by_id(client, study["slug"], study["line"])[study["manual_id"]]
+    assert own["interpretation"] == "Net" and own["kind"] == "manual"
+    assert [link["url"] for link in own["measurements"][0]["links"]] == ["https://exemple.fr/tem"]
+    assert [image["id"] for image in own["measurements"][0]["attachments"]] == [study["picture"]]
+    assert [e["id"] for e in entries(client, study["slug"], study["line"])][:2] == [study["manual_id"], study["entry_id"]]
     if write != "galerie-retrait":
         assert [d["id"] for d in image_sets(client, study["slug"], study["line"])] == [study["data_id"]]
     if write != "entites":
@@ -142,10 +150,12 @@ STALE_WRITES = {
     "entities": lambda c, s, h: c.put(f"{experiment_url(s['slug'], s['line'])}/entities", headers=h, json={"entities": [{"sample_id": "W9"}]}),
     "merges": lambda c, s, h: c.post(f"{experiment_url(s['slug'], s['line'])}/merges", headers=h, json={"other_experiment_id": s["other"]}),
     "delete": lambda c, s, h: c.delete(experiment_url(s["slug"], s["line"]), headers=h),
-    "evidence": lambda c, s, h: c.post(evidence_url(s["slug"], s["line"]), headers=h, json={"description": "x"}),
-    "annotations": lambda c, s, h: c.put(f"{evidence_url(s['slug'], s['line'])}/{s['evidence_id']}/annotations", headers=h, json={"annotations": []}),
+    "cahier-manuel": lambda c, s, h: c.post(entries_url(s["slug"], s["line"]), headers=h, json={"kind": "manual", "title": "x", "measurements": [{"text": "x"}]}),
+    "annotations": lambda c, s, h: c.patch(f"{entries_url(s['slug'], s['line'])}/{s['manual_id']}", headers=h, json={"measurements": [annotated(s)]}),
     # le cahier et la galerie, qui écrivent eux aussi sur la piste
-    "cahier-ajout": lambda c, s, h: c.post(entries_url(s["slug"], s["line"]), headers=h, json={"title": "x", "snapshot_id": s["snapshot_id"], "component": "table"}),
+    "cahier-ajout": lambda c, s, h: c.post(
+        entries_url(s["slug"], s["line"]), headers=h, json={"kind": "prism", "title": "x", "measurements": [{"snapshot_id": s["snapshot_id"], "component": "table"}]}
+    ),
     "cahier": lambda c, s, h: c.patch(f"{entries_url(s['slug'], s['line'])}/{s['entry_id']}", headers=h, json={"note": "x"}),
     "cahier-retrait": lambda c, s, h: c.delete(f"{entries_url(s['slug'], s['line'])}/{s['entry_id']}", headers=h),
     "galerie-ajout": lambda c, s, h: c.post(image_sets_url(s["slug"], s["line"]), headers=h, json={"image_paths": s["paths"]}),

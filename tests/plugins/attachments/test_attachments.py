@@ -1,16 +1,16 @@
-"""Les images d'une preuve : téléversées d'abord (POST .../attachments, ``purpose=evidence``, plugin
-attachments), puis rattachées à la preuve qui les montre (plugin evidence, testé dans
-``tests/plugins/evidence``) - c'est le seul chemin du front, les anciennes routes « pièces jointes »
+"""Les fichiers d'une entrée du cahier : téléversés d'abord (POST .../attachments, ``purpose=notebook``,
+plugin attachments), puis rattachés à l'entrée qui les montre (plugin notebook, testé dans
+``tests/plugins/notebook``) - c'est le seul chemin du front, les anciennes routes « pièces jointes »
 d'une expérience ont disparu. Les octets restent servis par attachments. Le téléversement lui-même
 est testé dans test_uploads.py.
 """
 
 from __future__ import annotations
 
-from support.evidence import add_evidence, upload_image
 from support.experiments import experiment_url, launch
 from support.http import PNG_1PX, assert_handler_404
 from support.microprojects import signup_with_microproject
+from support.notebook import add_manual, upload_notebook_file
 
 
 def test_the_old_attachment_routes_of_an_experiment_are_gone(client):
@@ -21,12 +21,13 @@ def test_the_old_attachment_routes_of_an_experiment_are_gone(client):
         assert client.post(url, files=files).status_code == 404
 
 
-def test_an_evidence_image_is_served_by_attachments_and_shown_by_the_atlas(client):
+def test_a_notebook_image_is_served_by_attachments(client):
     slug = signup_with_microproject(client, "attach@example.com")
     launched = launch(client, slug)
-    image_id = upload_image(client, slug, "sem.png")
+    image_id = upload_notebook_file(client, slug, "sem.png")
 
-    [image] = add_evidence(client, slug, launched["id"], "SEM du bord", images=[{"image_id": image_id}])["images"]
+    [measurement] = add_manual(client, slug, launched["id"], "SEM du bord", measurements=[{"attachments": [image_id]}])["measurements"]
+    [image] = measurement["attachments"]
     assert image["url"] == f"/api/microprojects/{slug}/attachments/{image_id}/content"
     download = client.get(image["url"])
     assert download.status_code == 200 and download.content == PNG_1PX

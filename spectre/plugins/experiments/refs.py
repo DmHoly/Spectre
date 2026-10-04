@@ -20,10 +20,10 @@ from typing import Any
 
 import follow
 
-from ...kernel.errors import Conflict, InvalidInput
+from ...kernel.errors import Conflict, InvalidInput, NotFound
 from . import versioning
 from .lineage import condensed_edges
-from .repository import display_status
+from .repository import VERSION_ID_RE, display_status, remove_tag, rename_tag
 
 REF_NAME_PREFIX = "ref v"
 
@@ -54,22 +54,65 @@ def _unique_default_name(repo: "follow.Repository", base: str, target_id: str) -
     return f"{base}-{target_id[:6]}"
 
 
+def _checked_name(name: str) -> str:
+    """A ref is addressed as a single path segment (``.../refs/{ref_name}``): no « / », neither
+    ``.`` nor ``..``, nor the form of a version id (Follow resolves a name before an id)."""
+    if "/" in name or name in (".", "..") or VERSION_ID_RE.fullmatch(name):
+        raise InvalidInput(
+            "Le nom d'une ref ne peut pas contenir « / » (ni être « . », « .. » ou avoir la forme d'un id de version).",
+            code="invalid_ref_name",
+        )
+    return name
+
+
+def _taken(name: str) -> Conflict:
+    return Conflict(f"Le nom « {name} » est déjà pris par une autre version ou une piste.", code="ref_name_taken")
+
+
 def create_ref(repo: "follow.Repository", version_id: str, *, name: str | None = None) -> dict[str, Any]:
     """Tag the version ``version_id`` as a ref: ``name`` if given (a nickname - "omega",
-    "banane"...), otherwise :func:`default_ref_name`. :class:`InvalidInput` for a name with a "/"
-    (a ref is addressed as a single path segment), :class:`Conflict` for a name already used by a
-    different ref or by a line of study (tags and branches share one namespace in Follow). Returns
-    the ref as :func:`list_refs` shows it.
+    "banane"...), otherwise :func:`default_ref_name`. :class:`InvalidInput` for a name that can't
+    be a single path segment (:func:`_checked_name`), :class:`Conflict` for a name already used by
+    a different ref or by a line of study (tags and branches share one namespace in Follow).
+    Returns the ref as :func:`get_ref` shows it (its ``name``: the one just given).
     """
-    nickname = name.strip() if name else ""
-    if "/" in nickname:
-        raise InvalidInput("Le nom d'une ref ne peut pas contenir « / ».", code="invalid_ref_name")
+    nickname = _checked_name(name.strip()) if name and name.strip() else ""
     final_name = nickname or _unique_default_name(repo, default_ref_name(repo, version_id), version_id)
     try:
         repo.tag(final_name, at=version_id)
     except follow.FollowError as exc:
-        raise Conflict(f"Le nom « {final_name} » est déjà pris par une autre version ou une piste.", code="ref_name_taken") from exc
-    return next(entry for entry in list_refs(repo) if entry["version_id"] == version_id)
+        raise _taken(final_name) from exc
+    return get_ref(repo, final_name)
+
+
+def get_ref(repo: "follow.Repository", name: str) -> dict[str, Any]:
+    """The ref ``name``: the entry :func:`list_refs` shows for its version (``names`` : every name
+    on that version), plus ``name``. :class:`NotFound` for an unknown ref."""
+    version_id = repo.tags.get(name)
+    if version_id is None:
+        raise NotFound(f"Ref « {name} » introuvable.", code="ref_not_found")
+    return {"name": name, **_entry(repo, version_id, ref_names_for(repo, version_id))}
+
+
+def rename_ref(repo: "follow.Repository", name: str, new_name: str) -> dict[str, Any]:
+    """Rename the ref ``name`` (under :func:`~.repository.writing`); its version doesn't change.
+    The same name again changes nothing. :class:`NotFound`, :class:`InvalidInput` (an empty or
+    unaddressable name), :class:`Conflict` (a name already taken by another ref or a line)."""
+    get_ref(repo, name)
+    new_name = _checked_name(new_name.strip())
+    if not new_name:
+        raise InvalidInput("Donnez un nom à la ref.", code="invalid_ref_name")
+    if new_name != name:
+        if new_name in repo.tags or new_name in repo.branches:
+            raise _taken(new_name)
+        rename_tag(repo, name, new_name)
+    return get_ref(repo, new_name)
+
+
+def delete_ref(repo: "follow.Repository", name: str) -> None:
+    """Remove the ref ``name`` (under :func:`~.repository.writing`); the version stays."""
+    get_ref(repo, name)
+    remove_tag(repo, name)
 
 
 def ref_names_for(repo: "follow.Repository", version_id: str) -> list[str]:
@@ -87,23 +130,23 @@ def list_refs(repo: "follow.Repository") -> list[dict[str, Any]]:
     for name, version_id in repo.tags.items():
         by_version.setdefault(version_id, []).append(name)
 
-    entries = []
-    for version_id, names in by_version.items():
-        version = repo.get(version_id)
-        entries.append(
-            {
-                "version_id": version_id,
-                "experiment_id": version.branch,
-                "names": sorted(names),
-                "title": version.title,
-                "status": display_status(version),
-                "decision": version.conclusion.decision,
-                "version": _version_for(repo, version_id),
-                "created_at": version.created_at.isoformat(),
-            }
-        )
+    entries = [_entry(repo, version_id, sorted(names)) for version_id, names in by_version.items()]
     entries.sort(key=lambda entry: entry["created_at"], reverse=True)
     return entries
+
+
+def _entry(repo: "follow.Repository", version_id: str, names: list[str]) -> dict[str, Any]:
+    version = repo.get(version_id)
+    return {
+        "version_id": version_id,
+        "experiment_id": version.branch,
+        "names": names,
+        "title": version.title,
+        "status": display_status(version),
+        "decision": version.conclusion.decision,
+        "version": _version_for(repo, version_id),
+        "created_at": version.created_at.isoformat(),
+    }
 
 
 def ref_graph(repo: "follow.Repository") -> dict[str, Any]:

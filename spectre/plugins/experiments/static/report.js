@@ -1,7 +1,10 @@
 /* « Télécharger le rapport » : un fichier HTML autonome, photographie de la fiche telle qu'elle est
    affichée. Chaque bloc est cloné puis débarrassé de ce qui n'a de sens que dans l'appli vivante
    (tout nœud data-report-hide : formulaire, bouton d'action, champ éditable, barre d'onglets...) ; le
-   miroir texte .report-only qui l'accompagne parfois (voir plates.js) est révélé à sa place. Les
+   miroir texte .report-only qui l'accompagne parfois (voir plates.js) est révélé à sa place, et ce
+   que l'écran masque ou replie sans l'ôter du rapport (data-report-show : les entrées du cahier hors
+   d'un filtre, ses « autres plaques ») y est montré, déplié. Le cahier y figure donc en entier : ses
+   entrées PRISM (vues DataViz, en SVG) et manuelles (stepper, valeurs, tableaux, images annotées). Les
    trois onglets y figurent l'un après l'autre, quel que soit celui qui est ouvert ; les images
    servies par l'appli y sont embarquées, et les styles sont ceux de toutes les feuilles <link> de la
    page (noyau puis plugins, dans leur ordre). */
@@ -13,6 +16,10 @@
     const clone = el.cloneNode(true);
     clone.removeAttribute("hidden");
     clone.querySelectorAll("[data-report-hide], .atlas-carousel__nav").forEach((node) => node.remove());
+    clone.querySelectorAll("[data-report-show]").forEach((node) => {
+      node.removeAttribute("hidden");
+      if (node.tagName === "DETAILS") node.setAttribute("open", "");
+    });
     clone.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id")); // pas de doublons d'id dans le document
     clone.querySelectorAll("img").forEach((img) => {
       const src = img.getAttribute("src");
@@ -25,7 +32,7 @@
     return clone.outerHTML;
   }
 
-  // Les images servies par l'API (structure en images, galerie, preuves) ne s'ouvriraient pas hors de
+  // Les images servies par l'API (structure en images, galerie, cahier) ne s'ouvriraient pas hors de
   // Spectre : le rapport les embarque en data: URL ; une image indisponible garde son lien d'origine.
   async function inlineReportImages(roots) {
     const sources = new Set();

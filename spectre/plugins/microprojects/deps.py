@@ -1,18 +1,18 @@
 """Who can do what in a microproject: ``viewer`` reads, ``editor`` also creates/evolves/concludes
 experiments and manages step presets, ``owner`` also manages membership. Follow and StructureForge have
 no notion of any of this - it lives entirely here, as a FastAPI dependency that resolves the
-microproject from the URL (``{microproject_slug}``) and checks the caller's membership before the
-route body ever runs.
+microproject from the URL (``{microproject_slug}``) and checks the caller's role before the route
+body ever runs. The rule itself is :func:`spectre.plugins.microprojects.service.access`: an admin
+and a manager of the µprojet's team are owners, anyone else has the role of their membership.
 """
 
 from __future__ import annotations
 
 from fastapi import Depends
 
-from ...kernel.errors import Forbidden
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from .service import ROLE_ORDER, Microproject, get_by_slug, role_for
+from .service import Microproject, check_role, get_by_slug
 
 
 def get_microproject(microproject_slug: str) -> Microproject:
@@ -31,9 +31,7 @@ def require_role(min_role: str):
     """
 
     def dependency(user: User = Depends(current_user), microproject: Microproject = Depends(get_microproject)) -> Microproject:
-        role = role_for(microproject.id, user.id)
-        if role is None or ROLE_ORDER[role] < ROLE_ORDER[min_role]:
-            raise Forbidden("vous n'avez pas les droits nécessaires pour cette action")
+        check_role(user, microproject, min_role)
         return microproject
 
     return dependency

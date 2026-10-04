@@ -1,6 +1,6 @@
 /* Le vocabulaire d'une étude, en libellés français : types d'étape du procédé (et leurs paramètres),
    décisions d'une conclusion, résultats d'un objectif. Une seule copie, pour la fiche d'expérience,
-   les panneaux qui s'y greffent (preuves) et l'atlas. */
+   les panneaux qui s'y greffent (cahier) et l'atlas. */
 
 const ExperimentVocabulary = {
   stepKinds: {

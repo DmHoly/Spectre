@@ -37,6 +37,13 @@ function captureHistory() {
   updateHistoryButtons();
 }
 
+// Les ids d'étape que le serveur vient de donner (adoptStepIds, simulation.js) ne sont pas une
+// modification : si rien d'autre n'a bougé depuis le dernier instantané (`before`, l'état juste
+// avant de les poser), l'instantané les reçoit aussi, sans ouvrir d'entrée d'annulation.
+function absorbAdoptedStepIds(before) {
+  if (historyReady && before === historyBaseline) historyBaseline = currentHistorySnapshot();
+}
+
 // La sélection est conservée autant que possible (même index, ramené dans les bornes) : annuler
 // une modification de l'étape 4 laisse l'inspecteur sur l'étape 4, avec ses valeurs d'avant.
 function applyHistorySnapshot(serialized) {

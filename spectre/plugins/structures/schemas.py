@@ -3,9 +3,9 @@ evolved with (:data:`StructurePayload`, one per kind of :mod:`spectre.plugins.st
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Any, Literal, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from structureforge.process.steps import ProcessStep
 
 from .campaigns import VariantPlan
@@ -13,7 +13,11 @@ from .simulation import DeclaredParam, SubstrateSpec
 
 
 class ProcessInput(BaseModel):
-    """A process to simulate: a substrate and its steps (``POST /api/simulations``)."""
+    """A process to simulate: a substrate and its steps (``POST /api/simulations``).
+
+    Each step may carry the ``id`` it was given (``st_<8 hex>``, see
+    :func:`spectre.plugins.structures.simulation.settle_step_ids`): a ``ProcessStep`` ignores it, so
+    it is read from the request itself, before validation, into :attr:`step_ids`."""
 
     substrate: SubstrateSpec
     steps: list[ProcessStep]
@@ -21,6 +25,21 @@ class ProcessInput(BaseModel):
     # - JSON object keys are always strings, converted to the step-index ints run_simulation wants
     # just before calling it.
     declared_params: dict[str, list[DeclaredParam]] = {}
+    _step_ids: list[str | None] = PrivateAttr(default_factory=list)
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _read_step_ids(cls, data: Any, handler: Any) -> Any:
+        model = handler(data)
+        raw = data.get("steps") if isinstance(data, dict) else None
+        if isinstance(raw, list):
+            model._step_ids = [step.get("id") if isinstance(step, dict) and isinstance(step.get("id"), str) else None for step in raw]
+        return model
+
+    @property
+    def step_ids(self) -> list[str | None]:
+        """The id each step came with, in order (``None`` for a step sent without one)."""
+        return [self._step_ids[i] if i < len(self._step_ids) else None for i in range(len(self.steps))]
 
 
 class CampaignPreviewRequest(ProcessInput):

@@ -4,6 +4,13 @@ under which the other plugins keep its Follow repository, saved structures, step
 attachments. Follow and StructureForge never know a "microproject" exists; the plugins map a slug to
 the paths they're given from here.
 
+Who may do what in a µprojet is one rule, :func:`access` (and :func:`effective_role`,
+:func:`has_role`, :func:`accesses` for a list): the ``owner`` role for an admin and for a manager
+of the team of its corporate project (the µprojet has no team of its own: it is its project's,
+computed, never stored - « Non classé » has none), otherwise the role its membership gives. Every
+plugin checks a µprojet role through these functions - :func:`role_for` and :func:`list_for_user`
+only read the ``memberships`` table.
+
 Membership keeps two invariants, whatever the route: a µprojet always has at least one owner, and
 its creator stays an owner (:func:`change_member_role`, :func:`remove_member`). An invitation is
 stored by the SHA-256 of its token only: the token in clear leaves :func:`create_invitation` for the
@@ -18,6 +25,7 @@ import sqlite3
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 from ...kernel.db import data_dir, get_conn
 from ...kernel.errors import Conflict, Forbidden, InvalidInput, NotFound
@@ -172,13 +180,25 @@ def _unique_slug(conn: sqlite3.Connection, name: str) -> str:
     return slug
 
 
-def _area_id(area_slug: str | None) -> int:
+def _area(area_slug: str | None) -> areas.ManagementArea:
     if not area_slug:
         raise InvalidInput("un µprojet appartient toujours à un projet")
     try:
-        return areas.get_by_slug(area_slug).id
+        return areas.get_by_slug(area_slug)
     except areas.ManagementAreaNotFoundError as exc:
         raise InvalidInput(f"projet {area_slug!r} introuvable") from exc
+
+
+def check_placement(user: accounts.User, area: areas.ManagementArea) -> None:
+    """403 unless ``user`` may put a µprojet in ``area`` - create it there or move it there
+    (:func:`spectre.plugins.areas.service.can_place_microproject`: in a team's project, its members
+    and the admins only) - the one check of :func:`create` and :func:`update`."""
+    if not areas.can_place_microproject(user, area):
+        raise Forbidden(
+            f"le projet « {area.name} » appartient à une équipe : seuls ses membres et un administrateur "
+            "peuvent y créer ou y déplacer un µprojet",
+            code="placement_forbidden",
+        )
 
 
 def _thematic_id(area_id: int, thematic_slug: str | None) -> int | None:
@@ -190,13 +210,16 @@ def _thematic_id(area_id: int, thematic_slug: str | None) -> int | None:
         raise InvalidInput(f"la thématique {thematic_slug!r} n'appartient pas à ce projet") from exc
 
 
-def create(name: str, description: str, *, owner_id: int, area: str | None = None, thematic: str | None = None) -> Microproject:
-    """A new µprojet, its creator its first owner. ``area`` (a project's slug, « Non classé » by
-    default) and ``thematic`` (one of that project's thématiques) say where it sits."""
+def create(name: str, description: str, *, owner: accounts.User, area: str | None = None, thematic: str | None = None) -> Microproject:
+    """A new µprojet, its creator (``owner``) its first owner. ``area`` (a project's slug, « Non
+    classé » by default) and ``thematic`` (one of that project's thématiques) say where it sits -
+    a project ``owner`` may place a µprojet in (:func:`check_placement`, 403 otherwise)."""
     name = name.strip()
     if not name:
         raise InvalidInput("le nom du µprojet est obligatoire")
-    area_id = _area_id(area or UNCLASSIFIED_AREA_SLUG)
+    target = _area(area or UNCLASSIFIED_AREA_SLUG)
+    check_placement(owner, target)
+    area_id, owner_id = target.id, owner.id
     thematic_id = _thematic_id(area_id, thematic)
     with get_conn() as conn:
         slug = _unique_slug(conn, name)
@@ -229,11 +252,12 @@ def set_management_area(microproject_id: int, management_area_id: int, thematic_
 def update(slug: str, user: accounts.User, changes: dict) -> Microproject:
     """Only the fields given change: ``name``, ``description``, and where the µprojet sits -
     ``area`` (a project's slug; changing project drops its thématique) and ``thematic`` (the slug
-    of one of that project's thématiques, or ``None``). Its owners and the strategy-layer admins
-    only."""
+    of one of that project's thématiques, or ``None``). The ``owner`` role only (:func:`access`:
+    its owners, the managers of its team, the admins); moving it to another project also needs the
+    right to place a µprojet there (:func:`check_placement`)."""
     microproject = get_by_slug(slug)
-    if not (user.is_admin or role_for(microproject.id, user.id) == "owner"):
-        raise Forbidden("seuls un propriétaire du µprojet ou un administrateur peuvent le modifier")
+    if not has_role(user, microproject, "owner"):
+        raise Forbidden("seuls un propriétaire du µprojet, un manager de son équipe ou un administrateur peuvent le modifier")
 
     name, description = microproject.name, microproject.description
     if changes.get("name") is not None:
@@ -244,8 +268,10 @@ def update(slug: str, user: accounts.User, changes: dict) -> Microproject:
         description = changes["description"].strip()
     area_id, thematic_id = microproject.management_area_id, microproject.thematic_id
     if "area" in changes:
-        area_id = _area_id(changes["area"])
+        target = _area(changes["area"])
+        area_id = target.id
         if area_id != microproject.management_area_id:
+            check_placement(user, target)
             thematic_id = None
     if "thematic" in changes:
         thematic_id = _thematic_id(area_id, changes["thematic"])
@@ -299,11 +325,92 @@ def list_for_user(user_id: int) -> list[tuple[Microproject, str]]:
 
 
 def role_for(microproject_id: int, user_id: int) -> str | None:
+    """The role the ``memberships`` table gives - not the policy: see :func:`access`."""
     with get_conn() as conn:
         row = conn.execute(
             "SELECT role FROM memberships WHERE microproject_id = ? AND user_id = ?", (microproject_id, user_id)
         ).fetchone()
     return row["role"] if row else None
+
+
+# -- droits -----------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Access:
+    """What someone may do in a µprojet: ``role`` (``viewer`` < ``editor`` < ``owner``, ``None``:
+    nothing), where it comes from (``source``: ``membership``, ``team_manager`` or ``admin``) and
+    the role their membership alone gives (``membership``)."""
+
+    role: str | None = None
+    source: str | None = None
+    membership: str | None = None
+
+    def at_least(self, min_role: str) -> bool:
+        return self.role is not None and ROLE_ORDER[self.role] >= ROLE_ORDER[min_role]
+
+    @property
+    def is_mine(self) -> bool:
+        """Among « my µprojets »: a member, or a manager of its team (an admin is not, by being one)."""
+        return self.membership is not None or self.source == "team_manager"
+
+
+NO_ACCESS = Access()
+
+
+def _access(user: accounts.User, membership: str | None, team_manager: bool) -> Access:
+    """The one rule. An owner by membership stays one; a manager of the µprojet's team, then an
+    admin, are owners; anyone else has the role of their membership, if any."""
+    if membership == "owner":
+        return Access("owner", "membership", membership)
+    if team_manager:
+        return Access("owner", "team_manager", membership)
+    if user.is_admin:
+        return Access("owner", "admin", membership)
+    if membership is not None:
+        return Access(membership, "membership", membership)
+    return NO_ACCESS
+
+
+def access(user: accounts.User, microproject: Microproject) -> Access:
+    managed = microproject.management_area_id is not None and microproject.management_area_id in areas.managed_area_ids(user)
+    return _access(user, role_for(microproject.id, user.id), managed)
+
+
+def effective_role(user: accounts.User, microproject: Microproject) -> str | None:
+    """``owner`` for an admin or a manager of the µprojet's team, otherwise the role of the
+    membership, otherwise ``None``."""
+    return access(user, microproject).role
+
+
+def has_role(user: accounts.User, microproject: Microproject, min_role: str) -> bool:
+    return access(user, microproject).at_least(min_role)
+
+
+def check_role(user: accounts.User, microproject: Microproject, min_role: str) -> None:
+    """403 unless ``user`` has at least ``min_role`` in ``microproject``."""
+    if not has_role(user, microproject, min_role):
+        raise Forbidden("vous n'avez pas les droits nécessaires pour cette action")
+
+
+def _membership_roles(user_id: int) -> dict[int, str]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT microproject_id, role FROM memberships WHERE user_id = ?", (user_id,)).fetchall()
+    return {row["microproject_id"]: row["role"] for row in rows}
+
+
+def accesses(user: accounts.User, microprojects: Iterable[Microproject]) -> dict[int, Access]:
+    """:func:`access` for each µprojet of a list, by id - two queries for the whole list."""
+    memberships = _membership_roles(user.id)
+    managed = areas.managed_area_ids(user)
+    return {m.id: _access(user, memberships.get(m.id), m.management_area_id in managed) for m in microprojects}
+
+
+def list_mine(user: accounts.User) -> list[tuple[Microproject, Access]]:
+    """« My µprojets »: those I am a member of, and those of the teams I manage - newest first."""
+    everything = list_all()
+    found = accesses(user, everything)
+    return [(m, found[m.id]) for m in everything if found[m.id].is_mine]
 
 
 def owners_by_microproject(microproject_ids: list[int]) -> dict[int, list[dict]]:

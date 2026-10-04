@@ -1,19 +1,26 @@
 """Les routes du cahier de données, sous ``/api/microprojects/{microproject_slug}`` (le domaine est
-dans :mod:`.service` et :mod:`.snapshots`) :
+dans :mod:`.service`, :mod:`.legacy` et :mod:`.snapshots`) :
 
 - ``POST /snapshots`` : charger un type de données de caractérisation pour des plaques et le figer ;
   ``GET /snapshots/{snapshot_id}`` le relit (un instantané ne change jamais : il se met en cache).
-- ``GET /experiments/{experiment_id}/notebook-entries`` : les vues du cahier (``?version=`` pour une
-  version passée) ; ``POST``, ``PATCH`` et ``DELETE`` les ajoutent, les modifient (``position``
-  pour les déplacer) et les retirent - chaque fois une écriture sur la piste, avec ``If-Match``
-  (412 si elle a avancé), et l'``ETag`` de la nouvelle version dans la réponse.
+- ``GET /experiments/{experiment_id}/notebook-entries`` : le cahier d'une étude (``?version=`` pour
+  une version passée ; filtres ``?step=`` (un id d'étape), ``?wafer=`` (une plaque), ``?kind=`` ;
+  ``?summary=steps`` : le nombre d'entrées par étape, ``{step_id: n}``, pour les badges du procédé) ;
+  ``POST`` y ajoute une entrée (201 + ``Location``), ``GET``, ``PATCH`` et ``DELETE`` sur
+  ``/{entry_id}`` la lisent, la modifient (``position`` pour la déplacer) et la retirent (204). Chaque
+  écriture est une écriture sur la piste, avec ``If-Match`` (412 si elle a avancé) ; chaque réponse
+  porte l'``ETag`` de la version lue ou écrite.
 
 Les types de données qu'on peut charger se lisent dans le catalogue de caractérisation
-(``GET /api/characterization/data-types?by_wafer=true&status=implemented``).
+(``GET /api/characterization/data-types?by_wafer=true&status=implemented``) ; les fichiers d'une
+entrée manuelle se téléversent d'abord (``POST .../attachments``, ``purpose=notebook``).
 """
 
 from __future__ import annotations
 
+from typing import Literal
+
+import follow
 from fastapi import APIRouter, Depends, Header, Response
 
 from ...kernel.http import created, etag, if_match_version
@@ -28,6 +35,15 @@ router = APIRouter(prefix="/api/microprojects/{microproject_slug}", tags=["noteb
 
 # Un instantané ne change jamais (un nouvel id à chaque chargement) : le navigateur le garde.
 IMMUTABLE = "private, max-age=31536000, immutable"
+
+
+def _tag(response: Response, version: follow.Experiment) -> None:
+    """L'``ETag`` de la version de la piste lue ou écrite : ce qu'une écriture suivante attend."""
+    response.headers["ETag"] = etag(version.id)
+
+
+def _entries_url(slug: str, experiment_id: str) -> str:
+    return f"/api/microprojects/{slug}/experiments/{experiment_id}/notebook-entries"
 
 
 @router.post("/snapshots", status_code=201)
@@ -46,8 +62,25 @@ def read_snapshot(snapshot_id: str, response: Response, microproject: Microproje
 
 
 @router.get("/experiments/{experiment_id}/notebook-entries")
-def list_entries(experiment_id: str, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))) -> list[dict]:
-    return service.entries(microproject.slug, experiment_id, version)
+def list_entries(
+    experiment_id: str,
+    response: Response,
+    version: str | None = None,
+    step: str | None = None,
+    wafer: str | None = None,
+    kind: Literal["prism", "manual"] | None = None,
+    summary: Literal["steps"] | None = None,
+    microproject: Microproject = Depends(require_role("viewer")),
+) -> list[dict] | dict[str, int]:
+    """Les entrées du cahier (de la version ``version``), filtrées - ou, avec ``summary=steps``, le
+    nombre d'entrées qui s'appliquent à cette version par étape."""
+    if summary == "steps":
+        read, counts = service.step_counts(microproject.slug, experiment_id, version, step=step, wafer=wafer, kind=kind)
+        _tag(response, read)
+        return counts
+    read, items = service.entries(microproject.slug, experiment_id, version, step=step, wafer=wafer, kind=kind)
+    _tag(response, read)
+    return items
 
 
 @router.post("/experiments/{experiment_id}/notebook-entries", status_code=201)
@@ -59,10 +92,19 @@ def add_entry(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    """Une vue de plus en fin de cahier - sans ``Location`` : une vue n'a pas de route de lecture
-    propre, elle se lit dans le cahier."""
-    entry, tip = service.add_entry(microproject.slug, experiment_id, body, author=user.name, expected_version=if_match_version(if_match))
-    response.headers["ETag"] = etag(tip.id)
+    """Une entrée de plus en fin de cahier : une nouvelle version de la piste."""
+    written, entry = service.add_entry(microproject.slug, experiment_id, body, author=user.name, expected_version=if_match_version(if_match))
+    created(response, f"{_entries_url(microproject.slug, experiment_id)}/{entry['id']}")
+    _tag(response, written)
+    return entry
+
+
+@router.get("/experiments/{experiment_id}/notebook-entries/{entry_id}")
+def get_entry(
+    experiment_id: str, entry_id: str, response: Response, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
+) -> dict:
+    read, entry = service.get_entry(microproject.slug, experiment_id, entry_id, version)
+    _tag(response, read)
     return entry
 
 
@@ -76,10 +118,10 @@ def update_entry(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    entry, tip = service.update_entry(
+    written, entry = service.update_entry(
         microproject.slug, experiment_id, entry_id, body, author=user.name, expected_version=if_match_version(if_match)
     )
-    response.headers["ETag"] = etag(tip.id)
+    _tag(response, written)
     return entry
 
 
@@ -91,5 +133,5 @@ def remove_entry(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> Response:
-    tip = service.remove_entry(microproject.slug, experiment_id, entry_id, author=user.name, expected_version=if_match_version(if_match))
-    return Response(status_code=204, headers={"ETag": etag(tip.id)})
+    written = service.remove_entry(microproject.slug, experiment_id, entry_id, author=user.name, expected_version=if_match_version(if_match))
+    return Response(status_code=204, headers={"ETag": etag(written.id)})

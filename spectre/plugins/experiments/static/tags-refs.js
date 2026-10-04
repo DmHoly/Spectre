@@ -44,12 +44,14 @@
 
   function renderRefs(ctx) {
     const row = document.getElementById("refs-row");
+    const evolutionUrl = `/microprojets/${encodeURIComponent(ctx.microprojectSlug)}/evolution`;
     row.innerHTML =
       ctx.detail.ref_names.map((name) => `<span class="badge badge-role" title="Ref">ref ${escapeHtml(name)}</span>`).join("") +
       (ctx.canEdit
         ? `<button id="make-ref-btn" data-report-hide type="button" class="btn btn-line" style="padding:2px 10px;font-size:11.5px;">+ ref</button>
            <input id="new-ref-input" data-report-hide placeholder="surnom (optionnel)" aria-label="Nom de la ref" hidden style="${chipInputStyle}width:150px;">`
-        : "");
+        : "") +
+      `<a class="btn btn-line" data-report-hide href="${evolutionUrl}" style="padding:2px 10px;font-size:11.5px;" title="Les pistes du µprojet, leurs versions et leurs refs">Évolution des structures</a>`;
     const makeBtn = document.getElementById("make-ref-btn");
     const input = document.getElementById("new-ref-input");
     if (!makeBtn) return;

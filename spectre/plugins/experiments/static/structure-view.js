@@ -1,6 +1,7 @@
 /* Onglet « Structure & plaques », côté structure : la structure affichée et ce qui a changé depuis la
    version de structure précédente (en carrousel pour une campagne, en planche pour une structure en
-   images), le détail de chaque couche (aperçu au survol, paramètres de l'étape au clic), la
+   images), le détail de chaque couche (aperçu au survol, paramètres de l'étape au clic), les étapes
+   du procédé avec le nombre de données du cahier de chacune (un clic filtre le cahier), la
    cartographie et la feuille de split d'une campagne, la comparaison avec une autre étude, et la
    modification des images d'une structure en images. */
 
@@ -114,7 +115,7 @@
     const step = (ctx.process.steps || [])[layerIndex - 1];
     if (!step) return null;
     const fields = Object.entries(step)
-      .filter(([key]) => key !== "kind" && key !== "name")
+      .filter(([key]) => key !== "id" && key !== "kind" && key !== "name")
       .map(([key, value]) => [ExperimentVocabulary.stepFields[key] || key, formatStepValue(value)])
       .filter(([, value]) => value !== null);
     return { title: ExperimentVocabulary.stepLabel(step), fields };
@@ -168,6 +169,50 @@
   });
   structureSvg.addEventListener("mouseleave", hideTooltip);
   document.getElementById("layer-modal-close-btn").addEventListener("click", () => document.getElementById("layer-modal").close());
+
+  // --- les étapes du procédé, avec les données du cahier qui les concernent -------------------------
+
+  // Le nombre de données par étape (les entrées qui s'appliquent à cette version et y ont une mesure)
+  // vient du panneau du cahier (ctx.notebook.stepCounts) : la fiche ne lit pas le cahier elle-même.
+  const processCard = document.getElementById("process-card");
+  const processSteps = document.getElementById("process-steps");
+  const DATA_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>`;
+
+  function renderProcessSteps() {
+    const steps = (ctx.process && ctx.process.steps) || [];
+    processCard.hidden = !steps.length;
+    const counts = (ctx.notebook && ctx.notebook.stepCounts) || {};
+    processSteps.innerHTML = steps
+      .map((step, i) => {
+        const n = counts[step.id] || 0;
+        const kind = ExperimentVocabulary.stepKinds[step.kind] || step.kind;
+        const label = `${i + 1}. ${ExperimentVocabulary.stepLabel(step)}`;
+        const badge = n
+          ? `<button type="button" class="process-step__data" data-step="${escapeHtml(step.id)}" title="Voir ces données dans le cahier" aria-label="${n} donnée${n > 1 ? "s" : ""} à l'étape ${escapeHtml(label)} : les voir dans le cahier">${DATA_ICON}${n}</button>`
+          : "";
+        return `
+          <li class="process-step${n ? " has-data" : ""}" title="${escapeHtml(label)}">
+            <span class="process-step__num" aria-hidden="true">${i + 1}</span>
+            <span class="process-step__text"><span class="process-step__name">${escapeHtml(step.name || kind)}</span><span class="process-step__kind">${escapeHtml(kind)}</span></span>
+            ${badge}
+          </li>`;
+      })
+      .join("");
+    const measured = steps.filter((step) => counts[step.id]).length;
+    document.getElementById("process-steps-note").textContent = ctx.notebook
+      ? measured
+        ? `données du cahier à ${measured} étape${measured > 1 ? "s" : ""} - un clic les montre`
+        : "aucune donnée du cahier rattachée à une étape"
+      : "";
+  }
+
+  processSteps.addEventListener("click", (event) => {
+    const badge = event.target.closest("[data-step]");
+    if (badge) ctx.filterNotebook(badge.dataset.step);
+  });
+  ExperiencePage.onNotebook(() => {
+    if (ctx) renderProcessSteps();
+  });
 
   // --- une campagne : cartographie des variantes et feuille de split --------------------------------
 
@@ -364,6 +409,7 @@
       ctx = context;
       evolveLink.style.display = ctx.canEdit && ctx.process ? "" : "none";
       replaceBtn.style.display = ctx.canEdit && ctx.detail.structure_images ? "" : "none";
+      renderProcessSteps();
       return Promise.all([renderStructure(ctx.detail), renderBatchMatrix(ctx.detail), renderCompare()]);
     },
   });

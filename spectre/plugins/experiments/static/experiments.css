@@ -117,7 +117,7 @@
   vertical-align: middle;
 }
 
-/* Un commit qui n'a pas fait bouger la version (une preuve, un tag, un titre...) - toujours dans
+/* Un commit qui n'a pas fait bouger la version (une donnée du cahier, un tag, un titre...) - toujours dans
    l'historique complet, mais visuellement en retrait par rapport à un vrai changement de version. */
 .timeline-item.no-version-change {
   opacity: 0.7;
@@ -856,6 +856,95 @@ a.plate-row__lasermark {
   max-height: 420px;
   overflow: auto;
 }
+/* Les étapes du procédé (structure-view.js) : une pastille numérotée par étape, rouge quand le cahier a
+   des données à cette étape (comme les bulles mesurées du stepper du cahier), et le nombre de ces
+   données en bouton, qui filtre le cahier sur l'étape. */
+#process-card[hidden] {
+  display: none;
+}
+.process-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.process-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+.process-step.has-data {
+  border-color: var(--danger-tint);
+}
+.process-step__num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+}
+.process-step.has-data .process-step__num {
+  color: var(--surface);
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.process-step__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.process-step__name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.process-step__kind {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.process-step__data {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 3px 9px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-tint);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease);
+}
+.process-step__data:hover {
+  border-color: var(--danger);
+}
+.process-step__data:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
 /* une campagne : la structure devient un carrousel (référence + chaque variante) */
 .fiche-structure-carousel .atlas-carousel__stage {
   height: 290px;
@@ -919,4 +1008,440 @@ a.plate-row__lasermark {
   color: var(--text-soft);
   margin-top: 6px;
   font-weight: 600;
+}
+
+/* -- évolution des structures (pages/evolution.html, evolution.js) ---------------------------
+   Un diagramme façon git : une colonne par piste (le SVG à gauche, dessiné par d3), une rangée par
+   version (une option de liste, focalisable : flèches, Entrée), le détail dans le panneau de droite.
+   Forme du nœud = niveau du changement (plein : première ou majeur, anneau : mineur, petit point :
+   correctif, petit cercle creux : sans changement, losange : fusion) ; anneau or = porte une ref
+   (repère décoratif, le nom est aussi écrit en badge) ; anneau pointillé = dernière version. */
+
+/* `hidden` l'emporte sur les display des composants (.empty-state, .evo-banner... sont en flex) */
+.evo-banner[hidden],
+.evo-layout [hidden] {
+  display: none !important;
+}
+
+.evo-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.evo-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.evo-head__title {
+  font-size: 22px;
+  margin: 2px 0 6px;
+}
+.evo-head__lead {
+  color: var(--text-soft);
+  font-size: 13.5px;
+  max-width: 70ch;
+  margin: 0;
+}
+
+.evo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  background: var(--accent-tint);
+  border-left: 3px solid var(--navy-500);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 8px 12px;
+  margin-bottom: var(--space-4);
+  font-size: 13px;
+  color: var(--accent-dark);
+}
+.evo-banner__btn {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 12.5px;
+}
+
+.evo-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .evo-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .evo-layout .evo-panel {
+    position: static;
+    max-height: none;
+  }
+}
+
+.evo-graph-card {
+  min-width: 0;
+  overflow: hidden;
+}
+.evo-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: var(--space-5);
+}
+.evo-scroll {
+  overflow-x: auto;
+  padding: var(--space-2) 0 var(--space-3);
+}
+
+.evo-lanes {
+  position: relative;
+  height: 28px;
+  margin-left: var(--space-3);
+}
+.evo-lanes__tag {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  min-width: 20px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  color: var(--accent-dark);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+.evo-lanes__tag--inline {
+  position: static;
+  transform: none;
+  display: inline-block;
+  margin-right: 4px;
+}
+.evo-lanes__tag.is-retired {
+  background: var(--draft-tint);
+  color: var(--text-faint);
+}
+
+.evo-body {
+  position: relative;
+  margin-left: var(--space-3);
+}
+.evo-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1; /* au-dessus du fond d'une rangée survolée ou choisie */
+}
+.evo-svg .evo-edge {
+  fill: none;
+  stroke: var(--text-faint);
+  stroke-opacity: 0.55;
+  stroke-width: 2px;
+  transition: stroke var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.evo-svg .evo-edge--merge {
+  stroke-dasharray: 5 3;
+}
+.evo-svg .evo-edge.is-followed {
+  stroke: var(--navy-500);
+  stroke-opacity: 1;
+  stroke-width: 2.5px;
+}
+.evo-svg .is-dimmed {
+  opacity: 0.25;
+}
+
+.evo-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 560px;
+}
+.evo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 var(--space-4) 0 var(--evo-graph-w, 60px);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  transition: background-color var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.evo-row:hover {
+  background: var(--surface-2);
+}
+.evo-row:focus-visible {
+  outline: 2px solid var(--navy-500);
+  outline-offset: -2px;
+}
+.evo-row[aria-selected="true"] {
+  background: var(--accent-tint);
+}
+.evo-row.is-dimmed {
+  opacity: 0.45;
+}
+.evo-row__label {
+  flex: none;
+  width: 62px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-dark);
+  font-variant-numeric: tabular-nums;
+}
+.evo-row__level {
+  flex: none;
+  width: 92px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.evo-row__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evo-row__fork {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.evo-row__refs {
+  display: inline-flex;
+  gap: 4px;
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+}
+.evo-row__meta {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .evo-row__level,
+  .evo-row__meta {
+    display: none;
+  }
+}
+
+/* une ref : un badge or lisible (texte or foncé sur teinte or, 4.9:1), le même partout sur la page */
+.evo-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--gold);
+  background: var(--gold-tint);
+  color: var(--gold-dark);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.evo-compare-tag {
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--navy);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 7px;
+}
+
+.evo-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+  padding: var(--space-4) var(--space-5);
+}
+.evo-legend {
+  max-width: 520px;
+}
+.evo-lane-list ol {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+.evo-lane-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+}
+.evo-lane-list .evo-lanes__tag {
+  position: static;
+  transform: none;
+  display: inline-block;
+}
+
+.evo-panel {
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--space-4));
+  max-height: calc(100vh - var(--topbar-h) - var(--space-6));
+  overflow-y: auto;
+}
+.evo-panel__title {
+  font-size: 16px;
+  margin: 4px 0 6px;
+}
+.evo-panel__meta {
+  font-size: 12.5px;
+  color: var(--text-soft);
+  margin: 0 0 var(--space-3);
+}
+.evo-panel__section {
+  border-top: 1px solid var(--border-soft);
+  padding-top: var(--space-3);
+  margin-top: var(--space-3);
+}
+.evo-panel__section > .section-title {
+  margin-bottom: 8px;
+}
+.evo-panel__refs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.evo-panel__ref {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.evo-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.evo-icon-btn:hover {
+  border-color: var(--navy-600);
+  color: var(--navy);
+}
+.evo-icon-btn--danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.evo-inline-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+.evo-inline-form .field {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+.evo-inline-form .btn {
+  min-height: 34px;
+  padding: 6px 12px;
+  flex: none;
+}
+.evo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.evo-actions .btn {
+  justify-content: flex-start;
+}
+.evo-diff {
+  max-height: 260px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-soft);
+}
+.evo-diff div {
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}
+
+/* La conclusion cite des entrées du cahier (conclusion.js) : leurs titres sous un verdict, des cases
+   à cocher sous chaque objectif du formulaire. */
+.conclusion-cites {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.conclusion-cites:empty {
+  display: none;
+}
+.conclusion-cites__label {
+  font-weight: 600;
+}
+.conclusion-cites__missing {
+  font-style: italic;
+  color: var(--text-faint);
+}
+.conclusion-cites-form {
+  margin: 8px 0 0;
+  padding: 6px 10px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.conclusion-cites-form legend {
+  padding: 0 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+.conclusion-cites-form__list {
+  display: flex;
+  flex-direction: column;
+  max-height: 168px;
+  overflow-y: auto;
+}
+.conclusion-cite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-height: 30px;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+.conclusion-cite__tag {
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--done);
+  background: var(--done-tint);
+  border-radius: var(--radius-pill);
 }

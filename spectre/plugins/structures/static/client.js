@@ -9,11 +9,13 @@ const structuresApi = {
   listRecipes() {
     return api.get("/api/recipes");
   },
-  // body : {substrate, steps, declared_params}
+  // body : {substrate, steps, declared_params} ; chaque étape peut porter son id - la réponse
+  // ({frames, material_colors, step_ids}) donne celui de chaque étape (un neuf pour une nouvelle)
   simulate(body) {
     return api.post("/api/simulations", body);
   },
-  // body : {substrate, steps, declared_params, plan}
+  // body : {substrate, steps, declared_params, plan} ; un facteur du plan désigne son étape par
+  // step_id (l'id de l'étape, "substrate" pour le substrat)
   previewCampaign(body) {
     return api.post("/api/campaign-previews", body);
   },

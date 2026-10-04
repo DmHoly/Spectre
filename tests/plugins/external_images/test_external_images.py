@@ -242,6 +242,7 @@ def test_an_image_is_only_reached_through_its_set(client, root, tmp_path):
 
 
 def test_viewers_see_the_gallery_but_do_not_change_it(client, root):
+    signup(client, "admin@example.com")  # le premier compte est admin : il a accès à tout µprojet
     signup(client, "viewer-gallery@example.com", name="V")
     slug, line = _setup(client, "owner-gallery@example.com")
     created = create_image_set(client, slug, line, png_files(root))

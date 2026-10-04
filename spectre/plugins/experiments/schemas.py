@@ -65,6 +65,9 @@ class ObjectiveResultInput(BaseModel):
     objective: str
     status: Literal["met", "not_met", "partially_met", "inconclusive"]
     observed: follow.Quantity | None = None
+    # les entrées du cahier de données qui appuient ce verdict (leurs ids ; le nom est celui du champ
+    # de Follow, ``ObjectiveResult.evidence_ids``)
+    evidence_ids: list[str] = []
     reasoning: str | None = None
 
 
@@ -99,4 +102,8 @@ class RefRequest(BaseModel):
     experiment_id: str
     version_id: str | None = None  # the tip of experiment_id when left out
     name: str | None = None  # a nickname ; « ref vX.Y.Z » when left blank
+
+
+class RefChanges(BaseModel):
+    name: str | None = None  # the new name ; left out, nothing changes
 

@@ -5,8 +5,8 @@ son ``ETag`` ; toute écriture accepte ``If-Match`` (412 si la piste a avancé, 
 renvoie l'étude à jour avec son nouvel ``ETag``. Le domaine est dans :mod:`.service` ; ici, on lit
 la requête et on sérialise.
 
-Le détail d'une étude ne porte que le nombre de ses preuves : elles se lisent dans le plugin evidence
-(``GET .../experiments/{experiment_id}/evidence``).
+Le détail d'une étude ne porte que le nombre d'entrées de son cahier de données : elles se lisent
+dans le plugin notebook (``GET .../experiments/{experiment_id}/notebook-entries``).
 La page d'une étude (``page_router``) redirige un ancien lien vers un id de version sur sa piste.
 """
 
@@ -30,6 +30,7 @@ from ..microprojects.service import Microproject
 from ..structures import campaigns, kinds
 from . import refs, service, versioning
 from .lineage import lineage_graph
+from .lineage import structure_history as lineage_structure_history
 from .repository import CONCLUDED_STATUSES, RUNNING_STATUSES, branch_tips, display_status, get_repository, hold_of
 from .schemas import (
     ConclusionRequest,
@@ -37,6 +38,7 @@ from .schemas import (
     EntitiesRequest,
     EvolveRequest,
     MergeRequest,
+    RefChanges,
     RefRequest,
     StatusRequest,
     StructureImagesRequest,
@@ -103,7 +105,9 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         # a structure given as pictures: [{image_id, kind, caption, url}, ...] in reading order
         "structure_images": kinds.structure_images_payload(slug, version.structure_type, version.structure),
         "has_editable_process": "structureforge_process" in version.metadata,
-        "evidence_count": len(version.evidence),
+        # le cahier de données se lit dans le plugin notebook (GET .../notebook-entries) : ici, son
+        # nombre d'entrées seulement (toutes, y compris celles d'autres plaques)
+        "notebook_count": len(service.notebook_entry_ids(version)),
         "physical_tracking": version.metadata.get("physical_tracking", []),
         "form_answers": dict(version.form_answers),
     }
@@ -349,8 +353,10 @@ def merge_experiments(
 def experiment_process(
     experiment_id: str, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
 ) -> dict:
-    """Le procédé éditable (substrat et étapes) d'une version - la pointe par défaut."""
-    process = service.version_of(get_repository(microproject.slug), experiment_id, version).metadata.get("structureforge_process")
+    """Le procédé éditable (substrat et étapes) d'une version - la pointe par défaut. Chaque étape
+    porte son ``id`` stable (:func:`service.step_ids_of`), que le constructeur renvoie à l'évolution."""
+    repo = get_repository(microproject.slug)
+    process = service.editable_process(repo, service.version_of(repo, experiment_id, version))
     if process is None:
         raise NotFound("Cette expérience n'a pas de procédé éditable enregistré.", code="no_process")
     return process
@@ -378,7 +384,7 @@ def structure_diff(
         if not against_experiment:
             raise InvalidInput("Choisissez l'expérience de l'autre µprojet à comparer.", code="against_experiment_required")
         other = get_microproject(against_microproject)
-        if microprojects.role_for(other.id, user.id) is None:
+        if microprojects.effective_role(user, other) is None:
             raise Forbidden("Vous n'avez pas accès à cet autre µprojet.")
         target_repo, target_microproject = get_repository(other.slug), other
     if against_experiment:
@@ -432,11 +438,51 @@ def list_refs(microproject: Microproject = Depends(require_role("viewer"))) -> d
     return refs.ref_graph(get_repository(microproject.slug))
 
 
+def _ref_url(slug: str, name: str) -> str:
+    return f"/api/microprojects/{slug}/refs/{quote(name, safe='')}"
+
+
 @router.post("/refs", status_code=201)
-def create_ref(body: RefRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+def create_ref(body: RefRequest, response: Response, microproject: Microproject = Depends(require_role("editor"))) -> dict:
     """Marque une version (la pointe de la piste par défaut) comme ref : ``name`` (un surnom), ou
-    « ref vX.Y.Z ». 422 pour un nom avec « / », 409 pour un nom déjà pris."""
-    return service.create_ref(microproject.slug, body.experiment_id, body.version_id, body.name)
+    « ref vX.Y.Z ». 422 pour un nom avec « / », 409 pour un nom déjà pris. ``Location`` : la ref."""
+    ref = service.create_ref(microproject.slug, body.experiment_id, body.version_id, body.name)
+    created(response, _ref_url(microproject.slug, ref["name"]))
+    return ref
+
+
+@router.get("/refs/{ref_name}")
+def get_ref(ref_name: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    """La ref ``ref_name`` : sa version (``names`` : tous les noms posés dessus) et ``name``."""
+    return refs.get_ref(get_repository(microproject.slug), ref_name)
+
+
+@router.patch("/refs/{ref_name}")
+def rename_ref(ref_name: str, body: RefChanges, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+    """Renomme la ref (sa version ne change pas) : 409 pour un nom déjà pris, 422 pour un nom vide
+    ou avec « / »."""
+    if body.name is None:
+        return refs.get_ref(get_repository(microproject.slug), ref_name)
+    return service.rename_ref(microproject.slug, ref_name, body.name)
+
+
+@router.delete("/refs/{ref_name}", status_code=204)
+def delete_ref(ref_name: str, microproject: Microproject = Depends(require_role("editor"))) -> Response:
+    """Retire la ref ; la version, elle, reste."""
+    service.delete_ref(microproject.slug, ref_name)
+    return Response(status_code=204)
+
+
+# -- l'évolution des structures --------------------------------------------------------------------
+
+
+@router.get("/structure-history")
+def structure_history(all_versions: bool = False, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    """``{lanes, nodes, edges}`` : les versions du µprojet piste par piste, telles que la page
+    « Évolution des structures » les dessine (:func:`~.lineage.structure_history`) - par défaut
+    les versions structurelles (majeures, mineures), celles qui portent une ref, les fusions et le
+    début de chaque piste ; ``all_versions=true`` ajoute les versions légères."""
+    return lineage_structure_history(get_repository(microproject.slug), all_versions=all_versions)
 
 
 # -- la page d'une étude ---------------------------------------------------------------------------
@@ -468,7 +514,7 @@ def legacy_version_page(slug: str, version_id: str, request: Request) -> Redirec
         return RedirectResponse(f"/connexion?suite={quote(request.url.path)}", status_code=302)
     try:
         microproject = microprojects.get_by_slug(slug)
-        if microprojects.role_for(microproject.id, user.id) is None:
+        if microprojects.effective_role(user, microproject) is None:
             raise NotFound("µprojet introuvable")
         repo = get_repository(slug)
         experiment_id = service.experiment_of_version(repo, version_id)
@@ -476,6 +522,13 @@ def legacy_version_page(slug: str, version_id: str, request: Request) -> Redirec
         return RedirectResponse(f"/microprojets/{slug}", status_code=302)
     query = "" if repo.branches.get(experiment_id) == version_id else f"?version={version_id}"
     return RedirectResponse(f"/microprojets/{slug}/experiences/{experiment_id}{query}", status_code=302)
+
+
+@page_router.get("/microprojets/{slug}/refs")
+def legacy_refs_page(slug: str) -> RedirectResponse:
+    """L'ancienne page des refs : remplacée par « Évolution des structures », qui les montre sur
+    le diagramme des pistes."""
+    return RedirectResponse(f"/microprojets/{quote(slug, safe='')}/evolution", status_code=302)
 
 
 # Les lectures transverses (statistiques et frise, insights_api.py) vivent sous /api, hors du préfixe

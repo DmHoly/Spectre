@@ -49,6 +49,15 @@ function stripBrickTag(step) {
   return rest;
 }
 
+// L'id d'une étape (step.id) vient toujours du serveur : le procédé relu (GET .../process), ou la
+// simulation qui suit l'ajout d'une étape (adoptStepIds, simulation.js). Le constructeur le garde
+// tel quel (déplacement, édition, annuler/rétablir) et ne l'invente jamais : une copie (étape
+// dupliquée, brique insérée, étapes d'un modèle) part sans id, le serveur lui en donne un neuf.
+function withoutStepId(step) {
+  const { id, ...rest } = step;
+  return rest;
+}
+
 // Un « trou » d'insertion `gap` (0..n, avant l'étape d'index `gap`) tombe-t-il à l'intérieur d'une
 // brique (entre deux de ses étapes) ? Renvoie alors son identifiant, sinon null.
 function brickGroupInsideGap(gap) {
@@ -214,7 +223,7 @@ function insertBrickAt(brick, at = defaultInsertIndex()) {
   clearError();
   const target = snapGapOutsideBricks(at, true);
   const groupId = generateBrickGroupId();
-  const copied = JSON.parse(JSON.stringify(brick.steps)).map((s) => ({ ...stripBrickTag(s), brick_group_id: groupId, brick_name: brick.name }));
+  const copied = JSON.parse(JSON.stringify(brick.steps)).map((s) => ({ ...withoutStepId(stripBrickTag(s)), brick_group_id: groupId, brick_name: brick.name }));
   state.collapsedBrickGroups.add(groupId);
   insertSteps(target, copied);
   state.selectedBrickGroup = groupId;
@@ -263,7 +272,9 @@ function moveBlockToGap(start, end, gap) {
 
 function duplicateStep(index) {
   if (index < 0 || index >= state.steps.length) return;
-  const copy = JSON.parse(JSON.stringify(state.steps[index])); // garde l'étiquette de brique : la copie atterrit juste après, le bracket reste contigu
+  // garde l'étiquette de brique : la copie atterrit juste après, le bracket reste contigu ; pas
+  // l'id : c'est une nouvelle étape
+  const copy = withoutStepId(JSON.parse(JSON.stringify(state.steps[index])));
   insertSteps(index + 1, [copy]);
 }
 
@@ -343,7 +354,7 @@ async function groupSelectionIntoBrick() {
     return;
   }
   try {
-    const selectedSteps = indices.map((idx) => stripBrickTag(state.steps[idx]));
+    const selectedSteps = indices.map((idx) => withoutStepId(stripBrickTag(state.steps[idx])));
     const created = await processLibraryApi.createTechBrick({
       name,
       steps: selectedSteps,
@@ -392,8 +403,8 @@ function substrateChipHtml() {
   const variations = state.wizardScreen === "variations";
   const selected = variations ? variationEditingStepIndex === -1 : state.selectedIndex === -1 && !hasMultiSelection() && !state.selectedBrickGroup;
   const color = state.materialColors[substrate.material];
-  const factorCount = variations ? state.variationFactors.filter((f) => f.step_index === -1).reduce((acc, f) => acc * f.values.length, 1) : 1;
-  const hasFactor = variations && state.variationFactors.some((f) => f.step_index === -1);
+  const factorCount = variations ? factorsOnStep(-1).reduce((acc, f) => acc * f.values.length, 1) : 1;
+  const hasFactor = variations && factorsOnStep(-1).length > 0;
   return `
     <div class="sb-chip sb-chip--substrate ${selected ? "is-selected" : ""}" role="button" id="sb-chip--1" data-index="-1"
          tabindex="${selected ? 0 : -1}" aria-pressed="${selected}" title="Substrat : ${escapeHtml(substrate.material)}">
@@ -418,8 +429,8 @@ function stepChipHtml(i) {
   const dim = variations && !isVariableTarget(i);
   const material = stepMaterial(step);
   const color = material ? state.materialColors[material] : null;
-  const factorCount = variations ? state.variationFactors.filter((f) => f.step_index === i).reduce((acc, f) => acc * f.values.length, 1) : 1;
-  const hasFactor = variations && state.variationFactors.some((f) => f.step_index === i);
+  const factorCount = variations ? factorsOnStep(i).reduce((acc, f) => acc * f.values.length, 1) : 1;
+  const hasFactor = variations && factorsOnStep(i).length > 0;
   const declared = step.declaredParams && step.declaredParams.length;
   const title = dim ? `${step.name} - aucun paramètre à faire varier sur ce type d'étape` : `${def.label} — ${step.name}\n${stepSummary(step)}`;
   return `

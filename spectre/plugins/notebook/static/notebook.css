@@ -1,12 +1,17 @@
 /* Cahier de données d'une expérience et graphiques DataViz. */
 
 /* -- cahier de données (onglet Données de la fiche, notebook/static/notebook.js) ------------------------
-   Une vue par carte : en-tête (titre, type de données, plaques, date des données), puis le
-   graphique à gauche et les observations à droite. Les graphiques eux-mêmes : notebook/static/dataviz/. */
+   Une entrée par carte : en-tête (titre, type, plaques, objectif), le stepper du procédé, puis ses
+   mesures côte à côte à gauche et les observations à droite. Les graphiques eux-mêmes :
+   notebook/static/dataviz/. */
 
 .nb-card [hidden],
 .nb-dialog [hidden] {
   display: none !important;
+}
+/* un clic sur un badge de la vue du procédé y amène : sous la barre du haut, collante */
+.nb-card {
+  scroll-margin-top: calc(var(--topbar-h) + 16px);
 }
 .nb-card__head {
   display: flex;
@@ -122,8 +127,9 @@
   color: var(--navy);
   border-color: var(--navy-500);
 }
-.nb-btn[aria-expanded="true"] {
-  color: #fff;
+.nb-btn[aria-expanded="true"],
+.nb-btn[aria-pressed="true"] {
+  color: var(--surface);
   background: var(--navy);
   border-color: var(--navy);
 }
@@ -144,25 +150,6 @@
 .nb-btn:focus-visible {
   outline: none;
   box-shadow: var(--ring);
-}
-.nb-entry__settings {
-  padding: 12px 16px;
-  background: var(--accent-tint);
-  border-bottom: 1px solid var(--border-soft);
-}
-.nb-settings__row {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1.4fr) auto;
-  gap: 10px;
-  align-items: end;
-}
-.nb-settings__options {
-  margin-top: 10px;
-}
-.nb-settings__actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
 }
 .nb-entry__body {
   display: grid;
@@ -215,7 +202,7 @@
   color: var(--text-faint);
 }
 
-/* fenêtre « Ajouter une vue » */
+/* fenêtre « Ajouter une donnée » / « Modifier la donnée » (entry-dialog.js) */
 .nb-dialog {
   width: min(1180px, 96vw);
   max-width: none;
@@ -275,7 +262,7 @@
   height: 22px;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: #fff;
+  color: var(--surface);
   background: var(--navy);
   border-radius: 50%;
 }
@@ -654,6 +641,587 @@
   box-shadow: var(--shadow-lift);
   pointer-events: none;
 }
+/* -- le stepper du procédé (stepper.js) : une bulle par étape, reliées par un trait ; mesurée : pleine,
+   rouge ; retirée : en pointillés. Seul le stepper défile en largeur réduite. -- */
+.stepper {
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: thin;
+}
+.stepper__track {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.stepper__item {
+  position: relative;
+  flex: 1 0 84px;
+  max-width: 132px;
+  display: flex;
+  justify-content: center;
+}
+.stepper__item + .stepper__item::before {
+  content: "";
+  position: absolute;
+  top: 17px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+}
+.stepper__item.is-retired::before {
+  background: none;
+  border-top: 2px dashed var(--border);
+}
+.stepper__bubble {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 4px 2px;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+.stepper__dot {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.stepper__label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--text-soft);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.stepper__item.is-measured .stepper__dot {
+  color: var(--surface);
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.stepper__item.is-measured .stepper__label {
+  font-weight: 600;
+  color: var(--danger);
+}
+.stepper__item.is-retired .stepper__dot {
+  border-style: dashed;
+}
+.stepper__item.is-retired .stepper__label {
+  font-style: italic;
+}
+.stepper--selectable .stepper__bubble {
+  min-height: 52px;
+  cursor: pointer;
+}
+.stepper--selectable .stepper__bubble:hover .stepper__dot {
+  border-color: var(--danger);
+}
+.stepper--selectable .stepper__bubble:focus-visible {
+  outline: 2px solid var(--navy-500);
+  outline-offset: 0;
+}
+.stepper__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* -- une entrée : stepper, mesures côte à côte (avant / après), interprétation -- */
+.nb-chip--prism {
+  color: var(--running);
+  background: var(--running-tint);
+}
+.nb-entry__steps {
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.nb-entry__unsituated {
+  margin: 0 0 4px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--text-faint);
+  text-align: center;
+}
+.nb-measures {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(260px, 1fr);
+  overflow-x: auto;
+}
+.nb-measure {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.nb-measure + .nb-measure {
+  margin-left: var(--space-4);
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--border-soft);
+}
+.nb-measure__step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--danger);
+}
+.nb-measure__step.is-retired {
+  font-style: italic;
+  color: var(--text-soft);
+}
+.nb-measure__dot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--surface);
+  background: var(--danger);
+  border-radius: 50%;
+}
+.nb-measure__step.is-retired .nb-measure__dot {
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1.5px dashed var(--border);
+}
+.nb-measure__viz {
+  min-width: 0;
+}
+.nb-measure__src {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.nb-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.nb-value__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+.nb-value__number {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--navy);
+}
+.nb-value__unit {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.nb-figures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.nb-figures[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.nb-figure {
+  min-width: 0;
+  margin: 0;
+}
+.nb-figure__frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+.nb-figure__frame img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  user-select: none;
+}
+.nb-figure__frame.is-drawing {
+  cursor: crosshair;
+  touch-action: none;
+}
+.nb-annots {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.nb-annot line,
+.nb-annot rect {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.nb-annot polygon {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.nb-annot--box rect:not(.nb-annot__halo) {
+  fill: var(--accent);
+  fill-opacity: 0.16;
+}
+.nb-annot .nb-annot__halo {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 4;
+}
+.nb-figure__caption {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.nb-annot-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.nb-annot-remove {
+  min-width: 24px;
+  min-height: 24px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.nb-annot-remove:hover {
+  color: var(--danger);
+}
+.nb-annot-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.nb-annot-tools .btn {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.nb-annot-hint {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.nb-files,
+.nb-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nb-file,
+.nb-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.nb-file svg,
+.nb-link svg {
+  flex: none;
+  color: var(--navy);
+}
+.nb-file__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nb-file__size {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.nb-file.is-uploading {
+  opacity: 0.7;
+}
+.nb-link__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.nb-link__text a {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nb-link__url {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nb-interpretation {
+  margin-top: var(--space-3);
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.nb-interpretation .nb-note-text {
+  margin: 4px 0 0;
+}
+
+/* -- autres plaques, filtre sur une étape -- */
+.nb-others {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+.nb-others > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-height: 44px;
+  padding: 11px 16px;
+  cursor: pointer;
+}
+.nb-others__title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--navy);
+}
+.nb-others__count {
+  padding: 0 7px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: var(--accent-tint);
+  border-radius: var(--radius-pill);
+}
+.nb-others__help {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.nb-others > .nb-entries {
+  padding: 0 12px 12px;
+}
+.nb-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--danger-tint);
+  border-left: 3px solid var(--danger);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.nb-filter .btn {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 12.5px;
+}
+
+/* -- boîte d'ajout : type, étapes, une mesure par étape -- */
+.nb-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.nb-source:has(input:disabled) {
+  cursor: default;
+  opacity: 0.6;
+}
+.nb-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+  padding: 0;
+  list-style: none;
+}
+.nb-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.nb-slot__step {
+  flex: 1 1 220px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.nb-slot__state {
+  color: var(--text-faint);
+}
+.nb-slot.is-loaded .nb-slot__state {
+  color: var(--done);
+}
+.nb-measure-forms {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.nb-mform {
+  min-width: 0;
+  margin: 0;
+  padding: 10px 14px 14px;
+  border: 1.5px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  transition: border-color var(--dur) var(--ease);
+}
+.nb-mform.is-active {
+  border-color: var(--navy-500);
+}
+.nb-mform__legend {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--danger);
+}
+.nb-mform.is-retired .nb-mform__legend {
+  font-style: italic;
+  color: var(--text-soft);
+}
+.nb-mform__dot {
+  width: 10px;
+  height: 10px;
+  background: var(--danger);
+  border-radius: 50%;
+}
+.nb-mform__dot.is-unsituated {
+  background: var(--text-faint);
+}
+.nb-mform__drop-unsituated {
+  margin-bottom: 8px;
+}
+.nb-mform__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+.nb-mform__field {
+  min-width: 0;
+}
+.nb-mform__field--wide {
+  grid-column: 1 / -1;
+}
+.nb-mform__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+.nb-value-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.8fr);
+  gap: 6px;
+}
+.nb-mform__table {
+  font-size: 12px;
+  white-space: pre;
+}
+.nb-table-preview {
+  margin-top: 6px;
+}
+.nb-table-preview .viz-table-wrap {
+  max-height: 220px;
+}
+.nb-table-error {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+.nb-mform .nb-files {
+  margin-bottom: 6px;
+}
+.nb-mform__add {
+  min-height: 34px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+}
+.nb-links-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.nb-link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) auto;
+  gap: 6px;
+}
+.nb-reading {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+.nb-reading__wide {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 860px) {
   .nb-entry__body,
   .nb-preview {
@@ -663,11 +1231,19 @@
     border-left: none;
     border-top: 1px solid var(--border-soft);
   }
-  .nb-settings__row {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .nb-entry__head,
   .nb-card__head {
     flex-wrap: wrap;
+  }
+  .nb-mform__grid,
+  .nb-reading,
+  .nb-figures {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .nb-link-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .nb-link-row [data-link-url] {
+    grid-column: 1;
   }
 }

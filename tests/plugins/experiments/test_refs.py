@@ -6,8 +6,24 @@ same condensed-edges algorithm applied to branch tips instead of refs.
 
 from __future__ import annotations
 
-from support.experiments import conclude, create_ref, evolve, get_experiment, launch, launch_campaign, refs, tag
-from support.microprojects import signup_with_microproject
+from support.experiments import (
+    conclude,
+    create_ref,
+    delete_ref,
+    evolve,
+    get_experiment,
+    get_ref,
+    launch,
+    launch_campaign,
+    patch_ref,
+    ref_url,
+    refs,
+    rename_ref,
+    structure_history,
+    tag,
+)
+from support.http import assert_handler_404
+from support.microprojects import join_as, signup_with_microproject
 from support.structures import campaign_plan, etch, steps
 
 REFS = "/api/microprojects/{}/refs"
@@ -138,3 +154,110 @@ def test_ref_list_exposes_the_conclusion_decision(client):
 
     items = refs(client, slug)["refs"]
     assert items[0]["decision"] == "inconclusive"  # for the "Non concluante" badge nuance
+
+
+# -- une ref : la lire, la renommer, la retirer (page « Évolution des structures ») ----------------
+
+
+def test_creating_a_ref_points_to_it(client):
+    slug = signup_with_microproject(client, "refs-location@example.com")
+    launched = _launch_reference(client, slug)
+
+    response = client.post(REFS.format(slug), json={"experiment_id": launched["id"], "name": "omega"})
+    assert response.status_code == 201
+    assert response.headers["location"] == f"/api/microprojects/{slug}/refs/omega"
+    assert response.json()["name"] == "omega"
+    assert client.get(response.headers["location"]).json() == response.json()
+
+    # un nom par défaut, avec une espace : l'adresse l'encode, la lecture le rend tel quel
+    other = evolve(client, slug, launched["id"], title="Reference", intent="x", steps=steps(30))
+    default = client.post(REFS.format(slug), json={"experiment_id": launched["id"]})
+    assert default.headers["location"] == f"/api/microprojects/{slug}/refs/ref%20v1.1.0"
+    ref = get_ref(client, slug, "ref v1.1.0")
+    assert (ref["name"], ref["version_id"], ref["experiment_id"], ref["version"]) == ("ref v1.1.0", other["version_id"], launched["id"], "1.1.0")
+
+
+def test_an_unknown_ref_is_404(client):
+    slug = signup_with_microproject(client, "refs-unknown@example.com")
+    _launch_reference(client, slug)
+    assert_handler_404(client.get(ref_url(slug, "inconnue")))
+    assert_handler_404(patch_ref(client, slug, "inconnue", "autre"))
+    assert_handler_404(delete_ref(client, slug, "inconnue"))
+
+
+def test_an_editor_renames_a_ref_and_its_version_stays(client):
+    slug = signup_with_microproject(client, "refs-rename@example.com")
+    launched = _launch_reference(client, slug)
+    create_ref(client, slug, launched["id"], "omega")
+
+    renamed = rename_ref(client, slug, "omega", "  banane  ")
+    assert renamed["name"] == "banane"
+    assert renamed["names"] == ["banane", "ref v1.0.0"]
+    assert renamed["version_id"] == launched["version_id"]
+    assert_handler_404(client.get(ref_url(slug, "omega")))
+    assert get_experiment(client, slug, launched["id"])["ref_names"] == ["banane", "ref v1.0.0"]
+    assert structure_history(client, slug)["nodes"][0]["refs"] == ["banane", "ref v1.0.0"]
+
+    # le même nom : rien ne change ; sans nom : rien non plus
+    assert rename_ref(client, slug, "banane", "banane")["name"] == "banane"
+    assert patch_ref(client, slug, "banane", None).json()["name"] == "banane"
+
+
+def test_renaming_a_ref_to_a_taken_or_invalid_name_is_refused(client):
+    slug = signup_with_microproject(client, "refs-rename-refused@example.com")
+    a = _launch_reference(client, slug, title="A")
+    b = _launch_reference(client, slug, title="B")
+    create_ref(client, slug, b["id"], "omega")
+
+    assert patch_ref(client, slug, "omega", "ref v1.0.0").status_code == 409  # une autre ref
+    assert patch_ref(client, slug, "omega", a["id"]).status_code == 409  # une piste
+    for invalid in ("omega/2", "", "  ", "..", "exp_0123456789abcdef"):
+        assert patch_ref(client, slug, "omega", invalid).status_code == 422, invalid
+    assert get_ref(client, slug, "omega")["version_id"] == b["version_id"]
+
+
+def test_a_new_ref_cannot_take_the_form_of_a_version_id(client):
+    slug = signup_with_microproject(client, "refs-version-form@example.com")
+    launched = _launch_reference(client, slug)
+    response = client.post(REFS.format(slug), json={"experiment_id": launched["id"], "name": "exp_0123456789abcdef"})
+    assert response.status_code == 422
+
+
+def test_an_editor_removes_a_ref_and_the_version_stays(client):
+    slug = signup_with_microproject(client, "refs-delete@example.com")
+    launched = _launch_reference(client, slug)
+    create_ref(client, slug, launched["id"], "omega")
+
+    response = delete_ref(client, slug, "omega")
+    assert response.status_code == 204 and response.content == b""
+    assert_handler_404(client.get(ref_url(slug, "omega")))
+    assert get_experiment(client, slug, launched["id"])["version_id"] == launched["version_id"]
+    assert delete_ref(client, slug, "ref v1.0.0").status_code == 204
+    assert refs(client, slug)["refs"] == []
+    # la version reste dans l'historique, sans ref
+    assert structure_history(client, slug)["nodes"][0]["refs"] == []
+
+
+def test_a_viewer_reads_refs_but_cannot_rename_or_remove_them(client):
+    slug = signup_with_microproject(client, "refs-owner@example.com", name="Owner")
+    launched = _launch_reference(client, slug)
+    create_ref(client, slug, launched["id"], "omega")
+
+    join_as(client, slug, "refs-viewer@example.com", owner="refs-owner@example.com", role="viewer")
+    assert get_ref(client, slug, "omega")["name"] == "omega"
+    assert patch_ref(client, slug, "omega", "banane").status_code == 403
+    assert delete_ref(client, slug, "omega").status_code == 403
+    assert client.post(REFS.format(slug), json={"experiment_id": launched["id"], "name": "x"}).status_code == 403
+
+    join_as(client, slug, "refs-editor@example.com", owner="refs-owner@example.com", role="editor")
+    assert rename_ref(client, slug, "omega", "banane")["name"] == "banane"
+    assert delete_ref(client, slug, "banane").status_code == 204
+
+
+def test_the_old_refs_page_redirects_to_the_structure_evolution(client):
+    slug = signup_with_microproject(client, "refs-page@example.com")
+    response = client.get(f"/microprojets/{slug}/refs", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"] == f"/microprojets/{slug}/evolution"
+    page = client.get(f"/microprojets/{slug}/evolution")
+    assert page.status_code == 200 and "Évolution des structures" in page.text

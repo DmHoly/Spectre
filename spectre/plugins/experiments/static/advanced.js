@@ -1,5 +1,5 @@
 /* « Actions avancées », pour un éditeur sur la dernière version : combiner une autre étude du µprojet
-   dans celle-ci (sa structure reste, l'historique et les preuves de l'autre la rejoignent) et
+   dans celle-ci (sa structure reste, l'historique et le cahier de données de l'autre la rejoignent) et
    supprimer la piste. Les préconditions sont celles du serveur : un refus (409 : une autre piste en
    découle...) s'affiche tel quel. */
 

@@ -26,3 +26,9 @@ def create_thematic(client: Any, area_slug: str, name: str, **fields: Any) -> di
 def create_objective(client: Any, area_slug: str, title: str, **fields: Any) -> dict:
     """Un objectif du projet (``weight``, ``target``, ``validated_by``...) - renvoie l'objectif."""
     return assert_created(client.post(f"/api/areas/{area_slug}/objectives", json={"title": title, **fields}))
+
+
+def set_area_team(client: Any, area_slug: str, team_slug: str | None) -> dict:
+    """Rattache le projet à l'équipe ``team_slug`` (``None`` : à aucune) - réservé à
+    l'administrateur : PATCH /api/areas/{area_slug} {team}. Renvoie le projet."""
+    return assert_ok(client.patch(f"/api/areas/{area_slug}", json={"team": team_slug}))

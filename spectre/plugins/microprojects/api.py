@@ -2,6 +2,10 @@
 router sits behind :func:`spectre.plugins.microprojects.deps.require_role` for a microproject
 resolved here. The invitation a signup link carries: :mod:`.invitations_api`.
 
+Each µprojet says what the caller may do in it - ``role`` (the effective one), ``role_source``
+(``membership``, ``team_manager`` or ``admin``), ``can_edit`` and ``can_manage`` - so the front
+computes nothing (:func:`service.access`).
+
 The experiment counts of a list of µprojets are not computed here: the front composes them from
 ``GET /api/experiment-stats`` (plugin experiments).
 """
@@ -24,7 +28,7 @@ from ..areas import service as areas
 from . import service as microprojects
 from .deps import require_role
 from .invitations_api import router as invitations_router
-from .service import Invitation, Microproject
+from .service import Access, Invitation, Microproject
 
 router = APIRouter(prefix="/api", tags=["microprojects"])
 router.include_router(invitations_router)
@@ -74,8 +78,8 @@ class _Places:
         return self._ref(self._thematics.get(microproject.thematic_id))
 
 
-def _payloads(rows: list[tuple[Microproject, str | None]]) -> list[dict]:
-    """``(µprojet, rôle de l'appelant)`` -> la ressource complète."""
+def _payloads(rows: list[tuple[Microproject, Access]]) -> list[dict]:
+    """``(µprojet, droits de l'appelant)`` -> la ressource complète."""
     places = _Places()
     owners = microprojects.owners_by_microproject([microproject.id for microproject, _ in rows])
     return [
@@ -85,17 +89,20 @@ def _payloads(rows: list[tuple[Microproject, str | None]]) -> list[dict]:
             "code": microproject.code,
             "name": microproject.name,
             "description": microproject.description,
-            "role": role,
+            "role": access.role,
+            "role_source": access.source,
+            "can_edit": access.at_least("editor"),
+            "can_manage": access.at_least("owner"),
             "area": places.area(microproject),
             "thematic": places.thematic(microproject),
             "owners": owners[microproject.id],
         }
-        for microproject, role in rows
+        for microproject, access in rows
     ]
 
 
 def _payload(microproject: Microproject, user: User) -> dict:
-    return _payloads([(microproject, microprojects.role_for(microproject.id, user.id))])[0]
+    return _payloads([(microproject, microprojects.access(user, microproject))])[0]
 
 
 def _summaries(found: list[Microproject]) -> list[dict]:
@@ -142,8 +149,9 @@ def list_microprojects(
     limit: int = Query(8, ge=1, le=50),
     code: str | None = Query(None, max_length=40),
 ) -> list[dict]:
-    """The caller's µprojets (``scope=all``: every µprojet, admins only), of one project and one of
-    its thématiques with ``area`` / ``thematic``. ``q`` (by number or name, best first, at most
+    """The caller's µprojets - those they are a member of, and those of the teams they manage -
+    (``scope=all``: every µprojet, admins only), of one project and one of its thématiques with
+    ``area`` / ``thematic``. ``q`` (by number or name, best first, at most
     ``limit``) and ``code`` (a number however it's typed) look across the whole company and return
     reduced fields - they combine with no other filter."""
     if q is not None or code is not None:
@@ -159,10 +167,11 @@ def list_microprojects(
     if scope == "all":
         if not user.is_admin:
             raise Forbidden("la liste de tous les µprojets est réservée à un administrateur")
-        roles = {microproject.id: role for microproject, role in microprojects.list_for_user(user.id)}
-        rows = [(microproject, roles.get(microproject.id)) for microproject in microprojects.list_all()]
+        everything = microprojects.list_all()
+        found = microprojects.accesses(user, everything)
+        rows = [(microproject, found[microproject.id]) for microproject in everything]
     else:
-        rows = microprojects.list_for_user(user.id)
+        rows = microprojects.list_mine(user)
     if thematic and not area:
         raise InvalidInput("?thematic= se lit dans un projet : précisez ?area=")
     if area:
@@ -176,9 +185,10 @@ def list_microprojects(
 
 @router.post("/microprojects", status_code=201)
 def create_microproject(body: CreateMicroprojectRequest, response: Response, user: User = Depends(current_user)) -> dict:
-    microproject = microprojects.create(body.name, body.description, owner_id=user.id, area=body.area, thematic=body.thematic)
+    """In a team's project, its members and the admins only (403 ``placement_forbidden``)."""
+    microproject = microprojects.create(body.name, body.description, owner=user, area=body.area, thematic=body.thematic)
     created(response, _url(microproject))
-    return _payloads([(microproject, "owner")])[0]
+    return _payload(microproject, user)
 
 
 @router.get("/microprojects/{microproject_slug}")
@@ -188,7 +198,9 @@ def get_microproject(microproject: Microproject = Depends(require_role("viewer")
 
 @router.patch("/microprojects/{microproject_slug}")
 def update_microproject(microproject_slug: str, body: MicroprojectPatch, user: User = Depends(current_user)) -> dict:
-    """Rename it, or move it to another project / thématique - its owners and the admins."""
+    """Rename it, or move it to another project / thématique - the ``owner`` role (its owners, the
+    managers of its team, the admins); into a team's project, also one of its members or an admin
+    (403 ``placement_forbidden``)."""
     return _payload(microprojects.update(microproject_slug, user, body.model_dump(exclude_unset=True)), user)
 
 

@@ -57,5 +57,6 @@ def test_listing_every_microproject_is_admin_only(client):
 
     assert client.get("/api/microprojects", params={"scope": "all"}).status_code == 403
     login(client, "boss@example.com")
-    every = {p["slug"]: p["role"] for p in client.get("/api/microprojects", params={"scope": "all"}).json()}
-    assert every == {"a": "owner", "b": None}  # le rôle de l'admin, qui n'est pas membre de « B »
+    every = {p["slug"]: (p["role"], p["role_source"]) for p in client.get("/api/microprojects", params={"scope": "all"}).json()}
+    # l'admin a le rôle owner partout, même dans « B » dont il n'est pas membre
+    assert every == {"a": ("owner", "membership"), "b": ("owner", "admin")}

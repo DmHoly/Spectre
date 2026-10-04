@@ -1,5 +1,5 @@
 """Fichiers téléversés d'un µprojet (:mod:`spectre.plugins.attachments.store`) : une image envoyée
-avant la structure ou la preuve qui l'affichera, ses métadonnées et ses octets.
+avant la structure ou l'entrée du cahier qui l'affichera, ses métadonnées et ses octets.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ def upload_attachment(
     user: User = Depends(current_user),
 ) -> dict:
     """Upload a file ahead of what will show it (``purpose`` : ``structure`` - a picture of a
-    structure given as images - or ``evidence`` - a picture pasted in a preuve), so the page can
-    show it straight from the server and the launch itself stays plain JSON. A file nothing ends
-    up using just stays there, like a detached attachment."""
+    structure given as images - or ``notebook`` - a picture or a document of an entry of the data
+    notebook), so the page can show it straight from the server and the write itself stays plain
+    JSON. A file nothing ends up using just stays there, like a detached attachment."""
     attachment = store.save(
         microproject.slug, file.file, filename=file.filename, content_type=file.content_type, purpose=purpose, uploaded_by=user.name
     )

@@ -1,7 +1,7 @@
 /* Galerie d'images externes (jamais copiées - référencées à leur emplacement d'origine) attachées à
    une expérience ou à une variante précise d'une campagne, chaque jeu affiché à côté de la structure
    simulée pour une comparaison « conçu / mesuré ». Un panneau de la fiche (ExperiencePage.registerPanel,
-   onglet « Données »), au-dessus des preuves mais indépendant d'elles. Il reçoit le contexte de la
+   onglet « Données »), sous le cahier mais indépendant de lui. Il reçoit le contexte de la
    fiche (`galleryCtx`) à chaque montage et lit les jeux de la version affichée (externalImagesApi.list) :
    chaque image y porte son état (`ok`, `missing`, `unsupported`, `forbidden`) et son `url`.
 

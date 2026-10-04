@@ -231,7 +231,7 @@
   }
 
   // v1.2.0, « Débutée le » et « modifiée le » : le début de la version de structure affichée - pas le
-  // commit qu'on regarde (chaque étiquette ou preuve en crée un), ni le tout début de la filiation.
+  // commit qu'on regarde (chaque étiquette ou donnée du cahier en crée un), ni le tout début de la filiation.
   function renderMeta(detail) {
     const history = ctx.versions;
     const current = history.find((item) => item.version_id === detail.version_id);

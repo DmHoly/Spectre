@@ -5,7 +5,7 @@
    retire. Chaque image part aussitôt au serveur (attachmentsApi.upload, voir
    attachments/static/client.js) - la planche ne garde que son id. Partagée par la page « structure en
    image » (nouvelle expérience, évolution), la fenêtre « Modifier les images » de la fiche et le
-   formulaire de preuve (sans type d'image, en version compacte - options withKind/compact).
+   formulaire d'une entrée du cahier (sans type d'image, en version compacte - options withKind/compact).
    Coller marche partout dans la page (ou la fenêtre) tant que `isActive()` le permet : une image
    dans le presse-papiers ne se colle nulle part ailleurs, donc rien n'est volé à un champ texte.
    L'affichage d'une planche (structureBoardHtml, libellés des types) est dans
@@ -15,7 +15,7 @@ const STRUCTURE_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/we
 const STRUCTURE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const STRUCTURE_IMAGE_MAX_COUNT = 12; // spectre.plugins.structures.kinds.MAX_STRUCTURE_IMAGES
 
-// `purpose` : "structure" (une image de structure) ou "evidence" (une image collée dans une preuve).
+// `purpose` : "structure" (une image de structure) ou "notebook" (une image collée dans une entrée du cahier).
 async function uploadStructureImage(slug, file, purpose = "structure") {
   const form = new FormData();
   form.append("file", file, file.name || "image-collee.png");
@@ -61,7 +61,7 @@ function boardColumns(count) {
 
 /* Monte la planche dans `zone`. `onChange(images)` reçoit la liste à jour ({image_id, kind,
    caption}, images déjà enregistrées côté serveur seulement) ; `onError(err)` un souci d'envoi ou
-   de format. `purpose` : à quoi sert chaque image ("structure" par défaut, "evidence" pour une preuve) ; `withKind` :
+   de format. `purpose` : à quoi sert chaque image ("structure" par défaut, "notebook" pour une entrée du cahier) ; `withKind` :
    le choix du type (schéma, coupe...) sur chaque image ; `compact` : une planche plus basse, pour
    un formulaire. Renvoie {get, set, isUploading, add}. */
 function mountImageDrop(

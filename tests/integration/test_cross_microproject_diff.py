@@ -1,6 +1,6 @@
 """Comparer la structure d'une étude à celle d'une étude d'un autre µprojet (``structure-diff`` avec
-``against_microproject``), qui exige d'avoir accès aux deux. Les preuves sont testées dans
-``tests/plugins/evidence``."""
+``against_microproject``), qui exige d'avoir accès aux deux. Le cahier de données est testé
+dans ``tests/plugins/notebook``."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ def test_cross_microproject_diff(client):
 
 
 def test_cross_microproject_diff_requires_access_to_other_microproject(client):
+    signup(client, "admin@example.com")  # le premier compte est admin : il a accès à tout µprojet
     slug_c = signup_with_microproject(client, "ownerC@example.com", "Projet C", name="C")
     exp_c = launch(client, slug_c, title="Essai C")
 

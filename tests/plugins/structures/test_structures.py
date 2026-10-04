@@ -113,7 +113,7 @@ def test_campaign_preview_over_the_cap_is_refused_before_any_simulation(client, 
     monkeypatch.setattr(campaigns, "MAX_CAMPAIGN_ENTITIES", 4)
     # deux facteurs croisés : 3 x 2 = 6 variantes, au-delà du plafond
     plan = campaign_plan([10, 20, 30])
-    plan["factors"].append({"step_index": -1, "field": "thickness", "values": [40, 50]})
+    plan["factors"].append({"step_id": "substrate", "field": "thickness", "values": [40, 50]})
     response = preview_campaign(client, {"substrate": substrate(), "steps": steps(), "plan": plan})
     assert response.status_code == 422
     assert "6 variantes : 4 au maximum" in response.json()["detail"]

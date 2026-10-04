@@ -1,20 +1,20 @@
 """La liste des études et les compteurs d'un µprojet montrent une carte par piste (sa dernière
-version), pas chaque version enregistrée - une preuve, une conclusion ou une étiquette en ajoutent
+version), pas chaque version enregistrée - une donnée du cahier, une conclusion ou une étiquette en ajoutent
 une à chaque fois."""
 
 from __future__ import annotations
 
-from support.evidence import add_evidence
 from support.experiments import conclude, evolve, experiment_stats, launch, list_experiments
 from support.microprojects import signup_with_microproject
+from support.notebook import add_manual
 from support.structures import steps
 
 
-def test_evidence_then_conclusion_only_shows_the_final_version_once(client):
+def test_a_notebook_entry_then_conclusion_only_shows_the_final_version_once(client):
     slug = signup_with_microproject(client, "tips-a@example.com")
     launched = launch(client, slug, title="Etude", intent="Depart")
 
-    add_evidence(client, slug, launched["id"])
+    add_manual(client, slug, launched["id"])
     concluded = conclude(client, slug, launched["id"])
 
     listed = list_experiments(client, slug, status="all", limit=50)
@@ -28,7 +28,7 @@ def test_evidence_then_conclusion_only_shows_the_final_version_once(client):
 def test_microproject_counts_reflect_one_status_per_branch(client):
     slug = signup_with_microproject(client, "tips-b@example.com")
     launched = launch(client, slug, title="Etude", intent="Depart")
-    add_evidence(client, slug, launched["id"])
+    add_manual(client, slug, launched["id"])
     conclude(client, slug, launched["id"])
 
     [row] = experiment_stats(client, microproject=slug)

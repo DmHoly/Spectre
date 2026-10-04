@@ -116,3 +116,16 @@ def load(slug: str, snapshot_id: str) -> dict[str, Any]:
 
 def exists(slug: str, snapshot_id: str) -> bool:
     return _path(slug, snapshot_id) is not None
+
+
+def summary(dataset: dict[str, Any]) -> dict[str, Any]:
+    """Ce qu'une mesure PRISM du cahier retient de son instantané, pour se décrire sans le relire :
+    le type de données, les plaques chargées, la source, la date et le nombre de lignes."""
+    return {
+        "hook": dataset.get("hook"),
+        "hook_title": dataset.get("hook_title"),
+        "wafers": dataset.get("wafers", []),
+        "source": dataset.get("source"),
+        "fetched_at": dataset.get("fetched_at"),
+        "row_count": len(dataset.get("rows", [])),
+    }

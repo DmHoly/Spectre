@@ -6,6 +6,7 @@ version) ; ``if_match`` envoie l'en-tête ``If-Match`` (la version affichée).""
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from .http import assert_created, assert_ok
 from .structures import campaign_plan, steps, substrate
@@ -138,6 +139,11 @@ def process(client: Any, slug: str, ref: str, version: str | None = None) -> dic
     return assert_ok(client.get(f"{experiment_url(slug, ref)}/process", params={"version": version} if version else {}))
 
 
+def step_ids(client: Any, slug: str, ref: str, version: str | None = None) -> list[str]:
+    """GET /process : l'id de chaque étape du procédé, dans l'ordre."""
+    return [step["id"] for step in process(client, slug, ref, version)["steps"]]
+
+
 def structure_diff(client: Any, slug: str, ref: str, **params: Any) -> dict:
     """GET /structure-diff - ``version``, ``against_version``, ``against_experiment``, ``against_microproject``."""
     return assert_ok(client.get(f"{experiment_url(slug, ref)}/structure-diff", params=params))
@@ -162,6 +168,35 @@ def create_ref(client: Any, slug: str, ref: str, name: str | None = None, *, ver
     surnom, sinon « ref vX.Y.Z »)."""
     body = {"experiment_id": ref, **({"name": name} if name is not None else {}), **({"version_id": version_id} if version_id else {})}
     return assert_created(client.post(f"/api/microprojects/{slug}/refs", json=body))
+
+
+def ref_url(slug: str, name: str) -> str:
+    return f"/api/microprojects/{slug}/refs/{quote(name, safe='')}"
+
+
+def get_ref(client: Any, slug: str, name: str) -> dict:
+    """GET /refs/{ref_name} - la ref (``name``) et sa version."""
+    return assert_ok(client.get(ref_url(slug, name)))
+
+
+def patch_ref(client: Any, slug: str, name: str, new_name: str | None) -> Any:
+    """PATCH /refs/{ref_name} ``{name}``, tel quel (la réponse, pour en vérifier un refus)."""
+    return client.patch(ref_url(slug, name), json={"name": new_name})
+
+
+def rename_ref(client: Any, slug: str, name: str, new_name: str) -> dict:
+    return assert_ok(patch_ref(client, slug, name, new_name))
+
+
+def delete_ref(client: Any, slug: str, name: str) -> Any:
+    """DELETE /refs/{ref_name}, tel quel (204, ou le refus)."""
+    return client.delete(ref_url(slug, name))
+
+
+def structure_history(client: Any, slug: str, *, all_versions: bool | None = None) -> dict:
+    """GET /structure-history (``all_versions``) - ``{lanes, nodes, edges}``."""
+    params = {} if all_versions is None else {"all_versions": str(all_versions).lower()}
+    return assert_ok(client.get(f"/api/microprojects/{slug}/structure-history", params=params))
 
 
 def experiment_stats(client: Any, **filters: Any) -> list[dict]:

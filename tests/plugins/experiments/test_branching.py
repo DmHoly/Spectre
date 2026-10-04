@@ -4,7 +4,6 @@ de créer une fourche implicite."""
 
 from __future__ import annotations
 
-from support.evidence import add_evidence
 from support.experiments import (
     conclude,
     evolve,
@@ -17,6 +16,7 @@ from support.experiments import (
     post_evolve,
 )
 from support.microprojects import signup_with_microproject
+from support.notebook import add_manual
 from support.structures import steps
 
 
@@ -93,6 +93,6 @@ def test_writes_without_if_match_always_continue_the_tip(client):
 
     concluded = conclude(client, slug, "reference", summary="Conclu", objective_results=[])
     assert concluded["parents"] == [evolved["version_id"]]
-    add_evidence(client, slug, "reference", "Mesure ajoutee apres coup", source="profilometre")
+    add_manual(client, slug, "reference", "Mesure ajoutee apres coup", measurements=[{"text": "profilometre"}])
     assert get_experiment(client, slug, "reference")["parents"] == [concluded["version_id"]]
     assert [item["id"] for item in list_experiments(client, slug)["items"]] == ["reference"]
