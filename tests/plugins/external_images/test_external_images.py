@@ -68,6 +68,7 @@ def test_browsing_stays_inside_the_roots(client, root, tmp_path):
     assert browse(client, slug, str(tmp_path / "ailleurs")).json()["code"] == "outside_roots"
     assert browse(client, slug, str(root / "..")).json()["code"] == "outside_roots"
     assert browse(client, slug, "mesures").json()["code"] == "relative_path"
+    assert browse(client, slug, str(root) + "\x00").json()["code"] == "invalid_path"
 
 
 def test_a_network_path_outside_the_roots_is_refused_without_touching_it(client, root, monkeypatch):

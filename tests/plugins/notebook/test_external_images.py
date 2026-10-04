@@ -131,6 +131,7 @@ def test_a_path_is_checked_when_written(client, root, tmp_path):
     assert refused(str(root / ".." / "ailleurs" / "secret.png")) == (403, "outside_roots")  # « .. » ne fait pas sortir
     assert refused(r"\\serveur-inconnu\partage\coupe.png") == (403, "outside_roots")
     assert refused("mesures/tem.png") == (422, "relative_path")
+    assert refused(str(root / "ok.png") + "\x00.png") == (422, "invalid_path")
     assert refused(str(root / "absente.png")) == (422, "file_not_found")
     assert refused(str(root / "notes.txt")) == (422, "not_an_image")
     tiff = post_entry(client, slug, line, **_manual([{"path": str(root / "coupe.tif")}]))

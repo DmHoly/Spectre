@@ -331,8 +331,10 @@ déplacement de classe ne doit jamais la changer.
   pas le cahier de données, les étiquettes ni la conclusion : c'est une nouvelle étude.
 - **Combiner deux études crée une nouvelle étude** (`POST .../experiments` avec `merge_of`,
   `service.combine`) : deux versions du µprojet (la pointe de chaque piste par défaut), de deux
-  pistes différentes (422 `same_experiment`) et du même type de structure (422
-  `different_structure_kinds`), deviennent les deux parents d'une **nouvelle piste** C, construite
+  pistes différentes, et deux versions différentes (422 `same_experiment` : deux fois la même piste
+  ou la même version), chacune une version **de sa piste** et non d'avant sa fourche (422
+  `version_before_line` : l'histoire d'une piste partie d'une version contient celles d'avant), et du
+  même type de structure (422 `different_structure_kinds`), deviennent les deux parents d'une **nouvelle piste** C, construite
   par `follow.Repository.merge(a, b, branch=<C>)` : Follow sait faire un commit à deux parents sur
   une nouvelle branche (références `baseline` vers A, `merge_source` vers B). Sa structure est la
   structure combinée selon la règle de Follow sans résolution de conflit, celle d'avant : celle de A
@@ -544,7 +546,7 @@ Droits d'écriture :
 | `POST …/{ref}/statut` | `PUT …/experiments/{exp}/status` `{status, hold_reason}` |
 | `POST …/{ref}/etiquettes` | `PUT …/experiments/{exp}/tags` `{tags}` |
 | `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` |
-| `POST …/{ref}/combiner` | `POST /api/microprojects/{mp}/experiments` `{merge_of: [{experiment_id, version_id?}, {experiment_id, version_id?}], title, intent, hypothesis, entities, objectives?, context?, branch?}` → 201 + `Location` vers la **nouvelle piste** (§ 4 : deux parents, la structure de la première, cahier vide ; les deux études ne changent pas). Exactement deux études, sans `structure` ni `from_version` (422) ; une version inconnue → 404 `source_not_found` ; une étude d'un autre µprojet n'y existe pas (404), et un champ de plus dans `merge_of` (`microproject`...) est refusé (422). `POST …/experiments/{exp}/merges` **supprimée** |
+| `POST …/{ref}/combiner` | `POST /api/microprojects/{mp}/experiments` `{merge_of: [{experiment_id, version_id?}, {experiment_id, version_id?}], title, intent, hypothesis, entities, objectives?, context?, branch?}` → 201 + `Location` vers la **nouvelle piste** (§ 4 : deux parents, la structure de la première, cahier vide ; les deux études ne changent pas). Exactement deux études, sans `structure` ni `from_version` (422) ; une version inconnue → 404 `source_not_found` ; deux fois la même piste ou la même version → 422 `same_experiment` ; une version d'avant la fourche de la piste désignée → 422 `version_before_line` ; une étude d'un autre µprojet n'y existe pas (404), et un champ de plus dans `merge_of` (`microproject`...) est refusé (422). `POST …/experiments/{exp}/merges` **supprimée** |
 | `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=` (chaque étape porte son `id`) |
 | `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?}` ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
 | `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
@@ -617,7 +619,7 @@ format que le navigateur affiche, et présent sur le disque (`external_images.se
 `status` ∈ `ok`, `missing`, `unsupported`, `forbidden`, et l'`url` de ses octets. Une mesure sans image
 externe n'enregistre pas la clé (elle se lit `[]`) ; une mesure PRISM n'en a pas.
 
-Codes des images externes : hors des racines → 403 `outside_roots` (contrôle lexical avant tout accès disque, revérifié après résolution des liens) ; dossier ou image absents → 404 `directory_not_found` / `image_missing` ; rang hors de l'entrée → 404 `image_not_found` ; TIFF, fichier qui n'est pas une image, introuvable ou chemin relatif → 422 `unsupported_format` (le message dit d'exporter en PNG ou JPEG), `not_an_image`, `file_not_found`, `relative_path`.
+Codes des images externes : hors des racines → 403 `outside_roots` (contrôle lexical avant tout accès disque, revérifié après résolution des liens) ; dossier ou image absents → 404 `directory_not_found` / `image_missing` ; rang hors de l'entrée → 404 `image_not_found` ; TIFF, fichier qui n'est pas une image, introuvable, chemin relatif ou chemin contenant un caractère NUL → 422 `unsupported_format` (le message dit d'exporter en PNG ou JPEG), `not_an_image`, `file_not_found`, `relative_path`, `invalid_path`.
 
 Le plugin external_images se réduit à cette politique (`service` : `configured_roots`, `roots`, `checked_image`,
 `image_status`, `readable_file`, `browse`) et au parcours des dossiers ; notebook en dépend. Garder un

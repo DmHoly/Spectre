@@ -56,6 +56,8 @@ def _inside(path: Path, allowed: list[Path]) -> bool:
 def _resolve(raw: str) -> Path:
     """Le chemin ``raw``, résolu, s'il est permis (:class:`Forbidden` sinon) - le disque n'est touché
     qu'une fois le chemin reconnu dans les racines."""
+    if "\x00" in (raw or ""):
+        raise InvalidInput("Ce chemin contient un caractère invalide.", code="invalid_path")
     path = Path(os.path.normpath(raw or "."))
     if not path.is_absolute():
         raise InvalidInput("Le chemin doit être absolu.", code="relative_path")

@@ -619,7 +619,8 @@ def combine(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.
     première, « merge_source » pour la seconde : la filiation et l'évolution des structures montrent
     les deux). Sa structure est la structure combinée, selon la règle de Follow sans résolution de
     conflit : celle de la première étude (structure, protocole, et ce que ses métadonnées disent de
-    la structure, ids d'étape compris) ; les deux doivent être du même type de structure. C a ses
+    la structure, ids d'étape compris) ; les deux doivent être deux versions différentes, chacune de
+    sa piste (pas d'avant sa fourche), et du même type de structure. C a ses
     propres titre, intention, hypothèse et plaque (obligatoires comme pour un lancement) ; objectifs
     et contexte, faute de mieux dans la requête, viennent de la première étude. Son cahier démarre
     vide, sans étiquettes ni conclusion : les données restent sur A et B, attachées à leurs plaques.
@@ -631,8 +632,16 @@ def combine(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.
     entities = clean_entity_entries(body.entities)
     with writing(slug) as repo:
         a, b = _source_of(repo, first), _source_of(repo, second)
-        if first.experiment_id == second.experiment_id:
+        if first.experiment_id == second.experiment_id or a.id == b.id:
             raise InvalidInput("Choisissez deux études différentes à combiner.", code="same_experiment")
+        # l'histoire d'une piste partie d'une version contient celles d'avant sa fourche, qui ne sont
+        # pas à elle : combiner avec l'une d'elles l'attribuerait à la mauvaise piste
+        for origin, version in ((first, a), (second, b)):
+            if version.branch != origin.experiment_id:
+                raise InvalidInput(
+                    f"Cette version précède la piste « {origin.experiment_id} » : choisissez une de ses propres versions.",
+                    code="version_before_line",
+                )
         if a.structure_type != b.structure_type:
             raise InvalidInput(
                 "Ces deux expériences ne peuvent pas être combinées (par exemple une expérience simple et une campagne).",

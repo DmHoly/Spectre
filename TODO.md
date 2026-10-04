@@ -146,8 +146,10 @@ d'étapes (jugé trop lourd à saisir). Reste :
   ni étiquettes ni conclusion ; A et B inchangés. `_merge_notebook` et tout code de fusion de cahier
   sont retirés. Écarts retenus : l'hypothèse reste facultative, comme à un lancement (titre,
   intention et plaque obligatoires) ; objectifs et contexte viennent de A faute de mieux dans la
-  requête, comme pour une piste partie d'une version ; deux versions de la même piste sont refusées
-  (`same_experiment`) ; une étude d'un autre µprojet est introuvable (404) et `merge_of` refuse tout
+  requête, comme pour une piste partie d'une version ; deux versions de la même piste, ou deux fois la même version
+  désignée par deux pistes, sont refusées (`same_experiment`) ; une version d'avant la fourche de la
+  piste désignée (son histoire la contient, mais elle n'est pas à elle) est refusée en 422
+  (`version_before_line`) plutôt que d'attribuer C à la mauvaise piste ; une étude d'un autre µprojet est introuvable (404) et `merge_of` refuse tout
   champ de plus (422) ; le formulaire d'intention du µprojet s'applique ; le numéro de version de C
   continue l'histoire de A (la règle d'une piste partie d'une version) ; les fusions d'avant (une
   version de A à deux parents) restent lisibles, l'arête depuis leur premier parent gardant le type

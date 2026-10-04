@@ -134,6 +134,15 @@ def test_two_studies_of_the_same_line_or_of_different_kinds_are_refused(client):
     count = list_experiments(client, slug)["total"]
     same = post_combine(client, slug, a["id"], {"experiment_id": a["id"], "version_id": a["version_id"]})
     assert same.status_code == 422 and same.json()["code"] == "same_experiment"
+    # une piste partie de A contient la version de A dans son histoire : deux pistes, une seule version
+    fork = launch(client, slug, title="Fourche", intent="x", steps=steps(25), from_version={"experiment_id": a["id"]})
+    twice = post_combine(client, slug, {"experiment_id": a["id"], "version_id": a["version_id"]}, {"experiment_id": fork["id"], "version_id": a["version_id"]})
+    assert twice.status_code == 422 and twice.json()["code"] == "same_experiment"
+    # une version d'avant la fourche n'est pas à la piste désignée : la combiner l'attribuerait à la mauvaise piste
+    before_fork = post_combine(client, slug, b["id"], {"experiment_id": fork["id"], "version_id": a["version_id"]})
+    assert before_fork.status_code == 422 and before_fork.json()["code"] == "version_before_line"
+    assert fork["id"] in before_fork.json()["detail"]
+    count += 1
     kinds = post_combine(client, slug, a["id"], campaign["id"])
     assert kinds.status_code == 422 and kinds.json()["code"] == "different_structure_kinds"
     assert list_experiments(client, slug)["total"] == count
