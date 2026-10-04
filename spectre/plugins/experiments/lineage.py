@@ -1,7 +1,8 @@
-"""An experiment lineage, read two ways: the µprojet's structural graph (:func:`lineage_graph` -
+"""An experiment lineage, read three ways: the µprojet's structural graph (:func:`lineage_graph` -
 one node per structurally distinct version, Follow's commit chain collapsed by
-:mod:`spectre.plugins.experiments.versioning`), and the condensed edges between a chosen set of
-versions (:func:`condensed_edges` - branch tips for the atlas, refs for the refs page).
+:mod:`spectre.plugins.experiments.versioning`), the history of its structures, line by line
+(:func:`structure_history` - the « Évolution des structures » page), and the condensed edges
+between a chosen set of versions (:func:`condensed_edges` - branch tips for the atlas, refs).
 """
 
 from __future__ import annotations
@@ -9,9 +10,130 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from ..structures import kinds
 from . import versioning
 from .entities import compact
 from .repository import CONCLUDED_STATUSES, display_status, hold_of
+
+# Ce que montre l'historique des structures par défaut : les versions qui changent la structure en
+# grand (la première, un changement majeur ou mineur) ; un correctif (un nom d'étape) ou une version
+# sans changement de structure (une étiquette, une preuve...) est « légère ».
+STRUCTURAL_LEVELS = ("initial", "major", "minor")
+
+
+def _structure_kind(structure_type: str) -> str:
+    """« process », « campaign » ou « images » : ce que l'éditeur ouvre pour partir de la version."""
+    kind = kinds.KINDS.get(structure_type)
+    return "images" if kind is kinds.IMAGES else "campaign" if kind is kinds.CAMPAIGN else "process"
+
+
+def structure_history(repo: Any, *, all_versions: bool = False) -> dict:
+    """``{lanes, nodes, edges}`` : the µprojet's versions laid out line by line, for the
+    « Évolution des structures » page - everything it draws, so the page computes nothing.
+
+    - ``lanes``: one per line of study (the Follow branch a version was recorded on), in a stable
+      order - when the line started (its first version), then its name -, so a new line always
+      comes last. ``is_active`` is false for a deleted line whose first versions remain (another
+      line forked from them); ``tip_version_id`` / ``tip_label`` say where an active line stands.
+    - ``nodes``: by default the structural versions (:data:`STRUCTURAL_LEVELS`), the versions a ref
+      points at, the merges and the first version of each line (a fork shows even before its
+      structure changes); ``all_versions`` adds the light ones. Each node carries its X.Y.Z
+      (:func:`versioning.compute_branch_versions`, along its own first-parent history), its
+      ``change_level``, its refs, its ``lane`` (index into ``lanes``) and ``experiment_id``, the
+      line through which it can be opened (its own, or one whose history contains it).
+    - ``edges``: ``{parent, child, kind}`` between shown nodes, through the hidden ones
+      (:func:`versioning.collapsed_dag`) ; ``kind`` is ``parent`` (same line), ``fork`` (a line
+      starting from another) or ``merge`` (the second parent of a merge).
+    """
+    experiments = {exp.id: exp for exp in repo}
+    if not experiments:
+        return {"lanes": [], "nodes": [], "edges": []}
+    dag = {exp_id: list(exp.parents) for exp_id, exp in experiments.items()}
+    branches = repo.branches
+
+    numbers: dict[str, dict[str, Any]] = {}
+    containing: dict[str, set[str]] = {}
+    for name in sorted(branches):
+        history = list(reversed(repo.log(branches[name])))
+        if branches[name] not in numbers:
+            numbers.update(versioning.compute_branch_versions(history))
+        for version in history:
+            containing.setdefault(version.id, set()).add(name)
+    for exp_id in experiments:  # reachable from no line by its first parents (a merged-in side)
+        if exp_id not in numbers:
+            numbers.update(versioning.compute_branch_versions(list(reversed(repo.log(exp_id)))))
+
+    def line_of(exp: Any) -> str:
+        lines = containing.get(exp.id, set())
+        return exp.branch if exp.branch in lines or not lines else min(lines)
+
+    lane_starts = {
+        exp_id for exp_id, exp in experiments.items() if not exp.parents or experiments[exp.parents[0]].branch != exp.branch
+    }
+    ref_names: dict[str, list[str]] = {}
+    for name, target in repo.tags.items():
+        ref_names.setdefault(target, []).append(name)
+
+    if all_versions:
+        keep = set(experiments)
+    else:
+        keep = {
+            exp_id
+            for exp_id in experiments
+            if numbers[exp_id]["level"] in STRUCTURAL_LEVELS or exp_id in ref_names or len(dag[exp_id]) != 1 or exp_id in lane_starts
+        }
+
+    by_lane: dict[str, list[Any]] = {}
+    for exp in experiments.values():
+        by_lane.setdefault(exp.branch, []).append(exp)
+    lane_names = sorted(by_lane, key=lambda name: (min(exp.created_at for exp in by_lane[name]), name))
+    lane_index = {name: i for i, name in enumerate(lane_names)}
+    lanes = []
+    for name in lane_names:
+        latest = max(by_lane[name], key=lambda exp: exp.created_at)
+        tip_id = branches.get(name)
+        lanes.append(
+            {
+                "experiment_id": name,
+                "index": lane_index[name],
+                "title": experiments[tip_id].title if tip_id else latest.title,
+                "is_active": tip_id is not None,
+                "tip_version_id": tip_id,
+                "tip_label": f"v{numbers[tip_id]['version']}" if tip_id else None,
+            }
+        )
+
+    tip_ids = set(branches.values())
+    nodes = [
+        {
+            "version_id": exp.id,
+            "experiment_id": line_of(exp),
+            "lane": lane_index[exp.branch],
+            "version": numbers[exp.id]["version"],
+            "label": f"v{numbers[exp.id]['version']}",
+            "change_level": numbers[exp.id]["level"],
+            "title": exp.title,
+            "created_at": exp.created_at.isoformat(),
+            "author": exp.author,
+            "is_tip": exp.id in tip_ids,
+            "is_merge": len(dag[exp.id]) > 1,
+            "refs": sorted(ref_names.get(exp.id, [])),
+            "structure_kind": _structure_kind(exp.structure_type),
+            "has_process": "structureforge_process" in exp.metadata,
+        }
+        for exp in sorted((experiments[exp_id] for exp_id in keep), key=lambda exp: (exp.created_at, exp.id))
+    ]
+
+    edges = []
+    collapsed = versioning.collapsed_dag(dag, keep)
+    for child in (node["version_id"] for node in nodes):  # dans l'ordre des nœuds
+        for i, parent in enumerate(collapsed[child]):
+            if i > 0:
+                kind = "merge"
+            else:
+                kind = "parent" if experiments[parent].branch == experiments[child].branch else "fork"
+            edges.append({"parent": parent, "child": child, "kind": kind})
+    return {"lanes": lanes, "nodes": nodes, "edges": edges}
 
 
 def lineage_graph(repo: Any) -> dict:

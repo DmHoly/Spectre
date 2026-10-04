@@ -11,7 +11,7 @@ from, similar in spirit to :mod:`spectre.plugins.process_library.step_presets`.
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 from structureforge.core.units import Length
 from structureforge.process.steps import Deposition, Etch, FacetedGrowth, Lithography, ProcessStep, ResistStrip
 
@@ -19,10 +19,22 @@ from ..structures.simulation import DeclaredParam, SubstrateSpec
 from .models import LibraryItem
 
 
+class ExperimentOrigin(BaseModel):
+    """The version of a study a structure was published from (« Publier dans la bibliothèque » of
+    the « Évolution des structures » page) - a label kept with the copy, not a live link: the
+    structure doesn't follow the study afterwards."""
+
+    microproject: str
+    experiment_id: str
+    version_id: str
+    ref: str | None = None
+
+
 class SavedStructure(LibraryItem):
     substrate: SubstrateSpec
     steps: list[ProcessStep]
-    derived_from: str | None = None
+    # the name of the saved structure it was derived from, or the version of a study it was published from
+    derived_from: str | ExperimentOrigin | None = None
     # the steps' declared parameters (see spectre.plugins.structures.simulation.DeclaredParam), by step index
     declared_params: dict[str, list[DeclaredParam]] = Field(default_factory=dict)
 

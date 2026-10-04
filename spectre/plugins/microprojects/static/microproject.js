@@ -1,5 +1,7 @@
 const { slug } = routeParams("/microprojets/{slug}");
 const errorBox = document.getElementById("error");
+// la page « Évolution des structures » (plugin experiments) : pistes, versions et refs
+document.getElementById("evolution-link").href = `/microprojets/${encodeURIComponent(slug)}/evolution`;
 let currentUser = null;
 let currentRole = null;
 let currentMicroprojectName = null;

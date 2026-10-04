@@ -30,6 +30,7 @@ from ..microprojects.service import Microproject
 from ..structures import campaigns, kinds
 from . import refs, service, versioning
 from .lineage import lineage_graph
+from .lineage import structure_history as lineage_structure_history
 from .repository import CONCLUDED_STATUSES, RUNNING_STATUSES, branch_tips, display_status, get_repository, hold_of
 from .schemas import (
     ConclusionRequest,
@@ -37,6 +38,7 @@ from .schemas import (
     EntitiesRequest,
     EvolveRequest,
     MergeRequest,
+    RefChanges,
     RefRequest,
     StatusRequest,
     StructureImagesRequest,
@@ -432,11 +434,51 @@ def list_refs(microproject: Microproject = Depends(require_role("viewer"))) -> d
     return refs.ref_graph(get_repository(microproject.slug))
 
 
+def _ref_url(slug: str, name: str) -> str:
+    return f"/api/microprojects/{slug}/refs/{quote(name, safe='')}"
+
+
 @router.post("/refs", status_code=201)
-def create_ref(body: RefRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+def create_ref(body: RefRequest, response: Response, microproject: Microproject = Depends(require_role("editor"))) -> dict:
     """Marque une version (la pointe de la piste par défaut) comme ref : ``name`` (un surnom), ou
-    « ref vX.Y.Z ». 422 pour un nom avec « / », 409 pour un nom déjà pris."""
-    return service.create_ref(microproject.slug, body.experiment_id, body.version_id, body.name)
+    « ref vX.Y.Z ». 422 pour un nom avec « / », 409 pour un nom déjà pris. ``Location`` : la ref."""
+    ref = service.create_ref(microproject.slug, body.experiment_id, body.version_id, body.name)
+    created(response, _ref_url(microproject.slug, ref["name"]))
+    return ref
+
+
+@router.get("/refs/{ref_name}")
+def get_ref(ref_name: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    """La ref ``ref_name`` : sa version (``names`` : tous les noms posés dessus) et ``name``."""
+    return refs.get_ref(get_repository(microproject.slug), ref_name)
+
+
+@router.patch("/refs/{ref_name}")
+def rename_ref(ref_name: str, body: RefChanges, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+    """Renomme la ref (sa version ne change pas) : 409 pour un nom déjà pris, 422 pour un nom vide
+    ou avec « / »."""
+    if body.name is None:
+        return refs.get_ref(get_repository(microproject.slug), ref_name)
+    return service.rename_ref(microproject.slug, ref_name, body.name)
+
+
+@router.delete("/refs/{ref_name}", status_code=204)
+def delete_ref(ref_name: str, microproject: Microproject = Depends(require_role("editor"))) -> Response:
+    """Retire la ref ; la version, elle, reste."""
+    service.delete_ref(microproject.slug, ref_name)
+    return Response(status_code=204)
+
+
+# -- l'évolution des structures --------------------------------------------------------------------
+
+
+@router.get("/structure-history")
+def structure_history(all_versions: bool = False, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    """``{lanes, nodes, edges}`` : les versions du µprojet piste par piste, telles que la page
+    « Évolution des structures » les dessine (:func:`~.lineage.structure_history`) - par défaut
+    les versions structurelles (majeures, mineures), celles qui portent une ref, les fusions et le
+    début de chaque piste ; ``all_versions=true`` ajoute les versions légères."""
+    return lineage_structure_history(get_repository(microproject.slug), all_versions=all_versions)
 
 
 # -- la page d'une étude ---------------------------------------------------------------------------
@@ -476,6 +518,13 @@ def legacy_version_page(slug: str, version_id: str, request: Request) -> Redirec
         return RedirectResponse(f"/microprojets/{slug}", status_code=302)
     query = "" if repo.branches.get(experiment_id) == version_id else f"?version={version_id}"
     return RedirectResponse(f"/microprojets/{slug}/experiences/{experiment_id}{query}", status_code=302)
+
+
+@page_router.get("/microprojets/{slug}/refs")
+def legacy_refs_page(slug: str) -> RedirectResponse:
+    """L'ancienne page des refs : remplacée par « Évolution des structures », qui les montre sur
+    le diagramme des pistes."""
+    return RedirectResponse(f"/microprojets/{quote(slug, safe='')}/evolution", status_code=302)
 
 
 # Les lectures transverses (statistiques et frise, insights_api.py) vivent sous /api, hors du préfixe

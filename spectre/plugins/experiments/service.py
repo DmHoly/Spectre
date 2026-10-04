@@ -29,12 +29,10 @@ from ..structures import campaigns, kinds, simulation
 from ..structures.schemas import CampaignPayload, ImagesPayload, StructureImageInput
 from . import refs, versioning
 from .entities import EntityTrackingInput, clean_entity_entries, has_tracked_physical_entity
-from .repository import HOLD_KEY, RUNNING_STATUSES, delete_line, display_status, retire_line, retired_lines, writing
+from .repository import HOLD_KEY, RUNNING_STATUSES, VERSION_ID_RE, delete_line, display_status, retire_line, retired_lines, writing
 from .schemas import ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput
 
 CONTEXT_METADATA_KEY = "context"
-# L'id d'une version Follow (``follow.core.ids.content_id``) : une piste ne peut pas en porter la forme.
-VERSION_ID_RE = re.compile(r"^exp_[0-9a-f]{16}$")
 # Ce que les métadonnées rangent par id de preuve (plugin evidence) : les liens d'une preuve et ses
 # champs propres à Spectre. Les images collées dans une preuve sont des « attachments » qui portent
 # son ``evidence_id``.
@@ -611,3 +609,15 @@ def create_ref(slug: str, experiment_id: str, version_id: str | None, name: str 
     with writing(slug) as repo:
         target = version_of(repo, experiment_id, version_id)
         return refs.create_ref(repo, target.id, name=name)
+
+
+def rename_ref(slug: str, name: str, new_name: str) -> dict[str, Any]:
+    """Renommer une ref ; sa version ne change pas."""
+    with writing(slug) as repo:
+        return refs.rename_ref(repo, name, new_name)
+
+
+def delete_ref(slug: str, name: str) -> None:
+    """Retirer une ref ; la version, elle, reste."""
+    with writing(slug) as repo:
+        refs.delete_ref(repo, name)

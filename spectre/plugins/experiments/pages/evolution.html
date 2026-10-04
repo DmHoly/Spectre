@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Évolution des structures — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/experiments/experiments.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" -->
+
+  <div class="page">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">Projets</a> / <a id="area-crumb" href="/">…</a><span id="thematic-crumb"></span> / <a id="microproject-crumb" href="/">…</a></p>
+
+    <header class="evo-head">
+      <div>
+        <div id="microproject-code" class="page-eyebrow" hidden></div>
+        <h1 class="evo-head__title">Évolution des structures</h1>
+        <p class="evo-head__lead">
+          Chaque colonne est une piste, chaque point une version de sa structure, numérotée vX.Y.Z : un changement
+          majeur ajoute, retire ou réordonne des étapes, un changement mineur en règle une. Les refs sont les points
+          de départ nommés du µprojet.
+        </p>
+      </div>
+      <div class="evo-toolbar">
+        <div class="view-toggle" role="group" aria-label="Versions affichées">
+          <button type="button" class="view-toggle__btn active" id="show-structural" aria-pressed="true">Versions structurelles</button>
+          <button type="button" class="view-toggle__btn" id="show-all" aria-pressed="false">Toutes les versions</button>
+        </div>
+      </div>
+    </header>
+
+    <div id="error" class="error" role="alert" hidden></div>
+
+    <div id="mode-banner" class="evo-banner" role="status" hidden>
+      <span id="mode-banner-text"></span>
+      <button type="button" class="btn btn-line evo-banner__btn" id="mode-banner-cancel"></button>
+    </div>
+
+    <div class="evo-layout">
+      <section class="card evo-graph-card" aria-labelledby="graph-title">
+        <h2 id="graph-title" class="evo-visually-hidden">Diagramme des versions</h2>
+        <div id="graph-empty" class="empty-state" hidden>
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M6 8.5v7M8.2 7.2 15.8 11"/></svg>
+          <p>Aucune expérience dans ce µprojet pour l'instant.</p>
+        </div>
+        <div id="graph-loading" class="evo-loading" aria-hidden="true">
+          <div class="skeleton" style="height:18px;width:40%;"></div>
+          <div class="skeleton" style="height:18px;width:65%;"></div>
+          <div class="skeleton" style="height:18px;width:55%;"></div>
+        </div>
+        <div class="evo-scroll" id="graph-scroll" hidden>
+          <div class="evo-lanes" id="lane-header" aria-hidden="true"></div>
+          <div class="evo-body">
+            <svg id="graph-svg" class="evo-svg" aria-hidden="true" focusable="false"></svg>
+            <ul id="rows" class="evo-rows" role="listbox" aria-label="Versions, de la plus ancienne à la plus récente (flèches haut et bas pour se déplacer)"></ul>
+          </div>
+        </div>
+        <div class="evo-foot" id="graph-foot" hidden>
+          <ul class="status-legend evo-legend" id="legend" aria-label="Légende"></ul>
+          <div class="evo-lane-list">
+            <div class="section-title">Pistes</div>
+            <ol id="lane-list"></ol>
+          </div>
+        </div>
+      </section>
+
+      <aside class="card card-pad evo-panel" id="panel" aria-live="polite" aria-label="Version choisie">
+        <p class="help">Choisissez une version dans le diagramme (clic, ou flèches puis Entrée) pour voir son détail, la comparer, en faire une ref ou partir d'elle.</p>
+      </aside>
+    </div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/experiments/client.js"></script>
+  <script src="/static/process_library/client.js"></script>
+  <!-- D3 vendored localement (voir spectre/kernel/static/vendor/D3-LICENSE). -->
+  <script src="/static/kernel/vendor/d3.v7.9.0.min.js"></script>
+  <script src="/static/experiments/evolution.js"></script>
+</body>
+</html>

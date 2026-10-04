@@ -91,7 +91,10 @@ async function initLibraryMode() {
       document.getElementById("library-save-as-btn").hidden = false;
       if (found.derived_from) {
         document.getElementById("library-derived-note").hidden = false;
-        document.getElementById("library-derived-note").textContent = `Dérivée de : ${found.derived_from}`;
+        // le nom d'une structure enregistrée, ou la version d'une étude publiée depuis « Évolution des structures »
+        const origin = found.derived_from;
+        const label = typeof origin === "string" ? origin : `${origin.ref || origin.experiment_id} (µprojet ${origin.microproject})`;
+        document.getElementById("library-derived-note").textContent = `Dérivée de : ${label}`;
       }
     }
   } catch (err) {
