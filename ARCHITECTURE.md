@@ -145,7 +145,11 @@ restent ouverts à tous. Le refus est un 403 `placement_forbidden`, levé à un 
 `microprojects.service.check_placement` ; la règle vit dans `areas`, sous `microprojects`, parce
 que chaque projet l'expose (`can_place_microproject`) et qu'`areas` ne peut pas importer
 `microprojects`. Changer de thématique dans le même projet n'est pas un placement ; sortir un
-µprojet du projet d'une équipe reste permis à son `owner`. Côté µprojet, `microprojects.service.access(user, microproject)` rend
+µprojet du projet d'une équipe reste permis à son `owner`. Les pages projet et thématique
+n'offrent « + Nouveau µprojet » que si `can_place_microproject` est vrai, comme « Rattacher un
+µprojet existant » (page projet, admin seulement).
+
+Côté µprojet, `microprojects.service.access(user, microproject)` rend
 un `Access(role, source, membership)` : `role` est le rôle effectif, `source` dit d'où il vient,
 dans cet ordre de priorité : owner par adhésion (`membership`), puis `team_manager`, puis `admin`,
 puis le rôle de l'adhésion. `effective_role`, `has_role`, `check_role`, `accesses` (une liste en
@@ -434,7 +438,7 @@ l'équipe.
 | `GET /api/microprojets/code/{code}` | `GET /api/microprojects?code=` → `[]` ou un élément, mêmes champs réduits |
 | `POST /api/microprojets` | `POST /api/microprojects` `{name, description, area, thematic}` → 201 + `Location` (projet ou thématique inconnus → 422, comme le `PATCH` ; projet d'une équipe dont on n'est ni membre ni admin → 403 `placement_forbidden`, comme le `PATCH` `{area}` ; un nom qui donnerait le slug « new » ou « nouvelle » reçoit un suffixe) |
 | `GET /api/microprojets/{slug}` | `GET /api/microprojects/{mp}` ; tout µprojet renvoyé porte `role` (effectif), `role_source` (`membership`, `team_manager` ou `admin`), `can_edit` et `can_manage` (§ 3, règle d'autorisation) |
-| *(nouveau)* | `PATCH /api/microprojects/{mp}` `{name, description, area, thematic}` |
+| *(nouveau)* | `PATCH /api/microprojects/{mp}` `{name, description, area, thematic}` (`owner` ; changer de projet vers celui d'une équipe dont on n'est ni membre ni admin → 403 `placement_forbidden`, § 3 ; renommer ou changer de thématique dans le même projet n'est pas vérifié) |
 | `DELETE /api/microprojets/{slug}` | `DELETE /api/microprojects/{mp}?confirm_name=` → 204 (garde côté serveur : mauvais nom → 422 `confirm_name_mismatch`) |
 | `GET …/members` | `GET /api/microprojects/{mp}/members` |
 | `POST …/members` (upsert + invitation) | `POST /api/microprojects/{mp}/members` `{email, role}` → 201 + `Location` `/api/microprojects/{mp}/members/{user_id}` (409 déjà membre ; 404 `no_account`) |

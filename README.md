@@ -49,6 +49,14 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
 - **Étapes.** Chaque étape d'un procédé a un identifiant stable, conservé quand on insère, déplace
   ou supprime d'autres étapes à une évolution : une campagne DOE désigne ses étapes par cet
   identifiant, et non plus par leur position.
+- **Cahier de données.** Toutes les données d'une expérience sont dans un seul cahier (onglet
+  « Données » de la fiche) : des entrées PRISM (un instantané par étape et une vue DataViz) ou
+  saisies à la main (valeur, texte, tableau collé d'Excel, images annotées, fichiers, liens). Une
+  entrée nomme les plaques mesurées et les étapes du procédé où la mesure a été faite, choisies sur
+  un **stepper** ; la vue du procédé affiche un badge par étape mesurée. **La donnée suit la
+  plaque** : si la piste ne suit plus ces plaques, l'entrée reste, repliée dans « Autres plaques ».
+  La conclusion cite des entrées du cahier. Les anciennes preuves s'y lisent comme des entrées
+  saisies à la main, sans migration.
 - **Droits.** Trois niveaux :
   - **administrateur** : tout ; il est propriétaire de tous les µprojets, même sans en être membre ;
   - **manager d'une équipe** : gère les projets corporate rattachés à son équipe (les renommer, les

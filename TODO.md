@@ -98,7 +98,15 @@ d'étapes (jugé trop lourd à saisir). Reste :
   porte un badge par étape (`?summary=steps`) qui filtre le cahier ; la conclusion cite des entrées
   (`evidence_ids`) ; le rapport reprend tout le cahier. Décisions appliquées (2026-10-04) : la donnée
   suit la plaque mesurée, une seule entrée par mesure avec une valeur par étape, pas de mesures
-  prévues dans le constructeur, pas de conversion d'une entrée manuelle en PRISM.
+  prévues dans le constructeur, pas de conversion d'une entrée manuelle en PRISM. Écarts retenus :
+  la galerie « Images de mesure » (external_images) reste dans l'onglet « Données », à côté du
+  cahier ; le filtre par étape se fait dans la page (sans `?step=`) pour que le rapport garde tout
+  le cahier ; cocher la première bulle d'une entrée non située (une ancienne preuve) y range son
+  contenu, décocher la dernière la rend non située ; une mesure à une étape retirée se range à
+  droite des autres ; les réglages PRISM passent par « Modifier » (« Actualiser » reste sur la carte
+  d'une entrée PRISM à une mesure) ; la conclusion renvoie le champ `observed` d'un verdict au lieu
+  de l'effacer ; une virgule décimale d'un tableau collé se lit comme un nombre. Pas de test JS de
+  l'analyse du tableau collé (`node` absent du poste de développement).
 - **Un seul cahier de données, côté serveur** (2026-10-04, point 3). Le plugin `evidence` a disparu :
   `notebook` porte toutes les données d'une étude (`.../notebook-entries`, `kind: prism | manual`,
   une seule forme : plaques mesurées `wafers`, une mesure par étape `measurements[].step_id`), avec
@@ -107,6 +115,9 @@ d'étapes (jugé trop lourd à saisir). Reste :
   la lecture, sans perte, les preuves gardant leur id (la conclusion les cite toujours) et leur
   `step_index` devenu un id d'étape ; la première écriture dans le cahier enregistre le cahier
   converti. Spectre n'écrit plus de preuve Follow. Détail dans `ARCHITECTURE.md` § 4 et § 5.
+  Écarts retenus, pour ne rien perdre des anciennes preuves : `in_report` est gardé (le rapport
+  s'en sert), une valeur porte un `name` (la métrique à laquelle renvoie `Objective.metric`) et une
+  pièce jointe est `{id, caption}` (un id seul est accepté) pour garder les légendes.
 - **Équipes, managers et administrateurs** (2026-10-04, ex-point 1). Plugin `teams` (tables `teams`,
   `team_members`, pages `/equipes`, `/equipes/{slug}`), `management_areas.team_id`. Une seule
   règle : `areas.service.can_manage` pour un projet, `microprojects.service.access` pour un
@@ -121,7 +132,11 @@ d'étapes (jugé trop lourd à saisir). Reste :
   l'équipe (tout rôle) et admin ; un projet sans équipe et « Non classé » restent ouverts à tous ;
   sinon 403 `placement_forbidden`. Règle `areas.service.can_place_microproject` (exposée par chaque
   projet), vérifiée par `microprojects.service.check_placement` ; les pages projet et thématique
-  n'offrent « + Nouveau µprojet » qu'aux comptes autorisés.
+  n'offrent « + Nouveau µprojet » qu'aux comptes autorisés. Écarts retenus : la règle vit dans
+  `areas` (chaque projet l'expose et `areas` ne peut pas importer `microprojects`), le refus reste
+  levé à un seul endroit ; seul le projet d'arrivée d'un changement de projet est vérifié
+  (renommer ou changer de thématique dans le même projet ne l'est pas, et un `owner` peut sortir
+  son µprojet du projet d'une équipe) ; `microprojects.service.create` reçoit le compte (`owner: User`) et non plus son id.
 - **Page « Évolution des structures »** (2026-10-04, ex-point 2). `/microprojets/{slug}/evolution`
   (l'ancienne `/refs` y redirige), servie par `GET .../structure-history` ; refs adressables
   (`GET`/`PATCH`/`DELETE .../refs/{ref_name}`, `Location` à la création) ; publication d'une ref
