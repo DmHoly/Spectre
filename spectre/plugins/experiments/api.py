@@ -353,7 +353,8 @@ def experiment_process(
 ) -> dict:
     """Le procédé éditable (substrat et étapes) d'une version - la pointe par défaut. Chaque étape
     porte son ``id`` stable (:func:`service.step_ids_of`), que le constructeur renvoie à l'évolution."""
-    process = service.editable_process(service.version_of(get_repository(microproject.slug), experiment_id, version))
+    repo = get_repository(microproject.slug)
+    process = service.editable_process(repo, service.version_of(repo, experiment_id, version))
     if process is None:
         raise NotFound("Cette expérience n'a pas de procédé éditable enregistré.", code="no_process")
     return process

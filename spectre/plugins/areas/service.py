@@ -357,12 +357,13 @@ def update(area: ManagementArea, **changes: str | None) -> ManagementArea:
 
 def set_team(user: User, area: ManagementArea, team: Team | None) -> ManagementArea:
     """Attach the area to ``team`` (``None``: to no team) - an admin only (403 otherwise); the
-    system area stays without one (409)."""
-    if not user.is_admin:
-        raise Forbidden("seul un administrateur rattache un projet à une équipe")
+    system area stays without one (409). Sending the team already in place changes nothing, for
+    anyone who may write the area (its form sends the whole area back)."""
     team_id = team.id if team else None
     if team_id == area.team_id:
         return area
+    if not user.is_admin:
+        raise Forbidden("seul un administrateur rattache un projet à une équipe")
     if area.is_system:
         raise Conflict(f"« {area.name} » n'appartient à aucune équipe : ses µprojets n'ont que leurs membres et l'administrateur")
     with get_conn() as conn:

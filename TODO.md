@@ -41,8 +41,9 @@ Demandé le 2026-10-04. Ce point remplace l'ancien « résultats rattachés à u
         - le lien preuve ↔ objectif.
       - Mettre à jour ARCHITECTURE.md (§ 3 et § 5) et le README.
 - [ ] **Convertir les `step_index` des anciennes preuves** en ids d'étape, avec
-      `experiments.service.step_id_at(version, index)` (l'identité des étapes est livrée, voir
-      « Fait » ; il n'y a pas de migration des procédés, leurs ids sont dérivés à la lecture).
+      `experiments.service.step_id_at(repo, version, index)` (l'identité des étapes est livrée,
+      voir « Fait » ; il n'y a pas de migration des procédés, leurs ids se lisent de parent en
+      parent, si bien qu'une étape garde le même id dans les anciennes versions d'une piste).
 - [ ] **Situer chaque donnée dans le procédé, sur plusieurs étapes.**
       - À l'ajout comme à la lecture d'une donnée, on affiche un **stepper** du procédé : une bulle
         par étape, avec en **rouge** les étapes où la mesure est faite.
@@ -127,6 +128,14 @@ d'étapes (jugé trop lourd à saisir). Reste :
       droits d'équipe sans manipulation.
 - [ ] Le dialogue « Modifier le projet » (page d'un projet corporate) déborde en largeur sur écran
       étroit, comme le faisait « Nouvelle équipe » avant sa correction.
+- [ ] **À décider : déplacer un µprojet vers le projet d'une autre équipe.** Tout `owner` effectif
+      d'un µprojet (propriétaire, manager de son équipe, admin) le déplace vers n'importe quel
+      projet (`PATCH /api/microprojects/{mp}` `{area}`, `microprojects.service.update`), celui d'une
+      autre équipe compris : l'équipe d'arrivée en devient `owner` sans l'avoir demandé, celle de
+      départ en perd la gestion. Pas une escalade (celui qui déplace ne gagne rien, et tout compte
+      crée déjà un µprojet dans n'importe quel projet). Si on veut l'empêcher : exiger, quand `area`
+      change, que l'appelant gère le projet d'arrivée (`areas.service.can_manage`) ou soit admin.
+
 ## Petites dettes notées en cours de route
 
 - [ ] `DELETE /api/microprojects/{mp}/experiments/{exp}` (suppression d'une piste) : les blobs de
@@ -145,7 +154,8 @@ d'étapes (jugé trop lourd à saisir). Reste :
   autorisations des autres plugins. Décisions appliquées : plusieurs équipes par compte, « Non
   classé » sans équipe, rien de rattaché à la migration, pas de SSO. Écarts retenus : la lecture des
   équipes est ouverte à tout compte connecté ; rattacher un projet à une équipe, ou un µprojet
-  existant à un projet, reste à l'admin.
+  existant depuis la page d'un projet, reste à l'admin (un `owner` peut, lui, déplacer son µprojet :
+  voir la question ouverte ci-dessus).
 - **Page « Évolution des structures »** (2026-10-04, ex-point 2). `/microprojets/{slug}/evolution`
   (l'ancienne `/refs` y redirige), servie par `GET .../structure-history` ; refs adressables
   (`GET`/`PATCH`/`DELETE .../refs/{ref_name}`, `Location` à la création) ; publication d'une ref
@@ -154,8 +164,9 @@ d'étapes (jugé trop lourd à saisir). Reste :
   version qui porte une ref.
 - **Identité stable des étapes** (2026-10-04, préalable du point 3). Ids `st_<8 hex>` sous
   `process_step_ids`, conservés aux évolutions ; facteurs de campagne par `step_id` ; **pas de
-  migration** : les ids des anciennes versions sont dérivés à la lecture ; recevoir des ids ne crée
-  pas de version. Détail dans `ARCHITECTURE.md` § 4.
+  migration** : les ids des anciennes versions se lisent avec la règle d'une écriture sans ids (ceux
+  du premier parent tant que les types d'étapes ne changent pas, sinon dérivés de la version) ;
+  recevoir des ids ne crée pas de version. Détail dans `ARCHITECTURE.md` § 4.
 
 - Table `lot_steps` de la toute première version des lots supprimée par la migration
   `lots/0002_drop_lot_steps` (la base d'avant est sauvegardée dans `data/backups/` au démarrage qui migre).

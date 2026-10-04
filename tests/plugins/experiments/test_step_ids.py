@@ -1,7 +1,8 @@
 """L'identité stable des étapes d'un procédé (TODO § 3, le préalable) : chaque étape porte un ``id``
 (``st_<8 hex>``) exposé par ``GET .../process``, enregistré dès qu'une version est créée, conservé
 aux évolutions, et ignoré du versionnage. Une version enregistrée sans ids (avant eux) n'est
-jamais réécrite : ses ids sont dérivés à la lecture, toujours les mêmes."""
+jamais réécrite : ses ids se lisent (ceux de son parent tant que les types d'étapes ne changent pas,
+sinon dérivés de son id), toujours les mêmes."""
 
 from __future__ import annotations
 
@@ -85,9 +86,39 @@ def test_a_version_saved_without_ids_reads_the_same_ids_every_time(client):
     version = _repository(slug).get(legacy)
     assert "process_step_ids" not in version.metadata
     # ce qu'un ancien step_index devient (une preuve, un facteur de campagne) : TODO § 3
-    assert [service.step_id_at(version, i) for i in range(3)] == first
-    assert service.step_id_at(version, 3) is None and service.step_id_at(version, -1) is None
+    repo = _repository(slug)
+    assert [service.step_id_at(repo, version, i) for i in range(3)] == first
+    assert service.step_id_at(repo, version, 3) is None and service.step_id_at(repo, version, -1) is None
 
+
+
+def test_old_versions_of_a_line_read_the_same_ids_as_long_as_the_steps_keep_their_kinds(client):
+    """Une version enregistrée sans ids reprend ceux de son premier parent tant que la suite des
+    types d'étapes est la même (la règle d'une écriture sans ids) : la même étape a le même id dans
+    toutes les anciennes versions d'une piste - un ancien ``step_index`` se traduit donc en un id que
+    porte encore la dernière version."""
+    from spectre.plugins.experiments import service
+
+    slug = signup_with_microproject(client, "legacy-chain@example.com")
+    line = launch(client, slug, steps=_three_steps())["id"]
+    recorded = step_ids(client, slug, line)
+    first = _legacy_tip(slug, line)
+    second = _legacy_tip(slug, line)
+    assert step_ids(client, slug, line, version=first) == recorded
+    assert step_ids(client, slug, line, version=second) == recorded
+
+    # une étape de moins (d'autres types d'étapes) : de nouveaux ids, que la version d'après reprend
+    root_process = _repository(slug).get(second).metadata["structureforge_process"]
+    shorter = {**root_process, "steps": root_process["steps"][:2]}
+    changed = _legacy_tip(slug, line, structureforge_process=shorter)
+    after = _legacy_tip(slug, line)
+    changed_ids = step_ids(client, slug, line, version=changed)
+    assert len(changed_ids) == 2 and not set(changed_ids) & set(recorded)
+    assert step_ids(client, slug, line, version=after) == changed_ids == step_ids(client, slug, line)
+
+    repo = _repository(slug)
+    assert [service.step_id_at(repo, repo.get(first), i) for i in range(3)] == recorded
+    assert [service.step_id_at(repo, repo.get(after), i) for i in range(2)] == changed_ids
 
 def test_ids_are_recorded_at_launch_and_new_steps_get_one_from_the_server(client):
     slug = signup_with_microproject(client, "launch-ids@example.com")
@@ -321,6 +352,29 @@ def test_a_campaign_launched_from_a_version_keeps_the_step_ids_and_records_them_
     assert _repository(slug).get(campaign["version_id"]).metadata["campaign_plan"]["factors"][0]["step_id"] == c
 
 
+
+def test_a_campaign_launched_from_a_version_without_ids_names_its_factors_by_that_versions_ids(client):
+    """Comme une fourche sans ids : un client qui n'envoie aucun id vise les étapes par ceux de la
+    version de départ (ici une version enregistrée avant eux)."""
+    slug = signup_with_microproject(client, "campaign-no-ids@example.com")
+    source = launch(client, slug, steps=_three_steps())
+    legacy = _legacy_tip(slug, source["id"])
+    a, b, c = step_ids(client, slug, source["id"], version=legacy)
+    origin = {"experiment_id": source["id"], "version_id": legacy}
+
+    campaign = launch_campaign(
+        client, slug, campaign_plan([30, 50], step_id=c), steps=_three_steps(), from_version=origin, entities=[{"sample_id": "W1"}]
+    )
+    assert step_ids(client, slug, campaign["id"]) == [a, b, c]
+    assert _repository(slug).get(campaign["version_id"]).metadata["campaign_plan"]["factors"][0]["step_id"] == c
+
+    # d'autres types d'étapes que la version de départ : ses ids ne s'appliquent pas
+    response = post_launch(
+        client, slug, kind="campaign", plan=campaign_plan([30, 50], step_id=a), steps=_three_steps()[:2],
+        from_version=origin, title="Campagne", intent="x", entities=[{"sample_id": "W1"}],
+    )
+    assert response.status_code == 422 and "étape" in response.json()["detail"]
+
 def test_a_campaign_recorded_with_step_indexes_still_reads(client):
     from spectre.plugins.experiments import service
 
@@ -337,4 +391,4 @@ def test_a_campaign_recorded_with_step_indexes_still_reads(client):
     assert len(ids) == 1 and STEP_ID.fullmatch(ids[0])
     # le step_index du plan d'avant se traduit en id d'étape
     version = _repository(slug).get(legacy)
-    assert service.step_id_at(version, version.metadata["campaign_plan"]["factors"][0]["step_index"]) == ids[0]
+    assert service.step_id_at(_repository(slug), version, version.metadata["campaign_plan"]["factors"][0]["step_index"]) == ids[0]

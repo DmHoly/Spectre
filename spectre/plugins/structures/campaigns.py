@@ -74,7 +74,7 @@ class VariantFactor(BaseModel):
 
     The step is named by its id (see :func:`spectre.plugins.structures.simulation.settle_step_ids`),
     never by its position: a plan recorded before step ids (``campaign_plan`` of an older campaign)
-    carries ``step_index`` instead - its id is ``experiments.service.step_id_at(version, index)``,
+    carries ``step_index`` instead - its id is ``experiments.service.step_id_at(repo, version, index)``,
     and ``-1`` is the substrate.
     """
 

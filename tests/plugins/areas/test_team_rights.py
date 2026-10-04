@@ -101,9 +101,13 @@ def test_a_manager_creates_an_area_only_in_one_of_their_teams(client):
 def test_attaching_an_area_to_a_team_is_the_admins_alone(client):
     world = team_world(client)
     login(client, world.manager_a)
-    for team in ("equipe-b", None, "equipe-a"):
+    for team in ("equipe-b", None):
         assert client.patch("/api/areas/theme-a", json={"team": team}).status_code == 403
     assert get_area(client, "theme-a")["team"]["slug"] == "equipe-a"  # rien n'a changé
+    # renvoyer l'équipe déjà en place ne rattache rien : sans effet, pas refusé
+    same = client.patch("/api/areas/theme-a", json={"team": "equipe-a", "description": "Inchangé"})
+    assert same.status_code == 200
+    assert (same.json()["team"]["slug"], same.json()["description"]) == ("equipe-a", "Inchangé")
 
     login(client, world.admin)
     moved = client.patch("/api/areas/theme-a", json={"team": "equipe-b", "description": "Passé à B"})

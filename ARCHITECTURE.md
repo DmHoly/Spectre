@@ -136,8 +136,11 @@ Un compte peut appartenir à plusieurs équipes et n'être manager que dans cert
 
 Côté projet, `areas.service.can_manage(user, area)` (admin, ou manager de l'équipe du projet) est
 la règle de toute écriture d'un projet, d'une thématique ou d'un objectif. Rattacher un projet à
-une équipe reste à l'admin, comme rattacher un µprojet existant depuis la page d'un projet (il
-s'appuie sur `?scope=all`). Côté µprojet, `microprojects.service.access(user, microproject)` rend
+une équipe reste à l'admin (renvoyer l'équipe déjà en place est sans effet), comme rattacher un
+µprojet existant depuis la page d'un projet (il s'appuie sur `?scope=all`). En revanche, un `owner`
+d'un µprojet le déplace vers n'importe quel projet (`PATCH /api/microprojects/{mp}` `{area}`),
+celui d'une autre équipe compris : il en perd alors la gestion d'équipe, et les managers de
+l'équipe d'arrivée la gagnent. Côté µprojet, `microprojects.service.access(user, microproject)` rend
 un `Access(role, source, membership)` : `role` est le rôle effectif, `source` dit d'où il vient,
 dans cet ordre de priorité : owner par adhésion (`membership`), puis `team_manager`, puis `admin`,
 puis le rôle de l'adhésion. `effective_role`, `has_role`, `check_role`, `accesses` (une liste en
@@ -307,14 +310,18 @@ cahier) désigne une étape, et non plus par sa position.
   étapes). Le versionnage et StructureForge ne la voient pas ; `service.editable_process` ajoute
   l'`id` à chaque étape de `GET .../process`.
 - **Anciennes versions** : leurs objets Follow ne sont jamais réécrits, donc **pas de migration**.
-  Leurs ids sont dérivés à la lecture, de l'id de la version et de la position
-  (`experiments.service.step_ids_of`), toujours les mêmes pour elle ; deux anciennes versions d'une
-  même piste n'ont donc pas les mêmes. Toute version écrite ensuite enregistre les siens, y compris
-  une écriture légère, qui reprend ceux du parent.
+  Leurs ids se lisent (`experiments.service.step_ids_of`) avec la règle d'une écriture sans ids :
+  ceux du premier parent tant que la suite des types d'étapes est la même, sinon (ou pour une
+  racine) dérivés de l'id de la version et de la position. Ils sont toujours les mêmes pour une
+  version, et une même étape garde le même id d'une ancienne version à la suivante : un ancien
+  `step_index` (`step_id_at`) donne un id que porte encore la dernière version, tant que les types
+  d'étapes n'ont pas changé entre les deux. Toute version écrite ensuite enregistre les siens, y
+  compris une écriture légère, qui reprend ceux du parent.
 - **Attribution** (`simulation.settle_step_ids`, `service._settled_step_ids`) : une étape renvoyée
   avec son id le garde ; une étape sans id, ou dont l'id est mal formé ou en double, en reçoit un
   neuf ; un client qui n'envoie aucun id garde ceux du parent, par position, tant que la suite des
-  types d'étapes ne change pas. Le serveur accepte tout id bien formé : le constructeur renvoie
+  types d'étapes ne change pas. Il en va de même pour une campagne lancée depuis une version : sans
+  ids, ses facteurs visent les étapes par les ids de la version de départ. Le serveur accepte tout id bien formé : le constructeur renvoie
   ceux que `POST /api/simulations` lui a donnés (`step_ids`).
 - **Recevoir des ids ne crée pas de version** : une écriture qui n'ajouterait que les ids du parent
   est sans effet (200, rien n'est écrit).
@@ -375,7 +382,7 @@ l'équipe.
 | `GET /api/management` | `GET /api/areas?team=` (équipe inconnue → 404 ; chaque projet expose `is_system`, `team {slug, name}`, `can_manage`, `can_delete` (= `can_manage` et pas système), `horizon_months` calculé par le serveur) |
 | `POST /api/management` | `POST /api/areas` `{…, team}` → 201 (admin, avec ou sans équipe, ou manager pour l'une de ses équipes ; équipe inconnue → 422 `unknown_team`) |
 | `GET /api/management/{slug}` | `GET /api/areas/{area_slug}` (projet, thématiques, objectifs) |
-| `PUT /api/management/{slug}` | `PATCH /api/areas/{area_slug}` (`can_manage` ; `{team}` : admin seulement, 409 sur « Non classé ») |
+| `PUT /api/management/{slug}` | `PATCH /api/areas/{area_slug}` (`can_manage` ; `{team}` : admin seulement, sans effet si c'est l'équipe déjà en place, 409 sur « Non classé ») |
 | `DELETE /api/management/{slug}` | `DELETE /api/areas/{area_slug}` → 204 (409 pour un projet système) |
 | `POST /api/management/{slug}/microprojets` | `PATCH /api/microprojects/{mp}` `{area, thematic}` |
 | `POST /api/management/{slug}/thematiques` | `POST /api/areas/{area_slug}/thematics` → 201 |
