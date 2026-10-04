@@ -52,16 +52,22 @@ Demandé le 2026-10-04. Ce point remplace l'ancien « résultats rattachés à u
         pas une étape unique. Dans la boîte d'ajout, on coche les bulles.
       - Dans la vue du procédé (`experiments/static/structure-view.js`), chaque étape affiche un
         badge avec le nombre de données qui la concernent. Un clic filtre le cahier sur cette étape.
-- [ ] **À trancher :**
-      - une donnée rattachée à une étape suit-elle cette étape aux versions suivantes si elle n'a
-        pas changé ? Et si l'étape est supprimée à une évolution, que devient le rattachement ?
-      - pour une même mesure faite à plusieurs étapes, une seule entrée avec une valeur par étape
-        (pour comparer avant et après), ou une entrée par moment, reliées entre elles ?
-      - faut-il un « point de contrôle attendu », déclaré à la conception dans le constructeur,
-        en plus de la « donnée obtenue » ? Le stepper montrerait alors en gris les mesures prévues
-        et en rouge celles qui sont faites.
-      - côté PRISM : connecteur quand il existe, sinon entrée manuelle. Peut-on convertir plus tard
-        une entrée manuelle en entrée PRISM, quand le connecteur apparaît ?
+- [ ] **Décidé le 2026-10-04 :**
+      - une donnée est attachée à l'**entité physique** (la plaque mesurée) autant qu'aux étapes.
+        Elle reste valable aux versions suivantes de la piste **tant que la piste suit la même
+        plaque**, même si on ajoute du procédé derrière. Exemple : étape 1, une mesure sur
+        l'épitaxie ; aux étapes suivantes on ajoute un etch back puis des contacts électriques ;
+        la mesure d'épitaxie reste.
+        Une entrée porte donc les plaques mesurées (`wafers`, clés de wafer) en plus de ses étapes.
+        Si une étape est supprimée à une évolution, la donnée reste, marquée « étape retirée » ;
+      - une même mesure faite à plusieurs moments : **une seule entrée, avec une valeur par étape**
+        (`measurements: [{step_id, contenu}]`). Le stepper montre toutes ses bulles en rouge, et on
+        compare avant/après dans la même entrée. Cela vaut pour les deux types : une entrée PRISM a
+        un instantané par étape, une entrée manuelle sa valeur, son image, son fichier ou son
+        tableau par étape ;
+      - **pas de mesures prévues dans le constructeur** : il ne décrit que la structure (épi ou
+        procédé). Les mesures vivent à côté, dans le cahier ;
+      - la conversion d'une entrée manuelle en entrée PRISM n'est pas prévue (YAGNI).
 
 ### 4. Documentation intégrée (en tout dernier)
 
@@ -128,13 +134,14 @@ d'étapes (jugé trop lourd à saisir). Reste :
       droits d'équipe sans manipulation.
 - [ ] Le dialogue « Modifier le projet » (page d'un projet corporate) déborde en largeur sur écran
       étroit, comme le faisait « Nouvelle équipe » avant sa correction.
-- [ ] **À décider : déplacer un µprojet vers le projet d'une autre équipe.** Tout `owner` effectif
-      d'un µprojet (propriétaire, manager de son équipe, admin) le déplace vers n'importe quel
-      projet (`PATCH /api/microprojects/{mp}` `{area}`, `microprojects.service.update`), celui d'une
-      autre équipe compris : l'équipe d'arrivée en devient `owner` sans l'avoir demandé, celle de
-      départ en perd la gestion. Pas une escalade (celui qui déplace ne gagne rien, et tout compte
-      crée déjà un µprojet dans n'importe quel projet). Si on veut l'empêcher : exiger, quand `area`
-      change, que l'appelant gère le projet d'arrivée (`areas.service.can_manage`) ou soit admin.
+- [ ] **Décidé le 2026-10-04 : restreindre le placement d'un µprojet dans un projet d'équipe.**
+      Quand on déplace (`PATCH /api/microprojects/{mp}` `{area}`) ou qu'on crée
+      (`POST /api/microprojects`) un µprojet dans un projet, il faut :
+      - gérer ce projet (`areas.service.can_manage`), être admin, ou être membre de son équipe ;
+      - un projet sans équipe et « Non classé » restent ouverts à tous.
+
+      Aujourd'hui, tout `owner` peut déposer un µprojet chez une autre équipe, qui en devient
+      `owner` sans l'avoir demandé.
 
 ## Petites dettes notées en cours de route
 
