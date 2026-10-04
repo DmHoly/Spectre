@@ -4,7 +4,7 @@
    fusion d'avant, sur la piste de son premier parent) -, et le panneau d'une version : ses refs (promouvoir, renommer, retirer), la comparer à
    une autre (structure-diff), partir d'elle (l'éditeur sur ?version=, une nouvelle piste), suivre
    une ref (ses descendants en évidence), voir sa structure (étiquettes de couches comprises,
-   agrandie au clic) et publier une ref dans la bibliothèque (une structure
+   agrandie au clic ; une structure en images : sa première image, annotations comprises) et publier une ref dans la bibliothèque (une structure
    enregistrée partagée, avec son origine). Le serveur donne tout ce qui est dessiné : numéros,
    niveaux, pistes, arêtes ; la page ne fait que poser chaque chose à sa place.
 
@@ -40,7 +40,9 @@
     editing: null, // {kind: "rename" | "remove", ref}
     flash: "",
     panelError: "",
-    structures: {}, // version_id -> le SVG de sa structure (étiquettes de couches comprises), null sans dessin
+    // version_id -> {svg} (le dessin, étiquettes de couches comprises) ou {images} (une structure en
+    // images, annotations comprises) ; undefined pendant la lecture, null sans rien à montrer
+    structures: {},
   };
 
   const errorBox = document.getElementById("error");
@@ -373,29 +375,33 @@
       </div>`;
   }
 
-  // La structure de la version choisie, telle que la fiche la montre (étiquettes de couches
-  // comprises) : lue une fois par version ; « Agrandir » l'ouvre en grand.
+  // La structure de la version choisie, telle que la fiche la montre : le dessin (étiquettes de
+  // couches comprises, « Agrandir » l'ouvre en grand) ou, pour une structure en images, sa première
+  // image avec ses annotations (structure-images.js, un clic l'ouvre). Lue une fois par version.
   async function loadStructure(node) {
-    if (node.structure_kind === "images" || node.version_id in state.structures) return;
+    if (node.version_id in state.structures) return;
     state.structures[node.version_id] = undefined;
-    let svg = null;
+    let shown = null;
     try {
-      svg = (await experimentsApi.getVersion(slug, node.experiment_id, node.version_id)).structure_svg || null;
+      const detail = await experimentsApi.getVersion(slug, node.experiment_id, node.version_id);
+      if (detail.structure_svg) shown = { svg: detail.structure_svg };
+      else if ((detail.structure_images || []).length) shown = { images: detail.structure_images };
     } catch (err) {
-      svg = null; // la structure est secondaire ici : le reste du panneau suffit
+      shown = null; // la structure est secondaire ici : le reste du panneau suffit
     }
-    state.structures[node.version_id] = svg;
+    state.structures[node.version_id] = shown;
     if (state.selectedId === node.version_id) renderPanel();
   }
 
   function structureHtml(node) {
-    if (node.structure_kind === "images") return "";
-    const svg = state.structures[node.version_id];
-    if (svg === null) return "";
-    const body =
-      svg === undefined
-        ? `<div class="skeleton" style="height:120px;"></div>`
-        : `<button type="button" class="evo-structure js-enlarge" aria-label="Agrandir la structure de ${escapeHtml(node.label)}" title="Agrandir">${svg}</button>`;
+    const shown = state.structures[node.version_id];
+    if (shown === null) return "";
+    let body = `<div class="skeleton" style="height:120px;"></div>`;
+    if (shown && shown.svg) {
+      body = `<button type="button" class="evo-structure js-enlarge" aria-label="Agrandir la structure de ${escapeHtml(node.label)}" title="Agrandir">${shown.svg}</button>`;
+    } else if (shown) {
+      body = structureBoardHtml(shown.images, { compact: true });
+    }
     return `
       <div class="evo-panel__section">
         <div class="section-title">Structure${node.structure_kind === "campaign" ? " · référence" : ""}</div>

@@ -145,7 +145,8 @@ d'étapes (jugé trop lourd à saisir). Reste :
   objets et des images sans annotation ; `registry_key` inchangée), posées sur la fiche par
   `PUT .../structure-images` avec `If-Match` : écriture légère, aucune version de structure, et une
   évolution qui ne change que des annotations n'en crée pas non plus. Les vignettes (graphe,
-  atlas, planche du constructeur, aperçus de la boîte du cahier) et le rapport les montrent, en
+  atlas, planche du constructeur, aperçus de la boîte du cahier, panneau de la page d'évolution) et
+  le rapport les montrent, en
   lecture seule ; un dessin aux proportions de l'image suit son redimensionnement. Écarts retenus :
   le composant est au noyau et non dans `attachments` (une image externe n'est pas une pièce
   jointe, et il ne connaît que l'`<img>` qu'on lui donne) ; les annotations se posent sur la fiche

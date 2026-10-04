@@ -896,7 +896,8 @@ Supprimée : `/microprojets/{slug}/graphe`.
   structure enregistrée, brique (insérée ou éditée). L'aperçu est le SVG du serveur ; le lien
   couche ↔ étape du dessin (sélection, survol) lit lui aussi le `step_index` du serveur. La page
   d'évolution montre, dans son panneau, la structure de la version choisie (agrandie dans une boîte
-  au clic). Les vignettes de l'écran « Variations » restent sans étiquettes (trop petites).
+  au clic) ; pour une structure en images, sa première image avec ses annotations
+  (`structureBoardHtml` compact, en lecture seule ; un clic l'ouvre). Les vignettes de l'écran « Variations » restent sans étiquettes (trop petites).
 - Le vocabulaire d'une étude (types d'étape et leurs paramètres, décisions, résultats d'un objectif)
   est dans `experiments/static/vocabulary.js` (global `ExperimentVocabulary`), chargé par la fiche
   et l'atlas.
