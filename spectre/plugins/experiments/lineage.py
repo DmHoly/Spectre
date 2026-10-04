@@ -27,7 +27,7 @@ def _structure_kind(structure_type: str) -> str:
     return "images" if kind is kinds.IMAGES else "campaign" if kind is kinds.CAMPAIGN else "process"
 
 
-def structure_history(repo: Any, *, all_versions: bool = False) -> dict:
+def structure_history(repo: Any, *, all_versions: bool = False, include: set[str] | None = None) -> dict:
     """``{lanes, nodes, edges}`` : the µprojet's versions laid out line by line, for the
     « Évolution des structures » page - everything it draws, so the page computes nothing.
 
@@ -37,7 +37,9 @@ def structure_history(repo: Any, *, all_versions: bool = False) -> dict:
       line forked from them); ``tip_version_id`` / ``tip_label`` say where an active line stands.
     - ``nodes``: by default the structural versions (:data:`STRUCTURAL_LEVELS`), the versions a ref
       points at, the merges and the first version of each line (a fork shows even before its
-      structure changes); ``all_versions`` adds the light ones. Each node carries its X.Y.Z
+      structure changes); ``all_versions`` adds the light ones, ``include`` only those of these ids
+      (the versions published as a reference, which the page reads from the references plugin -
+      an unknown id is ignored). Each node carries its X.Y.Z
       (:func:`versioning.compute_branch_versions`, along its own first-parent history), its
       ``change_level``, its refs, its ``lane`` (index into ``lanes``) and ``experiment_id``, the
       line through which it can be opened (its own, or one whose history contains it).
@@ -82,7 +84,11 @@ def structure_history(repo: Any, *, all_versions: bool = False) -> dict:
         keep = {
             exp_id
             for exp_id in experiments
-            if numbers[exp_id]["level"] in STRUCTURAL_LEVELS or exp_id in ref_names or len(dag[exp_id]) != 1 or exp_id in lane_starts
+            if numbers[exp_id]["level"] in STRUCTURAL_LEVELS
+            or exp_id in ref_names
+            or len(dag[exp_id]) != 1
+            or exp_id in lane_starts
+            or exp_id in (include or ())
         }
 
     by_lane: dict[str, list[Any]] = {}

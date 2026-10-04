@@ -20,7 +20,7 @@ import hashlib
 import re
 import unicodedata
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 import follow
 from structureforge.adapters import follow_adapter
@@ -45,6 +45,12 @@ from .repository import (
 from .schemas import ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput
 
 CONTEXT_METADATA_KEY = "context"
+
+# La version de référence dont part une étude (``{reference, version}``, plugin references - qui
+# dépend d'experiments, pas l'inverse : ici, la forme seulement). Posée au lancement, reportée par
+# amend() comme toute métadonnée, gardée par une fourche et par une combinaison (celle de la
+# première étude) quand la requête n'en donne pas.
+REFERENCE_ORIGIN_KEY = "reference_origin"
 
 # Le cahier de données d'une étude (plugin notebook, qui dépend d'experiments et non l'inverse) : ses
 # entrées sont rangées dans les métadonnées, sous NOTEBOOK_KEY, chacune avec son ``id``. Les données
@@ -143,21 +149,53 @@ def notebook_entry_ids(version: follow.Experiment) -> list[str]:
     return ids
 
 
+class StructureState(NamedTuple):
+    """Ce que le diff compare d'une version : sa structure (type et données Follow), ses métadonnées
+    et les ids de ses étapes - lus dans son dépôt (:func:`state_of`), ou gardés à part (l'instantané
+    d'une version de référence, plugin references)."""
+
+    structure_type: str
+    structure: Any
+    metadata: dict[str, Any]
+    step_ids: list[str]
+
+
+def state_of(repo: follow.Repository, version: follow.Experiment) -> StructureState:
+    """Ce que le diff compare de ``version``, lue dans ``repo`` (ses ids d'étape : :func:`step_ids_of`)."""
+    return StructureState(version.structure_type, version.structure, version.metadata, step_ids_of(repo, version))
+
+
 def structure_diff(before_repo: follow.Repository, before: follow.Experiment, after_repo: follow.Repository, after: follow.Experiment) -> dict[str, Any]:
+    """Le diff de ``before`` à ``after``, chacune lue dans son dépôt (``before_repo``,
+    ``after_repo``) - voir :func:`compare_states`."""
+    return compare_states(state_of(before_repo, before), state_of(after_repo, after))
+
+
+def compare_states(before: StructureState, after: StructureState) -> dict[str, Any]:
     """``{entries, label_changes, param_changes}`` : Follow's leaf-by-leaf diff from ``before``'s
-    structure to ``after``'s (each read in its own repository, ``before_repo`` and ``after_repo``) -
-    or, when one of them is given as pictures, ``{entries: [], summary}`` in plain French (position
-    by position, a reordering would read as "everything changed") - and, apart, what changed to the
-    layer labels and to their grouping by brick (:func:`kinds.describe_label_changes`) and to the
-    declared parameters, which the geometry does not carry (:func:`kinds.describe_param_changes`).
-    The steps are matched by id (:func:`step_ids_of`), by position between two versions that share
-    none."""
-    compared = (before.metadata, after.metadata, step_ids_of(before_repo, before), step_ids_of(after_repo, after))
+    structure to ``after``'s - or, when one of them is given as pictures, ``{entries: [], summary}``
+    in plain French (position by position, a reordering would read as "everything changed") - and,
+    apart, what changed to the layer labels and to their grouping by brick
+    (:func:`kinds.describe_label_changes`) and to the declared parameters, which the geometry does
+    not carry (:func:`kinds.describe_param_changes`). The steps are matched by id, by position
+    between two versions that share none."""
+    compared = (before.metadata, after.metadata, before.step_ids, after.step_ids)
     apart = {"label_changes": kinds.describe_label_changes(*compared), "param_changes": kinds.describe_param_changes(*compared)}
     summary = kinds.describe_image_changes(before.structure_type, before.structure, after.structure_type, after.structure)
     if summary is not None:
         return {"entries": [], "summary": summary, **apart}
     return {**follow.diff_structures(before.structure, after.structure).model_dump(mode="json"), **apart}
+
+
+def structure_change_level(before_metadata: dict[str, Any] | None, after_metadata: dict[str, Any]) -> str:
+    """Le niveau du changement de structure des métadonnées ``before_metadata`` à ``after_metadata``
+    (:mod:`.versioning` : ``initial`` sans ``before_metadata``, ``major``, ``minor``, ``patch`` -
+    étiquettes, nom d'étape, unité ajoutée seule -, ``none``)."""
+    after = versioning.structure_signature(after_metadata)
+    if after is None:
+        return "none"
+    before = versioning.structure_signature(before_metadata) if before_metadata is not None else None
+    return versioning.classify_process_change(before, after)
 
 
 # -- l'identité des étapes -------------------------------------------------------------------------
@@ -256,18 +294,23 @@ def editable_process(repo: follow.Repository, version: follow.Experiment) -> dic
     position d'étape comme les paramètres déclarés ; ``{}`` sans étiquette) et les briques dont les
     étapes font partie (``bricks``, par positions d'étape ; ``[]`` sans brique) - ``None`` sans
     procédé éditable (une structure en images)."""
-    process = version.metadata.get("structureforge_process")
+    return editable_process_from(version.metadata, step_ids_of(repo, version))
+
+
+def editable_process_from(metadata: dict[str, Any], ids: list[str]) -> dict[str, Any] | None:
+    """:func:`editable_process` des métadonnées d'une version (``metadata``) dont les étapes portent
+    ``ids`` - aussi pour un instantané gardé hors du dépôt (une version de référence)."""
+    process = metadata.get("structureforge_process")
     if process is None:
         return None
     payload = copy.deepcopy(process)
-    ids = step_ids_of(repo, version)
     payload["steps"] = [{"id": step_id, **step} for step_id, step in zip(ids, payload.get("steps") or [])]
-    labels = version.metadata.get(simulation.LAYER_LABELS_METADATA_KEY)
+    labels = metadata.get(simulation.LAYER_LABELS_METADATA_KEY)
     position = {step_id: i for i, step_id in enumerate(ids)}
     payload["layer_labels"] = {
         str(position[step_id]): copy.deepcopy(label) for step_id, label in (labels if isinstance(labels, dict) else {}).items() if step_id in position
     }
-    payload["bricks"] = simulation.bricks_json(simulation.bricks_from_metadata(version.metadata.get(simulation.BRICKS_METADATA_KEY), ids))
+    payload["bricks"] = simulation.bricks_json(simulation.bricks_from_metadata(metadata.get(simulation.BRICKS_METADATA_KEY), ids))
     return payload
 
 
@@ -605,11 +648,30 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
         builder.metadata.update(prepared.step_metadata(source, step_ids_of(repo, source) if source is not None else []))
         builder.metadata["physical_tracking"] = _launch_tracking(prepared.kind, prepared.campaign_size, entities)
         apply_context(builder.metadata, body.context)
+        _set_reference_origin(builder.metadata, body, source)
         builder.form_answers = dict(body.form_answers)
         experiment = _commit(builder, "Impossible de lancer cette expérience")
         if len(repo) == 1:
             refs.create_ref(repo, experiment.id)
         return experiment
+
+
+def _set_reference_origin(metadata: dict[str, Any], body: CreateExperimentRequest, source: follow.Experiment | None) -> None:
+    """La version de référence dont part la nouvelle piste : celle de la requête, sinon celle de
+    ``source`` (la version dont elle part : une fourche, ou la première étude d'une combinaison)."""
+    if body.reference_origin is not None:
+        metadata[REFERENCE_ORIGIN_KEY] = body.reference_origin.model_dump()
+    elif source is not None and reference_origin_of(source) is not None:
+        metadata[REFERENCE_ORIGIN_KEY] = reference_origin_of(source)
+
+
+def reference_origin_of(version: follow.Experiment) -> dict[str, str] | None:
+    """La version de référence dont part l'étude (``{reference, version}``), telle qu'enregistrée -
+    ``None`` sans origine, ou pour une origine illisible."""
+    origin = version.metadata.get(REFERENCE_ORIGIN_KEY)
+    if isinstance(origin, dict) and isinstance(origin.get("reference"), str) and isinstance(origin.get("version"), str):
+        return {"reference": origin["reference"], "version": origin["version"]}
+    return None
 
 
 def _source_of(repo: follow.Repository, origin: FromVersion) -> follow.Experiment:
@@ -695,6 +757,7 @@ def combine(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.
         if CONTEXT_METADATA_KEY in a.metadata:
             builder.metadata[CONTEXT_METADATA_KEY] = a.metadata[CONTEXT_METADATA_KEY]
         apply_context(builder.metadata, body.context)
+        _set_reference_origin(builder.metadata, body, a)
         builder.metadata["physical_tracking"] = _launch_tracking(
             _structure_kind(a.structure_type), kinds.entity_count(a.structure_type, a.structure), entities
         )

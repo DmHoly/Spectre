@@ -54,6 +54,56 @@ Relecture du lot 5 (2026-10-04) :
       où la brique était insérée. Fait.
 - [x] **Largeur des caractères hors ASCII** : « Œ », « 中 », un émoji sortaient du SVG. Fait.
 
+### 3 quater. Références de structure
+
+Demandé le 2026-10-04 : « une structure de ref, c'est pour l'utiliser dans différents projets et
+pouvoir la tracer au fur et à mesure ; une page à l'échelle de toute l'application pour tracer
+l'évolution des références et voir leur dernière mise à jour ; la même vue que l'évolution des
+structures mais en version références, pour tous les projets : on choisit la référence et on voit
+son évolution, uniquement les versions de référence ; quand on démarre une expérience ou un projet
+on part souvent d'une référence, rarement d'une structure vierge ».
+
+Décisions (font foi) :
+
+- Une **référence** est un objet **global** de l'application, avec des versions qui peuvent venir
+  de µprojets différents. « Promouvoir en ref » devient « Publier comme référence » : on choisit la
+  référence (proposée d'office : celle dont vient l'étude) ou on en crée une. Les refs locales
+  existantes du même nom (ex. epitaxie-standard) sont **regroupées** en une référence ; les refs à
+  nom automatique (« ref vX.Y.Z ») restent de simples repères locaux.
+- Numérotation **MAJEUR.MINEUR calculée** : la nouvelle version est comparée à la version de
+  référence dont elle dérive (majeur → X+1.0 ; mineur ou correctif → X.Y+1 ; identique → 409),
+  numéros uniques même entre branches parallèles (deux dérivations d'une même version → 1.1 et
+  1.2 ; un majeur quand 2.0 existe → 3.0).
+- Publier une version : tout **éditeur** du µprojet source ; renommer, décrire, retirer une
+  référence : son créateur ou un admin. Tout est tracé (qui, quand, depuis quel µprojet, étude,
+  version).
+- Démarrage : « Nouvelle expérience » ouvre **d'abord** le choix d'une référence (dernière version
+  proposée, recherche, choix de version) ; partir d'une structure vierge reste possible mais
+  secondaire. L'étude **retient** la version de référence dont elle part (suivi des usages). Même
+  proposition après la création d'un µprojet.
+
+- [x] **Serveur** : plugin `references` (après experiments), routes `/api/references`,
+      `/api/references/{slug}/versions[/{number}[/structure-diff]]`, `/api/reference-versions`,
+      `reference_origin` au lancement d'une étude, regroupement des refs locales, badges de la page
+      d'évolution (`include_versions`). Fait : voir « Fait » (« Références de structure »).
+- [ ] **Page des références** (toute l'application, entrée dans la barre du haut) : la liste
+      (dernière version, date, µprojet source, auteur, usages, recherche), puis l'évolution d'une
+      référence choisie - la vue de l'évolution des structures, en versions de référence seules
+      (`GET .../versions` : colonnes, arêtes, rattachements déduits en pointillés), le panneau d'une
+      version (`structure_svg`, note, source, usages, comparer à une autre version), renommer /
+      décrire / retirer pour son créateur ou un admin. `client.js` (`referencesApi`) à écrire.
+- [ ] **Publier comme référence** (page d'évolution d'un µprojet, fiche) à la place de « Promouvoir
+      en ref » : choisir la référence (proposée : celle de `reference_origin`) ou en créer une, la
+      note, le parent au besoin ; le 409 « identique » dit à quelle version.
+- [ ] **Badges « R nom 1.1 »** sur les nœuds de la page d'évolution d'un µprojet :
+      `GET /api/reference-versions?microproject=`, puis `structure-history` avec
+      `include_versions` (une version publiée peut être légère, masquée sinon).
+- [ ] **Nouvelle expérience depuis une référence** : le choix d'une référence d'abord (dernière
+      version, recherche, autre version), le constructeur chargé depuis `process` de la version, le
+      lancement avec `reference_origin` ; « structure vierge » en second. Même proposition après la
+      création d'un µprojet. La fiche montre l'origine (`reference_origin`, « référence inconnue »
+      si elle ne se résout pas : `GET .../versions/{number}` en 404).
+
 ### 4. Documentation intégrée (en tout dernier)
 
 Volontairement à faire **après** les points 1 à 3, pour ne pas réécrire la documentation une fois
@@ -130,6 +180,34 @@ d'étapes (jugé trop lourd à saisir). Reste :
       au fil des besoins réels (le fichier explique le format en commentaire).
 
 ## Fait (pour mémoire, pas d'action)
+
+- **Références de structure, serveur** (2026-10-04, point 3 quater ; `ARCHITECTURE.md` § 3,
+  § 4 « Identité d'une expérience », § 5 « references »).
+  - Plugin `references` (dépend d'experiments, microprojects, structures ; placé juste après
+    experiments) : tables `structure_references`, `reference_versions`, `reference_import_scans`.
+    Écart : `structure_references` et non `references`, mot réservé de SQL.
+  - Numéro calculé (`service.next_number`) avec le versionnage des études ; écritures sérialisées
+    et numéro unique par référence (index) ; 409 `reference_version_identical`.
+  - Instantané de la structure à la publication (structure dessinée, procédé, paramètres déclarés
+    avec unité, ids d'étape, étiquettes, briques) : rendu SVG, procédé éditable et diff sans l'étude.
+    Écart : une structure en images ou une campagne ne se publie pas (422
+    `reference_needs_process`) - une référence est un point de départ du constructeur ; leurs refs
+    locales restent locales.
+  - Règles choisies : le slug d'une référence est fixé à la création (une étude la cite par lui ;
+    renommer ne change que le nom) ; un nom est unique sans casse, ni accents, ni ponctuation ;
+    retirer une référence qui a des versions est réservé à l'admin (409 pour son créateur), ses
+    versions partent avec elle ; « dernière version » = la dernière publiée.
+  - `reference_origin` : forme vérifiée par experiments seul, reporté par `amend()`, gardé par une
+    fourche et (écart, non demandé mais du même ordre) par une combinaison ; usages lus sur la
+    pointe de chaque piste.
+  - Regroupement des refs locales : à la première lecture des références (pas au démarrage : le
+    noyau n'a pas de crochet de démarrage, et la démo sème ses refs après la migration), chaque
+    µprojet lu une fois ; une version identique à son parent à l'import (epitaxie-standard des deux
+    µprojets de la démo) reçoit le mineur suivant, `change_level` `none`, au lieu d'un 409.
+  - Badges de la page d'évolution : `GET /api/reference-versions?microproject=`, et
+    `structure-history?include_versions=` pour montrer une version publiée légère (experiments ne
+    connaît pas les références).
+  - Reste au front : voir « Références de structure » plus haut.
 
 - **Relecture du lot 5** (2026-10-04, point 3 ter ; `ARCHITECTURE.md` § 4, « Étiquettes de
   couches », « Briques d'un procédé »).

@@ -44,7 +44,22 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   version (au plus un correctif, quand cela regroupe des étiquettes).
 - **Ref.** Une ref est une version promue en point de départ réutilisable (une étiquette Follow
   nommée, « ref vX.Y.Z » par défaut), propre au µprojet. Un editor peut la renommer ou la retirer ;
-  la version, elle, reste.
+  la version, elle, reste. Les refs à nom automatique restent ces repères locaux ; un point de
+  départ partagé est désormais une référence (ci-dessous).
+- **Références de structure.** Une référence (« epitaxie-standard ») est un objet de toute
+  l'application, pas d'un µprojet : ses versions, numérotées `MAJEUR.MINEUR` par le serveur, sont
+  publiées depuis les études de n'importe quel µprojet (« Publier comme référence » : tout editor du
+  µprojet source), chacune comparée à la version de référence dont elle dérive - un changement
+  majeur donne le majeur suivant, un réglage, une étiquette ou une unité seule le mineur suivant,
+  une structure identique est refusée ; deux dérivations d'une même version reçoivent 1.1 et 1.2.
+  Chaque version garde un instantané de la structure (procédé, paramètres déclarés et leur unité,
+  étiquettes, briques), qui se dessine et se reprend même si l'étude source disparaît, et dit d'où
+  elle vient (qui, quand, quel µprojet, quelle piste et version : seulement le nom du µprojet pour
+  qui n'en est pas membre). Une étude lancée depuis une référence retient la version dont elle part
+  (`reference_origin`, reportée à ses versions suivantes et à ses fourches) : la référence en compte
+  les usages. Renommer, décrire ou retirer une référence revient à son créateur ou à un admin. Les
+  refs locales nommées à la main avant les références (la même « epitaxie-standard » dans deux
+  µprojets) y ont été regroupées par nom, sans toucher aux dépôts Follow.
 - **Évolution des structures.** La page `/microprojets/{slug}/evolution` (bouton « Évolution des
   structures » de la page µprojet et de la fiche) dessine les pistes en colonnes, façon git : un
   nœud `vX.Y.Z` par version structurelle (majeure, mineure), les fourches, les combinaisons et les refs
@@ -281,6 +296,7 @@ ses tables (`migrations.py`), ses pages (`pages/`) et son front (`static/`, serv
 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu DOE, types de structure | `/api/materials`, `/api/recipes`, `/api/simulations`, `/api/campaign-previews` | constructeur et structure en images (`/microprojets/{slug}/structures/...`, `.../evoluer`, `.../evoluer-image`) |
 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques | `/api/saved-structures`, `/api/step-presets`, `/api/tech-bricks` | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
 | `experiments` | Pistes et versions Follow : création, évolution, statut, conclusion, étiquettes, entités, combinaison de deux études, diff, filiation, refs, statistiques | `/api/microprojects/{mp}/experiments`, `.../lineage`, `.../refs`, `.../structure-history`, `/api/experiment-stats`, `/api/experiment-timeline` | `/microprojets/{slug}/experiences/{experiment_id}`, `/microprojets/{slug}/evolution` |
+| `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études, instantanés, évolution, usages, regroupement des refs locales d'avant | `/api/references`, `/api/reference-versions` | — (pages à venir) |
 | `intent_forms` | Formulaires d'intention et formulaire actif d'un µprojet | `/api/intent-forms`, `/api/microprojects/{mp}/active-intent-form` | `/microprojets/{slug}/formulaire-intention` |
 | `wafers` | Index des plaques suivies, recherche par lasermark et FDL, visibilité | `/api/wafers` | `/plaques/{lasermark}` |
 | `lots` | Lots de fabrication, wafers, thématiques visées, Gantt | `/api/lots`, `/api/lot-priorities` | `/lots`, `/lots/{code}` |
