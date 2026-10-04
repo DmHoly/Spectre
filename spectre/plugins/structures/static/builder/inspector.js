@@ -129,6 +129,7 @@ function livePreviewFromForm() {
   if (previous.brick_group_id) {
     step.brick_group_id = previous.brick_group_id;
     step.brick_name = previous.brick_name;
+    if (previous.brick_source) step.brick_source = previous.brick_source;
   }
   state.steps[i] = step;
   refreshLayerLabelValues(step);

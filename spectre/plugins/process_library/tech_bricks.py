@@ -22,7 +22,7 @@ from pydantic import Field, model_validator
 from structureforge.process.steps import ProcessStep
 
 from ..library.service import load
-from ..structures.simulation import DeclaredParam, LayerLabel, layer_labels_by_index
+from ..structures.simulation import DeclaredParam, LayerLabel, ProcessBrick, checked_bricks, layer_labels_by_index
 from .models import LibraryItem
 
 
@@ -32,11 +32,15 @@ class TechBrick(LibraryItem):
     declared_params: dict[str, list[DeclaredParam]] = Field(default_factory=dict)
     # the layer labels of the chosen steps (see spectre.plugins.structures.simulation.LayerLabel), by step index
     layer_labels: dict[str, LayerLabel] = Field(default_factory=dict)
+    # the bricks its own steps belong to (a brick composed with another inserted in it, see
+    # spectre.plugins.structures.simulation.ProcessBrick), by step index
+    bricks: list[ProcessBrick] = Field(default_factory=list)
     notes: str | None = None
 
     @model_validator(mode="after")
     def _labels_on_steps(self) -> "TechBrick":
         layer_labels_by_index(self.layer_labels, len(self.steps))
+        checked_bricks(self.bricks, len(self.steps))
         return self
 
 

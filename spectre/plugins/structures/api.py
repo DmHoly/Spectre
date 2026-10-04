@@ -38,12 +38,13 @@ def simulate(body: ProcessInput) -> dict:
     materials - a 422 if StructureForge can't simulate it - and ``step_ids``, the id of each step:
     the one it came with, or a new one for a new step (the builder adopts it, it never makes one
     up - see :func:`simulation.settle_step_ids`). Each layer names the step that created it
-    (``step_index``), and the SVGs carry the labels of ``layer_labels``."""
+    (``step_index``), and the SVGs carry the labels of ``layer_labels``, grouped by ``bricks``."""
     declared_params = simulation.declared_params_by_index(body.declared_params)
     labels = simulation.layer_labels_by_index(body.layer_labels, len(body.steps))
+    bricks = simulation.checked_bricks(body.bricks, len(body.steps))
     result = simulation.simulate_process(body.substrate, body.steps, declared_params or None)
     return {
-        **rendering.frames_payload(result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels),
+        **rendering.frames_payload(result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels, bricks),
         "step_ids": simulation.settle_step_ids(body.step_ids),
     }
 
@@ -64,6 +65,7 @@ def preview_campaign(body: CampaignPreviewRequest) -> dict:
         simulation.declared_params_by_index(body.declared_params),
         body.step_ids,
         simulation.layer_labels_by_index(body.layer_labels, len(body.steps)),
+        simulation.checked_bricks(body.bricks, len(body.steps)),
     )
     return {
         "svgs": result.svgs,

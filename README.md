@@ -39,7 +39,9 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   deux études ne bougent pas.
 - **Numéro de version.** Chaque version porte un numéro `X.Y.Z` calculé depuis la structure
   (`experiments/versioning.py`) : majeur si le substrat ou la suite d'étapes change, mineur si un
-  paramètre d'étape change, correctif si seul un nom d'étape ou une étiquette de couche change.
+  paramètre d'étape change, correctif si seul un nom d'étape, l'unité ajoutée à un paramètre
+  déclaré ou une étiquette de couche change ; regrouper des étapes en brique ne change pas la
+  version (au plus un correctif, quand cela regroupe des étiquettes).
 - **Ref.** Une ref est une version promue en point de départ réutilisable (une étiquette Follow
   nommée, « ref vX.Y.Z » par défaut), propre au µprojet. Un editor peut la renommer ou la retirer ;
   la version, elle, reste.
@@ -60,6 +62,13 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   portent une ; elles sont enregistrées avec la version (sans compter comme un changement de
   structure) et avec les structures et briques de la bibliothèque, et se retrouvent sur la fiche
   (bouton « Étiquettes : masquer / afficher »), la page d'évolution et le rapport.
+  Les étapes étiquetées d'une même brique n'ont qu'une étiquette, celle de la brique : son nom,
+  une ligne par étape (« p-GaN : 120 nm · dopage Mg 3e18 cm⁻³ ») et une accolade sur leurs
+  couches. Un paramètre déclaré a son unité (cm⁻³, %, °C...), écrite sur l'étiquette. Le diff
+  d'une version dit, à part de la structure, ce qui change aux étiquettes.
+- **Briques d'un procédé.** Une brique insérée dans le constructeur (ou formée d'étapes
+  choisies) reste un groupe d'étapes, enregistré avec la version, les structures et briques de
+  la bibliothèque, et retrouvé à la réouverture (évolution, fourche, modèle).
 - **Cahier de données.** Toutes les données d'une expérience sont dans un seul cahier (onglet
   « Données » de la fiche) : des entrées PRISM (un instantané par étape et une vue DataViz) ou
   saisies à la main (valeur, texte, tableau collé d'Excel, images annotées, fichiers, images

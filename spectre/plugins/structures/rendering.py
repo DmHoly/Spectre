@@ -5,7 +5,10 @@ redrawn from its stored, already-flattened layers.
 The **layer labels** (:class:`~spectre.plugins.structures.simulation.LayerLabel`) are Spectre's own:
 :func:`labelled_svg` sets StructureForge's drawing in a wider SVG, the labels of the chosen steps
 stacked on its right - each one's text, its values below, a thin line to the layer its step
-created. The provenance of the layers (which step created which layer) always comes from the
+created. The labelled steps of one brick (:class:`~spectre.plugins.structures.simulation.ProcessBrick`,
+at least :data:`~spectre.plugins.structures.simulation.MIN_GROUPED_LABELS` of them) share a single
+label instead: the brick's name, one line per step, and a bracket over the layers they created.
+The provenance of the layers (which step created which layer) always comes from the
 server's simulation (``simulation.SimulationResult.layer_origins``, or what a study recorded of
 it), never from matching materials. The result is a self-contained SVG: colours are the page's
 tokens with their value as fallback, so it reads the same in a screenshot or in the report.
@@ -36,6 +39,8 @@ from .simulation import (
     SUBSTRATE_ORIGIN,
     DeclaredParam,
     LayerLabel,
+    ProcessBrick,
+    grouped_labels,
 )
 
 
@@ -88,11 +93,16 @@ def frame_svg(frame: Frame, material_colors: dict[str, str]) -> str:
 @dataclass(frozen=True)
 class LayerAnnotation:
     """What one label draws: its text, its values (one line each, already written out), and the
-    positions in ``frame.layers`` of the layers its step created (the line points at the largest)."""
+    positions in ``frame.layers`` of the layers its step created (the line points at the largest).
+    ``grouped``: the label of a brick - its name, one line per labelled step, and a bracket over all
+    their layers instead of a line to one of them, its lines written from the highest layer down
+    (``line_layers``: the layers of each line's step)."""
 
     title: str
     lines: tuple[str, ...]
     layers: tuple[int, ...]
+    grouped: bool = False
+    line_layers: tuple[tuple[int, ...], ...] = ()
 
 
 def length_text(nm: float) -> str:
@@ -107,34 +117,57 @@ def _value_text(value: Any) -> str:
     return format_number(float(value))
 
 
-def _declared_line(name: str, params: list[DeclaredParam]) -> str | None:
+def _declared_value(name: str, params: list[DeclaredParam]) -> str | None:
+    """The value of the declared parameter ``name`` with its unit (its own field, or the ``unit=``
+    of its obtention for a parameter recorded before it) - ``None`` without a value."""
     param = next((p for p in params if p.name == name), None)
     if param is None or param.value in (None, ""):
         return None
-    unit = next((str(param.obtention[key]) for key in ("unit", "unité", "unite") if param.obtention.get(key)), "")
-    return f"{name} : {_value_text(param.value)}{' ' + unit if unit else ''}"
+    unit = param.unit_text()
+    return f"{_value_text(param.value)}{' ' + unit if unit else ''}"
+
+
+def label_title(step: ProcessStep, label: LayerLabel) -> str:
+    """The text of ``step``'s label: its own, or else the step's material, or else its name."""
+    material = getattr(step, "material", None) or getattr(step, "resist_material", None)
+    return label.text or (material if isinstance(material, str) else None) or step.name
+
+
+def label_values(step: ProcessStep, declared: list[DeclaredParam], label: LayerLabel) -> list[tuple[str, str]]:
+    """``(name, value)`` of each value of ``step``'s label, in the chosen order (``name`` empty for
+    a thickness or a composition, the parameter's name for a declared one) - a value the step
+    doesn't have (no thickness, not a graded nitride, a declared parameter since removed) is left
+    out."""
+    values: list[tuple[str, str]] = []
+    for key in label.values:
+        if key == LABEL_THICKNESS:
+            thickness = getattr(step, "thickness", None)
+            if isinstance(thickness, Length):
+                values.append(("", length_text(thickness.to_nm())))
+        elif key == LABEL_COMPOSITION:
+            match = GRADED_NITRIDE_RE.match(str(getattr(step, "material", "") or ""))
+            if match:
+                values.append(("", f"{match.group(1)} {round(float(match.group(2)) * 100)} %"))
+        elif key.startswith(LABEL_DECLARED_PREFIX):
+            name = key[len(LABEL_DECLARED_PREFIX) :]
+            value = _declared_value(name, declared)
+            if value:
+                values.append((name, value))
+    return values
 
 
 def label_text(step: ProcessStep, declared: list[DeclaredParam], label: LayerLabel) -> tuple[str, tuple[str, ...]]:
-    """The text of ``step``'s label (its own, or else the step's material) and its value lines, in
-    the chosen order - a value the step doesn't have (no thickness, not a graded nitride, a
-    declared parameter since removed) is left out."""
-    material = getattr(step, "material", None) or getattr(step, "resist_material", None)
-    title = label.text or (material if isinstance(material, str) else None) or step.name
-    lines: list[str] = []
-    for key in label.values:
-        line = None
-        if key == LABEL_THICKNESS:
-            thickness = getattr(step, "thickness", None)
-            line = length_text(thickness.to_nm()) if isinstance(thickness, Length) else None
-        elif key == LABEL_COMPOSITION:
-            match = GRADED_NITRIDE_RE.match(str(getattr(step, "material", "") or ""))
-            line = f"{match.group(1)} {round(float(match.group(2)) * 100)} %" if match else None
-        elif key.startswith(LABEL_DECLARED_PREFIX):
-            line = _declared_line(key[len(LABEL_DECLARED_PREFIX) :], declared)
-        if line:
-            lines.append(line)
-    return title, tuple(lines)
+    """The text of ``step``'s own label and its value lines (« 150 nm », « dopage Mg : 2e19 cm-3 »)."""
+    lines = tuple(f"{name} : {value}" if name else value for name, value in label_values(step, declared, label))
+    return label_title(step, label), lines
+
+
+def grouped_line(step: ProcessStep, declared: list[DeclaredParam], label: LayerLabel) -> str:
+    """One step's line in the label of its brick: its text, then its values on the same line
+    (« p-GaN : 120 nm · dopage Mg 3e18 cm⁻³ »)."""
+    values = [f"{name} {value}" if name else value for name, value in label_values(step, declared, label)]
+    title = label_title(step, label)
+    return f"{title} : {' · '.join(values)}" if values else title
 
 
 def annotations_for(
@@ -142,18 +175,35 @@ def annotations_for(
     declared: dict[int, list[DeclaredParam]],
     labels: dict[int, LayerLabel],
     origins: list[int | None],
+    bricks: list[ProcessBrick] | None = None,
 ) -> list[LayerAnnotation]:
     """The labels of a drawing whose layers were created by the steps ``origins`` names (one
     position per layer of ``frame.layers``, :data:`SUBSTRATE_ORIGIN` or ``None`` for the
-    substrate) - one per labelled step that has a layer in it, in the order of the steps."""
-    annotations = []
-    for index in sorted(labels):
-        layers = tuple(k for k, origin in enumerate(origins) if origin == index and origin != SUBSTRATE_ORIGIN)
-        if not layers or not 0 <= index < len(steps):
+    substrate) - one per labelled step that has a layer in it, in the order of the steps. The
+    labelled steps of one brick (``bricks``, see :func:`~.simulation.grouped_labels`) share the
+    brick's label instead, one line per step that has a layer in the drawing."""
+    labelled = {index: label for index, label in labels.items() if 0 <= index < len(steps)}
+    groups = grouped_labels(bricks or [], labelled)
+    in_group = {index for _brick, members in groups for index in members}
+
+    def layers_of(indexes: set[int]) -> tuple[int, ...]:
+        return tuple(k for k, origin in enumerate(origins) if origin in indexes and origin != SUBSTRATE_ORIGIN)
+
+    ordered: list[tuple[int, LayerAnnotation]] = []
+    for index in sorted(labelled):
+        layers = layers_of({index})
+        if index in in_group or not layers:
             continue
-        title, lines = label_text(steps[index], declared.get(index, []), labels[index])
-        annotations.append(LayerAnnotation(title, lines, layers))
-    return annotations
+        title, lines = label_text(steps[index], declared.get(index, []), labelled[index])
+        ordered.append((index, LayerAnnotation(title, lines, layers)))
+    for brick, members in groups:
+        present = [index for index in members if layers_of({index})]
+        if not present:
+            continue
+        lines = tuple(grouped_line(steps[index], declared.get(index, []), labelled[index]) for index in present)
+        line_layers = tuple(layers_of({index}) for index in present)
+        ordered.append((present[0], LayerAnnotation(brick.name, lines, layers_of(set(present)), grouped=True, line_layers=line_layers)))
+    return [annotation for _index, annotation in sorted(ordered, key=lambda item: item[0])]
 
 
 # Mise en page (unités de l'SVG, à l'échelle 1 à l'écran) : la structure tient dans un carré de
@@ -165,6 +215,14 @@ TITLE_SIZE = 16.0
 VALUE_SIZE = 14.0
 LINE_HEIGHT = 1.3
 BLOCK_GAP = 10.0
+# l'accolade d'une brique : à droite du dessin, dans la marge des traits
+BRACKET_GAP = 6.0
+BRACKET_DEPTH = 6.0
+BRACKET_TIP = 6.0
+BRACKET_MIN_HEIGHT = 8.0
+MAX_TITLE_CHARS = 40
+MAX_LINE_CHARS = 48
+MAX_GROUPED_LINE_CHARS = 64
 _TEXT = "var(--text, #1b2440)"
 _TEXT_SOFT = "var(--text-soft, #4a5470)"
 _SURFACE = "var(--surface, #ffffff)"
@@ -195,8 +253,32 @@ def _anchor(rings: list[dict]) -> tuple[float, float] | None:
     return seg_max - inset, inside.y
 
 
+# La largeur d'un texte, estimée (le serveur ne mesure pas le texte) et par excès : la chasse de
+# chaque caractère, en fraction de la taille de police, arrondie au dixième supérieur du plus large
+# de DM Sans et de ses polices de repli (Helvetica Neue, Arial), en gras (600) comme en normal -
+# mesurée dans le navigateur. Un texte ne sort jamais du SVG : « WWWW… » mesure 1 em par lettre en
+# DM Sans 600, trois fois un « i ».
+_CHAR_WIDTHS = {
+    **dict.fromkeys("il .,'|", 0.3),
+    **dict.fromkeys("Ifjt:;!·()[]°⁻¹²³", 0.4),
+    **dict.fromkeys("rz/", 0.5),
+    **dict.fromkeys("mw&#_", 0.9),
+    **dict.fromkeys("MW—…%@", 1.1),
+}
+
+
+def _top_of(frame: Frame, layers: tuple[int, ...]) -> float:
+    """Le haut (en y de la géométrie, vers le haut) des couches ``layers`` de ``frame``."""
+    ys = [point[1] for k in layers if k < len(frame.layers) for ring in frame.layers[k].rings() for point in ring.get("exterior") or []]
+    return max(ys) if ys else float("-inf")
+
+
+def _char_width(char: str) -> float:
+    return _CHAR_WIDTHS.get(char) or (0.8 if char.isupper() else 0.7)
+
+
 def _text_width(text: str, size: float) -> float:
-    return len(text) * size * 0.58  # une estimation : le serveur ne mesure pas le texte
+    return sum(_char_width(char) for char in text) * size
 
 
 def _ellipsis(text: str, limit: int) -> str:
@@ -242,6 +324,7 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         # le dessin est retourné (y vers le haut) : un point (x, y) de la géométrie est en (x, -y)
         return PAD + (x - vx) * scale, PAD + (-y - vy) * scale
 
+    bracket_x = PAD + sw + BRACKET_GAP
     blocks = []
     for annotation in annotations:
         rings_by_layer = [frame.layers[k].rings() for k in annotation.layers if k < len(frame.layers)]
@@ -249,15 +332,29 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         candidates = [(rings, shape) for rings, shape in candidates if shape is not None and not shape.is_empty]
         if not candidates:
             continue
-        rings = max(candidates, key=lambda c: c[1].area)[0]
-        point = _anchor(rings)
-        if point is None:
-            continue
-        title = _ellipsis(annotation.title, 40)
-        lines = [_ellipsis(line, 48) for line in annotation.lines]
+        bracket = None
+        if annotation.grouped:
+            # une accolade sur toute la hauteur des couches de la brique (jamais plus fine qu'un trait lisible)
+            _min_x, min_y, _max_x, max_y = unary_union([shape for _rings, shape in candidates]).bounds
+            top, bottom = to_svg(0, max_y)[1], to_svg(0, min_y)[1]
+            middle = (top + bottom) / 2
+            half = max((bottom - top) / 2, BRACKET_MIN_HEIGHT / 2)
+            bracket = (middle - half, middle + half)
+            anchor = (bracket_x + BRACKET_DEPTH + BRACKET_TIP, middle)
+        else:
+            point = _anchor(max(candidates, key=lambda c: c[1].area)[0])
+            if point is None:
+                continue
+            anchor = to_svg(*point)
+        title = _ellipsis(annotation.title, MAX_TITLE_CHARS)
+        lines = list(annotation.lines)
+        if annotation.grouped and len(annotation.line_layers) == len(lines):
+            # les lignes d'une brique dans l'ordre de ses couches sur le dessin, de la plus haute à la plus basse
+            lines = [line for _top, line in sorted(zip((_top_of(frame, layers) for layers in annotation.line_layers), lines), key=lambda item: -item[0])]
+        lines = [_ellipsis(line, MAX_GROUPED_LINE_CHARS if annotation.grouped else MAX_LINE_CHARS) for line in lines]
         height = TITLE_SIZE * LINE_HEIGHT + len(lines) * VALUE_SIZE * LINE_HEIGHT
         width = max([_text_width(title, TITLE_SIZE)] + [_text_width(line, VALUE_SIZE) for line in lines])
-        blocks.append({"anchor": to_svg(*point), "title": title, "lines": lines, "height": height, "width": width})
+        blocks.append({"anchor": anchor, "bracket": bracket, "title": title, "lines": lines, "height": height, "width": width})
     if not blocks:
         return base
     blocks.sort(key=lambda b: b["anchor"][1])
@@ -265,7 +362,8 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         [b["anchor"][1] - TITLE_SIZE * LINE_HEIGHT / 2 for b in blocks], [b["height"] for b in blocks], PAD, PAD + sh
     )
     column_x = PAD + sw + LEADER_GAP
-    column_w = min(320.0, max(90.0, max(b["width"] for b in blocks)))
+    # la colonne est aussi large que la plus large des étiquettes (estimée par excès) : rien ne déborde
+    column_w = max(90.0, max(b["width"] for b in blocks))
     width = column_x + column_w + PAD
     height = max(PAD + sh + PAD, tops[-1] + blocks[-1]["height"] + PAD)
     bare = f"0 0 {_n(PAD + sw + PAD)} {_n(PAD + sh + PAD)}"
@@ -274,7 +372,21 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
     for block, block_top in zip(blocks, tops):
         ax, ay = block["anchor"]
         ty = block_top + TITLE_SIZE * LINE_HEIGHT / 2
-        points = f"{_n(ax)},{_n(ay)} {_n(PAD + sw + 8)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}"
+        if block["bracket"] is not None:
+            y1, y2 = block["bracket"]
+            tip = bracket_x + BRACKET_DEPTH
+            mark = (
+                f'<path class="sp-layer-bracket" data-y1="{_n(y1)}" data-y2="{_n(y2)}" '
+                f'd="M{_n(bracket_x)},{_n(y1)} H{_n(tip)} V{_n(y2)} H{_n(bracket_x)} M{_n(tip)},{_n(ay)} H{_n(ax)}" '
+                f'fill="none" stroke-width="1.4" stroke-linejoin="round" style="stroke:{_TEXT_SOFT}"/>'
+                f'<polyline points="{_n(ax)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
+            )
+        else:
+            points = f"{_n(ax)},{_n(ay)} {_n(PAD + sw + 8)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}"
+            mark = (
+                f'<polyline points="{points}" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
+                f'<circle cx="{_n(ax)}" cy="{_n(ay)}" r="3.2" stroke-width="1.4" style="fill:{_TEXT};stroke:{_SURFACE}"/>'
+            )
         texts = [
             f'<text x="{_n(column_x)}" y="{_n(block_top + TITLE_SIZE)}" font-size="{_n(TITLE_SIZE)}" font-weight="600" style="fill:{_TEXT}">{html.escape(block["title"])}</text>'
         ]
@@ -283,12 +395,9 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
             texts.append(
                 f'<text x="{_n(column_x)}" y="{_n(baseline)}" font-size="{_n(VALUE_SIZE)}" style="fill:{_TEXT_SOFT}">{html.escape(line)}</text>'
             )
+        grouped = ' data-grouped="true"' if block["bracket"] is not None else ""
         parts.append(
-            f'<g class="sp-layer-label" data-top="{_n(block_top)}" data-height="{_n(block["height"])}">'
-            f'<polyline points="{points}" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
-            f'<circle cx="{_n(ax)}" cy="{_n(ay)}" r="3.2" stroke-width="1.4" style="fill:{_TEXT};stroke:{_SURFACE}"/>'
-            + "".join(texts)
-            + "</g>"
+            f'<g class="sp-layer-label" data-top="{_n(block_top)}" data-height="{_n(block["height"])}"{grouped}>' + mark + "".join(texts) + "</g>"
         )
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_n(width)} {_n(height)}" width="{_n(width)}" height="{_n(height)}" '
@@ -310,16 +419,17 @@ def frames_payload(
     steps: list[ProcessStep] | None = None,
     declared: dict[int, list[DeclaredParam]] | None = None,
     labels: dict[int, LayerLabel] | None = None,
+    bricks: list[ProcessBrick] | None = None,
 ) -> dict[str, Any]:
     """Each frame as the builder shows it: its SVG (layers tagged ``data-layer-index``, the labels
-    of ``labels`` drawn on the layers they name), its materials and its layers - each with the
-    position of the step that created it (``step_index``, ``-1`` for the substrate), from the
-    simulation's own provenance (``origins``)."""
+    of ``labels`` drawn on the layers they name, grouped by ``bricks``), its materials and its
+    layers - each with the position of the step that created it (``step_index``, ``-1`` for the
+    substrate), from the simulation's own provenance (``origins``)."""
     material_colors = {m.name: m.color for m in materials}
     payload = []
     for k, frame in enumerate(frames):
         frame_origins = origins[k] if origins is not None else [None] * len(frame.layers)
-        annotations = annotations_for(steps or [], declared or {}, labels or {}, frame_origins) if labels else []
+        annotations = annotations_for(steps or [], declared or {}, labels or {}, frame_origins, bricks) if labels else []
         payload.append(
             {
                 "step_index": frame.step_index,

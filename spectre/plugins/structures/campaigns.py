@@ -19,7 +19,7 @@ from structureforge.core.units import Length
 from structureforge.process.steps import ProcessStep
 
 from .rendering import annotations_for, format_number, labelled_svg
-from .simulation import GRADED_NITRIDE_RE, DeclaredParam, LayerLabel, SimulationFailedError, SubstrateSpec, simulate_process
+from .simulation import GRADED_NITRIDE_RE, DeclaredParam, LayerLabel, ProcessBrick, SimulationFailedError, SubstrateSpec, simulate_process
 
 
 CAMPAIGN_FIELD_LABELS = {
@@ -300,6 +300,7 @@ def generate_campaign_variants(
     declared_params: dict[int, list[DeclaredParam]] | None = None,
     step_ids: list[str | None] | None = None,
     layer_labels: dict[int, LayerLabel] | None = None,
+    bricks: list[ProcessBrick] | None = None,
 ) -> CampaignVariants:
     """Re-simulate ``steps`` once per combination in the full cross of every factor's values,
     varying each factor's parameter for that combination - everything else (substrate, every
@@ -342,7 +343,7 @@ def generate_campaign_variants(
         entries.append(to_structure(result.geometry))
         material_colors = {m.name: m.color for m in result.materials}
         # chaque variante écrit ses propres valeurs sur ses étiquettes
-        annotations = annotations_for(varied_steps, varied_declared, layer_labels or {}, result.layer_origins[-1]) if layer_labels else []
+        annotations = annotations_for(varied_steps, varied_declared, layer_labels or {}, result.layer_origins[-1], bricks) if layer_labels else []
         svgs.append(labelled_svg(result.frames[-1], material_colors, annotations))
         labels.append(" · ".join(_format_value_label(v) for v in combo))
         factor_values.append(list(combo))

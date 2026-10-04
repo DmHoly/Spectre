@@ -1972,6 +1972,11 @@
 .sb-declared__body {
   padding: 0 12px 12px;
 }
+/* une ligne de paramètre : nom, valeur, unité (plus étroite), puis l'obtention sur toute la largeur */
+.sb-declared-param {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.8fr);
+  align-items: end;
+}
 
 /* « Afficher sur la structure » : le texte de l'étiquette et les valeurs écrites dessous */
 .sb-layer-label {

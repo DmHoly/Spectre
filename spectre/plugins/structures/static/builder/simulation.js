@@ -348,6 +348,7 @@ async function simulateNow() {
       steps: sent,
       declared_params: declaredParamsPayload(sent),
       layer_labels: layerLabelsPayload(sent),
+      bricks: bricksPayload(sent),
     });
     if (seq !== simulateSeq) return;
     adoptStepIds(sent, result.step_ids);

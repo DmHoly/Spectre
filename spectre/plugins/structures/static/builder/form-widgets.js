@@ -288,14 +288,21 @@ function attachDeclaredParams(steps, declaredParams) {
   });
 }
 
+// L'unité d'un paramètre déclaré (son champ `unit`, facultatif) : écrite sur l'étiquette de la
+// couche (layer-label.js). Les unités courantes sont proposées, toute autre peut être saisie. Une
+// unité notée avant ce champ dans l'obtention (« unit=cm-3 ») reste lue par le serveur.
+const DECLARED_UNIT_SUGGESTIONS = ["cm⁻³", "%", "°C", "nm", "µm", "sccm", "slm", "W", "min", "s", "mbar", "Torr", "V", "mA", "eV"];
+
 function declaredParamRowHtml(param, index) {
   const obtentionText = Object.entries(param.obtention || {})
     .map(([k, v]) => `${k}=${v}`)
     .join(", ");
+  const id = `declared-${index}`;
   return `
-    <div class="field-row js-declared-param-row" data-index="${index}" style="grid-template-columns:1fr 1fr;align-items:end;">
-      <div><label>Nom</label><input class="field js-declared-name" value="${escapeHtml(param.name || "")}" placeholder="ex : dopage"></div>
-      <div><label>Valeur</label><input class="field js-declared-value" value="${escapeHtml(formatNumberInput(param.value))}" placeholder="ex : 2.5e18"></div>
+    <div class="field-row js-declared-param-row sb-declared-param" data-index="${index}">
+      <div><label for="${id}-name">Nom</label><input class="field js-declared-name" id="${id}-name" value="${escapeHtml(param.name || "")}" placeholder="ex : dopage"></div>
+      <div><label for="${id}-value">Valeur</label><input class="field js-declared-value" id="${id}-value" value="${escapeHtml(formatNumberInput(param.value))}" placeholder="ex : 2.5e18"></div>
+      <div><label for="${id}-unit">Unité</label><input class="field js-declared-unit" id="${id}-unit" list="declared-unit-suggestions" maxlength="20" value="${escapeHtml(param.unit || "")}" placeholder="ex : cm⁻³" autocomplete="off"></div>
       <div style="grid-column:1/-1;">
         <label>Obtention (clé=valeur, séparées par des virgules)</label>
         <div style="display:flex;gap:6px;">
@@ -343,6 +350,7 @@ function declaredParamsSectionHtml(params) {
         <div id="declared-params-list" style="display:flex;flex-direction:column;gap:8px;">
           ${params.map((p, i) => declaredParamRowHtml(p, i)).join("")}
         </div>
+        <datalist id="declared-unit-suggestions">${DECLARED_UNIT_SUGGESTIONS.map((unit) => `<option value="${escapeHtml(unit)}"></option>`).join("")}</datalist>
         <button class="btn btn-line btn-block" id="declared-param-add-btn" type="button" style="margin-top:8px;">+ Ajouter un paramètre déclaré</button>
       </div>
     </details>`;
@@ -357,6 +365,9 @@ function wireDeclaredParamsSection(params, onChange) {
     });
     row.querySelector(".js-declared-value").addEventListener("input", (e) => {
       params[i].value = e.target.value;
+    });
+    row.querySelector(".js-declared-unit").addEventListener("input", (e) => {
+      params[i].unit = e.target.value;
     });
     row.querySelector(".js-declared-obtention").addEventListener("input", (e) => {
       params[i].obtention = parseObtentionText(e.target.value);

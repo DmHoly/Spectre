@@ -1454,6 +1454,23 @@ a.plate-row__lasermark {
   padding: 2px 0;
   overflow-wrap: anywhere;
 }
+/* les étiquettes de couches (structure-diff : label_changes), à part de la structure */
+.evo-diff .evo-diff__labels {
+  margin-top: 4px;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+}
+.evo-diff__labels strong,
+.fiche-diff-labels__key {
+  font-weight: 600;
+  color: var(--text);
+}
+.fiche-diff-labels {
+  padding: 2px 0;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
 
 /* La conclusion cite des entrées du cahier (conclusion.js) : leurs titres sous un verdict, des cases
    à cocher sous chaque objectif du formulaire. */

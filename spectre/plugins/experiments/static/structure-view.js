@@ -74,6 +74,14 @@
     return lines.map((line) => `<div style="font-size:12.5px;color:var(--text-soft);padding:2px 0;">${escapeHtml(line)}</div>`).join("");
   }
 
+  // Les changements d'étiquettes de couches (et de leur regroupement par brique), à part de ceux de
+  // la structure : une ligne « Étiquettes : … », vide s'il n'y en a pas.
+  function labelChangesHtml(diff) {
+    const changes = diff.label_changes || [];
+    if (!changes.length) return "";
+    return `<div class="fiche-diff-labels"><span class="fiche-diff-labels__key">Étiquettes :</span> ${changes.map((c) => escapeHtml(c.line)).join(" ; ")}</div>`;
+  }
+
   function entriesHtml(entries, limit, fontSize) {
     return entries
       .slice(0, limit)
@@ -153,20 +161,23 @@
 
     const diff = await diffPromise;
     const lines = diff.summary || [];
+    const labels = labelChangesHtml(diff);
+    // seules les étiquettes (ou leur regroupement par brique) changent : on le dit, plutôt qu'« identique »
+    const same = labels ? "" : "identique à la version précédente";
     if (!diff.target) {
       diffNote.textContent = "";
       diffDetails.innerHTML = "";
     } else if (diff.summary) {
       // une structure en images d'un côté ou de l'autre : pas de liste de paramètres qui ait un sens
-      diffNote.textContent = lines.length ? "" : "identique à la version précédente";
-      diffDetails.innerHTML = summaryHtml(lines);
+      diffNote.textContent = lines.length ? "" : same;
+      diffDetails.innerHTML = summaryHtml(lines) + labels;
     } else if (!diff.entries.length) {
-      diffNote.textContent = "identique à la version précédente";
-      diffDetails.innerHTML = "";
+      diffNote.textContent = same;
+      diffDetails.innerHTML = labels;
     } else {
       const n = diff.entries.length;
       diffNote.innerHTML = `<span style="color:var(--abandoned);font-weight:600;">${n} paramètre${n > 1 ? "s" : ""} modifié${n > 1 ? "s" : ""}</span>`;
-      diffDetails.innerHTML = entriesHtml(diff.entries, 12, "11.5px");
+      diffDetails.innerHTML = entriesHtml(diff.entries, 12, "11.5px") + labels;
     }
   }
 
@@ -440,9 +451,10 @@
         against_experiment: target,
         against_microproject: other === ctx.microprojectSlug ? null : other,
       });
-      if (diff.summary) compareResult.innerHTML = summaryHtml(diff.summary);
-      else if (!diff.entries.length) compareResult.innerHTML = `<div class="help">Aucune différence de structure.</div>`;
-      else compareResult.innerHTML = entriesHtml(diff.entries, 20, "11px");
+      const labels = labelChangesHtml(diff);
+      if (diff.summary) compareResult.innerHTML = summaryHtml(diff.summary) + labels;
+      else if (!diff.entries.length) compareResult.innerHTML = `<div class="help">Aucune différence de structure.</div>` + labels;
+      else compareResult.innerHTML = entriesHtml(diff.entries, 20, "11px") + labels;
     } catch (err) {
       ctx.showError(err);
     }

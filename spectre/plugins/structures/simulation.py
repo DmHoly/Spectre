@@ -13,7 +13,7 @@ import re
 import secrets
 from typing import Any, NamedTuple
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer
 from structureforge.core.materials import Material, MaterialLibrary, aluminum_gan, default_library, indium_gan
 from structureforge.core.recipes import RecipeLibrary, default_recipes
 from structureforge.core.traced import Traced
@@ -47,6 +47,35 @@ class DeclaredParam(BaseModel):
     name: str
     value: Any
     obtention: dict[str, Any] = Field(default_factory=dict)
+    # l'unité de la valeur (« cm⁻³ », « % », « °C »...), écrite sur l'étiquette de la couche ; venue
+    # après les paramètres eux-mêmes : un paramètre sans unité s'enregistre sans la clé (la forme
+    # d'avant, que le versionnage compare)
+    unit: str | None = Field(None, max_length=20)
+
+    @field_validator("unit")
+    @classmethod
+    def _strip_unit(cls, unit: str | None) -> str | None:
+        return (unit or "").strip() or None
+
+    @model_serializer(mode="wrap")
+    def _without_empty_unit(self, handler: Any) -> dict[str, Any]:
+        data = handler(self)
+        if not data.get("unit"):
+            data.pop("unit", None)
+        return data
+
+    def unit_text(self) -> str:
+        """L'unité de la valeur : son champ ``unit``, ou, pour un paramètre enregistré avant lui,
+        l'astuce d'alors - une clé ``unit`` (``unité``, ``unite``) de l'obtention."""
+        return self.unit or declared_unit_in_obtention(self.obtention)
+
+
+# les clés d'obtention où l'on écrivait l'unité avant le champ ``unit`` (toujours lues)
+OBTENTION_UNIT_KEYS = ("unit", "unité", "unite")
+
+
+def declared_unit_in_obtention(obtention: dict[str, Any] | None) -> str:
+    return next((str(obtention[key]) for key in OBTENTION_UNIT_KEYS if (obtention or {}).get(key)), "")
 
 
 def picker_materials() -> list[Material]:
@@ -234,7 +263,8 @@ def _apply_declared_params(
             provenance = layer.provenance
             parameters = dict(provenance.parameters) if provenance is not None else {}
             for param in params:
-                parameters[param.name] = Traced.declared(param.value, **param.obtention)
+                obtention = {**param.obtention, "unit": param.unit} if param.unit else param.obtention
+                parameters[param.name] = Traced.declared(param.value, **obtention)
             step = steps[step_index]
             layer.provenance = LayerProvenance(
                 step_kind=provenance.step_kind if provenance is not None else step.kind,
@@ -422,3 +452,104 @@ def layer_labels_by_index(raw: dict[str, LayerLabel] | None, step_count: int) ->
 def layer_labels_json(labels: dict[int, LayerLabel] | None) -> dict[str, dict[str, Any]]:
     """Les étiquettes rangées par position d'étape, telles qu'une bibliothèque les enregistre."""
     return {str(i): label.model_dump(mode="json") for i, label in sorted((labels or {}).items())}
+
+
+# -- l'appartenance des étapes aux briques ----------------------------------------------------------
+#
+# Une brique technologique insérée dans le constructeur (ou formée d'étapes choisies) y reste un
+# groupe d'étapes consécutives, avec son nom et la brique de bibliothèque d'où elle vient. Une
+# requête (simulation, lancement, bibliothèque) range ce groupe par positions d'étape, comme les
+# étiquettes ; une étude, par ids d'étape, sous :data:`BRICKS_METADATA_KEY` - à part du procédé :
+# StructureForge ne la voit pas, et le versionnage n'en lit que ce qu'elle change aux étiquettes
+# (un regroupement d'étiquettes, :data:`MIN_GROUPED_LABELS`).
+
+BRICKS_METADATA_KEY = "process_bricks"
+# il faut au moins deux étapes étiquetées d'une même brique pour que leurs étiquettes n'en fassent qu'une
+MIN_GROUPED_LABELS = 2
+BRICK_GROUP_ID_RE = r"^[A-Za-z0-9_.:-]{1,80}$"
+
+
+class ProcessBrick(BaseModel):
+    """Une brique du procédé : son identifiant de groupe (celui du constructeur, gardé d'une version
+    à l'autre), son nom, la brique de bibliothèque d'où elle vient (``source``, son id, si on la
+    connaît) et les positions de ses étapes, consécutives."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    group_id: str = Field(pattern=BRICK_GROUP_ID_RE)
+    name: str = Field(min_length=1, max_length=120)
+    source: str | None = Field(None, max_length=120)
+    step_indexes: list[int] = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, name: str) -> str:
+        name = name.strip()
+        if not name:
+            raise ValueError("une brique a un nom")
+        return name
+
+    @field_validator("source")
+    @classmethod
+    def _strip_source(cls, source: str | None) -> str | None:
+        return (source or "").strip() or None
+
+
+def checked_bricks(bricks: list[ProcessBrick] | None, step_count: int) -> list[ProcessBrick]:
+    """Les briques d'une requête, vérifiées : des étapes du procédé, consécutives et dans l'ordre,
+    aucune dans deux briques, deux briques jamais du même groupe - sinon 422 ``invalid_brick``."""
+    seen_steps: set[int] = set()
+    seen_groups: set[str] = set()
+    for brick in bricks or []:
+        indexes = brick.step_indexes
+        if any(not 0 <= i < step_count for i in indexes):
+            raise InvalidInput(f"La brique « {brick.name} » désigne une étape inconnue.", code="invalid_brick")
+        if indexes != list(range(indexes[0], indexes[0] + len(indexes))):
+            raise InvalidInput(f"Les étapes de la brique « {brick.name} » doivent se suivre.", code="invalid_brick")
+        if seen_steps & set(indexes) or brick.group_id in seen_groups:
+            raise InvalidInput(f"Une étape appartient à deux briques (« {brick.name} »).", code="invalid_brick")
+        seen_steps.update(indexes)
+        seen_groups.add(brick.group_id)
+    return list(bricks or [])
+
+
+def bricks_json(bricks: list[ProcessBrick] | None) -> list[dict[str, Any]]:
+    return [brick.model_dump(mode="json") for brick in bricks or []]
+
+
+def bricks_metadata(bricks: list[ProcessBrick], step_ids: list[str]) -> list[dict[str, Any]]:
+    """Les briques telles qu'une étude les enregistre : par ids d'étape."""
+    return [
+        {"group_id": brick.group_id, "name": brick.name, "source": brick.source, "step_ids": [step_ids[i] for i in brick.step_indexes]}
+        for brick in bricks
+    ]
+
+
+def bricks_from_metadata(raw: Any, step_ids: list[str]) -> list[ProcessBrick]:
+    """Les briques qu'une étude a enregistrées (par ids d'étape), par positions dans ``step_ids`` -
+    une étape disparue en est retirée, une brique qui n'en a plus disparaît, un enregistrement
+    illisible n'en donne aucune."""
+    position = {step_id: i for i, step_id in enumerate(step_ids)}
+    bricks: list[ProcessBrick] = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        indexes = sorted(position[sid] for sid in item.get("step_ids") or [] if isinstance(sid, str) and sid in position)
+        if not indexes:
+            continue
+        try:
+            bricks.append(ProcessBrick(group_id=item.get("group_id"), name=item.get("name"), source=item.get("source"), step_indexes=indexes))
+        except (ValueError, TypeError):
+            continue
+    return bricks
+
+
+def grouped_labels(bricks: list[ProcessBrick], labelled: set[int] | dict[int, Any]) -> list[tuple[ProcessBrick, list[int]]]:
+    """Les briques dont les étiquettes n'en font qu'une : celles qui ont au moins
+    :data:`MIN_GROUPED_LABELS` étapes étiquetées (``labelled``, des positions), avec ces étapes."""
+    groups = []
+    for brick in bricks:
+        members = [i for i in brick.step_indexes if i in labelled]
+        if len(members) >= MIN_GROUPED_LABELS:
+            groups.append((brick, members))
+    return groups

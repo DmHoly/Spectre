@@ -360,7 +360,9 @@ def structure_diff(
     même piste (``against_version``), la pointe ou une version d'une autre piste
     (``against_experiment``), d'un autre µprojet au besoin (``against_microproject``, lisible par
     l'appelant). Sans rien : la version de structure précédente (:func:`service.structural_baseline`).
-    ``{target: {experiment_id, version_id, title, microproject} | null, entries, summary?}``."""
+    ``{target: {experiment_id, version_id, title, microproject} | null, entries, summary?,
+    label_changes}`` - ``label_changes`` (avec une cible) : à part, ce qui change aux étiquettes de
+    couches et à leur regroupement par brique (:func:`kinds.describe_label_changes`)."""
     repo = get_repository(microproject.slug)
     base = service.version_of(repo, experiment_id, version)
     target_repo, target_microproject = repo, None

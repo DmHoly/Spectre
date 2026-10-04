@@ -15,9 +15,13 @@ Rules, from the coarsest to the finest-grained:
   ``name`` differs (a material, a recipe, a thickness, an orientation...) - anything that can
   actually change the simulated geometry.
 - **patch (Z)** - the only difference is a step's ``name`` - a label with zero effect on the
-  simulation (see ``structureforge.process.simulate._apply``, which never reads ``name``) - or the
-  layer labels drawn beside the structure (``process_layer_labels``, see
-  :class:`spectre.plugins.structures.simulation.LayerLabel`), which never touch the process.
+  simulation (see ``structureforge.process.simulate._apply``, which never reads ``name``) -, the
+  unit of a declared parameter written down or removed (not replaced by another one: that changes
+  the value, a minor change), or the layer labels drawn beside the structure
+  (``process_layer_labels``, see :class:`spectre.plugins.structures.simulation.LayerLabel`) and
+  their grouping by brick (``process_bricks``, only as far as it groups labels), which never touch
+  the process. The bricks of a process alone change nothing: a version that only regroups
+  unlabelled steps is ``none``.
 - **none** - the process is byte-identical; whatever changed on this commit (a tag, a title, a
   piece of evidence...) isn't a process/structure change at all.
 
@@ -37,7 +41,12 @@ from __future__ import annotations
 from collections import deque
 from typing import Any, Literal
 
-from ..structures.simulation import LAYER_LABELS_METADATA_KEY
+from ..structures.simulation import (
+    BRICKS_METADATA_KEY,
+    LAYER_LABELS_METADATA_KEY,
+    MIN_GROUPED_LABELS,
+    OBTENTION_UNIT_KEYS,
+)
 
 ChangeLevel = Literal["initial", "major", "minor", "patch", "none"]
 
@@ -52,15 +61,35 @@ def _step_without_name(step: dict) -> dict:
     return {k: v for k, v in step.items() if k != "name"}
 
 
+def _label_groups(metadata: dict[str, Any], labels: dict[str, Any]) -> list[dict[str, Any]]:
+    """Ce que les briques du procédé (``process_bricks``) changent au dessin des étiquettes : les
+    briques dont les étiquettes n'en font qu'une (au moins ``MIN_GROUPED_LABELS`` étapes
+    étiquetées), leur nom et ces étapes. Le reste de l'appartenance aux briques ne se voit pas."""
+    groups = []
+    bricks = metadata.get(BRICKS_METADATA_KEY)
+    for brick in bricks if isinstance(bricks, list) else []:
+        if not isinstance(brick, dict):
+            continue
+        members = [step_id for step_id in brick.get("step_ids") or [] if step_id in labels]
+        if len(members) >= MIN_GROUPED_LABELS:
+            groups.append({"name": brick.get("name"), "step_ids": members})
+    return groups
+
+
 def structure_signature(metadata: dict[str, Any]) -> dict[str, Any] | None:
     """What versioning compares for one commit: its StructureForge process (with its layer labels
-    under ``"layer_labels"``, when it has some - a version without any compares as before them), or
-    - for a structure given as a picture - its revision token (see the module docstring). ``None``
-    when there is neither."""
+    under ``"layer_labels"``, when it has some - a version without any compares as before them -
+    and, under ``"label_groups"``, the bricks whose labelled steps share one label), or - for a
+    structure given as a picture - its revision token (see the module docstring). ``None`` when
+    there is neither. The bricks of the process count only through the labels they group: alone,
+    they never change the version."""
     process = metadata.get("structureforge_process")
     if process is not None:
         labels = metadata.get(LAYER_LABELS_METADATA_KEY)
-        return {**process, "layer_labels": labels} if labels else process
+        if not labels:
+            return process
+        groups = _label_groups(metadata, labels) if isinstance(labels, dict) else []
+        return {**process, "layer_labels": labels, **({"label_groups": groups} if groups else {})}
     revision = metadata.get("structure_image_revision")
     if revision is not None:
         return {"image_revision": revision}
@@ -95,12 +124,58 @@ def classify_process_change(before: dict[str, Any] | None, after: dict[str, Any]
         return "minor"
 
     # un paramètre déclaré (dopage, précurseur... - voir structures.process_metadata) est un réglage
-    # de l'étape comme un autre, pas un simple renommage
-    if before.get("declared_params", {}) != after.get("declared_params", {}):
+    # de l'étape comme un autre, pas un simple renommage ; son unité ajoutée (ou retirée) seule ne
+    # fait que l'écrire, mais une unité remplacée par une autre change sa valeur
+    if _declared_change(before.get("declared_params", {}), after.get("declared_params", {})) == "minor":
         return "minor"
 
-    # a step renamed, or only the layer labels changed: nothing the simulation reads
+    # a step renamed, a unit written down, or only the layer labels changed: nothing the simulation reads
     return "patch"
+
+
+def _split_unit(param: Any) -> tuple[Any, str]:
+    """Un paramètre déclaré (en JSON) sans son unité, et son unité : son champ ``unit``, ou la clé
+    ``unit`` (``unité``, ``unite``) de son obtention, l'astuce d'avant le champ."""
+    if not isinstance(param, dict):
+        return param, ""
+    obtention = param.get("obtention") if isinstance(param.get("obtention"), dict) else {}
+    unit = param.get("unit") or next((obtention[key] for key in OBTENTION_UNIT_KEYS if obtention.get(key)), "")
+    rest = {key: value for key, value in param.items() if key not in ("unit", "obtention")}
+    rest["obtention"] = {key: value for key, value in obtention.items() if key not in OBTENTION_UNIT_KEYS}
+    return rest, str(unit or "")
+
+
+def _declared_change(before: Any, after: Any) -> Literal["none", "patch", "minor"]:
+    """Ce que change le passage des paramètres déclarés ``before`` à ``after`` (par position
+    d'étape) : ``minor`` pour un réglage (un paramètre, une valeur, une obtention, une unité
+    remplacée par une autre), ``patch`` quand seule une unité est ajoutée ou retirée - ou passe de
+    l'obtention au champ ``unit`` -, ``none`` sinon."""
+    if before == after:
+        return "none"
+    if not isinstance(before, dict) or not isinstance(after, dict) or set(before) != set(after):
+        return "minor"
+    for key in before:
+        old, new = before[key], after[key]
+        if not isinstance(old, list) or not isinstance(new, list) or len(old) != len(new):
+            return "minor"
+        for old_param, new_param in zip(old, new):
+            old_rest, old_unit = _split_unit(old_param)
+            new_rest, new_unit = _split_unit(new_param)
+            if old_rest != new_rest or (old_unit and new_unit and old_unit != new_unit):
+                return "minor"
+    return "patch"
+
+
+def same_settings(before: dict[str, Any] | None, after: dict[str, Any]) -> bool:
+    """Si le procédé ``after`` règle les étapes exactement comme ``before`` (deux
+    ``structureforge_process``) : le même, ou le même à une unité de paramètre déclaré près, ajoutée
+    ou retirée - une évolution qui ne fait que cela garde la conclusion, comme pour les
+    étiquettes."""
+    if not isinstance(before, dict) or before == after:
+        return before == after
+    rest_before = {key: value for key, value in before.items() if key != "declared_params"}
+    rest_after = {key: value for key, value in after.items() if key != "declared_params"}
+    return rest_before == rest_after and _declared_change(before.get("declared_params", {}), after.get("declared_params", {})) != "minor"
 
 
 def changes_structure(before: dict[str, Any], after: dict[str, Any]) -> bool:

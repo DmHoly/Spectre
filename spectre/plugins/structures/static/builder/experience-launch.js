@@ -29,7 +29,7 @@ async function loadExistingProcess() {
     if (data) {
       setSubstrateFields(data.substrate);
       // chaque étape garde son id : l'évolution (ou la fourche) le renvoie, l'étape reste la même
-      state.steps = attachLayerLabels(attachDeclaredParams(data.steps, data.declared_params), data.layer_labels);
+      state.steps = attachBricks(attachLayerLabels(attachDeclaredParams(data.steps, data.declared_params), data.layer_labels), data.bricks);
       selectLastStep();
       renderSteps();
     }
@@ -90,6 +90,7 @@ async function commitExperience(entities) {
     steps: state.steps,
     declared_params: declaredParamsPayload(state.steps),
     layer_labels: layerLabelsPayload(state.steps),
+    bricks: bricksPayload(state.steps),
   };
   const payload = {
     structure,
@@ -197,7 +198,7 @@ async function loadTemplateProcess() {
     const data = await experimentsApi.process(slug, templateExperienceId);
     setSubstrateFields(data.substrate);
     // une nouvelle étude sans filiation : ses étapes sont neuves, le serveur leur donne leurs ids
-    state.steps = attachLayerLabels(attachDeclaredParams(data.steps.map(withoutStepId), data.declared_params), data.layer_labels);
+    state.steps = attachBricks(attachLayerLabels(attachDeclaredParams(data.steps.map(withoutStepId), data.declared_params), data.layer_labels), data.bricks);
     selectLastStep();
     renderSteps();
   } catch (err) {

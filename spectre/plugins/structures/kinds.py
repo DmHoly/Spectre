@@ -30,12 +30,18 @@ from . import campaigns
 from .rendering import LayerAnnotation, annotations_for, svg_for_process_structure
 from .schemas import StructureImageInput
 from .simulation import (
+    BRICKS_METADATA_KEY,
+    LABEL_COMPOSITION,
+    LABEL_DECLARED_PREFIX,
+    LABEL_THICKNESS,
     LAYER_LABELS_METADATA_KEY,
     LAYER_STEPS_METADATA_KEY,
+    MIN_GROUPED_LABELS,
     STEP_IDS_METADATA_KEY,
     DeclaredParam,
     LayerLabel,
     SubstrateSpec,
+    bricks_from_metadata,
     declared_params_by_index,
     material_names_in_layers,
     materials_library,
@@ -134,6 +140,7 @@ DRAWN_STRUCTURE_METADATA_KEYS = (
     STEP_IDS_METADATA_KEY,
     LAYER_LABELS_METADATA_KEY,
     LAYER_STEPS_METADATA_KEY,
+    BRICKS_METADATA_KEY,
     "campaign_labels",
     "campaign_factor_labels",
     "campaign_factor_values",
@@ -291,8 +298,9 @@ def layer_annotations(metadata: dict[str, Any], entry_index: int) -> list[LayerA
     """The labels of entity ``entry_index`` of a committed structure, from what its version's
     ``metadata`` records: the labels by step id, the step that created each layer of each entity,
     the process (and, for a campaign, the plan and the values of this variant: each variant writes
-    its own). Nothing for a version without labels (every version from before them), nor for one
-    whose record does not read: the drawing stays, unlabelled."""
+    its own), and the bricks its steps belong to (their labels grouped). Nothing for a version
+    without labels (every version from before them), nor for one whose record does not read: the
+    drawing stays, unlabelled."""
     raw_labels = metadata.get(LAYER_LABELS_METADATA_KEY)
     layer_steps = metadata.get(LAYER_STEPS_METADATA_KEY)
     process = metadata.get("structureforge_process")
@@ -317,7 +325,103 @@ def layer_annotations(metadata: dict[str, Any], entry_index: int) -> list[LayerA
     position = {step_id: i for i, step_id in enumerate(step_ids)}
     by_index = {position[step_id]: label for step_id, label in labels.items() if step_id in position}
     origins = [position.get(step_id) if step_id is not None else None for step_id in layer_steps[entry_index]]
-    return annotations_for(steps, declared, by_index, origins)
+    bricks = bricks_from_metadata(metadata.get(BRICKS_METADATA_KEY), list(step_ids))
+    return annotations_for(steps, declared, by_index, origins, bricks)
+
+
+# -- ce qui change aux étiquettes d'une version à l'autre -----------------------------------------
+
+_VALUE_NAMES = {LABEL_THICKNESS: "épaisseur", LABEL_COMPOSITION: "composition"}
+
+
+def _value_name(key: str) -> str:
+    """Le nom lisible d'une valeur d'étiquette : « épaisseur », « composition », ou le nom du paramètre déclaré."""
+    if key.startswith(LABEL_DECLARED_PREFIX):
+        return key[len(LABEL_DECLARED_PREFIX) :]
+    return _VALUE_NAMES.get(key, key)
+
+
+def _label_record(metadata: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, str], list[str], dict[str, dict[str, Any]]]:
+    """Ce qu'une version dit de ses étiquettes : ``(étiquettes par id d'étape, nom de chaque étape
+    étiquetée - le texte, sinon le matériau, sinon le nom de l'étape -, ordre des étapes, briques
+    dont les étiquettes n'en font qu'une, par identifiant de groupe : {name, step_ids})``."""
+    raw = metadata.get(LAYER_LABELS_METADATA_KEY)
+    labels = {sid: label for sid, label in (raw if isinstance(raw, dict) else {}).items() if isinstance(label, dict)}
+    step_ids = metadata.get(STEP_IDS_METADATA_KEY)
+    step_ids = [sid for sid in step_ids if isinstance(sid, str)] if isinstance(step_ids, list) else []
+    process = metadata.get("structureforge_process")
+    raw_steps = process.get("steps") if isinstance(process, dict) else None
+    steps = [step if isinstance(step, dict) else {} for step in raw_steps or []]
+    names: dict[str, str] = {}
+    for sid, label in labels.items():
+        step = steps[step_ids.index(sid)] if sid in step_ids and step_ids.index(sid) < len(steps) else {}
+        material = step.get("material") or step.get("resist_material")
+        names[sid] = str(label.get("text") or material or step.get("name") or sid)
+    groups: dict[str, dict[str, Any]] = {}
+    for brick in bricks_from_metadata(metadata.get(BRICKS_METADATA_KEY), step_ids):
+        members = [step_ids[i] for i in brick.step_indexes if step_ids[i] in labels]
+        if len(members) >= MIN_GROUPED_LABELS:
+            groups[brick.group_id] = {"name": brick.name, "step_ids": members}
+    return labels, names, step_ids, groups
+
+
+def describe_label_changes(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str, Any]]:
+    """Ce qui change aux étiquettes de couches de la version de métadonnées ``before`` à celle de
+    ``after``, à part des changements de structure : par étape (``step_id`` ; ``change`` :
+    ``added``, ``removed`` ou ``modified``, avec ``text`` ``{before, after}`` quand le texte change
+    et les valeurs ajoutées et retirées, par leur nom lisible) puis par brique (``group_id`` ;
+    ``change`` : ``grouped`` - ses étiquettes n'en font plus qu'une -, ``ungrouped``, ``renamed``
+    ou ``regrouped`` - pas les mêmes étapes). Chaque changement porte ``subject`` (l'étape ou la
+    brique, telle que l'étiquette la nomme) et ``line``, la phrase qui le dit."""
+    labels_before, names_before, order_before, groups_before = _label_record(before)
+    labels_after, names_after, order_after, groups_after = _label_record(after)
+
+    def position(sid: str) -> tuple[int, int]:
+        return (0, order_after.index(sid)) if sid in order_after else (1, order_before.index(sid) if sid in order_before else 0)
+
+    changes: list[dict[str, Any]] = []
+    for sid in sorted(set(labels_before) | set(labels_after), key=position):
+        old, new = labels_before.get(sid), labels_after.get(sid)
+        if old == new:
+            continue
+        subject = names_after.get(sid) or names_before.get(sid) or sid
+        if old is None or new is None:
+            change = "added" if old is None else "removed"
+            line = f"{subject} — étiquette {'ajoutée' if old is None else 'retirée'}"
+            changes.append({"step_id": sid, "subject": subject, "change": change, "line": line})
+            continue
+        old_values, new_values = list(old.get("values") or []), list(new.get("values") or [])
+        added = [_value_name(v) for v in new_values if v not in old_values]
+        removed = [_value_name(v) for v in old_values if v not in new_values]
+        parts = []
+        text = None
+        if (old.get("text") or "") != (new.get("text") or ""):
+            text = {"before": old.get("text") or "", "after": new.get("text") or ""}
+            parts.append(f"texte « {names_before.get(sid, '')} » → « {subject} »")
+        if added:
+            parts.append(f"ajout : {', '.join(added)}")
+        if removed:
+            parts.append(f"retrait : {', '.join(removed)}")
+        if not parts:
+            parts.append("ordre des valeurs modifié")
+        changes.append(
+            {"step_id": sid, "subject": subject, "change": "modified", "text": text, "values_added": added, "values_removed": removed, "line": f"{subject} — {' ; '.join(parts)}"}
+        )
+    for group_id in list(groups_after) + [g for g in groups_before if g not in groups_after]:
+        old, new = groups_before.get(group_id), groups_after.get(group_id)
+        if old == new:
+            continue
+        subject = (new or old)["name"]
+        if old is None:
+            change, line = "grouped", f"brique {subject} — étiquettes regroupées"
+        elif new is None:
+            change, line = "ungrouped", f"brique {subject} — étiquettes séparées"
+        elif old["name"] != new["name"]:
+            change, line = "renamed", f"brique « {old['name']} » renommée « {subject} »"
+        else:
+            change, line = "regrouped", f"brique {subject} — regroupement modifié"
+        changes.append({"group_id": group_id, "subject": subject, "change": change, "line": line})
+    return changes
 
 
 def render_structure_svg(structure_type: str, structure_data: dict[str, Any], metadata: dict[str, Any] | None = None) -> str | None:

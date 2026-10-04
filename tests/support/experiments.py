@@ -12,7 +12,7 @@ from .http import assert_created, assert_ok
 from .structures import campaign_plan, steps, substrate
 
 # Les champs d'une structure, rangés sous ``structure`` (le reste est l'intention).
-STRUCTURE_FIELDS = ("substrate", "steps", "declared_params", "layer_labels", "plan", "images")
+STRUCTURE_FIELDS = ("substrate", "steps", "declared_params", "layer_labels", "bricks", "plan", "images")
 
 
 def experiments_url(slug: str) -> str:

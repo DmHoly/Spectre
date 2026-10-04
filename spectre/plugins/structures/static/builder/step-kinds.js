@@ -433,7 +433,10 @@ function buildStepFromForm() {
   const step = def.buildFromForm(name);
   const declaredParams = state.formDeclaredParams
     .filter((p) => p.name.trim() !== "")
-    .map((p) => ({ name: p.name.trim(), value: parseDeclaredValue(p.value), obtention: p.obtention || {} }));
+    .map((p) => {
+      const unit = (p.unit || "").trim();
+      return { name: p.name.trim(), value: parseDeclaredValue(p.value), obtention: p.obtention || {}, ...(unit ? { unit } : {}) };
+    });
   if (declaredParams.length) step.declaredParams = declaredParams;
   const layerLabel = readLayerLabelFromForm(step); // layer-label.js
   if (layerLabel) step.layerLabel = layerLabel;

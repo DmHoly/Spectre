@@ -41,6 +41,7 @@ class NewSavedStructure(_NewItem):
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
     layer_labels: dict[str, simulation.LayerLabel] = {}
+    bricks: list[simulation.ProcessBrick] = []
     derived_from: str | ExperimentOrigin | None = None
 
 
@@ -49,6 +50,7 @@ class SavedStructureChanges(_ItemChanges):
     steps: list[ProcessStep] | None = None
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
     layer_labels: dict[str, simulation.LayerLabel] | None = None
+    bricks: list[simulation.ProcessBrick] | None = None
 
 
 class NewStepPreset(_NewItem):
@@ -65,6 +67,7 @@ class NewTechBrick(_NewItem):
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
     layer_labels: dict[str, simulation.LayerLabel] = {}
+    bricks: list[simulation.ProcessBrick] = []
     notes: str | None = None
 
 
@@ -72,6 +75,7 @@ class TechBrickChanges(_ItemChanges):
     steps: list[ProcessStep] | None = None
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
     layer_labels: dict[str, simulation.LayerLabel] | None = None
+    bricks: list[simulation.ProcessBrick] | None = None
     notes: str | None = None
 
 

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 from structureforge.core.units import Length
 from structureforge.process.steps import Deposition, Etch, FacetedGrowth, Lithography, ProcessStep, ResistStrip
 
-from ..structures.simulation import DeclaredParam, LayerLabel, SubstrateSpec, layer_labels_by_index
+from ..structures.simulation import DeclaredParam, LayerLabel, ProcessBrick, SubstrateSpec, checked_bricks, layer_labels_by_index
 from .models import LibraryItem
 
 
@@ -39,10 +39,13 @@ class SavedStructure(LibraryItem):
     declared_params: dict[str, list[DeclaredParam]] = Field(default_factory=dict)
     # the layer labels of the chosen steps (see spectre.plugins.structures.simulation.LayerLabel), by step index
     layer_labels: dict[str, LayerLabel] = Field(default_factory=dict)
+    # the bricks its steps belong to (see spectre.plugins.structures.simulation.ProcessBrick), by step index
+    bricks: list[ProcessBrick] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _labels_on_steps(self) -> "SavedStructure":
         layer_labels_by_index(self.layer_labels, len(self.steps))
+        checked_bricks(self.bricks, len(self.steps))
         return self
 
 

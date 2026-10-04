@@ -26,6 +26,22 @@ capture d'écran porte les infos importantes ».
       structure ; sur la fiche (bouton masquer / afficher), la page d'évolution et le rapport.
       Fait : voir « Fait ».
 
+Suites décidées le 2026-10-04 (relecture des étiquettes) :
+
+- [x] **Appartenance aux briques enregistrée** (préalable) : le constructeur envoyait
+      `brick_group_id` / `brick_name` avec les étapes, le serveur les perdait à chaque sauvegarde.
+      Fait : voir « Fait » (« Briques d'un procédé »).
+- [x] **Étiquettes regroupées par brique** : une étiquette pour les étapes étiquetées d'une même
+      brique (son nom, une ligne par étape, une accolade sur leurs couches), partout où les
+      étiquettes s'affichent. Fait : voir « Fait ».
+- [x] **Unité des paramètres déclarés** : un vrai champ `unit`, l'ancienne astuce de l'obtention
+      toujours lue ; niveau de version d'une unité seule choisi et documenté. Fait : voir « Fait ».
+- [x] **Diff des étiquettes** : `structure-diff` dit, à part, ce qui change aux étiquettes et à leur
+      regroupement ; la fiche l'écrit au lieu de « identique à la version précédente ». Fait :
+      voir « Fait ».
+- [x] **Étiquettes très longues** : mesurées dans le navigateur, elles sortaient du SVG ; corrigé.
+      Fait : voir « Fait ».
+
 ### 4. Documentation intégrée (en tout dernier)
 
 Volontairement à faire **après** les points 1 à 3, pour ne pas réécrire la documentation une fois
@@ -102,6 +118,44 @@ d'étapes (jugé trop lourd à saisir). Reste :
       au fil des besoins réels (le fichier explique le format en commentaire).
 
 ## Fait (pour mémoire, pas d'action)
+
+- **Briques d'un procédé, étiquettes regroupées, unité, diff des étiquettes** (2026-10-04, suites
+  du point 3 ter ; `ARCHITECTURE.md` § 4, « Étiquettes de couches », « Briques d'un procédé »,
+  « Unité des paramètres déclarés »).
+  - *Briques* : `structures.simulation.ProcessBrick` (`{group_id, name, source, step_indexes}`),
+    `bricks` dans toute requête de procédé (positions consécutives, 422 `invalid_brick`) ; une étude
+    les range par ids d'étape sous `process_bricks`, `GET .../process` les rend par positions et le
+    constructeur les rattache aux étapes au chargement (`attachBricks`, `bricksPayload`,
+    `brick_source` : l'id de la brique de bibliothèque insérée ou créée). Gardées par lancement,
+    évolution, fourche, campagne, combinaison (celles de la première étude), écritures légères,
+    structures et briques de la bibliothèque. Écart : une brique de bibliothèque insérée devient un
+    seul groupe, les briques composées ne s'imbriquent pas ; les briques restaurées arrivent
+    dépliées (une brique insérée arrive repliée, comme avant).
+  - *Versionnage* : seules, les briques ne changent pas la version (`none`) ; elles ne comptent que
+    par les étiquettes qu'elles regroupent (`label_groups` dans la signature) - au plus un
+    correctif, comme les étiquettes.
+  - *Étiquettes regroupées* (`rendering.annotations_for`, `labelled_svg`) : à partir de **deux**
+    étapes étiquetées dans la même brique (écart : une seule étape étiquetée garde son étiquette,
+    pour ne pas remplacer « p-GaN » par le nom de la brique) ; titre = nom de la brique, une ligne
+    par étape (« p-GaN : 120 nm · dopage Mg 3e18 cm⁻³ ») de la couche la plus haute à la plus
+    basse, accolade (`.sp-layer-bracket`) sur la hauteur des couches **créées par les étapes
+    étiquetées** (pas toute la brique). Constructeur, fiche, carrousel d'une campagne, page
+    d'évolution et rapport : tous reçoivent le SVG du serveur. Écart : l'aperçu des variantes à
+    l'écran « Variations » n'envoyait déjà pas les étiquettes ; inchangé.
+  - *Unité* : `DeclaredParam.unit` (facultatif, 20 caractères, enregistré sans la clé quand il est
+    vide), champ « Unité » du constructeur avec suggestions (`datalist`) ; l'astuce `unit=` de
+    l'obtention reste lue. Niveau choisi : une unité ajoutée ou retirée seule (ou passée de
+    l'obtention au champ) est un **correctif** qui garde la conclusion (`versioning.same_settings`),
+    une unité remplacée par une autre un **mineur** (elle change la valeur).
+  - *Diff* : `structure-diff` rend `label_changes` (par étape : ajoutée, retirée, modifiée - texte,
+    valeurs ajoutées et retirées ; par brique : regroupées, séparées, renommée, regroupement
+    modifié), chacun avec sa phrase ; la fiche (et sa comparaison) et la page d'évolution écrivent
+    « Étiquettes : … ». Écart : formulation neutre « p-GaN — ajout : dopage Mg » plutôt que
+    « dopage ajouté » (le genre d'un paramètre déclaré n'est pas connu).
+  - *Étiquettes très longues* : mesuré dans le navigateur, 40 « W » font 641,6 unités en DM Sans
+    600 (1 em par lettre) ; l'ancienne estimation (0,58 em, colonne plafonnée à 320) en laissait 307
+    hors du SVG. Largeur désormais estimée par excès caractère par caractère (la plus large de DM
+    Sans, Helvetica Neue et Arial, en 400 et 600, mesurée) et colonne sans plafond ; test.
 
 - **Étiquettes de couches** (2026-10-04, point 3 ter). Dans l'inspecteur du constructeur, une étape
   qui crée une couche (dépôt, croissances, lithographie) a la section « Afficher sur la structure » :
