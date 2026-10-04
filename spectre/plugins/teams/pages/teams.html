@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Équipes — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/teams/teams.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Équipes" -->
+
+  <div class="page" style="padding-top:40px;">
+    <div class="teams-page">
+      <div class="teams-head">
+        <div>
+          <div class="page-eyebrow">Organisation</div>
+          <h1>Équipes</h1>
+          <p>Une équipe possède des projets corporate. Ses managers ont tous les droits sur ces projets, leurs thématiques, leurs objectifs et leurs µprojets ; ses membres gardent les rôles de chaque µprojet.</p>
+        </div>
+        <div class="teams-head__actions">
+          <button id="new-team-btn" class="btn btn-primary" type="button" style="display:none;">+ Nouvelle équipe</button>
+        </div>
+      </div>
+
+      <div id="error" class="error" role="alert" style="display:none;margin-bottom:16px;"></div>
+
+      <div id="teams" class="team-grid" aria-busy="true">
+        <div class="skeleton" style="height:140px;"></div>
+        <div class="skeleton" style="height:140px;"></div>
+        <div class="skeleton" style="height:140px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <dialog id="new-team-dialog" class="team-dialog" aria-labelledby="new-team-title">
+    <div class="card-pad team-dialog__body">
+      <h2 id="new-team-title" style="font-size:16px;margin-bottom:14px;">Nouvelle équipe</h2>
+      <form id="new-team-form" class="field-group">
+        <div><label for="team-name">Nom de l'équipe</label><input class="field" id="team-name" required placeholder="ex : Épitaxie"></div>
+        <p class="help">Ajoutez ensuite ses managers et ses membres, puis rattachez-lui des projets corporate depuis leur page.</p>
+        <div style="display:flex;gap:10px;margin-top:8px;">
+          <button type="button" id="cancel-team" class="btn btn-line btn-block">Annuler</button>
+          <button type="submit" class="btn btn-primary btn-block">Créer</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/teams/client.js"></script>
+  <script src="/static/teams/teams.js"></script>
+</body>
+</html>

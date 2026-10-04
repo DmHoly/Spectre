@@ -11,6 +11,7 @@ class AreaCreate(BaseModel):
     description: str = ""
     strategy: str = ""
     code_prefix: str | None = None  # préfixe des numéros de ses µprojets (« Nat ») ; déduit du nom s'il manque
+    team: str | None = None  # slug de l'équipe propriétaire ; obligatoire pour un manager (l'une des siennes)
 
 
 class AreaPatch(BaseModel):
@@ -19,6 +20,7 @@ class AreaPatch(BaseModel):
     strategy: str | None = None
     objectives_period: str | None = None
     code_prefix: str | None = None
+    team: str | None = None  # slug de l'équipe propriétaire, null : aucune - réservé à l'administrateur
 
 
 class ThematicCreate(BaseModel):

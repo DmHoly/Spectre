@@ -91,7 +91,7 @@ def _lock(collection: Collection):
 
 
 def _role(microproject: Microproject, user: User) -> int:
-    role = microprojects.role_for(microproject.id, user.id)
+    role = microprojects.effective_role(user, microproject)
     return -1 if role is None else ROLE_ORDER[role]
 
 

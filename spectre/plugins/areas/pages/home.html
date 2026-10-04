@@ -78,7 +78,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
         Mes µprojets <span id="my-microprojects-count" style="font-family:var(--font-mono);font-weight:500;color:var(--text-faint);"></span>
       </summary>
-      <div style="font-size:12.5px;color:var(--text-faint);margin:6px 0 14px;">Accès direct aux µprojets dont vous êtes membre.</div>
+      <div style="font-size:12.5px;color:var(--text-faint);margin:6px 0 14px;">Accès direct aux µprojets dont vous êtes membre, et à ceux des équipes que vous managez.</div>
       <div id="my-microprojects" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;"></div>
     </details>
     </div>
@@ -90,6 +90,7 @@
       <form id="new-theme-form" class="field-group">
         <div><label for="theme-name">Nom du projet</label><input class="field" id="theme-name" required placeholder="ex : Native (PT2)"></div>
         <div><label for="theme-description">Description (optionnelle)</label><textarea class="field" id="theme-description" rows="2"></textarea></div>
+        <div><label for="theme-team">Équipe</label><select class="field" id="theme-team"></select><div class="help" id="theme-team-help">Ses managers auront tous les droits sur le projet et ses µprojets.</div></div>
         <div><label for="theme-strategy">Note stratégique (optionnelle)</label><textarea class="field" id="theme-strategy" rows="2" placeholder="Les objectifs classés se définissent ensuite sur la page du projet"></textarea></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" id="cancel-theme" class="btn btn-line btn-block">Annuler</button>
@@ -107,6 +108,7 @@
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/accounts/client.js"></script>
   <script src="/static/microprojects/client.js"></script>
+  <script src="/static/teams/client.js"></script>
   <script src="/static/areas/client.js"></script>
   <script src="/static/experiments/client.js"></script>
   <script src="/static/microprojects/roles.js"></script>

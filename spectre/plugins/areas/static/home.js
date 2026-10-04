@@ -38,7 +38,7 @@ function microprojectCard(microproject, counts) {
     <a href="/microprojets/${encodeURIComponent(microproject.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:6px;color:inherit;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:22px;">
         ${microproject.code ? `<span class="mp-code" title="Numéro du µprojet">${escapeHtml(microproject.code)}</span>` : "<span></span>"}
-        <span class="badge badge-role">${escapeHtml(roleLabel(microproject.role))}</span>
+        <span class="badge badge-role">${escapeHtml(roleLabel(microproject.role, microproject.role_source))}</span>
       </div>
       <div style="font-size:14px;font-weight:700;line-height:1.3;overflow-wrap:anywhere;">${escapeHtml(microproject.name)}</div>
       ${where ? `<div style="font-size:11.5px;color:var(--text-faint);font-family:var(--font-mono);">${escapeHtml(where)}</div>` : ""}
@@ -55,7 +55,7 @@ function unclassifiedCard(row) {
   const inner = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
       <div style="font-size:14px;font-weight:700;">${escapeHtml(p.name)}</div>
-      ${p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role))}</span>` : `<span style="font-size:11px;color:var(--text-faint);">non membre</span>`}
+      ${p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role, p.role_source))}</span>` : `<span style="font-size:11px;color:var(--text-faint);">non membre</span>`}
     </div>
     <div style="font-size:12px;color:var(--text-faint);padding-top:6px;border-top:1px solid var(--border-soft);">
       ${row.running} en cours &middot; ${row.concluded + row.abandoned} terminées
@@ -67,12 +67,13 @@ function unclassifiedCard(row) {
 
 async function load() {
   try {
-    const [areas, thematics, stats, mine, me] = await Promise.all([
+    const [areas, thematics, stats, mine, me, teams] = await Promise.all([
       areasApi.list(),
       areasApi.listThematics(),
       experimentsApi.stats(),
       microprojectsApi.list(),
       accountsApi.me(),
+      teamsApi.list(),
     ]);
     const rowsOf = (area) => stats.filter((row) => row.microproject.area && row.microproject.area.slug === area.slug);
     const thematicsOf = (area) => thematics.filter((t) => t.area.slug === area.slug).length;
@@ -94,7 +95,14 @@ async function load() {
       .map((area) => themeCard(area, thematicsOf(area), experimentTotals(rowsOf(area))))
       .join("");
     grid.removeAttribute("aria-busy");
-    if (me.is_admin) document.getElementById("new-theme-btn").style.display = "";
+    // Créer un projet : un admin (rattaché ou non à une équipe), ou un manager, à l'une de ses équipes.
+    const teamChoices = teams.filter((team) => team.can_manage);
+    if (me.is_admin || teamChoices.length) {
+      document.getElementById("theme-team").innerHTML = (me.is_admin ? [`<option value="">— Aucune équipe —</option>`] : [])
+        .concat(teamChoices.map((team) => `<option value="${escapeHtml(team.slug)}">${escapeHtml(team.name)}</option>`))
+        .join("");
+      document.getElementById("new-theme-btn").style.display = "";
+    }
 
     document.getElementById("my-microprojects-count").textContent = `(${mine.length})`;
     document.getElementById("my-microprojects").innerHTML = mine.length
@@ -117,6 +125,7 @@ document.getElementById("new-theme-form").addEventListener("submit", async (even
       name: document.getElementById("theme-name").value,
       description: document.getElementById("theme-description").value,
       strategy: document.getElementById("theme-strategy").value,
+      team: document.getElementById("theme-team").value || null,
     });
     window.location.href = `/management/${encodeURIComponent(area.slug)}`;
   } catch (err) {

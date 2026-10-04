@@ -1,7 +1,8 @@
 const { slug } = routeParams("/microprojets/{slug}");
 const errorBox = document.getElementById("error");
 let currentUser = null;
-let currentRole = null;
+let canEdit = false; // can_edit du µprojet (rôle effectif editor ou owner, calculé par le serveur)
+let canManage = false; // can_manage : owner (membre, manager de son équipe ou administrateur)
 let currentMicroprojectName = null;
 
 // Messages : dans le dialogue des membres quand il est ouvert (la page est derrière), sur la page sinon.
@@ -25,7 +26,7 @@ function showFlash(message) {
 
 // Le rôle d'un membre : une liste pour un propriétaire (sauf pour le créateur, qui le reste), un badge sinon.
 function memberRoleCell(member) {
-  if (currentRole !== "owner" || member.is_creator) {
+  if (!canManage || member.is_creator) {
     return `<span class="badge badge-role">${escapeHtml(roleLabel(member.role))}</span>`;
   }
   const options = Object.keys(ROLE_LABELS)
@@ -35,7 +36,7 @@ function memberRoleCell(member) {
 }
 
 function memberRow(member) {
-  const canRemove = currentRole === "owner" && !member.is_creator;
+  const canRemove = canManage && !member.is_creator;
   return `
     <tr style="border-top:1px solid var(--border-soft);">
       <td style="padding:10px 0;">
@@ -91,7 +92,7 @@ function invitationRow(invitation) {
 
 async function loadInvitations() {
   const wrap = document.getElementById("invitations-wrap");
-  if (currentRole !== "owner") {
+  if (!canManage) {
     wrap.innerHTML = "";
     return;
   }
@@ -253,7 +254,8 @@ document.getElementById("cancel-new-experience").addEventListener("click", () =>
 async function init() {
   try {
     const microproject = await microprojectsApi.get(slug);
-    currentRole = microproject.role;
+    canEdit = microproject.can_edit;
+    canManage = microproject.can_manage;
     currentMicroprojectName = microproject.name;
     document.getElementById("microproject-name").textContent = microproject.name;
     document.getElementById("microproject-description").textContent = microproject.description;
@@ -279,15 +281,19 @@ async function init() {
         : thematic
           ? ` / ${escapeHtml(thematic.name)}`
           : "";
-    document.getElementById("microproject-owner").innerHTML = ownerChipHtml(microproject.owners);
+    // le rôle effectif de l'appelant : « Propriétaire (manager) » pour un manager de l'équipe du µprojet
+    const roleBadge = microproject.role
+      ? `<span class="badge badge-role" title="Votre rôle dans ce µprojet">${escapeHtml(roleLabel(microproject.role, microproject.role_source))}</span>`
+      : "";
+    document.getElementById("microproject-owner").innerHTML = ownerChipHtml(microproject.owners) + roleBadge;
     document.getElementById("crumb").textContent =
       "/ " + [area && area.name, thematic && thematic.name, microproject.code || microproject.name].filter(Boolean).join(" / ");
 
-    if (currentRole === "editor" || currentRole === "owner") {
+    if (canEdit) {
       document.getElementById("new-structure-btn").style.display = "";
       document.getElementById("new-structure-btn").addEventListener("click", openNewExperienceDialog);
     }
-    if (currentRole === "owner") {
+    if (canManage) {
       document.getElementById("add-member-form").style.display = "grid";
       document.getElementById("danger-zone").style.display = "block";
     }
@@ -297,7 +303,7 @@ async function init() {
   }
 
   document.getElementById("lineage-legend").innerHTML = lineageLegendHtml({ lot: true, wafers: true });
-  mountLineage(document.querySelector(".lineage-layout"), { microprojectSlug: slug, canEdit: currentRole === "editor" || currentRole === "owner" });
+  mountLineage(document.querySelector(".lineage-layout"), { microprojectSlug: slug, canEdit });
   loadMembers();
   loadInvitations();
 }

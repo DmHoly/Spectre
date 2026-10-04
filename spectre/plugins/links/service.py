@@ -9,9 +9,10 @@ An entity names a line of study (``experiment_id``, the piste), never a version:
 later write on either study. Its ``entity_index`` is a position in the piste's current
 ``physical_tracking`` list, checked when the link is made.
 
-Who sees what: a link is listed only to someone who is a member of both of its microprojects, so it
-never names a microproject or a study the caller can't open. Creating one takes the editor role on
-both sides (it asserts something about both); retracting one, on either side.
+Who sees what: a link is listed only to someone who has a role in both of its microprojects
+(:func:`spectre.plugins.microprojects.service.access`: a member, a manager of its team, an admin),
+so it never names a microproject or a study the caller can't open. Creating one takes the editor
+role on both sides (it asserts something about both); retracting one, on either side.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from dataclasses import dataclass
 
 from ...kernel.db import get_conn
 from ...kernel.errors import Conflict, Forbidden, InvalidInput, NotFound
+from ..accounts.service import User
 from ..areas import service as areas
 from ..experiments import service as experiments
 from ..experiments.repository import get_repository
@@ -61,9 +63,8 @@ class EntityLink:
 # -- droits ---------------------------------------------------------------------------------------
 
 
-def _can_edit(microproject_id: int, user_id: int) -> bool:
-    role = microprojects.role_for(microproject_id, user_id)
-    return role is not None and microprojects.ROLE_ORDER[role] >= microprojects.ROLE_ORDER["editor"]
+def _can_edit(microproject_id: int, user: User) -> bool:
+    return microprojects.has_role(user, microprojects.get_by_id(microproject_id), "editor")
 
 
 def _forbidden() -> Forbidden:
@@ -78,18 +79,19 @@ def _target(slug: str) -> microprojects.Microproject:
         raise InvalidInput(f"µprojet « {slug} » introuvable", code="unknown_microproject") from exc
 
 
-def _editable_target(slug: str, user_id: int) -> microprojects.Microproject:
+def _editable_target(slug: str, user: User) -> microprojects.Microproject:
     microproject = _target(slug)
-    if not _can_edit(microproject.id, user_id):
+    if not microprojects.has_role(user, microproject, "editor"):
         raise _forbidden()
     return microproject
 
 
-def _visible_ids(user_id: int, *, microproject: str | None, area: str | None) -> tuple[set[int], set[int]]:
-    """``(visible, wanted)`` : les µprojets dont ``user_id`` est membre, et parmi eux ceux dont un
-    lien doit toucher l'un au moins (tous sans filtre). ``microproject`` inconnu : 404 ; dont on
-    n'est pas membre : 403."""
-    memberships = [mp for mp, _role in microprojects.list_for_user(user_id)]
+def _visible_ids(user: User, *, microproject: str | None, area: str | None) -> tuple[set[int], set[int]]:
+    """``(visible, wanted)`` : les µprojets où ``user`` a un rôle, et parmi eux ceux dont un lien
+    doit toucher l'un au moins (tous sans filtre). ``microproject`` inconnu : 404 ; sans rôle : 403."""
+    everything = microprojects.list_all()
+    found = microprojects.accesses(user, everything)
+    memberships = [mp for mp in everything if found[mp.id].role is not None]
     visible = {mp.id for mp in memberships}
     wanted = set(visible)
     if microproject is not None:
@@ -131,10 +133,10 @@ def _microproject_link_from_row(row: sqlite3.Row) -> MicroprojectLink:
     )
 
 
-def list_microproject_links(user_id: int, *, microproject: str | None = None, area: str | None = None) -> list[MicroprojectLink]:
-    """Les liens dont ``user_id`` voit les deux bouts et dont l'un touche ``microproject`` (son slug)
+def list_microproject_links(user: User, *, microproject: str | None = None, area: str | None = None) -> list[MicroprojectLink]:
+    """Les liens dont ``user`` voit les deux bouts et dont l'un touche ``microproject`` (son slug)
     ou un µprojet du projet corporate ``area`` (son slug)."""
-    visible, wanted = _visible_ids(user_id, microproject=microproject, area=area)
+    visible, wanted = _visible_ids(user, microproject=microproject, area=area)
     if not wanted:
         return []
     with get_conn() as conn:
@@ -150,16 +152,16 @@ def list_microproject_links(user_id: int, *, microproject: str | None = None, ar
     ]
 
 
-def create_microproject_link(user_id: int, a: str, b: str, *, note: str) -> MicroprojectLink:
-    microproject_a = _editable_target(a, user_id)
-    microproject_b = _editable_target(b, user_id)
+def create_microproject_link(user: User, a: str, b: str, *, note: str) -> MicroprojectLink:
+    microproject_a = _editable_target(a, user)
+    microproject_b = _editable_target(b, user)
     if microproject_a.id == microproject_b.id:
         raise InvalidInput("un µprojet ne peut pas être lié à lui-même", code="self_link")
     try:
         with get_conn() as conn:
             cursor = conn.execute(
                 "INSERT INTO microproject_links (microproject_a_id, microproject_b_id, note, created_by) VALUES (?, ?, ?, ?)",
-                (microproject_a.id, microproject_b.id, note.strip(), user_id),
+                (microproject_a.id, microproject_b.id, note.strip(), user.id),
             )
             row = conn.execute(f"{_MICROPROJECT_LINK_SELECT} WHERE link.id = ?", (cursor.lastrowid,)).fetchone()
     except sqlite3.IntegrityError as exc:  # l'index unique sur la paire, dans un sens ou dans l'autre
@@ -167,12 +169,12 @@ def create_microproject_link(user_id: int, a: str, b: str, *, note: str) -> Micr
     return _microproject_link_from_row(row)
 
 
-def delete_microproject_link(user_id: int, link_id: int) -> None:
+def delete_microproject_link(user: User, link_id: int) -> None:
     with get_conn() as conn:
         row = conn.execute("SELECT microproject_a_id, microproject_b_id FROM microproject_links WHERE id = ?", (link_id,)).fetchone()
     if row is None:
         raise NotFound("lien introuvable")
-    if not (_can_edit(row["microproject_a_id"], user_id) or _can_edit(row["microproject_b_id"], user_id)):
+    if not (_can_edit(row["microproject_a_id"], user) or _can_edit(row["microproject_b_id"], user)):
         raise _forbidden()
     with get_conn() as conn:
         conn.execute("DELETE FROM microproject_links WHERE id = ?", (link_id,))
@@ -198,9 +200,9 @@ def _entity_link_from_row(row: sqlite3.Row) -> EntityLink:
     )
 
 
-def list_entity_links(user_id: int, *, microproject: str | None = None, area: str | None = None) -> list[EntityLink]:
+def list_entity_links(user: User, *, microproject: str | None = None, area: str | None = None) -> list[EntityLink]:
     """Comme :func:`list_microproject_links`, pour les liens entre entités."""
-    visible, wanted = _visible_ids(user_id, microproject=microproject, area=area)
+    visible, wanted = _visible_ids(user, microproject=microproject, area=area)
     if not wanted:
         return []
     with get_conn() as conn:
@@ -222,9 +224,9 @@ def _check_entity(microproject: microprojects.Microproject, ref: EntityRef) -> N
         raise InvalidInput(f"l'expérience « {ref.experiment_id} » ne suit aucune entité n° {ref.entity_index}", code="unknown_entity")
 
 
-def create_entity_link(user_id: int, a: EntityRef, b: EntityRef, *, note: str) -> EntityLink:
-    microproject_a = _editable_target(a.microproject, user_id)
-    microproject_b = _editable_target(b.microproject, user_id)
+def create_entity_link(user: User, a: EntityRef, b: EntityRef, *, note: str) -> EntityLink:
+    microproject_a = _editable_target(a.microproject, user)
+    microproject_b = _editable_target(b.microproject, user)
     if a == b:
         raise InvalidInput("une entité ne peut pas être liée à elle-même", code="self_link")
     _check_entity(microproject_a, a)
@@ -233,18 +235,18 @@ def create_entity_link(user_id: int, a: EntityRef, b: EntityRef, *, note: str) -
         cursor = conn.execute(
             "INSERT INTO entity_links (a_microproject_id, a_experiment_id, a_entity_index, "
             "b_microproject_id, b_experiment_id, b_entity_index, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (microproject_a.id, a.experiment_id, a.entity_index, microproject_b.id, b.experiment_id, b.entity_index, note.strip(), user_id),
+            (microproject_a.id, a.experiment_id, a.entity_index, microproject_b.id, b.experiment_id, b.entity_index, note.strip(), user.id),
         )
         row = conn.execute(f"{_ENTITY_LINK_SELECT} WHERE link.id = ?", (cursor.lastrowid,)).fetchone()
     return _entity_link_from_row(row)
 
 
-def delete_entity_link(user_id: int, link_id: int) -> None:
+def delete_entity_link(user: User, link_id: int) -> None:
     with get_conn() as conn:
         row = conn.execute("SELECT a_microproject_id, b_microproject_id FROM entity_links WHERE id = ?", (link_id,)).fetchone()
     if row is None:
         raise NotFound("lien introuvable")
-    if not (_can_edit(row["a_microproject_id"], user_id) or _can_edit(row["b_microproject_id"], user_id)):
+    if not (_can_edit(row["a_microproject_id"], user) or _can_edit(row["b_microproject_id"], user)):
         raise _forbidden()
     with get_conn() as conn:
         conn.execute("DELETE FROM entity_links WHERE id = ?", (link_id,))

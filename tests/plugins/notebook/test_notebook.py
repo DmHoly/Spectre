@@ -232,6 +232,7 @@ def test_a_stale_if_match_is_refused_on_every_write(client, demo_data):
 
 
 def test_viewers_read_the_notebook_but_do_not_change_it(client, demo_data):
+    signup(client, "admin@example.com")  # le premier compte est admin : il a accès à tout µprojet
     signup(client, "viewer-nb@example.com", name="V")
     slug, line = _setup(client, "owner-nb@example.com")
     snap = take_snapshot(client, slug)

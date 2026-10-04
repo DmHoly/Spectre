@@ -77,7 +77,8 @@ def test_only_an_owner_or_an_admin_moves_a_microprojet(client):
 
     login(client, "boss@example.com")
     moved = move_microproject(client, "native-pt2", "recuit")
-    assert moved["area"]["slug"] == "native-pt2" and moved["role"] is None
+    # l'admin, sans être membre, a le rôle owner (et la page dit d'où il vient)
+    assert moved["area"]["slug"] == "native-pt2" and (moved["role"], moved["role_source"]) == ("owner", "admin")
     assert [row["microproject"]["slug"] for row in experiment_stats(client, area="native-pt2")] == ["recuit"]
 
 
