@@ -122,6 +122,29 @@ Demandé le 2026-10-04. Ce point remplace l'ancien « résultats rattachés à u
       - côté PRISM : connecteur quand il existe, sinon entrée manuelle. Peut-on convertir plus tard
         une entrée manuelle en entrée PRISM, quand le connecteur apparaît ?
 
+### 4. Documentation intégrée (en tout dernier)
+
+Volontairement à faire **après** les points 1 à 3, pour ne pas réécrire la documentation une fois
+de plus.
+
+- [ ] **Réécrire les pages de documentation intégrées.** Il s'agit des pages `/docs`, `/docs/guide`,
+      `/docs/exemples` et `/docs/architecture` (`spectre/plugins/docs/pages/`).
+      Aujourd'hui, elles décrivent l'application d'avant le refactor :
+      - l'ancienne terminologie (« projet » au lieu de « µprojet ») ;
+      - les anciennes routes (`/api/auth/*`, `/api/microprojets/…`, `spectre/api/static/`) ;
+      - l'ancienne architecture.
+
+      Elles doivent refléter l'état final :
+      - les plugins et leur nomenclature ;
+      - la piste et ses versions, et les refs avec leur page d'évolution ;
+      - les équipes et les rôles ;
+      - le cahier unique et le stepper ;
+      - les conventions REST.
+
+      La page « architecture » renverra à `ARCHITECTURE.md` plutôt que d'en recopier le contenu.
+- [ ] **Refaire les captures d'écran** (`spectre/plugins/docs/static/img/`) une fois l'interface
+      stabilisée.
+
 ## Couche Management — Phase 2 (analytique)
 
 La Phase 1 (thèmes, hiérarchie, navigation) est livrée ; la page `/pilotage` (compteurs +
@@ -152,12 +175,9 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 ## Polish navigation / rename
 
-- [ ] Fils d'Ariane secondaires incomplets : `refs.html`, `graphe.html`,
-      `intent-forms.html` n'affichent que « ← Retour au µprojet » (un saut) plutôt que
-      `Thèmes / <thème> / <µprojet>` comme la fiche projet et la fiche expérience.
-- [ ] Pages de documentation (`guide.html`, `examples.html`, `architecture.html`) :
-      texte encore en « projet » (seul le lien de retour a été aligné) - à relire et mettre à jour
-      pour la terminologie « µprojet » + la nouvelle hiérarchie Management.
+- [ ] Fils d'Ariane secondaires incomplets : `refs.html` et `intent-forms.html` n'affichent que
+      « ← Retour au µprojet » (un saut) plutôt que `Thèmes / <thème> / <µprojet>` comme la fiche
+      projet et la fiche expérience.
 - [ ] `scripts/seed_demo.py` : les µprojets de démo ne sont rattachés à aucun thème (atterrissent
       dans « Non classé ») - décider s'ils doivent illustrer un des 3 thèmes phares.
 ## Petites dettes notées en cours de route
