@@ -1,5 +1,7 @@
 const { slug } = routeParams("/microprojets/{slug}");
 const errorBox = document.getElementById("error");
+// la page « Évolution des structures » (plugin experiments) : pistes, versions et refs
+document.getElementById("evolution-link").href = `/microprojets/${encodeURIComponent(slug)}/evolution`;
 let currentUser = null;
 let canEdit = false; // can_edit du µprojet (rôle effectif editor ou owner, calculé par le serveur)
 let canManage = false; // can_manage : owner (membre, manager de son équipe ou administrateur)

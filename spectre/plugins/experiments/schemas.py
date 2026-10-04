@@ -100,3 +100,7 @@ class RefRequest(BaseModel):
     version_id: str | None = None  # the tip of experiment_id when left out
     name: str | None = None  # a nickname ; « ref vX.Y.Z » when left blank
 
+
+class RefChanges(BaseModel):
+    name: str | None = None  # the new name ; left out, nothing changes
+

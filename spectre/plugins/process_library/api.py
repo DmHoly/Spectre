@@ -17,6 +17,7 @@ from ..structures import simulation
 from . import service
 from .service import SAVED_STRUCTURES, STEP_PRESETS, TECH_BRICKS, Collection, Entry
 from .step_presets import StepPresetPayload
+from .structure_library import ExperimentOrigin
 
 router = APIRouter(prefix="/api", tags=["process-library"])
 
@@ -39,7 +40,7 @@ class NewSavedStructure(_NewItem):
     substrate: simulation.SubstrateSpec
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
-    derived_from: str | None = None
+    derived_from: str | ExperimentOrigin | None = None
 
 
 class SavedStructureChanges(_ItemChanges):
