@@ -5,69 +5,9 @@ faite, déplacer la ligne dans la section « Fait » du bas (ou simplement la re
 
 ## Prochaines évolutions (après le passage en plugins)
 
-Demandées le 2026-10-03, à démarrer une fois la branche `refactor/plugins` fusionnée. Chacune suit
-le contrat d'`ARCHITECTURE.md` : un plugin propriétaire, des routes REST en anglais, le front par
-son `client.js`.
-
-### 1. Équipes, managers et administrateurs
-
-- [ ] **Trois niveaux de droits.**
-      - **admin** : accès à tout. C'est l'actuel `users.is_admin`. Il doit aussi passer outre les
-        rôles de µprojet, ce que `require_role` ne fait pas aujourd'hui.
-      - **manager** : tous les droits sur ce qui appartient à **son équipe**, dont créer, renommer
-        et supprimer les thèmes (projets corporate), les thématiques et les objectifs, et
-        administrer les µprojets de l'équipe (membres, rattachement).
-      - **membre** : les rôles de µprojet actuels (viewer, editor, owner).
-- [ ] **Nouveau plugin `teams`.**
-      - Tables `teams` et `team_members(team_id, user_id, role: manager|member)`.
-      - Routes `/api/teams`, `/api/teams/{team_slug}/members`.
-      - Page « Équipes ».
-      - Le rattachement d'un thème (`areas.team_id`) et d'un µprojet à une équipe se fait par
-        `PATCH` sur la ressource concernée.
-- [ ] **Une seule règle d'autorisation.** Partir de `accounts.deps.require_admin` et
-      `microprojects.deps.require_role` et en faire une fonction de politique unique (ex.
-      `can_manage(user, area | microproject)`) appelée par ces deux dépendances, au lieu de
-      contrôles dispersés.
-      **Pas de moteur de règles générique : YAGNI.**
-- [ ] **Décidé le 2026-10-04 :**
-      - un utilisateur peut appartenir à **plusieurs équipes**, et être manager dans certaines seulement ;
-      - un manager a d'office les **droits owner** sur tous les µprojets de son équipe, même sans en
-        être membre ;
-      - un µprojet **hérite de l'équipe de son thème**. Un µprojet « Non classé » n'a pas d'équipe :
-        seuls l'admin et ses membres y ont accès ;
-      - à la migration, **rien n'est rattaché** : les droits restent ceux d'aujourd'hui jusqu'à ce
-        qu'un admin crée les équipes et y rattache les thèmes ;
-      - le SSO n'est pas anticipé (YAGNI).
-
-### 2. Page dédiée à l'évolution des structures et aux refs
-
-- [ ] **Constat.** On peut déjà promouvoir une version en ref (`POST /api/microprojects/{mp}/refs`,
-      bouton « + ref » de la fiche), et chaque version porte un numéro majeur.mineur.correctif
-      (`experiments/versioning.py`). Mais rien ne le met en valeur : la page `/microprojets/{slug}/refs`
-      n'est liée depuis aucun écran.
-- [ ] **Page dédiée** dans le plugin `experiments` (ou un plugin `refs` s'il grossit), liée depuis la
-      page µprojet et depuis la fiche. Elle montre un **diagramme façon git** de l'évolution des
-      structures :
-      - une colonne par piste ;
-      - un nœud par version structurelle, étiqueté `vX.Y.Z`, avec les changements majeurs et mineurs
-        distingués ;
-      - les fourches, les fusions et les refs en badges.
-
-      D3 est déjà embarqué, et `lineage-graph.js` sait dessiner la filiation.
-- [ ] **Actions sur la page :**
-      - « Promouvoir en ref » sur n'importe quel nœud ;
-      - comparer deux nœuds (`GET .../structure-diff`) ;
-      - partir d'une ref (fourche explicite, `POST .../experiments` avec `from_version`) ;
-      - suivre l'évolution d'une ref donnée, c'est-à-dire tout ce qui en descend.
-- [ ] **API.** Enrichir `GET /api/microprojects/{mp}/lineage` (ou une ressource
-      `.../structure-history`) avec le numéro de version, le niveau de changement et les refs posées
-      sur chaque nœud, pour que la page ne recalcule rien côté client.
-- [ ] **Décidé le 2026-10-04 :**
-      - une ref reste **propre au µprojet**. Une action « Publier dans la bibliothèque » copie sa
-        structure en structure enregistrée partagée, avec un lien vers son origine ;
-      - un **editor** peut renommer ou retirer une ref ; la version, elle, reste ;
-      - le diagramme montre par défaut les **versions structurelles** (majeur, mineur) et les refs,
-        avec une bascule « toutes les versions ».
+Demandées le 2026-10-03. Chacune suit le contrat d'`ARCHITECTURE.md` : un plugin propriétaire, des
+routes REST en anglais, le front par son `client.js`. Les points 1 (équipes) et 2 (page d'évolution
+et refs) sont livrés, comme le préalable du point 3 (identité des étapes) : voir « Fait ».
 
 ### 3. Un seul cahier de données, rattaché aux étapes du procédé
 
@@ -100,22 +40,17 @@ Demandé le 2026-10-04. Ce point remplace l'ancien « résultats rattachés à u
         - la fusion d'études (`experiments.service._merge_evidence`) ;
         - le lien preuve ↔ objectif.
       - Mettre à jour ARCHITECTURE.md (§ 3 et § 5) et le README.
+- [ ] **Convertir les `step_index` des anciennes preuves** en ids d'étape, avec
+      `experiments.service.step_id_at(version, index)` (l'identité des étapes est livrée, voir
+      « Fait » ; il n'y a pas de migration des procédés, leurs ids sont dérivés à la lecture).
 - [ ] **Situer chaque donnée dans le procédé, sur plusieurs étapes.**
       - À l'ajout comme à la lecture d'une donnée, on affiche un **stepper** du procédé : une bulle
         par étape, avec en **rouge** les étapes où la mesure est faite.
       - Une même mesure peut être faite à **plusieurs moments** du procédé. Une entrée porte donc
-        une **liste d'étapes** (`steps: [step_id, …]`), pas une étape unique. Dans la boîte d'ajout,
-        on coche les bulles.
+        une **liste d'étapes** (`steps: [step_id, …]`, les ids `st_<8 hex>` de `process_step_ids`),
+        pas une étape unique. Dans la boîte d'ajout, on coche les bulles.
       - Dans la vue du procédé (`experiments/static/structure-view.js`), chaque étape affiche un
         badge avec le nombre de données qui la concernent. Un clic filtre le cahier sur cette étape.
-- [ ] **Préalable : une identité stable pour chaque étape.** Aujourd'hui une étape est désignée par
-      sa position : insérer une étape à l'évolution suivante décalerait tous les rattachements.
-      - Il faut un `step_id` dans les métadonnées du procédé, attribué au lancement et conservé
-        aux évolutions.
-      - Les facteurs DOE doivent le référencer aussi (la revue l'a relevé : `REVIEW.md`, front du
-        constructeur).
-      - Une migration attribue les `step_id` aux procédés existants, et les `step_index` des
-        anciennes preuves sont convertis.
 - [ ] **À trancher :**
       - une donnée rattachée à une étape suit-elle cette étape aux versions suivantes si elle n'a
         pas changé ? Et si l'étape est supprimée à une évolution, que devient le rattachement ?
@@ -130,7 +65,9 @@ Demandé le 2026-10-04. Ce point remplace l'ancien « résultats rattachés à u
 ### 4. Documentation intégrée (en tout dernier)
 
 Volontairement à faire **après** les points 1 à 3, pour ne pas réécrire la documentation une fois
-de plus.
+de plus. `ARCHITECTURE.md` et le README sont à jour des points 1 et 2 et de l'identité des étapes ;
+les pages `/docs` non : `docs/guide.html` décrit encore l'ancienne page « Refs » et
+`docs/architecture.html` l'ancien `require_role`.
 
 - [ ] **Réécrire les pages de documentation intégrées.** Il s'agit des pages `/docs`, `/docs/guide`,
       `/docs/exemples` et `/docs/architecture` (`spectre/plugins/docs/pages/`).
@@ -181,11 +118,15 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 ## Polish navigation / rename
 
-- [ ] Fils d'Ariane secondaires incomplets : `refs.html` et `intent-forms.html` n'affichent que
+- [ ] Fil d'Ariane secondaire incomplet : `intent-forms.html` n'affiche que
       « ← Retour au µprojet » (un saut) plutôt que `Thèmes / <thème> / <µprojet>` comme la fiche
       projet et la fiche expérience.
 - [ ] `scripts/seed_demo.py` : les µprojets de démo ne sont rattachés à aucun thème (atterrissent
-      dans « Non classé ») - décider s'ils doivent illustrer un des 3 thèmes phares.
+      dans « Non classé ») - décider s'ils doivent illustrer un des 3 thèmes phares. Le seed ne crée
+      pas non plus d'équipe : il faudrait une équipe de démo, avec Léa en manager, pour montrer les
+      droits d'équipe sans manipulation.
+- [ ] Le dialogue « Modifier le projet » (page d'un projet corporate) déborde en largeur sur écran
+      étroit, comme le faisait « Nouvelle équipe » avant sa correction.
 ## Petites dettes notées en cours de route
 
 - [ ] `DELETE /api/microprojects/{mp}/experiments/{exp}` (suppression d'une piste) : les blobs de
@@ -196,6 +137,25 @@ d'étapes (jugé trop lourd à saisir). Reste :
       au fil des besoins réels (le fichier explique le format en commentaire).
 
 ## Fait (pour mémoire, pas d'action)
+
+- **Équipes, managers et administrateurs** (2026-10-04, ex-point 1). Plugin `teams` (tables `teams`,
+  `team_members`, pages `/equipes`, `/equipes/{slug}`), `management_areas.team_id`. Une seule
+  règle : `areas.service.can_manage` pour un projet, `microprojects.service.access` pour un
+  µprojet (admin et manager de l'équipe : owner), dont dérivent `require_role` et toutes les
+  autorisations des autres plugins. Décisions appliquées : plusieurs équipes par compte, « Non
+  classé » sans équipe, rien de rattaché à la migration, pas de SSO. Écarts retenus : la lecture des
+  équipes est ouverte à tout compte connecté ; rattacher un projet à une équipe, ou un µprojet
+  existant à un projet, reste à l'admin.
+- **Page « Évolution des structures »** (2026-10-04, ex-point 2). `/microprojets/{slug}/evolution`
+  (l'ancienne `/refs` y redirige), servie par `GET .../structure-history` ; refs adressables
+  (`GET`/`PATCH`/`DELETE .../refs/{ref_name}`, `Location` à la création) ; publication d'une ref
+  dans la bibliothèque partagée (`derived_from` = son origine). Par défaut, le diagramme montre
+  aussi les fusions et le début de chaque piste ; publier n'est offert qu'aux editors, sur une
+  version qui porte une ref.
+- **Identité stable des étapes** (2026-10-04, préalable du point 3). Ids `st_<8 hex>` sous
+  `process_step_ids`, conservés aux évolutions ; facteurs de campagne par `step_id` ; **pas de
+  migration** : les ids des anciennes versions sont dérivés à la lecture ; recevoir des ids ne crée
+  pas de version. Détail dans `ARCHITECTURE.md` § 4.
 
 - Table `lot_steps` de la toute première version des lots supprimée par la migration
   `lots/0002_drop_lot_steps` (la base d'avant est sauvegardée dans `data/backups/` au démarrage qui migre).

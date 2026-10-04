@@ -71,9 +71,11 @@ class Plugin:
 ```
 
 Le `page_router` d'un plugin est inclus **avant** ses pages : une redirection peut viser un gabarit
-plus étroit qu'une page du même plugin. Seul cas : un ancien id de version sous la page d'une étude
-(`/microprojets/{slug}/experiences/{version_id:experiment_version}`, convertisseur d'URL Starlette
-`exp_<16 hex>` déclaré par `experiments.api`, forme qu'aucun nom de piste ne peut prendre).
+plus étroit qu'une page du même plugin. Deux cas, tous deux dans `experiments` : un ancien id de
+version sous la page d'une étude (`/microprojets/{slug}/experiences/{version_id:experiment_version}`,
+convertisseur d'URL Starlette `exp_<16 hex>` déclaré par `experiments.api`, forme qu'aucun nom de
+piste ne peut prendre), et l'ancienne page des refs (`/microprojets/{slug}/refs`, 302 vers
+`/microprojets/{slug}/evolution`).
 
 Les plugins sont listés **dans l'ordre topologique** dans `spectre/plugins/__init__.py`
 (`PLUGINS = (...)`). L'application est construite par `create_app()`, en mode factory pour
@@ -87,26 +89,27 @@ placés au-dessus de lui.
 | # | Plugin | Responsabilité | Dépend de | Tables / stockage |
 |---|---|---|---|---|
 | 1 | `accounts` | Comptes, sessions, mot de passe, profil, rôle admin global. Fournit `deps.current_user` et `deps.require_admin` | — | `users`, `sessions`, `password_resets` |
-| 2 | `search` | `GET /api/search`, qui agrège les fournisseurs déclarés par les autres plugins (`register_provider`) | accounts | — |
-| 3 | `library` | Bibliothèque racine YAML de l'instance (matériaux, recettes, présets, briques, textes d'UI), chargeur générique avec cache mtime, registre `LibraryFile` alimenté par les plugins propriétaires, édition réservée à l'admin | accounts | `data_dir/library/*.yml` (copiés depuis `library/defaults/` au premier démarrage, et les `*.yml` d'un `<dépôt>/library` d'avant par-dessus) |
-| 4 | `areas` | Projets corporate (*management areas*), thématiques, objectifs. Pages accueil, projet et thématique | accounts | `management_areas`, `thematics`, `area_objectives` |
-| 5 | `microprojects` | µprojets (CRUD, numéro, rattachement à un projet ou une thématique, recherche), membres, rôles, invitations. Fournit `deps.require_role` | accounts, areas, search | `microprojects`, `memberships`, `invitations` |
-| 6 | `attachments` | Fichiers téléversés d'un µprojet (blob + sidecar), types, tailles, service des octets | microprojects | `data/microprojects/<slug>/attachments/` |
-| 7 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
-| 8 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library | JSON par portée |
-| 9 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, fusion, suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
-| 10 | `evidence` | Preuves d'une étude, liens, images, annotations | experiments, attachments | métadonnées Follow |
-| 11 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
-| 12 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité | experiments, search | cache mémoire |
-| 13 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
-| 14 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
-| 15 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
-| 16 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
-| 17 | `notebook` | Cahier de données d'une étude : instantanés et vues DataViz | characterization, experiments | `snapshots/`, métadonnées Follow |
-| 18 | `external_images` | Galerie d'images externes référencées (TEM, scans) d'une étude, limitée aux racines autorisées | experiments | métadonnées Follow |
-| 19 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
-| 20 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
-| 21 | `docs` | Pages de documentation (contenu inchangé) | — | — |
+| 2 | `teams` | Équipes et leurs membres (`manager` ou `member`), page Équipes. Fournit `service.managed_team_ids(user_id)`. Ce qu'une équipe possède est dit par `areas` | accounts | `teams`, `team_members` |
+| 3 | `search` | `GET /api/search`, qui agrège les fournisseurs déclarés par les autres plugins (`register_provider`) | accounts | — |
+| 4 | `library` | Bibliothèque racine YAML de l'instance (matériaux, recettes, présets, briques, textes d'UI), chargeur générique avec cache mtime, registre `LibraryFile` alimenté par les plugins propriétaires, édition réservée à l'admin | accounts | `data_dir/library/*.yml` (copiés depuis `library/defaults/` au premier démarrage, et les `*.yml` d'un `<dépôt>/library` d'avant par-dessus) |
+| 5 | `areas` | Projets corporate (*management areas*), leur équipe, thématiques, objectifs. Pages accueil, projet et thématique. Fournit `service.can_manage(user, area)` et `managed_area_ids(user)` | accounts, teams | `management_areas` (dont `team_id`, `ON DELETE SET NULL`), `thematics`, `area_objectives` |
+| 6 | `microprojects` | µprojets (CRUD, numéro, rattachement à un projet ou une thématique, recherche), membres, rôles, invitations. Fournit la règle d'accès (`service.access`, `effective_role`, `check_role`) et `deps.require_role` | accounts, areas, search | `microprojects`, `memberships`, `invitations` |
+| 7 | `attachments` | Fichiers téléversés d'un µprojet (blob + sidecar), types, tailles, service des octets | microprojects | `data/microprojects/<slug>/attachments/` |
+| 8 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
+| 9 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library | JSON par portée |
+| 10 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, fusion, suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
+| 11 | `evidence` | Preuves d'une étude, liens, images, annotations | experiments, attachments | métadonnées Follow |
+| 12 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
+| 13 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité | experiments, search | cache mémoire |
+| 14 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
+| 15 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
+| 16 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
+| 17 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
+| 18 | `notebook` | Cahier de données d'une étude : instantanés et vues DataViz | characterization, experiments | `snapshots/`, métadonnées Follow |
+| 19 | `external_images` | Galerie d'images externes référencées (TEM, scans) d'une étude, limitée aux racines autorisées | experiments | métadonnées Follow |
+| 20 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
+| 21 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
+| 22 | `docs` | Pages de documentation (contenu inchangé) | — | — |
 
 **Les tables d'un autre plugin.** Un plugin possède ses tables : il est seul à y écrire. Il peut
 en revanche les **lire par jointure SQL** chez les plugins dont il dépend, pour une liste qui en
@@ -117,6 +120,36 @@ l'objectif validé par un µprojet (`area_objectives.validated_by_microproject_i
 avec son code recopié de `microprojects.service.format_code`), et le repli des µprojets quand on
 supprime un projet (vers « Non classé », sans thématique) ou une thématique (`thematic_id` remis à
 `NULL`). La faire passer par `microprojects` demanderait une dépendance dans l'autre sens.
+
+### Une seule règle d'autorisation
+
+Trois niveaux de droits, et une seule fonction qui les combine par ressource :
+
+- **admin** (`users.is_admin`) : tout. Il est `owner` de tout µprojet, même sans en être membre ;
+- **manager d'une équipe** (`team_members.role = manager`) : gère les projets corporate rattachés à
+  son équipe (`management_areas.team_id`), leurs thématiques et leurs objectifs, peut créer un
+  projet dans l'une de ses équipes, et il est `owner` des µprojets de ces projets (un µprojet hérite
+  de l'équipe de son projet ; « Non classé » n'a pas d'équipe) ;
+- **membre** : le rôle de son adhésion au µprojet (`viewer` < `editor` < `owner`).
+
+Un compte peut appartenir à plusieurs équipes et n'être manager que dans certaines.
+
+Côté projet, `areas.service.can_manage(user, area)` (admin, ou manager de l'équipe du projet) est
+la règle de toute écriture d'un projet, d'une thématique ou d'un objectif. Rattacher un projet à
+une équipe reste à l'admin, comme rattacher un µprojet existant depuis la page d'un projet (il
+s'appuie sur `?scope=all`). Côté µprojet, `microprojects.service.access(user, microproject)` rend
+un `Access(role, source, membership)` : `role` est le rôle effectif, `source` dit d'où il vient,
+dans cet ordre de priorité : owner par adhésion (`membership`), puis `team_manager`, puis `admin`,
+puis le rôle de l'adhésion. `effective_role`, `has_role`, `check_role`, `accesses` (une liste en
+deux requêtes) et `deps.require_role` en dérivent ; aucun autre plugin ne lit la table
+`memberships` pour autoriser (`role_for` et `list_for_user` restent des lecteurs bruts). « Mes
+µprojets » (`list_mine`) : ceux dont on est membre et ceux des équipes qu'on manage, pas tous
+ceux qu'un admin peut ouvrir. Hors µprojets, trois contrôles gardent leur propre règle, qui ne
+dépend pas d'un rôle : la suppression d'un lot (créateur ou admin) et les éléments partagés de
+`process_library` et d'`intent_forms` (auteur ou admin).
+
+À la migration (`teams/0001_initial`, `areas/0003_team`), rien n'est rattaché : les droits d'une
+base existante ne changent qu'une fois les équipes créées et les projets rattachés par un admin.
 
 Une **page** appartient au plugin de sa ressource principale. Son script peut utiliser les
 `client.js` d'autres plugins : le navigateur est la racine de composition. Une agrégation qui
@@ -225,8 +258,9 @@ déplacement de classe ne doit jamais la changer.
   une évolution (`POST .../versions`) le revalide. Les erreurs de Follow deviennent des
   `kernel.errors` ; un formulaire refusé est un 422 `invalid_intent_form` dont le `detail` énumère
   les réponses en défaut.
-- Les seuls accès aux internes privés de Follow (suppression d'une piste) sont dans
-  `repository.delete_line(repo, experiment_id)`. Le dépôt est ouvert sur le stockage JSON de Follow
+- Les seuls accès aux internes privés de Follow sont dans `repository` : `delete_line(repo,
+  experiment_id)` (suppression d'une piste), `rename_tag` et `remove_tag` (renommer ou retirer une
+  ref ; Follow n'en offre pas le moyen). Le dépôt est ouvert sur le stockage JSON de Follow
   (même format sur disque), dont les écritures passent par `kernel.fs.write_text` : un `refs.json`
   tenu un instant par un lecteur, sous Windows, ne fait plus échouer un commit.
 - Les plugins qui écrivent dans une étude sans en être le propriétaire (evidence, notebook,
@@ -255,8 +289,40 @@ déplacement de classe ne doit jamais la changer.
 - Une piste créée depuis une version (`from_version`, `version_id` facultatif : la pointe par
   défaut) en reprend, faute de mieux dans la requête, les objectifs, le contexte et l'entité suivie -
   pas les preuves, les étiquettes ni la conclusion : c'est une nouvelle étude.
+- Le nom d'une ref (`refs.py`) : non vide, sans `/`, ni `.`/`..`, ni la forme d'un id de version
+  (`repository.VERSION_ID_RE`, repris par `service.VERSION_ID_RE` ; Follow cherche un nom avant un
+  id, une telle ref masquerait la version) - sinon 422 `invalid_ref_name` -, libre parmi les refs et
+  les pistes (409 `ref_name_taken`). Une ref est propre au µprojet ; la renommer ou la retirer ne
+  touche pas la version.
 - `scripts/repair_hypotheses.py` (à blanc par défaut, `--apply` pour écrire) reporte sur la pointe de
   chaque piste qui l'a perdue la dernière hypothèse non vide de son historique (bug B1).
+
+### Identité d'une étape
+
+Chaque étape d'un procédé a un id stable, `st_<8 hex>` (`structures.simulation.STEP_ID_RE`),
+conservé aux évolutions : c'est par lui qu'un facteur de campagne (et, plus tard, une donnée du
+cahier) désigne une étape, et non plus par sa position.
+
+- **Stockage** : à part du procédé, sous la clé de métadonnées `process_step_ids` (dans l'ordre des
+  étapes). Le versionnage et StructureForge ne la voient pas ; `service.editable_process` ajoute
+  l'`id` à chaque étape de `GET .../process`.
+- **Anciennes versions** : leurs objets Follow ne sont jamais réécrits, donc **pas de migration**.
+  Leurs ids sont dérivés à la lecture, de l'id de la version et de la position
+  (`experiments.service.step_ids_of`), toujours les mêmes pour elle ; deux anciennes versions d'une
+  même piste n'ont donc pas les mêmes. Toute version écrite ensuite enregistre les siens, y compris
+  une écriture légère, qui reprend ceux du parent.
+- **Attribution** (`simulation.settle_step_ids`, `service._settled_step_ids`) : une étape renvoyée
+  avec son id le garde ; une étape sans id, ou dont l'id est mal formé ou en double, en reçoit un
+  neuf ; un client qui n'envoie aucun id garde ceux du parent, par position, tant que la suite des
+  types d'étapes ne change pas. Le serveur accepte tout id bien formé : le constructeur renvoie
+  ceux que `POST /api/simulations` lui a donnés (`step_ids`).
+- **Recevoir des ids ne crée pas de version** : une écriture qui n'ajouterait que les ids du parent
+  est sans effet (200, rien n'est écrit).
+- `experiments.service.step_id_at(version, index)` traduit une ancienne position (`step_index`) en
+  id ; `-1` désigne le substrat dans un ancien plan de campagne. Une campagne existante garde son
+  `campaign_plan` en `step_index`, toujours lisible.
+- Les bibliothèques (structures enregistrées, briques, présets) n'ont pas d'ids : leurs étapes sont
+  des modèles, recopiées comme nouvelles étapes (`ProcessStep` ignore le champ `id`).
 
 ## 5. Table de correspondance des routes
 
@@ -279,6 +345,23 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 | `GET /api/auth/invitation/{token}` | `GET /api/invitations/{token}` (plugin microprojects, public ; `account_exists` pour proposer la connexion plutôt que l'inscription) |
 | *(register avec invitation)* | `POST /api/invitations/{token}/acceptance` (connecté, même e-mail, sinon 403 `email_mismatch`) → 201 `{microproject: {slug, name}, role}` + `Location` vers l'adhésion `/api/microprojects/{mp}/members/{user_id}` ; `role` est le plus élevé du rôle déjà détenu et du rôle invité (une invitation ne rétrograde jamais) ; ajouter directement un membre supprime ses invitations en attente |
 
+### teams
+
+Toutes nouvelles. La lecture est ouverte à tout compte connecté (comme celle des projets) ; les
+écritures sur l'équipe sont à l'admin, celles sur ses membres à l'admin ou à un manager de
+l'équipe.
+
+| Route | Effet |
+|---|---|
+| `GET /api/teams` | les équipes ; chacune porte `member_count`, `managers`, `my_role`, `can_edit` (renommer, supprimer : admin) et `can_manage` (gérer les membres) |
+| `POST /api/teams` `{name}` (admin) | → 201 + `Location` |
+| `GET /api/teams/{team_slug}` | une équipe |
+| `PATCH /api/teams/{team_slug}` (admin) | renommer |
+| `DELETE /api/teams/{team_slug}` (admin) | → 204 ; ses projets restent, sans équipe |
+| `GET /api/teams/{team_slug}/members[/{user_id}]` | les membres, ou un membre |
+| `POST /api/teams/{team_slug}/members` `{email, role}` | → 201 + `Location` ; 404 `no_account`, 409 `already_member` |
+| `PATCH` / `DELETE /api/teams/{team_slug}/members/{user_id}` | `{role}` / → 204 ; 409 `last_manager` si l'équipe resterait sans manager |
+
 ### search
 
 | Avant | Après |
@@ -289,10 +372,10 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 
 | Avant | Après |
 |---|---|
-| `GET /api/management` | `GET /api/areas` (chaque projet expose `is_system`, `can_delete`, `horizon_months` calculé par le serveur) |
-| `POST /api/management` | `POST /api/areas` → 201 |
+| `GET /api/management` | `GET /api/areas?team=` (équipe inconnue → 404 ; chaque projet expose `is_system`, `team {slug, name}`, `can_manage`, `can_delete` (= `can_manage` et pas système), `horizon_months` calculé par le serveur) |
+| `POST /api/management` | `POST /api/areas` `{…, team}` → 201 (admin, avec ou sans équipe, ou manager pour l'une de ses équipes ; équipe inconnue → 422 `unknown_team`) |
 | `GET /api/management/{slug}` | `GET /api/areas/{area_slug}` (projet, thématiques, objectifs) |
-| `PUT /api/management/{slug}` | `PATCH /api/areas/{area_slug}` |
+| `PUT /api/management/{slug}` | `PATCH /api/areas/{area_slug}` (`can_manage` ; `{team}` : admin seulement, 409 sur « Non classé ») |
 | `DELETE /api/management/{slug}` | `DELETE /api/areas/{area_slug}` → 204 (409 pour un projet système) |
 | `POST /api/management/{slug}/microprojets` | `PATCH /api/microprojects/{mp}` `{area, thematic}` |
 | `POST /api/management/{slug}/thematiques` | `POST /api/areas/{area_slug}/thematics` → 201 |
@@ -314,12 +397,12 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 
 | Avant | Après |
 |---|---|
-| `GET /api/microprojets` | `GET /api/microprojects` (les miens) ; `?scope=all` (admin, sinon 403) ; `?area=&thematic=` (inconnu → 404, `thematic` sans `area` → 422). Le payload d'un µprojet nomme son rattachement `area` / `thematic`, comme le `PATCH`, et ne porte plus de compteurs : le front les lit dans `GET /api/experiment-stats` |
+| `GET /api/microprojets` | `GET /api/microprojects` (les miens : membre, ou manager de l'équipe du µprojet) ; `?scope=all` (admin, sinon 403) ; `?area=&thematic=` (inconnu → 404, `thematic` sans `area` → 422). Le payload d'un µprojet nomme son rattachement `area` / `thematic`, comme le `PATCH`, et ne porte plus de compteurs : le front les lit dans `GET /api/experiment-stats` |
 | `GET /api/microprojets/recherche?q=` | `GET /api/microprojects?q=&limit=` (toute la société, champs réduits `{slug, code, name, area}` ; `?q=` et `?code=` ne se combinent avec aucun autre filtre → 422) |
 | `GET /api/microprojets/tous` | `GET /api/microprojects?scope=all` |
 | `GET /api/microprojets/code/{code}` | `GET /api/microprojects?code=` → `[]` ou un élément, mêmes champs réduits |
 | `POST /api/microprojets` | `POST /api/microprojects` `{name, description, area, thematic}` → 201 + `Location` (projet ou thématique inconnus → 422, comme le `PATCH` ; un nom qui donnerait le slug « new » ou « nouvelle » reçoit un suffixe) |
-| `GET /api/microprojets/{slug}` | `GET /api/microprojects/{mp}` |
+| `GET /api/microprojets/{slug}` | `GET /api/microprojects/{mp}` ; tout µprojet renvoyé porte `role` (effectif), `role_source` (`membership`, `team_manager` ou `admin`), `can_edit` et `can_manage` (§ 3, règle d'autorisation) |
 | *(nouveau)* | `PATCH /api/microprojects/{mp}` `{name, description, area, thematic}` |
 | `DELETE /api/microprojets/{slug}` | `DELETE /api/microprojects/{mp}?confirm_name=` → 204 (garde côté serveur : mauvais nom → 422 `confirm_name_mismatch`) |
 | `GET …/members` | `GET /api/microprojects/{mp}/members` |
@@ -349,8 +432,8 @@ Rupture nette : les anciennes routes disparaissent sans alias. `{mp}` vaut
 |---|---|
 | `GET /api/microprojets/{slug}/materials` | `GET /api/materials` |
 | `GET /api/microprojets/{slug}/recettes` | `GET /api/recipes` → `{deposition: [...], etch: [...]}` (exception à « les autres sont un tableau » : le constructeur lit les recettes par sorte d'étape) |
-| `POST /api/microprojets/{slug}/structures/simulate` | `POST /api/simulations` → 200 (calcul, rien n'est stocké) |
-| `POST /api/microprojets/{slug}/structures/variantes` | `POST /api/campaign-previews` → 200 (plafond `MAX_CAMPAIGN_ENTITIES`, 422 au-delà) |
+| `POST /api/microprojets/{slug}/structures/simulate` | `POST /api/simulations` → 200 (calcul, rien n'est stocké) ; la réponse porte `step_ids`, l'id de chaque étape (§ 4, identité d'une étape) |
+| `POST /api/microprojets/{slug}/structures/variantes` | `POST /api/campaign-previews` → 200 (plafond `MAX_CAMPAIGN_ENTITIES`, 422 au-delà) ; chaque facteur désigne son étape par `step_id` (`"substrate"` pour le substrat ; id inconnu → 422, `step_index` refusé) |
 | `GET /api/microprojets/{slug}/structures/intention-form` | `GET /api/ui-texts/intention` (plugin library) |
 | `GET /api/bibliotheque/fichiers` | `GET /api/library/files` |
 | `GET /api/bibliotheque/fichiers/{key}` | `GET /api/library/files/{file_key}` |
@@ -380,7 +463,7 @@ Droits d'écriture :
 | *(nouveau)* | `GET /api/step-presets/{preset_id}` (la cible du `Location`) |
 | `PUT …/presets-etapes/{name}?partagee=` | `PATCH /api/step-presets/{preset_id}` (la portée est modifiable) |
 | `DELETE …/presets-etapes/{name}?partagee=` | `DELETE /api/step-presets/{preset_id}` → 204 |
-| `…/structures-sauvegardees[/{name}]` | `/api/saved-structures[/{structure_id}]` (même schéma) |
+| `…/structures-sauvegardees[/{name}]` | `/api/saved-structures[/{structure_id}]` (même schéma) ; `derived_from` : un nom, ou l'origine `{microproject, experiment_id, version_id, ref}` d'une ref publiée depuis la page d'évolution (une étiquette, gardée telle qu'envoyée) |
 | `…/briques-technologiques[/{name}]` | `/api/tech-bricks[/{brick_id}]` (même schéma) |
 
 ### experiments
@@ -390,7 +473,7 @@ Droits d'écriture :
 | `GET /api/microprojets/{slug}/experiences?status=&offset=&limit=` | `GET /api/microprojects/{mp}/experiments?status=all\|running\|concluded&q=&offset=&limit=` → `{items, total}` (`q` : titre, intention, étiquettes, nom de piste ; chaque élément : `id` = la piste, `version_id` = sa pointe) |
 | `POST …/experiences` | `POST /api/microprojects/{mp}/experiments` `{…, structure: {kind: "process", …}}` → 201 |
 | `POST …/experiences/image` | idem, avec `structure: {kind: "images", images: [...]}` |
-| `POST …/experiences/campagne` | idem, avec `structure: {kind: "campaign", …, plan}` ; `from_version` pour partir d'une version existante |
+| `POST …/experiences/campagne` | idem, avec `structure: {kind: "campaign", …, plan}` ; `from_version` pour partir d'une version existante ; les facteurs du plan désignent leur étape par `step_id`, comme l'aperçu. Les étapes envoyées (lancement, évolution, fourche) peuvent porter leur `id` |
 | `GET …/experiences/{ref}` | `GET /api/microprojects/{mp}/experiments/{exp}` (dernière version, `ETag`) ; le détail porte `id` (la piste), `version_id`, `is_tip`, `children` `[{experiment_id, version_id, title, is_tip}]` et `continued_at` (première suite structurelle) |
 | `GET …/experiences/{ref}/timeline` | `GET …/experiments/{exp}/versions` → tableau, de la première version à la pointe : `{version_id, experiment_id, title, intent, created_at, author, is_tip, version, change_level}` (la frise des structures : `change_level != "none"`) |
 | *(nouveau)* | `GET …/experiments/{exp}/versions/{version_id}` (une version de l'histoire de la piste, `ETag`) |
@@ -402,15 +485,19 @@ Droits d'écriture :
 | `POST …/{ref}/etiquettes` | `PUT …/experiments/{exp}/tags` `{tags}` |
 | `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` |
 | `POST …/{ref}/combiner` | `POST …/experiments/{exp}/merges` `{other_experiment_id}` → 201 + `Location` vers la version (titre et intention restent ceux de la piste ; les preuves des deux côtés sont reportées, dédoublonnées par id, et les métadonnées qui désignent une preuve absente purgées) |
-| `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=` |
+| `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=` (chaque étape porte son `id`) |
 | `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?}` ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
 | `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
 | `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
-| `POST …/{ref}/ref` | `POST /api/microprojects/{mp}/refs` `{experiment_id, version_id?, name?}` → 201 et la ref telle que la liste la montre (`name` vide : « ref vX.Y.Z » ; « / » → 422, nom pris → 409). **Sans `Location`** : une ref n'a pas de route propre, elle se lit dans la liste |
+| `POST …/{ref}/ref` | `POST /api/microprojects/{mp}/refs` `{experiment_id, version_id?, name?}` → 201 + `Location` `.../refs/{ref_name}` (encodé : `ref%20v1.1.0`) et la ref telle que la liste la montre, plus `name` (`name` vide : « ref vX.Y.Z » ; nom invalide → 422, nom pris → 409 ; § 4) |
+| *(nouveau)* | `GET /api/microprojects/{mp}/refs/{ref_name}` (viewer) → l'entrée de la liste plus `name` ; inconnue → 404 `ref_not_found` |
+| *(nouveau)* | `PATCH …/refs/{ref_name}` `{name}` (editor) → renomme, la version reste ; 409 `ref_name_taken`, 422 nom vide ou invalide ; même nom ou `name` absent → 200 sans effet |
+| *(nouveau)* | `DELETE …/refs/{ref_name}` (editor) → 204, la version reste |
+| *(nouveau)* | `GET /api/microprojects/{mp}/structure-history?all_versions=` (viewer) → `{lanes, nodes, edges}` pour la page d'évolution (`experiments.lineage.structure_history`) : pistes dans l'ordre de leur début puis du nom (une nouvelle piste vient en dernier) ; nœuds `{version_id, experiment_id, lane, version, label, change_level, title, created_at, author, is_tip, is_merge, refs, structure_kind, has_process}` (`label` : « vX.Y.Z ») - par défaut les versions structurelles, celles qui portent une ref, les fusions et le début de chaque piste, toutes avec `all_versions=true` ; arêtes `{parent, child, kind}` (`parent`, `fork` ou `merge`), à travers les versions masquées |
 | `GET …/refs`, `GET …/refs/graphe` | `GET /api/microprojects/{mp}/refs` → `{refs: [{version_id, experiment_id, names, title, status, decision, version, created_at}], edges: [{from, to}]}` (ids de version) |
 | `GET /api/microprojets/{slug}/filiation` | `GET /api/microprojects/{mp}/lineage` (les nœuds portent `version_id` et `experiment_id` - et `id`, égal à `version_id`, que citent les `edges` ; plus de badge de lot : le front le compose avec `GET /api/lots?wafer=`) |
 | `GET /api/microprojets/{slug}/graphe.html` | **supprimée**, ainsi que la page `/microprojets/{slug}/graphe` |
-| *(dans les listes de µprojets)* | `GET /api/experiment-stats?microproject=&area=` → `[{microproject, running, concluded, abandoned, wafers}]` |
+| *(dans les listes de µprojets)* | `GET /api/experiment-stats?microproject=&area=` → `[{microproject, running, concluded, abandoned, wafers, role_source}]` |
 | *(dans la thématique)* | `GET /api/experiment-timeline?area=&thematic=` (champs masqués pour les non-membres) |
 | *(nouveau)* | `GET /api/microprojects/{mp}/experiment-versions/{version_id}` → `{experiment_id, version_id}` (résolution des anciens liens) |
 
@@ -509,10 +596,11 @@ PRISM absente 503 ; connexion, requête ou fiche `hook.yml` invalide 502 (une fi
 | Plugin | Pages |
 |---|---|
 | accounts | `/connexion`, `/inscription`, `/mot-de-passe-oublie`, `/reinitialiser`, `/profil` |
+| teams | `/equipes`, `/equipes/{slug}` (nouvelles) |
 | areas | `/`, `/management/{slug}`, `/management/{slug}/thematiques/{thematique_slug}` |
 | atlas | `/management/{slug}/atlas` |
 | microprojects | `/microprojets/{slug}`, `/p/{code}` (redirection, **après** contrôle de session), `/projets/{rest:path}` (redirection héritée, 308) |
-| experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/refs` |
+| experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/evolution` (nouvelle : « Évolution des structures », diagramme des pistes, versions et refs ; liée depuis la page µprojet et la fiche), `/microprojets/{slug}/refs` (302 vers `/evolution`) |
 | structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
 | process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
 | intent_forms | `/microprojets/{slug}/formulaire-intention` |
@@ -541,7 +629,8 @@ Supprimée : `/microprojets/{slug}/graphe`.
     premier niveau : `wafers/fdl.js` (`normalizeFdl`, `fdlChipsHtml`, `fdlsOfTracking`,
     `mountFdlField`, `plateUrl`, `waferKey`, `waferSuggestions`), `experiments/lineage-graph.js`
     (`lineage*`), `experiments/lineage-view.js` (`mountLineage`), `experiments/status.js`
-    (`statusBadgeHtml`, `experimentOutcome`, libellés), `microprojects/roles.js` (`roleLabel`,
+    (`statusBadgeHtml`, `experimentOutcome`, libellés), `microprojects/roles.js` (`roleLabel(role, source?)`, qui
+    affiche « Propriétaire (manager) » ou « Propriétaire (admin) » selon `role_source`,
     `ownerChipHtml`), `attachments/image-drop.js` (`mountImageDrop`, contrôles d'images),
     `structures/structure-images.js`, `structures/campaign-carousel.js`,
     `characterization/wafer-data-links.js`, `intent_forms/intent-form-section.js`,

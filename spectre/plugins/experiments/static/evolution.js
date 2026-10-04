@@ -611,7 +611,7 @@
     try {
       const microproject = await microprojectsApi.get(slug);
       state.microproject = microproject;
-      state.canEdit = microproject.role === "editor" || microproject.role === "owner";
+      state.canEdit = Boolean(microproject.can_edit);
       renderHeader(microproject);
       await load();
       const followed = followedNode();
