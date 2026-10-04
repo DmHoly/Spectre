@@ -64,30 +64,63 @@ son `client.js`.
         partagée (structures enregistrées de `process_library`) ?
       - peut-on renommer ou retirer une ref ?
 
-### 3. Résultats de données rattachés à une étape du procédé
+### 3. Un seul cahier de données, rattaché aux étapes du procédé
 
-- [ ] **Besoin.** Sur un procédé de 10 étapes, dire « à cette étape, on vérifie tel point » et y
-      rattacher le résultat. Trois sources possibles :
-      - un **connecteur PRISM** quand il existe : instantané d'un type de données du plugin
-        `characterization`, comme le cahier ;
-      - un **lien vers la donnée** (dossier, fichier, URL) ;
-      - un **copier-coller** : tableau collé, analysé en TSV, texte ou image. Le collage d'images
-        existe déjà dans `attachments/static/image-drop.js`.
-- [ ] **Ce qui existe déjà.** Une preuve Follow porte déjà un `step_index`, et le plugin `evidence`
-      gère liens et images. Il faut :
-      - étendre la preuve, ou ajouter une ressource `.../experiments/{exp}/step-results`, avec
-        `step` et `source: prism | link | paste` ;
-      - afficher, dans la vue du procédé (`experiments/static/structure-view.js`), un badge de
-        résultats par étape et une action « Rattacher un résultat ».
+Demandé le 2026-10-04. Ce point remplace l'ancien « résultats rattachés à une étape ».
+
+- [ ] **Fondre les preuves dans le cahier.** Aujourd'hui, les données d'une étude sont réparties
+      entre deux modules : les **preuves** (plugin `evidence`) et le **cahier** (plugin `notebook`).
+      On regroupe tout dans le cahier. Ce qu'on appelait une preuve devient un type d'entrée du
+      cahier : la **donnée chargée à la main**. Elle couvre tout ce que PRISM ne peut pas prévoir :
+      - image, capture d'écran, fichier ;
+      - valeur mesurée, texte, tableau collé (analysé en TSV) ;
+      - lien vers un dossier ou une présentation.
+
+      C'est la donnée très R&D : une mesure faite une seule fois, qui ne vaut pas un connecteur,
+      ou dont le format n'est pas fixé. On ne peut pas la normaliser, mais on veut la garder.
+      Le cahier aura donc deux types d'entrée :
+      - **PRISM** : instantané d'un type de données de `characterization` et sa vue DataViz,
+        comme aujourd'hui ;
+      - **manuelle** : l'ex-preuve, qui garde son lien à un objectif et son interprétation.
+- [ ] **Conséquences sur l'architecture.**
+      - Le plugin `evidence` disparaît et son contenu passe dans `notebook` : panneau, routes
+        `.../notebook-entries` avec `kind: prism | manual`, client et tests.
+      - Une migration convertit les preuves existantes (preuves Follow, plus les champs Spectre de
+        `metadata`) en entrées manuelles du cahier, sans perte. Les images restent dans
+        `attachments`.
+      - Il faut aussi suivre ce que la fusion touche ailleurs :
+        - le compteur de l'onglet « Données » ;
+        - le rapport ;
+        - la conclusion, qui cite les preuves ;
+        - la fusion d'études (`experiments.service._merge_evidence`) ;
+        - le lien preuve ↔ objectif.
+      - Mettre à jour ARCHITECTURE.md (§ 3 et § 5) et le README.
+- [ ] **Situer chaque donnée dans le procédé, sur plusieurs étapes.**
+      - À l'ajout comme à la lecture d'une donnée, on affiche un **stepper** du procédé : une bulle
+        par étape, avec en **rouge** les étapes où la mesure est faite.
+      - Une même mesure peut être faite à **plusieurs moments** du procédé. Une entrée porte donc
+        une **liste d'étapes** (`steps: [step_id, …]`), pas une étape unique. Dans la boîte d'ajout,
+        on coche les bulles.
+      - Dans la vue du procédé (`experiments/static/structure-view.js`), chaque étape affiche un
+        badge avec le nombre de données qui la concernent. Un clic filtre le cahier sur cette étape.
 - [ ] **Préalable : une identité stable pour chaque étape.** Aujourd'hui une étape est désignée par
-      sa position, si bien qu'insérer une étape à l'évolution suivante décale tous les rattachements.
-      La revue l'a relevé (`REVIEW.md`, front du constructeur : l'identité positionnelle des étapes
-      gêne déjà le DOE). Il faut donc un `step_id` dans les métadonnées du procédé, et que les
-      facteurs DOE le référencent aussi.
+      sa position : insérer une étape à l'évolution suivante décalerait tous les rattachements.
+      - Il faut un `step_id` dans les métadonnées du procédé, attribué au lancement et conservé
+        aux évolutions.
+      - Les facteurs DOE doivent le référencer aussi (la revue l'a relevé : `REVIEW.md`, front du
+        constructeur).
+      - Une migration attribue les `step_id` aux procédés existants, et les `step_index` des
+        anciennes preuves sont convertis.
 - [ ] **À trancher :**
-      - un résultat rattaché suit-il l'étape aux versions suivantes si elle n'a pas changé ?
-      - faut-il « point de contrôle attendu » (déclaré à la conception) en plus de « résultat
-        obtenu » ?
+      - une donnée rattachée à une étape suit-elle cette étape aux versions suivantes si elle n'a
+        pas changé ? Et si l'étape est supprimée à une évolution, que devient le rattachement ?
+      - pour une même mesure faite à plusieurs étapes, une seule entrée avec une valeur par étape
+        (pour comparer avant et après), ou une entrée par moment, reliées entre elles ?
+      - faut-il un « point de contrôle attendu », déclaré à la conception dans le constructeur,
+        en plus de la « donnée obtenue » ? Le stepper montrerait alors en gris les mesures prévues
+        et en rouge celles qui sont faites.
+      - côté PRISM : connecteur quand il existe, sinon entrée manuelle. Peut-on convertir plus tard
+        une entrée manuelle en entrée PRISM, quand le connecteur apparaît ?
 
 ## Couche Management — Phase 2 (analytique)
 
