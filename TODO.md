@@ -86,23 +86,15 @@ Décisions (font foi) :
       `/api/references/{slug}/versions[/{number}[/structure-diff]]`, `/api/reference-versions`,
       `reference_origin` au lancement d'une étude, regroupement des refs locales, badges de la page
       d'évolution (`include_versions`). Fait : voir « Fait » (« Références de structure »).
-- [ ] **Page des références** (toute l'application, entrée dans la barre du haut) : la liste
-      (dernière version, date, µprojet source, auteur, usages, recherche), puis l'évolution d'une
-      référence choisie - la vue de l'évolution des structures, en versions de référence seules
-      (`GET .../versions` : colonnes, arêtes, rattachements déduits en pointillés), le panneau d'une
-      version (`structure_svg`, note, source, usages, comparer à une autre version), renommer /
-      décrire / retirer pour son créateur ou un admin. `client.js` (`referencesApi`) à écrire.
-- [ ] **Publier comme référence** (page d'évolution d'un µprojet, fiche) à la place de « Promouvoir
-      en ref » : choisir la référence (proposée : celle de `reference_origin`) ou en créer une, la
-      note, le parent au besoin ; le 409 « identique » dit à quelle version.
-- [ ] **Badges « R nom 1.1 »** sur les nœuds de la page d'évolution d'un µprojet :
-      `GET /api/reference-versions?microproject=`, puis `structure-history` avec
-      `include_versions` (une version publiée peut être légère, masquée sinon).
-- [ ] **Nouvelle expérience depuis une référence** : le choix d'une référence d'abord (dernière
-      version, recherche, autre version), le constructeur chargé depuis `process` de la version, le
-      lancement avec `reference_origin` ; « structure vierge » en second. Même proposition après la
-      création d'un µprojet. La fiche montre l'origine (`reference_origin`, « référence inconnue »
-      si elle ne se résout pas : `GET .../versions/{number}` en 404).
+- [x] **Page des références** (toute l'application, entrée « Références » de la barre du haut) :
+      la liste (`/references`) et l'évolution d'une référence (`/references/{slug}`), le panneau
+      d'une version, renommer / décrire / retirer, `referencesApi`. Fait : voir « Fait »
+      (« Références de structure, pages »).
+- [x] **Publier comme référence** (page d'évolution d'un µprojet, fiche) à la place de « Promouvoir
+      en ref » et de « Publier dans la bibliothèque ».
+- [x] **Badges « R nom 1.1 »** sur les nœuds de la page d'évolution d'un µprojet.
+- [x] **Nouvelle expérience depuis une référence** (page µprojet, accueil, après la création d'un
+      µprojet, « Partir de cette version » d'une référence) ; l'origine sur la fiche.
 
 ### 4. Documentation intégrée (en tout dernier)
 
@@ -181,6 +173,47 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 ## Fait (pour mémoire, pas d'action)
 
+- **Références de structure, pages** (2026-10-04, point 3 quater ; `ARCHITECTURE.md` § 5
+  « Pages », § 6 « Les références, côté pages »).
+  - `/references` : nom, description, dernière version, date de la dernière mise à jour, µprojet
+    source, nombre de versions et d'usages, la plus récemment mise à jour d'abord ; recherche
+    (`?q=` du serveur, gardée dans l'adresse) ; « Nouvelle référence » ; « Nouvelle expérience
+    depuis une référence ». Entrée « Références » de la barre du haut, carte dans `/bibliotheque`.
+  - `/references/{slug}` : le diagramme de la page d'évolution des structures, **sans le dupliquer**
+    - son dessin est sorti d'`evolution.js` dans `experiments/static/evolution-graph.js`
+    (`EvolutionGraph`), que les deux pages utilisent ; versions de référence seules, majeur
+    (plein) et mineur (anneau) distingués, correctif et import identique aussi, une colonne par
+    branche parallèle, µprojet source sur chaque rangée, nombre d'usages, rattachement déduit en
+    pointillés et écrit sur la rangée ; le panneau : structure étiquetée (SVG serveur, agrandie au
+    clic), auteur (ou « repère importé »), date, note, source (lien vers l'étude pour un membre,
+    sinon le seul nom du µprojet et la raison), parente, usages repliables (« 3 études en sont
+    parties »), comparer avec une autre version ou avec sa parente, « Partir de cette version » ;
+    renommer / décrire / retirer pour son créateur ou un admin (`can_edit`).
+  - « Publier comme référence » (`ReferencePublishDialog`) sur la fiche et la page d'évolution :
+    référence proposée (l'origine de l'étude, sinon celle où une version dont elle descend a été
+    publiée), une autre ou une nouvelle, le parent proposé (« automatique » au choix), la note ;
+    le numéro calculé est affiché ; une référence créée dans la boîte puis refusée est retirée.
+    Écart : une campagne ou une structure en images n'a pas le bouton (le serveur la refuse).
+  - Badges « R nom 1.1 » (navy, distincts de l'or des refs locales) et anneau or sur les nœuds de
+    la page d'évolution, via `include_versions` (`api.withQuery` répète un paramètre donné en
+    tableau). Les refs locales restent affichées (« Refs locales »), renommer / retirer / suivre
+    gardés ; on n'en pose plus (`experimentsApi.createRef` retiré du client, la route reste).
+  - « Nouvelle expérience » (page µprojet ; accueil, écart : bouton ajouté, l'accueil n'en avait
+    pas) ouvre d'abord « Partir d'une référence » (`ReferenceStartPicker` : recherche, dernière
+    version proposée, autre version, aperçu, µprojet à choisir s'il n'est pas donné) ; « Partir
+    d'une structure vierge » ouvre l'ancienne boîte (dessin, image, bibliothèque, étude existante),
+    qui offre de revenir aux références. Après la création d'un µprojet, sa page s'ouvre sur
+    `?premiere-experience=1` et propose la même boîte. Le constructeur
+    (`structures/nouvelle?reference=&version=`) charge le procédé de la version en gardant ses ids
+    d'étape (choix : l'étude en descend, une version publiée ensuite s'y compare par ids) et envoie
+    `reference_origin` ; la fiche dit « Issue de la référence X 1.1 » (lien), « référence
+    inconnue » sinon.
+  - Vérifié dans le navigateur sur la démo : epitaxie-standard regroupée (1.0 du puits simple, 1.1
+    du MQW en rattachement déduit) ; publiée depuis l'évolution du puits simple → 2.0 (majeur,
+    depuis 1.0) ; une expérience du MQW partie de 1.0, publiée depuis sa fiche → 1.2 (correctif,
+    branche depuis 1.0), la page de la référence montre la branche et l'usage ; non-membre du MQW :
+    source masquée. Test : `tests/plugins/references/test_pages.py`.
+
 - **Références de structure, serveur** (2026-10-04, point 3 quater ; `ARCHITECTURE.md` § 3,
   § 4 « Identité d'une expérience », § 5 « references »).
   - Plugin `references` (dépend d'experiments, microprojects, structures ; placé juste après
@@ -207,7 +240,7 @@ d'étapes (jugé trop lourd à saisir). Reste :
   - Badges de la page d'évolution : `GET /api/reference-versions?microproject=`, et
     `structure-history?include_versions=` pour montrer une version publiée légère (experiments ne
     connaît pas les références).
-  - Reste au front : voir « Références de structure » plus haut.
+  - Le front : voir « Références de structure, pages » ci-dessus.
 
 - **Relecture du lot 5** (2026-10-04, point 3 ter ; `ARCHITECTURE.md` § 4, « Étiquettes de
   couches », « Briques d'un procédé »).

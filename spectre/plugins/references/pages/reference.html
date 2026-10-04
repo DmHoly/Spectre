@@ -3,54 +3,68 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Évolution des structures — Spectre</title>
+  <title>Référence — Spectre</title>
   <link rel="stylesheet" href="/static/kernel/kernel.css">
   <link rel="stylesheet" href="/static/search/search.css">
   <link rel="stylesheet" href="/static/experiments/experiments.css">
-  <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="stylesheet" href="/static/references/references.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
 </head>
 <body>
-  <!-- spectre:topbar crumb-id="crumb" -->
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Références" -->
 
-  <div class="page">
-    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">Projets</a> / <a id="area-crumb" href="/">…</a><span id="thematic-crumb"></span> / <a id="microproject-crumb" href="/">…</a></p>
+  <div class="page ref-page">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/references">Références</a> / <span id="name-crumb">…</span></p>
 
-    <header class="evo-head">
-      <div>
-        <div id="microproject-code" class="page-eyebrow" hidden></div>
-        <h1 class="evo-head__title">Évolution des structures</h1>
-        <p class="evo-head__lead">
-          Chaque colonne est une piste, chaque point une version de sa structure, numérotée vX.Y.Z : un changement
-          majeur ajoute, retire ou réordonne des étapes, un changement mineur en règle une. Un badge « R nom 1.1 »
-          marque une version publiée comme <a href="/references">référence</a>, partagée avec toute l'application ; les refs
-          locales sont des repères propres au µprojet.
-        </p>
+    <header class="ref-head">
+      <div id="head-text">
+        <div class="page-eyebrow">Référence de structure</div>
+        <h1 class="ref-head__title" id="reference-name"><span class="skeleton" style="display:inline-block;height:24px;width:220px;"></span></h1>
+        <p class="ref-head__lead" id="reference-description"></p>
+        <p class="ref-meta" id="reference-meta"></p>
       </div>
-      <div class="evo-toolbar">
-        <div class="view-toggle" role="group" aria-label="Versions affichées">
-          <button type="button" class="view-toggle__btn active" id="show-structural" aria-pressed="true">Versions structurelles</button>
-          <button type="button" class="view-toggle__btn" id="show-all" aria-pressed="false">Toutes les versions</button>
-        </div>
-      </div>
+      <div class="ref-head__actions" id="head-actions"></div>
     </header>
 
-    <div id="error" class="error" role="alert" hidden></div>
+    <form class="card card-pad ref-edit" id="edit-form" hidden>
+      <div>
+        <label for="edit-name">Nom</label>
+        <input class="field" id="edit-name" maxlength="120" required autocomplete="off">
+      </div>
+      <div>
+        <label for="edit-description">Description</label>
+        <textarea class="field" id="edit-description" rows="3" maxlength="2000"></textarea>
+      </div>
+      <p class="help" style="margin:0;">L'adresse de la référence ne change pas : les études qui en sont parties la citent par elle.</p>
+      <div class="ref-dialog__actions">
+        <button class="btn btn-primary" type="submit">Enregistrer</button>
+        <button class="btn btn-line" type="button" id="edit-cancel">Annuler</button>
+      </div>
+    </form>
+
+    <div id="remove-confirm" class="evo-banner" role="alert" hidden>
+      <span id="remove-confirm-text"></span>
+      <span class="ref-dialog__actions">
+        <button type="button" class="btn btn-danger evo-banner__btn" id="remove-confirm-btn">Retirer</button>
+        <button type="button" class="btn btn-line evo-banner__btn" id="remove-cancel-btn">Annuler</button>
+      </span>
+    </div>
+
+    <div id="error" class="error" role="alert" hidden style="margin-bottom:16px;"></div>
 
     <div id="mode-banner" class="evo-banner" role="status" hidden>
       <span id="mode-banner-text"></span>
-      <button type="button" class="btn btn-line evo-banner__btn" id="mode-banner-cancel"></button>
+      <button type="button" class="btn btn-line evo-banner__btn" id="mode-banner-cancel">Annuler la comparaison</button>
     </div>
 
     <div class="evo-layout">
       <section class="card evo-graph-card" aria-labelledby="graph-title">
-        <h2 id="graph-title" class="evo-visually-hidden">Diagramme des versions</h2>
+        <h2 id="graph-title" class="evo-visually-hidden">Versions de la référence</h2>
         <div id="graph-empty" class="empty-state" hidden>
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M6 8.5v7M8.2 7.2 15.8 11"/></svg>
-          <p>Aucune expérience dans ce µprojet pour l'instant.</p>
+          <p>Aucune version publiée. Publiez une étude depuis sa fiche ou la page d'évolution de son µprojet (« Publier comme référence ») : elle en sera la version 1.0.</p>
         </div>
         <div id="graph-loading" class="evo-loading" aria-hidden="true">
           <div class="skeleton" style="height:18px;width:40%;"></div>
@@ -61,20 +75,20 @@
           <div class="evo-lanes" id="lane-header" aria-hidden="true"></div>
           <div class="evo-body">
             <svg id="graph-svg" class="evo-svg" aria-hidden="true" focusable="false"></svg>
-            <ul id="rows" class="evo-rows" role="listbox" aria-label="Versions, de la plus ancienne à la plus récente (flèches haut et bas pour se déplacer)"></ul>
+            <ul id="rows" class="evo-rows" role="listbox" aria-label="Versions de la référence, de la plus ancienne à la plus récente (flèches haut et bas pour se déplacer)"></ul>
           </div>
         </div>
         <div class="evo-foot" id="graph-foot" hidden>
           <ul class="status-legend evo-legend" id="legend" aria-label="Légende"></ul>
           <div class="evo-lane-list">
-            <div class="section-title">Pistes</div>
+            <div class="section-title">Branches</div>
             <ol id="lane-list"></ol>
           </div>
         </div>
       </section>
 
       <aside class="card card-pad evo-panel" id="panel" aria-live="polite" aria-label="Version choisie">
-        <p class="help">Choisissez une version dans le diagramme (clic, ou flèches puis Entrée) pour voir son détail, la comparer, la publier comme référence ou partir d'elle.</p>
+        <p class="help">Choisissez une version dans le diagramme (clic, ou flèches puis Entrée) pour voir sa structure, d'où elle vient, qui en est parti, la comparer ou partir d'elle.</p>
       </aside>
     </div>
   </div>
@@ -92,19 +106,16 @@
   <script src="/static/kernel/api.js"></script>
   <script src="/static/kernel/ui.js"></script>
   <script src="/static/kernel/shell.js"></script>
-  <script src="/static/kernel/annotations.js"></script>
   <script src="/static/accounts/session.js"></script>
   <script src="/static/search/client.js"></script>
   <script src="/static/search/topbar-search.js"></script>
-  <script src="/static/accounts/client.js"></script>
   <script src="/static/microprojects/client.js"></script>
-  <script src="/static/experiments/client.js"></script>
+  <script src="/static/experiments/status.js"></script>
   <script src="/static/references/client.js"></script>
-  <script src="/static/structures/structure-images.js"></script>
-  <script src="/static/references/publish-dialog.js"></script>
+  <script src="/static/references/start-picker.js"></script>
   <!-- D3 vendored localement (voir spectre/kernel/static/vendor/D3-LICENSE). -->
   <script src="/static/kernel/vendor/d3.v7.9.0.min.js"></script>
   <script src="/static/experiments/evolution-graph.js"></script>
-  <script src="/static/experiments/evolution.js"></script>
+  <script src="/static/references/reference.js"></script>
 </body>
 </html>

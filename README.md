@@ -42,10 +42,10 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   paramètre d'étape change, correctif si seul un nom d'étape, l'unité ajoutée à un paramètre
   déclaré ou une étiquette de couche change ; regrouper des étapes en brique ne change pas la
   version (au plus un correctif, quand cela regroupe des étiquettes).
-- **Ref.** Une ref est une version promue en point de départ réutilisable (une étiquette Follow
-  nommée, « ref vX.Y.Z » par défaut), propre au µprojet. Un editor peut la renommer ou la retirer ;
-  la version, elle, reste. Les refs à nom automatique restent ces repères locaux ; un point de
-  départ partagé est désormais une référence (ci-dessous).
+- **Ref.** Une ref est un repère local d'un µprojet (une étiquette Follow nommée, « ref vX.Y.Z »
+  par défaut). Celles qui existent restent affichées, et un editor peut les renommer ou les
+  retirer (la version, elle, reste) ; on n'en pose plus de nouvelles depuis les pages : un point de
+  départ partagé est une référence (ci-dessous).
 - **Références de structure.** Une référence (« epitaxie-standard ») est un objet de toute
   l'application, pas d'un µprojet : ses versions, numérotées `MAJEUR.MINEUR` par le serveur, sont
   publiées depuis les études de n'importe quel µprojet (« Publier comme référence » : tout editor du
@@ -60,13 +60,26 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   les usages. Renommer, décrire ou retirer une référence revient à son créateur ou à un admin. Les
   refs locales nommées à la main avant les références (la même « epitaxie-standard » dans deux
   µprojets) y ont été regroupées par nom, sans toucher aux dépôts Follow.
+  Côté pages : **Références** dans la barre du haut (`/references`, aussi depuis la Bibliothèque)
+  liste les références, la plus récemment mise à jour d'abord (dernière version, date, µprojet
+  source, usages, recherche, « Nouvelle référence ») ; `/references/{slug}` montre l'évolution
+  d'une référence avec le diagramme de la page d'évolution des structures, en versions de
+  référence seules (1.0, 1.1, 2.0 ; branches parallèles en colonnes, rattachements déduits en
+  pointillés) et, pour une version, sa structure étiquetée, son auteur, sa note, sa source, ses
+  usages, la comparaison à une autre version et « Partir de cette version ». « Publier comme
+  référence » (fiche, page d'évolution) propose la référence dont vient l'étude, ou une autre, ou
+  une nouvelle, et affiche le numéro calculé. **Nouvelle expérience** (page µprojet, accueil)
+  ouvre d'abord « Partir d'une référence » (recherche, dernière version proposée, autre version,
+  aperçu) ; partir d'une structure vierge, d'une image ou de la bibliothèque reste en second. La
+  fiche dit « Issue de la référence X 1.1 », et la page d'un µprojet tout juste créé propose d'y
+  lancer la première expérience depuis une référence.
 - **Évolution des structures.** La page `/microprojets/{slug}/evolution` (bouton « Évolution des
   structures » de la page µprojet et de la fiche) dessine les pistes en colonnes, façon git : un
   nœud `vX.Y.Z` par version structurelle (majeure, mineure), les fourches, les combinaisons et les refs
-  en badges, avec une bascule « Toutes les versions ». Sur un nœud : promouvoir en ref, renommer
-  ou retirer une ref, comparer à une autre version, suivre une ref (ce qui en descend), partir de
-  cette version, et publier une ref dans la bibliothèque partagée (structure enregistrée qui garde
-  le lien vers son origine). L'ancienne adresse `/microprojets/{slug}/refs` y redirige.
+  en badges, les versions publiées comme référence en badges « R nom 1.1 », avec une bascule
+  « Toutes les versions ». Sur un nœud : publier comme référence, renommer ou retirer une ref
+  locale, comparer à une autre version, suivre une ref (ce qui en descend), partir de cette
+  version. L'ancienne adresse `/microprojets/{slug}/refs` y redirige.
 - **Étapes.** Chaque étape d'un procédé a un identifiant stable, conservé quand on insère, déplace
   ou supprime d'autres étapes à une évolution : une campagne DOE désigne ses étapes par cet
   identifiant, et non plus par leur position.
@@ -296,7 +309,7 @@ ses tables (`migrations.py`), ses pages (`pages/`) et son front (`static/`, serv
 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu DOE, types de structure | `/api/materials`, `/api/recipes`, `/api/simulations`, `/api/campaign-previews` | constructeur et structure en images (`/microprojets/{slug}/structures/...`, `.../evoluer`, `.../evoluer-image`) |
 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques | `/api/saved-structures`, `/api/step-presets`, `/api/tech-bricks` | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
 | `experiments` | Pistes et versions Follow : création, évolution, statut, conclusion, étiquettes, entités, combinaison de deux études, diff, filiation, refs, statistiques | `/api/microprojects/{mp}/experiments`, `.../lineage`, `.../refs`, `.../structure-history`, `/api/experiment-stats`, `/api/experiment-timeline` | `/microprojets/{slug}/experiences/{experiment_id}`, `/microprojets/{slug}/evolution` |
-| `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études, instantanés, évolution, usages, regroupement des refs locales d'avant | `/api/references`, `/api/reference-versions` | — (pages à venir) |
+| `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études, instantanés, évolution, usages, regroupement des refs locales d'avant | `/api/references`, `/api/reference-versions` | `/references`, `/references/{slug}` |
 | `intent_forms` | Formulaires d'intention et formulaire actif d'un µprojet | `/api/intent-forms`, `/api/microprojects/{mp}/active-intent-form` | `/microprojets/{slug}/formulaire-intention` |
 | `wafers` | Index des plaques suivies, recherche par lasermark et FDL, visibilité | `/api/wafers` | `/plaques/{lasermark}` |
 | `lots` | Lots de fabrication, wafers, thématiques visées, Gantt | `/api/lots`, `/api/lot-priorities` | `/lots`, `/lots/{code}` |

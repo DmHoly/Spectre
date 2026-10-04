@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/static/microprojects/microprojects.css">
   <link rel="stylesheet" href="/static/lots/lots.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
+  <link rel="stylesheet" href="/static/references/references.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -251,8 +252,8 @@
 
   <dialog id="new-experience-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
     <div class="card-pad" style="width:min(460px,92vw);">
-      <h2 style="font-size:16px;margin-bottom:4px;">Nouvelle expérience</h2>
-      <p class="help" style="margin-bottom:16px;">Comment voulez-vous donner la structure ?</p>
+      <h2 style="font-size:16px;margin-bottom:4px;">Nouvelle expérience sans référence</h2>
+      <p class="help" style="margin-bottom:12px;">Comment voulez-vous donner la structure ? <button class="btn-link-secondary" id="back-to-reference" type="button" style="min-height:0;padding:0;font-size:12px;">Revenir aux références</button></p>
 
       <div style="display:flex;flex-direction:column;gap:16px;">
         <div class="new-exp-modes">
@@ -304,6 +305,8 @@
   <script src="/static/lots/client.js"></script>
   <script src="/static/experiments/client.js"></script>
   <script src="/static/process_library/client.js"></script>
+  <script src="/static/references/client.js"></script>
+  <script src="/static/references/start-picker.js"></script>
   <script src="/static/experiments/status.js"></script>
   <script src="/static/microprojects/roles.js"></script>
   <script src="/static/structures/campaign-carousel.js"></script>

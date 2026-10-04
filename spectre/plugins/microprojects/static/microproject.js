@@ -253,6 +253,16 @@ document.getElementById("option-continue-image").addEventListener("click", () =>
 
 document.getElementById("cancel-new-experience").addEventListener("click", () => newExperienceDialog.close());
 
+// « Nouvelle expérience » : d'abord une référence (references/static/start-picker.js) ; partir sans
+// référence (dessin vierge, image, structure de la bibliothèque, étude existante) en second.
+function openStartFromReference(intro) {
+  ReferenceStartPicker.open({ microprojectSlug: slug, intro, onBlank: openNewExperienceDialog });
+}
+document.getElementById("back-to-reference").addEventListener("click", () => {
+  newExperienceDialog.close();
+  openStartFromReference();
+});
+
 async function init() {
   try {
     const microproject = await microprojectsApi.get(slug);
@@ -293,7 +303,7 @@ async function init() {
 
     if (canEdit) {
       document.getElementById("new-structure-btn").style.display = "";
-      document.getElementById("new-structure-btn").addEventListener("click", openNewExperienceDialog);
+      document.getElementById("new-structure-btn").addEventListener("click", () => openStartFromReference());
     }
     if (canManage) {
       document.getElementById("add-member-form").style.display = "grid";
@@ -308,6 +318,16 @@ async function init() {
   mountLineage(document.querySelector(".lineage-layout"), { microprojectSlug: slug, canEdit });
   loadMembers();
   loadInvitations();
+
+  // juste après sa création (?premiere-experience=1, posé par les pages d'un projet et d'une
+  // thématique) : proposer de lancer la première expérience depuis une référence
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("premiere-experience")) {
+    params.delete("premiere-experience");
+    const rest = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+    if (canEdit) openStartFromReference(`µprojet « ${currentMicroprojectName} » créé. Lancez sa première expérience depuis une structure de référence - ou partez d'une structure vierge.`);
+  }
 }
 
 init();

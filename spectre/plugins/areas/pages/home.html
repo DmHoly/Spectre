@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/search/search.css">
   <link rel="stylesheet" href="/static/areas/areas.css">
   <link rel="stylesheet" href="/static/microprojects/microprojects.css">
+  <link rel="stylesheet" href="/static/references/references.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -53,7 +54,13 @@
         <h1>Projets corporate</h1>
         <p>Les projets que la société pilote. Entrez dans un projet pour voir ses objectifs, ses thématiques et les µprojets qui les adressent.</p>
       </div>
-      <button id="new-theme-btn" class="btn btn-primary" style="display:none;">+ Nouveau projet</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button id="new-experience-btn" class="btn btn-line" type="button" style="display:none;" title="Lancer une expérience dans l'un de vos µprojets, en partant d'une structure de référence">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Nouvelle expérience
+        </button>
+        <button id="new-theme-btn" class="btn btn-primary" style="display:none;">+ Nouveau projet</button>
+      </div>
     </div>
 
     <div id="error" class="error" style="display:none;margin-bottom:20px;"></div>
@@ -111,6 +118,8 @@
   <script src="/static/teams/client.js"></script>
   <script src="/static/areas/client.js"></script>
   <script src="/static/experiments/client.js"></script>
+  <script src="/static/references/client.js"></script>
+  <script src="/static/references/start-picker.js"></script>
   <script src="/static/microprojects/roles.js"></script>
   <script src="/static/areas/area-art.js"></script>
   <script src="/static/areas/totals.js"></script>

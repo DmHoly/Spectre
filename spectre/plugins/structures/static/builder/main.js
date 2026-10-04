@@ -1,5 +1,5 @@
 /* Point d'entrée : charge les listes (matériaux, présets, briques), prépare l'atelier selon le mode
-   (bibliothèque / brique / expérience - nouvelle, évolution, modèle, structure choisie) que
+   (bibliothèque / brique / expérience - nouvelle, évolution, modèle, structure choisie, version de référence) que
    context.js a lu dans l'URL, puis charge ce qui doit l'être. */
 
 async function loadPickers() {
@@ -55,6 +55,7 @@ async function init() {
     intentFormSection = await mountIntentFormSection(document.getElementById("intent-form-box"), { microprojectSlug: slug, onError: showError });
     await loadExistingProcess();
     await loadTemplateProcess();
+    await loadReferenceProcess();
     await loadChosenStructureForExperience();
   }
   // Tout ce qui est chargé programmatiquement (structure existante, modèle, brique...) constitue le

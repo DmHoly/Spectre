@@ -56,7 +56,7 @@ Le noyau ne connaît **aucune** fonctionnalité métier. Il fournit :
 | `mail.py` | `send_email(to, subject, body)` : SMTP si `SPECTRE_SMTP_HOST`, sinon journalisation **sans le corps** hors `SPECTRE_EMAIL_DEBUG=1` |
 | `pages.py` | Service des pages HTML d'un plugin, avec la barre du haut commune à la place du marqueur `<!-- spectre:topbar -->` (fil d'Ariane déclaré dans le marqueur : `crumb-id`, `crumb-text`) : marque, navigation construite à partir des `NavEntry` de tous les plugins (une entrée peut être réservée à certaines pages : `NavEntry.pages`), place de la session |
 | `http.py` | Petits helpers HTTP : `created(response, location)`, conversion `ETag` / `If-Match` |
-| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`), `timeline.js` (axe des mois et hachures des frises : lots, thématique), `annotations.js` (global `ImageAnnotations` : les annotations d'une image dessinées et numérotées, leur liste et leurs outils - § 6), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
+| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles ; `withQuery` répète un paramètre donné en tableau, `?id=a&id=b`), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`), `timeline.js` (axe des mois et hachures des frises : lots, thématique), `annotations.js` (global `ImageAnnotations` : les annotations d'une image dessinées et numérotées, leur liste et leurs outils - § 6), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
 
 ```python
 @dataclass(frozen=True)
@@ -670,13 +670,12 @@ Droits d'écriture :
 | *(nouveau)* | `GET /api/step-presets/{preset_id}` (la cible du `Location`) |
 | `PUT …/presets-etapes/{name}?partagee=` | `PATCH /api/step-presets/{preset_id}` (la portée est modifiable) |
 | `DELETE …/presets-etapes/{name}?partagee=` | `DELETE /api/step-presets/{preset_id}` → 204 |
-| `…/structures-sauvegardees[/{name}]` | `/api/saved-structures[/{structure_id}]` (même schéma) ; `derived_from` : un nom, ou l'origine `{microproject, experiment_id, version_id, ref}` d'une ref publiée depuis la page d'évolution (une étiquette, gardée telle qu'envoyée) |
+| `…/structures-sauvegardees[/{name}]` | `/api/saved-structures[/{structure_id}]` (même schéma) ; `derived_from` : un nom, ou l'origine `{microproject, experiment_id, version_id, ref}` d'une ref publiée depuis la page d'évolution avant les références (une étiquette, gardée telle qu'envoyée ; la page n'en publie plus : on publie une référence) |
 | `…/briques-technologiques[/{name}]` | `/api/tech-bricks[/{brick_id}]` (même schéma) |
 
 Une structure enregistrée et une brique gardent, comme `declared_params`, leurs étiquettes de couches
 par position d'étape (`layer_labels`, § 4 ; une position hors des étapes → 422) et l'appartenance
-de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`) ; publier une ref depuis la page
-d'évolution recopie celles de la version.
+de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 
 ### experiments
 
@@ -917,7 +916,8 @@ PRISM absente 503 ; connexion, requête ou fiche `hook.yml` invalide 502 (une fi
 | areas | `/`, `/management/{slug}`, `/management/{slug}/thematiques/{thematique_slug}` |
 | atlas | `/management/{slug}/atlas` |
 | microprojects | `/microprojets/{slug}`, `/p/{code}` (redirection, **après** contrôle de session), `/projets/{rest:path}` (redirection héritée, 308) |
-| experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/evolution` (nouvelle : « Évolution des structures », diagramme des pistes, versions et refs ; liée depuis la page µprojet et la fiche), `/microprojets/{slug}/refs` (302 vers `/evolution`) |
+| experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/evolution` (nouvelle : « Évolution des structures », diagramme des pistes, versions, refs locales et versions de référence ; liée depuis la page µprojet et la fiche), `/microprojets/{slug}/refs` (302 vers `/evolution`) |
+| references | `/references` (la liste des références de toute l'application ; entrée « Références » de la barre du haut), `/references/{slug}` (l'évolution d'une référence, `?version=1.1` : la version choisie) |
 | structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
 | process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
 | intent_forms | `/microprojets/{slug}/formulaire-intention` |
@@ -932,7 +932,7 @@ Supprimée : `/microprojets/{slug}/graphe`.
 
 - Scripts classiques (`<script src>`), sans bundler ni framework. Un `client.js`, un registre ou
   un module partagé récent n'expose qu'un global nommé d'après son plugin (`lotsApi`,
-  `ExperiencePage`, `DataViz`…) ; ses autres déclarations restent locales, dans une IIFE ou un
+  `ExperiencePage`, `DataViz`, `EvolutionGraph`, `ReferencePublishDialog`, `ReferenceStartPicker`…) ; ses autres déclarations restent locales, dans une IIFE ou un
   objet. **Écarts, tels qu'ils sont** (les regrouper sous un objet par plugin est un chantier à
   part) :
   - les **contrôleurs de page** (un par page : `lots.js`, `area.js`, `atlas.js`…) et le
@@ -1055,6 +1055,41 @@ Supprimée : `/microprojets/{slug}/graphe`.
   d'évolution montre, dans son panneau, la structure de la version choisie (agrandie dans une boîte
   au clic) ; pour une structure en images, sa première image avec ses annotations
   (`structureBoardHtml` compact, en lecture seule ; un clic l'ouvre). Les vignettes de l'écran « Variations » restent sans étiquettes (trop petites).
+- **Les références, côté pages** (plugin references, TODO « Références de structure ») :
+  - `experiments/static/evolution-graph.js` (global `EvolutionGraph`) : le diagramme façon git -
+    colonnes, rangées, arêtes, formes des nœuds par niveau de changement, légende, liste des
+    rangées au clavier (`bindListbox`), corps d'une comparaison (`diffBodyHtml`). Il ne connaît ni
+    les pistes ni les références : la page d'évolution d'un µprojet (`evolution.js`, versions
+    Follow) et la page d'une référence (`references/static/reference.js`, versions 1.0, 1.1, 2.0 :
+    colonnes de branches, rattachements déduits en pointillés, `evo-edge--inferred`) lui donnent
+    leurs nœuds rangés et écrivent leurs rangées et leur panneau. Il reste dans experiments, d'où
+    il vient et que references charge déjà (le navigateur compose).
+  - `references/static/publish-dialog.js` (global `ReferencePublishDialog`) : « Publier comme
+    référence », ouvert par la fiche (`tags-refs.js`, à la place de « + ref », sur une structure
+    dessinée seulement) et la page d'évolution (à la place de « Promouvoir en ref » et de « Publier
+    dans la bibliothèque »). La référence proposée : l'origine de l'étude (`reference_origin`),
+    sinon la dernière référence où a été publiée une version dont elle descend (la page
+    d'évolution donne ces ancêtres, lus dans ses arêtes ; la fiche, sur la pointe, prend la même
+    piste) ; le parent proposé de même. Une référence créée dans la boîte puis refusée (409
+    identique, droits) est retirée aussitôt. Le numéro calculé s'affiche après la publication.
+  - `references/static/start-picker.js` (global `ReferenceStartPicker`) : « Partir d'une
+    référence », le premier choix de « Nouvelle expérience » (page µprojet, accueil ; et la page
+    d'un µprojet ouverte avec `?premiere-experience=1`, ce que font les pages d'un projet et d'une
+    thématique après sa création) et de « Partir de cette version » (page d'une référence) : la
+    recherche (`?q=` du serveur), la dernière version proposée, une autre au choix, l'aperçu
+    (`structure_svg`), le µprojet où lancer (éditeur) s'il n'est pas donné ; « Partir d'une structure
+    vierge » en lien secondaire (sur la page µprojet : l'ancienne boîte - dessin, image,
+    bibliothèque, étude existante). Il ouvre le constructeur sur
+    `/microprojets/{slug}/structures/nouvelle?reference=<slug>&version=<n>`, qui charge `process`
+    de la version **en gardant les ids d'étape** (l'étude descend de cette version : une version
+    publiée ensuite s'y compare étape par étape) et envoie `reference_origin` au lancement.
+  - La fiche affiche « Issue de la référence X 1.1 » (lien vers sa page ; « référence inconnue »
+    si `GET .../versions` répond 404 ou n'a pas ce numéro). La page d'évolution d'un µprojet lit
+    `GET /api/reference-versions` puis `structure-history` avec ces versions en `include_versions`
+    (badges « R nom 1.1 », anneau or comme une ref) ; les refs locales restent montrées en
+    repères, renommer et retirer gardés, mais ne se posent plus (`experimentsApi.createRef` retiré
+    du client ; la route reste).
+  - `/bibliotheque` a une carte « Références de structure » qui renvoie vers `/references`.
 - Le vocabulaire d'une étude (types d'étape et leurs paramètres, décisions, résultats d'un objectif)
   est dans `experiments/static/vocabulary.js` (global `ExperimentVocabulary`), chargé par la fiche
   et l'atlas.

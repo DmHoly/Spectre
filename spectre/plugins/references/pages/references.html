@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Références — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/references/references.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Références" -->
+
+  <div class="page ref-page">
+    <header class="ref-head">
+      <div>
+        <div class="page-eyebrow">Toute l'application</div>
+        <h1 class="ref-head__title">Références de structure</h1>
+        <p class="ref-head__lead">Les structures de référence partagées entre µprojets, et leur dernière mise à jour. Chaque version (1.0, 1.1, 2.0…) est publiée depuis une étude d'un µprojet ; son numéro est calculé : un changement majeur ouvre X+1.0, un changement mineur ou un correctif donne X.Y+1.</p>
+      </div>
+      <div class="ref-head__actions">
+        <button class="btn btn-line" type="button" id="start-btn">Nouvelle expérience depuis une référence</button>
+        <button class="btn btn-primary" type="button" id="new-reference-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Nouvelle référence
+        </button>
+      </div>
+    </header>
+
+    <div id="error" class="error" role="alert" hidden style="margin-bottom:16px;"></div>
+
+    <div class="ref-toolbar">
+      <label for="search" class="ref-visually-hidden">Chercher une référence</label>
+      <input class="field" id="search" type="search" placeholder="Chercher une référence (nom, description)" autocomplete="off">
+      <span class="ref-count" id="count" aria-live="polite"></span>
+    </div>
+
+    <section class="card" aria-labelledby="list-title">
+      <h2 id="list-title" class="ref-visually-hidden">Références, la plus récemment mise à jour d'abord</h2>
+      <div class="ref-list__head" aria-hidden="true">
+        <span>Référence</span><span>Dernière</span><span>Mise à jour</span><span>Source</span><span>Usages</span>
+      </div>
+      <div id="loading" style="padding:18px 24px;display:grid;gap:12px;">
+        <div class="skeleton" style="height:18px;width:50%;"></div>
+        <div class="skeleton" style="height:18px;width:70%;"></div>
+        <div class="skeleton" style="height:18px;width:40%;"></div>
+      </div>
+      <div id="empty" class="empty-state" hidden>
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M6 8.5v7M8.2 7.2 15.8 11"/></svg>
+        <p id="empty-text">Aucune référence pour l'instant. Publiez une étude comme référence depuis sa fiche ou la page d'évolution de son µprojet.</p>
+      </div>
+      <ul class="ref-list" id="list"></ul>
+    </section>
+  </div>
+
+  <dialog id="new-reference-dialog" class="ref-dialog" aria-labelledby="new-reference-title">
+    <form class="card-pad ref-dialog__inner" id="new-reference-form">
+      <h2 class="ref-dialog__title" id="new-reference-title">Nouvelle référence</h2>
+      <p class="help ref-dialog__lead">Une référence sans version : on y publie ensuite une étude, depuis sa fiche ou la page d'évolution de son µprojet (« Publier comme référence »).</p>
+      <div class="error" role="alert" id="new-reference-error" hidden></div>
+      <div class="ref-field">
+        <label for="new-reference-name">Nom</label>
+        <input class="field" id="new-reference-name" maxlength="120" required autocomplete="off">
+      </div>
+      <div class="ref-field">
+        <label for="new-reference-description">Description <span class="ref-dialog__optional">(facultative)</span></label>
+        <textarea class="field" id="new-reference-description" rows="3" maxlength="2000"></textarea>
+      </div>
+      <div class="ref-dialog__actions">
+        <button class="btn btn-line" type="button" id="new-reference-cancel">Annuler</button>
+        <button class="btn btn-primary" type="submit">Créer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/references/client.js"></script>
+  <script src="/static/references/start-picker.js"></script>
+  <script src="/static/references/references.js"></script>
+</body>
+</html>

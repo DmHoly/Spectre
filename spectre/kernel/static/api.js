@@ -88,11 +88,14 @@ const api = {
     return this.request(path, { method: "POST", formData, ...(options || {}) });
   },
 
-  // `path` suivi de la query string des `params` définis (null, undefined et "" sont omis).
+  // `path` suivi de la query string des `params` définis (null, undefined et "" sont omis) ; un
+  // tableau répète le paramètre (`?id=a&id=b`).
   withQuery(path, params) {
     const query = new URLSearchParams();
     Object.entries(params || {}).forEach(([key, value]) => {
-      if (value !== null && value !== undefined && value !== "") query.append(key, String(value));
+      (Array.isArray(value) ? value : [value]).forEach((item) => {
+        if (item !== null && item !== undefined && item !== "") query.append(key, String(item));
+      });
     });
     const text = query.toString();
     return text ? `${path}?${text}` : path;
