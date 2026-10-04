@@ -5,7 +5,8 @@
    objectifs sont classés par lui), et peut être marqué atteint, avec le µprojet qui l'a validé.
    Qui gère le projet (un admin, ou un manager de son équipe : can_manage, renvoyé par l'API) en
    édite les objectifs et les thématiques ; seul un admin le rattache à une équipe ou y rattache un
-   µprojet existant ; chacun peut créer un µprojet.
+   µprojet existant ; y créer un µprojet est ouvert à tous dans un projet sans équipe (et « Non
+   classé »), aux membres de son équipe et à l'admin sinon (can_place_microproject).
    Chaque µprojet porte son numéro (Nat_0004) : la recherche de la topbar y mène directement.
    Le projet vient de areasApi (avec can_manage, can_delete et son équipe), les µprojets et leurs
    compteurs de experimentsApi.stats, le rôle d'admin de accountsApi.me (is_admin). */
@@ -203,7 +204,7 @@ function thematicSection(t, items) {
     ? ""
     : `<div class="thematic__actions">
         <a class="btn btn-tint btn-sm" href="${thematicUrl}">Explorer la thématique ${ICON_ARROW}</a>
-        <button type="button" class="btn btn-line btn-sm" data-new-mp="${escapeHtml(t.slug)}">+ µprojet</button>
+        ${current.can_place_microproject ? `<button type="button" class="btn btn-line btn-sm" data-new-mp="${escapeHtml(t.slug)}" aria-label="Nouveau µprojet dans ${escapeHtml(t.name)}">+ µprojet</button>` : ""}
         ${current.can_manage ? `<button type="button" class="btn btn-line btn-sm" data-edit-thematic="${escapeHtml(t.slug)}" aria-label="Modifier la thématique ${escapeHtml(t.name)}">${ICON_EDIT} Modifier</button>` : ""}
       </div>`;
   const grid = items.length
@@ -283,7 +284,10 @@ function render() {
   // le projet système (« Non classé ») ne porte ni thématique ni objectif : ses µprojets attendent d'être rangés
   const shown = {
     "edit-area-btn": area.can_manage,
-    "attach-microprojet-btn": admin,
+    // créer ou ranger un µprojet ici : can_place_microproject (tous dans un projet sans équipe, sinon
+    // ses membres et l'admin) ; rattacher un µprojet existant reste à l'admin
+    "new-microprojet-btn": area.can_place_microproject,
+    "attach-microprojet-btn": admin && area.can_place_microproject,
     "new-thematic-btn": area.can_manage && !area.is_system,
     "new-objective-btn": area.can_manage && !area.is_system,
   };

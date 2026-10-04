@@ -60,7 +60,9 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   l'équipe de son projet corporate ; un µprojet non rattaché tombe dans « Non classé », qui n'a pas
   d'équipe (seuls l'administrateur et ses membres y ont accès). Projets et thématiques restent
   visibles par tout compte connecté. Le badge de rôle dit d'où vient un droit : « Propriétaire
-  (manager) », « Propriétaire (admin) ».
+  (manager) », « Propriétaire (admin) ». Créer un µprojet dans le projet d'une équipe, ou l'y
+  déplacer, est réservé aux membres de cette équipe (managers compris) et à l'administrateur ; un
+  projet sans équipe et « Non classé » restent ouverts à tous.
 
 ## Démarrer en local
 

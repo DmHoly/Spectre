@@ -31,7 +31,7 @@ def test_an_existing_installation_keeps_its_rights(data_dir):
     accounts.register("boss@example.com", "supersecret", "Boss")  # le premier compte : admin
     chef = accounts.register("chef@example.com", "supersecret", "Chef")
     accounts.register("lecteur@example.com", "supersecret", "Lecteur")
-    recuit = microprojects.create("Recuit", "", owner_id=chef.id, area="native-pt2")
+    recuit = microprojects.create("Recuit", "", owner=chef, area="native-pt2")
     conn = connect()
     conn.execute("INSERT INTO memberships (microproject_id, user_id, role) VALUES (?, 3, 'viewer')", (recuit.id,))
     conn.commit()

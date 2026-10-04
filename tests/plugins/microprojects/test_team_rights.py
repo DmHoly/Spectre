@@ -93,8 +93,10 @@ def test_a_microproject_follows_the_team_of_its_area(client):
     assert client.get("/api/microprojects/recuit").status_code == 403
     assert list_microprojects(client) == []
 
-    login(client, world.researcher)
-    move_microproject(client, "theme-a", "orphelin")  # un µprojet « Non classé » rejoint un thème d'équipe
+    # un µprojet « Non classé » rejoint un thème d'équipe (rangé par l'admin : son propriétaire n'est
+    # pas de l'équipe A, test_placement.py)
+    login(client, world.admin)
+    move_microproject(client, "theme-a", "orphelin")
     login(client, world.manager_a)
     assert get_microproject(client, "orphelin")["role_source"] == "team_manager"
 
@@ -130,7 +132,7 @@ def test_the_role_reaches_the_lists_of_other_plugins(client):
     assert client.get("/api/wafers", params={"microproject": "orphelin"}).status_code == 403
     assert client.get("/api/microproject-links", params={"microproject": "recuit"}).status_code == 200
 
-    login(client, world.researcher)
+    login(client, world.member_a)  # un membre de l'équipe A crée un µprojet dans son thème
     create_microproject(client, "Recuit bis", area="theme-a")
     login(client, world.manager_a)
     link = client.post("/api/microproject-links", json={"a": "recuit", "b": "recuit-bis", "note": "même four"})

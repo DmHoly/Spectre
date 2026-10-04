@@ -75,14 +75,6 @@ d'étapes (jugé trop lourd à saisir). Reste :
       droits d'équipe sans manipulation.
 - [ ] Le dialogue « Modifier le projet » (page d'un projet corporate) déborde en largeur sur écran
       étroit, comme le faisait « Nouvelle équipe » avant sa correction.
-- [ ] **Décidé le 2026-10-04 : restreindre le placement d'un µprojet dans un projet d'équipe.**
-      Quand on déplace (`PATCH /api/microprojects/{mp}` `{area}`) ou qu'on crée
-      (`POST /api/microprojects`) un µprojet dans un projet, il faut :
-      - gérer ce projet (`areas.service.can_manage`), être admin, ou être membre de son équipe ;
-      - un projet sans équipe et « Non classé » restent ouverts à tous.
-
-      Aujourd'hui, tout `owner` peut déposer un µprojet chez une autre équipe, qui en devient
-      `owner` sans l'avoir demandé.
 
 ## Petites dettes notées en cours de route
 
@@ -122,8 +114,14 @@ d'étapes (jugé trop lourd à saisir). Reste :
   autorisations des autres plugins. Décisions appliquées : plusieurs équipes par compte, « Non
   classé » sans équipe, rien de rattaché à la migration, pas de SSO. Écarts retenus : la lecture des
   équipes est ouverte à tout compte connecté ; rattacher un projet à une équipe, ou un µprojet
-  existant depuis la page d'un projet, reste à l'admin (un `owner` peut, lui, déplacer son µprojet :
-  voir la question ouverte ci-dessus).
+  existant depuis la page d'un projet, reste à l'admin (un `owner` peut, lui, déplacer son µprojet,
+  dans les limites du placement ci-dessous).
+- **Placement d'un µprojet dans un projet d'équipe** (décidé et fait le 2026-10-04). Le créer ou l'y
+  déplacer (`POST /api/microprojects`, `PATCH /api/microprojects/{mp}` `{area}`) : membres de
+  l'équipe (tout rôle) et admin ; un projet sans équipe et « Non classé » restent ouverts à tous ;
+  sinon 403 `placement_forbidden`. Règle `areas.service.can_place_microproject` (exposée par chaque
+  projet), vérifiée par `microprojects.service.check_placement` ; les pages projet et thématique
+  n'offrent « + Nouveau µprojet » qu'aux comptes autorisés.
 - **Page « Évolution des structures »** (2026-10-04, ex-point 2). `/microprojets/{slug}/evolution`
   (l'ancienne `/refs` y redirige), servie par `GET .../structure-history` ; refs adressables
   (`GET`/`PATCH`/`DELETE .../refs/{ref_name}`, `Location` à la création) ; publication d'une ref

@@ -185,7 +185,8 @@ def list_microprojects(
 
 @router.post("/microprojects", status_code=201)
 def create_microproject(body: CreateMicroprojectRequest, response: Response, user: User = Depends(current_user)) -> dict:
-    microproject = microprojects.create(body.name, body.description, owner_id=user.id, area=body.area, thematic=body.thematic)
+    """In a team's project, its members and the admins only (403 ``placement_forbidden``)."""
+    microproject = microprojects.create(body.name, body.description, owner=user, area=body.area, thematic=body.thematic)
     created(response, _url(microproject))
     return _payload(microproject, user)
 
@@ -198,7 +199,8 @@ def get_microproject(microproject: Microproject = Depends(require_role("viewer")
 @router.patch("/microprojects/{microproject_slug}")
 def update_microproject(microproject_slug: str, body: MicroprojectPatch, user: User = Depends(current_user)) -> dict:
     """Rename it, or move it to another project / thématique - the ``owner`` role (its owners, the
-    managers of its team, the admins)."""
+    managers of its team, the admins); into a team's project, also one of its members or an admin
+    (403 ``placement_forbidden``)."""
     return _payload(microprojects.update(microproject_slug, user, body.model_dump(exclude_unset=True)), user)
 
 

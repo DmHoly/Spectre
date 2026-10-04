@@ -180,13 +180,25 @@ def _unique_slug(conn: sqlite3.Connection, name: str) -> str:
     return slug
 
 
-def _area_id(area_slug: str | None) -> int:
+def _area(area_slug: str | None) -> areas.ManagementArea:
     if not area_slug:
         raise InvalidInput("un µprojet appartient toujours à un projet")
     try:
-        return areas.get_by_slug(area_slug).id
+        return areas.get_by_slug(area_slug)
     except areas.ManagementAreaNotFoundError as exc:
         raise InvalidInput(f"projet {area_slug!r} introuvable") from exc
+
+
+def check_placement(user: accounts.User, area: areas.ManagementArea) -> None:
+    """403 unless ``user`` may put a µprojet in ``area`` - create it there or move it there
+    (:func:`spectre.plugins.areas.service.can_place_microproject`: in a team's project, its members
+    and the admins only) - the one check of :func:`create` and :func:`update`."""
+    if not areas.can_place_microproject(user, area):
+        raise Forbidden(
+            f"le projet « {area.name} » appartient à une équipe : seuls ses membres et un administrateur "
+            "peuvent y créer ou y déplacer un µprojet",
+            code="placement_forbidden",
+        )
 
 
 def _thematic_id(area_id: int, thematic_slug: str | None) -> int | None:
@@ -198,13 +210,16 @@ def _thematic_id(area_id: int, thematic_slug: str | None) -> int | None:
         raise InvalidInput(f"la thématique {thematic_slug!r} n'appartient pas à ce projet") from exc
 
 
-def create(name: str, description: str, *, owner_id: int, area: str | None = None, thematic: str | None = None) -> Microproject:
-    """A new µprojet, its creator its first owner. ``area`` (a project's slug, « Non classé » by
-    default) and ``thematic`` (one of that project's thématiques) say where it sits."""
+def create(name: str, description: str, *, owner: accounts.User, area: str | None = None, thematic: str | None = None) -> Microproject:
+    """A new µprojet, its creator (``owner``) its first owner. ``area`` (a project's slug, « Non
+    classé » by default) and ``thematic`` (one of that project's thématiques) say where it sits -
+    a project ``owner`` may place a µprojet in (:func:`check_placement`, 403 otherwise)."""
     name = name.strip()
     if not name:
         raise InvalidInput("le nom du µprojet est obligatoire")
-    area_id = _area_id(area or UNCLASSIFIED_AREA_SLUG)
+    target = _area(area or UNCLASSIFIED_AREA_SLUG)
+    check_placement(owner, target)
+    area_id, owner_id = target.id, owner.id
     thematic_id = _thematic_id(area_id, thematic)
     with get_conn() as conn:
         slug = _unique_slug(conn, name)
@@ -238,7 +253,8 @@ def update(slug: str, user: accounts.User, changes: dict) -> Microproject:
     """Only the fields given change: ``name``, ``description``, and where the µprojet sits -
     ``area`` (a project's slug; changing project drops its thématique) and ``thematic`` (the slug
     of one of that project's thématiques, or ``None``). The ``owner`` role only (:func:`access`:
-    its owners, the managers of its team, the admins)."""
+    its owners, the managers of its team, the admins); moving it to another project also needs the
+    right to place a µprojet there (:func:`check_placement`)."""
     microproject = get_by_slug(slug)
     if not has_role(user, microproject, "owner"):
         raise Forbidden("seuls un propriétaire du µprojet, un manager de son équipe ou un administrateur peuvent le modifier")
@@ -252,8 +268,10 @@ def update(slug: str, user: accounts.User, changes: dict) -> Microproject:
         description = changes["description"].strip()
     area_id, thematic_id = microproject.management_area_id, microproject.thematic_id
     if "area" in changes:
-        area_id = _area_id(changes["area"])
+        target = _area(changes["area"])
+        area_id = target.id
         if area_id != microproject.management_area_id:
+            check_placement(user, target)
             thematic_id = None
     if "thematic" in changes:
         thematic_id = _thematic_id(area_id, changes["thematic"])

@@ -9,7 +9,7 @@ from .accounts import login, signup
 from .areas import create_area, create_objective, create_thematic, set_area_team
 from .http import assert_created, assert_ok
 from .microprojects import add_member as add_microproject_member
-from .microprojects import create_microproject
+from .microprojects import create_microproject, move_microproject
 
 
 def _url(team_slug: str) -> str:
@@ -65,8 +65,9 @@ class TeamWorld(NamedTuple):
 def team_world(client: Any) -> TeamWorld:
     """Deux équipes, un thème rattaché à l'équipe A (« theme-a », avec la thématique « t » et un
     objectif), et trois µprojets créés par ``researcher`` : « recuit » dans le Thème A (``viewer``
-    y est lecteur), « orphelin » dans « Non classé », « ailleurs » dans un thème sans équipe
-    (native-pt2). Le client reste connecté en administrateur."""
+    y est lecteur ; hors de l'équipe A, ``researcher`` le crée dans « Non classé » et l'admin l'y
+    range), « orphelin » dans « Non classé », « ailleurs » dans un thème sans équipe (native-pt2).
+    Le client reste connecté en administrateur."""
     emails = ("boss@example.com", "chef-a@example.com", "chef-b@example.com", "equipier-a@example.com",
               "chercheur@example.com", "lecteur@example.com", "inconnu@example.com")
     ids = {email: signup(client, email, name=email.split("@")[0])["id"] for email in emails}
@@ -84,10 +85,11 @@ def team_world(client: Any) -> TeamWorld:
     objective = create_objective(client, "theme-a", "O")
 
     login(client, researcher)
-    create_microproject(client, "Recuit", area="theme-a")
+    create_microproject(client, "Recuit")
     create_microproject(client, "Orphelin")
     create_microproject(client, "Ailleurs", area="native-pt2")
     add_microproject_member(client, "recuit", viewer, "viewer")
 
     login(client, admin)
+    move_microproject(client, "theme-a", "recuit")
     return TeamWorld(admin, manager_a, manager_b, member_a, researcher, viewer, stranger, ids, objective["id"])
