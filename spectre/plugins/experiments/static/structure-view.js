@@ -114,7 +114,7 @@
     const step = (ctx.process.steps || [])[layerIndex - 1];
     if (!step) return null;
     const fields = Object.entries(step)
-      .filter(([key]) => key !== "kind" && key !== "name")
+      .filter(([key]) => key !== "id" && key !== "kind" && key !== "name")
       .map(([key, value]) => [ExperimentVocabulary.stepFields[key] || key, formatStepValue(value)])
       .filter(([, value]) => value !== null);
     return { title: ExperimentVocabulary.stepLabel(step), fields };

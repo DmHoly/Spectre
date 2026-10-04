@@ -351,8 +351,9 @@ def merge_experiments(
 def experiment_process(
     experiment_id: str, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
 ) -> dict:
-    """Le procédé éditable (substrat et étapes) d'une version - la pointe par défaut."""
-    process = service.version_of(get_repository(microproject.slug), experiment_id, version).metadata.get("structureforge_process")
+    """Le procédé éditable (substrat et étapes) d'une version - la pointe par défaut. Chaque étape
+    porte son ``id`` stable (:func:`service.step_ids_of`), que le constructeur renvoie à l'évolution."""
+    process = service.editable_process(service.version_of(get_repository(microproject.slug), experiment_id, version))
     if process is None:
         raise NotFound("Cette expérience n'a pas de procédé éditable enregistré.", code="no_process")
     return process

@@ -35,10 +35,12 @@ def list_recipes() -> dict:
 @router.post("/simulations")
 def simulate(body: ProcessInput) -> dict:
     """One frame (SVG, materials, layers) per step of the process, plus the colours of the
-    materials - a 422 if StructureForge can't simulate it."""
+    materials - a 422 if StructureForge can't simulate it - and ``step_ids``, the id of each step:
+    the one it came with, or a new one for a new step (the builder adopts it, it never makes one
+    up - see :func:`simulation.settle_step_ids`)."""
     declared_params = simulation.declared_params_by_index(body.declared_params) or None
     _geometry, frames, materials = simulation.run_simulation(body.substrate, body.steps, declared_params)
-    return rendering.frames_payload(frames, materials)
+    return {**rendering.frames_payload(frames, materials), "step_ids": simulation.settle_step_ids(body.step_ids)}
 
 
 @router.post("/campaign-previews")
@@ -46,10 +48,11 @@ def preview_campaign(body: CampaignPreviewRequest) -> dict:
     """A preview of a DOE campaign: one simulated variant per combination of ``body.plan.factors``
     (fully crossed, at most :data:`campaigns.MAX_CAMPAIGN_ENTITIES`), plus the constant/varying
     split (``follow.doe.batch.analyze_batch``) - the "matrice de split", available before anyone
-    commits to the campaign.
+    commits to the campaign. Each factor names its step by ``step_id``, the id the step was sent
+    with (``"substrate"`` for the substrate).
     """
     result = campaigns.generate_campaign_variants(
-        body.substrate, body.steps, body.plan, simulation.declared_params_by_index(body.declared_params)
+        body.substrate, body.steps, body.plan, simulation.declared_params_by_index(body.declared_params), body.step_ids
     )
     return {
         "svgs": result.svgs,

@@ -10,6 +10,7 @@ so Spectre never draws a cross-section itself.
 from __future__ import annotations
 
 import re
+import secrets
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -239,6 +240,41 @@ def declared_params_by_index(raw: dict[str, list[DeclaredParam]] | None) -> dict
 
 def declared_params_json(declared_params: dict[int, list[DeclaredParam]] | None) -> dict[str, list[dict[str, Any]]]:
     return {str(i): [p.model_dump(mode="json") for p in params] for i, params in sorted((declared_params or {}).items()) if params}
+
+
+# -- l'identité des étapes -------------------------------------------------------------------------
+#
+# Chaque étape d'un procédé porte un id stable (``st_<8 hex>``), opaque : une donnée, un facteur de
+# campagne la désignent par lui plutôt que par sa position, qu'une insertion décalerait. Jamais vu
+# de StructureForge (un ``ProcessStep`` l'ignore) ni du versionnage : une étude range ses ids à
+# part, sous :data:`STEP_IDS_METADATA_KEY`, dans l'ordre des étapes de ``structureforge_process``.
+
+STEP_IDS_METADATA_KEY = "process_step_ids"
+STEP_ID_RE = re.compile(r"^st_[0-9a-f]{8}$")
+
+
+def new_step_id(taken: set[str] | frozenset[str] = frozenset()) -> str:
+    """Un id d'étape neuf, absent de ``taken``."""
+    while True:
+        candidate = f"st_{secrets.token_hex(4)}"
+        if candidate not in taken:
+            return candidate
+
+
+def settle_step_ids(requested: list[str | None]) -> list[str]:
+    """L'id de chaque étape, dans l'ordre : celui reçu quand il a la bonne forme et n'a pas déjà
+    servi plus haut (une étape dupliquée garde son id une seule fois), un neuf sinon - une étape
+    sans id est une nouvelle étape."""
+    taken = {step_id for step_id in requested if isinstance(step_id, str) and STEP_ID_RE.fullmatch(step_id)}
+    settled: list[str] = []
+    for step_id in requested:
+        if isinstance(step_id, str) and STEP_ID_RE.fullmatch(step_id) and step_id not in settled:
+            settled.append(step_id)
+        else:
+            fresh = new_step_id(taken)
+            taken.add(fresh)
+            settled.append(fresh)
+    return settled
 
 
 def process_metadata(

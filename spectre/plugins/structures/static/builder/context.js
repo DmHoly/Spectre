@@ -34,7 +34,7 @@ const state = {
   materialColors: {},
   currentFrame: 0,
   campaignPlan: null,
-  variationFactors: [], // [{step_index, field, field_label, values}] - the DOE plan being built on écran 2
+  variationFactors: [], // [{step_id, field, field_label, values, scale}] - the DOE plan being built on écran 2
   variationEntities: [], // [{sample_id, location}] - one per row of the écran 3 table, positional
   wizardScreen: "structure", // écran courant de l'atelier : "structure", "intention" ou "variations" (ces deux derniers : mode expérience uniquement) - voir stages.js
   // Sélection dans le process flow (step-list.js) : -1 = le substrat, 0..n-1 = une étape. Pilote à

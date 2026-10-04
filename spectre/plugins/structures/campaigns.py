@@ -48,14 +48,15 @@ CAMPAIGN_FIELD_LABELS = {
 # chaque aperçu et au lancement - vérifié avant toute simulation.
 MAX_CAMPAIGN_ENTITIES = 30
 
-SUBSTRATE_STEP_INDEX = -1  # un facteur à cet index fait varier le substrat plutôt qu'une étape
+SUBSTRATE_STEP_ID = "substrate"  # un facteur sur cet « id » fait varier le substrat plutôt qu'une étape
+SUBSTRATE_STEP_INDEX = -1  # sa position, pour le calcul (et dans les plans d'avant les ids d'étape)
 DECLARED_FIELD_PREFIX = "declared:"  # "declared:dopage" : un paramètre déclaré (DeclaredParam) de l'étape
 FRACTION_FIELD_SUFFIX = ".fraction"  # "material.fraction" : le taux d'In/Al (%) d'un nitrure à composition
 
 
 class VariantFactor(BaseModel):
-    """One parameter to vary, at the step ``step_index`` (or the substrate, at
-    :data:`SUBSTRATE_STEP_INDEX`), across ``values``. ``field`` names *any* parameter of that step:
+    """One parameter to vary, on the step whose id is ``step_id`` (or the substrate, at
+    :data:`SUBSTRATE_STEP_ID`), across ``values``. ``field`` names *any* parameter of that step:
 
     - one of its own fields - a ``Length`` (``thickness``, ``depth``...: values in that field's own
       unit), a plain number (``rate_m``, ``angle_deg``...), or a name/choice (``material``,
@@ -70,9 +71,14 @@ class VariantFactor(BaseModel):
     ``scale`` only records how the values were laid out (``"log"`` = geometric spacing, e.g. a
     doping sweep over decades) so they can be shown back the same way; ``label`` overrides the
     factor's generated human label.
+
+    The step is named by its id (see :func:`spectre.plugins.structures.simulation.settle_step_ids`),
+    never by its position: a plan recorded before step ids (``campaign_plan`` of an older campaign)
+    carries ``step_index`` instead - its id is ``experiments.service.step_id_at(version, index)``,
+    and ``-1`` is the substrate.
     """
 
-    step_index: int
+    step_id: str
     field: str
     values: list[float | str]
     scale: str = "linear"  # "linear" | "log" | "list"
@@ -102,6 +108,7 @@ class CampaignVariants(BaseModel):
     labels: list[str]  # one combined, human label per entity - e.g. "10 · 20" for 2 factors
     factor_labels: list[str]  # one label per factor - e.g. "Épaisseur — Oxyde initial"
     factor_values: list[list[float | str]]  # per entity, the raw value of each factor, same order
+    factor_indexes: list[int]  # the position of each factor's step (SUBSTRATE_STEP_INDEX: the substrate)
 
 
 def format_number(value: float) -> str:
@@ -237,10 +244,34 @@ def _declared_with_value(declared: dict[int, list[DeclaredParam]], step_index: i
     return {**declared, step_index: params}
 
 
-def _factor_label(factor: VariantFactor, steps: list[ProcessStep]) -> str:
+def factor_step_indexes(plan: VariantPlan, step_ids: list[str | None]) -> list[int]:
+    """The position of each factor's step among ``step_ids`` (the ids the steps came with, in
+    order), :data:`SUBSTRATE_STEP_INDEX` for the substrate - an id no step carries is refused."""
+    indexes = []
+    for factor in plan.factors:
+        if factor.step_id == SUBSTRATE_STEP_ID:
+            indexes.append(SUBSTRATE_STEP_INDEX)
+        elif factor.step_id in step_ids:
+            indexes.append(step_ids.index(factor.step_id))
+        else:
+            raise SimulationFailedError("étape sélectionnée invalide (aucune étape ne porte cet id)")
+    return indexes
+
+
+def plan_metadata(plan: VariantPlan, indexes: list[int], step_ids: list[str]) -> dict[str, Any]:
+    """The plan as a campaign records it (``campaign_plan``): each factor names the final id of its
+    step (``step_ids``, once settled - see :func:`factor_step_indexes` for ``indexes``), or the
+    substrate."""
+    dumped = plan.model_dump(mode="json")
+    for factor, index in zip(dumped["factors"], indexes):
+        factor["step_id"] = SUBSTRATE_STEP_ID if index == SUBSTRATE_STEP_INDEX else step_ids[index]
+    return dumped
+
+
+def _factor_label(factor: VariantFactor, index: int, steps: list[ProcessStep]) -> str:
     if factor.label:
         return factor.label
-    target = "Substrat" if factor.step_index == SUBSTRATE_STEP_INDEX else steps[factor.step_index].name
+    target = "Substrat" if index == SUBSTRATE_STEP_INDEX else steps[index].name
     if factor.field.startswith(DECLARED_FIELD_PREFIX):
         field_label = factor.field[len(DECLARED_FIELD_PREFIX) :]
     elif factor.field.endswith(FRACTION_FIELD_SUFFIX):
@@ -255,6 +286,7 @@ def generate_campaign_variants(
     steps: list[ProcessStep],
     plan: VariantPlan,
     declared_params: dict[int, list[DeclaredParam]] | None = None,
+    step_ids: list[str | None] | None = None,
 ) -> CampaignVariants:
     """Re-simulate ``steps`` once per combination in the full cross of every factor's values,
     varying each factor's parameter for that combination - everything else (substrate, every
@@ -263,17 +295,18 @@ def generate_campaign_variants(
     (``follow.doe.batch.analyze_batch``) so the "matrice de split" is available before anyone
     commits to the campaign, not only after. A factor on a declared parameter leaves the geometry
     untouched - its value per variant lives in ``factor_values``, like every other factor's.
+    The factors name their step by id, among ``step_ids`` (the ids the steps came with, in order).
     """
     if not plan.factors:
         raise SimulationFailedError("il faut au moins un paramètre à faire varier")
+    indexes = factor_step_indexes(plan, list(step_ids or []))
     for factor in plan.factors:
         if not factor.values:
             raise SimulationFailedError("il faut au moins une valeur pour chaque paramètre")
-        if not (SUBSTRATE_STEP_INDEX <= factor.step_index < len(steps)):
-            raise SimulationFailedError("étape sélectionnée invalide")
         if not factor.field:
             raise SimulationFailedError("il faut choisir un paramètre à faire varier")
-        if factor.step_index == SUBSTRATE_STEP_INDEX and factor.field.startswith(DECLARED_FIELD_PREFIX):
+    for factor, index in zip(plan.factors, indexes):
+        if index == SUBSTRATE_STEP_INDEX and factor.field.startswith(DECLARED_FIELD_PREFIX):
             raise SimulationFailedError("le substrat n'a pas de paramètres déclarés")
     combinations = math.prod(len(factor.values) for factor in plan.factors)
     if combinations > MAX_CAMPAIGN_ENTITIES:
@@ -281,7 +314,7 @@ def generate_campaign_variants(
             f"{combinations} variantes : {MAX_CAMPAIGN_ENTITIES} au maximum par campagne (chacune est simulée) - réduisez le nombre de valeurs."
         )
 
-    factor_labels = [_factor_label(factor, steps) for factor in plan.factors]
+    factor_labels = [_factor_label(factor, index, steps) for factor, index in zip(plan.factors, indexes)]
     base_declared = declared_params or {}
 
     entries: list[ProcessStructure] = []
@@ -292,14 +325,14 @@ def generate_campaign_variants(
         varied_substrate = substrate
         varied_steps = list(steps)
         varied_declared = base_declared
-        for factor, value in zip(plan.factors, combo):
-            if factor.step_index == SUBSTRATE_STEP_INDEX:
+        for factor, index, value in zip(plan.factors, indexes, combo):
+            if index == SUBSTRATE_STEP_INDEX:
                 varied_substrate = _substrate_with_value(varied_substrate, factor.field, value)
             elif factor.field.startswith(DECLARED_FIELD_PREFIX):
-                varied_declared = _declared_with_value(varied_declared, factor.step_index, factor.field[len(DECLARED_FIELD_PREFIX) :], value)
+                varied_declared = _declared_with_value(varied_declared, index, factor.field[len(DECLARED_FIELD_PREFIX) :], value)
             else:
                 domain_nm = varied_substrate.domain_width.to_nm()
-                varied_steps[factor.step_index] = _step_with_value(varied_steps[factor.step_index], factor.field, value, domain_nm)
+                varied_steps[index] = _step_with_value(varied_steps[index], factor.field, value, domain_nm)
         geometry, frames, materials = run_simulation(varied_substrate, varied_steps, varied_declared or None)
         entries.append(to_structure(geometry))
         material_colors = {m.name: m.color for m in materials}
@@ -309,7 +342,13 @@ def generate_campaign_variants(
 
     variation = analyze_variants(entries)
     return CampaignVariants(
-        entries=entries, svgs=svgs, variation=variation, labels=labels, factor_labels=factor_labels, factor_values=factor_values
+        entries=entries,
+        svgs=svgs,
+        variation=variation,
+        labels=labels,
+        factor_labels=factor_labels,
+        factor_values=factor_values,
+        factor_indexes=indexes,
     )
 
 

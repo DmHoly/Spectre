@@ -119,8 +119,10 @@ function livePreviewFromForm() {
   } catch (err) {
     return; // valeur transitoire pas encore exploitable - on attend la suite de la frappe
   }
-  // Éditer une étape groupée ne doit pas la dissocier silencieusement de sa brique.
+  // Éditer une étape groupée ne doit pas la dissocier silencieusement de sa brique ; ni lui
+  // faire perdre son identité (son id, voir withoutStepId dans step-list.js).
   const previous = state.steps[i];
+  if (previous.id) step.id = previous.id;
   if (previous.brick_group_id) {
     step.brick_group_id = previous.brick_group_id;
     step.brick_name = previous.brick_name;

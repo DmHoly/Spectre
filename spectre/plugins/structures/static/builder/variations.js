@@ -4,12 +4,15 @@
    une recette, ou un paramètre déclaré (un dopage...) - en linéaire, en logarithmique (décades) ou
    en liste de valeurs, puis un tableau façon Excel, une ligne par combinaison, avec les noms de
    wafers et emplacements des échantillons réels. Sans variation, le tableau dégénère naturellement
-   à une seule ligne (la structure telle quelle). Le plan ({factors: [{step_index, field, values,
-   scale, label}]}) est celui que preview_campaign/launch_campaign attendent côté serveur (voir
-   spectre.core.structures.VariantFactor pour la syntaxe de `field`), lu par experience-launch.js
-   via state.campaignPlan. `scale` garde la répartition choisie : une variation en échelle log le
-   reste quand on la rouvre, et la campagne l'enregistre. */
+   à une seule ligne (la structure telle quelle). Le plan ({factors: [{step_id, field, values,
+   scale, label}]}) est celui que POST /api/campaign-previews et le lancement d'une campagne
+   attendent côté serveur (voir spectre.plugins.structures.campaigns.VariantFactor pour la syntaxe
+   de `field`), lu par experience-launch.js via state.campaignPlan. Un facteur désigne son étape
+   par son id (celui que le serveur lui a donné, voir adoptStepIds dans simulation.js), le
+   substrat par SUBSTRATE_FACTOR_ID - jamais par sa position. `scale` garde la répartition
+   choisie : une variation en échelle log le reste quand on la rouvre, et la campagne l'enregistre. */
 
+const SUBSTRATE_FACTOR_ID = "substrate"; // campaigns.SUBSTRATE_STEP_ID côté serveur
 let variationEditingStepIndex = null; // index de l'étape (-1 = substrat) dont l'inspecteur montre le formulaire de variation
 let variationParams = []; // paramètres variables de cette étape (voir variableParams)
 let variationMode = "linear"; // "linear" | "log" | "explicit" pour un paramètre numérique
@@ -40,7 +43,28 @@ const ORIENTATION_CHOICES = [
   ["m_plane", "Plan M {10-10}"],
   ["semi_polar", "Semi-polaire"],
 ];
-const NON_VARIABLE_STEP_KEYS = new Set(["kind", "name", "description", "declaredParams", "brick_group_id", "brick_name", "parameters", "seed_materials", "openings"]);
+const NON_VARIABLE_STEP_KEYS = new Set(["id", "kind", "name", "description", "declaredParams", "brick_group_id", "brick_name", "parameters", "seed_materials", "openings"]);
+
+// L'id par lequel un facteur désigne l'étape `stepIndex` (-1 : le substrat) - null tant que le
+// serveur ne lui en a pas donné (une étape toute neuve, avant la simulation qui suit son ajout).
+function variationStepId(stepIndex) {
+  if (stepIndex === -1) return SUBSTRATE_FACTOR_ID;
+  const step = state.steps[stepIndex];
+  return (step && step.id) || null;
+}
+
+// La position de l'étape d'un facteur (-1 : le substrat ; -2 : introuvable).
+function factorStepIndex(factor) {
+  if (factor.step_id === SUBSTRATE_FACTOR_ID) return -1;
+  const index = state.steps.findIndex((s) => s.id === factor.step_id);
+  return index === -1 ? -2 : index;
+}
+
+// Les facteurs posés sur l'étape `stepIndex` (-1 : le substrat).
+function factorsOnStep(stepIndex) {
+  const id = variationStepId(stepIndex);
+  return id ? state.variationFactors.filter((f) => f.step_id === id) : [];
+}
 
 function unitLabel(unit) {
   return unit === "um" ? "µm" : unit === "A" ? "Å" : unit || "";
@@ -297,7 +321,7 @@ function fillVariationForm() {
     renderVariationPreview();
     return;
   }
-  const existing = state.variationFactors.find((f) => f.step_index === variationEditingStepIndex && f.field === param.field);
+  const existing = factorsOnStep(variationEditingStepIndex).find((f) => f.field === param.field);
   const currentText = param.type === "number" ? formatParamValue(param.current) : param.choices ? (param.choices.find(([v]) => v === param.current) || [param.current, param.current])[1] : String(param.current);
   hint.textContent = `Valeur actuelle : ${currentText}${param.unit && param.type === "number" ? ` ${param.unit}` : ""}${param.declared ? " · paramètre déclaré" : ""}`;
   numberFields.hidden = param.type !== "number";
@@ -366,13 +390,13 @@ function startVaryingLayer(stepIndex, field) {
   const own = params.filter((p) => !p.declared);
   const declared = params.filter((p) => p.declared);
   const optionHtml = (p) => {
-    const varied = state.variationFactors.some((f) => f.step_index === stepIndex && f.field === p.field);
+    const varied = factorsOnStep(stepIndex).some((f) => f.field === p.field);
     return `<option value="${escapeHtml(p.field)}">${escapeHtml(paramDisplayLabel(p))}${varied ? " ✓" : ""}</option>`;
   };
   document.getElementById("variation-field-select").innerHTML =
     (declared.length ? `<optgroup label="Réglages de l'étape">${own.map(optionHtml).join("")}</optgroup>` : own.map(optionHtml).join("")) +
     (declared.length ? `<optgroup label="Paramètres déclarés">${declared.map(optionHtml).join("")}</optgroup>` : "");
-  const firstVaried = state.variationFactors.find((f) => f.step_index === stepIndex);
+  const firstVaried = factorsOnStep(stepIndex)[0];
   const target = field || (firstVaried && firstVaried.field) || params[0].field;
   document.getElementById("variation-field-select").value = target;
   fillVariationForm();
@@ -413,9 +437,15 @@ function addVariationFromForm() {
     showError(new Error(error));
     return;
   }
+  const stepId = variationStepId(stepIndex);
+  if (!stepId) {
+    scheduleSimulate(0);
+    showError(new Error("L'aperçu de la structure se met à jour - réessayez dans un instant."));
+    return;
+  }
   const label = `${paramDisplayLabel(param)} — ${variationTargetName(stepIndex)}`;
-  state.variationFactors = state.variationFactors.filter((f) => !(f.step_index === stepIndex && f.field === param.field));
-  state.variationFactors.push({ step_index: stepIndex, field: param.field, field_label: label, values, scale });
+  state.variationFactors = state.variationFactors.filter((f) => !(f.step_id === stepId && f.field === param.field));
+  state.variationFactors.push({ step_id: stepId, field: param.field, field_label: label, values, scale });
   cancelVaryingLayer();
   renderVariationFactorsList();
   refreshVariationTable();
@@ -444,7 +474,7 @@ function renderVariationFactorsList() {
       .map(
         (f, i) => `
       <div class="sb-factor">
-        <button class="sb-factor__body js-edit-variation-factor" type="button" data-step="${f.step_index}" data-field="${escapeHtml(f.field)}" title="Modifier cette variation">
+        <button class="sb-factor__body js-edit-variation-factor" type="button" data-step="${factorStepIndex(f)}" data-field="${escapeHtml(f.field)}" title="Modifier cette variation">
           <span class="sb-factor__label">${escapeHtml(f.field_label)}<span class="sb-factor__scale sb-factor__scale--${f.scale || "linear"}">${SCALE_BADGES[f.scale] || ""}</span></span>
           <span class="sb-factor__values mono">${f.values.map((v) => escapeHtml(formatParamValue(v))).join(" · ")}</span>
         </button>
@@ -561,7 +591,7 @@ async function refreshVariationTable() {
     return;
   }
   const plan = {
-    factors: state.variationFactors.map(({ step_index, field, values, scale, field_label }) => ({ step_index, field, values, scale: scale || "linear", label: field_label })),
+    factors: state.variationFactors.map(({ step_id, field, values, scale, field_label }) => ({ step_id, field, values, scale: scale || "linear", label: field_label })),
   };
   try {
     const result = await structuresApi.previewCampaign({
@@ -596,9 +626,9 @@ function variationTableEntities() {
   }));
 }
 
-// Invalidé chaque fois que la structure change (voir renderSteps() dans step-list.js) : les
-// index d'étape référencés par les facteurs pourraient plus rien vouloir dire, donc on repart
-// d'un plan vide plutôt que de risquer un facteur qui pointe sur la mauvaise étape.
+// Invalidé chaque fois que la structure change (voir renderSteps() dans step-list.js) : une
+// étape variée a pu disparaître ou changer de nature, donc on repart d'un plan vide plutôt que de
+// garder un facteur sur un paramètre qui n'existe plus.
 function invalidateVariations() {
   const hadPlan = state.variationFactors.length > 0 || variationEditingStepIndex !== null;
   state.variationFactors = [];

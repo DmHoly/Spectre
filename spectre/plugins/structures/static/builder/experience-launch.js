@@ -28,6 +28,7 @@ async function loadExistingProcess() {
     });
     if (data) {
       setSubstrateFields(data.substrate);
+      // chaque étape garde son id : l'évolution (ou la fourche) le renvoie, l'étape reste la même
       state.steps = attachDeclaredParams(data.steps, data.declared_params);
       selectLastStep();
       renderSteps();
@@ -189,7 +190,8 @@ async function loadTemplateProcess() {
   try {
     const data = await experimentsApi.process(slug, templateExperienceId);
     setSubstrateFields(data.substrate);
-    state.steps = attachDeclaredParams(data.steps, data.declared_params);
+    // une nouvelle étude sans filiation : ses étapes sont neuves, le serveur leur donne leurs ids
+    state.steps = attachDeclaredParams(data.steps.map(withoutStepId), data.declared_params);
     selectLastStep();
     renderSteps();
   } catch (err) {

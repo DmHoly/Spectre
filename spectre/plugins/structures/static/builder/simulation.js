@@ -340,17 +340,36 @@ function clearSimulationError() {
 // lent, frappe rapide) est ignorée plutôt que d'écraser un aperçu plus récent.
 let simulateSeq = 0;
 
+// La simulation rend l'id de chaque étape envoyée (`step_ids`) : celui qu'elle avait, ou un neuf
+// pour une nouvelle étape - c'est ainsi qu'une étape ajoutée reçoit le sien, du serveur (le
+// constructeur n'en invente jamais, voir withoutStepId). Il est posé sur l'étape envoyée si elle
+// est toujours dans la liste (sinon la simulation suivante s'en chargera).
+function adoptStepIds(sent, ids) {
+  if (!Array.isArray(ids)) return;
+  const before = currentHistorySnapshot();
+  let changed = false;
+  sent.forEach((step, i) => {
+    if (ids[i] && step.id !== ids[i] && state.steps.includes(step)) {
+      step.id = ids[i];
+      changed = true;
+    }
+  });
+  if (changed) absorbAdoptedStepIds(before);
+}
+
 async function simulateNow() {
   const seq = ++simulateSeq;
   const busy = document.getElementById("sim-busy");
   const busyTimer = setTimeout(() => (busy.hidden = false), 250);
+  const sent = state.steps.slice();
   try {
     const result = await structuresApi.simulate({
       substrate: substrateSpec(),
-      steps: state.steps,
-      declared_params: declaredParamsPayload(state.steps),
+      steps: sent,
+      declared_params: declaredParamsPayload(sent),
     });
     if (seq !== simulateSeq) return;
+    adoptStepIds(sent, result.step_ids);
     const colorsChanged = JSON.stringify(result.material_colors) !== JSON.stringify(state.materialColors);
     state.frames = result.frames;
     state.materialColors = result.material_colors;
