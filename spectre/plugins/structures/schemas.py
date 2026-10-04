@@ -8,6 +8,8 @@ from typing import Annotated, Any, Literal, Union
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from structureforge.process.steps import ProcessStep
 
+from ...kernel.annotations import ImageAnnotation
+
 from .campaigns import VariantPlan
 from .simulation import DeclaredParam, SubstrateSpec
 
@@ -53,6 +55,7 @@ class StructureImageInput(BaseModel):
     image_id: str  # the id of an attachment uploaded with purpose=structure
     kind: Literal["schema", "coupe", "autre"] = "schema"
     caption: str | None = None
+    annotations: list[ImageAnnotation] = []  # arrows and boxes drawn on it, in % of the picture
 
 
 class StructureImagesInput(BaseModel):

@@ -239,6 +239,14 @@
 .structure-board:not([data-count="1"]) .structure-picture__frame img {
   max-height: 240px;
 }
+.structure-picture__frame .annot-frame,
+.structure-thumb .annot-frame {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.structure-picture__annotations:not(:has(li, .annot-tools)) {
+  display: none;
+}
 .structure-picture__caption {
   display: flex;
   flex-wrap: wrap;

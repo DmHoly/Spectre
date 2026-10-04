@@ -60,7 +60,8 @@ function boardColumns(count) {
 }
 
 /* Monte la planche dans `zone`. `onChange(images)` reçoit la liste à jour ({image_id, kind,
-   caption}, images déjà enregistrées côté serveur seulement) ; `onError(err)` un souci d'envoi ou
+   caption, annotations}, images déjà enregistrées côté serveur seulement ; les annotations d'une
+   image, dessinées sur sa vignette, la suivent quand on réordonne et partent quand on la remplace) ; `onError(err)` un souci d'envoi ou
    de format. `purpose` : à quoi sert chaque image ("structure" par défaut, "notebook" pour une entrée du cahier) ; `withKind` :
    le choix du type (schéma, coupe...) sur chaque image ; `compact` : une planche plus basse, pour
    un formulaire. Renvoie {get, set, isUploading, add}. */
@@ -103,7 +104,10 @@ function mountImageDrop(
   const bar = zone.querySelector(".img-board__bar");
   const count = zone.querySelector(".img-board__count");
 
-  const saved = () => items.filter((it) => it.image_id && !it.uploading).map((it) => ({ image_id: it.image_id, kind: it.kind, caption: it.caption || null }));
+  // les annotations d'une image suivent son id (un remplacement les retire) ; elles se posent ailleurs
+  // (la fiche) et se gardent ici
+  const saved = () =>
+    items.filter((it) => it.image_id && !it.uploading).map((it) => ({ image_id: it.image_id, kind: it.kind, caption: it.caption || null, annotations: it.annotations || [] }));
   const changed = () => onChange(saved());
 
   function tileHtml(item, i, n) {
@@ -125,7 +129,7 @@ function mountImageDrop(
           </span>
         </div>
         <div class="img-tile__frame">
-          <img class="img-tile__img" src="${escapeHtml(item.url)}" alt="Image ${num} de la structure">
+          <img class="img-tile__img" src="${escapeHtml(item.url)}" alt="Image ${num} de la structure"${item.uploading ? "" : ImageAnnotations.attr(item.annotations)}>
           <div class="img-tile__busy" role="status"${item.uploading ? "" : " hidden"}><span class="img-board__spinner" aria-hidden="true"></span>Envoi…</div>
           <div class="img-tile__drop" aria-hidden="true">Déposer pour remplacer</div>
         </div>
@@ -182,7 +186,7 @@ function mountImageDrop(
     try {
       const result = await uploadStructureImage(slug, file, purpose);
       if (!items.includes(item)) return; // retirée entre-temps
-      Object.assign(item, { image_id: result.id, url: result.url, filename: result.filename, uploading: false });
+      Object.assign(item, { image_id: result.id, url: result.url, filename: result.filename, uploading: false, annotations: [] });
       render();
       changed();
     } catch (err) {
@@ -223,7 +227,7 @@ function mountImageDrop(
       onError(new Error(problem));
       return;
     }
-    const previous = { image_id: item.image_id, url: item.url, filename: item.filename };
+    const previous = { image_id: item.image_id, url: item.url, filename: item.filename, annotations: item.annotations };
     const guessed = guessStructureImageKind(file.name);
     if (guessed) item.kind = guessed;
     uploadInto(item, file, previous);
@@ -355,6 +359,7 @@ function mountImageDrop(
         filename: image.filename || "Image actuelle",
         kind: image.kind || "schema",
         caption: image.caption || "",
+        annotations: image.annotations || [],
         uploading: false,
       }));
       render();

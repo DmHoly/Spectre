@@ -7,7 +7,9 @@ from __future__ import annotations
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
+
+from ...kernel.annotations import ImageAnnotation
 
 
 class SnapshotRequest(BaseModel):
@@ -66,23 +68,29 @@ class ExternalImageInput(BaseModel):
     caption: str | None = None
 
 
-class AnnotationInput(BaseModel):
-    """Une flèche ou un cadre posé sur une image de la mesure, en % de l'image."""
+class AnnotationInput(ImageAnnotation):
+    """Une flèche ou un cadre (la forme de :class:`spectre.kernel.annotations.ImageAnnotation`) posé
+    sur une image de la mesure, désignée par une clé qui ne bouge pas quand on réordonne ses images :
+    un fichier téléversé (``attachment_id``) ou une image externe (``external_image`` : son chemin,
+    unique dans la mesure) - l'un ou l'autre."""
 
-    attachment_id: str
-    type: Literal["arrow", "box"]
-    x: float
-    y: float
-    x2: float | None = None
-    y2: float | None = None
-    label: str | None = None
+    model_config = ConfigDict(extra="ignore")
+
+    attachment_id: str | None = None
+    external_image: str | None = None
+
+    @model_validator(mode="after")
+    def _one_image(self) -> "AnnotationInput":
+        if (self.attachment_id is None) == (self.external_image is None):
+            raise ValueError("Une annotation désigne une image : attachment_id (un fichier) ou external_image (une image externe).")
+        return self
 
 
 class MeasurementInput(BaseModel):
     """Une mesure de l'entrée, à une étape du procédé (``step_id``, ``None`` : non située). Une
     entrée PRISM y met une vue d'un instantané (``snapshot_id``, ``component``, ``options``) ; une
-    entrée manuelle, au choix, une valeur, un texte, un tableau, des fichiers (et leurs
-    annotations), des images externes et des liens."""
+    entrée manuelle, au choix, une valeur, un texte, un tableau, des fichiers, des images externes,
+    les annotations de ses images (fichiers et images externes) et des liens."""
 
     step_id: str | None = None
     snapshot_id: str | None = None

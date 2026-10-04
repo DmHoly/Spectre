@@ -696,8 +696,10 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
         builder.structure = prepared.structure
         builder.steps = prepared.steps
         if prepared.kind == "images":
+            # les mêmes images (leurs annotations n'y comptent pas) : la même structure
             same = kinds.is_image_structure(parent.structure_type) and bool(parent.metadata.get(kinds.IMAGE_REVISION_KEY)) and (
-                prepared.structure.model_dump()["images"] == kinds.structure_images(parent.structure_type, parent.structure)
+                kinds.without_annotations(prepared.structure.model_dump()["images"])
+                == kinds.without_annotations(kinds.structure_images(parent.structure_type, parent.structure))
             )
             for key in kinds.DRAWN_STRUCTURE_METADATA_KEYS:
                 builder.metadata.pop(key, None)
@@ -814,8 +816,9 @@ def replace_structure_images(
     slug: str, experiment_id: str, images: list[StructureImageInput], *, author: str, expected_version: str | None
 ) -> follow.Experiment:
     """Les images d'une structure donnée en images - tout le jeu, dans l'ordre de lecture : un dessin
-    plus propre, la coupe TEM une fois faite, une légende... Même révision de structure : pas de
-    nouvelle version de structure. Une structure dessinée change par une évolution."""
+    plus propre, la coupe TEM une fois faite, une légende, les annotations d'une image... Même
+    révision de structure : pas de nouvelle version de structure. Une structure dessinée change par
+    une évolution."""
     image = kinds.structure_image_from_input(slug, images)
 
     def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:

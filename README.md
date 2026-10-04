@@ -64,6 +64,12 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   plaque** : si la piste ne suit plus ces plaques, l'entrée reste, repliée dans « Autres plaques ».
   La conclusion cite des entrées du cahier. Les anciennes preuves et les jeux de l'ancienne galerie
   « Images de mesure » s'y lisent comme des entrées saisies à la main, sans migration.
+- **Annotations des images.** Toute image que Spectre montre s'annote : une image téléversée ou
+  externe d'une mesure du cahier, une image d'une structure en images. Des flèches et des cadres,
+  numérotés sur l'image et légendés dans une liste dessous, posés sur la fiche par un éditeur ;
+  ils restent à leur place quelle que soit la taille de l'image et suivent leur image quand on
+  réordonne. Les vignettes (graphe, atlas, planche du constructeur, aperçus du cahier) et le rapport
+  les montrent. Annoter une structure en images n'en change pas la version de structure.
 - **Droits.** Trois niveaux :
   - **administrateur** : tout ; il est propriétaire de tous les µprojets, même sans en être membre ;
   - **manager d'une équipe** : gère les projets corporate rattachés à son équipe (les renommer, les

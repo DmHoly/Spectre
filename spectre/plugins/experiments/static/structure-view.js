@@ -3,7 +3,7 @@
    images), le détail de chaque couche (aperçu au survol, paramètres de l'étape au clic), les étapes
    du procédé avec le nombre de données du cahier de chacune (un clic filtre le cahier), la
    cartographie et la feuille de split d'une campagne, la comparaison avec une autre étude, et la
-   modification des images d'une structure en images. */
+   modification des images d'une structure en images et de leurs annotations. */
 
 (() => {
   let ctx = null;
@@ -22,6 +22,34 @@
       .join("");
   }
 
+  // Les annotations de chaque image de la planche (kernel/static/annotations.js) : leur liste ; pour
+  // un éditeur, leurs outils. Les enregistrer remplace la planche telle quelle, avec les annotations
+  // de cette image (PUT .../structure-images) : une écriture légère, pas de nouvelle version de
+  // structure.
+  function mountPictureAnnotations(container, images) {
+    container.querySelectorAll(".structure-picture").forEach((figure, i) => {
+      const image = images[i];
+      const img = figure.querySelector("img");
+      ImageAnnotations.mount(figure.querySelector(".structure-picture__annotations"), {
+        img,
+        annotations: image.annotations || [],
+        editable: ctx.canEdit,
+        name: `l'image ${i + 1}`,
+        onSave: (annotations) => {
+          const body = {
+            images: images.map((other) => ({
+              image_id: other.image_id,
+              kind: other.kind,
+              caption: other.caption || null,
+              annotations: other === image ? annotations : other.annotations || [],
+            })),
+          };
+          return ctx.write(() => experimentsApi.replaceStructureImages(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, body));
+        },
+      });
+    });
+  }
+
   async function renderStructure(detail) {
     const container = document.getElementById("structure-svg");
     const hint = document.getElementById("structure-click-hint");
@@ -37,6 +65,7 @@
         images.length > 1 ? `Structure · ${images.length} images` : `Structure · ${STRUCTURE_IMAGE_KIND_LABELS[images[0].kind] || "Image"}`;
       container.className = "";
       container.innerHTML = structureBoardHtml(images);
+      mountPictureAnnotations(container, images);
       hint.style.display = "none";
     } else if (detail.is_batch) {
       // une campagne : un carrousel (référence + chaque variante, avec ses paramètres variés)

@@ -261,6 +261,13 @@
   padding: 6px;
   object-fit: contain;
 }
+/* les annotations de l'image (kernel/static/annotations.js) : sur son contenu, dans la marge de 6px */
+.img-tile__frame > .annot-layer {
+  top: 6px;
+  left: 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
+}
 .img-tile.is-uploading .img-tile__img {
   opacity: 0.55;
 }

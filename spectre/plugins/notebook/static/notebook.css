@@ -856,52 +856,11 @@
   min-width: 0;
   margin: 0;
 }
-.nb-figure__frame {
-  position: relative;
-  display: inline-block;
-  max-width: 100%;
-  line-height: 0;
-}
+/* l'image et le dessin de ses annotations : .annot-frame (kernel.css) */
 .nb-figure__frame img {
-  display: block;
-  max-width: 100%;
   height: auto;
   border-radius: var(--radius-sm);
   user-select: none;
-}
-.nb-figure__frame.is-drawing {
-  cursor: crosshair;
-  touch-action: none;
-}
-.nb-annots {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
-}
-.nb-annot line,
-.nb-annot rect {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
-}
-.nb-annot polygon {
-  fill: var(--accent);
-  stroke: var(--surface);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-.nb-annot--box rect:not(.nb-annot__halo) {
-  fill: var(--accent);
-  fill-opacity: 0.16;
-}
-.nb-annot .nb-annot__halo {
-  fill: none;
-  stroke: var(--surface);
-  stroke-width: 4;
 }
 .nb-figure__caption {
   margin-top: 4px;
@@ -923,42 +882,6 @@
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-soft);
-}
-.nb-annot-list {
-  margin: 4px 0 0;
-  padding-left: 18px;
-  font-size: 12px;
-  color: var(--text-soft);
-}
-.nb-annot-remove {
-  min-width: 24px;
-  min-height: 24px;
-  font-size: 15px;
-  line-height: 1;
-  color: var(--text-faint);
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.nb-annot-remove:hover {
-  color: var(--danger);
-}
-.nb-annot-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-}
-.nb-annot-tools .btn {
-  min-height: 32px;
-  padding: 4px 10px;
-  font-size: 12px;
-}
-.nb-annot-hint {
-  font-size: 12px;
-  color: var(--text-faint);
 }
 .nb-files,
 .nb-links {
@@ -1257,10 +1180,15 @@
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
 }
+/* l'aperçu entier (contain), ses annotations par-dessus (.annot-layer, « meet » : le même cadrage) */
+.nb-ext-item__thumb .annot-frame {
+  width: 100%;
+  height: 100%;
+}
 .nb-ext-item__thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .nb-ext-item__nothumb {
   padding: 0 4px;

@@ -9,7 +9,18 @@ Demandées le 2026-10-03. Chacune suit le contrat d'`ARCHITECTURE.md` : un plugi
 routes REST en anglais, le front par son `client.js`. Les points 1 (équipes), 2 (page d'évolution
 et refs), 3 (un seul cahier de données, rattaché aux étapes du procédé, et son préalable,
 l'identité des étapes) et 3 bis (ses suites : images externes dans le cahier, combinaison en une
-nouvelle étude) sont livrés, serveur et interface : voir « Fait ».
+nouvelle étude) sont livrés, serveur et interface, ainsi que les annotations de 3 ter : voir
+« Fait ».
+
+### 3 ter. Images et structure
+
+Demandé le 2026-10-04 : « toute image devrait avoir ses annotations possibles ».
+
+- [x] **Annoter toute image** : fait, voir « Fait » (« Annotations sur toute image »).
+- [ ] **Valeurs clés à côté des couches d'une structure** (demandé le même jour, pas encore fait) :
+      sur le schéma d'une structure dessinée, le nom d'une couche sur le côté (« P GaN ») et, en
+      dessous, un ou deux paramètres clés (épaisseur, dopage), pour qu'une capture d'écran du
+      schéma porte aussi ces informations.
 
 ### 4. Documentation intégrée (en tout dernier)
 
@@ -88,6 +99,32 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 ## Fait (pour mémoire, pas d'action)
 
+- **Annotations sur toute image** (2026-10-04, point 3 ter). Un seul modèle, dans le noyau
+  (`spectre/kernel/annotations.py` : `{type: arrow | box, x, y, x2, y2, label}` en % de l'image,
+  `clean_annotations`), et un seul composant de page (`kernel/static/annotations.js`, global
+  `ImageAnnotations` : dessin numéroté, liste des libellés, outils d'un éditeur). Le cahier annote
+  ses images externes comme ses images téléversées : une annotation d'une mesure désigne son image
+  par `attachment_id` ou `external_image` (le chemin, unique dans la mesure : réordonner les images
+  ne déplace pas leurs annotations ; l'ancien format se relit tel quel). Une structure en images
+  porte `annotations` sur chaque image de `StructureImage` (champ facultatif, absent des anciens
+  objets et des images sans annotation ; `registry_key` inchangée), posées sur la fiche par
+  `PUT .../structure-images` avec `If-Match` : écriture légère, aucune version de structure, et une
+  évolution qui ne change que des annotations n'en crée pas non plus. Les vignettes (graphe,
+  atlas, planche du constructeur, aperçus de la boîte du cahier) et le rapport les montrent, en
+  lecture seule ; un dessin aux proportions de l'image suit son redimensionnement. Écarts retenus :
+  le composant est au noyau et non dans `attachments` (une image externe n'est pas une pièce
+  jointe, et il ne connaît que l'`<img>` qu'on lui donne) ; les annotations se posent sur la fiche
+  (cahier et planche de la structure), pas dans le constructeur ni dans la boîte d'ajout du cahier,
+  qui les gardent et les montrent (remplacer une image retire ses annotations ; retirer une image
+  externe aussi) ; une image externe que le serveur ne montre plus garde ses annotations rangées,
+  sans les montrer ; dessiner demande un pointeur (outils, libellés et retraits se font au clavier,
+  Échap annule l'outil en cours) ; les libellés sont numérotés sur l'image et écrits dans la liste,
+  pas sur l'image ; les images documentaires (graphiques d'exemple d'un type de données de
+  caractérisation, captures de la documentation) ne s'annotent pas : ce ne sont pas des images
+  d'utilisateur. Pas de test JS du composant (`node` absent du poste de développement) : vérifié
+  dans le navigateur (cahier : image téléversée et image externe annotées, réordonnées ; structure
+  en images annotée ; rapport téléchargé).
+
 - **Images externes et combinaison, côté interface** (2026-10-04, point 3 bis). La galerie « Images
   de mesure » a quitté l'onglet « Données » : tout est dans le cahier (le repère de l'onglet, le
   rapport et la conclusion ne connaissent que ses entrées ; les anciens jeux s'y lisent comme des
@@ -104,9 +141,8 @@ d'étapes (jugé trop lourd à saisir). Reste :
   changent pas ; son cahier démarre vide » ; créée, sa fiche s'ouvre. La filiation, l'évolution
   des structures (« issue de vX (piste n) et vY (piste m) ») et les liens de la fiche (« Combinaison
   de ») montrent les deux parents ; les légendes disent « Combinaison de deux études ». Écarts
-  retenus : **pas d'annotations sur une image externe** (une annotation désigne un fichier
-  téléversé, `attachment_id` : l'étendre aux images externes change le format enregistré, pas
-  simple) ; une nouvelle image externe ne s'aperçoit qu'une fois enregistrée (aucune route ne sert
+  retenus : pas d'annotations sur une image externe (levé depuis : « Annotations sur toute
+  image ») ; une nouvelle image externe ne s'aperçoit qu'une fois enregistrée (aucune route ne sert
   un chemin reçu du client, et c'est voulu) ; le parcours liste les images d'un dossier, pas ses
   sous-dossiers (on tape le chemin) ; l'autre étude se combine à sa pointe (le serveur accepte une
   version, la boîte ne la propose pas) ; objectifs et contexte restent ceux de la première étude ;

@@ -14,7 +14,8 @@
       devient {columns, rows}), images collées ou déposées (attachments/static/image-drop.js : Ctrl+V
       colle dans la mesure active), images externes (TEM, scans : choisies dans un dossier autorisé
       du serveur, légendées, ordonnées - la première est la principale), fichiers, liens web. Les
-      annotations d'une image gardée sont gardées.
+      annotations d'une image gardée (téléversée ou externe) sont gardées, et dessinées sur son
+      aperçu ; elles se posent sur la fiche.
    5. Titre, objectif lié, interprétation, observations, et la place dans le rapport.
 
    L'écriture passe par ctx.write (la version affichée en If-Match) : réussie, la fiche se recharge et
@@ -431,7 +432,7 @@ const NotebookEntryDialog = (() => {
         const name = externalName(image);
         const thumb =
           image.url && image.status === "ok"
-            ? `<img src="${escapeHtml(image.url)}" alt="" loading="lazy">`
+            ? `<span class="annot-frame"><img src="${escapeHtml(image.url)}" alt="" loading="lazy"${ImageAnnotations.attr(slot.annotations.filter((a) => a.external_image === image.path))}></span>`
             : `<span class="nb-ext-item__nothumb">${image.url ? "indisponible" : "aperçu à l'enregistrement"}</span>`;
         const problem = image.status && image.status !== "ok" ? `<span class="nb-ext-item__problem">${escapeHtml(EXTERNAL_STATUS[image.status] || "indisponible")}</span>` : "";
         return `
@@ -673,7 +674,7 @@ const NotebookEntryDialog = (() => {
     };
     slot.form = form;
     slot.files = (m.attachments || []).filter((a) => !(a.content_type || "").startsWith("image/")).map((a) => ({ ...a, uploading: false }));
-    slot.annotations = (m.annotations || []).filter((a) => a.attachment_id && (a.type === "arrow" || a.type === "box"));
+    slot.annotations = (m.annotations || []).filter((a) => (a.attachment_id || a.external_image) && (a.type === "arrow" || a.type === "box"));
     // les images externes déjà sur la mesure gardent leur aperçu (leur `url`, servie par l'entrée)
     slot.external = (m.external_images || []).map((image) => ({ path: image.path, caption: image.caption || "", name: image.name, status: image.status, url: image.url }));
     if (m.value) {
@@ -720,7 +721,7 @@ const NotebookEntryDialog = (() => {
     slot.images.set(
       (m.attachments || [])
         .filter((a) => (a.content_type || "").startsWith("image/"))
-        .map((a) => ({ image_id: a.id, url: a.url, filename: a.filename, caption: a.caption || "", kind: "schema" }))
+        .map((a) => ({ image_id: a.id, url: a.url, filename: a.filename, caption: a.caption || "", kind: "schema", annotations: slot.annotations.filter((n) => n.attachment_id === a.id) }))
     );
 
     el.addEventListener("focusin", () => setActive(slot));
@@ -798,6 +799,7 @@ const NotebookEntryDialog = (() => {
     const attachments = [...images.map((img) => ({ id: img.image_id, caption: (img.caption || "").trim() || null })), ...slot.files.map((f) => ({ id: f.id, caption: f.caption || null }))];
     if (attachments.length > MAX_FILES) throw new Error(`${title} : ${MAX_FILES} fichiers au maximum, images comprises.`);
     const kept = new Set(images.map((img) => img.image_id));
+    const keptExternal = new Set(slot.external.map((image) => image.path));
     const links = [...form.links.querySelectorAll(".nb-link-row")]
       .map((row) => ({ label: row.querySelector("[data-link-label]").value.trim() || null, url: row.querySelector("[data-link-url]").value.trim() }))
       .filter((link) => link.url);
@@ -812,7 +814,8 @@ const NotebookEntryDialog = (() => {
       // les images externes (TEM, scans référencés sur le serveur), dans l'ordre choisi
       external_images: slot.external.map((image) => ({ path: image.path, caption: (image.caption || "").trim() || null })),
       links,
-      annotations: slot.annotations.filter((a) => kept.has(a.attachment_id)),
+      // les annotations des images gardées (fichiers et images externes) ; celles d'une image retirée partent avec elle
+      annotations: slot.annotations.filter((a) => (a.attachment_id ? kept.has(a.attachment_id) : keptExternal.has(a.external_image))),
     };
   }
 

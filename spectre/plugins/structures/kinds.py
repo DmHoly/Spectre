@@ -11,9 +11,10 @@ import secrets
 from typing import Any, Literal, Protocol
 
 import follow
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 from structureforge.adapters.follow_adapter import ProcessStructure
 
+from ...kernel.annotations import ImageAnnotation, clean_annotations
 from ...kernel.errors import InvalidInput
 from ..attachments.store import content_url, uploaded_image
 from .rendering import svg_for_process_structure
@@ -49,13 +50,25 @@ class ProcessLot(follow.Structure):
 class StructureImageItem(BaseModel):
     """One picture of a :class:`StructureImage`: which uploaded image (a file of the microproject's
     attachments, see :func:`spectre.plugins.attachments.store.attachments_dir`), what kind of picture it
-    is, and an optional caption."""
+    is, an optional caption, and the arrows and boxes drawn on it (:mod:`spectre.kernel.annotations`).
+
+    ``annotations`` came later: a picture stored before reads without it, and a picture without any
+    is stored without the key - the same object as before, so its content (and the id Follow hashes
+    from it) does not change for nothing."""
 
     model_config = ConfigDict(extra="forbid")
 
     image_id: str
     kind: Literal["schema", "coupe", "autre"] = "schema"
     caption: str | None = None
+    annotations: list[ImageAnnotation] = []
+
+    @model_serializer(mode="wrap")
+    def _without_empty_annotations(self, handler: Any) -> dict[str, Any]:
+        data = handler(self)
+        if not data.get("annotations"):
+            data.pop("annotations", None)
+        return data
 
 
 MAX_STRUCTURE_IMAGES = 12
@@ -174,12 +187,18 @@ def structure_images(structure_type: str, structure_data: dict[str, Any]) -> lis
 
 
 def structure_images_payload(slug: str, structure_type: str, structure_data: dict[str, Any]) -> list[dict[str, Any]] | None:
-    """:func:`structure_images` tel que l'API le renvoie : chaque image porte l'``url`` de ses
-    octets - le front ne la construit pas."""
+    """:func:`structure_images` tel que l'API le renvoie : chaque image porte ses ``annotations``
+    (une liste, vide si elle n'en a pas) et l'``url`` de ses octets - le front ne la construit pas."""
     images = structure_images(structure_type, structure_data)
     if images is None:
         return None
-    return [{**image, "url": content_url(slug, image["image_id"])} for image in images]
+    return [{**image, "annotations": image.get("annotations", []), "url": content_url(slug, image["image_id"])} for image in images]
+
+
+def without_annotations(images: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Des images d'une structure sans leurs annotations : ce qui dit si la structure a changé (une
+    flèche posée sur une coupe ne la change pas)."""
+    return [{key: value for key, value in image.items() if key != "annotations"} for image in images]
 
 
 def describe_image_changes(
@@ -226,6 +245,8 @@ def describe_image_changes(
             lines.append(f"Image {i + 1} : {kind_label[old['kind']]} → {kind_label[img['kind']]}")
         if old["caption"] != img["caption"]:
             lines.append(f"Image {i + 1} : légende {'modifiée' if img['caption'] else 'retirée'}")
+        if old.get("annotations", []) != img.get("annotations", []):
+            lines.append(f"Image {i + 1} : annotations modifiées")
     return lines
 
 
@@ -264,7 +285,7 @@ def entity_count(structure_type: str, structure_data: dict[str, Any]) -> int:
 def structure_image_from_input(slug: str, items: list[StructureImageInput]) -> StructureImage:
     """The :class:`StructureImage` a request points at - only once every picture really is an
     uploaded image of *this* microproject (each id is checked against the files on disk, never
-    turned into a path from anything else)."""
+    turned into a path from anything else) and its annotations are well formed."""
     if not items:
         raise InvalidInput("Collez ou choisissez au moins une image de la structure.")
     if len(items) > MAX_STRUCTURE_IMAGES:
@@ -275,5 +296,6 @@ def structure_image_from_input(slug: str, items: list[StructureImageInput]) -> S
     for item in items:
         uploaded_image(slug, item.image_id)
         caption = (item.caption or "").strip()[:200] or None
-        pictures.append(StructureImageItem(image_id=item.image_id, kind=item.kind, caption=caption))
+        annotations = clean_annotations(item.annotations)
+        pictures.append(StructureImageItem(image_id=item.image_id, kind=item.kind, caption=caption, annotations=annotations))
     return StructureImage(images=pictures)

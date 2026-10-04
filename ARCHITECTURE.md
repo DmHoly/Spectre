@@ -51,11 +51,12 @@ Le noyau ne connaît **aucune** fonctionnalité métier. Il fournit :
 | `errors.py` | `DomainError` → `Unauthorized` (401, `unauthorized` : pas de session, levée par `accounts.deps.current_user`), `NotFound` (404), `Forbidden` (403), `Conflict` (409), `PreconditionFailed` (412), `InvalidInput` (422), `UpstreamError` (502), `Unavailable` (503) ; un handler unique renvoie `{"detail": str, "code": str}`. Un plugin peut sous-classer `DomainError` pour un statut qui lui est propre (`attachments.store.TooLarge` : 413, `too_large`), le même handler s'en charge |
 | `locks.py` | `keyed_lock(namespace, key)` : un `threading.Lock` par clé (le serveur tourne en un seul processus) |
 | `fs.py` | `replace(src, dst)` : le `os.replace` de toute écriture atomique (fichier temporaire du même dossier, puis remplacement), réessayé quelques fois, à intervalles croissants, sur `PermissionError` - sous Windows, un antivirus ou un lecteur tient la cible un instant (de même pour le dossier de bibliothèque assemblé puis renommé, `library.service`) ; `write_text(path, text)` : l'écriture atomique complète (temporaire unique, `fsync`, `replace`), celle des dépôts Follow (`experiments.repository`) |
+| `annotations.py` | La forme des annotations d'une image, la même pour toute image que Spectre montre : `ImageAnnotation` (`{type: "arrow" \| "box", x, y, x2, y2, label}`, en % de l'image, champs en plus refusés) et `clean_annotations(raw, limit=100)` (positions finies, libellé de 200 caractères au plus ; 422 `invalid_annotation`). Le noyau ne sait pas à quelle image une annotation appartient : le cahier la range dans la mesure par une clé d'image, une structure en images sur l'image elle-même. Au noyau plutôt qu'à `attachments` : une image externe n'est pas une pièce jointe, et `notebook` et `structures` s'en servent tous deux |
 | `json_store.py` | Collections JSON `{"items": [...]}` d'éléments à `id`, lues et écrites sous un verrou par chemin, de façon atomique ; un élément illisible est écarté à la lecture et gardé tel quel à l'écriture (`ItemStore`, `read_json`, `write_json`, `path_lock`) - les bibliothèques de `process_library` |
 | `mail.py` | `send_email(to, subject, body)` : SMTP si `SPECTRE_SMTP_HOST`, sinon journalisation **sans le corps** hors `SPECTRE_EMAIL_DEBUG=1` |
 | `pages.py` | Service des pages HTML d'un plugin, avec la barre du haut commune à la place du marqueur `<!-- spectre:topbar -->` (fil d'Ariane déclaré dans le marqueur : `crumb-id`, `crumb-text`) : marque, navigation construite à partir des `NavEntry` de tous les plugins (une entrée peut être réservée à certaines pages : `NavEntry.pages`), place de la session |
 | `http.py` | Petits helpers HTTP : `created(response, location)`, conversion `ETag` / `If-Match` |
-| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`), `timeline.js` (axe des mois et hachures des frises : lots, thématique), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
+| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`), `timeline.js` (axe des mois et hachures des frises : lots, thématique), `annotations.js` (global `ImageAnnotations` : les annotations d'une image dessinées et numérotées, leur liste et leurs outils - § 6), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
 
 ```python
 @dataclass(frozen=True)
@@ -197,6 +198,15 @@ spectre/plugins/<plugin>/
 | `DataViz.register(component)` | `notebook/static/dataviz/core.js` | table, carte de wafer, distribution, nuage de points, courbes… |
 | `ExperiencePage.registerPanel({key, mount(el, ctx)})` (voir § 6) | `experiments/static/page.js` | les panneaux de la fiche elle-même, puis lots (`lot-picker.js`), notebook (`notebook.js`) |
 | `ctx.setNotebook(summary)` / `ExperiencePage.onNotebook(fn)`, `ctx.filterNotebook(stepId)` / `ExperiencePage.onNotebookFilter(fn)` (voir § 6) | `experiments/static/page.js` | le cahier (notebook) déclare ses entrées et leur nombre par étape ; la vue du procédé (`structure-view.js`, badges) et la conclusion (`conclusion.js`, citations) s'en servent ; un badge filtre le cahier |
+
+**Annotations d'une structure en images.** Chaque image de `StructureImage` porte un champ
+facultatif `annotations` (la forme de `kernel.annotations`) : une image enregistrée avant se relit
+sans, et une image sans annotation s'enregistre sans la clé (l'objet garde la forme d'avant). Le
+détail d'une étude renvoie toujours `annotations` (une liste) sur chaque image de
+`structure_images`. Des annotations ne changent pas la structure : `PUT .../structure-images` garde la
+révision, et une évolution qui ne change que des annotations (mêmes images, mêmes types et
+légendes) la garde aussi (`kinds.without_annotations`) ; le résumé du diff dit « Image n :
+annotations modifiées ».
 
 **Clés de type de structure figées.** `ProcessLot` et `StructureImage` surchargent
 `registry_key()` pour renvoyer leur chaîne historique (`spectre.core.structures.…`). Follow
@@ -541,7 +551,7 @@ Droits d'écriture :
 | *(nouveau)* | `GET …/experiments/{exp}/versions/{version_id}` (une version de l'histoire de la piste, `ETag`) |
 | `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 + `Location` vers la version ; **200 sans `Location`** si rien n'a changé (§ 4) ; une campagne y est refusée (422 `campaign_is_a_new_line`) : elle se lance avec `from_version` |
 | `POST …/{ref}/evoluer-image` | idem, avec `structure: {kind: "images", …}` |
-| `POST …/{ref}/dessin` | `PUT …/experiments/{exp}/structure-images` |
+| `POST …/{ref}/dessin` | `PUT …/experiments/{exp}/structure-images` (toute la planche, dans l'ordre : `{image_id, kind, caption, annotations}` ; écriture légère, même révision de structure - c'est aussi par elle que se posent les annotations d'une image) |
 | `POST …/{ref}/conclure` | `PUT …/experiments/{exp}/conclusion` (le verdict d'un objectif peut citer des entrées du cahier : `evidence_ids`, des ids d'entrées de la pointe, sinon 422 `notebook_entry_not_found`) |
 | `POST …/{ref}/statut` | `PUT …/experiments/{exp}/status` `{status, hold_reason}` |
 | `POST …/{ref}/etiquettes` | `PUT …/experiments/{exp}/tags` `{tags}` |
@@ -596,13 +606,17 @@ in_report, created_at, created_by, updated_at, updated_by}`, plus, à la lecture
     de l'instantané : `hook`, `hook_title`, `wafers`, `source`, `fetched_at`, `row_count`) ;
   - `manual` (zéro ou plus ; une mesure vide marque l'étape où elle a été faite) : `{step_id, value:
     {number, unit, name} | null, text, table: {columns, rows} | null, attachments: [{id, caption,
-    filename, content_type, size, url}], links: [{label, url}], annotations: [{attachment_id, type:
-    "arrow" | "box", x, y, x2, y2, label}], external_images: [{index, name, path, caption, status,
-    url}]}`. À l'écriture, `attachments` accepte des ids ou
+    filename, content_type, size, url}], links: [{label, url}], annotations: [{attachment_id |
+    external_image, type: "arrow" | "box", x, y, x2, y2, label}], external_images: [{index, name,
+    path, caption, status, url}]}`. À l'écriture, `attachments` accepte des ids ou
     `{id, caption}` (des fichiers `purpose=notebook` de ce µprojet, 12 au plus) ; `links` n'accepte
     que `http`/`https` (10 au plus, 422 `invalid_link`) ; un tableau a de 1 à 50 colonnes, 1000
     lignes au plus, une cellule par colonne (texte de 500 caractères au plus, nombre fini, booléen
-    ou vide ; 422 `invalid_table`) ; une annotation désigne une image de la mesure.
+    ou vide ; 422 `invalid_table`) ; une annotation (la forme du noyau, `kernel.annotations`, 100
+    au plus par mesure) désigne une image de la mesure par une clé qui ne bouge pas quand on
+    réordonne ses images : un fichier image (`attachment_id`) ou une image externe
+    (`external_image` : son chemin, unique dans la mesure) - l'un ou l'autre, sinon 422 ; une image
+    retirée de la mesure part avec ses annotations (la page ne les renvoie plus).
 - `objective` : un objectif de la version (422 sinon) - le lien d'une donnée à un objectif.
 
 | Avant | Après |
@@ -726,7 +740,7 @@ Supprimée : `/microprojets/{slug}/graphe`.
     de leur page ;
   - le noyau expose ses helpers sans préfixe : `api`, `apiErrorMessage` (`api.js`), `escapeHtml`,
     `initials`, `formatDate`, `timeAgo`, `formatDuration`, `elapsedLabel`, `routeParams` (`ui.js`),
-    `timeline*` (`timeline.js`) ;
+    `timeline*` (`timeline.js`), `ImageAnnotations` (`annotations.js`) ;
   - des **bibliothèques de widgets** partagées entre plugins exposent plusieurs fonctions de
     premier niveau : `wafers/fdl.js` (`normalizeFdl`, `fdlChipsHtml`, `fdlsOfTracking`,
     `mountFdlField`, `plateUrl`, `waferKey`, `waferSuggestions`), `experiments/lineage-graph.js`
@@ -770,6 +784,20 @@ Supprimée : `/microprojets/{slug}/graphe`.
   µprojet, le titre proposé « A + B », l'intention, l'hypothèse et la nouvelle plaque - lasermark,
   emplacement, FDL, comme au lancement -, puis la fiche de la nouvelle étude ; suppression), `report.js`. Ceux des autres plugins suivent :
   `lots/static/lot-picker.js`, `notebook/static/notebook.js`.
+- **Les annotations d'une image** : un seul composant, `kernel/static/annotations.js` (global
+  `ImageAnnotations`), dans le noyau parce qu'il ne connaît aucun plugin ni aucune pièce jointe - il
+  reçoit une `<img>` et des formes, et rend la liste à enregistrer. Lecture seule sans rien monter :
+  une `<img>` marquée `ImageAnnotations.attr(annotations)` voit ses annotations dessinées à son
+  chargement (vignettes du graphe et de l'atlas, planche du constructeur `image-drop.js`, aperçus de
+  la boîte du cahier). `ImageAnnotations.mount(host, {img, annotations, editable, onSave, name})` :
+  les annotations numérotées, leur liste (les libellés) et, pour un éditeur, les outils (flèche,
+  cadre au cliquer-glisser, libellé modifiable, retrait, « Enregistrer » / « Annuler ») - le cahier
+  (`notebook.js`, chaque image d'une mesure) et la planche d'une structure en images
+  (`structure-view.js`, `PUT .../structure-images`) s'en servent. Le dessin est un SVG posé sur
+  l'image, au repère aux proportions de l'image (`preserveAspectRatio` « meet » : il épouse aussi une
+  image en `object-fit: contain`) ; l'image s'enveloppe dans `.annot-frame` (`kernel.css`), ou l'hôte
+  pose le dessin par une règle (`.img-tile__frame > .annot-layer`). Le rapport garde dessin et
+  libellés (les outils et les champs portent `data-report-hide`).
 - `ctx` est un objet explicite, le même d'un rechargement à l'autre : `microprojectSlug`,
   `experimentId`, `versionId`, `isTip` (la pointe, ouverte sans `?version=`), `role`, `canEdit`
   (éditeur sur la pointe), `detail`, `reload()`, `showError(err, box?)` ; s'y ajoutent, pour ne pas
@@ -788,7 +816,7 @@ Supprimée : `/microprojets/{slug}/graphe`.
   les entrées sans mesure à cette étape, à l'écran seulement.
 - **Le cahier, côté page** (`notebook/static/`) : `notebook.js` (le panneau : chaque entrée avec son
   stepper statique et ses mesures côte à côte, les entrées d'autres plaques repliées, les
-  annotations des images, les images externes d'une mesure - leur chemin affiché, et ce qui empêche
+  annotations de chaque image, téléversée ou externe (`ImageAnnotations`), les images externes d'une mesure - leur chemin affiché, et ce qui empêche
   de montrer une image -, le filtre), `entry-dialog.js` (global `NotebookEntryDialog`, la boîte
   d'ajout et d'édition : type, plaques, stepper à cocher, une mesure par bulle, tableau collé en TSV,
   images par `mountImageDrop` avec `purpose: "notebook"`, images externes - choisies dans un

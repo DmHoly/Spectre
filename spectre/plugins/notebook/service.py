@@ -6,9 +6,11 @@ repris dans son rapport. Une entrée a deux types (``kind``), une seule forme :
   ``notebook/static/dataviz/``) et ses réglages (``options``, libres : c'est le composant qui les
   lit ; le serveur ne connaît pas les composants) ;
 - ``manual`` : ce que PRISM ne peut pas prévoir - une valeur mesurée, un texte, un tableau collé,
-  des fichiers (images annotées, documents), des images externes (TEM, scans : référencées à leur
+  des fichiers (images, documents), des images externes (TEM, scans : référencées à leur
   emplacement sur le disque du serveur, sans être copiées, sous la politique du plugin
-  external_images, et servies par l'entrée et leur rang, jamais par un chemin reçu) et des liens.
+  external_images, et servies par l'entrée et leur rang, jamais par un chemin reçu), les
+  annotations de ses images (fichiers et images externes, désignés par leur id ou leur chemin) et
+  des liens.
 
 ``{id, kind, title, note, objective, interpretation, wafers, measurements, in_report, created_at,
 created_by, updated_at, updated_by}`` : ``wafers``, les plaques mesurées (clés de wafer ; vide :
@@ -45,6 +47,7 @@ from urllib.parse import quote
 
 import follow
 
+from ...kernel.annotations import clean_annotations
 from ...kernel.errors import InvalidInput, NotFound
 from ..attachments.store import NOTEBOOK_TYPES, content_url, uploaded_file
 from ..experiments import service as experiments
@@ -52,7 +55,7 @@ from ..experiments.entities import compact as wafer_key
 from ..experiments.repository import get_repository
 from ..external_images import service as external_images
 from . import legacy, snapshots
-from .schemas import AttachmentRef, EntryInput, EntryUpdate, ExternalImageInput, LinkInput, MeasurementInput, TableInput, is_web_link
+from .schemas import AnnotationInput, AttachmentRef, EntryInput, EntryUpdate, ExternalImageInput, LinkInput, MeasurementInput, TableInput, is_web_link
 
 MAX_ENTRIES = 200
 MAX_MEASUREMENTS = 30
@@ -317,34 +320,49 @@ def _attachments(slug: str, raw: list[AttachmentRef], known: dict[str, dict[str,
     return attachments
 
 
-def _external_images(raw: list[ExternalImageInput], known: set[str]) -> list[dict[str, Any]]:
+def _external_images(raw: list[ExternalImageInput], known: set[str]) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """Les images externes d'une mesure : chacune sous un dossier autorisé, dans un format que le
     navigateur affiche et présente sur le disque (:func:`spectre.plugins.external_images.service.checked_image`),
     ou déjà sur l'entrée (``known`` : une image d'un ancien jeu reste, même déplacée depuis) ; sans
-    doublon."""
+    doublon. Rend aussi, pour les annotations, chaque chemin reçu -> le chemin rangé (le même, ou
+    celui que la politique a lu)."""
     if len(raw) > MAX_EXTERNAL_IMAGES:
         raise InvalidInput(f"{MAX_EXTERNAL_IMAGES} images externes au maximum par mesure.", code="invalid_external_images")
     images: list[dict[str, Any]] = []
+    paths: dict[str, str] = {}
     for image in raw:
         path = image.path if image.path in known else external_images.checked_image(image.path)
+        paths[image.path] = paths[path] = path
         if all(kept["path"] != path for kept in images):
             images.append({"path": path, "caption": _clean_text(image.caption, 200)})
-    return images
+    return images, paths
 
 
 def _finite(*numbers: float | None) -> bool:
     return all(number is None or math.isfinite(number) for number in numbers)
 
 
-def _annotations(raw: list[Any], attachments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _annotations(raw: list[AnnotationInput], attachments: list[dict[str, Any]], external: dict[str, str]) -> list[dict[str, Any]]:
+    """Les annotations des images d'une mesure : la forme et les bornes du noyau
+    (:func:`spectre.kernel.annotations.clean_annotations`), chacune sur une image de la mesure - un
+    fichier image (``attachment_id``) ou une image externe (``external_image``, son chemin ;
+    ``external`` : chaque chemin reçu -> le chemin rangé). Une annotation d'un fichier se range comme
+    avant, ``{attachment_id, type, x, y, x2, y2, label}`` ; celle d'une image externe porte
+    ``external_image`` à la place."""
     images = {a["id"] for a in attachments if (a.get("content_type") or "").startswith("image/")}
-    if len(raw) > MAX_ANNOTATIONS:
-        raise InvalidInput(f"{MAX_ANNOTATIONS} annotations au maximum par mesure.", code="invalid_annotation")
-    if not all(_finite(a.x, a.y, a.x2, a.y2) for a in raw):
-        raise InvalidInput("Une annotation a une position qui n'est pas un nombre fini.", code="invalid_annotation")
-    if any(annotation.attachment_id not in images for annotation in raw):
-        raise InvalidInput("Une annotation désigne une image qui n'est pas dans cette mesure.", code="invalid_annotation")
-    return [{**annotation.model_dump(), "label": _clean_text(annotation.label, 200)} for annotation in raw]
+    shapes = clean_annotations(raw, limit=MAX_ANNOTATIONS)
+    annotations = []
+    for annotation, shape in zip(raw, shapes):
+        if annotation.attachment_id is not None:
+            if annotation.attachment_id not in images:
+                raise InvalidInput("Une annotation désigne une image qui n'est pas dans cette mesure.", code="invalid_annotation")
+            annotations.append({"attachment_id": annotation.attachment_id, **shape})
+        else:
+            path = external.get(annotation.external_image or "")
+            if path is None:
+                raise InvalidInput("Une annotation désigne une image externe qui n'est pas dans cette mesure.", code="invalid_annotation")
+            annotations.append({"external_image": path, **shape})
+    return annotations
 
 
 def _measurements(
@@ -390,6 +408,7 @@ def _measurements(
         if value is not None and not _finite(value.number):
             raise InvalidInput("La valeur mesurée n'est pas un nombre fini.", code="invalid_measurement")
         attachments = _attachments(slug, measurement.attachments, known_files)
+        images, image_paths = _external_images(measurement.external_images, known_images)
         stored = {
             "step_id": measurement.step_id,
             "value": {"number": value.number, "unit": _clean_text(value.unit, 40), "name": _clean_text(value.name, 120)} if value else None,
@@ -397,10 +416,10 @@ def _measurements(
             "table": _table(measurement.table) if measurement.table else None,
             "attachments": attachments,
             "links": _links(measurement.links),
-            "annotations": _annotations(measurement.annotations, attachments),
+            "annotations": _annotations(measurement.annotations, attachments, image_paths),
         }
         # enregistrées seulement s'il y en a : une mesure sans image externe garde la forme d'avant
-        if images := _external_images(measurement.external_images, known_images):
+        if images:
             stored["external_images"] = images
         measurements.append(stored)
     return measurements
