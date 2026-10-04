@@ -6,7 +6,9 @@ repris dans son rapport. Une entrée a deux types (``kind``), une seule forme :
   ``notebook/static/dataviz/``) et ses réglages (``options``, libres : c'est le composant qui les
   lit ; le serveur ne connaît pas les composants) ;
 - ``manual`` : ce que PRISM ne peut pas prévoir - une valeur mesurée, un texte, un tableau collé,
-  des fichiers (images annotées, documents) et des liens.
+  des fichiers (images annotées, documents), des images externes (TEM, scans : référencées à leur
+  emplacement sur le disque du serveur, sans être copiées, sous la politique du plugin
+  external_images, et servies par l'entrée et leur rang, jamais par un chemin reçu) et des liens.
 
 ``{id, kind, title, note, objective, interpretation, wafers, measurements, in_report, created_at,
 created_by, updated_at, updated_by}`` : ``wafers``, les plaques mesurées (clés de wafer ; vide :
@@ -23,9 +25,10 @@ Les entrées sont rangées dans les métadonnées de l'étude
 (:data:`spectre.plugins.experiments.service.NOTEBOOK_KEY`), reportées de version en version ; chaque
 changement est une écriture sur la piste (:func:`spectre.plugins.experiments.service.amend`,
 ``If-Match`` compris). Les données d'avant (vues de l'ancien cahier, preuves) sont converties à la
-lecture (:mod:`.legacy`) ; la première écriture dans le cahier enregistre le cahier converti et
-retire les anciennes clés de la version qu'elle crée - y compris la liste des preuves Follow : une
-entrée garde l'id de la preuve dont elle vient, que la conclusion cite toujours.
+lecture (:mod:`.legacy`), comme les jeux de l'ancienne galerie d'images externes ; la première
+écriture dans le cahier enregistre le cahier converti et retire les anciennes clés de la version
+qu'elle crée - y compris la liste des preuves Follow : une entrée garde l'id de la preuve ou du jeu
+dont elle vient, que la conclusion cite toujours.
 """
 
 from __future__ import annotations
@@ -36,7 +39,9 @@ import math
 import re
 import secrets
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import follow
 
@@ -45,8 +50,9 @@ from ..attachments.store import NOTEBOOK_TYPES, content_url, uploaded_file
 from ..experiments import service as experiments
 from ..experiments.entities import compact as wafer_key
 from ..experiments.repository import get_repository
+from ..external_images import service as external_images
 from . import legacy, snapshots
-from .schemas import AttachmentRef, EntryInput, EntryUpdate, LinkInput, MeasurementInput, TableInput, is_web_link
+from .schemas import AttachmentRef, EntryInput, EntryUpdate, ExternalImageInput, LinkInput, MeasurementInput, TableInput, is_web_link
 
 MAX_ENTRIES = 200
 MAX_MEASUREMENTS = 30
@@ -55,6 +61,7 @@ MAX_TEXT = 20000
 MAX_OPTIONS_SIZE = 20000
 MAX_LINKS = 10
 MAX_ATTACHMENTS = 12
+MAX_EXTERNAL_IMAGES = 100
 MAX_ANNOTATIONS = 100
 MAX_TABLE_COLUMNS = 50
 MAX_TABLE_ROWS = 1000
@@ -62,7 +69,7 @@ MAX_CELL = 500
 MAX_TABLE_SIZE = 200000
 _COMPONENT_RE = re.compile(r"^[a-z0-9][a-z0-9.\-]{1,48}$")
 _PRISM_FIELDS = ("snapshot_id", "component", "options")
-_MANUAL_FIELDS = ("value", "text", "table", "attachments", "links", "annotations")
+_MANUAL_FIELDS = ("value", "text", "table", "attachments", "external_images", "links", "annotations")
 
 
 # -- lecture ---------------------------------------------------------------------------------------
@@ -87,10 +94,14 @@ def tracked_wafers(version: follow.Experiment) -> set[str]:
 
 
 class _Reading:
-    """Ce qu'une lecture du cahier d'une version sait d'elle : ses plaques et ses étapes."""
+    """Ce qu'une lecture du cahier d'une version sait d'elle : ses plaques et ses étapes. La version
+    est celle de la pointe de ``experiment_id``, sauf si elle a été demandée (``version_id``) : les
+    images externes se lisent alors sur elle."""
 
-    def __init__(self, slug: str, repo: follow.Repository, version: follow.Experiment) -> None:
+    def __init__(self, slug: str, experiment_id: str, repo: follow.Repository, version: follow.Experiment, version_id: str | None = None) -> None:
         self.slug = slug
+        self.experiment_id = experiment_id
+        self.version_id = version_id
         self.version = version
         self.wafers = tracked_wafers(version)
         self.steps = set(experiments.step_ids_of(repo, version))
@@ -102,20 +113,33 @@ class _Reading:
 
     def view(self, entry: dict[str, Any]) -> dict[str, Any]:
         """Une entrée telle que l'API la montre : ``applies``, ``step_retired`` sur chaque mesure,
-        l'``url`` de chaque fichier."""
+        l'``url`` de chaque fichier ; pour une mesure manuelle, ses ``external_images`` (une liste,
+        vide si elle n'en a pas), chacune avec son rang dans l'entrée (``index``), son nom, son état
+        (:func:`spectre.plugins.external_images.service.image_status`) et l'``url`` de ses octets."""
         shown = copy.deepcopy(entry)
         shown["applies"] = self.applies(entry)
+        base = f"/api/microprojects/{self.slug}/experiments/{self.experiment_id}/notebook-entries/{quote(entry['id'], safe='')}/external-images"
+        query = f"?version={quote(self.version_id)}" if self.version_id else ""
+        index = 0
         for measurement in shown.get("measurements") or []:
             step_id = measurement.get("step_id")
             measurement["step_retired"] = step_id is not None and step_id not in self.steps
             for attachment in measurement.get("attachments") or []:
                 attachment["url"] = content_url(self.slug, attachment["id"])
+            if shown.get("kind") != "manual":
+                continue
+            images = measurement.get("external_images") or []
+            for image in images:
+                path = image["path"]
+                image.update(index=index, name=Path(path).name, status=external_images.image_status(path), url=f"{base}/{index}{query}")
+                index += 1
+            measurement["external_images"] = images
         return shown
 
 
 def _reading(slug: str, experiment_id: str, version_id: str | None) -> _Reading:
     repo = get_repository(slug)
-    return _Reading(slug, repo, experiments.version_of(repo, experiment_id, version_id))
+    return _Reading(slug, experiment_id, repo, experiments.version_of(repo, experiment_id, version_id), version_id)
 
 
 def _selected(reading: _Reading, *, step: str | None, wafer: str | None, kind: str | None) -> list[dict[str, Any]]:
@@ -164,6 +188,18 @@ def _index(notebook: list[dict[str, Any]], entry_id: str) -> int:
 def get_entry(slug: str, experiment_id: str, entry_id: str, version_id: str | None = None) -> tuple[follow.Experiment, dict[str, Any]]:
     reading = _reading(slug, experiment_id, version_id)
     return reading.version, reading.view(reading.entries[_index(reading.entries, entry_id)])
+
+
+def external_image_file(slug: str, experiment_id: str, entry_id: str, index: int, version_id: str | None = None) -> Path:
+    """Le fichier de l'image externe de rang ``index`` de l'entrée ``entry_id`` (dans l'ordre de ses
+    mesures) : son chemin est lu dans le cahier de la version, jamais reçu du client, et revérifié
+    par la politique des images externes à chaque lecture."""
+    reading = _reading(slug, experiment_id, version_id)
+    entry = reading.entries[_index(reading.entries, entry_id)]
+    paths = [image["path"] for m in entry.get("measurements") or [] for image in m.get("external_images") or []] if entry.get("kind") == "manual" else []
+    if not 0 <= index < len(paths):
+        raise NotFound("Image introuvable dans cette entrée du cahier.", code="image_not_found")
+    return external_images.readable_file(paths[index])
 
 
 # -- validation ------------------------------------------------------------------------------------
@@ -280,6 +316,21 @@ def _attachments(slug: str, raw: list[AttachmentRef], known: dict[str, dict[str,
     return attachments
 
 
+def _external_images(raw: list[ExternalImageInput], known: set[str]) -> list[dict[str, Any]]:
+    """Les images externes d'une mesure : chacune sous un dossier autorisé, dans un format que le
+    navigateur affiche et présente sur le disque (:func:`spectre.plugins.external_images.service.checked_image`),
+    ou déjà sur l'entrée (``known`` : une image d'un ancien jeu reste, même déplacée depuis) ; sans
+    doublon."""
+    if len(raw) > MAX_EXTERNAL_IMAGES:
+        raise InvalidInput(f"{MAX_EXTERNAL_IMAGES} images externes au maximum par mesure.", code="invalid_external_images")
+    images: list[dict[str, Any]] = []
+    for image in raw:
+        path = image.path if image.path in known else external_images.checked_image(image.path)
+        if all(kept["path"] != path for kept in images):
+            images.append({"path": path, "caption": _clean_text(image.caption, 200)})
+    return images
+
+
 def _finite(*numbers: float | None) -> bool:
     return all(number is None or math.isfinite(number) for number in numbers)
 
@@ -310,6 +361,7 @@ def _measurements(
     known_steps = set(steps) | {m.get("step_id") for m in previous}
     known_snapshots = {m["snapshot_id"]: m.get("snapshot") for m in previous if m.get("snapshot_id") and m.get("snapshot")}
     known_files = {a["id"]: a for m in previous for a in m.get("attachments") or []}
+    known_images = {image["path"] for m in previous for image in m.get("external_images") or []}
     measurements = []
     for measurement in raw:
         if measurement.step_id is not None and measurement.step_id not in known_steps:
@@ -337,17 +389,19 @@ def _measurements(
         if value is not None and not _finite(value.number):
             raise InvalidInput("La valeur mesurée n'est pas un nombre fini.", code="invalid_measurement")
         attachments = _attachments(slug, measurement.attachments, known_files)
-        measurements.append(
-            {
-                "step_id": measurement.step_id,
-                "value": {"number": value.number, "unit": _clean_text(value.unit, 40), "name": _clean_text(value.name, 120)} if value else None,
-                "text": _clean_text(measurement.text, MAX_TEXT),
-                "table": _table(measurement.table) if measurement.table else None,
-                "attachments": attachments,
-                "links": _links(measurement.links),
-                "annotations": _annotations(measurement.annotations, attachments),
-            }
-        )
+        stored = {
+            "step_id": measurement.step_id,
+            "value": {"number": value.number, "unit": _clean_text(value.unit, 40), "name": _clean_text(value.name, 120)} if value else None,
+            "text": _clean_text(measurement.text, MAX_TEXT),
+            "table": _table(measurement.table) if measurement.table else None,
+            "attachments": attachments,
+            "links": _links(measurement.links),
+            "annotations": _annotations(measurement.annotations, attachments),
+        }
+        # enregistrées seulement s'il y en a : une mesure sans image externe garde la forme d'avant
+        if images := _external_images(measurement.external_images, known_images):
+            stored["external_images"] = images
+        measurements.append(stored)
     return measurements
 
 
@@ -357,9 +411,10 @@ def _measurements(
 def _store(builder: follow.ExperimentBuilder, notebook: list[dict[str, Any]]) -> None:
     """Enregistre ``notebook`` dans la version en cours, au format actuel, et en retire les données
     d'avant qu'il reprend (vues de l'ancien cahier, preuves Follow et leurs métadonnées, images des
-    preuves) - aucune ancienne version n'est touchée."""
+    preuves, jeux de l'ancienne galerie d'images externes) - aucune ancienne version n'est touchée."""
     builder.metadata[experiments.NOTEBOOK_KEY] = notebook
     builder.metadata.pop(experiments.LEGACY_NOTEBOOK_KEY, None)
+    builder.metadata.pop(experiments.LEGACY_IMAGE_SETS_KEY, None)
     for key in experiments.LEGACY_EVIDENCE_KEYED_METADATA:
         builder.metadata.pop(key, None)
     if experiments.ATTACHMENTS_KEY in builder.metadata:
@@ -407,7 +462,7 @@ def add_entry(slug: str, experiment_id: str, body: EntryInput, *, author: str, e
         _store(builder, [*notebook, added])
 
     version = experiments.amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
-    return version, _Reading(slug, get_repository(slug), version).view(added)
+    return version, _Reading(slug, experiment_id, get_repository(slug), version).view(added)
 
 
 def update_entry(
@@ -448,7 +503,7 @@ def update_entry(
         _store(builder, notebook)
 
     version = experiments.amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
-    reading = _Reading(slug, get_repository(slug), version)
+    reading = _Reading(slug, experiment_id, get_repository(slug), version)
     return version, reading.view(reading.entries[_index(reading.entries, entry_id)])
 
 

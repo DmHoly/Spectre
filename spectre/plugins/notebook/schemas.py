@@ -58,6 +58,14 @@ class AttachmentRef(BaseModel):
         return {"id": value} if isinstance(value, str) else value
 
 
+class ExternalImageInput(BaseModel):
+    """Une image externe (TEM, scan) référencée à son emplacement sur le disque du serveur, sans être
+    copiée : son chemin absolu, sous un dossier autorisé (plugin external_images), et une légende."""
+
+    path: str
+    caption: str | None = None
+
+
 class AnnotationInput(BaseModel):
     """Une flèche ou un cadre posé sur une image de la mesure, en % de l'image."""
 
@@ -74,7 +82,7 @@ class MeasurementInput(BaseModel):
     """Une mesure de l'entrée, à une étape du procédé (``step_id``, ``None`` : non située). Une
     entrée PRISM y met une vue d'un instantané (``snapshot_id``, ``component``, ``options``) ; une
     entrée manuelle, au choix, une valeur, un texte, un tableau, des fichiers (et leurs
-    annotations) et des liens."""
+    annotations), des images externes et des liens."""
 
     step_id: str | None = None
     snapshot_id: str | None = None
@@ -84,6 +92,7 @@ class MeasurementInput(BaseModel):
     text: str | None = None
     table: TableInput | None = None
     attachments: list[AttachmentRef] = []
+    external_images: list[ExternalImageInput] = []
     links: list[LinkInput] = []
     annotations: list[AnnotationInput] = []
 

@@ -119,6 +119,7 @@
       text: m.text || null,
       table: m.table || null,
       attachments: (m.attachments || []).map((a) => ({ id: a.id, caption: a.caption || null })),
+      external_images: (m.external_images || []).map((i) => ({ path: i.path, caption: i.caption || null })),
       links: (m.links || []).map((l) => ({ url: l.url, label: l.label || null })),
       annotations: (m.annotations || []).filter((a) => images.has(a.attachment_id) && (a.type === "arrow" || a.type === "box")),
     };
@@ -186,6 +187,28 @@
       </figure>`;
   }
 
+  // Une image externe (TEM, scan) : référencée à son emplacement sur le serveur, servie par l'entrée
+  // et son rang (`url`) ; son chemin reste affiché, et une image que le serveur ne peut pas montrer
+  // dit pourquoi.
+  const EXTERNAL_STATUS = {
+    missing: "Fichier déplacé ou supprimé",
+    unsupported: "Format que le navigateur n'affiche pas",
+    forbidden: "Hors des dossiers autorisés",
+  };
+
+  function externalImageHtml(image) {
+    const shown =
+      image.status === "ok"
+        ? `<img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.caption || image.name || "Image externe")}" draggable="false">`
+        : `<div class="nb-figure__unavailable">${escapeHtml(EXTERNAL_STATUS[image.status] || "Image indisponible")}</div>`;
+    return `
+      <figure class="nb-figure nb-figure--external">
+        <div class="nb-figure__frame">${shown}</div>
+        ${image.caption ? `<figcaption class="nb-figure__caption">${escapeHtml(image.caption)}</figcaption>` : ""}
+        <div class="nb-figure__path" title="${escapeHtml(image.path)}">${escapeHtml(image.path)}</div>
+      </figure>`;
+  }
+
   function manualContentHtml(entry, m, editable) {
     const value = m.value
       ? `<div class="nb-value">${m.value.name ? `<span class="nb-value__name">${escapeHtml(m.value.name)}</span>` : ""}<span class="nb-value__number">${escapeHtml(String(m.value.number))}</span>${
@@ -202,6 +225,10 @@
     const images = attachments.filter((a) => (a.content_type || "").startsWith("image/"));
     const documents = attachments.filter((a) => !(a.content_type || "").startsWith("image/"));
     const figures = images.length ? `<div class="nb-figures" data-count="${Math.min(images.length, 2)}">${images.map((a) => imageHtml(entry, m, a, editable)).join("")}</div>` : "";
+    const external = m.external_images || [];
+    const externalFigures = external.length
+      ? `<div class="nb-figures" data-count="${Math.min(external.length, 2)}">${external.map(externalImageHtml).join("")}</div>`
+      : "";
     const files = documents.length
       ? `<ul class="nb-files">${documents
           .map(
@@ -218,7 +245,7 @@
           )
           .join("")}</ul>`
       : "";
-    const body = value + text + table + figures + files + links;
+    const body = value + text + table + figures + externalFigures + files + links;
     return body || `<p class="help" style="margin:0;">Mesure faite à cette étape, sans contenu joint.</p>`;
   }
 
@@ -325,7 +352,8 @@
           });
       });
     }
-    article.querySelectorAll(".nb-figure").forEach((figure) => wireFigure(figure, entry));
+    // les images téléversées seulement : une image externe ne porte pas d'annotations
+    article.querySelectorAll(".nb-figure[data-attachment]").forEach((figure) => wireFigure(figure, entry));
     if (ctx.canEdit) wireEntry(article, entry, position);
   }
 

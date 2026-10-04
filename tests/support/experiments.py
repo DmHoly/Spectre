@@ -124,10 +124,23 @@ def replace_structure_images(client: Any, slug: str, ref: str, images: list[dict
     return assert_ok(_put(client, slug, ref, "structure-images", {"images": images}, if_match))
 
 
-def merge(client: Any, slug: str, ref: str, other_experiment_id: str, *, if_match: str | None = None) -> dict:
-    """POST /merges : réunit l'autre piste dans celle-ci."""
-    response = client.post(f"{experiment_url(slug, ref)}/merges", json={"other_experiment_id": other_experiment_id}, headers=_headers(if_match))
-    return assert_created(response)
+def combine_body(
+    first: str | dict, second: str | dict, *, title: str = "Combinée", intent: str = "Réunir", entities: list[dict] | None = None, **fields: Any
+) -> dict:
+    """Le corps d'une combinaison : deux études (une piste, ou ``{experiment_id, version_id}``), et ce
+    qu'un lancement demande - une nouvelle plaque, W9 sauf mention contraire."""
+    sources = [{"experiment_id": source} if isinstance(source, str) else source for source in (first, second)]
+    return {"merge_of": sources, "title": title, "intent": intent, "entities": [{"sample_id": "W9"}] if entities is None else entities, **fields}
+
+
+def post_combine(client: Any, slug: str, first: str | dict, second: str | dict, **fields: Any) -> Any:
+    """POST /experiments avec ``merge_of``, tel quel (la réponse, pour en vérifier un refus)."""
+    return client.post(experiments_url(slug), json=combine_body(first, second, **fields))
+
+
+def combine(client: Any, slug: str, first: str | dict, second: str | dict, **fields: Any) -> dict:
+    """Combine deux études en une nouvelle (voir :func:`combine_body`) - renvoie la nouvelle étude."""
+    return assert_created(post_combine(client, slug, first, second, **fields))
 
 
 def delete_experiment(client: Any, slug: str, ref: str, *, if_match: str | None = None) -> Any:
@@ -207,3 +220,18 @@ def experiment_stats(client: Any, **filters: Any) -> list[dict]:
 def experiment_timeline(client: Any, **filters: Any) -> list[dict]:
     """GET /api/experiment-timeline (``area``, ``thematic``) - la frise, une ligne par µprojet."""
     return assert_ok(client.get("/api/experiment-timeline", params=filters))
+
+
+def write_old_merge(slug: str, line: str, other: str) -> str:
+    """Une fusion telle que l'ancien code l'écrivait (avant qu'une combinaison crée une nouvelle
+    piste) : une version de ``line`` à deux parents, sa pointe et celle de ``other`` - hors de
+    Spectre, avec Follow seul. Renvoie l'id de la version."""
+    import follow
+
+    from spectre.plugins.experiments import repository
+
+    outside = follow.Repository(repository.follow_repo_path(slug))
+    tip = outside.get(outside.branches[line])
+    builder = outside.merge(tip.id, outside.branches[other], branch=line, title=tip.title, intent=tip.intent, hypothesis=tip.hypothesis, author="Ada")
+    builder.metadata = dict(tip.metadata)
+    return builder.commit().id

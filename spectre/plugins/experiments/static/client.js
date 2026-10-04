@@ -9,6 +9,7 @@ const experimentsApi = {
     return api.get(api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments`, params));
   },
   // body : {structure: {kind: "process" | "images" | "campaign", ...}, title, intent, ..., from_version?, branch?}
+  // ou, pour combiner deux études en une nouvelle : {merge_of: [{experiment_id, version_id?}, {...}], title, intent, entities, ...}
   create(microprojectSlug, body) {
     return api.post(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments`, body);
   },
@@ -88,14 +89,6 @@ const experimentsApi = {
     return api.put(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/entities`, body, {
       ifMatch: versionId && `"${versionId}"`,
     });
-  },
-  // réunit la piste `otherExperimentId` dans celle-ci
-  merge(microprojectSlug, experimentId, versionId, otherExperimentId) {
-    return api.post(
-      `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/merges`,
-      { other_experiment_id: otherExperimentId },
-      { ifMatch: versionId && `"${versionId}"` }
-    );
   },
   // body : {experiment_id, version_id?, name?} -> la ref ({name, names, version_id, ...})
   createRef(microprojectSlug, body) {

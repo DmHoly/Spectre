@@ -5,7 +5,7 @@ défaut (et celles qui portent une ref, les fusions, le début de chaque piste),
 
 from __future__ import annotations
 
-from support.experiments import create_ref, evolve, launch, merge, structure_history, tag
+from support.experiments import combine, create_ref, evolve, launch, structure_history, tag, write_old_merge
 from support.microprojects import join_as, signup_with_microproject
 from support.structures import deposition, etch, steps
 
@@ -108,23 +108,45 @@ def test_a_fork_starts_a_new_lane_even_without_a_structural_change(client):
     assert {"parent": minor["version_id"], "child": fork["version_id"], "kind": "fork"} in body["edges"]
 
 
-def test_a_merge_is_a_node_with_a_merge_edge(client):
+def test_a_combination_is_a_new_lane_with_two_merge_edges(client):
     slug = _microproject(client)
     a = launch(client, slug, title="A", intent="Depart", steps=steps(20))
     b = launch(
         client, slug, title="B", intent="Variante", steps=steps(40),
         from_version={"experiment_id": a["id"], "version_id": a["version_id"]},
     )
-    merged = merge(client, slug, a["id"], b["id"])
+    c = combine(client, slug, a["id"], b["id"], title="C")
 
     body = structure_history(client, slug)
-    node = next(node for node in body["nodes"] if node["version_id"] == merged["version_id"])
+    assert [lane["experiment_id"] for lane in body["lanes"]] == [a["id"], b["id"], c["id"]]
+    node = next(node for node in body["nodes"] if node["version_id"] == c["version_id"])
+    assert node["is_merge"] is True and node["lane"] == 2 and node["label"] == "v1.0.0"
+    edges = {(e["parent"], e["child"], e["kind"]) for e in body["edges"]}
+    assert edges == {
+        (a["version_id"], b["version_id"], "fork"),
+        (a["version_id"], c["version_id"], "merge"),
+        (b["version_id"], c["version_id"], "merge"),
+    }
+
+
+def test_an_old_merge_on_its_line_keeps_a_parent_edge_and_a_merge_edge(client):
+    # avant, combiner B dans A ajoutait à A une version à deux parents
+    slug = _microproject(client)
+    a = launch(client, slug, title="A", intent="Depart", steps=steps(20))
+    b = launch(
+        client, slug, title="B", intent="Variante", steps=steps(40),
+        from_version={"experiment_id": a["id"], "version_id": a["version_id"]},
+    )
+    merged = write_old_merge(slug, a["id"], b["id"])
+
+    body = structure_history(client, slug)
+    node = next(node for node in body["nodes"] if node["version_id"] == merged)
     assert node["is_merge"] is True and node["lane"] == 0
     edges = {(e["parent"], e["child"], e["kind"]) for e in body["edges"]}
     assert edges == {
         (a["version_id"], b["version_id"], "fork"),
-        (a["version_id"], merged["version_id"], "parent"),
-        (b["version_id"], merged["version_id"], "merge"),
+        (a["version_id"], merged, "parent"),
+        (b["version_id"], merged, "merge"),
     }
 
 

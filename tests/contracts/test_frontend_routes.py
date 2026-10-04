@@ -22,11 +22,11 @@ from contracts.frontend_calls import matching_route, openapi_routes, scan, scan_
 # Les URL de l'API sont littérales dans les client.js : il ne reste que l'URL d'une ressource que la
 # page a déjà affichée.
 DYNAMIC_CALLS: dict[tuple[str, str, str], tuple[str, ...]] = {
-    # le rapport embarque ses images : l'`url` que portent celles d'une structure en images et
-    # celles d'un jeu d'external_images
+    # le rapport embarque ses images : l'`url` que portent celles d'une structure en images, les
+    # fichiers du cahier et ses images externes
     ("plugins/experiments/static/report.js", "GET", "src"): (
         "/api/microprojects/{microproject_slug}/attachments/{attachment_id}/content",
-        "/api/microprojects/{microproject_slug}/experiments/{experiment_id}/image-sets/{set_id}/images/{index}",
+        "/api/microprojects/{microproject_slug}/experiments/{experiment_id}/notebook-entries/{entry_id}/external-images/{index}",
     ),
 }
 

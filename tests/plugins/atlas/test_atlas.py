@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from support.areas import create_area
 from support.atlas import atlas, atlas_microproject
-from support.experiments import conclude, evolve, launch, launch_campaign, merge, tag, track_entities
+from support.experiments import combine, conclude, evolve, launch, launch_campaign, tag, track_entities
 from support.http import ROUTER_NOT_FOUND, assert_handler_404
 from support.links import entity, link_entities, link_microprojects
 from support.microprojects import create_microproject, move_microproject, signup_with_microproject
@@ -76,22 +76,26 @@ def test_the_entity_index_survives_a_partially_tracked_campaign(client):
     assert {(e["index"], e["sample_id"]) for e in entities} == {(0, "V0"), (2, "V2")}
 
 
-def test_a_fork_and_a_merge_condense_into_edges_between_pistes(client):
+def test_a_fork_and_a_combination_condense_into_edges_between_pistes(client):
     slug = signup_with_microproject(client, "atlas-merge@example.com")
     root = launch(client, slug, title="Reference", intent="Depart", steps=steps(10))
-    # la piste racine continue (Piste A), piste-b en part ; la fusion avance la piste racine et laisse
-    # piste-b vivante à sa pointe
-    evolve(client, slug, root["id"], title="Piste A", intent="Suite A", steps=steps(15))
+    # la piste racine continue (Piste A), piste-b en part ; la combinaison crée piste-c, issue des
+    # deux, qui restent vivantes à leur pointe
+    evolved = evolve(client, slug, root["id"], title="Piste A", intent="Suite A", steps=steps(15))
     branch_b = launch(
         client, slug, title="Piste B", intent="Suite B", steps=steps(30), branch="piste-b",
         from_version={"experiment_id": root["id"], "version_id": root["version_id"]},
     )
-    merged = merge(client, slug, root["id"], branch_b["id"])
+    combined = combine(client, slug, root["id"], branch_b["id"], branch="piste-c")
 
     microproject = atlas_microproject(client, slug)
     nodes = {(e["experiment_id"], e["version_id"]) for e in microproject["experiments"]}
-    assert nodes == {(root["id"], merged["version_id"]), ("piste-b", branch_b["version_id"])}
-    assert microproject["edges"] == [{"from": "piste-b", "to": root["id"]}]  # pas une arête par version
+    assert nodes == {(root["id"], evolved["version_id"]), ("piste-b", branch_b["version_id"]), ("piste-c", combined["version_id"])}
+    # pas une arête par version : les deux parents de la combinaison, de pointe à pointe
+    assert sorted(microproject["edges"], key=lambda e: (e["from"], e["to"])) == [
+        {"from": "piste-b", "to": "piste-c"},
+        {"from": root["id"], "to": "piste-c"},
+    ]
 
 
 def test_the_atlas_of_an_unknown_area_is_404(client):

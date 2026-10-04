@@ -595,6 +595,9 @@ const NotebookEntryDialog = (() => {
       text: form.text.value.trim() || null,
       table,
       attachments,
+      // les images externes de la mesure (TEM, scans référencés sur le serveur) : renvoyées telles
+      // quelles, cette boîte ne les modifie pas
+      external_images: ((slot.measurement || {}).external_images || []).map((i) => ({ path: i.path, caption: i.caption || null })),
       links,
       annotations: slot.annotations.filter((a) => kept.has(a.attachment_id)),
     };
@@ -602,7 +605,7 @@ const NotebookEntryDialog = (() => {
 
   function manualMeasurements() {
     const measurements = state.keys.map((key) => manualMeasurement(slotFor(key)));
-    const empty = (m) => !m.value && !m.text && !m.table && !m.attachments.length && !m.links.length;
+    const empty = (m) => !m.value && !m.text && !m.table && !m.attachments.length && !m.external_images.length && !m.links.length;
     // une seule mesure, non située et vide : l'entrée n'a pas de mesure
     return measurements.length === 1 && !measurements[0].step_id && empty(measurements[0]) ? [] : measurements;
   }

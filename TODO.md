@@ -7,27 +7,27 @@ faite, déplacer la ligne dans la section « Fait » du bas (ou simplement la re
 
 Demandées le 2026-10-03. Chacune suit le contrat d'`ARCHITECTURE.md` : un plugin propriétaire, des
 routes REST en anglais, le front par son `client.js`. Les points 1 (équipes), 2 (page d'évolution
-et refs) et 3 (un seul cahier de données, rattaché aux étapes du procédé, et son préalable,
-l'identité des étapes) sont livrés : voir « Fait ».
+et refs), 3 (un seul cahier de données, rattaché aux étapes du procédé, et son préalable,
+l'identité des étapes) et 3 bis (ses suites : images externes dans le cahier, combinaison en une
+nouvelle étude) sont livrés côté serveur : voir « Fait ».
 
-### 3 bis. Suites du cahier unique (décidé le 2026-10-04)
+### 3 bis. Suites du cahier unique : ce qui reste à l'interface
 
-- [ ] **La galerie « Images de mesure » devient un élément du cahier.** Aujourd'hui les images
-      externes (TEM, scans référencés par chemin, plugin `external_images`) ont leur propre
-      galerie à côté du cahier. Elles deviennent un contenu possible d'une mesure manuelle,
-      comme les pièces jointes, mais référencées sans être copiées.
-      - La politique des chemins reste celle d'aujourd'hui : racines `SPECTRE_EXTERNAL_IMAGE_ROOTS`,
-        formats affichables, image servie par identifiant et jamais par un chemin reçu du client.
-      - Les jeux d'images existants sont convertis à la lecture en entrées du cahier, en gardant
-        leurs ids.
-      - Le panneau séparé disparaît.
-- [ ] **Combiner deux études crée une nouvelle étude.** Aujourd'hui, combiner B dans A ajoute une
-      version à la piste A.
-      - Désormais, la combinaison crée une **nouvelle étude C**, c'est-à-dire une nouvelle piste.
-        Elle est issue de A et de B (le graphe montre les deux parents) et elle a son titre, son
-        intention et une **nouvelle plaque** à saisir.
-      - Son cahier démarre **vide** : les données restent sur A et B, attachées à leurs plaques.
-      - A et B ne bougent pas.
+Le serveur est livré (voir « Fait ») ; la fiche a reçu le strict nécessaire (les images externes
+s'affichent dans le cahier et survivent à une modification, la combinaison passe par un petit
+formulaire des « Actions avancées »). Reste :
+
+- [ ] **Choisir les images externes d'une mesure** dans la boîte d'ajout du cahier
+      (`entry-dialog.js`) : parcourir un dossier autorisé (`GET .../external-images?directory=`, à
+      rendre au client `externalImagesApi.browse`, retiré faute d'appelant), cocher des images,
+      les légender, les retirer, les réordonner (l'ancienne galerie épinglait une image : la
+      première tient lieu d'épinglée). Le TIFF est refusé par le serveur avec la marche à suivre.
+- [ ] **Une vraie boîte « Combiner »** à la place du formulaire minimal : choisir l'autre étude et
+      sa version, titre, intention, hypothèse, plaque (autocomplétion `waferSuggestions`), et
+      peut-être objectifs et contexte (repris de la première étude s'ils ne sont pas envoyés).
+- [ ] **La page d'évolution et le graphe de filiation** dessinent les deux arêtes `merge` d'une
+      combinaison (nouvelle piste) : vérifier le rendu (`evolution.js` dessinait une fusion sur la
+      piste de son premier parent) et la légende « Fusion de deux pistes » (« Combinaison » ?).
 
 ### 4. Documentation intégrée (en tout dernier)
 
@@ -106,6 +106,42 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 ## Fait (pour mémoire, pas d'action)
 
+- **Les images externes deviennent un contenu du cahier** (2026-10-04, point 3 bis, côté serveur).
+  Une mesure manuelle porte `external_images: [{path, caption}]`, validées à l'écriture par la
+  politique du plugin `external_images` (racines `SPECTRE_EXTERNAL_IMAGE_ROOTS`, chemin réseau hors
+  racines refusé sans toucher au disque, formats affichables - TIFF refusé avec la marche à suivre -,
+  fichier présent) ; à la lecture, chaque image porte `index`, `name`, `status` et son `url`, servie
+  par identifiant : `GET .../notebook-entries/{entry_id}/external-images/{index}` (le chemin lu dans
+  le cahier, jamais reçu du client, revérifié à chaque lecture). Les routes `.../image-sets`
+  disparaissent ; les anciens jeux (`data_items`) se lisent comme des entrées manuelles qui gardent
+  leur id (titre = nom du jeu, note conservée, une mesure non située, l'image épinglée en premier ;
+  `wafers` = la plaque de la variante d'une campagne), et la première écriture dans le cahier les
+  enregistre au nouveau format. Le panneau séparé de la fiche disparaît. Choix : **le plugin
+  `external_images` reste**, réduit à la politique des chemins et au parcours (une raison de changer
+  à part : l'accès au disque du serveur), et notebook en dépend (`external_images` passe avant
+  `notebook` dans `PLUGINS`, ne dépend plus que de `microprojects`). Écarts retenus : une image déjà
+  sur l'entrée n'est pas revérifiée à l'écriture (une image d'un ancien jeu, déplacée depuis, reste) ;
+  une mesure sans image externe n'enregistre pas la clé (elle se lit `[]`) ; un jeu d'une variante
+  sans plaque vaut pour toute la piste, la variante rappelée dans le texte ; un titre de jeu trop long
+  est tronqué, entier dans la note ; 100 images au plus par mesure, sans doublon ; `ctx.setDataCount`
+  disparaît de la fiche (le cahier est le seul panneau de l'onglet « Données »).
+- **Combiner deux études crée une nouvelle étude** (2026-10-04, point 3 bis, côté serveur).
+  `POST .../experiments/{exp}/merges` disparaît : `POST /api/microprojects/{mp}/experiments` avec
+  `merge_of` (exactement deux études du µprojet, version facultative : la pointe) et les champs d'un
+  lancement → 201 + `Location` vers la nouvelle piste C. C est construite par
+  `follow.Repository.merge(a, b, branch=<C>)` (Follow accepte un commit à deux parents sur une
+  nouvelle branche) : deux parents (filiation, évolution des structures : arêtes `merge` depuis A et
+  B), la structure de A (la règle de combinaison d'avant, sans résolution de conflit), cahier vide,
+  ni étiquettes ni conclusion ; A et B inchangés. `_merge_notebook` et tout code de fusion de cahier
+  sont retirés. Écarts retenus : l'hypothèse reste facultative, comme à un lancement (titre,
+  intention et plaque obligatoires) ; objectifs et contexte viennent de A faute de mieux dans la
+  requête, comme pour une piste partie d'une version ; deux versions de la même piste sont refusées
+  (`same_experiment`) ; une étude d'un autre µprojet est introuvable (404) et `merge_of` refuse tout
+  champ de plus (422) ; le formulaire d'intention du µprojet s'applique ; le numéro de version de C
+  continue l'histoire de A (la règle d'une piste partie d'une version) ; les fusions d'avant (une
+  version de A à deux parents) restent lisibles, l'arête depuis leur premier parent gardant le type
+  `parent`. Le jeu de démo (`seed_demo.py`) combine en une nouvelle étude.
+
 - **Un seul cahier de données, côté interface** (2026-10-04, point 3). Le panneau « Données » de la
   fiche n'a plus que le cahier (et la galerie d'images externes) : chaque entrée montre son type,
   ses plaques, son objectif, son interprétation, le **stepper** du procédé (`notebook/static/stepper.js`,
@@ -119,7 +155,7 @@ d'étapes (jugé trop lourd à saisir). Reste :
   suit la plaque mesurée, une seule entrée par mesure avec une valeur par étape, pas de mesures
   prévues dans le constructeur, pas de conversion d'une entrée manuelle en PRISM. Écarts retenus :
   la galerie « Images de mesure » (external_images) reste dans l'onglet « Données », à côté du
-  cahier ; le filtre par étape se fait dans la page (sans `?step=`) pour que le rapport garde tout
+  cahier (depuis, elle en est un contenu : voir plus haut) ; le filtre par étape se fait dans la page (sans `?step=`) pour que le rapport garde tout
   le cahier ; cocher la première bulle d'une entrée non située (une ancienne preuve) y range son
   contenu, décocher la dernière la rend non située ; une mesure à une étape retirée se range à
   droite des autres ; les réglages PRISM passent par « Modifier » (« Actualiser » reste sur la carte

@@ -12,7 +12,13 @@ version qu'elle crée).
   qui portent son ``evidence_id``) devient une entrée ``manual`` d'une seule mesure, **qui garde son
   id** - les verdicts de la conclusion (``evidence_ids``) la citent toujours. Son ``step_index``
   devient l'id de l'étape (:func:`spectre.plugins.experiments.service.step_id_at`), lu sur la version
-  qui a ajouté la preuve : la position qu'elle désignait alors.
+  qui a ajouté la preuve : la position qu'elle désignait alors ;
+- un **jeu d'images** de l'ancienne galerie d'images externes (``metadata["data_items"]``) devient
+  une entrée ``manual`` **qui garde son id**, titrée du nom du jeu, sa note conservée, d'une seule
+  mesure non située qui porte ses images externes (l'image épinglée en premier). Un jeu rattaché à
+  une variante d'une campagne (``entity_index``) vaut pour la plaque de cette variante dans la
+  version lue (``wafers``) ; sans plaque à cette variante, l'entrée vaut pour toute la piste et la
+  variante est rappelée dans le texte.
 
 Rien n'est perdu : la description fait le titre (et la note, si elle dépasse la longueur d'un
 titre) ; une mesure chiffrée unique fait la valeur, plusieurs (ou une valeur non numérique, une
@@ -31,6 +37,7 @@ from typing import Any
 import follow
 
 from ..experiments import service as experiments
+from ..experiments.entities import compact as wafer_key
 from .schemas import is_web_link
 
 TITLE_LENGTH = 200
@@ -38,8 +45,16 @@ TITLE_LENGTH = 200
 
 def convert(repo: follow.Repository, version: follow.Experiment) -> list[dict[str, Any]]:
     """Les entrées du cahier que donnent les données d'avant de ``version`` (lue dans ``repo``), au
-    format enregistré : les vues de l'ancien cahier, puis les preuves, chacune dans son ordre."""
+    format enregistré : les vues de l'ancien cahier, puis les preuves, puis les jeux d'images
+    externes, chacun dans son ordre."""
     entries = [_from_view(view) for view in version.metadata.get(experiments.LEGACY_NOTEBOOK_KEY) or [] if _has_id(view)]
+    entries += _from_evidences(repo, version)
+    entries += [_from_image_set(item, version) for item in version.metadata.get(experiments.LEGACY_IMAGE_SETS_KEY) or [] if _has_id(item)]
+    return entries
+
+
+def _from_evidences(repo: follow.Repository, version: follow.Experiment) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
     if not version.evidence:
         return entries
     introduced = _introducing_versions(repo, version, {evidence.id for evidence in version.evidence})
@@ -118,6 +133,56 @@ def _from_view(view: dict[str, Any]) -> dict[str, Any]:
         "created_by": view.get("created_by"),
         "updated_at": view.get("updated_at") or view.get("created_at"),
         "updated_by": view.get("updated_by") or view.get("created_by"),
+    }
+
+
+def _from_image_set(item: dict[str, Any], version: follow.Experiment) -> dict[str, Any]:
+    """Un jeu de l'ancienne galerie : ses images (l'épinglée d'abord), sa note, et la plaque de sa
+    variante s'il était rattaché à une variante d'une campagne."""
+    paths = [path for path in item.get("image_paths") or [] if isinstance(path, str) and path]
+    pinned = item.get("pinned_index") or 0
+    if isinstance(pinned, int) and 0 < pinned < len(paths):
+        paths = [paths[pinned], *paths[:pinned], *paths[pinned + 1 :]]
+    title = (item.get("title") or "").strip() or "Images de mesure"
+    wafers: list[str] = []
+    text = None
+    variant = item.get("entity_index")
+    if isinstance(variant, int):
+        tracking = version.metadata.get("physical_tracking") or []
+        sample = tracking[variant].get("sample_id") if 0 <= variant < len(tracking) and isinstance(tracking[variant], dict) else None
+        if sample and wafer_key(sample):
+            wafers = [wafer_key(sample)]
+        else:
+            labels = version.metadata.get("campaign_labels") or []
+            label = labels[variant] if 0 <= variant < len(labels) and isinstance(labels[variant], str) else None
+            text = f"Variante n° {variant + 1}" + (f" ({label})" if label else "")
+    measurement: dict[str, Any] = {
+        "step_id": None,
+        "value": None,
+        "text": text,
+        "table": None,
+        "attachments": [],
+        "links": [],
+        "annotations": [],
+    }
+    if paths:
+        measurement["external_images"] = [{"path": path, "caption": None} for path in paths]
+    short = title if len(title) <= TITLE_LENGTH else title[: TITLE_LENGTH - 1].rstrip() + "…"
+    note = "\n\n".join(part for part in (title if short != title else None, item.get("note")) if part) or None
+    return {
+        "id": item["id"],
+        "kind": "manual",
+        "title": short,
+        "note": note,
+        "objective": None,
+        "interpretation": None,
+        "wafers": wafers,
+        "measurements": [measurement],
+        "in_report": True,
+        "created_at": item.get("created_at"),
+        "created_by": item.get("created_by"),
+        "updated_at": item.get("created_at"),
+        "updated_by": item.get("created_by"),
     }
 
 

@@ -236,15 +236,20 @@ class Microproject:
     def track(self, session: Session, exp: dict, *, sample_id, location, days_ago) -> dict:
         return self._write(session, "PUT", exp, "entities", {"entities": [{"sample_id": sample_id, "location": location}]}, days_ago)
 
-    def combine(self, session: Session, exp: dict, *, other: dict, days_ago) -> dict:
-        """Merge two lines of work - keeps ``exp``'s structure/steps as-is, links ``other`` in as a
-        second parent and takes its data notebook along (a real content merge, if wanted, is a normal
+    def combine(self, session: Session, exp: dict, *, other: dict, title, intent, hypothesis, sample_id, location=None, days_ago) -> dict:
+        """Combine two studies into a new one (a new line with both as parents) - it keeps ``exp``'s
+        structure/steps as-is, gets its own title, intent and wafer, and starts with an empty data
+        notebook; ``exp`` and ``other`` don't change (a real content merge, if wanted, is a normal
         evolve() right after - see the "LED complète sur substrat SiC" beat)."""
-        result = session.request(
-            "POST",
-            f"{self._experiments()}/{exp['id']}/merges",
-            json={"other_experiment_id": other["id"]},
-            headers={"If-Match": f'"{exp["version_id"]}"'},
+        result = session.post(
+            self._experiments(),
+            json={
+                "merge_of": [{"experiment_id": exp["id"], "version_id": exp["version_id"]}, {"experiment_id": other["id"], "version_id": other["version_id"]}],
+                "title": title,
+                "intent": intent,
+                "hypothesis": hypothesis,
+                "entities": [{"sample_id": sample_id, "location": location}],
+            },
         )
         record(result["version_id"], days_ago)
         return {"id": result["id"], "version_id": result["version_id"]}
@@ -532,9 +537,16 @@ def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> 
     )
     b9 = proj.tag(marc, b9, ["led-rouge", "a-retravailler"], days_ago=146)
 
-    # 10. Fusion : réunir la référence à puits simple (b7) et l'exploration substrat SiC (b5),
-    # puis reproduire réellement la structure complète sur SiC dans l'evolve() qui suit.
-    b10 = proj.combine(demo, b7, other=b5, days_ago=120)
+    # 10. Combinaison : une nouvelle étude issue de la référence à puits simple (b7) et de
+    # l'exploration substrat SiC (b5), sur une nouvelle plaque, puis la structure complète réellement
+    # reproduite sur SiC dans l'evolve() qui suit.
+    b10 = proj.combine(
+        demo, b7, other=b5,
+        title="Combinaison : référence puits simple et substrat SiC",
+        intent="Réunir la structure LED de référence et l'exploration du substrat SiC dans une nouvelle étude.",
+        hypothesis="La structure de référence devrait se transposer sur SiC sans perte.",
+        sample_id="W-SiC-1", location="Boîte à wafers, salle blanche, tiroir 4", days_ago=120,
+    )
     b10 = proj.evolve(
         demo, b10,
         title="LED bleue complète sur substrat SiC",

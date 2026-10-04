@@ -37,7 +37,6 @@ from .schemas import (
     CreateExperimentRequest,
     EntitiesRequest,
     EvolveRequest,
-    MergeRequest,
     RefChanges,
     RefRequest,
     StatusRequest,
@@ -163,8 +162,10 @@ def create_experiment(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    """Une nouvelle piste (structure ``process``, ``images`` ou ``campaign``), à partir de rien ou
-    d'une version existante (``from_version``)."""
+    """Une nouvelle piste (structure ``process``, ``images`` ou ``campaign``), à partir de rien,
+    d'une version existante (``from_version``), ou de deux études du µprojet combinées
+    (``merge_of``, sans structure : la nouvelle piste a les deux pour parents) - ``Location`` vers
+    la nouvelle piste."""
     experiment = service.create(microproject.slug, body, author=user.name)
     created(response, _experiment_url(microproject.slug, experiment.branch))
     return _respond(response, microproject.slug, experiment.branch, experiment.id)
@@ -330,23 +331,6 @@ def set_entities(
         microproject.slug, experiment_id, body.entities, author=user.name, expected_version=if_match_version(if_match)
     )
     return _written(response, microproject.slug, experiment_id, None, after)
-
-
-@router.post("/experiments/{experiment_id}/merges", status_code=201)
-def merge_experiments(
-    experiment_id: str,
-    body: MergeRequest,
-    response: Response,
-    if_match: str | None = Header(None),
-    microproject: Microproject = Depends(require_role("editor")),
-    user: User = Depends(current_user),
-) -> dict:
-    """Réunit l'autre piste dans celle-ci : une nouvelle version à deux parents (``Location`` vers elle)."""
-    after = service.merge(
-        microproject.slug, experiment_id, body.other_experiment_id, author=user.name, expected_version=if_match_version(if_match)
-    )
-    created(response, f"{_experiment_url(microproject.slug, experiment_id)}/versions/{after.id}")
-    return _respond(response, microproject.slug, experiment_id, after.id)
 
 
 @router.get("/experiments/{experiment_id}/process")

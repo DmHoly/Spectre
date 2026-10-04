@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="/static/experiments/experiments.css">
   <link rel="stylesheet" href="/static/wafers/wafers.css">
   <link rel="stylesheet" href="/static/characterization/characterization.css">
-  <link rel="stylesheet" href="/static/external_images/external_images.css">
   <link rel="stylesheet" href="/static/attachments/attachments.css">
   <link rel="stylesheet" href="/static/notebook/notebook.css">
   <link rel="stylesheet" href="/static/lots/lots.css">
@@ -257,14 +256,6 @@
         <div class="nb-filter" id="notebook-filter" role="status" data-report-hide hidden></div>
         <div id="notebook-entries" class="nb-entries"></div>
       </div>
-
-      <div class="card card-pad" id="images-card">
-        <div class="section-title" style="margin-bottom:6px;">Images de mesure</div>
-        <div class="help" style="margin-bottom:12px;">Images de mesure rattachées à l'étude, comparées à la structure simulée.</div>
-
-        <!-- la galerie d'images externes (external_images/static/gallery.js) -->
-        <div data-panel="external_images"></div>
-      </div>
     </section>
 
     <!-- ───────────── Onglet 3 : conclusion ───────────── -->
@@ -277,10 +268,13 @@
       <div style="margin-top:14px;max-width:480px;">
         <div id="advanced-actions-editor-only">
           <label>Combiner avec une autre expérience</label>
-          <div class="help" style="margin-bottom:8px;">Garde la structure de cette fiche, relie l'historique de l'autre expérience choisie et reprend son cahier de données.</div>
+          <div class="help" style="margin-bottom:8px;">Crée une nouvelle étude issue des deux, avec la structure de cette fiche et une nouvelle plaque. Son cahier démarre vide : les données restent sur les deux études, qui ne changent pas.</div>
           <input class="field" type="search" id="combine-search" placeholder="Rechercher : titre, étiquette, piste…" aria-label="Rechercher l'expérience à combiner" autocomplete="off" style="margin-bottom:6px;">
           <select class="field" id="combine-select" aria-label="Expérience à combiner" style="margin-bottom:8px;"></select>
-          <button class="btn btn-line" id="combine-btn" type="button">Combiner</button>
+          <input class="field" type="text" id="combine-title" placeholder="Titre de la nouvelle étude" aria-label="Titre de la nouvelle étude" autocomplete="off" style="margin-bottom:6px;">
+          <input class="field" type="text" id="combine-intent" placeholder="Intention" aria-label="Intention de la nouvelle étude" autocomplete="off" style="margin-bottom:6px;">
+          <input class="field" type="text" id="combine-wafer" placeholder="Nouvelle plaque (lasermark)" aria-label="Plaque de la nouvelle étude" autocomplete="off" style="margin-bottom:8px;">
+          <button class="btn btn-line" id="combine-btn" type="button">Créer l'étude combinée</button>
 
           <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--danger-tint);">
             <label style="color:var(--danger);">Supprimer cette étude</label>
@@ -430,7 +424,6 @@
   <script src="/static/intent_forms/client.js"></script>
   <script src="/static/characterization/client.js"></script>
   <script src="/static/notebook/client.js"></script>
-  <script src="/static/external_images/client.js"></script>
   <script src="/static/experiments/status.js"></script>
   <script src="/static/experiments/vocabulary.js"></script>
   <script src="/static/structures/campaign-carousel.js"></script>
@@ -439,7 +432,7 @@
   <script src="/static/characterization/wafer-data-links.js"></script>
   <script src="/static/attachments/image-drop.js"></script>
   <!-- La fiche : l'amorce et le registre des panneaux, puis ses panneaux, dans l'ordre où ils se
-       montent ; ensuite ceux des autres plugins (galerie, lots, cahier), qui s'y enregistrent. -->
+       montent ; ensuite ceux des autres plugins (lots, cahier), qui s'y enregistrent. -->
   <script src="/static/experiments/page.js"></script>
   <script src="/static/experiments/header.js"></script>
   <script src="/static/experiments/objectives.js"></script>
@@ -450,7 +443,6 @@
   <script src="/static/experiments/conclusion.js"></script>
   <script src="/static/experiments/advanced.js"></script>
   <script src="/static/experiments/report.js"></script>
-  <script src="/static/external_images/gallery.js"></script>
   <script src="/static/lots/lot-picker.js"></script>
   <!-- Visualisation de données : le registre, puis un fichier par composant, puis les préréglages
        par type de données (un composant de plus = un fichier de plus ici). -->

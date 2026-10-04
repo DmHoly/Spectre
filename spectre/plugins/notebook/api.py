@@ -10,6 +10,10 @@ dans :mod:`.service`, :mod:`.legacy` et :mod:`.snapshots`) :
   ``/{entry_id}`` la lisent, la modifient (``position`` pour la déplacer) et la retirent (204). Chaque
   écriture est une écriture sur la piste, avec ``If-Match`` (412 si elle a avancé) ; chaque réponse
   porte l'``ETag`` de la version lue ou écrite.
+- ``GET .../notebook-entries/{entry_id}/external-images/{index}`` : les octets d'une image externe
+  qu'une mesure manuelle de l'entrée référence (``index`` : son rang dans l'entrée, ``?version=``
+  pour une version passée), lue à son emplacement d'origine - le chemin vient du cahier, jamais de
+  la requête, et la politique du plugin external_images s'applique à chaque lecture.
 
 Les types de données qu'on peut charger se lisent dans le catalogue de caractérisation
 (``GET /api/characterization/data-types?by_wafer=true&status=implemented``) ; les fichiers d'une
@@ -18,10 +22,12 @@ entrée manuelle se téléversent d'abord (``POST .../attachments``, ``purpose=n
 
 from __future__ import annotations
 
+import mimetypes
 from typing import Literal
 
 import follow
 from fastapi import APIRouter, Depends, Header, Response
+from fastapi.responses import FileResponse
 
 from ...kernel.http import created, etag, if_match_version
 from ..accounts.deps import current_user
@@ -135,3 +141,12 @@ def remove_entry(
 ) -> Response:
     written = service.remove_entry(microproject.slug, experiment_id, entry_id, author=user.name, expected_version=if_match_version(if_match))
     return Response(status_code=204, headers={"ETag": etag(written.id)})
+
+
+@router.get("/experiments/{experiment_id}/notebook-entries/{entry_id}/external-images/{index}")
+def get_external_image(
+    experiment_id: str, entry_id: str, index: int, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
+) -> FileResponse:
+    path = service.external_image_file(microproject.slug, experiment_id, entry_id, index, version)
+    media_type, _ = mimetypes.guess_type(path.name)
+    return FileResponse(path, media_type=media_type or "application/octet-stream")

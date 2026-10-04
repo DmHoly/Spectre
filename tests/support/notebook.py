@@ -5,8 +5,8 @@ l'en-tête ``If-Match``.
 
 Plus deux fabriques hors routes, pour les données d'avant le cahier unique : :func:`write_legacy`
 écrit une version comme le faisait l'ancien code (vues ``data_notebook``, preuves Follow et leurs
-métadonnées), et :func:`objects_checksums` relève les objets Follow d'un µprojet, pour vérifier
-qu'aucun n'est réécrit."""
+métadonnées, jeux de l'ancienne galerie d'images externes), et :func:`objects_checksums` relève les
+objets Follow d'un µprojet, pour vérifier qu'aucun n'est réécrit."""
 
 from __future__ import annotations
 
@@ -106,12 +106,19 @@ def delete_entry(client: Any, slug: str, experiment_id: str, entry_id: str, *, i
     return client.delete(f"{entries_url(slug, experiment_id)}/{entry_id}", headers=_headers(if_match))
 
 
+def get_external_image(client: Any, slug: str, experiment_id: str, entry_id: str, index: int | str, **params: Any) -> Any:
+    """GET /notebook-entries/{entry_id}/external-images/{index} (la réponse : les octets, ou le refus)."""
+    return client.get(f"{entries_url(slug, experiment_id)}/{entry_id}/external-images/{index}", params=params)
+
+
 def as_input(measurement: dict) -> dict:
     """Une mesure lue, telle qu'une écriture la renvoie (sans ce que le serveur calcule)."""
     dropped = {"step_retired", "snapshot"}
     sent = {key: value for key, value in measurement.items() if key not in dropped and value is not None}
     if "attachments" in sent:
         sent["attachments"] = [{"id": a["id"], "caption": a.get("caption")} for a in sent["attachments"]]
+    if "external_images" in sent:
+        sent["external_images"] = [{"path": i["path"], "caption": i.get("caption")} for i in sent["external_images"]]
     return sent
 
 
@@ -199,6 +206,31 @@ def legacy_view(builder: Any, view_id: str, snapshot: dict, *, title: str = "Vue
         **fields,
     }
     builder.metadata["data_notebook"] = [*builder.metadata.get("data_notebook", []), view]
+
+
+def legacy_image_set(
+    builder: Any,
+    set_id: str,
+    paths: list[str],
+    *,
+    title: str | None = None,
+    note: str | None = None,
+    entity_index: int | None = None,
+    pinned_index: int = 0,
+) -> None:
+    """Ajoute à ``builder`` un jeu de l'ancienne galerie d'images externes (``data_items``), tel que
+    l'ancien plugin external_images l'écrivait."""
+    record = {
+        "id": set_id,
+        "title": title,
+        "note": note,
+        "entity_index": entity_index,
+        "image_paths": list(paths),
+        "pinned_index": pinned_index,
+        "created_by": "Ada",
+        "created_at": "2026-01-02T03:04:05+00:00",
+    }
+    builder.metadata["data_items"] = [*builder.metadata.get("data_items", []), record]
 
 
 def objects_checksums(slug: str) -> dict[str, str]:
