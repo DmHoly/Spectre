@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Suivi des lots — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/experiments/experiments.css">
+  <link rel="stylesheet" href="/static/lots/lots.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+  <style>
+    .btn-sm { min-height:30px; padding:4px 10px; font-size:12.5px; }
+    .lots-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
+    .lots-head h1 { font-size:26px; margin-top:8px; }
+    .lots-head p { color:var(--text-soft); font-size:14px; margin-top:4px; max-width:72ch; }
+    .lots-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+    .lots-source { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-faint); }
+    .lots-kpis { display:flex; flex-wrap:wrap; gap:22px 34px; padding:14px 18px; border:1px solid var(--border-soft); border-radius:var(--radius); background:var(--surface); margin-bottom:18px; }
+    .kpi--alert .kpi__value { color:var(--danger); }
+    .gantt-card { padding:14px 18px 12px; }
+    .gantt-card .status-legend { padding-bottom:12px; margin-bottom:4px; border-bottom:1px solid var(--border-soft); }
+    .lots-table { margin-top:10px; font-size:12.5px; }
+    .lots-table summary { cursor:pointer; font-weight:600; color:var(--link); padding:4px 0; }
+    .lots-table table { width:100%; border-collapse:collapse; margin-top:8px; }
+    .lots-table th { text-align:left; font-family:var(--font-mono); font-size:10.5px; font-weight:500; color:var(--text-faint); padding:6px 8px; border-bottom:1px solid var(--border); }
+    .lots-table td { padding:6px 8px; border-bottom:1px solid var(--border-soft); vertical-align:middle; }
+    .lots-table td.num { font-family:var(--font-mono); font-size:11.5px; white-space:nowrap; }
+    .dialog-wide { width:min(640px,94vw); }
+  </style>
+</head>
+<body>
+  <!-- spectre:topbar crumb-text="/ Lots" -->
+
+  <div class="page" style="max-width:1320px;">
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+
+    <div class="lots-head">
+      <div>
+        <div class="page-eyebrow">Production</div>
+        <h1>Suivi des lots</h1>
+        <p>Chaque lot : sa priorité (P10, P20…), ses wafers, son début, sa fin prévisionnelle et sa fin déclarée - et les expériences et thématiques qu'il porte, retrouvées à partir de ses wafers.</p>
+      </div>
+      <button type="button" class="btn btn-primary" id="new-lot-btn">+ Nouveau lot</button>
+    </div>
+
+    <div class="lots-toolbar">
+      <div class="view-toggle" role="group" aria-label="Lots affichés" id="lots-filter">
+        <button type="button" class="view-toggle__btn active" data-filter="actifs" aria-pressed="true">En cours</button>
+        <button type="button" class="view-toggle__btn" data-filter="sortis" aria-pressed="false">Sortis</button>
+        <button type="button" class="view-toggle__btn" data-filter="annules" aria-pressed="false">Annulés</button>
+        <button type="button" class="view-toggle__btn" data-filter="tous" aria-pressed="false">Tous</button>
+      </div>
+      <span class="lots-source" title="Plus tard : priorité, dates et wafers alimentés par la base de production (datahooks)">
+        <span class="badge badge-draft"><span class="dot"></span>Saisie déclarative</span> datahooks MES à venir
+      </span>
+    </div>
+
+    <div class="lots-kpis" id="lots-kpis" aria-busy="true"><div class="skeleton" style="height:40px;width:100%;"></div></div>
+
+    <div class="card gantt-card">
+      <div id="gantt-legend"></div>
+      <div class="gantt-scroll" id="gantt-scroll"><div class="skeleton" style="height:200px;margin-top:12px;"></div></div>
+      <details class="lots-table"><summary>Voir les lots en tableau</summary><div id="lots-table-body"></div></details>
+    </div>
+  </div>
+
+  <dialog id="lot-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow-lift);" aria-labelledby="lot-dialog-title">
+    <form class="card-pad field-group dialog-wide" id="lot-form">
+      <h2 id="lot-dialog-title" style="font-size:16px;">Nouveau lot</h2>
+      <div class="field-row">
+        <div><label for="lot-code">Code du lot</label><input class="field" id="lot-code" maxlength="40" placeholder="vide = LOT-0001…"></div>
+        <div><label for="lot-priority">Priorité</label><input class="field" id="lot-priority" maxlength="10" list="lot-priorities" placeholder="ex : P10"></div>
+      </div>
+      <div><label for="lot-title">Intitulé (optionnel)</label><input class="field" id="lot-title" maxlength="160" placeholder="ex : run MQW + EBL"></div>
+      <div class="field-row">
+        <div><label for="lot-started">Début</label><input class="field" id="lot-started" type="date"></div>
+        <div><label for="lot-forecast">Fin prévisionnelle</label><input class="field" id="lot-forecast" type="date"></div>
+      </div>
+      <datalist id="lot-priorities"></datalist>
+      <div>
+        <label for="lot-wafers">Wafers (lasermarks)</label>
+        <textarea class="field" id="lot-wafers" rows="3" placeholder="Collez la liste : un par ligne, ou séparés par des virgules"></textarea>
+        <div class="help">Les expériences qui suivent ces wafers (et leurs thématiques) rejoindront le lot d'elles-mêmes.</div>
+      </div>
+      <div><label for="lot-description">Notes (optionnel)</label><textarea class="field" id="lot-description" rows="2"></textarea></div>
+      <div style="display:flex;gap:10px;margin-top:4px;">
+        <button type="button" class="btn btn-line btn-block" id="lot-cancel">Annuler</button>
+        <button type="submit" class="btn btn-primary btn-block">Créer le lot</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/lots/client.js"></script>
+  <script src="/static/experiments/status.js"></script>
+  <script src="/static/kernel/vendor/d3.v7.9.0.min.js"></script>
+  <script src="/static/experiments/lineage-graph.js"></script>
+  <script src="/static/kernel/timeline.js"></script>
+  <script src="/static/lots/lots-gantt.js"></script>
+  <script src="/static/lots/lots.js"></script>
+</body>
+</html>

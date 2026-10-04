@@ -1,9 +1,9 @@
 "use strict";
 
-/* Loads real production files from spectre/api/static/js/structure-builder/ and runs them in
+/* Loads real production files from spectre/plugins/structures/static/builder/ and runs them in
    Node's main context (vm.runInThisContext, not a separate vm.createContext sandbox) - the same
    "plain <script> tags share one global scope" model the browser uses (see
-   structure-builder.html), so functions/consts defined in one file are visible to files loaded
+   builder.html), so functions/consts defined in one file are visible to files loaded
    after it, exactly like in the page. No bundler, no transpilation: this runs the exact source
    the browser gets, unmodified.
 
@@ -24,7 +24,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const JS_DIR = path.join(__dirname, "..", "..", "spectre", "api", "static", "js", "structure-builder");
+const JS_DIR = path.join(__dirname, "..", "..", "spectre", "plugins", "structures", "static", "builder");
 
 function fakeElement() {
   const el = {
@@ -68,7 +68,7 @@ function escapeHtml(value) {
 
 /**
  * @param {string[]} filenames - structure-builder/ files to load, in dependency order (the same
- *   order structure-builder.html gives them as <script> tags).
+ *   order builder.html gives them as <script> tags).
  * @param {string[]} exportNames - every top-level name (function or `const`) the caller wants
  *   back. A `function` declaration already attaches itself to `global` for free (how non-strict
  *   top-level function declarations behave); a `const`/`let` binding never does on its own - it

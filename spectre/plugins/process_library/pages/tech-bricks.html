@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Briques technologiques — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/structures/structures.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" -->
+
+  <div class="page" style="max-width:960px;">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a id="back-link" href="#">&larr; Bibliothèque</a></p>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <h1 style="font-size:22px;">Briques technologiques</h1>
+      <a class="btn btn-primary" id="new-brick-link" href="#" style="padding:8px 14px;font-size:13px;">+ Nouvelle brique</a>
+    </div>
+    <p style="color:var(--text-soft);font-size:14px;margin-bottom:20px;">Des séquences d'étapes préenregistrées (ex : un masque + une gravure standard, un empilement de croissance) à insérer d'un coup dans une structure, depuis le constructeur.</p>
+
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+    <div id="flash" class="flash flash-ok" style="display:none;margin-bottom:16px;"></div>
+
+    <div class="card card-pad">
+      <div class="section-title" style="margin-bottom:12px;">Briques disponibles</div>
+      <div id="bricks-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/process_library/client.js"></script>
+  <script src="/static/process_library/tech-bricks.js"></script>
+</body>
+</html>

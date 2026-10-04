@@ -1,0 +1,152 @@
+/* Galerie d'images externes d'une expérience (gallery.js). */
+
+/* -- un jeu : l'image affichée et ses vignettes, à côté de la structure simulée ------------- */
+
+.ext-set {
+  margin-top: 12px;
+}
+.ext-set__title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.ext-set__note {
+  font-size: 12px;
+  color: var(--text-soft);
+  margin-top: 2px;
+}
+.ext-set > .btn {
+  margin-top: 10px;
+}
+
+.data-item-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  margin-top: 10px;
+}
+
+/* The structure SVG carries its own explicit width/height attributes (frame_to_svg) - without
+   this it forces the grid track (and the whole page) wider than the viewport instead of shrinking
+   to fit its column, the same way .builder-canvas-svg already handles it elsewhere on this page. */
+.data-item-grid svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.ext-main-image {
+  max-width: 100%;
+  display: block;
+  border-radius: var(--radius-sm);
+}
+.ext-main-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+.ext-caption {
+  margin: 4px 0 0;
+}
+
+.ext-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ext-thumb {
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+  cursor: pointer;
+}
+.ext-thumb.is-shown {
+  border-color: var(--accent);
+}
+.ext-thumb:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.ext-thumb__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ext-thumb__off {
+  display: block;
+  padding: 4px;
+  font-size: 10px;
+  color: var(--text-faint);
+  word-break: break-all;
+}
+
+/* une image qu'on ne peut pas montrer : pourquoi, et où elle était */
+.ext-image-problem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-soft);
+  word-break: break-all;
+}
+
+/* -- ajouter un jeu ----------------------------------------------------------------------- */
+
+.ext-add {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+}
+.ext-field {
+  margin-top: 10px;
+}
+.ext-field > label {
+  font-size: 11px;
+}
+.ext-field .field-row {
+  margin-top: 4px;
+}
+.ext-field--split {
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+.ext-field > .btn {
+  margin-top: 8px;
+}
+.ext-error {
+  color: var(--danger);
+  margin-top: 6px;
+}
+.ext-browse {
+  margin-top: 8px;
+}
+.ext-browse__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12.5px;
+}
+.ext-browse__row .help {
+  display: inline;
+}
+.ext-browse__row.is-off {
+  color: var(--text-faint);
+}
+
+@media (max-width: 1100px) {
+  .data-item-grid {
+    grid-template-columns: 1fr;
+  }
+}

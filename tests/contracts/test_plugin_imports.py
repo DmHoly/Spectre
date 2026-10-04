@@ -1,0 +1,180 @@
+"""Le graphe des imports respecte le contrat (``ARCHITECTURE.md`` § 1 et § 3), lu dans le code sans
+l'exécuter : chaque ``import`` de ``spectre/kernel`` et ``spectre/plugins``, où qu'il soit écrit -
+en tête de fichier ou dans une fonction (un import paresseux reste une dépendance).
+
+- le noyau n'importe aucun plugin ;
+- un plugin n'importe que les plugins de son ``depends_on`` (et ceux dont ils dépendent) ;
+- un plugin n'importe jamais le module ``api`` d'un autre, seulement ses modules publics
+  (``PUBLIC_MODULES``, plus ceux que ``PUBLIC_EXTRA`` liste pour lui) ;
+- le domaine d'un plugin (tout module autre que ``api``, ``*_api``, ``deps`` et ``schemas``) n'importe pas FastAPI.
+
+Il n'en reste aucune : ``ALLOWED_TRANSITIONAL`` et ``ALLOWED_FASTAPI`` sont vides. Une exception à
+venir s'y liste, chacune avec ce qui la fera disparaître ; une entrée qui ne correspond plus à aucun
+import fait échouer le test.
+"""
+
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+SCANNED = (ROOT / "spectre" / "kernel", ROOT / "spectre" / "plugins")
+HTTP_MODULES = {"api", "deps", "schemas"}
+
+
+def _is_http_module(module: str) -> bool:
+    """``api``, ``deps``, ``schemas`` - ou un routeur annexe ``<sujet>_api`` inclus par l'``api`` du plugin
+    (microprojects.invitations_api, experiments.insights_api)."""
+    name = module.rsplit(".", 1)[-1]
+    return name in HTTP_MODULES or name.endswith("_api")
+
+
+# La racine de composition : create_app() lit la liste des plugins quand on ne lui en passe pas.
+KERNEL_COMPOSITION_ROOT = ("spectre.kernel.app", "spectre.plugins")
+
+# Les modules publics d'un plugin (ARCHITECTURE.md § 1.3) : ceux que tout plugin peut exposer...
+PUBLIC_MODULES = {"service", "store", "models", "deps", "schemas"}
+# ... et, plugin par plugin, les autres modules de domaine qu'il offre (ARCHITECTURE.md § 3). Une
+# entrée qu'aucun import n'utilise plus fait échouer le test.
+PUBLIC_EXTRA: dict[str, set[str]] = {
+    "accounts": {"security"},
+    "experiments": {"repository", "lineage", "entities", "insights"},
+    "structures": {"kinds", "campaigns", "simulation", "rendering"},
+}
+
+# (module qui importe, module importé) -> ce qui supprimera l'import.
+ALLOWED_TRANSITIONAL: dict[tuple[str, str], str] = {}
+
+# Modules du domaine qui lèvent encore HTTPException -> ce qui la remplacera.
+ALLOWED_FASTAPI: dict[str, str] = {}
+
+
+def _module_name(path: Path) -> str:
+    parts = path.relative_to(ROOT).with_suffix("").parts
+    return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
+
+
+def _modules() -> dict[str, Path]:
+    return {_module_name(path): path for root in SCANNED for path in sorted(root.rglob("*.py"))}
+
+
+def _imports(name: str, path: Path, known: set[str]) -> set[str]:
+    """Every module ``name`` imports, as absolute names - ``from .x import y`` counts as ``.x.y``
+    when ``y`` is a module, as ``.x`` otherwise."""
+    package = name if path.name == "__init__.py" else name.rsplit(".", 1)[0]
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            found.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                base_parts = package.split(".")[: len(package.split(".")) - node.level + 1]
+                base = ".".join(base_parts + ([node.module] if node.module else []))
+            else:
+                base = node.module
+            for alias in node.names:
+                candidate = f"{base}.{alias.name}"
+                found.add(candidate if candidate in known else base)
+    return found
+
+
+def _plugin_of(module: str) -> str | None:
+    parts = module.split(".")
+    return parts[2] if len(parts) > 2 and parts[:2] == ["spectre", "plugins"] else None
+
+
+def _reachable() -> dict[str, set[str]]:
+    """Each plugin's ``depends_on``, and theirs, and so on."""
+    from spectre.plugins import PLUGINS
+
+    direct = {plugin.name: set(plugin.depends_on) for plugin in PLUGINS}
+    reachable: dict[str, set[str]] = {}
+    for name in direct:
+        seen, stack = set(), list(direct[name])
+        while stack:
+            dependency = stack.pop()
+            if dependency not in seen:
+                seen.add(dependency)
+                stack.extend(direct.get(dependency, ()))
+        reachable[name] = seen
+    return reachable
+
+
+def _graph() -> list[tuple[str, str]]:
+    modules = _modules()
+    known = set(modules)
+    return sorted((name, target) for name, path in modules.items() for target in _imports(name, path, known))
+
+
+def test_the_scanner_sees_the_plugin_imports():
+    # garde-fou : un analyseur cassé ne trouverait rien, et tout le reste passerait
+    graph = _graph()
+    assert ("spectre.plugins.lots.api", "spectre.plugins.lots.service") in graph
+    assert KERNEL_COMPOSITION_ROOT in graph  # import paresseux, dans create_app()
+
+
+def test_the_kernel_imports_no_plugin():
+    leaks = [
+        f"{module} -> {target}"
+        for module, target in _graph()
+        if module.startswith("spectre.kernel") and target.startswith("spectre.plugins") and (module, target) != KERNEL_COMPOSITION_ROOT
+    ]
+    assert not leaks, "Le noyau importe un plugin :\n  " + "\n  ".join(leaks)
+
+
+def test_a_plugin_only_imports_the_plugins_it_depends_on():
+    reachable = _reachable()
+    used = set()
+    undeclared = []
+    for module, target in _graph():
+        plugin, other = _plugin_of(module), _plugin_of(target)
+        if plugin is None or other is None or other == plugin or other in reachable[plugin]:
+            continue
+        if (module, target) in ALLOWED_TRANSITIONAL:
+            used.add((module, target))
+        else:
+            undeclared.append(f"{module} -> {target} ({other} absent du depends_on de {plugin})")
+    stale = [f"{module} -> {target}" for module, target in ALLOWED_TRANSITIONAL if (module, target) not in used]
+    assert not undeclared, "Imports hors depends_on :\n  " + "\n  ".join(undeclared)
+    assert not stale, "Entrées de ALLOWED_TRANSITIONAL qui ne correspondent plus à aucun import :\n  " + "\n  ".join(stale)
+
+
+def test_no_plugin_imports_another_plugins_api():
+    crossing = [
+        f"{module} -> {target}"
+        for module, target in _graph()
+        if _plugin_of(module) and _plugin_of(target) not in (None, _plugin_of(module)) and (target.split(".")[3:4] == ["api"] or target.endswith("_api"))
+    ]
+    assert not crossing, "Un plugin importe l'api d'un autre :\n  " + "\n  ".join(crossing)
+
+
+def test_a_plugin_only_imports_the_public_modules_of_another():
+    used: set[tuple[str, str]] = set()
+    private = []
+    for module, target in _graph():
+        plugin, other = _plugin_of(module), _plugin_of(target)
+        if plugin is None or other is None or other == plugin:
+            continue
+        name = ".".join(target.split(".")[3:])
+        if name in PUBLIC_MODULES:
+            continue
+        if name in PUBLIC_EXTRA.get(other, set()):
+            used.add((other, name))
+        else:
+            private.append(f"{module} -> {target}")
+    stale = [f"{plugin}.{name}" for plugin, names in PUBLIC_EXTRA.items() for name in names if (plugin, name) not in used]
+    assert not private, "Imports d'un module non public d'un autre plugin :\n  " + "\n  ".join(private)
+    assert not stale, "Entrées de PUBLIC_EXTRA qu'aucun autre plugin n'importe plus :\n  " + "\n  ".join(stale)
+
+
+def test_the_domain_of_a_plugin_does_not_know_http():
+    importing = {
+        module
+        for module, target in _graph()
+        if _plugin_of(module) and not _is_http_module(module) and target.split(".")[0] in ("fastapi", "starlette")
+    }
+    unexpected = sorted(importing - ALLOWED_FASTAPI.keys())
+    stale = sorted(ALLOWED_FASTAPI.keys() - importing)
+    assert not unexpected, "Modules du domaine qui importent FastAPI :\n  " + "\n  ".join(unexpected)
+    assert not stale, "Entrées de ALLOWED_FASTAPI qui n'importent plus FastAPI :\n  " + "\n  ".join(stale)

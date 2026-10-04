@@ -1,0 +1,127 @@
+/* Illustrations des technologies (area-art.js). */
+
+/* -- illustrations des technologies (areas/static/area-art.js), sur fond navy ---------------------- */
+
+.tech-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.tech-art__base {
+  stroke: var(--gold);
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+/* nanofil vu de côté : trois facettes du prisme hexagonal */
+.tech-art__facet-l {
+  fill: var(--navy-700);
+}
+.tech-art__facet-m {
+  fill: var(--navy-600);
+}
+.tech-art__facet-r {
+  fill: var(--navy-500);
+}
+.tech-art__wire-g--back {
+  opacity: 0.6;
+}
+.tech-art__wire-g--far {
+  opacity: 0.32;
+}
+.tech-art__floor {
+  fill: var(--navy-600);
+  opacity: 0.18;
+}
+.tech-art__hex-top {
+  fill: none;
+  stroke: var(--navy-500);
+  stroke-width: 1.2;
+}
+/* couches InGaN (puits quantiques) */
+.tech-art__qw--red {
+  fill: var(--emit-red);
+}
+.tech-art__qw--green {
+  fill: var(--emit-green);
+}
+.tech-art__qw--blue {
+  fill: var(--emit-blue);
+}
+.tech-art__shade {
+  fill: var(--navy-950);
+  opacity: 0.35;
+}
+.tech-art__shine {
+  fill: #fff;
+  opacity: 0.18;
+}
+.tech-art__glow-red {
+  stop-color: var(--emit-red);
+  stop-opacity: 0.35;
+}
+.tech-art__glow-green {
+  stop-color: var(--emit-green);
+  stop-opacity: 0.35;
+}
+.tech-art__glow-blue {
+  stop-color: var(--emit-blue);
+  stop-opacity: 0.35;
+}
+.tech-art__glow-stop--end {
+  stop-opacity: 0;
+}
+.tech-art__pixel {
+  fill: none;
+  stroke: var(--gold-light);
+  stroke-width: 1;
+  stroke-dasharray: 3 2.5;
+  opacity: 0.8;
+}
+/* diagramme de l'œil */
+.tech-art__grid {
+  stroke: var(--navy-600);
+  stroke-width: 0.8;
+}
+.tech-art__trace {
+  fill: none;
+  stroke: var(--gold-light);
+  stroke-width: 0.9;
+  opacity: 0.2;
+}
+.tech-art__eye {
+  fill: none;
+  stroke: var(--emit-blue);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 2;
+}
+/* nanofil cœur-coquille */
+.tech-art__shell-out {
+  fill: var(--navy-600);
+  stroke: var(--navy-500);
+  stroke-width: 1;
+}
+.tech-art__shell-ingan {
+  fill: var(--emit-blue);
+}
+.tech-art__core-gan {
+  fill: var(--navy-700);
+}
+.tech-art__halo-blue {
+  fill: var(--emit-blue);
+  opacity: 0.12;
+}
+.tech-art__cut {
+  stroke: var(--gold-light);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+.tech-art__scale {
+  stroke: var(--gold-light);
+  stroke-width: 2;
+}
+.tech-art__label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  fill: var(--gold-light);
+}

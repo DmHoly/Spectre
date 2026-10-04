@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bibliothèque — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/docs/docs.css">
+  <link rel="stylesheet" href="/static/structures/structures.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="/static/kernel/vendor/codemirror.min.css">
+  <link rel="stylesheet" href="/static/kernel/vendor/codemirror-theme-eclipse.min.css">
+  <style>
+    /* CodeMirror comes with a fixed default height (300px) meant for a small inline snippet - the
+       library editor modal below gives it a real, resizable amount of room instead. */
+    #library-editor-modal .CodeMirror { height: 50vh; font-family: var(--font-mono, monospace); font-size: 12.5px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); }
+  </style>
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" -->
+
+  <div class="page" style="max-width:900px;">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/">&larr; Projets</a></p>
+    <h1 style="font-size:24px;margin-bottom:6px;">Bibliothèque</h1>
+    <p style="color:var(--text-soft);font-size:14px;margin-bottom:20px;max-width:64ch;">
+      Tout ce qui se réutilise d'une expérience à l'autre, commun à tous vos µprojets : structures
+      complètes, présets d'étape, briques technologiques, plus la bibliothèque de matériaux et de
+      recettes de l'installation.
+    </p>
+
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+
+    <div id="work-microproject-row" class="card card-pad" style="max-width:900px;margin-bottom:22px;display:none;">
+      <label for="work-microproject" style="font-size:12px;">µprojet de travail</label>
+      <select class="field" id="work-microproject" style="margin-top:4px;max-width:360px;"></select>
+      <p class="help" style="margin:8px 0 0;">Les présets, briques et structures créés en « partagé » sont visibles depuis tous vos µprojets. Ce choix sert seulement à ouvrir le constructeur (la simulation a besoin d'un µprojet).</p>
+    </div>
+    <p id="no-microproject-msg" class="help" style="display:none;margin-bottom:22px;">Créez d'abord un µprojet pour composer de nouveaux éléments dans le constructeur.</p>
+
+    <div class="docs-hub-grid">
+      <div class="card card-pad" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:15.5px;font-weight:700;">Structures sauvegardées</div>
+        <div style="font-size:13px;color:var(--text-soft);line-height:1.55;">
+          Un substrat + une séquence d'étapes complète, nommée — à réutiliser ou dupliquer comme
+          point de départ d'une nouvelle expérience.
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
+          <a id="new-structure-link" href="#" class="js-needs-microproject" style="color:var(--accent-dark);">+ Nouvelle structure</a>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:15.5px;font-weight:700;">Présets d'étape</div>
+        <div style="font-size:13px;color:var(--text-soft);line-height:1.55;">
+          Un raccourci nommé vers une recette de dépôt ou de gravure (mode, angle, sélectivité) pour
+          la retrouver en un clic dans le formulaire d'étape.
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
+          <a id="presets-link" href="#" class="js-needs-microproject" style="color:var(--accent-dark);">Gérer / créer un préset &rarr;</a>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:15.5px;font-weight:700;">Briques technologiques</div>
+        <div style="font-size:13px;color:var(--text-soft);line-height:1.55;">
+          Une séquence d'étapes réutilisable sans substrat propre (masque + gravure, empilement de
+          croissance…) à insérer d'un bloc dans une structure.
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
+          <a id="new-brick-link" href="#" class="js-needs-microproject" style="color:var(--accent-dark);">+ Nouvelle brique</a>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="section-title" style="margin:28px 0 10px;">Éléments intégrés et partagés</div>
+    <p style="color:var(--text-soft);font-size:13.5px;margin-bottom:14px;max-width:64ch;">
+      Visibles depuis tous les µprojets. Un élément partagé ne se renomme, ne se modifie et ne se
+      supprime que par son auteur ou un administrateur ; un élément intégré se change dans les
+      fichiers YAML ci-dessous.
+    </p>
+    <div class="card card-pad" style="margin-bottom:14px;">
+      <div class="section-title" style="margin-bottom:10px;">Structures sauvegardées</div>
+      <div id="shared-structures" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:14px;">
+      <div class="section-title" style="margin-bottom:10px;">Présets d'étape</div>
+      <div id="shared-presets" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+    <div class="card card-pad">
+      <div class="section-title" style="margin-bottom:10px;">Briques technologiques</div>
+      <div id="shared-bricks" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+
+    <div class="section-title" style="margin:28px 0 10px;">Bibliothèque racine (fichiers YAML)</div>
+    <p style="color:var(--text-soft);font-size:13.5px;margin-bottom:14px;max-width:64ch;">
+      Le vocabulaire par défaut de cette installation, commun à tous les µprojets - un fichier YAML
+      par famille. Modifiable ici directement (réservé aux administrateurs) ou à la main dans le
+      dossier <code>library</code> des données du serveur (voir
+      <code>spectre/plugins/library/defaults/README.md</code>) ; un enregistrement est rechargé
+      automatiquement, sans redémarrage.
+    </p>
+    <div id="library-files-error" class="error" style="display:none;margin-bottom:16px;"></div>
+    <div id="library-files-list" class="docs-hub-grid"></div>
+  </div>
+
+  <dialog id="library-editor-modal" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);max-width:min(820px,94vw);width:100%;">
+    <div class="card-pad" style="max-height:88vh;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:4px;">
+        <div>
+          <div class="section-title" id="library-editor-title" style="margin-bottom:2px;"></div>
+          <div class="help" id="library-editor-filename" style="font-family:var(--font-mono);"></div>
+        </div>
+        <button class="btn btn-line" id="library-editor-close-btn" type="button" style="padding:5px 10px;font-size:12px;flex:none;">Fermer</button>
+      </div>
+      <p class="help" id="library-editor-readonly-note" style="display:none;margin:6px 0 10px;">Lecture seule - réservé aux administrateurs. Vous pouvez copier ce contenu pour proposer un changement autrement.</p>
+      <div id="library-editor-host" style="margin-top:8px;"></div>
+      <div id="library-editor-save-error" class="error" style="display:none;margin-top:10px;"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-primary" id="library-editor-save-btn" type="button">Enregistrer</button>
+        <button class="btn btn-line" id="library-editor-cancel-btn" type="button">Annuler</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/library/client.js"></script>
+  <script src="/static/process_library/client.js"></script>
+  <script src="/static/kernel/vendor/codemirror.min.js"></script>
+  <script src="/static/kernel/vendor/codemirror-yaml.min.js"></script>
+  <script src="/static/process_library/library-hub.js"></script>
+  <script src="/static/library/library-files.js"></script>
+</body>
+</html>

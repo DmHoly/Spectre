@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plaque — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/experiments/experiments.css">
+  <link rel="stylesheet" href="/static/wafers/wafers.css">
+  <link rel="stylesheet" href="/static/characterization/characterization.css">
+  <link rel="stylesheet" href="/static/structures/structures.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" -->
+
+  <!-- La page d'une plaque (un wafer, par son lasermark) : où elle est, ses FDL, et toutes les
+       études qui la suivent, d'un µprojet à l'autre - le « passeport » de la plaque, pour la
+       traçabilité. Le passeport vient de GET /api/wafers/{wafer_key} (spectre.plugins.wafers),
+       ses lots de GET /api/lots?wafer= (plugin lots). -->
+  <div class="page" style="max-width:1080px;">
+    <p style="color:var(--text-faint);margin-bottom:16px;"><a href="/">Projets</a> / Plaques / <span id="plate-crumb"></span></p>
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+
+    <header class="card plate-hero" id="plate-hero">
+      <div class="plate-hero__main">
+        <div class="page-eyebrow">Plaque</div>
+        <h1 class="plate-hero__lasermark" id="plate-lasermark"></h1>
+        <p class="plate-hero__summary" id="plate-summary"></p>
+      </div>
+      <dl class="plate-hero__facts">
+        <div><dt>Dernier emplacement connu</dt><dd id="plate-location">—</dd></div>
+        <div><dt>FDL</dt><dd id="plate-fdl">—</dd></div>
+        <div><dt style="text-transform:none;letter-spacing:0.04em;">µprojets</dt><dd id="plate-microprojects">—</dd></div>
+        <div><dt>Lot</dt><dd id="plate-lots">—</dd></div>
+      </dl>
+      <div class="plate-hero__actions js-db-link"></div>
+    </header>
+
+    <section aria-labelledby="plate-trail-title">
+      <h2 class="section-title" id="plate-trail-title" style="margin:22px 0 10px;">Parcours - les études qui la suivent</h2>
+      <ol class="plate-trail" id="plate-trail"></ol>
+    </section>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/wafers/client.js"></script>
+  <script src="/static/lots/client.js"></script>
+  <script src="/static/characterization/client.js"></script>
+  <script src="/static/experiments/status.js"></script>
+  <script src="/static/wafers/fdl.js"></script>
+  <script src="/static/characterization/wafer-data-links.js"></script>
+  <script src="/static/wafers/wafer.js"></script>
+</body>
+</html>

@@ -1,0 +1,613 @@
+"""Le domaine d'une étude : une **piste** (une branche Follow, son ``experiment_id``) et ses
+**versions** (des commits immuables, ``version_id``).
+
+Toute écriture sur une piste passe par :func:`amend`, sous le verrou du µprojet
+(:func:`spectre.plugins.experiments.repository.writing`) : elle part de la pointe de la piste,
+refuse une version attendue périmée (``expected_version``, l'``If-Match`` du front : jamais de
+fourche implicite), reporte **tout** le parent, applique le changement et ne commite que s'il y a
+une différence. Les écritures légères (statut, conclusion, étiquettes, entités, images de la
+structure, fusion, et celles des plugins qui écrivent dans une étude : preuves, cahier, galerie)
+sont des ``change`` passés à :func:`amend` ; une évolution (:func:`evolve`) aussi, formulaire
+d'intention revalidé. Bifurquer, c'est créer une nouvelle piste à partir d'une version
+(:func:`create` avec ``from_version``).
+"""
+
+from __future__ import annotations
+
+import copy
+import re
+import unicodedata
+from datetime import datetime, timezone
+from typing import Any, Callable
+
+import follow
+from structureforge.adapters import follow_adapter
+from structureforge.adapters.follow_adapter import ProcessStructure
+
+from ...kernel.errors import Conflict, InvalidInput, NotFound, PreconditionFailed
+from ..structures import campaigns, kinds, simulation
+from ..structures.schemas import CampaignPayload, ImagesPayload, StructureImageInput
+from . import refs, versioning
+from .entities import EntityTrackingInput, clean_entity_entries, has_tracked_physical_entity
+from .repository import HOLD_KEY, RUNNING_STATUSES, delete_line, display_status, retire_line, retired_lines, writing
+from .schemas import ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput
+
+CONTEXT_METADATA_KEY = "context"
+# L'id d'une version Follow (``follow.core.ids.content_id``) : une piste ne peut pas en porter la forme.
+VERSION_ID_RE = re.compile(r"^exp_[0-9a-f]{16}$")
+# Ce que les métadonnées rangent par id de preuve (plugin evidence) : les liens d'une preuve et ses
+# champs propres à Spectre. Les images collées dans une preuve sont des « attachments » qui portent
+# son ``evidence_id``.
+EVIDENCE_KEYED_METADATA = ("evidence_links", "evidence_extra")
+_LINEAGE_FIELDS = {"id", "created_at", "author", "parents", "references"}
+_LINEAGE_ROLES = ("baseline", "merge_source")
+
+
+# -- lecture ---------------------------------------------------------------------------------------
+
+
+def tip_of(repo: follow.Repository, experiment_id: str) -> follow.Experiment:
+    """La dernière version de la piste ``experiment_id``."""
+    tip_id = repo.branches.get(experiment_id)
+    if tip_id is None:
+        raise NotFound(f"Expérience « {experiment_id} » introuvable.", code="experiment_not_found")
+    return repo.get(tip_id)
+
+
+def history_of(repo: follow.Repository, experiment_id: str) -> list[follow.Experiment]:
+    """Les versions de la piste, de la première à la pointe (celles d'avant sa fourche comprises)."""
+    return list(reversed(repo.log(tip_of(repo, experiment_id).id)))
+
+
+def version_of(repo: follow.Repository, experiment_id: str, version_id: str | None) -> follow.Experiment:
+    """La version ``version_id`` de la piste (sa pointe quand ``version_id`` est vide)."""
+    if not version_id:
+        return tip_of(repo, experiment_id)
+    for version in repo.log(tip_of(repo, experiment_id).id):
+        if version.id == version_id:
+            return version
+    raise NotFound(f"Version « {version_id} » introuvable sur cette piste.", code="version_not_found")
+
+
+def experiment_of_version(repo: follow.Repository, version_id: str) -> str:
+    """La piste d'une version (un ancien lien vers un id de version) : celle sur laquelle elle a été
+    enregistrée, ou à défaut une piste dont l'histoire la contient."""
+    versions = {version.id: version for version in repo}
+    version = versions.get(version_id)
+    if version is not None:
+        candidates = [version.branch, *sorted(repo.branches)]
+        for name in candidates:
+            if name in repo.branches and any(v.id == version_id for v in repo.log(repo.branches[name])):
+                return name
+    raise NotFound(f"Version « {version_id} » introuvable.", code="version_not_found")
+
+
+def continued_at(repo: follow.Repository, version: follow.Experiment) -> datetime | None:
+    """Quand le travail a repris après ``version`` : le début de sa première suite structurelle -
+    une version dérivée qui change la structure, ou une autre piste qui en part. ``None`` sinon."""
+    starts = [
+        child.created_at
+        for child in repo
+        if version.id in child.parents
+        and (child.branch != version.branch or versioning.changes_structure(version.metadata, child.metadata))
+    ]
+    return min(starts) if starts else None
+
+
+def structural_baseline(repo: follow.Repository, version: follow.Experiment) -> follow.Experiment | None:
+    """La version de structure qui précède ``version`` : la comparaison par défaut du diff. Une
+    étiquette, une preuve ou un statut ne changent pas la structure - le diff d'une telle version
+    se fait donc avec la structure d'avant, pas avec son parent immédiat."""
+    structural = versioning.structural_versions(list(reversed(repo.log(version.id))))
+    return structural[-2] if len(structural) >= 2 else None
+
+
+def structure_diff(before: follow.Experiment, after: follow.Experiment) -> dict[str, Any]:
+    """``{entries}`` : Follow's leaf-by-leaf diff from ``before``'s structure to ``after``'s - or,
+    when one of them is given as pictures, ``{entries: [], summary}`` in plain French (position by
+    position, a reordering would read as "everything changed")."""
+    summary = kinds.describe_image_changes(before.structure_type, before.structure, after.structure_type, after.structure)
+    if summary is not None:
+        return {"entries": [], "summary": summary}
+    return follow.diff_structures(before.structure, after.structure).model_dump(mode="json")
+
+
+# -- écriture --------------------------------------------------------------------------------------
+
+
+Change = Callable[[follow.ExperimentBuilder, follow.Experiment], None]
+
+
+def amend(
+    slug: str,
+    experiment_id: str,
+    *,
+    author: str,
+    expected_version: str | None = None,
+    change: Change,
+    revalidate_form: bool = False,
+) -> follow.Experiment:
+    """Le seul chemin d'écriture sur une piste existante. Sous le verrou du µprojet : la pointe de
+    ``experiment_id`` (:class:`NotFound` sinon) ; :class:`PreconditionFailed` si
+    ``expected_version`` est donnée et n'est plus la pointe ; un builder qui reporte **tout** le
+    parent (titre, intention, hypothèse, objectifs, étapes, références, métadonnées - tous les
+    champs propres à Spectre -, réponses au formulaire, preuves, étiquettes, conclusion) ;
+    ``change(builder, parent)`` ; puis le commit, seulement si quelque chose a changé - sinon la
+    pointe est renvoyée telle quelle, sans nouvelle version.
+
+    Les réponses au formulaire d'intention sont reportées, pas saisies : le formulaire n'est pas
+    revalidé (un formulaire activé après coup ne bloque donc pas l'étude), sauf pour une évolution
+    (``revalidate_form``), qui le repose.
+    """
+    with writing(slug) as repo:
+        parent = tip_of(repo, experiment_id)
+        if expected_version and expected_version != parent.id:
+            raise PreconditionFailed(
+                "Cette étude a changé depuis que vous l'avez ouverte - rechargez la page pour voir sa dernière version.",
+                code="stale_version",
+            )
+        if not revalidate_form:
+            repo.commit_form = None
+        builder = repo.derive(
+            parent.id, title=parent.title, intent=parent.intent, new_branch=experiment_id, author=author, hypothesis=parent.hypothesis
+        )
+        builder.metadata = copy.deepcopy(parent.metadata)
+        builder.form_answers = copy.deepcopy(parent.form_answers)
+        builder.evidence = list(parent.evidence)
+        builder.tags = list(parent.tags)
+        builder.conclusion = parent.conclusion
+        change(builder, parent)
+        if _unchanged(builder, parent):
+            return parent
+        try:
+            return _commit(builder, "Impossible d'enregistrer cette modification")
+        except follow.NothingToCommitError:
+            return parent
+
+
+def _content(experiment: follow.Experiment) -> dict:
+    return experiment.model_dump(mode="json", exclude=_LINEAGE_FIELDS)
+
+
+def _own_references(experiment: follow.Experiment) -> list[dict]:
+    return [r.model_dump(mode="json") for r in experiment.references if r.role not in _LINEAGE_ROLES]
+
+
+def _unchanged(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> bool:
+    """Le builder ne dit rien de plus que ``parent`` (hors filiation, auteur et date)."""
+    if len(builder.parents) > 1:
+        return False
+    candidate = follow.Experiment(
+        id="pending",
+        parents=builder.parents,
+        branch=builder.branch,
+        title=builder.title,
+        intent=builder.intent,
+        hypothesis=builder.hypothesis,
+        structure_type=type(builder.structure).registry_key(),
+        structure=builder.structure.model_dump(mode="json"),
+        references=builder.references,
+        objectives=builder.objectives,
+        steps=builder.steps,
+        evidence=builder.evidence,
+        conclusion=builder.conclusion,
+        tags=builder.tags,
+        metadata=builder.metadata,
+        form_answers=builder.form_answers,
+    )
+    return _content(candidate) == _content(parent) and _own_references(candidate) == _own_references(parent)
+
+
+def _commit(builder: follow.ExperimentBuilder, failure: str) -> follow.Experiment:
+    """``builder.commit()``, les erreurs de Follow traduites en erreurs du domaine."""
+    try:
+        return builder.commit()
+    except follow.FormValidationError as exc:
+        raise InvalidInput(
+            "Réponses au formulaire d'intention invalides : " + " ; ".join(exc.errors), code="invalid_intent_form"
+        ) from exc
+    except follow.NothingToCommitError:
+        raise
+    except follow.ExperimentNotFoundError as exc:
+        raise NotFound(f"{failure} : une version de référence est introuvable.", code="version_not_found") from exc
+    except follow.FollowError as exc:
+        raise Conflict(f"{failure} - rechargez la page et réessayez.", code="commit_refused") from exc
+
+
+def _slugify_branch(title: str) -> str:
+    """Le nom d'une piste tiré de son titre - il en fait l'adresse : « Épitaxie à 20 nm » ->
+    ``epitaxie-a-20-nm``."""
+    ascii_title = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_title.strip().lower()).strip("-")
+    return slug or "experience"
+
+
+def unique_branch(taken: set[str], title: str) -> str:
+    base = _slugify_branch(title)
+    branch = base
+    suffix = 2
+    while branch in taken:
+        branch = f"{base}-{suffix}"
+        suffix += 1
+    return branch
+
+
+def _new_branch_name(slug: str, repo: follow.Repository, requested: str | None, title: str) -> str:
+    """Le nom de la nouvelle piste : celui demandé (un seul segment d'URL, libre), ou tiré du titre.
+    Pris : les pistes, les refs, et les pistes supprimées (:func:`~.repository.retired_lines` - un
+    lien vers l'ancienne piste ne doit pas passer à une étude sans rapport)."""
+    taken = set(repo.branches) | set(repo.tags) | retired_lines(slug)
+    name = (requested or "").strip()
+    if not name:
+        return unique_branch(taken, title)
+    if "/" in name or name in (".", "..") or VERSION_ID_RE.fullmatch(name):
+        raise InvalidInput("Le nom de la piste ne peut pas contenir « / » (ni avoir la forme d'un id de version).", code="invalid_branch_name")
+    if name in taken:
+        raise Conflict(
+            f"Le nom « {name} » est déjà pris par une autre piste, une ref ou une piste supprimée.", code="branch_name_taken"
+        )
+    return name
+
+
+def apply_context(metadata: dict, context: str | None) -> None:
+    """Set (or clear, when blank) the experiment's short context description in its metadata -
+    Follow's Experiment has title/intent/hypothesis but nothing for « remettre en contexte ».
+    ``None`` leaves whatever the metadata already carries."""
+    if context is None:
+        return
+    value = context.strip()[:2000]
+    if value:
+        metadata[CONTEXT_METADATA_KEY] = value
+    else:
+        metadata.pop(CONTEXT_METADATA_KEY, None)
+
+
+def _require_title_and_intent(body: Any) -> None:
+    if not body.title.strip() or not body.intent.strip():
+        raise InvalidInput("Le titre et l'intention sont obligatoires.", code="title_and_intent_required")
+
+
+def first_tracked_entity(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """An image-mode experiment follows exactly one sample - the first one actually named."""
+    return [e for e in entities if e["sample_id"]][:1]
+
+
+def split_objectives(inputs: list[ObjectiveInput]) -> tuple[list[follow.Objective], dict[str, str]]:
+    """``follow.Objective`` has no "how will we check this" field (only ``rationale``, the *why*) -
+    ``verification_method`` is Spectre-specific, so it's kept out of the ``Objective`` itself and
+    returned separately, to be stashed under ``Experiment.metadata["objective_verification"]``
+    (keyed by objective name)."""
+    objectives: list[follow.Objective] = []
+    verification: dict[str, str] = {}
+    for o in inputs:
+        objectives.append(follow.Objective(**o.model_dump(exclude_none=True, exclude={"verification_method"})))
+        if o.verification_method:
+            verification[o.name] = o.verification_method
+    return objectives, verification
+
+
+def _set_objectives(builder: follow.ExperimentBuilder, inputs: list[ObjectiveInput]) -> None:
+    objectives, verification = split_objectives(inputs)
+    builder.objectives = objectives
+    if verification:
+        builder.metadata["objective_verification"] = verification
+    else:
+        builder.metadata.pop("objective_verification", None)
+
+
+def _entity_required(what: str) -> InvalidInput:
+    return InvalidInput(f"Une entité physique (l'échantillon réel suivi) est obligatoire {what}.", code="entity_required")
+
+
+class _PreparedStructure:
+    """A structure payload turned into what a commit needs, outside the lock (the simulation is the
+    slow part): the Follow structure, its protocol steps and the Spectre metadata that describes it."""
+
+    def __init__(self, slug: str, payload: Any) -> None:
+        self.kind = payload.kind
+        self.metadata: dict[str, Any] = {}
+        self.campaign_size = 0
+        if isinstance(payload, ImagesPayload):
+            self.structure = kinds.structure_image_from_input(slug, payload.images)
+            self.steps: list = []
+            self.metadata[kinds.IMAGE_REVISION_KEY] = kinds.new_image_revision()
+            return
+        declared = simulation.declared_params_by_index(payload.declared_params)
+        self.steps = follow_adapter.to_steps(payload.steps)
+        self.metadata["structureforge_process"] = simulation.process_metadata(payload.substrate, payload.steps, declared)
+        if isinstance(payload, CampaignPayload):
+            result = campaigns.generate_campaign_variants(payload.substrate, payload.steps, payload.plan, declared)
+            self.structure = kinds.ProcessLot(entries=result.entries)
+            self.campaign_size = len(result.entries)
+            self.metadata.update(
+                {
+                    "campaign_labels": result.labels,
+                    "campaign_factor_labels": result.factor_labels,
+                    "campaign_factor_values": result.factor_values,
+                    # how each factor's values were laid out ("log" for a doping sweep over decades...)
+                    "campaign_factor_scales": [factor.scale for factor in payload.plan.factors],
+                    "campaign_plan": payload.plan.model_dump(mode="json"),
+                }
+            )
+            return
+        geometry, _frames, _materials = simulation.run_simulation(payload.substrate, payload.steps)
+        self.structure = follow_adapter.to_structure(geometry)
+
+
+def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.Experiment:
+    """Une nouvelle piste : à partir de rien, ou d'une version existante (``from_version`` : la
+    filiation est gardée - référence « baseline », diff, graphe). Une piste partie d'une version en
+    reprend, faute de mieux dans la requête, les objectifs, le contexte et l'entité suivie - pas
+    les preuves, les étiquettes ni la conclusion : c'est une nouvelle étude. Titre, intention et
+    entité physique obligatoires ; le formulaire d'intention du µprojet s'applique ; la toute
+    première étude d'un µprojet devient sa première ref."""
+    _require_title_and_intent(body)
+    prepared = _PreparedStructure(slug, body.structure)
+    entities = clean_entity_entries(body.entities)
+    with writing(slug) as repo:
+        source = _source_of(repo, body.from_version) if body.from_version else None
+        branch = _new_branch_name(slug, repo, body.branch, body.title)
+        common = dict(title=body.title.strip(), intent=body.intent.strip(), author=author, hypothesis=body.hypothesis or None)
+        if source is not None:
+            builder = repo.derive(
+                source.id, new_branch=branch, structure=prepared.structure, carry_steps=False, carry_objectives=not body.objectives, **common
+            )
+            builder.steps = prepared.steps
+            carried = [CONTEXT_METADATA_KEY] + ([] if body.objectives else ["objective_verification"])
+            builder.metadata.update({key: copy.deepcopy(source.metadata[key]) for key in carried if key in source.metadata})
+            if not any(e["sample_id"] for e in entities):
+                entities = copy.deepcopy(source.metadata.get("physical_tracking", []))
+        else:
+            builder = repo.new(branch=branch, structure=prepared.structure, steps=prepared.steps, **common)
+        if body.objectives:
+            _set_objectives(builder, body.objectives)
+        builder.metadata.update(prepared.metadata)
+        builder.metadata["physical_tracking"] = _launch_tracking(prepared, entities)
+        apply_context(builder.metadata, body.context)
+        builder.form_answers = dict(body.form_answers)
+        experiment = _commit(builder, "Impossible de lancer cette expérience")
+        if len(repo) == 1:
+            refs.create_ref(repo, experiment.id)
+        return experiment
+
+
+def _source_of(repo: follow.Repository, origin: FromVersion) -> follow.Experiment:
+    try:
+        return version_of(repo, origin.experiment_id, origin.version_id)
+    except NotFound as exc:
+        raise NotFound(f"Version de départ introuvable : {exc}", code="source_not_found") from exc
+
+
+def _launch_tracking(prepared: _PreparedStructure, entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The physical tracking of a new line of study: at least one named sample; exactly one slot
+    per variant of a campaign (the samples given fill the first ones), one sample for pictures."""
+    if prepared.kind == "images":
+        tracked = first_tracked_entity(entities)
+        if not tracked:
+            raise _entity_required("pour lancer une expérience")
+        return tracked
+    if not any(e["sample_id"] for e in entities):
+        raise _entity_required("pour lancer une campagne" if prepared.kind == "campaign" else "pour lancer une expérience")
+    if prepared.kind == "campaign":
+        padding = [{"sample_id": None, "location": None}] * max(0, prepared.campaign_size - len(entities))
+        return (entities + padding)[: prepared.campaign_size]
+    return entities
+
+
+def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, expected_version: str | None) -> follow.Experiment:
+    """Une nouvelle version de la piste, sur sa pointe : une nouvelle structure (procédé du
+    constructeur ou images) et l'intention reposée (titre, intention, hypothèse, objectifs,
+    réponses au formulaire - revalidées). Le reste est reporté, l'entité suivie comprise. Éditer la
+    fiche sans toucher à la structure garde le statut et la conclusion ; une structure qui change
+    ouvre une nouvelle itération, non conclue."""
+    if isinstance(body.structure, CampaignPayload):
+        raise InvalidInput(
+            "Une campagne se lance comme une nouvelle piste, à partir de cette version.", code="campaign_is_a_new_line"
+        )
+    _require_title_and_intent(body)
+    prepared = _PreparedStructure(slug, body.structure)
+    entities = clean_entity_entries(body.entities)
+
+    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
+        builder.title = body.title.strip()
+        builder.intent = body.intent.strip()
+        if "hypothesis" in body.model_fields_set:
+            builder.hypothesis = body.hypothesis or None
+        builder.metadata.pop(HOLD_KEY, None)
+        if body.objectives:
+            _set_objectives(builder, body.objectives)
+        apply_context(builder.metadata, body.context)
+        builder.form_answers = dict(body.form_answers)
+        builder.structure = prepared.structure
+        builder.steps = prepared.steps
+        if prepared.kind == "images":
+            same = kinds.is_image_structure(parent.structure_type) and bool(parent.metadata.get(kinds.IMAGE_REVISION_KEY)) and (
+                prepared.structure.model_dump()["images"] == kinds.structure_images(parent.structure_type, parent.structure)
+            )
+            for key in kinds.DRAWN_STRUCTURE_METADATA_KEYS:
+                builder.metadata.pop(key, None)
+            if not same:
+                builder.metadata[kinds.IMAGE_REVISION_KEY] = prepared.metadata[kinds.IMAGE_REVISION_KEY]
+            tracked = first_tracked_entity(entities) or first_tracked_entity(
+                clean_entity_entries([EntityTrackingInput(**e) for e in parent.metadata.get("physical_tracking", [])])
+            )
+            if not tracked:
+                raise _entity_required("- renseignez-la avant de continuer")
+            builder.metadata["physical_tracking"] = tracked
+        else:
+            process = prepared.metadata["structureforge_process"]
+            same = parent.structure_type == ProcessStructure.registry_key() and versioning.structure_signature(parent.metadata) == process
+            # continuing an image-mode experiment in the builder: its structure is drawn from now on
+            builder.metadata.pop(kinds.IMAGE_REVISION_KEY, None)
+            builder.metadata["structureforge_process"] = process
+            if entities:
+                builder.metadata["physical_tracking"] = entities
+            if not has_tracked_physical_entity(builder.metadata):
+                raise _entity_required("- ajoutez-en une sur la version actuelle avant de continuer")
+        if not same:
+            builder.conclusion = follow.Conclusion()
+
+    return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change, revalidate_form=True)
+
+
+def set_status(
+    slug: str, experiment_id: str, *, status: str, hold_reason: str | None, author: str, expected_version: str | None
+) -> follow.Experiment:
+    """Brouillon, en cours, en pause (avec sa raison), ou la reprise d'une étude en pause ou conclue
+    (sa conclusion reste comme point de départ de la nouvelle). Le statut déjà affiché : rien."""
+
+    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
+        if display_status(parent) == status:
+            return
+        if status == "hold":
+            if parent.conclusion.status not in RUNNING_STATUSES:
+                raise InvalidInput("Seule une étude en brouillon ou en cours peut être mise en pause.", code="cannot_hold")
+            reason = (hold_reason or "").strip()[:300] or None
+            builder.metadata[HOLD_KEY] = {"since": datetime.now(timezone.utc).isoformat(), "by": author, "reason": reason}
+        else:
+            builder.metadata.pop(HOLD_KEY, None)
+            builder.conclusion = parent.conclusion.model_copy(update={"status": status, "decided_at": None})
+
+    return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
+
+
+def conclude(slug: str, experiment_id: str, body: ConclusionRequest, *, author: str, expected_version: str | None) -> follow.Experiment:
+    """Conclure (ou abandonner) l'étude : verdict par objectif, synthèse, décision, suite. Une
+    conclusion identique à celle en place ne crée pas de version (sa date reste)."""
+
+    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
+        if not has_tracked_physical_entity(parent.metadata):
+            raise InvalidInput(
+                "Impossible de conclure : aucune entité physique (échantillon réel) n'a été renseignée sur cette expérience.",
+                code="entity_required",
+            )
+        builder.metadata.pop(HOLD_KEY, None)
+        conclusion = follow.Conclusion(
+            status=body.status,
+            decision=body.decision,
+            summary=body.summary,
+            next_steps=body.next_steps,
+            objective_results=[follow.ObjectiveResult(**result.model_dump()) for result in body.objective_results],
+            decided_at=datetime.now(timezone.utc),
+        )
+        if conclusion.model_copy(update={"decided_at": parent.conclusion.decided_at}) == parent.conclusion:
+            conclusion = parent.conclusion
+        builder.conclusion = conclusion
+
+    return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
+
+
+def set_tags(slug: str, experiment_id: str, tags: list[str], *, author: str, expected_version: str | None) -> follow.Experiment:
+    cleaned: list[str] = []
+    for tag in tags:
+        tag = tag.strip()
+        if tag and tag not in cleaned:
+            cleaned.append(tag)
+
+    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
+        builder.tags = cleaned
+
+    return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
+
+
+def set_entities(
+    slug: str, experiment_id: str, entities: list[EntityTrackingInput], *, author: str, expected_version: str | None
+) -> follow.Experiment:
+    """L'identifiant physique et l'emplacement de chaque échantillon suivi - un pour une étude
+    simple, un par variante d'une campagne."""
+    cleaned = clean_entity_entries(entities)
+
+    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
+        expected = kinds.entity_count(parent.structure_type, parent.structure)
+        if len(cleaned) != expected:
+            raise InvalidInput(
+                f"Il faut exactement {expected} entrée(s) (une par échantillon suivi par cette expérience).", code="entity_count"
+            )
+        builder.metadata["physical_tracking"] = cleaned
+
+    return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
+
+
+def replace_structure_images(
+    slug: str, experiment_id: str, images: list[StructureImageInput], *, author: str, expected_version: str | None
+) -> follow.Experiment:
+    """Les images d'une structure donnée en images - tout le jeu, dans l'ordre de lecture : un dessin
+    plus propre, la coupe TEM une fois faite, une légende... Même révision de structure : pas de
+    nouvelle version de structure. Une structure dessinée change par une évolution."""
+    image = kinds.structure_image_from_input(slug, images)
+
+    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
+        if not kinds.is_image_structure(parent.structure_type):
+            raise InvalidInput(
+                "Cette structure est dessinée dans le constructeur : modifiez-la avec « Enregistrer une évolution ».",
+                code="drawn_structure",
+            )
+        builder.structure = image
+
+    return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
+
+
+def merge(slug: str, experiment_id: str, other_experiment_id: str, *, author: str, expected_version: str | None) -> follow.Experiment:
+    """Réunir deux pistes : une nouvelle version de ``experiment_id`` dont l'autre pointe est le
+    second parent. La structure et le protocole restent ceux de cette piste ; les preuves des deux
+    côtés sont reportées (dédoublonnées par id, celles de cette piste d'abord), avec ce que les
+    métadonnées rangent pour elles - et ce qui y désigne une preuve absente est retiré."""
+
+    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
+        other = tip_of(builder.repo, other_experiment_id)
+        if other.id == parent.id:
+            raise InvalidInput("Choisissez deux expériences différentes.", code="same_experiment")
+        if other.structure_type != parent.structure_type:
+            raise InvalidInput(
+                "Ces deux expériences ne peuvent pas être combinées (par exemple une expérience simple et une campagne).",
+                code="different_structure_kinds",
+            )
+        builder.parents.append(other.id)
+        builder.add_reference(role="merge_source", experiment_id=other.id, label=f"{other.branch}: {other.title}")
+        builder.metadata.pop(HOLD_KEY, None)
+        _merge_evidence(builder, other)
+
+    return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
+
+
+def _merge_evidence(builder: follow.ExperimentBuilder, other: follow.Experiment) -> None:
+    known = {evidence.id for evidence in builder.evidence}
+    added = [evidence for evidence in other.evidence if evidence.id not in known]
+    builder.evidence = [*builder.evidence, *added]
+    kept = {evidence.id for evidence in builder.evidence}
+    added_ids = {evidence.id for evidence in added}
+
+    for key in EVIDENCE_KEYED_METADATA:
+        if key not in builder.metadata and key not in other.metadata:
+            continue
+        merged = {**copy.deepcopy(other.metadata.get(key, {})), **builder.metadata.get(key, {})}
+        builder.metadata[key] = {evidence_id: value for evidence_id, value in merged.items() if evidence_id in kept}
+
+    attachments = list(builder.metadata.get("attachments", []))
+    present = {attachment.get("id") for attachment in attachments}
+    attachments += [
+        copy.deepcopy(a) for a in other.metadata.get("attachments", []) if a.get("evidence_id") in added_ids and a.get("id") not in present
+    ]
+    if attachments or "attachments" in builder.metadata:
+        builder.metadata["attachments"] = [a for a in attachments if a.get("evidence_id") is None or a.get("evidence_id") in kept]
+
+
+def delete(slug: str, experiment_id: str, *, expected_version: str | None) -> list[str]:
+    """Supprimer la piste, jusqu'à son point de fourche (:func:`delete_line`) ; son nom n'est plus
+    jamais redonné (:func:`retire_line`)."""
+    with writing(slug) as repo:
+        tip = tip_of(repo, experiment_id)
+        if expected_version and expected_version != tip.id:
+            raise PreconditionFailed(
+                "Cette étude a changé depuis que vous l'avez ouverte - rechargez la page.", code="stale_version"
+            )
+        # le nom d'abord : une piste supprimée ne doit jamais rester sans son nom retiré
+        retire_line(slug, experiment_id)
+        return delete_line(repo, experiment_id)
+
+
+def create_ref(slug: str, experiment_id: str, version_id: str | None, name: str | None) -> dict[str, Any]:
+    """Marquer une version (la pointe de la piste par défaut) comme ref - voir :mod:`.refs`."""
+    with writing(slug) as repo:
+        target = version_of(repo, experiment_id, version_id)
+        return refs.create_ref(repo, target.id, name=name)

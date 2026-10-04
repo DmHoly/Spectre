@@ -1,6 +1,6 @@
 "use strict";
 
-/* Unit tests for the structure-builder step-kind registry (spectre/api/static/js/structure-builder/
+/* Unit tests for the structure-builder step-kind registry (spectre/plugins/structures/static/builder/
    step-kinds.js) and the small pure helpers it depends on - the part of the modularization that
    replaced nine scattered per-kind branches with one entry per step kind. Run with:
 

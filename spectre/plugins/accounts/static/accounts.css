@@ -1,0 +1,138 @@
+/* Pages de connexion, d'inscription et de mot de passe. */
+
+/* -- auth pages (panneau de marque navy + formulaire, sans topbar) ------------------------ */
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+}
+
+.auth-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: 44px 48px;
+  color: #fff;
+  background: linear-gradient(155deg, var(--navy-950) 0%, var(--navy) 45%, var(--navy-600) 100%);
+}
+/* Diagonale or/bleu de la charte (motif des pages de titre Aledia). */
+.auth-hero::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 42%;
+  background: linear-gradient(135deg, rgba(201, 168, 76, 0.16) 0%, rgba(42, 127, 212, 0.2) 100%);
+  clip-path: polygon(38% 0%, 100% 0%, 100% 100%, 0% 100%);
+  pointer-events: none;
+}
+.auth-hero > * {
+  position: relative;
+}
+
+.auth-hero__logo {
+  width: 150px;
+  height: auto;
+  display: block;
+}
+
+.auth-hero__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 18px;
+}
+
+.auth-hero__title {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  max-width: 14ch;
+}
+
+.auth-hero__rule {
+  width: 48px;
+  height: 2px;
+  margin: 22px 0 18px;
+  background: linear-gradient(90deg, var(--gold), transparent);
+}
+
+.auth-hero__text {
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.72);
+  max-width: 38ch;
+}
+
+.auth-hero__foot {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  place-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6) var(--space-4);
+}
+
+.auth-card .card {
+  box-shadow: var(--shadow-lift);
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+}
+
+.auth-brand__product {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--navy);
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--gold);
+}
+
+.auth-switch {
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-soft);
+}
+
+@media (max-width: 860px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .auth-hero {
+    padding: 22px 20px;
+    flex-direction: row;
+    align-items: center;
+  }
+  .auth-hero__logo {
+    width: 96px;
+  }
+  .auth-hero__body,
+  .auth-hero__foot {
+    display: none;
+  }
+}

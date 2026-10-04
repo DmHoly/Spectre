@@ -12,7 +12,7 @@ recette de gâteau) :
   mais avec plusieurs puits quantiques, une comparaison avec/sans couche bloqueuse d'électrons
   (EBL), puis un réglage fin du dopage P en aval.
 
-Les deux profitent des refs (:mod:`spectre.core.refs`) pour marquer les points de départ vraiment
+Les deux profitent des refs (:mod:`spectre.plugins.experiments.refs`) pour marquer les points de départ vraiment
 réutilisés plusieurs fois (l'épitaxie standard, la référence à puits simple, la référence
 MQW+EBL...) plutôt que de laisser cette notion complètement absente de la démo.
 
@@ -54,7 +54,7 @@ TEAMMATES = [
 ]
 
 NOW = datetime.now(timezone.utc)
-SCHEDULE: list[tuple[str, datetime]] = []  # (experiment_id, desired created_at) for the backdating pass
+SCHEDULE: list[tuple[str, datetime]] = []  # (version_id, desired created_at) for the backdating pass
 _jitter = random.Random(20240115)
 
 
@@ -64,14 +64,14 @@ def when(days_ago: float) -> datetime:
     return NOW - timedelta(days=days_ago, hours=_jitter.uniform(0, 9), minutes=_jitter.uniform(0, 59))
 
 
-def record(experiment_id: str, days_ago: float) -> str:
-    SCHEDULE.append((experiment_id, when(days_ago)))
-    return experiment_id
+def record(version_id: str, days_ago: float) -> str:
+    SCHEDULE.append((version_id, when(days_ago)))
+    return version_id
 
 
 # --------------------------------------------------------------------------------------------
 # Petites fabriques pour rester lisible - un dict par type d'étape, la même forme que
-# structure-builder.js envoie (voir spectre/api/static/js/structure-builder/step-kinds.js).
+# structure-builder.js envoie (voir spectre/plugins/structures/static/builder/step-kinds.js).
 # --------------------------------------------------------------------------------------------
 
 
@@ -136,43 +136,57 @@ class Session:
         self.client = client
         self.email = email
         if name is not None:
-            r = client.post("/api/auth/register", json={"email": email, "password": password, "name": name})
+            r = client.post("/api/users", json={"email": email, "password": password, "name": name})
             if r.status_code != 201:
                 raise RuntimeError(f"registration failed for {email}: {r.status_code} {r.text}")
         else:
-            r = client.post("/api/auth/login", json={"email": email, "password": password})
-            if r.status_code != 200:
+            r = client.post("/api/sessions", json={"email": email, "password": password})
+            if r.status_code != 201:
                 raise RuntimeError(f"login failed for {email}: {r.status_code} {r.text}")
 
-    def post(self, path, **kw):
-        r = self.client.post(path, **kw)
+    def request(self, method, path, **kw):
+        r = self.client.request(method, path, **kw)
         if r.status_code >= 400:
-            raise RuntimeError(f"POST {path} -> {r.status_code}: {r.text}")
+            raise RuntimeError(f"{method} {path} -> {r.status_code}: {r.text}")
         return r.json()
 
+    def post(self, path, **kw):
+        return self.request("POST", path, **kw)
+
     def get(self, path, **kw):
-        r = self.client.get(path, **kw)
-        if r.status_code >= 400:
-            raise RuntimeError(f"GET {path} -> {r.status_code}: {r.text}")
-        return r.json()
+        return self.request("GET", path, **kw)
 
 
 class Microproject:
     """One microproject, driven by whichever Session currently 'owns' each call - keeps the beat
     functions below terse (``proj.launch(...)`` instead of repeating the slug/session juggling).
+
+    Each beat returns the version it recorded, ``{"id": <the line of study>, "version_id": ...}`` -
+    what the next beat writes on (sending ``If-Match`` with that version: a beat that would write
+    on a line that moved on since fails loudly instead of forking it) or starts a new line from.
     """
 
     def __init__(self, slug: str):
         self.slug = slug
 
-    def launch(self, session: Session, *, title, intent, hypothesis, substrate, steps, objectives, sample_id, location=None, days_ago) -> str:
-        # every experience needs a physical entity from the moment it's created (spectre.api.structures
-        # enforces this) - passed straight through rather than tracked as an afterthought.
+    def _experiments(self) -> str:
+        return f"/api/microprojects/{self.slug}/experiments"
+
+    def _write(self, session: Session, method: str, exp: dict, resource: str, body: dict, days_ago: float) -> dict:
+        result = session.request(
+            method, f"{self._experiments()}/{exp['id']}/{resource}", json=body, headers={"If-Match": f'"{exp["version_id"]}"'}
+        )
+        record(result["version_id"], days_ago)
+        return {"id": result["id"], "version_id": result["version_id"]}
+
+    def launch(self, session: Session, *, title, intent, hypothesis, substrate, steps, objectives, sample_id, location=None, days_ago) -> dict:
+        # every experiment needs a physical entity from the moment it's created
+        # (spectre.plugins.experiments.service.create enforces this) - passed straight through
+        # rather than tracked as an afterthought.
         result = session.post(
-            f"/api/microprojets/{self.slug}/experiences",
+            self._experiments(),
             json={
-                "substrate": substrate,
-                "steps": steps,
+                "structure": {"kind": "process", "substrate": substrate, "steps": steps},
                 "title": title,
                 "intent": intent,
                 "hypothesis": hypothesis,
@@ -180,69 +194,77 @@ class Microproject:
                 "entities": [{"sample_id": sample_id, "location": location}],
             },
         )
-        return record(result["id"], days_ago)
+        record(result["version_id"], days_ago)
+        return {"id": result["id"], "version_id": result["version_id"]}
 
-    def evolve(self, session: Session, ref: str, *, title, intent, hypothesis, substrate, steps, objectives=None, new_branch=None, days_ago):
-        result = session.post(
-            f"/api/microprojets/{self.slug}/experiences/{ref}/evoluer",
-            json={
-                "substrate": substrate,
-                "steps": steps,
-                "title": title,
-                "intent": intent,
-                "hypothesis": hypothesis,
-                "objectives": objectives or [],
-                "new_branch": new_branch,
-            },
-        )
-        return record(result["id"], days_ago)
+    def evolve(self, session: Session, exp: dict, *, title, intent, hypothesis, substrate, steps, objectives=None, new_branch=None, days_ago) -> dict:
+        """A new version of ``exp``'s line - or, with ``new_branch``, a new line started from it."""
+        body = {
+            "structure": {"kind": "process", "substrate": substrate, "steps": steps},
+            "title": title,
+            "intent": intent,
+            "hypothesis": hypothesis,
+            "objectives": objectives or [],
+        }
+        if new_branch is None:
+            return self._write(session, "POST", exp, "versions", body, days_ago)
+        result = session.post(self._experiments(), json={**body, "branch": new_branch, "from_version": {"experiment_id": exp["id"], "version_id": exp["version_id"]}})
+        record(result["version_id"], days_ago)
+        return {"id": result["id"], "version_id": result["version_id"]}
 
-    def evidence(self, session: Session, ref: str, *, description, source, metric_name=None, metric_value=None, metric_unit=None, days_ago) -> str:
-        result = session.post(
-            f"/api/microprojets/{self.slug}/experiences/{ref}/preuves",
+    def evidence(self, session: Session, exp: dict, *, description, source, metric_name=None, metric_value=None, metric_unit=None, days_ago) -> dict:
+        # la réponse est la preuve : la version qu'elle a créée se lit sur la piste
+        session.request(
+            "POST",
+            f"{self._experiments()}/{exp['id']}/evidence",
             json={"description": description, "source": source, "metric_name": metric_name, "metric_value": metric_value, "metric_unit": metric_unit},
+            headers={"If-Match": f'"{exp["version_id"]}"'},
         )
-        return record(result["id"], days_ago)
+        tip = session.get(f"{self._experiments()}/{exp['id']}")
+        record(tip["version_id"], days_ago)
+        return {"id": exp["id"], "version_id": tip["version_id"]}
 
-    def conclude(self, session: Session, ref: str, *, status="concluded", decision=None, summary=None, next_steps=None, objective_results=None, days_ago) -> str:
-        result = session.post(
-            f"/api/microprojets/{self.slug}/experiences/{ref}/conclure",
-            json={"status": status, "decision": decision, "summary": summary, "next_steps": next_steps, "objective_results": objective_results or []},
+    def conclude(self, session: Session, exp: dict, *, status="concluded", decision=None, summary=None, next_steps=None, objective_results=None, days_ago) -> dict:
+        body = {"status": status, "decision": decision, "summary": summary, "next_steps": next_steps, "objective_results": objective_results or []}
+        return self._write(session, "PUT", exp, "conclusion", body, days_ago)
+
+    def tag(self, session: Session, exp: dict, tags: list[str], *, days_ago) -> dict:
+        return self._write(session, "PUT", exp, "tags", {"tags": tags}, days_ago)
+
+    def track(self, session: Session, exp: dict, *, sample_id, location, days_ago) -> dict:
+        return self._write(session, "PUT", exp, "entities", {"entities": [{"sample_id": sample_id, "location": location}]}, days_ago)
+
+    def combine(self, session: Session, exp: dict, *, other: dict, days_ago) -> dict:
+        """Merge two lines of work - keeps ``exp``'s structure/steps as-is, links ``other`` in as a
+        second parent and takes its evidence along (a real content merge, if wanted, is a normal
+        evolve() right after - see the "LED complète sur substrat SiC" beat)."""
+        result = session.request(
+            "POST",
+            f"{self._experiments()}/{exp['id']}/merges",
+            json={"other_experiment_id": other["id"]},
+            headers={"If-Match": f'"{exp["version_id"]}"'},
         )
-        return record(result["id"], days_ago)
+        record(result["version_id"], days_ago)
+        return {"id": result["id"], "version_id": result["version_id"]}
 
-    def tag(self, session: Session, ref: str, tags: list[str], *, days_ago) -> str:
-        result = session.post(f"/api/microprojets/{self.slug}/experiences/{ref}/etiquettes", json={"tags": tags})
-        return record(result["id"], days_ago)
-
-    def track(self, session: Session, ref: str, *, sample_id, location, days_ago) -> str:
-        result = session.post(
-            f"/api/microprojets/{self.slug}/experiences/{ref}/entites",
-            json={"entities": [{"sample_id": sample_id, "location": location}]},
-        )
-        return record(result["id"], days_ago)
-
-    def combine(self, session: Session, ref: str, *, other_id: str, title, intent, days_ago) -> str:
-        """Merge two lines of work - keeps `ref`'s structure/steps as-is and links `other_id` in
-        as a second parent (a real content merge, if wanted, is a normal evolve() right after -
-        see the "LED complète sur substrat SiC" beat)."""
-        result = session.post(
-            f"/api/microprojets/{self.slug}/experiences/{ref}/combiner",
-            json={"other_id": other_id, "title": title, "intent": intent},
-        )
-        return record(result["id"], days_ago)
-
-    def make_ref(self, session: Session, ref: str, *, name: str | None = None) -> str:
-        """Tag ``ref`` as a ref (:mod:`spectre.core.refs`) - unlike every other beat here, this
-        doesn't create a new commit (a ref is just a name on an experience that already exists),
-        so there's nothing to schedule for backdating."""
-        result = session.post(f"/api/microprojets/{self.slug}/experiences/{ref}/ref", json={"name": name})
-        return result["name"]
+    def make_ref(self, session: Session, exp: dict, *, name: str | None = None) -> str:
+        """Mark ``exp``'s version as a ref (:mod:`spectre.plugins.experiments.refs`) - unlike every
+        other beat here, this doesn't create a new version (a ref is just a name on a version that
+        already exists), so there's nothing to schedule for backdating."""
+        result = session.post(f"/api/microprojects/{self.slug}/refs", json={"experiment_id": exp["id"], "version_id": exp["version_id"], "name": name})
+        return result["names"][0] if name is None else name
 
     def save_structure(self, session: Session, *, name, substrate, steps, partagee=False, derived_from=None):
         session.post(
-            f"/api/microprojets/{self.slug}/structures-sauvegardees",
-            json={"name": name, "substrate": substrate, "steps": steps, "derived_from": derived_from, "partagee": partagee},
+            "/api/saved-structures",
+            json={
+                "name": name,
+                "substrate": substrate,
+                "steps": steps,
+                "derived_from": derived_from,
+                "scope": "shared" if partagee else "microproject",
+                "microproject": None if partagee else self.slug,
+            },
         )
 
 
@@ -288,7 +310,7 @@ GROWTH_TAPER = [
 
 def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     created = demo.post(
-        "/api/microprojets",
+        "/api/microprojects",
         json={
             "name": "Nanofils GaN - puits quantique simple",
             "description": "Nanofils GaN à pointe semipolaire pour LED bleue - épitaxie, gravure, croissance sélective, un seul puits quantique, avec un changement de substrat de base et une déclinaison rouge/vert/bleu du taux d'indium.",
@@ -296,7 +318,7 @@ def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> 
     )
     slug = created["slug"]
     for email in (lea.email, marc.email):
-        demo.post(f"/api/microprojets/{slug}/members", json={"email": email, "role": "editor"})
+        demo.post(f"/api/microprojects/{slug}/members", json={"email": email, "role": "editor"})
     proj = Microproject(slug)
 
     OBJ = [
@@ -510,12 +532,7 @@ def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> 
 
     # 10. Fusion : réunir la référence à puits simple (b7) et l'exploration substrat SiC (b5),
     # puis reproduire réellement la structure complète sur SiC dans l'evolve() qui suit.
-    b10 = proj.combine(
-        demo, b7, other_id=b5,
-        title="Réunion : structure LED à puits simple + exploration substrat SiC",
-        intent="Relier la référence LED bleue et l'exploration substrat SiC avant de tester la structure complète sur SiC.",
-        days_ago=120,
-    )
+    b10 = proj.combine(demo, b7, other=b5, days_ago=120)
     b10 = proj.evolve(
         demo, b10,
         title="LED bleue complète sur substrat SiC",
@@ -549,7 +566,7 @@ def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> 
 
 def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     created = demo.post(
-        "/api/microprojets",
+        "/api/microprojects",
         json={
             "name": "Nanofils GaN - puits quantiques multiples (MQW)",
             "description": "Même base épitaxiale que le projet à puits simple, mais avec plusieurs puits quantiques : comparaison avec/sans couche bloqueuse d'électrons (EBL), puis réglage du dopage P en aval.",
@@ -557,7 +574,7 @@ def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     )
     slug = created["slug"]
     for email in (lea.email, marc.email):
-        demo.post(f"/api/microprojets/{slug}/members", json={"email": email, "role": "editor"})
+        demo.post(f"/api/microprojects/{slug}/members", json={"email": email, "role": "editor"})
     proj = Microproject(slug)
 
     OBJ = [
@@ -579,7 +596,7 @@ def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     def p_gan_cap(doping_label):
         # le dopage (concentration de Mg) n'est pas non plus un champ simulé - seul le nom de
         # l'étape change d'un essai à l'autre, ce qui illustre bien le niveau "correctif (Z)" de
-        # spectre.core.versioning : la géométrie simulée est identique, seul le libellé change.
+        # spectre.plugins.experiments.versioning : la géométrie simulée est identique, seul le libellé change.
         return deposition(f"Couche GaN dopée Mg (type p, {doping_label})", "GaN", recipe="MOCVD Epitaxial", thickness_nm=100)
 
     ebl_layer = deposition("Couche bloqueuse d'électrons AlGaN (EBL)", "AlGaN", recipe="MOCVD Epitaxial", thickness_nm=15)
@@ -722,7 +739,7 @@ def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     proj.make_ref(demo, c6, name="mqw-ebl-reference")
 
     # 7. Dopage P modéré - seul le libellé de la couche p change (correctif/patch pour
-    # spectre.core.versioning : même géométrie simulée).
+    # spectre.plugins.experiments.versioning : même géométrie simulée).
     c7 = proj.evolve(
         demo, c6,
         title="Dopage P modéré (Mg ~5e18 cm-3)",
@@ -827,7 +844,8 @@ def backdate_microprojects(data_dir: Path, slugs: list[str], days_ago: float) ->
     try:
         conn.execute(
             f"UPDATE microprojects SET created_at = ? WHERE slug IN ({','.join('?' * len(slugs))})",
-            [when(days_ago).isoformat(), *slugs],
+            # le format de la colonne (datetime('now') de SQLite, UTC sans zone), que lisent les payloads
+            [when(days_ago).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), *slugs],
         )
         conn.commit()
     finally:
@@ -846,7 +864,7 @@ def main() -> None:
 
     from fastapi.testclient import TestClient
 
-    from spectre.api.app import create_app
+    from spectre.kernel.app import create_app
 
     app = create_app()
 

@@ -1,0 +1,174 @@
+"""Expériences (plugin experiments) : lancer une piste, la faire évoluer, la conclure... Chaque aide
+encapsule une route et vérifie son code de succès ; ``fields`` complète ou remplace le corps envoyé.
+Les aides d'écriture renvoient l'étude à jour (``id`` : la piste, ``version_id`` : sa dernière
+version) ; ``if_match`` envoie l'en-tête ``If-Match`` (la version affichée)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from .http import assert_created, assert_ok
+from .structures import campaign_plan, steps, substrate
+
+# Les champs d'une structure, rangés sous ``structure`` (le reste est l'intention).
+STRUCTURE_FIELDS = ("substrate", "steps", "declared_params", "plan", "images")
+
+
+def experiments_url(slug: str) -> str:
+    return f"/api/microprojects/{slug}/experiments"
+
+
+def experiment_url(slug: str, ref: str) -> str:
+    return f"{experiments_url(slug)}/{ref}"
+
+
+def _headers(if_match: str | None) -> dict:
+    return {"If-Match": f'"{if_match}"'} if if_match else {}
+
+
+def _split(kind: str, fields: dict) -> dict:
+    """``fields`` dont les champs de structure passent sous ``structure`` (``kind`` compris)."""
+    structure = {"kind": kind, **{key: fields.pop(key) for key in STRUCTURE_FIELDS if key in fields}}
+    if kind != "images":
+        structure.setdefault("substrate", substrate())
+        structure.setdefault("steps", steps())
+    return {"structure": structure, **fields}
+
+
+def launch_body(*, title: str = "Essai", intent: str = "Verifier", entities: list[dict] | None = None, kind: str = "process", **fields: Any) -> dict:
+    """Le corps d'un lancement : une couche d'oxyde sur Si, suivie sur le wafer W1, sauf mention
+    contraire (``steps=``, ``substrate=``, ``plan=``, ``images=`` vont dans ``structure``)."""
+    body = {"title": title, "intent": intent, "entities": [{"sample_id": "W1"}] if entities is None else entities, **fields}
+    return _split(kind, body)
+
+
+def post_launch(client: Any, slug: str, **fields: Any) -> Any:
+    """POST /experiments, tel quel (la réponse, pour en vérifier un refus)."""
+    return client.post(experiments_url(slug), json=launch_body(**fields))
+
+
+def launch(client: Any, slug: str, **fields: Any) -> dict:
+    """POST /experiments (voir :func:`launch_body`) - renvoie l'étude créée."""
+    return assert_created(post_launch(client, slug, **fields))
+
+
+def launch_campaign(client: Any, slug: str, plan: dict | None = None, **fields: Any) -> dict:
+    """Une campagne - par défaut trois épaisseurs d'oxyde (10, 20, 30 nm)."""
+    fields = {"title": "Campagne", "intent": "Balayer l'epaisseur", **fields}
+    return launch(client, slug, kind="campaign", plan=plan or campaign_plan([10, 20, 30]), **fields)
+
+
+def launch_image(client: Any, slug: str, images: list[dict], **fields: Any) -> dict:
+    """Une structure donnée en images (``{image_id, kind, caption}``)."""
+    fields = {"title": "Coupe", "intent": "Documenter", **fields}
+    return launch(client, slug, kind="images", images=images, **fields)
+
+
+def get_experiment(client: Any, slug: str, ref: str) -> dict:
+    return assert_ok(client.get(experiment_url(slug, ref)))
+
+
+
+def get_version(client: Any, slug: str, ref: str, version_id: str) -> dict:
+    return assert_ok(client.get(f"{experiment_url(slug, ref)}/versions/{version_id}"))
+
+
+def versions(client: Any, slug: str, ref: str) -> list[dict]:
+    """La frise de la piste : chaque version, de la première à la pointe."""
+    return assert_ok(client.get(f"{experiment_url(slug, ref)}/versions"))
+
+
+def lineage(client: Any, slug: str) -> dict:
+    """Le graphe de filiation du µprojet (``{nodes, edges}``)."""
+    return assert_ok(client.get(f"/api/microprojects/{slug}/lineage"))
+
+
+def post_evolve(client: Any, slug: str, ref: str, *, kind: str = "process", if_match: str | None = None, **fields: Any) -> Any:
+    return client.post(f"{experiment_url(slug, ref)}/versions", json=_split(kind, fields), headers=_headers(if_match))
+
+
+def evolve(client: Any, slug: str, ref: str, *, title: str = "Essai", intent: str = "Suite", **fields: Any) -> dict:
+    """POST /versions - par défaut le même procédé ; ``steps=...`` pour le changer."""
+    return assert_created(post_evolve(client, slug, ref, title=title, intent=intent, **fields))
+
+
+def evolve_image(client: Any, slug: str, ref: str, images: list[dict], *, title: str = "Coupe", intent: str = "Suite", **fields: Any) -> dict:
+    return assert_created(post_evolve(client, slug, ref, kind="images", images=images, title=title, intent=intent, **fields))
+
+
+def _put(client: Any, slug: str, ref: str, resource: str, body: dict, if_match: str | None) -> Any:
+    return client.put(f"{experiment_url(slug, ref)}/{resource}", json=body, headers=_headers(if_match))
+
+
+def conclude(client: Any, slug: str, ref: str, status: str = "concluded", *, if_match: str | None = None, **fields: Any) -> dict:
+    """PUT /conclusion - ``fields`` : ``decision``, ``summary``, ``objective_results``..."""
+    return assert_ok(_put(client, slug, ref, "conclusion", {"status": status, **fields}, if_match))
+
+
+def set_status(client: Any, slug: str, ref: str, status: str, *, if_match: str | None = None, **fields: Any) -> dict:
+    """PUT /status (brouillon, en cours, en pause) - ``hold_reason`` pour une pause."""
+    return assert_ok(_put(client, slug, ref, "status", {"status": status, **fields}, if_match))
+
+
+def tag(client: Any, slug: str, ref: str, tags: list[str], *, if_match: str | None = None) -> dict:
+    return assert_ok(_put(client, slug, ref, "tags", {"tags": tags}, if_match))
+
+
+def track_entities(client: Any, slug: str, ref: str, entities: list[dict], *, if_match: str | None = None) -> dict:
+    """PUT /entities : les échantillons physiques suivis (un par variante d'une campagne)."""
+    return assert_ok(_put(client, slug, ref, "entities", {"entities": entities}, if_match))
+
+
+def replace_structure_images(client: Any, slug: str, ref: str, images: list[dict], *, if_match: str | None = None) -> dict:
+    return assert_ok(_put(client, slug, ref, "structure-images", {"images": images}, if_match))
+
+
+def merge(client: Any, slug: str, ref: str, other_experiment_id: str, *, if_match: str | None = None) -> dict:
+    """POST /merges : réunit l'autre piste dans celle-ci."""
+    response = client.post(f"{experiment_url(slug, ref)}/merges", json={"other_experiment_id": other_experiment_id}, headers=_headers(if_match))
+    return assert_created(response)
+
+
+def delete_experiment(client: Any, slug: str, ref: str, *, if_match: str | None = None) -> Any:
+    """DELETE, tel quel (la réponse : 204, ou le refus)."""
+    return client.delete(experiment_url(slug, ref), headers=_headers(if_match))
+
+
+def process(client: Any, slug: str, ref: str, version: str | None = None) -> dict:
+    return assert_ok(client.get(f"{experiment_url(slug, ref)}/process", params={"version": version} if version else {}))
+
+
+def structure_diff(client: Any, slug: str, ref: str, **params: Any) -> dict:
+    """GET /structure-diff - ``version``, ``against_version``, ``against_experiment``, ``against_microproject``."""
+    return assert_ok(client.get(f"{experiment_url(slug, ref)}/structure-diff", params=params))
+
+
+def variants(client: Any, slug: str, ref: str) -> dict:
+    return assert_ok(client.get(f"{experiment_url(slug, ref)}/variants"))
+
+
+def list_experiments(client: Any, slug: str, **params: Any) -> dict:
+    """GET /experiments (``status``, ``q``, ``offset``, ``limit``) - ``{items, total}``."""
+    return assert_ok(client.get(experiments_url(slug), params=params))
+
+
+def refs(client: Any, slug: str) -> dict:
+    """GET /refs - ``{refs, edges}``."""
+    return assert_ok(client.get(f"/api/microprojects/{slug}/refs"))
+
+
+def create_ref(client: Any, slug: str, ref: str, name: str | None = None, *, version_id: str | None = None) -> dict:
+    """POST /refs : marque la pointe de la piste (ou ``version_id``) comme ref (``name`` : un
+    surnom, sinon « ref vX.Y.Z »)."""
+    body = {"experiment_id": ref, **({"name": name} if name is not None else {}), **({"version_id": version_id} if version_id else {})}
+    return assert_created(client.post(f"/api/microprojects/{slug}/refs", json=body))
+
+
+def experiment_stats(client: Any, **filters: Any) -> list[dict]:
+    """GET /api/experiment-stats (``area``, ``microproject``) - une ligne par µprojet."""
+    return assert_ok(client.get("/api/experiment-stats", params=filters))
+
+
+def experiment_timeline(client: Any, **filters: Any) -> list[dict]:
+    """GET /api/experiment-timeline (``area``, ``thematic``) - la frise, une ligne par µprojet."""
+    return assert_ok(client.get("/api/experiment-timeline", params=filters))

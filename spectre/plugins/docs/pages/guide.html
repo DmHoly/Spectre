@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guide d'utilisation — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/experiments/experiments.css">
+  <link rel="stylesheet" href="/static/docs/docs.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-text="/ Documentation / Guide" -->
+
+  <div class="page" style="max-width:1180px;">
+    <p style="color:var(--text-faint);margin-bottom:16px;"><a href="/docs">&larr; Documentation</a></p>
+
+    <div class="docs-shell">
+      <nav class="docs-nav">
+        <a href="#compte">Créer un compte</a>
+        <a href="#projets">Créer un projet</a>
+        <a href="#roles">Rôles et membres</a>
+
+        <div class="docs-nav__group">Construire une structure</div>
+        <a href="#substrat">L'atelier de structure</a>
+        <a href="#etapes">Ajouter des étapes</a>
+        <a href="#vues">Éditer, réordonner, grouper</a>
+        <a href="#simuler">Simuler</a>
+        <a href="#structure-image">Sans constructeur : des images</a>
+
+        <div class="docs-nav__group">Suivre une expérience</div>
+        <a href="#lancer">Lancer le suivi</a>
+        <a href="#fiche">La fiche d'expérience</a>
+        <a href="#cahier">Cahier de données</a>
+        <a href="#preuves">Preuves</a>
+        <a href="#conclure">Conclure</a>
+
+        <div class="docs-nav__group">Faire évoluer</div>
+        <a href="#evoluer">Continuer ou explorer une nouvelle piste</a>
+        <a href="#gabarit">Nouvelle expérience à partir d'une structure existante</a>
+
+        <div class="docs-nav__group">Campagnes</div>
+        <a href="#campagnes">Plusieurs échantillons (DOE)</a>
+        <a href="#cartographie">Cartographie et feuille de split</a>
+        <a href="#suivi-physique">Suivi physique par échantillon</a>
+
+        <div class="docs-nav__group">Comparer et organiser</div>
+        <a href="#comparer">Comparer deux expériences</a>
+        <a href="#combiner">Combiner deux expériences</a>
+        <a href="#etiquettes">Étiquettes</a>
+        <a href="#vue-ensemble">Vue d'ensemble du projet</a>
+        <a href="#refs">Refs</a>
+        <a href="#presets-etapes">Gérer les présets d'étapes</a>
+        <a href="#formulaire-intention">Formulaire d'intention</a>
+
+        <div class="docs-nav__group">Compte et projet</div>
+        <a href="#compte-gestion">Profil et mot de passe</a>
+        <a href="#projet-gestion">Suppression et invitations</a>
+      </nav>
+
+      <div class="docs-content">
+        <h1>Guide d'utilisation</h1>
+        <p>Ce guide suit le déroulé normal d'un projet dans Spectre : créer un compte, monter un projet, construire une structure, suivre une expérience jusqu'à sa conclusion, puis la faire évoluer ou la comparer à d'autres. Chaque section correspond à un écran réel de l'application. Pour des recettes complètes et reproductibles (nanofils, plots de report), voir <a href="/docs/exemples">Exemples pas à pas</a>.</p>
+
+        <section id="compte">
+          <h2>Créer un compte</h2>
+          <p>Depuis l'écran de connexion, le lien « Créer un compte » ouvre l'inscription : nom, e-mail, mot de passe (8 caractères minimum). Si quelqu'un vous a invité à rejoindre un projet, ouvrez le lien reçu par e-mail : votre adresse sera déjà pré-remplie et vous rejoindrez automatiquement le projet une fois le compte créé.</p>
+          <img class="docs-shot" src="/static/docs/img/01-inscription.png" alt="Formulaire d'inscription Spectre">
+          <p>Mot de passe oublié ? Le lien « Mot de passe oublié » sur l'écran de connexion envoie un e-mail de réinitialisation, valable un temps limité.</p>
+        </section>
+
+        <section id="projets">
+          <h2>Créer un projet</h2>
+          <p>Un projet regroupe toutes les expériences d'une même étude : ses structures, ses présets d'étape, ses membres. Depuis « Mes projets », le bouton « Nouveau projet » demande un nom et une description optionnelle. Vous en devenez automatiquement propriétaire.</p>
+          <img class="docs-shot" src="/static/docs/img/02-dashboard.png" alt="Tableau de bord, liste des projets">
+          <p>Chaque carte de projet affiche votre rôle dessus et le nombre d'expériences en cours / terminées.</p>
+          <img class="docs-shot" src="/static/docs/img/03-nouveau-projet.png" alt="Dialogue de création d'un nouveau projet">
+        </section>
+
+        <section id="roles">
+          <h2>Rôles et membres</h2>
+          <p>Un projet a trois niveaux d'accès :</p>
+          <table>
+            <thead><tr><th>Rôle</th><th>Peut faire</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Lecture seule</strong></td><td>Voir les expériences, structures, comparaisons et la vue d'ensemble.</td></tr>
+              <tr><td><strong>Peut modifier</strong></td><td>Tout ce qui précède, plus créer/faire évoluer/conclure une expérience, lancer une campagne, gérer les présets d'étapes.</td></tr>
+              <tr><td><strong>Propriétaire</strong></td><td>Tout ce qui précède, plus gérer les membres et supprimer le projet.</td></tr>
+            </tbody>
+          </table>
+          <p>Depuis l'onglet « Membres » du projet (visible aux propriétaires), ajouter quelqu'un par e-mail : s'il a déjà un compte, il rejoint le projet immédiatement ; sinon, une invitation par e-mail lui est envoyée avec un lien d'inscription valable deux semaines.</p>
+          <img class="docs-shot" src="/static/docs/img/04-membres-invitation.png" alt="Onglet Membres, invitation par e-mail">
+        </section>
+
+        <section id="substrat">
+          <h2>L'atelier de structure</h2>
+          <p>Le constructeur de structure tient sur un seul écran, sans défilement : en haut le <strong>process flow</strong> (le procédé qui se lit de gauche à droite, substrat en tête), à gauche la <strong>palette d'outils</strong>, au centre la coupe transversale simulée, à droite l'<strong>inspecteur</strong> de ce qui est sélectionné. Toute structure part d'un substrat : un matériau, une largeur et une épaisseur - cliquer la puce « Substrat » du flow l'ouvre dans l'inspecteur, modifiable à tout moment.</p>
+          <img class="docs-shot" src="/static/docs/img/05-builder-initial.png" alt="Constructeur de structure, état initial avec seulement le substrat">
+          <p class="docs-shot-caption">Le constructeur au départ : seulement le substrat.</p>
+        </section>
+
+        <section id="etapes">
+          <h2>Ajouter des étapes</h2>
+          <p>Une structure se construit étape par étape. Neuf types d'étapes sont disponibles dans la palette, groupés par famille (ajout de matière, motif et retrait, autres) :</p>
+          <ul>
+            <li><strong>Dépôt</strong> — ajoute une couche d'un matériau, avec une recette (mode conforme ou directionnel, angle) et une épaisseur. Un préset d'étape (voir <a href="#presets-etapes">Gérer les présets d'étapes</a>) préremplit la recette en un clic.</li>
+            <li><strong>Gravure</strong> — retire de la matière selon une recette (mode isotrope ou directionnel, sélectivité par matériau), et une profondeur.</li>
+            <li><strong>Planarisation</strong> — aplanit jusqu'à un niveau précis ou jusqu'à atteindre un matériau donné.</li>
+            <li><strong>Lithographie</strong> — dépose une résine avec des ouvertures (zones non couvertes).</li>
+            <li><strong>Étape chimique</strong> — un nettoyage, un recuit... sans effet visible sur la coupe, gardé pour la traçabilité.</li>
+            <li><strong>Retrait de résine</strong> — retire la résine posée par une lithographie.</li>
+            <li><strong>Croissance facettée</strong> — construction de Wulff cinétique : trois familles de plans cristallins (C, M, semipolaire) avancent chacune à leur propre vitesse relative, ce qui fait émerger une pointe de nanofil en crayon ou une facette de LED III-N naturellement, au fil de plusieurs étapes.</li>
+            <li><strong>Croissance épitaxiale</strong> — croissance sélective (SAG) ou non selon un matériau d'amorçage, dans une orientation cristalline donnée (plan C vertical, plan M latéral, ou semipolaire à un angle choisi).</li>
+            <li><strong>Retournement</strong> — retourne physiquement la structure pour travailler sa face arrière (amincissement, via traversant, contact) ; la face avant n'est plus directement exposée, mais reste atteignable — un amincissement ou une gravure de face arrière suffisamment profond la traverse (un via qui vient contacter un plot enterré, par exemple). Nécessite une face avant plane sur toute la largeur (une planarisation juste avant), comme un vrai collage sur support temporaire. Voir <a href="/docs/exemples#retournement">Exemples : retournement et via de face arrière</a>.</li>
+          </ul>
+          <p>Trois façons d'insérer une étape : cliquer un outil de la palette (elle s'insère juste après l'étape sélectionnée), le <strong>glisser</strong> à l'endroit voulu du flow, ou cliquer un « + » entre deux puces. Les touches <kbd>1</kbd> à <kbd>9</kbd> font de même au clavier. La nouvelle étape est aussitôt sélectionnée avec ses valeurs par défaut : il ne reste qu'à la régler dans l'inspecteur.</p>
+          <img class="docs-shot" src="/static/docs/img/06-etape-ajoutee.png" alt="Une étape de dépôt ajoutée au process flow">
+        </section>
+
+        <section id="vues">
+          <h2>Éditer, réordonner, grouper</h2>
+          <ul>
+            <li><strong>Édition en direct</strong> — l'inspecteur applique chaque modification immédiatement (la puce du flow et la coupe se mettent à jour) ; <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> annulent et rétablissent. Changer le « Type d'étape » transforme l'étape sélectionnée.</li>
+            <li><strong>Réordonner</strong> — glisser une puce dans le flow, ou les flèches de l'inspecteur (<kbd>Ctrl</kbd>+<kbd>←</kbd>/<kbd>→</kbd>). Dupliquer (<kbd>Ctrl</kbd>+<kbd>D</kbd>) et supprimer (<kbd>Suppr</kbd>) sont au même endroit.</li>
+            <li><strong>Depuis le dessin</strong> — cliquer une couche de la coupe sélectionne l'étape qui l'a produite (la vue reste en place) et affiche sa traçabilité ; survoler une puce du flow illumine ses couches.</li>
+            <li><strong>Briques</strong> — <kbd>Ctrl</kbd>+clic ou <kbd>Maj</kbd>+clic sélectionne plusieurs étapes consécutives, que l'inspecteur propose de grouper en brique technologique réutilisable. Les briques disponibles sont listées sous les outils (clic ou glisser pour en insérer une) ; dans le flow, une brique se replie en une seule puce.</li>
+          </ul>
+          <p>Le bouton clavier du bandeau (ou <kbd>?</kbd>) liste tous les raccourcis.</p>
+          <img class="docs-shot" src="/static/docs/img/07-vue-etapes.png" alt="Process flow avec plusieurs étapes et l'inspecteur">
+        </section>
+
+        <section id="simuler">
+          <h2>Simuler</h2>
+          <p>La coupe transversale est recalculée automatiquement à chaque modification. Elle montre la structure <strong>après l'étape sélectionnée</strong> : le process flow sert aussi de frise pour rejouer le procédé étape par étape (flèches <kbd>←</kbd> <kbd>→</kbd>) ; la bascule « Finale » affiche toujours le résultat complet. Zoom : boutons, ou <kbd>Ctrl</kbd>+molette, puis glisser pour se déplacer. Si une étape rend la simulation impossible, le message s'affiche sur la coupe, sans perdre l'aperçu précédent.</p>
+          <img class="docs-shot" src="/static/docs/img/09-structure-simulee.png" alt="Structure simulée, empilement PGaN puis contact Ni/Au">
+        </section>
+
+        <section id="structure-image">
+          <h2>Sans constructeur : des images de la structure</h2>
+          <p>Pas besoin de passer par l'atelier pour démarrer une expérience : dans « Nouvelle expérience », choisissez <strong>Coller une image</strong>. La structure est alors donnée en images - un schéma fait dans PowerPoint (sélectionnez la forme ou la diapositive, <kbd>Ctrl</kbd>+<kbd>C</kbd>), des coupes TEM ou MEB copiées depuis le logiciel du microscope, une photo. <strong>Plusieurs images</strong> quand une seule ne suffit pas (le schéma visé, une coupe d'ensemble, un zoom...), jusqu'à 12, dans l'ordre où les lire : chacune avec son type (schéma, coupe TEM/MEB, autre) et sa légende.</p>
+          <p>Pour ajouter : <kbd>Ctrl</kbd>+<kbd>V</kbd> n'importe où sur la page, glisser-déposer un ou plusieurs fichiers, ou « Ajouter une image » (PNG, JPEG, GIF ou WebP, 10 Mo max ; un TIFF de microscope se colle plutôt qu'il ne s'envoie, le navigateur ne sait pas l'afficher). Sur chaque image : les flèches pour la placer avant ou après, « Remplacer » (ou déposer un fichier directement dessus), la corbeille pour la retirer. À droite, le titre, l'intention, l'entité physique et les objectifs, comme pour tout lancement.</p>
+          <p>Sur la fiche, les images forment une planche numérotée ; <strong>Modifier les images</strong> ouvre la même planche pour en ajouter, en retirer, les réordonner ou les remplacer à tout moment - un schéma retouché, la coupe TEM une fois faite : c'est la même structure, donc pas de nouvelle version (les images précédentes restent sur la version précédente, et la fiche résume ce qui a changé : « 1 image ajoutée », « Ordre des images modifié »...). Quand la structure change vraiment, <strong>Éditer la fiche</strong> avec de nouvelles images et crée une nouvelle version (vX+1), avec son nœud dans le graphe du µprojet. On peut passer d'un mode à l'autre à tout moment : « Continuer dans le constructeur » redessine étape par étape une structure donnée en images, et « Avec une image » (dans « Nouvelle expérience ») continue une expérience dessinée par des images.</p>
+          <p>Ce qu'on perd sans constructeur : la simulation, le détail des couches au survol, les campagnes (variations) et la comparaison paramètre par paramètre - une image ne dit rien de ses épaisseurs. Le rapport téléchargé embarque toutes les images.</p>
+        </section>
+
+        <section id="lancer">
+          <h2>Lancer le suivi</h2>
+          <p>Pour une nouvelle expérience, le bandeau de l'atelier porte trois étapes : <strong>1. Structure</strong>, <strong>2. Intention &amp; objectifs</strong>, <strong>3. Variations &amp; lancement</strong>. L'écran « Intention » demande un titre, un <strong>contexte</strong> (une description sommaire : d'où part l'expérience, pourquoi maintenant), <strong>ce que je veux démontrer</strong> et, optionnellement, une hypothèse ; à côté, <strong>comment je compte le démontrer</strong> - les objectifs : pour chacun, pourquoi il compte, la mesure suivie, le sens recherché (observer / maximiser / minimiser / cible précise) et comment on compte le vérifier. C'est exactement ce qu'on lira en tête de la fiche ; les réponses aux objectifs viendront à la conclusion.</p>
+          <p>L'écran « Variations » reprend le process flow : cliquer une étape, le substrat, ou une couche du dessin pour faire varier n'importe lequel de ses paramètres (voir <a href="#campagnes">Plusieurs échantillons</a>), puis nommer les wafers dans le tableau des échantillons avant de lancer.</p>
+          <img class="docs-shot" src="/static/docs/img/10-lancer.png" alt="Écran intention et objectifs">
+        </section>
+
+        <section id="fiche">
+          <h2>La fiche d'expérience</h2>
+          <p>Chaque expérience a sa propre fiche. Son <strong>en-tête est un résumé</strong> qui se lit d'un coup d'œil : numéro du µprojet, version, statut, titre, responsable et dates ; le <strong>contexte</strong> ; <strong>ce qu'on veut démontrer</strong> (encadré) et <strong>comment</strong> - les objectifs, chacun avec sa mesure, sa cible, sa méthode de vérification et son résultat ; à droite, le <strong>verdict</strong> en badge (un anneau, un segment par objectif : atteint, partiellement, non atteint, à vérifier), la conclusion dès qu'elle est écrite, et les <strong>plaques suivies</strong> - lasermarks, FDL et « Données en base », qui ouvre leurs données dans la page Data (requête PRISM lancée sur ces lasermarks). « Éditer la fiche » rouvre l'éditeur sur cet écran d'intention ; tant que la structure ne change pas, l'étude garde son statut et sa conclusion. Viennent ensuite trois onglets indépendants :</p>
+          <ul>
+            <li><strong>Structure &amp; plaques</strong> — la structure actuelle avec les différences par rapport à la version précédente (pour une campagne, un carrousel : la référence puis chaque variante, avec la valeur de ses paramètres variés) et, à côté, les plaques et entités physiques (lasermark, emplacement, FDL de chacune, modifiables) ; puis les versions du procédé (une ligne par changement de structure/procédé, numérotée X.Y.Z), la cartographie des variantes et la feuille de split.</li>
+            <li><strong>Données</strong> — les données mesurées (images comparées à la structure simulée) et les preuves.</li>
+            <li><strong>Conclusion</strong> — la conclusion et les réponses aux objectifs, ou le formulaire pour la rédiger.</li>
+          </ul>
+          <p>L'onglet ouvert fait partie de l'adresse (<code>#donnees</code>, <code>#conclusion</code>) : on peut partager un lien direct, et on y reste après avoir ajouté une preuve ou conclu. Tout le reste (une preuve ajoutée, un tag, un titre modifié...) reste tracé sans faire bouger la numérotation des versions, dans l'historique complet. « Télécharger le rapport » produit un fichier HTML autonome qui reprend les trois onglets l'un après l'autre.</p>
+          <img class="docs-shot" src="/static/docs/img/11-fiche-experience.png" alt="Fiche d'expérience complète">
+        </section>
+
+        <section id="cahier">
+          <h2>Cahier de données</h2>
+          <p>L'onglet « Données » d'une fiche s'ouvre sur son <strong>cahier de données</strong> : les mesures de ses plaques, tirées directement des bases de caractérisation (via PRISM), vues comme on a l'habitude de les regarder, avec ce qu'on y voit et ce qu'on en conclut - le cahier de labo de l'étude, repris tel quel dans le rapport téléchargé.</p>
+          <p><strong>Ajouter une vue</strong> : choisissez le type de données (EQE / LIV, PL, NCEL, liste des wafers...), les plaques - celles de l'expérience sont déjà cochées, ajoutez-en d'autres pour comparer (une plaque de référence...) -, puis « Charger les données ». Les vues habituelles de ce type de données sont proposées en premier (pour l'EQE : EQE en fonction de la densité de courant, carte wafer de l'EQE max, distribution par plaque, synthèse par plaque, courbes I-V...) ; « Toutes les vues possibles » ouvre les autres (tableau, carte wafer, distribution, nuage de points, courbes, synthèse). La vue se règle en direct (valeur affichée, échelle log, devices éteints à part...), on lui donne un titre, éventuellement l'objectif qu'elle sert et une première observation.</p>
+          <p>Sur chaque vue : les observations et la conclusion à côté du graphique (« Enregistrer la note »), « Réglages » pour changer de vue ou d'options, de titre, d'objectif servi, ou la sortir du rapport, « Actualiser » pour recharger les données depuis la base, les flèches pour l'ordre, la corbeille pour la retirer. Les données d'une vue sont figées au moment où on les charge : le cahier et le rapport restent tels qu'ils étaient, même si la base bouge, jusqu'au prochain « Actualiser ». Comme le reste de la fiche, chaque changement est tracé dans l'historique.</p>
+        </section>
+
+        <section id="preuves">
+          <h2>Preuves</h2>
+          <p>À tout moment, ajouter une preuve (onglet « Données ») : une description et, au choix, des <strong>liens</strong> - un dossier, une présentation PowerPoint, une page SharePoint, un par ligne (un chemin copié avec « Copier en tant que chemin d'accès » de l'explorateur se colle tel quel, guillemets compris) -, une ou plusieurs <strong>images</strong> collées (<kbd>Ctrl</kbd>+<kbd>V</kbd>), glissées-déposées ou choisies, chacune avec sa légende, une référence et une mesure nommée avec sa valeur. Sur la fiche, une page web s'ouvre d'un clic ; un chemin réseau ou disque, que le navigateur ne sait pas ouvrir, se copie (« Copier le chemin ») pour le coller dans l'explorateur. Les images se commentent d'une flèche ou d'un cadre. Chaque preuve ajoutée - liens et images compris - enregistre une seule nouvelle version de l'expérience.</p>
+          <img class="docs-shot" src="/static/docs/img/12-preuves.png" alt="Formulaire d'ajout d'une preuve avec mesure nommée">
+        </section>
+
+        <section id="conclure">
+          <h2>Conclure</h2>
+          <p>Conclure répond, pour chaque objectif posé au lancement, à son statut (atteint / non atteint / partiellement atteint / non concluant) et à ce qui a été constaté. Un résumé général, une décision (retenir comme référence, explorer une variante, reproduire, abandonner, non concluant) et une prochaine étape optionnelle complètent la conclusion.</p>
+          <img class="docs-shot" src="/static/docs/img/13-conclure.png" alt="Formulaire de conclusion, réponse à un objectif">
+        </section>
+
+        <section id="evoluer">
+          <h2>Continuer ou explorer une nouvelle piste</h2>
+          <p>Le bouton « Éditer la fiche » rouvre l'éditeur, préchargé avec la fiche actuelle (sur l'écran d'intention ; « Modifier la structure », à côté du dessin, l'ouvre sur la structure). Enregistrer crée une nouvelle version. Deux choix apparaissent alors :</p>
+          <ul>
+            <li><strong>Continuer cette piste</strong> — la nouvelle version prolonge directement celle-ci.</li>
+            <li><strong>Explorer une nouvelle piste à partir d'ici</strong> — un embranchement : la version de départ reste inchangée, et une deuxième direction se développe en parallèle, comparable à tout moment à la première. La fiche d'une version qui a donné plusieurs pistes affiche un lien vers chacune.</li>
+          </ul>
+          <img class="docs-shot" src="/static/docs/img/14-evoluer.png" alt="Évolution d'une expérience avec l'option d'embranchement cochée">
+        </section>
+
+        <section id="gabarit">
+          <h2>Nouvelle expérience à partir d'une structure existante</h2>
+          <p>Le bouton « Nouvelle expérience » sur un projet propose trois départs :</p>
+          <ul>
+            <li><strong>Partir de zéro</strong> — un constructeur vide.</li>
+            <li><strong>Utiliser cette structure</strong> — reprend la structure d'une expérience existante comme point de départ, sans lien de filiation avec elle (une nouvelle piste indépendante).</li>
+            <li><strong>Continuer cette expérience</strong> — équivaut à ouvrir « Éditer la fiche » depuis cette expérience.</li>
+          </ul>
+        </section>
+
+        <section id="campagnes">
+          <h2>Plusieurs échantillons (campagne)</h2>
+          <p>L'écran « Variations &amp; lancement » du constructeur permet de lancer une seule expérience qui suit plusieurs échantillons à la fois. Tout paramètre de la structure peut varier : une épaisseur, une profondeur, un niveau cible, une vitesse ou un angle de croissance, le taux d'indium/aluminium d'un nitrure à composition, le pas ou le diamètre d'un réseau de lithographie, un matériau, une recette, une orientation, les dimensions ou le matériau du substrat — et les <strong>paramètres déclarés</strong> d'une étape (un dopage, un débit...), qui ne changent pas la géométrie simulée mais sont enregistrés échantillon par échantillon.</p>
+          <p>Une grandeur numérique se répartit de trois façons : <strong>Linéaire</strong> (min, max, nombre de points), <strong>Log</strong> (même rapport d'une valeur à la suivante : 1e17 → 1e19 en 5 points donne 1e17, 3.16e17, 1e18, 3.16e18, 1e19 — proposé d'office pour un dopage ou une concentration) ou une liste de <strong>Valeurs</strong>. L'échelle choisie est gardée : une variation en log rouvre en log, et la feuille de split l'indique. Les grandes valeurs s'affichent en notation scientifique partout. Pour un matériau, une recette ou une orientation, on coche les options à comparer.</p>
+          <img class="docs-shot" src="/static/docs/img/15-campagne-facteurs.png" alt="Section campagne, facteur splitté sur une épaisseur">
+
+          <h3>Pourquoi croiser plusieurs paramètres</h3>
+          <p>Une variation à la fois (une épaisseur, puis à part un angle) ne dit rien sur les combinaisons : peut-être que l'effet de l'épaisseur change selon l'angle. Ajouter un deuxième facteur à la campagne ne remplace pas le premier, il se croise avec : toutes les combinaisons sont générées automatiquement (3 épaisseurs &times; 3 angles = 9 échantillons), pas seulement une diagonale. C'est ce qui distingue une campagne d'une suite de tests isolés — chaque échantillon de la grille documente une combinaison précise, et rien n'est laissé au hasard sur qui a reçu quoi.</p>
+          <p>« Prévisualiser » calcule toutes les combinaisons et montre le résultat avant de lancer quoi que ce soit ; « Lancer » enregistre la campagne et fige les échantillons.</p>
+        </section>
+
+        <section id="cartographie">
+          <h2>Cartographie et feuille de split</h2>
+          <p>Sur la fiche d'une campagne : la <strong>cartographie des variantes</strong> montre un dessin par échantillon, et la <strong>feuille de split</strong> liste, en tableau, la valeur de chaque paramètre varié pour chaque échantillon — la référence à consulter avant de traiter les échantillons physiques.</p>
+          <img class="docs-shot" src="/static/docs/img/16-cartographie-split.png" alt="Cartographie des variantes et feuille de split d'une campagne d'épaisseurs">
+          <p class="docs-shot-caption">La feuille de split affiche « Épaisseur — PGaN » pour chaque échantillon, à côté du dessin correspondant.</p>
+          <div class="docs-callout">Le résumé « Détails techniques » d'une expérience issue d'une campagne ne liste que ce qui a réellement changé dans la coupe (une épaisseur, une profondeur...) - c'est la feuille de split, elle, qui reste la référence pour la valeur exacte de chaque échantillon.</div>
+        </section>
+
+        <section id="suivi-physique">
+          <h2>Suivi physique par échantillon</h2>
+          <p>Un identifiant et un emplacement peuvent être posés sur une expérience simple (dans la fiche), ou par échantillon pour une campagne (directement sous chaque vignette de la cartographie). Utile pour retrouver quel échantillon physique correspond à quelle ligne de la feuille de split.</p>
+          <p><strong>FDL.</strong> Chaque wafer porte aussi ses FDL - les feuilles de lancement JIRA, le numéro de suivi qu'on cite pour le retrouver. Un wafer peut en avoir plusieurs (une par passage en ligne) : tapez le numéro puis <kbd>Entrée</kbd> pour l'empiler, × pour en retirer une. « 1234 », « fdl 1234 » ou « FDL_1234 » s'écrivent tous <code>FDL-1234</code>. Elles se saisissent au lancement (tableau des échantillons, page « structure en image »), sur la fiche (suivi physique, ou sous chaque vignette d'une campagne), sont reprises d'une version à l'autre et s'affichent en tête de fiche, dans le graphe du µprojet et l'atlas. La barre de recherche de la topbar les trouve : tapez le numéro (« 1234 ») pour ouvrir directement l'expérience du wafer.</p>
+          <p><strong>Retrouver une plaque.</strong> La même barre de recherche trouve aussi les plaques par leur lasermark (« w12a3 », « W12-A3 » : casse et séparateurs ignorés). Une plaque ouvre sa propre page : son dernier emplacement connu, toutes ses FDL, les µprojets où elle passe, « Données en base », et son <strong>parcours</strong> - chaque étude qui la suit, la plus récente d'abord, avec la variante qu'elle porte dans une campagne et l'emplacement noté dans cette étude. Un lasermark cliqué sur une fiche (en-tête ou carte des plaques) mène à la même page. Seuls les µprojets dont vous êtes membre y apparaissent.</p>
+          <img class="docs-shot" src="/static/docs/img/17-suivi-physique.png" alt="Identifiants physiques renseignés sous chaque vignette de la cartographie">
+        </section>
+
+        <section id="comparer">
+          <h2>Comparer deux expériences</h2>
+          <p>La section « Comparer avec » d'une fiche permet de choisir un autre projet (accessible) puis une expérience dedans, et d'afficher les différences de structure entre les deux.</p>
+          <img class="docs-shot" src="/static/docs/img/18-comparer.png" alt="Résultat d'une comparaison inter-projets, différences de structure">
+        </section>
+
+        <section id="combiner">
+          <h2>Combiner deux expériences</h2>
+          <p>Sous « Actions avancées » (repliées), « Combiner avec une autre expérience » crée une nouvelle version qui garde la structure de la fiche courante, mais relie l'historique et les preuves de l'expérience choisie. Les deux doivent être du même type (une expérience simple ne se combine pas avec une campagne).</p>
+          <img class="docs-shot" src="/static/docs/img/19-combiner.png" alt="Formulaire de combinaison de deux expériences">
+        </section>
+
+        <section id="etiquettes">
+          <h2>Étiquettes</h2>
+          <p>De courtes étiquettes libres (« à valider », « prioritaire »...) se posent et se retirent directement dans l'en-tête d'une fiche.</p>
+          <img class="docs-shot" src="/static/docs/img/20-etiquettes.png" alt="Étiquette ajoutée dans l'en-tête d'une fiche d'expérience">
+        </section>
+
+        <section id="vue-ensemble">
+          <h2>Vue d'ensemble du projet</h2>
+          <p>Le lien « Vue d'ensemble » d'un projet affiche toutes ses expériences reliées entre elles : chaque point est une version, chaque trait un lien de filiation. Une vue avancée, pratique pour repérer d'un coup d'œil où un embranchement a eu lieu.</p>
+          <img class="docs-shot" src="/static/docs/img/21-vue-ensemble.png" alt="Vue d'ensemble d'un projet, filiation entre versions">
+        </section>
+
+        <section id="refs">
+          <h2>Refs</h2>
+          <p>Une ref est un point de départ réutilisable : une version qu'on prévoit de reprendre encore et encore comme base de nouvelles pistes, plutôt que de repartir de zéro à chaque fois. Sur la fiche d'une version, à côté des étiquettes, « + ref » lui donne un petit nom (« omega », « banane »... librement choisi) - laissé vide, elle reçoit automatiquement le nom « ref vX.Y.Z » (le numéro de version affiché plus haut sur la fiche). Une même version peut porter plusieurs noms de ref à la fois.</p>
+          <p>Une fois nommée, une ref se retrouve exactement comme une version normale - « Éditer la fiche » depuis sa fiche, ou en tapant directement son nom (par ex. <code>omega</code>) à la place d'un identifiant technique partout où Spectre en demande un.</p>
+          <p>Le lien « Refs » d'un projet liste toutes ses refs et comment elles s'enchaînent : chaque ref n'affiche que la ref suivante dont elle est l'ancêtre la plus proche, sans les versions ordinaires entre les deux - une vue condensée des points de repère du projet, complémentaire à la « Vue d'ensemble » qui montre elle chaque version.</p>
+          <img class="docs-shot" src="/static/docs/img/22-refs.png" alt="Page Refs d'un projet, montrant deux refs et leur enchaînement">
+        </section>
+
+        <section id="presets-etapes">
+          <h2>Gérer les présets d'étapes</h2>
+          <p>Un préset d'étape est un raccourci nommé vers une recette de dépôt ou de gravure de StructureForge — le sélectionner dans le formulaire d'une étape en préremplit la recette, sans créer de lien permanent avec le préset : l'étape ajoutée reste ensuite librement modifiable, exactement comme une structure dupliquée depuis la bibliothèque. L'onglet « Structures » d'un projet propose un lien « Gérer les présets d'étapes » vers une page dédiée qui liste les présets intégrés (non modifiables, seulement duplicables), ceux partagés entre tous les projets, et ceux propres au projet — avec la possibilité d'en créer, modifier ou supprimer un.</p>
+          <p class="docs-shot-caption">(Capture d'écran à refaire pour cette page.)</p>
+        </section>
+
+        <section id="formulaire-intention">
+          <h2>Formulaire d'intention</h2>
+          <p>En plus du titre et de l'intention libres, un projet peut exiger des réponses à quelques questions supplémentaires à chaque nouvelle expérience ou évolution - qui a lancé le run, sur quel équipement, un risque à vérifier... La page « Formulaire d'intention » d'un projet permet d'ajouter un formulaire depuis un fichier <code>.yml</code> (une bibliothèque, partagée entre projets ou propre à celui-ci) et de choisir lequel est actif. Une fois activé, ses questions apparaissent automatiquement sous « Objectifs et intention » au lancement ou à l'évolution d'une expérience, et les réponses se retrouvent dans une petite boîte d'infos sur la fiche. Les actions plus légères (étiquettes, preuves, conclure...) reprennent les réponses déjà données sans les redemander - seul un vrai lancement ou une vraie évolution repose la question.</p>
+          <img class="docs-shot" src="/static/docs/img/28-formulaire-intention.png" alt="Page Formulaire d'intention d'un projet, avec un formulaire actif">
+        </section>
+
+        <section id="compte-gestion">
+          <h2>Profil et mot de passe</h2>
+          <p>Depuis « Mon profil » : modifier son nom, changer son mot de passe (l'ancien est demandé).</p>
+          <img class="docs-shot" src="/static/docs/img/23-profil.png" alt="Page de profil utilisateur">
+        </section>
+
+        <section id="projet-gestion">
+          <h2>Suppression et invitations</h2>
+          <p>Un propriétaire peut supprimer un projet depuis son onglet « Membres », zone dangereuse — il faut retaper le nom exact du projet pour confirmer. Cette action efface définitivement toutes ses expériences et structures. Les invitations en attente apparaissent dans le même onglet, avec la possibilité de les annuler avant qu'elles soient acceptées.</p>
+          <img class="docs-shot" src="/static/docs/img/24-projet-gestion.png" alt="Zone dangereuse, suppression de projet">
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/docs/docs-nav.js"></script>
+</body>
+</html>
