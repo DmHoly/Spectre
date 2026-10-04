@@ -360,7 +360,7 @@ function microprojetCard(p) {
   const inner = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:22px;">
       ${p.code ? `<span class="mp-code" title="Numéro du µprojet">${escapeHtml(p.code)}</span>` : "<span></span>"}
-      ${p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role))}</span>` : `<span style="font-size:11px;color:var(--text-faint);">non membre</span>`}
+      ${p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role, p.role_source))}</span>` : `<span style="font-size:11px;color:var(--text-faint);">non membre</span>`}
     </div>
     <div style="font-size:15px;font-weight:700;line-height:1.3;overflow-wrap:anywhere;">${escapeHtml(p.name)}</div>
     <div style="font-size:13px;color:var(--text-soft);min-height:16px;">${escapeHtml(p.description || "")}</div>

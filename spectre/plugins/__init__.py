@@ -24,10 +24,12 @@ from .notebook import PLUGIN as notebook
 from .process_library import PLUGIN as process_library
 from .search import PLUGIN as search
 from .structures import PLUGIN as structures
+from .teams import PLUGIN as teams
 from .wafers import PLUGIN as wafers
 
 PLUGINS = (
     accounts,
+    teams,
     search,
     library,
     areas,

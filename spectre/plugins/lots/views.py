@@ -44,7 +44,7 @@ class Context:
         if self._occurrences is None:
             keys = {wafer.key for found in self.wafers.values() for wafer in found}
             self._occurrences = {}
-            for occurrence in wafers.occurrences(self.user.id, keys=keys) if keys else []:
+            for occurrence in wafers.occurrences(self.user, keys=keys) if keys else []:
                 self._occurrences.setdefault(occurrence.key, []).append(occurrence)
         return self._occurrences.get(key, [])
 

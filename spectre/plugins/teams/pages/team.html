@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Équipe — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/teams/teams.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Équipes" -->
+
+  <div class="page" style="padding-top:32px;">
+    <div class="teams-page">
+      <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/equipes">Équipes</a> / <span id="team-crumb">…</span></p>
+      <div class="teams-head">
+        <div>
+          <div class="page-eyebrow">Équipe</div>
+          <h1 id="team-name"><span class="skeleton" style="display:inline-block;width:220px;height:30px;"></span></h1>
+          <p id="team-summary"></p>
+        </div>
+        <div class="teams-head__actions">
+          <button id="rename-team-btn" class="btn btn-line" type="button" style="display:none;">Renommer</button>
+          <button id="delete-team-btn" class="btn btn-danger" type="button" style="display:none;">Supprimer l'équipe</button>
+        </div>
+      </div>
+
+      <div id="error" class="error" role="alert" style="display:none;margin-bottom:16px;"></div>
+      <div id="flash" class="flash flash-ok" role="status" style="display:none;margin-bottom:16px;"></div>
+
+      <div class="team-layout">
+        <section class="card card-pad" aria-labelledby="members-title">
+          <div class="team-section__head">
+            <h2 id="members-title">Membres</h2>
+            <span id="members-count" class="mono" style="font-size:12px;color:var(--text-faint);"></span>
+          </div>
+          <ul id="members" class="member-list" aria-busy="true">
+            <li><div class="skeleton" style="height:40px;width:100%;"></div></li>
+          </ul>
+          <form id="add-member-form" class="member-add" style="display:none;">
+            <input class="field" id="member-email" type="email" placeholder="e-mail d'un compte Spectre" aria-label="E-mail du compte à ajouter" required>
+            <select class="field" id="member-role" aria-label="Rôle dans l'équipe">
+              <option value="member" selected>Membre</option>
+              <option value="manager">Manager</option>
+            </select>
+            <button class="btn btn-primary" type="submit">Ajouter</button>
+          </form>
+          <p id="members-help" class="help" style="margin-top:12px;"></p>
+        </section>
+
+        <section class="card card-pad" aria-labelledby="areas-title">
+          <div class="team-section__head">
+            <h2 id="areas-title">Projets corporate</h2>
+          </div>
+          <ul id="team-areas" class="team-areas" aria-busy="true">
+            <li><div class="skeleton" style="height:40px;width:100%;"></div></li>
+          </ul>
+          <p class="help" style="margin-top:12px;">Un administrateur rattache un projet à une équipe depuis la page du projet (« Modifier le projet »). Les µprojets d'un projet appartiennent à son équipe.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <dialog id="rename-team-dialog" class="team-dialog" aria-labelledby="rename-team-title">
+    <div class="card-pad team-dialog__body">
+      <h2 id="rename-team-title" style="font-size:16px;margin-bottom:14px;">Renommer l'équipe</h2>
+      <form id="rename-team-form" class="field-group">
+        <div><label for="rename-team-name">Nom</label><input class="field" id="rename-team-name" required></div>
+        <div style="display:flex;gap:10px;margin-top:8px;">
+          <button type="button" id="rename-team-cancel" class="btn btn-line btn-block">Annuler</button>
+          <button type="submit" class="btn btn-primary btn-block">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/teams/client.js"></script>
+  <script src="/static/areas/client.js"></script>
+  <script src="/static/teams/team.js"></script>
+</body>
+</html>

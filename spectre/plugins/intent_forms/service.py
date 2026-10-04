@@ -170,7 +170,7 @@ def _role(user: User, slug: str) -> str | None:
         microproject = microprojects.get_by_slug(slug)
     except MicroprojectNotFoundError as exc:
         raise NotFound(f"projet {slug!r} introuvable") from exc
-    return microprojects.role_for(microproject.id, user.id)
+    return microprojects.effective_role(user, microproject)
 
 
 def require_role(user: User, slug: str, min_role: str) -> None:

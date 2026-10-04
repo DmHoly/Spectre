@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 from ...kernel.errors import Forbidden, NotFound
+from ..accounts.service import User
 from ..experiments.entities import compact
 from ..experiments.repository import branch_tips, display_status, follow_repo_path, get_repository
 from ..microprojects import service as microprojects
@@ -118,26 +119,28 @@ class Occurrence:
         return self.entry["experiment"]["updated_at"]
 
 
-def microproject_for(user_id: int, slug: str) -> Microproject:
-    """Le µprojet ``slug``, dont ``user_id`` doit être membre pour y lire les plaques en entier
-    (404 s'il n'existe pas, 403 sinon)."""
+def microproject_for(user: User, slug: str) -> Microproject:
+    """Le µprojet ``slug``, où ``user`` doit avoir un rôle (:func:`microprojects.access`) pour y
+    lire les plaques en entier (404 s'il n'existe pas, 403 sinon)."""
     try:
         microproject = microprojects.get_by_slug(slug)
     except microprojects.MicroprojectNotFoundError as exc:
         raise NotFound(f"µprojet {slug!r} introuvable") from exc
-    if microprojects.role_for(microproject.id, user_id) is None:
+    if microprojects.effective_role(user, microproject) is None:
         raise Forbidden("Vous n'êtes pas membre de ce µprojet.")
     return microproject
 
 
-def occurrences(user_id: int, *, keys: Iterable[str] | None = None, microproject: Microproject | None = None) -> list[Occurrence]:
+def occurrences(user: User, *, keys: Iterable[str] | None = None, microproject: Microproject | None = None) -> list[Occurrence]:
     """Chaque étude qui suit une plaque - de tous les µprojets, ou du seul ``microproject`` ;
     seulement les plaques de ``keys`` (des clés ou des lasermarks), si elles sont données - vue par
-    ``user_id``."""
-    member_of = {mp.id for mp, _role in microprojects.list_for_user(user_id)}
+    ``user`` (« membre » : quiconque y a un rôle, :func:`microprojects.access`)."""
+    selected = [microproject] if microproject else microprojects.list_all()
+    found_access = microprojects.accesses(user, selected)
+    member_of = {mp_id for mp_id, access in found_access.items() if access.role is not None}
     wanted = None if keys is None else {wafer_key(key) for key in keys} - {""}
     found = []
-    for mp in [microproject] if microproject else microprojects.list_all():
+    for mp in selected:
         for entry in entries_for(mp.slug):
             if wanted is None or wafer_key(entry.get("sample_id")) in wanted:
                 found.append(Occurrence(mp, entry, mp.id in member_of))

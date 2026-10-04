@@ -8,8 +8,14 @@
 
 Thin data-access over the ``management_areas`` / ``thematics`` / ``area_objectives`` tables - like
 :mod:`spectre.plugins.microprojects.service` but simpler: none of these has a Follow repo or on-disk home of
-its own, and access is company-wide (every signed-in user sees everything; only an admin,
-``users.is_admin``, writes).
+its own, and reading is company-wide (every signed-in user sees everything).
+
+Who writes: one rule, :func:`can_manage` - an admin (``users.is_admin``), or a manager of the team
+the area is attached to (``management_areas.team_id``, plugin teams). It covers the area, its
+thématiques and its objectives; the µprojets of the area follow from it
+(:func:`spectre.plugins.microprojects.service.access`). Creating an area: an admin, or a manager
+who attaches it to one of the teams they manage (:func:`check_can_create`); changing an area's team
+is the admin's alone. A fresh or migrated area has no team: only an admin manages it.
 
 « Non classé » is the **system** area (:attr:`ManagementArea.is_system`): it holds the µprojets not
 sorted yet, so it can't be deleted, numbers nothing and takes neither thématique nor objective.
@@ -27,7 +33,10 @@ import unicodedata
 from dataclasses import dataclass
 
 from ...kernel.db import get_conn
-from ...kernel.errors import Conflict, InvalidInput, NotFound
+from ...kernel.errors import Conflict, Forbidden, InvalidInput, NotFound
+from ..accounts.service import User
+from ..teams import service as teams
+from ..teams.service import Team
 
 DEFAULT_OBJECTIVES_PERIOD = "6 prochains mois"
 DEFAULT_HORIZON_MONTHS = 6
@@ -60,6 +69,7 @@ class ManagementArea:
     created_by: int | None
     objectives_period: str = DEFAULT_OBJECTIVES_PERIOD
     code_prefix: str = ""  # « Nat » -> its µprojets are Nat_0001, Nat_0002... ('' = not numbered)
+    team_id: int | None = None  # the team that owns it (plugin teams); None: only an admin manages it
 
     @property
     def is_system(self) -> bool:
@@ -107,6 +117,7 @@ def _from_row(row: sqlite3.Row) -> ManagementArea:
         created_by=row["created_by"],
         objectives_period=row["objectives_period"],
         code_prefix=row["code_prefix"],
+        team_id=row["team_id"] if "team_id" in row.keys() else None,
     )
 
 
@@ -219,12 +230,62 @@ def _unique_slug(conn: sqlite3.Connection, base: str) -> str:
     return slug
 
 
-def list_all() -> list[ManagementArea]:
+def list_all(*, team_id: int | None = None) -> list[ManagementArea]:
+    """Every area - of one team with ``team_id``."""
     # « Non classé » always last; the rest in creation order (the flagship projects keep the order
     # they were seeded in, a later hand-created one lands after them).
+    where, params = ("WHERE team_id = ? ", [team_id]) if team_id is not None else ("", [])
     with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM management_areas ORDER BY (slug = ?), id", (UNCLASSIFIED_AREA_SLUG,)).fetchall()
+        rows = conn.execute(
+            f"SELECT * FROM management_areas {where}ORDER BY (slug = ?), id", [*params, UNCLASSIFIED_AREA_SLUG]
+        ).fetchall()
     return [_from_row(row) for row in rows]
+
+
+# --- droits -----------------------------------------------------------------------------------
+
+
+def managed_area_ids(user: User) -> set[int]:
+    """The areas ``user`` manages as a manager of their team - not counting the admin's rights,
+    which :func:`can_manage` adds."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT management_areas.id FROM management_areas "
+            "JOIN team_members ON team_members.team_id = management_areas.team_id "
+            "WHERE team_members.user_id = ? AND team_members.role = 'manager'",
+            (user.id,),
+        ).fetchall()
+    return {row["id"] for row in rows}
+
+
+def can_manage(user: User, area: ManagementArea) -> bool:
+    """The one rule for writing an area, its thématiques and its objectives: an admin, or a
+    manager of the area's team."""
+    return user.is_admin or (area.team_id is not None and area.team_id in teams.managed_team_ids(user.id))
+
+
+def require_manage(user: User, area: ManagementArea) -> None:
+    if not can_manage(user, area):
+        raise Forbidden("seuls un administrateur ou un manager de l'équipe de ce projet peuvent le modifier")
+
+
+def check_can_create(user: User, team: Team | None) -> None:
+    """A new area: an admin (with or without a team), or a manager attaching it to one of the
+    teams they manage."""
+    if user.is_admin:
+        return
+    if team is None or not teams.can_manage(user, team):
+        raise Forbidden("un manager crée un projet en le rattachant à l'une de ses équipes ; sinon, c'est à un administrateur")
+
+
+def team_of(slug: str | None) -> Team | None:
+    """The team a request body names (``None``: no team) - unknown, it is an invalid input."""
+    if not slug:
+        return None
+    try:
+        return teams.get_by_slug(slug)
+    except teams.TeamNotFoundError as exc:
+        raise InvalidInput(f"équipe {slug!r} introuvable", code="unknown_team") from exc
 
 
 def get_by_slug(slug: str) -> ManagementArea:
@@ -244,9 +305,17 @@ def get_by_id(area_id: int) -> ManagementArea:
 
 
 def create(
-    name: str, description: str = "", strategy: str = "", *, created_by: int, code_prefix: str | None = None
+    name: str,
+    description: str = "",
+    strategy: str = "",
+    *,
+    created_by: int,
+    code_prefix: str | None = None,
+    team_id: int | None = None,
 ) -> ManagementArea:
-    """``code_prefix`` numbers its µprojets (« Nat » -> Nat_0001...); derived from the name when omitted."""
+    """``code_prefix`` numbers its µprojets (« Nat » -> Nat_0001...); derived from the name when
+    omitted. ``team_id``: the team that owns it (the caller checks the right to attach it,
+    :func:`check_can_create`)."""
     name = _required(name, "le nom du projet est obligatoire")
     with get_conn() as conn:
         if code_prefix:
@@ -256,8 +325,9 @@ def create(
             prefix = derive_code_prefix(name, taken)
         slug = _unique_slug(conn, _slugify(name))
         conn.execute(
-            "INSERT INTO management_areas (slug, name, description, strategy, created_by, code_prefix) VALUES (?, ?, ?, ?, ?, ?)",
-            (slug, name, description.strip(), strategy.strip(), created_by, prefix),
+            "INSERT INTO management_areas (slug, name, description, strategy, created_by, code_prefix, team_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (slug, name, description.strip(), strategy.strip(), created_by, prefix, team_id),
         )
     return get_by_slug(slug)
 
@@ -282,6 +352,21 @@ def update(area: ManagementArea, **changes: str | None) -> ManagementArea:
         if columns:
             assignments = ", ".join(f"{column} = ?" for column in columns)
             conn.execute(f"UPDATE management_areas SET {assignments} WHERE id = ?", (*columns.values(), area.id))
+    return get_by_id(area.id)
+
+
+def set_team(user: User, area: ManagementArea, team: Team | None) -> ManagementArea:
+    """Attach the area to ``team`` (``None``: to no team) - an admin only (403 otherwise); the
+    system area stays without one (409)."""
+    if not user.is_admin:
+        raise Forbidden("seul un administrateur rattache un projet à une équipe")
+    team_id = team.id if team else None
+    if team_id == area.team_id:
+        return area
+    if area.is_system:
+        raise Conflict(f"« {area.name} » n'appartient à aucune équipe : ses µprojets n'ont que leurs membres et l'administrateur")
+    with get_conn() as conn:
+        conn.execute("UPDATE management_areas SET team_id = ? WHERE id = ?", (team_id, area.id))
     return get_by_id(area.id)
 
 

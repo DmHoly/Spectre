@@ -3,10 +3,12 @@
    d'expériences). En tête, dans un bloc repliable, les objectifs corporate de la période : chacun
    porte un pourcentage (un chiffre de 0 à 100 % servant au calcul du bonus, simplement noté - les
    objectifs sont classés par lui), et peut être marqué atteint, avec le µprojet qui l'a validé.
-   Un admin édite tout (objectifs, thématiques, rattachements) ; chacun peut créer un µprojet.
+   Qui gère le projet (un admin, ou un manager de son équipe : can_manage, renvoyé par l'API) en
+   édite les objectifs et les thématiques ; seul un admin le rattache à une équipe ou y rattache un
+   µprojet existant ; chacun peut créer un µprojet.
    Chaque µprojet porte son numéro (Nat_0004) : la recherche de la topbar y mène directement.
-   Le projet vient de areasApi, les µprojets et leurs compteurs de experimentsApi.stats, le droit
-   d'écrire de accountsApi.me (is_admin). */
+   Le projet vient de areasApi (avec can_manage, can_delete et son équipe), les µprojets et leurs
+   compteurs de experimentsApi.stats, le rôle d'admin de accountsApi.me (is_admin). */
 
 const { slug } = routeParams("/management/{slug}");
 document.getElementById("atlas-link").href = `/management/${encodeURIComponent(slug)}/atlas`;
@@ -69,7 +71,8 @@ function flash(msg) {
 
 let current = null; // le projet (areasApi.get)
 let rows = []; // ses µprojets et leurs compteurs (experimentsApi.stats)
-let admin = false;
+let admin = false; // rattacher une équipe ou un µprojet existant (accountsApi.me)
+let teams = []; // les équipes proposées au rattachement (admin seulement)
 
 const ICON_EDIT = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 const ICON_CHECK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`;
@@ -93,7 +96,7 @@ function percent(value) {
 // Toutes les cartes au même format : rang (ordre des pourcentages), pourcentage, intitulé,
 // précisions, échéance, et en pied l'état (atteint ou non) avec le µprojet qui l'a validé.
 function objectiveBlock(o, index) {
-  const tools = admin
+  const tools = current.can_manage
     ? `<div class="obj__tools"><button type="button" class="obj__tool" data-edit-objective="${o.id}" aria-label="Modifier l'objectif « ${escapeHtml(o.title)} »" title="Modifier">${ICON_EDIT}</button></div>`
     : "";
   const weight =
@@ -133,7 +136,7 @@ function renderObjectives(area) {
   list.innerHTML = objs.length
     ? objs.map((o, i) => objectiveBlock(o, i)).join("")
     : `<li class="obj-empty" style="grid-column:1/-1;">${
-        admin
+        area.can_manage
           ? "Aucun objectif défini pour cette période. Ajoutez-les avec « + Objectif », chacun avec son pourcentage."
           : "Aucun objectif corporate n'a encore été défini pour cette période."
       }</li>`;
@@ -171,7 +174,7 @@ document.getElementById("objectives-toggle").addEventListener("click", () => {
 
 function microprojetCard(row) {
   const p = row.microproject;
-  const roleBadge = p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role))}</span>` : "";
+  const roleBadge = p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role, p.role_source))}</span>` : "";
   const inner = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:22px;">
       ${p.code ? `<span class="mp-code" title="Numéro du µprojet">${escapeHtml(p.code)}</span>` : "<span></span>"}
@@ -201,7 +204,7 @@ function thematicSection(t, items) {
     : `<div class="thematic__actions">
         <a class="btn btn-tint btn-sm" href="${thematicUrl}">Explorer la thématique ${ICON_ARROW}</a>
         <button type="button" class="btn btn-line btn-sm" data-new-mp="${escapeHtml(t.slug)}">+ µprojet</button>
-        ${admin ? `<button type="button" class="btn btn-line btn-sm" data-edit-thematic="${escapeHtml(t.slug)}" aria-label="Modifier la thématique ${escapeHtml(t.name)}">${ICON_EDIT} Modifier</button>` : ""}
+        ${current.can_manage ? `<button type="button" class="btn btn-line btn-sm" data-edit-thematic="${escapeHtml(t.slug)}" aria-label="Modifier la thématique ${escapeHtml(t.name)}">${ICON_EDIT} Modifier</button>` : ""}
       </div>`;
   const grid = items.length
     ? `<div class="mp-grid">${items.map(microprojetCard).join("")}</div>`
@@ -232,7 +235,7 @@ function renderThematics(area) {
   document.getElementById("thematics").innerHTML = sections.length
     ? sections.join("")
     : `<div class="empty-state card" style="margin-top:14px;"><div style="font-weight:600;color:var(--text-soft);">Aucune thématique ni µprojet dans ce projet</div>${
-        admin && !area.is_system ? `<div style="font-size:13px;color:var(--text-faint);margin-top:4px;">Commencez par créer une thématique (ex : dopage PGaN, double EBL).</div>` : ""
+        area.can_manage && !area.is_system ? `<div style="font-size:13px;color:var(--text-faint);margin-top:4px;">Commencez par créer une thématique (ex : dopage PGaN, double EBL).</div>` : ""
       }</div>`;
 }
 
@@ -261,6 +264,9 @@ function render() {
   } else {
     strategyEl.style.display = "none";
   }
+  document.getElementById("area-team").innerHTML = area.team
+    ? `<a class="team-chip" href="/equipes/${encodeURIComponent(area.team.slug)}">Équipe <strong>${escapeHtml(area.team.name)}</strong></a>`
+    : "";
   renderObjectives(area);
 
   const s = experimentTotals(rows);
@@ -276,19 +282,20 @@ function render() {
 
   // le projet système (« Non classé ») ne porte ni thématique ni objectif : ses µprojets attendent d'être rangés
   const shown = {
-    "edit-area-btn": admin,
+    "edit-area-btn": area.can_manage,
     "attach-microprojet-btn": admin,
-    "new-thematic-btn": admin && !area.is_system,
-    "new-objective-btn": admin && !area.is_system,
+    "new-thematic-btn": area.can_manage && !area.is_system,
+    "new-objective-btn": area.can_manage && !area.is_system,
   };
   for (const [id, visible] of Object.entries(shown)) document.getElementById(id).style.display = visible ? "" : "none";
-  document.getElementById("ea-delete").style.display = admin && area.can_delete ? "" : "none";
+  document.getElementById("ea-delete").style.display = area.can_delete ? "" : "none";
 }
 
 async function load() {
   try {
     const [me, area, stats] = await Promise.all([accountsApi.me(), areasApi.get(slug), experimentsApi.stats({ area: slug })]);
     admin = me.is_admin;
+    if (admin) teams = await teamsApi.list();
     current = area;
     rows = stats;
     render();
@@ -441,6 +448,15 @@ document.getElementById("edit-area-btn").addEventListener("click", () => {
   document.getElementById("ea-strategy").value = current.strategy || "";
   document.getElementById("ea-prefix").value = current.code_prefix || "";
   document.getElementById("ea-prefix-wrap").style.display = current.is_system ? "none" : ""; // il ne numérote pas ses µprojets
+  // l'équipe : un admin seulement, et jamais pour le projet système (ses µprojets n'ont que leurs membres)
+  const teamEditable = admin && !current.is_system;
+  document.getElementById("ea-team-wrap").style.display = teamEditable ? "" : "none";
+  if (teamEditable) {
+    const selected = current.team ? current.team.slug : "";
+    document.getElementById("ea-team").innerHTML = [`<option value="">— Aucune équipe —</option>`]
+      .concat(teams.map((t) => `<option value="${escapeHtml(t.slug)}"${t.slug === selected ? " selected" : ""}>${escapeHtml(t.name)}</option>`))
+      .join("");
+  }
   eaDialog.showModal();
 });
 document.getElementById("ea-cancel").addEventListener("click", () => eaDialog.close());
@@ -455,6 +471,7 @@ document.getElementById("edit-area-form").addEventListener("submit", (event) => 
         strategy: document.getElementById("ea-strategy").value,
         objectives_period: document.getElementById("ea-period").value,
         ...(current.is_system ? {} : { code_prefix: document.getElementById("ea-prefix").value }),
+        ...(admin && !current.is_system ? { team: document.getElementById("ea-team").value || null } : {}),
       }),
     "Projet mis à jour."
   );

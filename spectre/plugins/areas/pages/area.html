@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/static/kpis/kpis.css">
   <link rel="stylesheet" href="/static/areas/areas.css">
   <link rel="stylesheet" href="/static/microprojects/microprojects.css">
+  <link rel="stylesheet" href="/static/teams/teams.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -112,6 +113,7 @@
           <div class="page-eyebrow">Projet corporate</div>
           <h1 id="area-name"></h1>
           <p id="area-description"></p>
+          <div id="area-team" style="margin-top:8px;"></div>
         </div>
       </div>
       <div style="display:flex;gap:10px;flex:none;">
@@ -175,6 +177,7 @@
         <div><label for="ea-name">Nom</label><input class="field" id="ea-name" required></div>
         <div><label for="ea-description">Description</label><textarea class="field" id="ea-description" rows="2"></textarea></div>
         <div><label for="ea-period">Horizon des objectifs</label><input class="field" id="ea-period" placeholder="6 prochains mois"><div class="help">Affiché en tête : « Pour les … ».</div></div>
+        <div id="ea-team-wrap" style="display:none;"><label for="ea-team">Équipe</label><select class="field" id="ea-team"></select><div class="help">Les managers de l'équipe ont tous les droits sur ce projet, ses thématiques, ses objectifs et ses µprojets. Réservé à un administrateur.</div></div>
         <div id="ea-prefix-wrap"><label for="ea-prefix">Préfixe des numéros de µprojet</label><input class="field" id="ea-prefix" placeholder="ex : Nat" maxlength="5"><div class="help">2 à 5 lettres : ses µprojets sont numérotés Nat_0001, Nat_0002… Un nouveau préfixe ne vaut que pour les µprojets numérotés ensuite.</div></div>
         <div><label for="ea-strategy">Note stratégique (optionnelle)</label><textarea class="field" id="ea-strategy" rows="2"></textarea></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
@@ -246,6 +249,7 @@
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/accounts/client.js"></script>
   <script src="/static/microprojects/client.js"></script>
+  <script src="/static/teams/client.js"></script>
   <script src="/static/areas/client.js"></script>
   <script src="/static/kpis/client.js"></script>
   <script src="/static/experiments/client.js"></script>

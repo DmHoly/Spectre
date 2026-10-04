@@ -26,12 +26,12 @@ def list_wafers(
     """Les plaques (``key``, ``lasermark``, ``count``, ``microprojects``, ``latest``, ``fdl``,
     ``locations``) dont le lasermark correspond à ``q``, qui portent une FDL correspondant à ``fdl``,
     suivies dans le µprojet ``microproject`` (dont il faut être membre) - les filtres se cumulent."""
-    scope = service.microproject_for(user.id, microproject) if microproject else None
-    return service.wafers(service.occurrences(user.id, microproject=scope), q=q, fdl=fdl)
+    scope = service.microproject_for(user, microproject) if microproject else None
+    return service.wafers(service.occurrences(user, microproject=scope), q=q, fdl=fdl)
 
 
 @router.get("/wafers/{wafer_key}")
 def get_wafer(wafer_key: str, user: User = Depends(current_user)) -> dict:
     """Le passeport d'une plaque (``wafer_key``, ou son lasermark tel qu'écrit : il est comparé
     sans casse ni séparateurs) - vide (aucune étude) plutôt qu'une 404, la page l'explique."""
-    return service.passport(wafer_key, service.occurrences(user.id, keys=[wafer_key]))
+    return service.passport(wafer_key, service.occurrences(user, keys=[wafer_key]))

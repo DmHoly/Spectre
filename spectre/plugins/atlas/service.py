@@ -68,14 +68,18 @@ def _microproject_node(microproject: microprojects.Microproject, role: str) -> d
 
 
 def atlas(area_slug: str, user: User) -> dict:
+    """The µprojets of the project where ``user`` has a role (:func:`microprojects.access`), their
+    studies and the links between them."""
     area = areas.get_by_slug(area_slug)
+    in_area = microprojects.list_by_management_area(area.id)
+    found = microprojects.accesses(user, in_area)
     return {
         "area": {"slug": area.slug, "name": area.name},
         "microprojects": [
-            _microproject_node(microproject, role)
-            for microproject, role in microprojects.list_for_user(user.id)
-            if microproject.management_area_id == area.id
+            _microproject_node(microproject, found[microproject.id].role)
+            for microproject in in_area
+            if found[microproject.id].role is not None
         ],
-        "microproject_links": [asdict(link) for link in links.list_microproject_links(user.id, area=area.slug)],
-        "entity_links": [asdict(link) for link in links.list_entity_links(user.id, area=area.slug)],
+        "microproject_links": [asdict(link) for link in links.list_microproject_links(user, area=area.slug)],
+        "entity_links": [asdict(link) for link in links.list_entity_links(user, area=area.slug)],
     }

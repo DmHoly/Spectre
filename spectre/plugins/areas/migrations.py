@@ -117,7 +117,16 @@ def _seed(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE management_areas SET code_prefix = ? WHERE id = ?", (derive_code_prefix(row["name"], taken), row["id"]))
 
 
+def _team(conn: sqlite3.Connection) -> None:
+    """The team that owns a corporate project (plugin teams). Nothing is attached: until an admin
+    attaches the projects to teams, the rights stay what they were (only an admin writes)."""
+    if "team_id" not in column_names(conn, "management_areas"):
+        conn.execute("ALTER TABLE management_areas ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_management_areas_team ON management_areas(team_id)")
+
+
 MIGRATIONS = (
     Migration("0001_initial", _initial),
     Migration("0002_seed", _seed),
+    Migration("0003_team", _team),
 )

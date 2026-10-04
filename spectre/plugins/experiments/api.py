@@ -378,7 +378,7 @@ def structure_diff(
         if not against_experiment:
             raise InvalidInput("Choisissez l'expérience de l'autre µprojet à comparer.", code="against_experiment_required")
         other = get_microproject(against_microproject)
-        if microprojects.role_for(other.id, user.id) is None:
+        if microprojects.effective_role(user, other) is None:
             raise Forbidden("Vous n'avez pas accès à cet autre µprojet.")
         target_repo, target_microproject = get_repository(other.slug), other
     if against_experiment:
@@ -468,7 +468,7 @@ def legacy_version_page(slug: str, version_id: str, request: Request) -> Redirec
         return RedirectResponse(f"/connexion?suite={quote(request.url.path)}", status_code=302)
     try:
         microproject = microprojects.get_by_slug(slug)
-        if microprojects.role_for(microproject.id, user.id) is None:
+        if microprojects.effective_role(user, microproject) is None:
             raise NotFound("µprojet introuvable")
         repo = get_repository(slug)
         experiment_id = service.experiment_of_version(repo, version_id)
