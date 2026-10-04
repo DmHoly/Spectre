@@ -245,13 +245,20 @@ def step_id_at(repo: follow.Repository, version: follow.Experiment, index: int) 
 
 def editable_process(repo: follow.Repository, version: follow.Experiment) -> dict[str, Any] | None:
     """Le procédé éditable de ``version`` (substrat, étapes, paramètres déclarés), chaque étape
-    portant son ``id`` (:func:`step_ids_of`) - ``None`` sans procédé éditable (une structure en
-    images)."""
+    portant son ``id`` (:func:`step_ids_of`), et les étiquettes de couches (``layer_labels``, par
+    position d'étape comme les paramètres déclarés ; ``{}`` sans étiquette) - ``None`` sans procédé
+    éditable (une structure en images)."""
     process = version.metadata.get("structureforge_process")
     if process is None:
         return None
     payload = copy.deepcopy(process)
-    payload["steps"] = [{"id": step_id, **step} for step_id, step in zip(step_ids_of(repo, version), payload.get("steps") or [])]
+    ids = step_ids_of(repo, version)
+    payload["steps"] = [{"id": step_id, **step} for step_id, step in zip(ids, payload.get("steps") or [])]
+    labels = version.metadata.get(simulation.LAYER_LABELS_METADATA_KEY)
+    position = {step_id: i for i, step_id in enumerate(ids)}
+    payload["layer_labels"] = {
+        str(position[step_id]): copy.deepcopy(label) for step_id, label in (labels if isinstance(labels, dict) else {}).items() if step_id in position
+    }
     return payload
 
 
@@ -485,12 +492,16 @@ class _PreparedStructure:
         self.requested_step_ids: list[str | None] = []
         self.plan: campaigns.VariantPlan | None = None
         self.factor_indexes: list[int] = []
+        self.labels: dict[int, simulation.LayerLabel] = {}
+        # par entité, la position de l'étape qui a créé chaque couche de la structure (-1 : le substrat)
+        self.layer_origins: list[list[int]] = []
         if isinstance(payload, ImagesPayload):
             self.structure = kinds.structure_image_from_input(slug, payload.images)
             self.steps: list = []
             self.metadata[kinds.IMAGE_REVISION_KEY] = kinds.new_image_revision()
             return
         declared = simulation.declared_params_by_index(payload.declared_params)
+        self.labels = simulation.layer_labels_by_index(payload.layer_labels, len(payload.steps))
         self.steps = follow_adapter.to_steps(payload.steps)
         self.requested_step_ids = payload.step_ids
         self.metadata["structureforge_process"] = simulation.process_metadata(payload.substrate, payload.steps, declared)
@@ -499,9 +510,10 @@ class _PreparedStructure:
             if start is not None and not any(factor_ids):
                 reader, source = start
                 factor_ids = list(_settled_step_ids(factor_ids, self.metadata["structureforge_process"], source, step_ids_of(reader, source)))
-            result = campaigns.generate_campaign_variants(payload.substrate, payload.steps, payload.plan, declared, factor_ids)
+            result = campaigns.generate_campaign_variants(payload.substrate, payload.steps, payload.plan, declared, factor_ids, self.labels)
             self.structure = kinds.ProcessLot(entries=result.entries)
             self.campaign_size = len(result.entries)
+            self.layer_origins = result.layer_origins
             self.plan = payload.plan
             self.factor_indexes = result.factor_indexes
             self.metadata.update(
@@ -514,14 +526,17 @@ class _PreparedStructure:
                 }
             )
             return
-        geometry, _frames, _materials = simulation.run_simulation(payload.substrate, payload.steps)
-        self.structure = follow_adapter.to_structure(geometry)
+        simulated = simulation.simulate_process(payload.substrate, payload.steps)
+        self.structure = follow_adapter.to_structure(simulated.geometry)
+        self.layer_origins = [simulated.layer_origins[-1]]
 
     def step_metadata(self, parent: follow.Experiment | None, parent_ids: list[str]) -> dict[str, Any]:
         """What the new version records of its steps' ids, settled against ``parent`` (the version
         it continues or forks from, ``None`` for a brand-new line), whose steps carry
         ``parent_ids`` (:func:`step_ids_of`) - see :func:`_settled_step_ids` -
-        and, for a campaign, its plan, whose factors name their step by that final id. Nothing for
+        and, for a campaign, its plan, whose factors name their step by that final id; with layer
+        labels, the labels and the step that created each layer of each entity, by those ids too
+        (nothing without labels: a version without them keeps its former shape). Nothing for
         pictures."""
         if self.kind == "images":
             return {}
@@ -529,6 +544,13 @@ class _PreparedStructure:
         recorded: dict[str, Any] = {simulation.STEP_IDS_METADATA_KEY: step_ids}
         if self.plan is not None:
             recorded["campaign_plan"] = campaigns.plan_metadata(self.plan, self.factor_indexes, step_ids)
+        if self.labels:
+            recorded[simulation.LAYER_LABELS_METADATA_KEY] = {
+                step_ids[i]: label.model_dump(mode="json") for i, label in sorted(self.labels.items())
+            }
+            recorded[simulation.LAYER_STEPS_METADATA_KEY] = [
+                [None if origin == simulation.SUBSTRATE_ORIGIN else step_ids[origin] for origin in origins] for origins in self.layer_origins
+            ]
         return recorded
 
 
@@ -713,10 +735,14 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
             builder.metadata["physical_tracking"] = tracked
         else:
             process = prepared.metadata["structureforge_process"]
-            same = parent.structure_type == ProcessStructure.registry_key() and versioning.structure_signature(parent.metadata) == process
+            # les étiquettes de couches ne changent pas la structure : la conclusion reste
+            same = parent.structure_type == ProcessStructure.registry_key() and parent.metadata.get("structureforge_process") == process
             # continuing an image-mode experiment in the builder: its structure is drawn from now on
             builder.metadata.pop(kinds.IMAGE_REVISION_KEY, None)
             builder.metadata["structureforge_process"] = process
+            # les étiquettes sont celles de cette évolution (aucune : plus d'étiquettes)
+            builder.metadata.pop(simulation.LAYER_LABELS_METADATA_KEY, None)
+            builder.metadata.pop(simulation.LAYER_STEPS_METADATA_KEY, None)
             builder.metadata.update(prepared.step_metadata(parent, parent_ids))
             if entities:
                 builder.metadata["physical_tracking"] = entities

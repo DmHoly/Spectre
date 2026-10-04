@@ -18,8 +18,8 @@ from structureforge.core.materials import aluminum_gan, indium_gan
 from structureforge.core.units import Length
 from structureforge.process.steps import ProcessStep
 
-from .rendering import frame_svg
-from .simulation import GRADED_NITRIDE_RE, DeclaredParam, SimulationFailedError, SubstrateSpec, run_simulation
+from .rendering import annotations_for, format_number, labelled_svg
+from .simulation import GRADED_NITRIDE_RE, DeclaredParam, LayerLabel, SimulationFailedError, SubstrateSpec, simulate_process
 
 
 CAMPAIGN_FIELD_LABELS = {
@@ -109,20 +109,8 @@ class CampaignVariants(BaseModel):
     factor_labels: list[str]  # one label per factor - e.g. "Épaisseur — Oxyde initial"
     factor_values: list[list[float | str]]  # per entity, the raw value of each factor, same order
     factor_indexes: list[int]  # the position of each factor's step (SUBSTRATE_STEP_INDEX: the substrate)
-
-
-def format_number(value: float) -> str:
-    """A factor value as people write it: ``20`` (not ``20.0``), and scientific notation for very
-    large/small magnitudes - ``1e17``, ``3.16e17`` (a doping level), never
-    ``100000000000000000``."""
-    if value == 0:
-        return "0"
-    if abs(value) >= 1e5 or abs(value) < 1e-3:
-        mantissa, exponent = f"{value:.2e}".split("e")  # 3 chiffres significatifs : "3.16e+17"
-        return f"{mantissa.rstrip('0').rstrip('.')}e{int(exponent)}"
-    if float(value).is_integer():
-        return str(int(value))
-    return f"{value:.6g}"
+    # per entity, the position of the step that created each of its layers (-1: the substrate)
+    layer_origins: list[list[int]]
 
 
 def _format_value_label(value: Any) -> str:
@@ -281,12 +269,37 @@ def _factor_label(factor: VariantFactor, index: int, steps: list[ProcessStep]) -
     return f"{field_label} — {target}"
 
 
+def apply_combination(
+    substrate: SubstrateSpec,
+    steps: list[ProcessStep],
+    declared: dict[int, list[DeclaredParam]],
+    plan: VariantPlan,
+    indexes: list[int],
+    combo: list[Any],
+) -> tuple[SubstrateSpec, list[ProcessStep], dict[int, list[DeclaredParam]]]:
+    """The substrate, steps and declared parameters of one variant: each factor of ``plan`` (on the
+    step at its position in ``indexes``) set to its value in ``combo`` - everything else as given."""
+    varied_substrate = substrate
+    varied_steps = list(steps)
+    varied_declared = declared
+    for factor, index, value in zip(plan.factors, indexes, combo):
+        if index == SUBSTRATE_STEP_INDEX:
+            varied_substrate = _substrate_with_value(varied_substrate, factor.field, value)
+        elif factor.field.startswith(DECLARED_FIELD_PREFIX):
+            varied_declared = _declared_with_value(varied_declared, index, factor.field[len(DECLARED_FIELD_PREFIX) :], value)
+        else:
+            domain_nm = varied_substrate.domain_width.to_nm()
+            varied_steps[index] = _step_with_value(varied_steps[index], factor.field, value, domain_nm)
+    return varied_substrate, varied_steps, varied_declared
+
+
 def generate_campaign_variants(
     substrate: SubstrateSpec,
     steps: list[ProcessStep],
     plan: VariantPlan,
     declared_params: dict[int, list[DeclaredParam]] | None = None,
     step_ids: list[str | None] | None = None,
+    layer_labels: dict[int, LayerLabel] | None = None,
 ) -> CampaignVariants:
     """Re-simulate ``steps`` once per combination in the full cross of every factor's values,
     varying each factor's parameter for that combination - everything else (substrate, every
@@ -296,6 +309,7 @@ def generate_campaign_variants(
     commits to the campaign, not only after. A factor on a declared parameter leaves the geometry
     untouched - its value per variant lives in ``factor_values``, like every other factor's.
     The factors name their step by id, among ``step_ids`` (the ids the steps came with, in order).
+    Each variant's SVG carries the labels of ``layer_labels`` (by step position), with its own values.
     """
     if not plan.factors:
         raise SimulationFailedError("il faut au moins un paramètre à faire varier")
@@ -321,24 +335,18 @@ def generate_campaign_variants(
     svgs: list[str] = []
     labels: list[str] = []
     factor_values: list[list[float | str]] = []
+    layer_origins: list[list[int]] = []
     for combo in itertools.product(*(factor.values for factor in plan.factors)):
-        varied_substrate = substrate
-        varied_steps = list(steps)
-        varied_declared = base_declared
-        for factor, index, value in zip(plan.factors, indexes, combo):
-            if index == SUBSTRATE_STEP_INDEX:
-                varied_substrate = _substrate_with_value(varied_substrate, factor.field, value)
-            elif factor.field.startswith(DECLARED_FIELD_PREFIX):
-                varied_declared = _declared_with_value(varied_declared, index, factor.field[len(DECLARED_FIELD_PREFIX) :], value)
-            else:
-                domain_nm = varied_substrate.domain_width.to_nm()
-                varied_steps[index] = _step_with_value(varied_steps[index], factor.field, value, domain_nm)
-        geometry, frames, materials = run_simulation(varied_substrate, varied_steps, varied_declared or None)
-        entries.append(to_structure(geometry))
-        material_colors = {m.name: m.color for m in materials}
-        svgs.append(frame_svg(frames[-1], material_colors))
+        varied_substrate, varied_steps, varied_declared = apply_combination(substrate, steps, base_declared, plan, indexes, list(combo))
+        result = simulate_process(varied_substrate, varied_steps, varied_declared or None)
+        entries.append(to_structure(result.geometry))
+        material_colors = {m.name: m.color for m in result.materials}
+        # chaque variante écrit ses propres valeurs sur ses étiquettes
+        annotations = annotations_for(varied_steps, varied_declared, layer_labels or {}, result.layer_origins[-1]) if layer_labels else []
+        svgs.append(labelled_svg(result.frames[-1], material_colors, annotations))
         labels.append(" · ".join(_format_value_label(v) for v in combo))
         factor_values.append(list(combo))
+        layer_origins.append(result.layer_origins[-1])
 
     variation = analyze_variants(entries)
     return CampaignVariants(
@@ -349,6 +357,7 @@ def generate_campaign_variants(
         factor_labels=factor_labels,
         factor_values=factor_values,
         factor_indexes=indexes,
+        layer_origins=layer_origins,
     )
 
 

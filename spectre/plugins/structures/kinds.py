@@ -11,15 +11,35 @@ import secrets
 from typing import Any, Literal, Protocol
 
 import follow
-from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    model_serializer,
+    model_validator,
+)
 from structureforge.adapters.follow_adapter import ProcessStructure
+from structureforge.process.steps import ProcessStep
 
 from ...kernel.annotations import ImageAnnotation, clean_annotations
 from ...kernel.errors import InvalidInput
 from ..attachments.store import content_url, uploaded_image
-from .rendering import svg_for_process_structure
+from . import campaigns
+from .rendering import LayerAnnotation, annotations_for, svg_for_process_structure
 from .schemas import StructureImageInput
-from .simulation import STEP_IDS_METADATA_KEY, material_names_in_layers, materials_library
+from .simulation import (
+    LAYER_LABELS_METADATA_KEY,
+    LAYER_STEPS_METADATA_KEY,
+    STEP_IDS_METADATA_KEY,
+    DeclaredParam,
+    LayerLabel,
+    SubstrateSpec,
+    declared_params_by_index,
+    material_names_in_layers,
+    materials_library,
+)
 
 
 # Clés de registre Follow de nos deux types de structure, figées sur leur valeur historique. Par
@@ -112,6 +132,8 @@ IMAGE_REVISION_KEY = "structure_image_revision"
 DRAWN_STRUCTURE_METADATA_KEYS = (
     "structureforge_process",
     STEP_IDS_METADATA_KEY,
+    LAYER_LABELS_METADATA_KEY,
+    LAYER_STEPS_METADATA_KEY,
     "campaign_labels",
     "campaign_factor_labels",
     "campaign_factor_values",
@@ -125,8 +147,9 @@ class StructureKind(Protocol):
 
     key: str
 
-    def render_svg(self, data: dict[str, Any]) -> str | None:
-        """The SVG of a committed structure of this kind - ``None`` when there is nothing to draw."""
+    def render_svg(self, data: dict[str, Any], metadata: dict[str, Any] | None = None) -> str | None:
+        """The SVG of a committed structure of this kind, with the layer labels its version's
+        ``metadata`` records - ``None`` when there is nothing to draw."""
 
     def entity_count(self, data: dict[str, Any]) -> int:
         """How many physical entities a structure of this kind tracks."""
@@ -135,8 +158,8 @@ class StructureKind(Protocol):
 class _ProcessKind:
     key = ProcessStructure.registry_key()
 
-    def render_svg(self, data: dict[str, Any]) -> str | None:
-        return _process_svg(ProcessStructure.model_validate(data))
+    def render_svg(self, data: dict[str, Any], metadata: dict[str, Any] | None = None) -> str | None:
+        return _process_svg(ProcessStructure.model_validate(data), layer_annotations(metadata or {}, 0))
 
     def entity_count(self, data: dict[str, Any]) -> int:
         return 1
@@ -148,9 +171,9 @@ class _CampaignKind:
 
     key = PROCESS_LOT_KEY
 
-    def render_svg(self, data: dict[str, Any]) -> str | None:
+    def render_svg(self, data: dict[str, Any], metadata: dict[str, Any] | None = None) -> str | None:
         lot = ProcessLot.model_validate(data)
-        return _process_svg(lot.entries[0]) if lot.entries else None
+        return _process_svg(lot.entries[0], layer_annotations(metadata or {}, 0)) if lot.entries else None
 
     def entity_count(self, data: dict[str, Any]) -> int:
         return len(ProcessLot.model_validate(data).entries)
@@ -161,7 +184,7 @@ class _ImagesKind:
 
     key = STRUCTURE_IMAGE_KEY
 
-    def render_svg(self, data: dict[str, Any]) -> str | None:
+    def render_svg(self, data: dict[str, Any], metadata: dict[str, Any] | None = None) -> str | None:
         return None
 
     def entity_count(self, data: dict[str, Any]) -> int:
@@ -254,26 +277,67 @@ def new_image_revision() -> str:
     return secrets.token_hex(6)
 
 
-def _process_svg(process_structure: ProcessStructure) -> str:
+def _process_svg(process_structure: ProcessStructure, annotations: list[LayerAnnotation]) -> str:
     materials = materials_library(*material_names_in_layers(process_structure.layers))
-    return svg_for_process_structure(process_structure, {m.name: m.color for m in materials})
+    return svg_for_process_structure(process_structure, {m.name: m.color for m in materials}, annotations)
 
 
-def render_structure_svg(structure_type: str, structure_data: dict[str, Any]) -> str | None:
+_STEP_LIST: TypeAdapter[list[ProcessStep]] = TypeAdapter(list[ProcessStep])
+_LABELS: TypeAdapter[dict[str, LayerLabel]] = TypeAdapter(dict[str, LayerLabel])
+_DECLARED: TypeAdapter[dict[str, list[DeclaredParam]]] = TypeAdapter(dict[str, list[DeclaredParam]])
+
+
+def layer_annotations(metadata: dict[str, Any], entry_index: int) -> list[LayerAnnotation]:
+    """The labels of entity ``entry_index`` of a committed structure, from what its version's
+    ``metadata`` records: the labels by step id, the step that created each layer of each entity,
+    the process (and, for a campaign, the plan and the values of this variant: each variant writes
+    its own). Nothing for a version without labels (every version from before them), nor for one
+    whose record does not read: the drawing stays, unlabelled."""
+    raw_labels = metadata.get(LAYER_LABELS_METADATA_KEY)
+    layer_steps = metadata.get(LAYER_STEPS_METADATA_KEY)
+    process = metadata.get("structureforge_process")
+    step_ids = metadata.get(STEP_IDS_METADATA_KEY)
+    if not (raw_labels and isinstance(layer_steps, list) and isinstance(process, dict) and isinstance(step_ids, list)):
+        return []
+    if not 0 <= entry_index < len(layer_steps) or not isinstance(layer_steps[entry_index], list):
+        return []
+    try:
+        labels = _LABELS.validate_python(raw_labels)
+        steps = _STEP_LIST.validate_python(process.get("steps") or [])
+        declared = declared_params_by_index(_DECLARED.validate_python(process.get("declared_params") or {}))
+        plan = metadata.get("campaign_plan")
+        values = metadata.get("campaign_factor_values") or []
+        if isinstance(plan, dict) and entry_index < len(values):
+            variant_plan = campaigns.VariantPlan.model_validate(plan)
+            indexes = campaigns.factor_step_indexes(variant_plan, list(step_ids))
+            substrate = SubstrateSpec.model_validate(process["substrate"])
+            _substrate, steps, declared = campaigns.apply_combination(substrate, steps, declared, variant_plan, indexes, values[entry_index])
+    except (ValidationError, InvalidInput, KeyError, TypeError, ValueError):
+        return []
+    position = {step_id: i for i, step_id in enumerate(step_ids)}
+    by_index = {position[step_id]: label for step_id, label in labels.items() if step_id in position}
+    origins = [position.get(step_id) if step_id is not None else None for step_id in layer_steps[entry_index]]
+    return annotations_for(steps, declared, by_index, origins)
+
+
+def render_structure_svg(structure_type: str, structure_data: dict[str, Any], metadata: dict[str, Any] | None = None) -> str | None:
     """SVG for an already-committed experiment's current structure, redrawn by StructureForge from
-    its stored, already-flattened layers - ``None`` for a structure type with nothing to draw (the
-    fiche just skips the diagram then)."""
+    its stored, already-flattened layers, with the layer labels its ``metadata`` records - ``None``
+    for a structure type with nothing to draw (the fiche just skips the diagram then)."""
     kind = KINDS.get(structure_type)
-    return kind.render_svg(structure_data) if kind else None
+    return kind.render_svg(structure_data, metadata) if kind else None
 
 
-def render_lot_svgs(lot: ProcessLot) -> list[str]:
+def render_lot_svgs(lot: ProcessLot, metadata: dict[str, Any] | None = None) -> list[str]:
     """One SVG per entity in a committed campaign - the "atlas": every variant drawn side by
-    side, not just the reference one ``render_structure_svg`` shows on its own.
+    side, not just the reference one ``render_structure_svg`` shows on its own - each with its
+    own values on its labels.
     """
     names = {name for entry in lot.entries for name in material_names_in_layers(entry.layers)}
     material_colors = {m.name: m.color for m in materials_library(*names)}
-    return [svg_for_process_structure(entry, material_colors) for entry in lot.entries]
+    return [
+        svg_for_process_structure(entry, material_colors, layer_annotations(metadata or {}, i)) for i, entry in enumerate(lot.entries)
+    ]
 
 
 def entity_count(structure_type: str, structure_data: dict[str, Any]) -> int:

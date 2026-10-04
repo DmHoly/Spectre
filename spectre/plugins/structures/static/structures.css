@@ -856,6 +856,15 @@
   background: var(--navy);
   border-color: var(--navy);
 }
+/* l'étape porte une étiquette de couche (layer-label.js) : en bas, pour ne pas cacher les autres */
+.sb-chip__badge--label {
+  top: auto;
+  bottom: -9px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 5px;
+  color: var(--navy);
+}
 
 .sb-chip__check {
   position: absolute;
@@ -1962,6 +1971,46 @@
 }
 .sb-declared__body {
   padding: 0 12px 12px;
+}
+
+/* « Afficher sur la structure » : le texte de l'étiquette et les valeurs écrites dessous */
+.sb-layer-label {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.sb-layer-label__values {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.sb-layer-label__values legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+#layer-label-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+#layer-label-values .sb-check {
+  white-space: normal;
+}
+
+/* une structure dessinée avec ses étiquettes (rendering.labelled_svg) : le cadre suit sa hauteur,
+   pour que le texte reste lisible, sans dépasser la largeur */
+.builder-canvas-svg.has-layer-labels {
+  height: auto;
+  min-height: 340px;
+  max-height: 640px;
+}
+.builder-canvas-svg.has-layer-labels svg {
+  max-height: 616px;
 }
 
 /* -- écran 2 : intention et objectifs ---------------------------------------------------------- */

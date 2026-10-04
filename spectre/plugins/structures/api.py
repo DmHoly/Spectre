@@ -37,10 +37,15 @@ def simulate(body: ProcessInput) -> dict:
     """One frame (SVG, materials, layers) per step of the process, plus the colours of the
     materials - a 422 if StructureForge can't simulate it - and ``step_ids``, the id of each step:
     the one it came with, or a new one for a new step (the builder adopts it, it never makes one
-    up - see :func:`simulation.settle_step_ids`)."""
-    declared_params = simulation.declared_params_by_index(body.declared_params) or None
-    _geometry, frames, materials = simulation.run_simulation(body.substrate, body.steps, declared_params)
-    return {**rendering.frames_payload(frames, materials), "step_ids": simulation.settle_step_ids(body.step_ids)}
+    up - see :func:`simulation.settle_step_ids`). Each layer names the step that created it
+    (``step_index``), and the SVGs carry the labels of ``layer_labels``."""
+    declared_params = simulation.declared_params_by_index(body.declared_params)
+    labels = simulation.layer_labels_by_index(body.layer_labels, len(body.steps))
+    result = simulation.simulate_process(body.substrate, body.steps, declared_params or None)
+    return {
+        **rendering.frames_payload(result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels),
+        "step_ids": simulation.settle_step_ids(body.step_ids),
+    }
 
 
 @router.post("/campaign-previews")
@@ -49,10 +54,16 @@ def preview_campaign(body: CampaignPreviewRequest) -> dict:
     (fully crossed, at most :data:`campaigns.MAX_CAMPAIGN_ENTITIES`), plus the constant/varying
     split (``follow.doe.batch.analyze_batch``) - the "matrice de split", available before anyone
     commits to the campaign. Each factor names its step by ``step_id``, the id the step was sent
-    with (``"substrate"`` for the substrate).
+    with (``"substrate"`` for the substrate). Each variant's SVG carries the labels of
+    ``layer_labels``, with its own values.
     """
     result = campaigns.generate_campaign_variants(
-        body.substrate, body.steps, body.plan, simulation.declared_params_by_index(body.declared_params), body.step_ids
+        body.substrate,
+        body.steps,
+        body.plan,
+        simulation.declared_params_by_index(body.declared_params),
+        body.step_ids,
+        simulation.layer_labels_by_index(body.layer_labels, len(body.steps)),
     )
     return {
         "svgs": result.svgs,

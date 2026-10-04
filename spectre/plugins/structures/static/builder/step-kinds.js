@@ -421,7 +421,7 @@ function stepIconHtml(kind) {
 function renderKindFields(kind) {
   const container = document.getElementById("kind-fields");
   const def = STEP_KIND_DEFS[kind];
-  container.innerHTML = def.renderFields() + declaredParamsSectionHtml(state.formDeclaredParams);
+  container.innerHTML = def.renderFields() + declaredParamsSectionHtml(state.formDeclaredParams) + layerLabelSectionHtml(kind);
   if (def.wire) def.wire();
   wireDeclaredParamsSection(state.formDeclaredParams, renderDeclaredParams);
 }
@@ -435,6 +435,8 @@ function buildStepFromForm() {
     .filter((p) => p.name.trim() !== "")
     .map((p) => ({ name: p.name.trim(), value: parseDeclaredValue(p.value), obtention: p.obtention || {} }));
   if (declaredParams.length) step.declaredParams = declaredParams;
+  const layerLabel = readLayerLabelFromForm(step); // layer-label.js
+  if (layerLabel) step.layerLabel = layerLabel;
   return step;
 }
 
