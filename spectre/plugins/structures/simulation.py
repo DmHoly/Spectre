@@ -78,6 +78,18 @@ def declared_unit_in_obtention(obtention: dict[str, Any] | None) -> str:
     return next((str(obtention[key]) for key in OBTENTION_UNIT_KEYS if (obtention or {}).get(key)), "")
 
 
+def split_declared_unit(param: Any) -> tuple[Any, str]:
+    """Un paramètre déclaré (en JSON) sans son unité, et son unité : son champ ``unit``, ou la clé
+    ``unit`` (``unité``, ``unite``) de son obtention, l'astuce d'avant le champ."""
+    if not isinstance(param, dict):
+        return param, ""
+    obtention = param.get("obtention") if isinstance(param.get("obtention"), dict) else {}
+    unit = param.get("unit") or next((obtention[key] for key in OBTENTION_UNIT_KEYS if obtention.get(key)), "")
+    rest = {key: value for key, value in param.items() if key not in ("unit", "obtention")}
+    rest["obtention"] = {key: value for key, value in obtention.items() if key not in OBTENTION_UNIT_KEYS}
+    return rest, str(unit or "")
+
+
 def picker_materials() -> list[Material]:
     """The (deliberately short) list offered in the structure-builder's material dropdown - the
     editable root library (:func:`spectre.plugins.structures.library_files.materials`,
@@ -467,6 +479,8 @@ BRICKS_METADATA_KEY = "process_bricks"
 # il faut au moins deux étapes étiquetées d'une même brique pour que leurs étiquettes n'en fassent qu'une
 MIN_GROUPED_LABELS = 2
 BRICK_GROUP_ID_RE = r"^[A-Za-z0-9_.:-]{1,80}$"
+# le nom d'une brique (celle d'un procédé comme celle de la bibliothèque, dont elle reprend le nom)
+BRICK_NAME_MAX_LENGTH = 120
 
 
 class ProcessBrick(BaseModel):
@@ -477,7 +491,7 @@ class ProcessBrick(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     group_id: str = Field(pattern=BRICK_GROUP_ID_RE)
-    name: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=BRICK_NAME_MAX_LENGTH)
     source: str | None = Field(None, max_length=120)
     step_indexes: list[int] = Field(min_length=1)
 

@@ -45,7 +45,7 @@ from ..structures.simulation import (
     BRICKS_METADATA_KEY,
     LAYER_LABELS_METADATA_KEY,
     MIN_GROUPED_LABELS,
-    OBTENTION_UNIT_KEYS,
+    split_declared_unit,
 )
 
 ChangeLevel = Literal["initial", "major", "minor", "patch", "none"]
@@ -133,18 +133,6 @@ def classify_process_change(before: dict[str, Any] | None, after: dict[str, Any]
     return "patch"
 
 
-def _split_unit(param: Any) -> tuple[Any, str]:
-    """Un paramètre déclaré (en JSON) sans son unité, et son unité : son champ ``unit``, ou la clé
-    ``unit`` (``unité``, ``unite``) de son obtention, l'astuce d'avant le champ."""
-    if not isinstance(param, dict):
-        return param, ""
-    obtention = param.get("obtention") if isinstance(param.get("obtention"), dict) else {}
-    unit = param.get("unit") or next((obtention[key] for key in OBTENTION_UNIT_KEYS if obtention.get(key)), "")
-    rest = {key: value for key, value in param.items() if key not in ("unit", "obtention")}
-    rest["obtention"] = {key: value for key, value in obtention.items() if key not in OBTENTION_UNIT_KEYS}
-    return rest, str(unit or "")
-
-
 def _declared_change(before: Any, after: Any) -> Literal["none", "patch", "minor"]:
     """Ce que change le passage des paramètres déclarés ``before`` à ``after`` (par position
     d'étape) : ``minor`` pour un réglage (un paramètre, une valeur, une obtention, une unité
@@ -159,8 +147,8 @@ def _declared_change(before: Any, after: Any) -> Literal["none", "patch", "minor
         if not isinstance(old, list) or not isinstance(new, list) or len(old) != len(new):
             return "minor"
         for old_param, new_param in zip(old, new):
-            old_rest, old_unit = _split_unit(old_param)
-            new_rest, new_unit = _split_unit(new_param)
+            old_rest, old_unit = split_declared_unit(old_param)
+            new_rest, new_unit = split_declared_unit(new_param)
             if old_rest != new_rest or (old_unit and new_unit and old_unit != new_unit):
                 return "minor"
     return "patch"

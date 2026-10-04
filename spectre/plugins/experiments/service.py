@@ -143,17 +143,21 @@ def notebook_entry_ids(version: follow.Experiment) -> list[str]:
     return ids
 
 
-def structure_diff(before: follow.Experiment, after: follow.Experiment) -> dict[str, Any]:
-    """``{entries, label_changes}`` : Follow's leaf-by-leaf diff from ``before``'s structure to
-    ``after``'s - or, when one of them is given as pictures, ``{entries: [], summary}`` in plain
-    French (position by position, a reordering would read as "everything changed") - and, apart,
-    what changed to the layer labels and to their grouping by brick
-    (:func:`kinds.describe_label_changes`)."""
-    labels = {"label_changes": kinds.describe_label_changes(before.metadata, after.metadata)}
+def structure_diff(before_repo: follow.Repository, before: follow.Experiment, after_repo: follow.Repository, after: follow.Experiment) -> dict[str, Any]:
+    """``{entries, label_changes, param_changes}`` : Follow's leaf-by-leaf diff from ``before``'s
+    structure to ``after``'s (each read in its own repository, ``before_repo`` and ``after_repo``) -
+    or, when one of them is given as pictures, ``{entries: [], summary}`` in plain French (position
+    by position, a reordering would read as "everything changed") - and, apart, what changed to the
+    layer labels and to their grouping by brick (:func:`kinds.describe_label_changes`) and to the
+    declared parameters, which the geometry does not carry (:func:`kinds.describe_param_changes`).
+    The steps are matched by id (:func:`step_ids_of`), by position between two versions that share
+    none."""
+    compared = (before.metadata, after.metadata, step_ids_of(before_repo, before), step_ids_of(after_repo, after))
+    apart = {"label_changes": kinds.describe_label_changes(*compared), "param_changes": kinds.describe_param_changes(*compared)}
     summary = kinds.describe_image_changes(before.structure_type, before.structure, after.structure_type, after.structure)
     if summary is not None:
-        return {"entries": [], "summary": summary, **labels}
-    return {**follow.diff_structures(before.structure, after.structure).model_dump(mode="json"), **labels}
+        return {"entries": [], "summary": summary, **apart}
+    return {**follow.diff_structures(before.structure, after.structure).model_dump(mode="json"), **apart}
 
 
 # -- l'identité des étapes -------------------------------------------------------------------------

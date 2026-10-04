@@ -19,6 +19,7 @@ from __future__ import annotations
 import html
 import itertools
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
@@ -111,7 +112,8 @@ def length_text(nm: float) -> str:
     return f"{format_number(nm / 1000)} µm" if abs(nm) >= 1000 else f"{format_number(nm)} nm"
 
 
-def _value_text(value: Any) -> str:
+def value_text(value: Any) -> str:
+    """Une valeur de paramètre déclaré telle qu'une étiquette l'écrit (un nombre comme saisi)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return str(value)
     return format_number(float(value))
@@ -124,7 +126,7 @@ def _declared_value(name: str, params: list[DeclaredParam]) -> str | None:
     if param is None or param.value in (None, ""):
         return None
     unit = param.unit_text()
-    return f"{_value_text(param.value)}{' ' + unit if unit else ''}"
+    return f"{value_text(param.value)}{' ' + unit if unit else ''}"
 
 
 def label_title(step: ProcessStep, label: LayerLabel) -> str:
@@ -220,6 +222,9 @@ BRACKET_GAP = 6.0
 BRACKET_DEPTH = 6.0
 BRACKET_TIP = 6.0
 BRACKET_MIN_HEIGHT = 8.0
+# des accolades dont les hauteurs se recouvrent (les coquilles d'un nanofil enveloppent son cœur) :
+# chacune dans sa colonne, la plus courte au plus près du dessin
+BRACKET_COLUMN = BRACKET_DEPTH + 4.0
 MAX_TITLE_CHARS = 40
 MAX_LINE_CHARS = 48
 MAX_GROUPED_LINE_CHARS = 64
@@ -256,8 +261,10 @@ def _anchor(rings: list[dict]) -> tuple[float, float] | None:
 # La largeur d'un texte, estimée (le serveur ne mesure pas le texte) et par excès : la chasse de
 # chaque caractère, en fraction de la taille de police, arrondie au dixième supérieur du plus large
 # de DM Sans et de ses polices de repli (Helvetica Neue, Arial), en gras (600) comme en normal -
-# mesurée dans le navigateur. Un texte ne sort jamais du SVG : « WWWW… » mesure 1 em par lettre en
-# DM Sans 600, trois fois un « i ».
+# mesurée dans le navigateur. « WWWW… » mesure 1 em par lettre en DM Sans 600, trois fois un « i ».
+# Hors de l'ASCII, une lettre accentuée a la chasse de sa lettre de base ; tout autre caractère est
+# compté large (Œ, Æ, l'idéogramme d'une police de repli : :data:`_WIDE`) et un émoji ou un
+# pictogramme plus encore (:data:`_EMOJI`) - par excès toujours : aucun texte ne sort du SVG.
 _CHAR_WIDTHS = {
     **dict.fromkeys("il .,'|", 0.3),
     **dict.fromkeys("Ifjt:;!·()[]°⁻¹²³", 0.4),
@@ -265,6 +272,8 @@ _CHAR_WIDTHS = {
     **dict.fromkeys("mw&#_", 0.9),
     **dict.fromkeys("MW—…%@", 1.1),
 }
+_WIDE = 1.2
+_EMOJI = 1.6
 
 
 def _top_of(frame: Frame, layers: tuple[int, ...]) -> float:
@@ -274,7 +283,17 @@ def _top_of(frame: Frame, layers: tuple[int, ...]) -> float:
 
 
 def _char_width(char: str) -> float:
-    return _CHAR_WIDTHS.get(char) or (0.8 if char.isupper() else 0.7)
+    known = _CHAR_WIDTHS.get(char)
+    if known:
+        return known
+    if char.isascii():
+        return 0.8 if char.isupper() else 0.7
+    base = unicodedata.normalize("NFD", char)[0]
+    if base != char and base.isascii():
+        return _char_width(base)
+    if ord(char) > 0xFFFF or unicodedata.category(char) == "So":
+        return _EMOJI
+    return _WIDE
 
 
 def _text_width(text: str, size: float) -> float:
@@ -302,6 +321,26 @@ def _place(desired: list[float], heights: list[float], top: float, bottom: float
         tops[k] = max(tops[k], floor)
         floor = tops[k] + height + BLOCK_GAP
     return tops
+
+
+def _bracket_columns(brackets: list[tuple[float, float] | None]) -> list[int | None]:
+    """La colonne de chaque accolade (``(y1, y2)`` ; ``None`` pour un bloc sans accolade) : la plus
+    proche du dessin où elle ne recouvre aucune accolade déjà placée (deux briques empilées se
+    touchent : même colonne), les plus courtes placées d'abord - une accolade qui en contient une
+    autre passe à sa droite."""
+    columns: list[int | None] = [None] * len(brackets)
+    taken: list[list[tuple[float, float]]] = []
+    order = sorted((i for i, b in enumerate(brackets) if b is not None), key=lambda i: (brackets[i][1] - brackets[i][0], brackets[i][0]))
+    for i in order:
+        y1, y2 = brackets[i]
+        column = next(
+            (c for c, spans in enumerate(taken) if all(y2 <= a + 0.5 or y1 >= b - 0.5 for a, b in spans)), len(taken)
+        )
+        if column == len(taken):
+            taken.append([])
+        taken[column].append((y1, y2))
+        columns[i] = column
+    return columns
 
 
 def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: list[LayerAnnotation], *, tag_layers: bool = False) -> str:
@@ -340,7 +379,7 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
             middle = (top + bottom) / 2
             half = max((bottom - top) / 2, BRACKET_MIN_HEIGHT / 2)
             bracket = (middle - half, middle + half)
-            anchor = (bracket_x + BRACKET_DEPTH + BRACKET_TIP, middle)
+            anchor = (bracket_x, middle)  # x : au bout de l'accolade, selon sa colonne (plus bas)
         else:
             point = _anchor(max(candidates, key=lambda c: c[1].area)[0])
             if point is None:
@@ -357,11 +396,19 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         blocks.append({"anchor": anchor, "bracket": bracket, "title": title, "lines": lines, "height": height, "width": width})
     if not blocks:
         return base
+    columns = _bracket_columns([b["bracket"] for b in blocks])
+    for block, column in zip(blocks, columns):
+        if column is not None:
+            block["bracket_x"] = bracket_x + column * BRACKET_COLUMN
+            block["anchor"] = (block["bracket_x"] + BRACKET_DEPTH + BRACKET_TIP, block["anchor"][1])
+    extra = max([c for c in columns if c is not None], default=0) * BRACKET_COLUMN
+    # le coude des traits : au-delà de la dernière colonne d'accolades, qu'ils croisent à angle droit
+    elbow = bracket_x + extra + BRACKET_DEPTH + BRACKET_TIP if any(c is not None for c in columns) else PAD + sw + 8
     blocks.sort(key=lambda b: b["anchor"][1])
     tops = _place(
         [b["anchor"][1] - TITLE_SIZE * LINE_HEIGHT / 2 for b in blocks], [b["height"] for b in blocks], PAD, PAD + sh
     )
-    column_x = PAD + sw + LEADER_GAP
+    column_x = PAD + sw + LEADER_GAP + extra
     # la colonne est aussi large que la plus large des étiquettes (estimée par excès) : rien ne déborde
     column_w = max(90.0, max(b["width"] for b in blocks))
     width = column_x + column_w + PAD
@@ -374,15 +421,16 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         ty = block_top + TITLE_SIZE * LINE_HEIGHT / 2
         if block["bracket"] is not None:
             y1, y2 = block["bracket"]
-            tip = bracket_x + BRACKET_DEPTH
+            bx = block["bracket_x"]
+            tip = bx + BRACKET_DEPTH
             mark = (
-                f'<path class="sp-layer-bracket" data-y1="{_n(y1)}" data-y2="{_n(y2)}" '
-                f'd="M{_n(bracket_x)},{_n(y1)} H{_n(tip)} V{_n(y2)} H{_n(bracket_x)} M{_n(tip)},{_n(ay)} H{_n(ax)}" '
+                f'<path class="sp-layer-bracket" data-y1="{_n(y1)}" data-y2="{_n(y2)}" data-x="{_n(tip)}" '
+                f'd="M{_n(bx)},{_n(y1)} H{_n(tip)} V{_n(y2)} H{_n(bx)} M{_n(tip)},{_n(ay)} H{_n(ax)}" '
                 f'fill="none" stroke-width="1.4" stroke-linejoin="round" style="stroke:{_TEXT_SOFT}"/>'
-                f'<polyline points="{_n(ax)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
+                f'<polyline points="{_n(ax)},{_n(ay)} {_n(elbow)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
             )
         else:
-            points = f"{_n(ax)},{_n(ay)} {_n(PAD + sw + 8)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}"
+            points = f"{_n(ax)},{_n(ay)} {_n(elbow)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}"
             mark = (
                 f'<polyline points="{points}" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
                 f'<circle cx="{_n(ax)}" cy="{_n(ay)}" r="3.2" stroke-width="1.4" style="fill:{_TEXT};stroke:{_SURFACE}"/>'

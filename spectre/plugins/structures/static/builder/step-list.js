@@ -53,7 +53,11 @@ function stripBrickTag(step) {
 // [{group_id, name, source, step_indexes}] à l'envoi (source : l'id de la brique de bibliothèque
 // d'où elle vient, si on le connaît) ; rattachée à chaque étape (brick_group_id, brick_name,
 // brick_source) au chargement d'un procédé, d'une structure ou d'une brique enregistrés - le
-// serveur l'enregistre avec la version, sans en faire un changement de structure.
+// serveur l'enregistre avec la version, sans en faire un changement de structure. Le nom d'une
+// brique fait au plus BRICK_NAME_MAX caractères (simulation.BRICK_NAME_MAX_LENGTH) : celui d'une
+// brique de bibliothèque enregistrée avant cette limite est coupé à l'envoi.
+const BRICK_NAME_MAX = 120;
+
 function bricksPayload(steps) {
   const bricks = [];
   steps.forEach((step, i) => {
@@ -62,7 +66,8 @@ function bricksPayload(steps) {
     if (last && last.group_id === step.brick_group_id && last.step_indexes[last.step_indexes.length - 1] === i - 1) {
       last.step_indexes.push(i);
     } else {
-      bricks.push({ group_id: step.brick_group_id, name: step.brick_name || "Brique", source: step.brick_source || null, step_indexes: [i] });
+      const name = Array.from((step.brick_name || "").trim() || "Brique").slice(0, BRICK_NAME_MAX).join("");
+      bricks.push({ group_id: step.brick_group_id, name, source: step.brick_source || null, step_indexes: [i] });
     }
   });
   return bricks;

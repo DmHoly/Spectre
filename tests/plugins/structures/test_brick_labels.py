@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 
 from support.accounts import signup
-from support.structures import deposition, label_texts, layer_label, simulate, substrate
+from support.structures import deposition, etch, label_texts, layer_label, lithography, simulate, substrate
 
 STACK = [
     deposition("n-GaN", "GaN", recipe="MOCVD Epitaxial", thickness_nm=400),
@@ -78,6 +78,60 @@ def test_the_bracket_covers_the_layers_created_by_the_labelled_steps_of_the_bric
     assert abs(y1 - to_svg(max(ys))) < 0.1 and abs(y2 - to_svg(min(ys))) < 0.1
     others = [point[1] for k, origin in enumerate(origins) if origin in (0, 3) for ring in frame.layers[k].rings() for point in ring["exterior"]]
     assert to_svg(max(others)) <= y1 - 0.1 or to_svg(min(others)) >= y2
+
+
+def _brackets(svg: str) -> list[tuple[float, float, float]]:
+    """``(x du trait vertical, y1, y2)`` de chaque accolade."""
+    found = re.findall(r'class="sp-layer-bracket" data-y1="([\d.]+)" data-y2="([\d.]+)" data-x="([\d.]+)"', svg)
+    return [(float(x), float(y1), float(y2)) for y1, y2, x in found]
+
+
+def test_the_brackets_of_bricks_wrapped_around_each_other_stand_side_by_side(client):
+    """Sur un pilier (un nanofil), les coquilles enveloppent le cœur : les hauteurs des briques se
+    recouvrent. Chaque accolade a sa colonne, les étiquettes passent au-delà de la dernière ; deux
+    briques empilées se partagent la même."""
+    signup(client, "brick-columns@example.com")
+    pillar = [
+        deposition("Base", "GaN", recipe="MOCVD Epitaxial", thickness_nm=60),
+        lithography("Masque", thickness_nm=40, openings=[(0.0, 70.0), (130.0, 200.0)]),
+        etch("Gravure", depth_nm=60),
+        {"kind": "resist_strip", "name": "Retrait", "material": "Photoresist"},
+        deposition("Coquille 1", "SiO2", thickness_nm=8),
+        deposition("Coquille 2", "Si3N4", thickness_nm=8),
+        deposition("Coquille 3", "Al2O3", thickness_nm=8),
+        deposition("Coquille 4", "SiO2", thickness_nm=8),
+    ]
+    bricks = [{"group_id": "a", "name": "Interne", "step_indexes": [4, 5]}, {"group_id": "b", "name": "Externe", "step_indexes": [6, 7]}]
+    labels = {str(i): layer_label("", "thickness") for i in (0, 4, 5, 6, 7)}
+    response = simulate(client, {"substrate": substrate(), "steps": pillar, "layer_labels": labels, "bricks": bricks})
+    assert response.status_code == 200, response.text
+    svg = response.json()["frames"][-1]["svg"]
+    (x1, top1, bottom1), (x2, top2, bottom2) = _brackets(svg)
+    assert top1 < bottom2 and top2 < bottom1  # les hauteurs se recouvrent
+    assert abs(x1 - x2) >= 10  # deux colonnes
+    # les traits des étiquettes ont leur coude au-delà de la dernière colonne, les textes plus loin encore
+    elbows = [float(points.split()[1].split(",")[0]) for points in re.findall(r'<polyline points="([^"]+)"', svg)]
+    assert min(elbows) > max(x1, x2)
+    assert min(float(x) for x in re.findall(r'<text x="([\d.]+)"', svg)) > max(elbows)
+
+    # deux briques empilées : une seule colonne
+    stacked = _final_svg(
+        client, layer_labels={str(i): layer_label("", "thickness") for i in range(4)},
+        bricks=[{**ACTIVE, "group_id": "bas", "step_indexes": [0, 1]}, {**ACTIVE, "group_id": "haut", "name": "Contact", "step_indexes": [2, 3]}],
+    )
+    assert len({x for x, _y1, _y2 in _brackets(stacked)}) == 1 and len(_brackets(stacked)) == 2
+
+
+def test_a_label_outside_ascii_stays_inside_the_svg(client):
+    """Mesuré dans le navigateur (16 px, 600, police de l'application et ses replis) : « Œ » fait
+    1.114 em, « 中 » 1 em, « 🔬 » 1.373 em - l'ancienne estimation (0.8 ou 0.7 em) les laissait
+    sortir de 180 unités ; une lettre accentuée a la chasse de sa lettre de base (« é » : 0.59 em)."""
+    signup(client, "wide-label@example.com")
+    for text, em in (("Œ" * 40, 1.114), ("中" * 40, 1.0), ("🔬" * 20, 1.373), ("Ж" * 40, 0.923), ("é" * 40, 0.592)):
+        svg = simulate(client, {"substrate": substrate(), "steps": [deposition("Oxyde")], "layer_labels": {"0": layer_label(text, "thickness")}}).json()["frames"][-1]["svg"]
+        view_width = float(re.search(r'viewBox="0 0 ([\d.]+) ', svg).group(1))
+        text_x = float(re.search(r'<g class="sp-layer-label"[^>]*>.*?<text x="([\d.]+)"', svg).group(1))
+        assert text_x + len(text) * 16 * em <= view_width, (text, text_x, view_width)
 
 
 def test_bricks_must_name_consecutive_steps_of_the_process(client):

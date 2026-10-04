@@ -190,3 +190,66 @@ def test_the_structure_diff_tells_the_label_changes_apart(client):
     diff = structure_diff(client, slug, plain["id"], version=unlabelled["version_id"])
     assert diff["entries"] and diff["label_changes"] == []
     assert get_experiment(client, slug, plain["id"])["structure_svg"]
+
+
+def _without_ids(process_steps: list[dict]) -> list[dict]:
+    return [{key: value for key, value in step.items() if key != "id"} for step in process_steps]
+
+
+def test_two_studies_launched_apart_are_compared_step_by_step_in_order(client):
+    """Deux études lancées à part (ou reprises d'un modèle, que le constructeur copie sans ids)
+    n'ont aucun id d'étape en commun : leurs étapes s'apparient par position, comme le diff de
+    structure, et leurs briques par nom et étapes - pas par identifiant de groupe."""
+    slug = signup_with_microproject(client, "labels-apart@example.com", "À part")
+    body = {"steps": _without_ids(STACK), "layer_labels": LABELS, "declared_params": DOPING}
+    first = launch(client, slug, title="Revue A", bricks=[BRICK], **body)
+    second = launch(client, slug, title="Revue B", bricks=[{**BRICK, "group_id": "brick-autre"}], **body)
+    assert {s["id"] for s in process(client, slug, first["id"])["steps"]}.isdisjoint(s["id"] for s in process(client, slug, second["id"])["steps"])
+    same = structure_diff(client, slug, second["id"], against_experiment=first["id"])
+    assert (same["entries"], same["label_changes"], same["param_changes"]) == ([], [], [])
+
+    # une différence se dit sous l'étape de l'étude affichée, à sa place
+    other = launch(
+        client, slug, title="Revue C", bricks=[BRICK], steps=_without_ids(STACK), layer_labels={**LABELS, "1": layer_label("MQW", "thickness")},
+        declared_params={"2": [{"name": "dopage Mg", "value": 5e18, "unit": "cm⁻³"}]},
+    )
+    diff = structure_diff(client, slug, other["id"], against_experiment=first["id"])
+    assert [c["line"] for c in diff["label_changes"]] == ["MQW — texte « Puits » → « MQW »"]
+    assert diff["label_changes"][0]["step_id"] == process(client, slug, other["id"])["steps"][1]["id"]
+    assert [c["line"] for c in diff["param_changes"]] == ["p-GaN — dopage Mg : 3e18 → 5e18"]
+
+
+def test_ungrouping_then_regrouping_the_same_steps_changes_nothing(client):
+    slug = signup_with_microproject(client, "labels-regroup@example.com", "Regroupement")
+    study = launch(client, slug, steps=STACK, layer_labels=LABELS, bricks=[BRICK])
+    # dissociée puis regroupée dans le constructeur : un autre identifiant de groupe, le même nom, les mêmes étapes
+    again = evolve(client, slug, study["id"], steps=STACK, layer_labels=LABELS, bricks=[{**BRICK, "group_id": "brick-nouveau"}])
+    assert _levels(client, slug, study["id"])[-1] == "none"
+    diff = structure_diff(client, slug, study["id"], version=again["version_id"], against_version=study["version_id"])
+    assert diff["label_changes"] == []
+
+
+def test_the_structure_diff_tells_the_declared_parameter_changes_apart(client):
+    """Les paramètres déclarés ne sont pas dans la géométrie que compare le diff de structure : leurs
+    changements (une unité ajoutée seule - un correctif -, une valeur, un paramètre ajouté ou
+    retiré) se disent à part, sous ``param_changes`` - la fiche ne dit plus « identique »."""
+    slug = signup_with_microproject(client, "params-diff@example.com", "Paramètres")
+    label = {"2": layer_label("p-GaN", "declared:dopage Mg")}
+    study = launch(client, slug, steps=STACK, declared_params={"2": [{"name": "dopage Mg", "value": 7e18}]}, layer_labels=label)
+    with_unit = evolve(client, slug, study["id"], steps=STACK, declared_params={"2": [{"name": "dopage Mg", "value": 7e18, "unit": "cm⁻³"}]}, layer_labels=label)
+    assert _levels(client, slug, study["id"])[-1] == "patch"
+    diff = structure_diff(client, slug, study["id"], version=with_unit["version_id"])
+    assert diff["entries"] == [] and diff["label_changes"] == []
+    assert [c["line"] for c in diff["param_changes"]] == ["p-GaN — dopage Mg : unité « cm⁻³ » ajoutée"]
+    assert diff["param_changes"][0]["unit"] == {"before": "", "after": "cm⁻³"} and diff["param_changes"][0]["value"] is None
+
+    changed = evolve(
+        client, slug, study["id"], steps=STACK,
+        declared_params={"0": [{"name": "précurseur", "value": "TMGa"}], "2": [{"name": "dopage Mg", "value": 7e18, "unit": "m⁻³"}]},
+        layer_labels=label,
+    )
+    lines = [c["line"] for c in structure_diff(client, slug, study["id"], version=changed["version_id"])["param_changes"]]
+    assert lines == ["n-GaN — précurseur ajouté (TMGa)", "p-GaN — dopage Mg : unité « cm⁻³ » → « m⁻³ »"]
+    removed = evolve(client, slug, study["id"], steps=STACK, declared_params={"0": [{"name": "précurseur", "value": "TMGa"}]})
+    lines = [c["line"] for c in structure_diff(client, slug, study["id"], version=removed["version_id"])["param_changes"]]
+    assert lines == ["p-GaN — dopage Mg retiré (7e18 m⁻³)"]

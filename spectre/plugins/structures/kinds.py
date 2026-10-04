@@ -27,7 +27,7 @@ from ...kernel.annotations import ImageAnnotation, clean_annotations
 from ...kernel.errors import InvalidInput
 from ..attachments.store import content_url, uploaded_image
 from . import campaigns
-from .rendering import LayerAnnotation, annotations_for, svg_for_process_structure
+from .rendering import LayerAnnotation, annotations_for, svg_for_process_structure, value_text
 from .schemas import StructureImageInput
 from .simulation import (
     BRICKS_METADATA_KEY,
@@ -45,6 +45,7 @@ from .simulation import (
     declared_params_by_index,
     material_names_in_layers,
     materials_library,
+    split_declared_unit,
 )
 
 
@@ -329,7 +330,14 @@ def layer_annotations(metadata: dict[str, Any], entry_index: int) -> list[LayerA
     return annotations_for(steps, declared, by_index, origins, bricks)
 
 
-# -- ce qui change aux étiquettes d'une version à l'autre -----------------------------------------
+# -- ce qui change aux étiquettes et aux paramètres déclarés d'une version à l'autre ---------------
+#
+# Deux versions d'une même piste (ou d'une fourche) partagent les ids de leurs étapes : on les
+# apparie par id, une étape insérée ne décale rien. Deux études lancées à part (ou reprises d'un
+# modèle, que le constructeur copie sans ids) n'en partagent aucun : on les apparie alors par
+# position, comme le diff de structure (couche par couche). Une brique est ce que le versionnage en
+# voit (``versioning._label_groups``) : son nom et ses étapes étiquetées, jamais son identifiant de
+# groupe - dissocier puis regrouper les mêmes étapes sous le même nom ne change rien.
 
 _VALUE_NAMES = {LABEL_THICKNESS: "épaisseur", LABEL_COMPOSITION: "composition"}
 
@@ -341,63 +349,135 @@ def _value_name(key: str) -> str:
     return _VALUE_NAMES.get(key, key)
 
 
-def _label_record(metadata: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, str], list[str], dict[str, dict[str, Any]]]:
-    """Ce qu'une version dit de ses étiquettes : ``(étiquettes par id d'étape, nom de chaque étape
-    étiquetée - le texte, sinon le matériau, sinon le nom de l'étape -, ordre des étapes, briques
-    dont les étiquettes n'en font qu'une, par identifiant de groupe : {name, step_ids})``."""
-    raw = metadata.get(LAYER_LABELS_METADATA_KEY)
-    labels = {sid: label for sid, label in (raw if isinstance(raw, dict) else {}).items() if isinstance(label, dict)}
-    step_ids = metadata.get(STEP_IDS_METADATA_KEY)
-    step_ids = [sid for sid in step_ids if isinstance(sid, str)] if isinstance(step_ids, list) else []
+def _process_steps(metadata: dict[str, Any]) -> list[dict[str, Any]]:
     process = metadata.get("structureforge_process")
     raw_steps = process.get("steps") if isinstance(process, dict) else None
-    steps = [step if isinstance(step, dict) else {} for step in raw_steps or []]
-    names: dict[str, str] = {}
-    for sid, label in labels.items():
-        step = steps[step_ids.index(sid)] if sid in step_ids and step_ids.index(sid) < len(steps) else {}
-        material = step.get("material") or step.get("resist_material")
-        names[sid] = str(label.get("text") or material or step.get("name") or sid)
-    groups: dict[str, dict[str, Any]] = {}
-    for brick in bricks_from_metadata(metadata.get(BRICKS_METADATA_KEY), step_ids):
-        members = [step_ids[i] for i in brick.step_indexes if step_ids[i] in labels]
-        if len(members) >= MIN_GROUPED_LABELS:
-            groups[brick.group_id] = {"name": brick.name, "step_ids": members}
-    return labels, names, step_ids, groups
+    return [step if isinstance(step, dict) else {} for step in raw_steps or []]
 
 
-def describe_label_changes(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str, Any]]:
-    """Ce qui change aux étiquettes de couches de la version de métadonnées ``before`` à celle de
-    ``after``, à part des changements de structure : par étape (``step_id`` ; ``change`` :
-    ``added``, ``removed`` ou ``modified``, avec ``text`` ``{before, after}`` quand le texte change
-    et les valeurs ajoutées et retirées, par leur nom lisible) puis par brique (``group_id`` ;
-    ``change`` : ``grouped`` - ses étiquettes n'en font plus qu'une -, ``ungrouped``, ``renamed``
-    ou ``regrouped`` - pas les mêmes étapes). Chaque changement porte ``subject`` (l'étape ou la
-    brique, telle que l'étiquette la nomme) et ``line``, la phrase qui le dit."""
-    labels_before, names_before, order_before, groups_before = _label_record(before)
-    labels_after, names_after, order_after, groups_after = _label_record(after)
+def _own_step_ids(metadata: dict[str, Any], given: list[str] | None) -> list[str]:
+    """L'id de chaque étape de la version : ``given`` (ceux que le service lit, ceux d'une ancienne
+    version compris), sinon ceux qu'elle a enregistrés ; à défaut, un repère de position qu'aucune
+    autre version ne porte (elle s'apparie alors par position)."""
+    count = len(_process_steps(metadata))
+    ids = given if given is not None else metadata.get(STEP_IDS_METADATA_KEY)
+    ids = [sid for sid in ids if isinstance(sid, str)] if isinstance(ids, list) else []
+    return ids if len(ids) == count else [f"#{i}" for i in range(count)]
+
+
+def _aligned_step_ids(before_ids: list[str], after_ids: list[str]) -> list[str]:
+    """Les ids sous lesquels comparer les étapes de ``before`` à celles d'``after`` : les leurs quand
+    les deux versions ont une étape en commun, sinon ceux d'``after`` à la même position (une étape de
+    ``before`` au-delà de la dernière d'``after`` garde le sien)."""
+    if set(before_ids) & set(after_ids):
+        return list(before_ids)
+    return [after_ids[i] if i < len(after_ids) else sid for i, sid in enumerate(before_ids)]
+
+
+def _step_name(step: dict[str, Any], position: int) -> str:
+    return str(step.get("name") or step.get("material") or step.get("resist_material") or f"étape {position + 1}")
+
+
+class _Record:
+    """Ce qu'une version dit de ses étiquettes et de ses paramètres déclarés, sous les ids ``ids``
+    (ceux de ses étapes ``own``, dans l'ordre, éventuellement alignés sur l'autre version) : ses
+    étiquettes, le nom de chaque étape étiquetée (le texte, sinon le matériau, sinon le nom de
+    l'étape), le nom de chaque étape, ses paramètres déclarés (par étape et par nom) et ses briques
+    dont les étiquettes n'en font qu'une (``{group_id, name, step_ids}``)."""
+
+    def __init__(self, metadata: dict[str, Any], own: list[str], ids: list[str]):
+        steps = _process_steps(metadata)
+        rename = dict(zip(own, ids))
+        raw = metadata.get(LAYER_LABELS_METADATA_KEY)
+        raw = raw if isinstance(raw, dict) else {}
+        self.order = list(ids)
+        self.step_names = {sid: _step_name(step, i) for i, (sid, step) in enumerate(zip(ids, steps))}
+        self.labels = {rename[sid]: label for sid, label in raw.items() if sid in rename and isinstance(label, dict)}
+        self.label_names: dict[str, str] = {}
+        for sid, step in zip(ids, steps):
+            if sid in self.labels:
+                material = step.get("material") or step.get("resist_material")
+                self.label_names[sid] = str(self.labels[sid].get("text") or material or step.get("name") or sid)
+        self.groups: list[dict[str, Any]] = []
+        for brick in bricks_from_metadata(metadata.get(BRICKS_METADATA_KEY), own):
+            members = tuple(ids[i] for i in brick.step_indexes if ids[i] in self.labels)
+            if len(members) >= MIN_GROUPED_LABELS:
+                self.groups.append({"group_id": brick.group_id, "name": brick.name, "step_ids": members})
+        process = metadata.get("structureforge_process")
+        declared = process.get("declared_params") if isinstance(process, dict) else None
+        self.params: dict[str, dict[str, dict[str, Any]]] = {}
+        for key, params in (declared if isinstance(declared, dict) else {}).items():
+            index = int(key) if isinstance(key, str) and key.isdigit() else -1
+            if 0 <= index < len(ids) and isinstance(params, list):
+                self.params[ids[index]] = {str(p["name"]): p for p in params if isinstance(p, dict) and p.get("name")}
+
+
+def _records(before: dict[str, Any], after: dict[str, Any], before_ids: list[str] | None, after_ids: list[str] | None) -> tuple[_Record, _Record]:
+    own_before, own_after = _own_step_ids(before, before_ids), _own_step_ids(after, after_ids)
+    return _Record(before, own_before, _aligned_step_ids(own_before, own_after)), _Record(after, own_after, own_after)
+
+
+def _ordered(old: _Record, new: _Record, keys: set[str]) -> list[str]:
+    """``keys`` (des ids d'étape) dans l'ordre des étapes d'``new``, puis de celles d'``old`` qui n'y sont plus."""
 
     def position(sid: str) -> tuple[int, int]:
-        return (0, order_after.index(sid)) if sid in order_after else (1, order_before.index(sid) if sid in order_before else 0)
+        return (0, new.order.index(sid)) if sid in new.order else (1, old.order.index(sid) if sid in old.order else 0)
 
+    return sorted(keys, key=position)
+
+
+def _match_groups(old: list[dict[str, Any]], new: list[dict[str, Any]]) -> tuple[list[tuple[dict[str, Any] | None, dict[str, Any]]], list[dict[str, Any]]]:
+    """Chaque brique d'``new`` avec celle d'``old`` qui lui répond - le même nom et les mêmes étapes,
+    sinon les mêmes étapes (renommée), sinon le même nom (regroupée autrement), sinon aucune - et
+    les briques d'``old`` restées seules."""
+    pending = list(old)
+    matched: list[dict[str, Any] | None] = [None] * len(new)
+    for same in (
+        lambda a, b: a["name"] == b["name"] and a["step_ids"] == b["step_ids"],
+        lambda a, b: a["step_ids"] == b["step_ids"],
+        lambda a, b: a["name"] == b["name"],
+    ):
+        for k, group in enumerate(new):
+            if matched[k] is None:
+                found = next((g for g in pending if same(g, group)), None)
+                if found is not None:
+                    pending.remove(found)
+                    matched[k] = found
+    return list(zip(matched, new)), pending
+
+
+def describe_label_changes(
+    before: dict[str, Any], after: dict[str, Any], before_ids: list[str] | None = None, after_ids: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """Ce qui change aux étiquettes de couches de la version de métadonnées ``before`` à celle de
+    ``after`` (``before_ids``, ``after_ids`` : les ids de leurs étapes, lus par le service ; à
+    défaut, ceux qu'elles ont enregistrés), à part des changements de structure : par étape
+    (``step_id``, celui d'``after`` ; ``change`` : ``added``, ``removed`` ou ``modified``, avec
+    ``text`` ``{before, after}`` quand le texte change et les valeurs ajoutées et retirées, par leur
+    nom lisible) puis par brique (``group_id`` ; ``change`` : ``grouped`` - ses étiquettes n'en font
+    plus qu'une -, ``ungrouped``, ``renamed`` ou ``regrouped`` - pas les mêmes étapes). Chaque
+    changement porte ``subject`` (l'étape ou la brique, telle que l'étiquette la nomme) et ``line``,
+    la phrase qui le dit."""
+    old, new = _records(before, after, before_ids, after_ids)
     changes: list[dict[str, Any]] = []
-    for sid in sorted(set(labels_before) | set(labels_after), key=position):
-        old, new = labels_before.get(sid), labels_after.get(sid)
-        if old == new:
+    for sid in _ordered(old, new, set(old.labels) | set(new.labels)):
+        was, now = old.labels.get(sid), new.labels.get(sid)
+        if was == now:
             continue
-        subject = names_after.get(sid) or names_before.get(sid) or sid
-        if old is None or new is None:
-            change = "added" if old is None else "removed"
-            line = f"{subject} — étiquette {'ajoutée' if old is None else 'retirée'}"
+        subject = new.label_names.get(sid) or old.label_names.get(sid) or sid
+        if was is None or now is None:
+            change = "added" if was is None else "removed"
+            line = f"{subject} — étiquette {'ajoutée' if was is None else 'retirée'}"
             changes.append({"step_id": sid, "subject": subject, "change": change, "line": line})
             continue
-        old_values, new_values = list(old.get("values") or []), list(new.get("values") or [])
+        old_values, new_values = list(was.get("values") or []), list(now.get("values") or [])
         added = [_value_name(v) for v in new_values if v not in old_values]
         removed = [_value_name(v) for v in old_values if v not in new_values]
         parts = []
         text = None
-        if (old.get("text") or "") != (new.get("text") or ""):
-            text = {"before": old.get("text") or "", "after": new.get("text") or ""}
-            parts.append(f"texte « {names_before.get(sid, '')} » → « {subject} »")
+        if (was.get("text") or "") != (now.get("text") or ""):
+            text = {"before": was.get("text") or "", "after": now.get("text") or ""}
+            parts.append(f"texte « {old.label_names.get(sid, '')} » → « {subject} »")
         if added:
             parts.append(f"ajout : {', '.join(added)}")
         if removed:
@@ -407,20 +487,68 @@ def describe_label_changes(before: dict[str, Any], after: dict[str, Any]) -> lis
         changes.append(
             {"step_id": sid, "subject": subject, "change": "modified", "text": text, "values_added": added, "values_removed": removed, "line": f"{subject} — {' ; '.join(parts)}"}
         )
-    for group_id in list(groups_after) + [g for g in groups_before if g not in groups_after]:
-        old, new = groups_before.get(group_id), groups_after.get(group_id)
-        if old == new:
-            continue
-        subject = (new or old)["name"]
-        if old is None:
+    pairs, ungrouped = _match_groups(old.groups, new.groups)
+    for was, now in pairs:
+        subject = now["name"]
+        if was is None:
             change, line = "grouped", f"brique {subject} — étiquettes regroupées"
-        elif new is None:
-            change, line = "ungrouped", f"brique {subject} — étiquettes séparées"
-        elif old["name"] != new["name"]:
-            change, line = "renamed", f"brique « {old['name']} » renommée « {subject} »"
+        elif was["step_ids"] == now["step_ids"] and was["name"] == now["name"]:
+            continue
+        elif was["name"] != now["name"]:
+            change, line = "renamed", f"brique « {was['name']} » renommée « {subject} »"
         else:
             change, line = "regrouped", f"brique {subject} — regroupement modifié"
-        changes.append({"group_id": group_id, "subject": subject, "change": change, "line": line})
+        changes.append({"group_id": now["group_id"], "subject": subject, "change": change, "line": line})
+    for was in ungrouped:
+        changes.append({"group_id": was["group_id"], "subject": was["name"], "change": "ungrouped", "line": f"brique {was['name']} — étiquettes séparées"})
+    return changes
+
+
+def describe_param_changes(
+    before: dict[str, Any], after: dict[str, Any], before_ids: list[str] | None = None, after_ids: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """Ce qui change aux paramètres déclarés (:class:`~.simulation.DeclaredParam` : dopage,
+    précurseur...) de la version de métadonnées ``before`` à celle de ``after`` - ils ne sont pas
+    dans la géométrie que compare le diff de structure. Par étape (appariées comme pour les
+    étiquettes) et par paramètre : ``change`` ``added``, ``removed`` ou ``modified`` (avec ``value``
+    et ``unit`` ``{before, after}``, ``None`` quand ils ne changent pas, et ``obtention_changed``) -
+    une unité passée de l'obtention au champ ``unit``, la même, ne change rien. Chacun porte
+    ``step_id``, ``subject`` (le nom de l'étape), ``param`` et ``line``, la phrase qui le dit."""
+    old, new = _records(before, after, before_ids, after_ids)
+    changes: list[dict[str, Any]] = []
+    for sid in _ordered(old, new, set(old.params) | set(new.params)):
+        subject = new.step_names.get(sid) or old.step_names.get(sid) or sid
+        was_params, now_params = old.params.get(sid, {}), new.params.get(sid, {})
+        for name in [*now_params, *(n for n in was_params if n not in now_params)]:
+            was, now = was_params.get(name), now_params.get(name)
+            base = {"step_id": sid, "subject": subject, "param": name}
+            if was is None or now is None:
+                param = now if was is None else was
+                _rest, unit_text = split_declared_unit(param)
+                shown = f"{value_text(param.get('value'))}{' ' + unit_text if unit_text else ''}"
+                verb = "ajouté" if was is None else "retiré"
+                changes.append({**base, "change": "added" if was is None else "removed", "line": f"{subject} — {name} {verb} ({shown})"})
+                continue
+            (old_rest, old_unit), (new_rest, new_unit) = split_declared_unit(was), split_declared_unit(now)
+            parts = []
+            value = unit = None
+            if old_rest.get("value") != new_rest.get("value"):
+                value = {"before": old_rest.get("value"), "after": new_rest.get("value")}
+                parts.append(f"{value_text(value['before'])} → {value_text(value['after'])}")
+            if old_unit != new_unit:
+                unit = {"before": old_unit, "after": new_unit}
+                if not old_unit:
+                    parts.append(f"unité « {new_unit} » ajoutée")
+                elif not new_unit:
+                    parts.append(f"unité « {old_unit} » retirée")
+                else:
+                    parts.append(f"unité « {old_unit} » → « {new_unit} »")
+            obtention_changed = old_rest.get("obtention") != new_rest.get("obtention")
+            if obtention_changed:
+                parts.append("obtention modifiée")
+            if parts:
+                line = f"{subject} — {name} : {' ; '.join(parts)}"
+                changes.append({**base, "change": "modified", "value": value, "unit": unit, "obtention_changed": obtention_changed, "line": line})
     return changes
 
 

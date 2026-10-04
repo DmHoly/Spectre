@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from structureforge.process.steps import ProcessStep
 
 from ..accounts import service as accounts
@@ -64,6 +64,8 @@ class StepPresetChanges(_ItemChanges):
 
 
 class NewTechBrick(_NewItem):
+    # le nom que reprend la brique d'un procédé où on l'insère (ProcessBrick) : la même limite
+    name: str = Field(max_length=simulation.BRICK_NAME_MAX_LENGTH)
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
     layer_labels: dict[str, simulation.LayerLabel] = {}
@@ -72,6 +74,7 @@ class NewTechBrick(_NewItem):
 
 
 class TechBrickChanges(_ItemChanges):
+    name: str | None = Field(None, max_length=simulation.BRICK_NAME_MAX_LENGTH)
     steps: list[ProcessStep] | None = None
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
     layer_labels: dict[str, simulation.LayerLabel] | None = None

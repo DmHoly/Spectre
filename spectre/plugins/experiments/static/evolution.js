@@ -348,11 +348,14 @@
           .map((e) => `<div>${escapeHtml(e.path)} : ${escapeHtml(JSON.stringify(e.before))} → ${escapeHtml(JSON.stringify(e.after))}</div>`)
           .join("");
     }
-    // les étiquettes de couches (et leur regroupement par brique), à part de la structure
-    const labelChanges = diff.result.label_changes || [];
-    if (labelChanges.length) {
-      body += `<div class="evo-diff__labels"><strong>Étiquettes :</strong> ${labelChanges.map((c) => escapeHtml(c.line)).join(" ; ")}</div>`;
-    }
+    // les paramètres déclarés (que la géométrie ne porte pas) et les étiquettes de couches (et leur
+    // regroupement par brique), à part de la structure
+    [
+      ["Paramètres", diff.result.param_changes || []],
+      ["Étiquettes", diff.result.label_changes || []],
+    ].forEach(([key, changes]) => {
+      if (changes.length) body += `<div class="evo-diff__labels"><strong>${key} :</strong> ${changes.map((c) => escapeHtml(c.line)).join(" ; ")}</div>`;
+    });
     return `
       <div class="evo-panel__section">
         <div class="section-title">Comparaison ${title}</div>

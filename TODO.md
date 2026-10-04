@@ -42,6 +42,18 @@ Suites décidées le 2026-10-04 (relecture des étiquettes) :
 - [x] **Étiquettes très longues** : mesurées dans le navigateur, elles sortaient du SVG ; corrigé.
       Fait : voir « Fait ».
 
+Relecture du lot 5 (2026-10-04) :
+
+- [x] **Accolades superposées** : sur un nanofil, les hauteurs des briques se recouvrent et leurs
+      accolades se dessinaient au même endroit. Fait : voir « Fait » (« Relecture du lot 5 »).
+- [x] **Diff entre deux études indépendantes** : étiquettes appariées par id d'étape et briques par
+      `group_id`, deux études identiques lancées à part se disaient tout différent. Fait.
+- [x] **Dissocier puis regrouper les mêmes étapes** : un faux « regroupées ; séparées ». Fait.
+- [x] **Unité ajoutée seule** : un correctif que la fiche disait « identique ». Fait.
+- [x] **Nom d'une brique de bibliothèque** : sans limite, il faisait refuser (422) toute simulation
+      où la brique était insérée. Fait.
+- [x] **Largeur des caractères hors ASCII** : « Œ », « 中 », un émoji sortaient du SVG. Fait.
+
 ### 4. Documentation intégrée (en tout dernier)
 
 Volontairement à faire **après** les points 1 à 3, pour ne pas réécrire la documentation une fois
@@ -118,6 +130,33 @@ d'étapes (jugé trop lourd à saisir). Reste :
       au fil des besoins réels (le fichier explique le format en commentaire).
 
 ## Fait (pour mémoire, pas d'action)
+
+- **Relecture du lot 5** (2026-10-04, point 3 ter ; `ARCHITECTURE.md` § 4, « Étiquettes de
+  couches », « Briques d'un procédé »).
+  - *Accolades* : une colonne par accolade dont la hauteur recouvre celle d'une autre
+    (`rendering._bracket_columns`, la plus courte au plus près du dessin) ; deux briques empilées
+    gardent la même ; la colonne des étiquettes recule d'autant et chaque trait fait son coude
+    au-delà de la dernière colonne. Écart : un trait qui part d'une couche enveloppée croise
+    toujours les accolades qui l'entourent (à angle droit) - inévitable, l'étiquette est à droite.
+  - *Diff* : étapes appariées par id (`service.step_ids_of`, celles d'une ancienne version
+    comprises) quand les deux versions en partagent, sinon par position, comme le diff de
+    structure ; briques comparées par nom et étapes étiquetées, comme le versionnage (renommée :
+    mêmes étapes ; regroupement modifié : même nom). `service.structure_diff` prend désormais le
+    dépôt de chaque version.
+  - *Paramètres déclarés* : `structure-diff` rend aussi `param_changes` (ajouté, retiré, valeur,
+    unité, obtention), écrit « Paramètres : … » sur la fiche, sa comparaison et la page
+    d'évolution. Écart : pas seulement l'unité - une valeur de dopage changée (un mineur) se disait
+    aussi « identique », la géométrie comparée ne portant pas les paramètres déclarés ; une unité
+    passée de l'obtention au champ, la même, n'y figure pas (rien de visible ne change).
+    `versioning._split_unit` devient `simulation.split_declared_unit`, partagé.
+  - *Nom d'une brique* : `simulation.BRICK_NAME_MAX_LENGTH` (120) pour `ProcessBrick` et pour
+    `POST` / `PATCH /api/tech-bricks` ; `maxlength` sur les deux champs du constructeur ; le nom
+    d'une brique enregistrée avant la limite est coupé à l'envoi (`bricksPayload`) et le mode
+    brique demande de le raccourcir. Écart : les structures enregistrées et les pas de procédé
+    gardent leur nom sans limite (rien ne le reprend ailleurs).
+  - *Largeur des caractères* : hors ASCII, une lettre accentuée compte comme sa lettre de base,
+    tout autre caractère 1,2 em, un émoji ou un pictogramme 1,6 em (mesuré : « Œ » 1,114, « 中 » 1,
+    « 🔬 » 1,373) ; tests.
 
 - **Briques d'un procédé, étiquettes regroupées, unité, diff des étiquettes** (2026-10-04, suites
   du point 3 ter ; `ARCHITECTURE.md` § 4, « Étiquettes de couches », « Briques d'un procédé »,

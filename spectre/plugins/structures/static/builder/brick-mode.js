@@ -14,6 +14,13 @@ async function saveTechBrick(forceNew) {
     document.getElementById("brick-name").focus();
     return;
   }
+  const length = Array.from(name).length;
+  if (length > BRICK_NAME_MAX) {
+    // une brique enregistrée avant la limite : la raccourcir pour l'enregistrer
+    showError(new Error(`Le nom d'une brique fait au plus ${BRICK_NAME_MAX} caractères (celui-ci en a ${length}).`));
+    document.getElementById("brick-name").focus();
+    return;
+  }
   if (state.steps.length === 0) {
     showError(new Error("Ajoutez au moins une étape avant d'enregistrer la brique."));
     return;

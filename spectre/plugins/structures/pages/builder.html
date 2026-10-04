@@ -35,7 +35,7 @@
 
         <!-- Mode brique : un nom + des notes + partage - une brique n'a pas de substrat propre. -->
         <div class="sb-header__fields" id="brick-header" hidden>
-          <input class="sb-title-input" id="brick-name" placeholder="Nom de la brique (ex : Masque + gravure RIE)" aria-label="Nom de la brique" autocomplete="off">
+          <input class="sb-title-input" id="brick-name" placeholder="Nom de la brique (ex : Masque + gravure RIE)" aria-label="Nom de la brique" autocomplete="off" maxlength="120">
           <input class="field sb-notes-input" id="brick-notes" placeholder="Notes : à quoi sert cette brique, quand l'utiliser…" aria-label="Notes de la brique (optionnel)">
           <label class="sb-check"><input type="checkbox" id="brick-shared-checkbox"> Partagée</label>
         </div>
@@ -274,7 +274,7 @@
             <div class="sb-insp__body">
               <div class="sb-insp__card">
                 <label for="group-brick-name">Grouper en brique technologique</label>
-                <input class="field" id="group-brick-name" placeholder="Nom de la nouvelle brique">
+                <input class="field" id="group-brick-name" placeholder="Nom de la nouvelle brique" maxlength="120">
                 <div class="help" id="group-brick-help">La brique est enregistrée dans la bibliothèque du µprojet et reste réutilisable ailleurs. Les étapes doivent être consécutives.</div>
                 <button class="btn btn-primary btn-block" id="group-brick-btn" type="button">Grouper en brique</button>
               </div>

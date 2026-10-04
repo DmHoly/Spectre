@@ -74,12 +74,13 @@
     return lines.map((line) => `<div style="font-size:12.5px;color:var(--text-soft);padding:2px 0;">${escapeHtml(line)}</div>`).join("");
   }
 
-  // Les changements d'étiquettes de couches (et de leur regroupement par brique), à part de ceux de
-  // la structure : une ligne « Étiquettes : … », vide s'il n'y en a pas.
-  function labelChangesHtml(diff) {
-    const changes = diff.label_changes || [];
-    if (!changes.length) return "";
-    return `<div class="fiche-diff-labels"><span class="fiche-diff-labels__key">Étiquettes :</span> ${changes.map((c) => escapeHtml(c.line)).join(" ; ")}</div>`;
+  // Les changements des paramètres déclarés (valeur, unité...), que la géométrie ne porte pas, puis
+  // ceux des étiquettes de couches (et de leur regroupement par brique), à part de ceux de la
+  // structure : une ligne « Paramètres : … », une ligne « Étiquettes : … », vides s'il n'y en a pas.
+  function apartChangesHtml(diff) {
+    const line = (key, changes) =>
+      changes.length ? `<div class="fiche-diff-labels"><span class="fiche-diff-labels__key">${key} :</span> ${changes.map((c) => escapeHtml(c.line)).join(" ; ")}</div>` : "";
+    return line("Paramètres", diff.param_changes || []) + line("Étiquettes", diff.label_changes || []);
   }
 
   function entriesHtml(entries, limit, fontSize) {
@@ -161,8 +162,9 @@
 
     const diff = await diffPromise;
     const lines = diff.summary || [];
-    const labels = labelChangesHtml(diff);
-    // seules les étiquettes (ou leur regroupement par brique) changent : on le dit, plutôt qu'« identique »
+    const labels = apartChangesHtml(diff);
+    // seuls les paramètres déclarés ou les étiquettes (ou leur regroupement par brique) changent : on
+    // le dit, plutôt qu'« identique »
     const same = labels ? "" : "identique à la version précédente";
     if (!diff.target) {
       diffNote.textContent = "";
@@ -451,7 +453,7 @@
         against_experiment: target,
         against_microproject: other === ctx.microprojectSlug ? null : other,
       });
-      const labels = labelChangesHtml(diff);
+      const labels = apartChangesHtml(diff);
       if (diff.summary) compareResult.innerHTML = summaryHtml(diff.summary) + labels;
       else if (!diff.entries.length) compareResult.innerHTML = `<div class="help">Aucune différence de structure.</div>` + labels;
       else compareResult.innerHTML = entriesHtml(diff.entries, 20, "11px") + labels;

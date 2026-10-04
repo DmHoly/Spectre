@@ -429,20 +429,39 @@ valeur d'un autre type → 422 ; une valeur que l'étape n'a pas n'est pas écri
   couche la plus haute à la plus basse, et une accolade (`.sp-layer-bracket`, à droite du dessin)
   sur toute la hauteur des couches que ces étapes ont créées - pas celles des autres étapes de la
   brique. Une étape étiquetée hors brique, ou seule étiquetée de sa brique, garde son étiquette.
+  Des accolades dont les hauteurs se recouvrent (sur un nanofil, les coquilles enveloppent le
+  cœur) ont chacune leur **colonne** (`rendering._bracket_columns` : la plus courte au plus près du
+  dessin, celle qui en contient une autre à sa droite ; deux briques empilées, qui se touchent,
+  partagent la leur) ; la colonne des étiquettes recule d'autant, et chaque trait fait son coude
+  au-delà de la dernière colonne, qu'il croise à angle droit (`data-x` : le trait vertical d'une
+  accolade).
 - **Largeur** : estimée par excès, caractère par caractère (`rendering._CHAR_WIDTHS` : la plus
   large de DM Sans, Helvetica Neue et Arial, en 400 comme en 600, mesurée dans le navigateur), et
   la colonne des étiquettes est aussi large que la plus large : aucune ne sort du SVG (40 « W »
   mesurent 641,6 unités en DM Sans 600 ; l'ancienne estimation, 0,58 em par lettre et une colonne
-  plafonnée à 320, en laissait 307 dehors). Un titre est coupé à 40 caractères, une ligne à 48
-  (64 pour la ligne d'une étape dans l'étiquette d'une brique).
+  plafonnée à 320, en laissait 307 dehors). Hors de l'ASCII, une lettre accentuée compte comme sa
+  lettre de base, tout autre caractère 1,2 em (« Œ » mesure 1,114 em, « 中 » 1 em) et un émoji ou
+  un pictogramme 1,6 em (« 🔬 » : 1,373 em) - l'ancienne règle (0,7 ou 0,8 em) en laissait
+  sortir 180 unités. Un titre est coupé à 40 caractères, une ligne à 48 (64 pour la ligne d'une
+  étape dans l'étiquette d'une brique).
 - **Diff** : `GET .../structure-diff` rend, à part des changements de structure, `label_changes`
   (`kinds.describe_label_changes`) : par étape (`step_id`, `change` : `added`, `removed` ou
   `modified` avec `text {before, after}`, `values_added`, `values_removed` - les noms lisibles :
   « épaisseur », « composition », le nom du paramètre), puis par brique (`group_id`, `change` :
   `grouped`, `ungrouped`, `renamed`, `regrouped`), chacun avec `subject` et `line`, la phrase
-  (« p-GaN — ajout : dopage Mg »). La fiche, sa comparaison et la page d'évolution les écrivent
-  sur une ligne « Étiquettes : … », et la fiche ne dit plus « identique à la version précédente »
-  quand seules les étiquettes changent.
+  (« p-GaN — ajout : dopage Mg »). Les étapes s'apparient par id (`service.step_ids_of`) quand les
+  deux versions en ont en commun (une piste, une fourche), sinon **par position**, comme le diff de
+  structure (deux études lancées à part, ou reprises d'un modèle, que le constructeur copie sans
+  ids) ; une brique est son nom et ses étapes étiquetées, comme pour le versionnage, jamais son
+  `group_id` (dissocier puis regrouper les mêmes étapes ne change rien). Il rend aussi
+  `param_changes` (`kinds.describe_param_changes`) : les paramètres déclarés, que la géométrie
+  comparée ne porte pas, par étape (appariées de même) et par nom - `change` `added`, `removed` ou
+  `modified` (`value`, `unit` `{before, after}` ou `null`, `obtention_changed`), avec `step_id`,
+  `subject` (le nom de l'étape), `param` et `line` (« p-GaN — dopage Mg : unité « cm⁻³ » ajoutée ») ;
+  une unité passée de l'obtention au champ, la même, n'y est pas. La fiche, sa comparaison et la
+  page d'évolution les écrivent sur une ligne « Paramètres : … » puis « Étiquettes : … », et la
+  fiche ne dit plus « identique à la version précédente » quand seuls des paramètres déclarés ou
+  des étiquettes changent.
 
 ### Briques d'un procédé
 
@@ -450,7 +469,8 @@ Une brique technologique insérée dans le constructeur (ou formée d'étapes ch
 brique ») reste un **groupe d'étapes consécutives** de la structure : son identifiant de groupe
 (celui du constructeur, gardé d'une version à l'autre), son nom et la brique de bibliothèque d'où
 elle vient (`source`, son id). Modèle `structures.simulation.ProcessBrick` (`{group_id, name,
-source, step_indexes}`, champs en plus refusés).
+source, step_indexes}`, champs en plus refusés ; un nom de 120 caractères au plus,
+`BRICK_NAME_MAX_LENGTH`).
 
 - **Requêtes** (simulation, aperçu de campagne, lancement, évolution, fourche, campagne,
   structures enregistrées, briques) : `bricks`, par **positions** d'étape comme les étiquettes ;
@@ -468,7 +488,10 @@ source, step_indexes}`, champs en plus refusés).
   étiquetées) - au plus un correctif.
 - **Bibliothèques** : une structure enregistrée et une brique les gardent par positions
   (`bricks`) ; une brique insérée dans un procédé y devient un seul groupe (les briques ne
-  s'imbriquent pas), de `source` l'id de la brique insérée.
+  s'imbriquent pas), de `source` l'id de la brique insérée. Le nom d'une brique de bibliothèque,
+  que reprend ce groupe, a la même limite (`POST`, `PATCH /api/tech-bricks`, 422 au-delà ; les
+  champs du constructeur ont `maxlength`) ; celui d'une brique enregistrée avant la limite est
+  coupé à l'envoi (`bricksPayload`), et le mode brique demande de le raccourcir pour l'enregistrer.
 
 ### Unité des paramètres déclarés
 
@@ -663,7 +686,7 @@ d'évolution recopie celles de la version.
 | `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` |
 | `POST …/{ref}/combiner` | `POST /api/microprojects/{mp}/experiments` `{merge_of: [{experiment_id, version_id?}, {experiment_id, version_id?}], title, intent, hypothesis, entities, objectives?, context?, branch?}` → 201 + `Location` vers la **nouvelle piste** (§ 4 : deux parents, la structure de la première, cahier vide ; les deux études ne changent pas). Exactement deux études, sans `structure` ni `from_version` (422) ; une version inconnue → 404 `source_not_found` ; deux fois la même piste ou la même version → 422 `same_experiment` ; une version d'avant la fourche de la piste désignée → 422 `version_before_line` ; une étude d'un autre µprojet n'y existe pas (404), et un champ de plus dans `merge_of` (`microproject`...) est refusé (422). `POST …/experiments/{exp}/merges` **supprimée** |
 | `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=` (chaque étape porte son `id` ; `layer_labels` : les étiquettes de couches par position d'étape, § 4 ; `bricks` : les briques du procédé par positions d'étape, § 4) |
-| `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?, label_changes}` (`label_changes`, avec une cible : à part, les étiquettes de couches et leur regroupement par brique, § 4) ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
+| `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} | null, entries, summary?, label_changes, param_changes}` (avec une cible, à part : les étiquettes de couches et leur regroupement par brique, `label_changes`, et les paramètres déclarés, `param_changes` ; étapes appariées par id, par position entre deux versions sans id commun, § 4)\| null, entries, summary?, label_changes}` (`label_changes`, avec une cible : à part, les étiquettes de couches et leur regroupement par brique, § 4) ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
 | `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
 | `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
 | `POST …/{ref}/ref` | `POST /api/microprojects/{mp}/refs` `{experiment_id, version_id?, name?}` → 201 + `Location` `.../refs/{ref_name}` (encodé : `ref%20v1.1.0`) et la ref telle que la liste la montre, plus `name` (`name` vide : « ref vX.Y.Z » ; nom invalide → 422, nom pris → 409 ; § 4) |
