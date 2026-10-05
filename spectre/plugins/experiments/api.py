@@ -93,6 +93,10 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         # la version de référence dont part l'étude, telle qu'enregistrée ({reference, version}) : le
         # plugin references la résout (une origine inconnue se montre comme telle)
         "reference_origin": service.reference_origin_of(version),
+        # pour une étude partie de plaques existantes, l'étude qui les suivait ({microproject,
+        # experiment_id, version_id, variant}), telle qu'enregistrée : son titre se lit chez elle,
+        # pour qui est membre de son µprojet
+        "wafer_origin": service.wafer_origin_of(version),
         "status": display_status(version, continued=continued_at is not None),
         "continued_at": continued_at.isoformat() if continued_at else None,
         "hold": hold_of(version),
@@ -166,9 +170,14 @@ def create_experiment(
     user: User = Depends(current_user),
 ) -> dict:
     """Une nouvelle piste (structure ``process``, ``images`` ou ``campaign``), à partir de rien,
-    d'une version existante (``from_version``), ou de deux études du µprojet combinées
-    (``merge_of``, sans structure : la nouvelle piste a les deux pour parents) - ``Location`` vers
-    la nouvelle piste."""
+    d'une version existante (``from_version``), de plaques existantes (``wafer_origin`` : l'étude
+    qui les suit, dans ce µprojet ou dans un autre dont l'appelant est membre - 404 / 403 sinon ;
+    les plaques sont les ``entities``), ou de deux études du µprojet combinées (``merge_of``, sans
+    structure : la nouvelle piste a les deux pour parents) - ``Location`` vers la nouvelle piste."""
+    if body.wafer_origin is not None and body.wafer_origin.microproject != microproject.slug:
+        other = get_microproject(body.wafer_origin.microproject)
+        if microprojects.effective_role(user, other) is None:
+            raise Forbidden("Vous n'avez pas accès au µprojet de ces plaques.")
     experiment = service.create(microproject.slug, body, author=user.name)
     created(response, _experiment_url(microproject.slug, experiment.branch))
     return _respond(response, microproject.slug, experiment.branch, experiment.id)
@@ -329,7 +338,8 @@ def set_entities(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    """Les échantillons physiques suivis : un par variante d'une campagne, un sinon."""
+    """Les échantillons physiques suivis : un par variante d'une campagne, au moins un sinon (les
+    réplicats d'une étude simple) - jamais deux fois la même plaque."""
     after = service.set_entities(
         microproject.slug, experiment_id, body.entities, author=user.name, expected_version=if_match_version(if_match)
     )
@@ -338,12 +348,17 @@ def set_entities(
 
 @router.get("/experiments/{experiment_id}/process")
 def experiment_process(
-    experiment_id: str, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))
+    experiment_id: str,
+    version: str | None = None,
+    variant: int | None = Query(None, ge=0),
+    microproject: Microproject = Depends(require_role("viewer")),
 ) -> dict:
-    """Le procédé éditable (substrat et étapes) d'une version - la pointe par défaut. Chaque étape
-    porte son ``id`` stable (:func:`service.step_ids_of`), que le constructeur renvoie à l'évolution."""
+    """Le procédé éditable (substrat et étapes) d'une version - la pointe par défaut ; ``variant``
+    (l'index d'une variante d'une campagne) : celui de cette variante, les valeurs de ses facteurs
+    appliquées (422 hors d'une campagne, ou pour une variante qu'elle n'a pas). Chaque étape porte
+    son ``id`` stable (:func:`service.step_ids_of`), que le constructeur renvoie à l'évolution."""
     repo = get_repository(microproject.slug)
-    process = service.editable_process(repo, service.version_of(repo, experiment_id, version))
+    process = service.editable_process(repo, service.version_of(repo, experiment_id, version), variant=variant)
     if process is None:
         raise NotFound("Cette expérience n'a pas de procédé éditable enregistré.", code="no_process")
     return process

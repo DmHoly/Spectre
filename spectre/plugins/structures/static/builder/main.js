@@ -1,5 +1,6 @@
 /* Point d'entrée : charge les listes (matériaux, présets, briques), prépare l'atelier selon le mode
-   (bibliothèque / brique / expérience - nouvelle, évolution, modèle, structure choisie, version de référence) que
+   (bibliothèque / brique / expérience - nouvelle, évolution, modèle, structure choisie, version de référence,
+   plaques existantes) que
    context.js a lu dans l'URL, puis charge ce qui doit l'être. */
 
 async function loadPickers() {
@@ -56,6 +57,7 @@ async function init() {
     await loadExistingProcess();
     await loadTemplateProcess();
     await loadReferenceProcess();
+    await loadWaferOrigin();
     await loadChosenStructureForExperience();
   }
   // Tout ce qui est chargé programmatiquement (structure existante, modèle, brique...) constitue le

@@ -30,6 +30,20 @@ const requestedReference =
     ? { reference: queryParams.get("reference"), version: queryParams.get("version") }
     : null;
 let referenceOrigin = null;
+// ?plaque=W12-A3&plaque=…&depuis-mp=<slug>&depuis-etude=<piste>&depuis-version=<id> : une nouvelle
+// expérience partie de plaques existantes (wafers/static/start-picker.js) - leurs lasermarks et
+// l'étude qui les suit ; l'étude lancée ne retient (`wafer_origin`) que celle que le constructeur
+// a bien chargée (loadWaferOrigin), ses plaques (`state.originWafers`) étant les seules suivies
+const requestedWafers =
+  !isLibraryMode && !isBrickMode && !evolveExperienceId && queryParams.getAll("plaque").length && queryParams.get("depuis-mp") && queryParams.get("depuis-etude")
+    ? {
+        lasermarks: queryParams.getAll("plaque"),
+        microproject: queryParams.get("depuis-mp"),
+        experimentId: queryParams.get("depuis-etude"),
+        versionId: queryParams.get("depuis-version"),
+      }
+    : null;
+let waferOrigin = null;
 const returnTo = queryParams.get("retour"); // where "Enregistrer" in library/brick mode sends you back to
 
 const state = {
@@ -43,8 +57,10 @@ const state = {
   materialColors: {},
   currentFrame: 0,
   campaignPlan: null,
+  variationOverflow: 0, // plaques reprises en trop pour les variantes du plan (le lancement attend qu'on corrige)
   variationFactors: [], // [{step_id, field, field_label, values, scale}] - the DOE plan being built on écran 2
   variationEntities: [], // [{sample_id, location}] - one per row of the écran 3 table, positional
+  originWafers: null, // partie de plaques existantes : leurs lasermarks, fixés (le tableau de l'écran 3 n'en change que l'emplacement et les FDL)
   wizardScreen: "structure", // écran courant de l'atelier : "structure", "intention" ou "variations" (ces deux derniers : mode expérience uniquement) - voir stages.js
   // Sélection dans le process flow (step-list.js) : -1 = le substrat, 0..n-1 = une étape. Pilote à
   // la fois l'inspecteur (inspector.js) et l'image affichée (simulation.js : la structure *après*

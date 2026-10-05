@@ -143,13 +143,36 @@ def combine(client: Any, slug: str, first: str | dict, second: str | dict, **fie
     return assert_created(post_combine(client, slug, first, second, **fields))
 
 
+def post_from_wafers(
+    client: Any, slug: str, origin_slug: str, origin_ref: str, wafers: list[str | dict], *, version_id: str | None = None, **fields: Any
+) -> Any:
+    """POST /experiments avec ``wafer_origin`` (l'étude ``origin_ref`` du µprojet ``origin_slug``)
+    et ses plaques ``wafers`` (des lasermarks, ou des entités entières) comme ``entities`` - le
+    procédé par défaut des tests sauf mention contraire. La réponse, telle quelle."""
+    origin = {"microproject": origin_slug, "experiment_id": origin_ref, **({"version_id": version_id} if version_id else {})}
+    entities = [{"sample_id": wafer} if isinstance(wafer, str) else wafer for wafer in wafers]
+    fields = {"title": "Suite des plaques", "intent": "Continuer", **fields}
+    return client.post(experiments_url(slug), json={**launch_body(entities=entities, **fields), "wafer_origin": origin})
+
+
+def from_wafers(client: Any, slug: str, origin_slug: str, origin_ref: str, wafers: list[str | dict], **fields: Any) -> dict:
+    """Une nouvelle étude partie de plaques existantes (voir :func:`post_from_wafers`)."""
+    return assert_created(post_from_wafers(client, slug, origin_slug, origin_ref, wafers, **fields))
+
+
 def delete_experiment(client: Any, slug: str, ref: str, *, if_match: str | None = None) -> Any:
     """DELETE, tel quel (la réponse : 204, ou le refus)."""
     return client.delete(experiment_url(slug, ref), headers=_headers(if_match))
 
 
-def process(client: Any, slug: str, ref: str, version: str | None = None) -> dict:
-    return assert_ok(client.get(f"{experiment_url(slug, ref)}/process", params={"version": version} if version else {}))
+def get_process(client: Any, slug: str, ref: str, version: str | None = None, *, variant: int | None = None) -> Any:
+    """GET /process, tel quel (la réponse) - ``variant`` : le procédé d'une variante d'une campagne."""
+    params = {key: value for key, value in (("version", version), ("variant", variant)) if value is not None}
+    return client.get(f"{experiment_url(slug, ref)}/process", params=params)
+
+
+def process(client: Any, slug: str, ref: str, version: str | None = None, *, variant: int | None = None) -> dict:
+    return assert_ok(get_process(client, slug, ref, version, variant=variant))
 
 
 def step_ids(client: Any, slug: str, ref: str, version: str | None = None) -> list[str]:

@@ -3,6 +3,10 @@ wafer per entry - its lasermark (``sample_id``), where it is stored, and the FDL
 (feuilles de lancement JIRA, see :mod:`spectre.plugins.wafers.fdl`) - normalized here, on the way
 in, the same way for every route that writes them.
 
+How many: one per variant of a campaign (a slot each, blank until named); any number for a simple
+study (a process or pictures) - its replicates, wafers run through the same structure. The same
+wafer is never tracked twice by one version (:func:`refuse_duplicate_wafers`).
+
 FDL numbers are normalized as typed - « fdl 1234 », « FDL_1234 », « 1234 » all become ``FDL-1234``,
 and any other JIRA-style key (« abc 12 ») becomes ``ABC-12`` - so the same FDL is always spelled the
 same way and a search finds it. Anything else is kept as typed. They are only present on an entry
@@ -16,7 +20,11 @@ from typing import Any, Iterable
 
 from pydantic import BaseModel
 
+from ...kernel.errors import InvalidInput
+
 MAX_FDL_PER_ENTITY = 20
+# les réplicats d'une étude simple : autant qu'un lot de fabrication peut en contenir (lots.MAX_WAFERS)
+MAX_TRACKED_ENTITIES = 200
 
 _FDL_NUMBER_RE = re.compile(r"^(?:fdl)?[\s_\-#:]*(\d{1,8})$", re.IGNORECASE)
 _JIRA_KEY_RE = re.compile(r"^([A-Za-z][A-Za-z0-9]{1,9})[\s_\-#:]*(\d{1,8})$")
@@ -76,6 +84,21 @@ def clean_entity_entries(entities: list[Any]) -> list[dict[str, Any]]:
             entry["fdl"] = fdl
         cleaned.append(entry)
     return cleaned
+
+
+def named_entities(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The entries that name a wafer (a blank slot - a campaign variant not yet given one - left out)."""
+    return [entry for entry in entities if entry.get("sample_id")]
+
+
+def refuse_duplicate_wafers(entities: list[dict[str, Any]]) -> None:
+    """The same wafer (its lasermark compared by :func:`compact`) twice in one list: 422."""
+    seen: set[str] = set()
+    for entry in named_entities(entities):
+        key = compact(entry["sample_id"])
+        if key in seen:
+            raise InvalidInput(f"La plaque « {entry['sample_id']} » figure deux fois.", code="duplicate_wafer")
+        seen.add(key)
 
 
 def has_tracked_physical_entity(metadata: dict[str, Any]) -> bool:

@@ -465,7 +465,7 @@ const SCALE_BADGES = { log: "log", linear: "lin.", list: "liste" };
 function renderVariationFactorsList() {
   const list = document.getElementById("variation-factors-list");
   if (state.variationFactors.length === 0) {
-    list.innerHTML = `<div class="sb-factors__empty">Aucune variation définie : un seul échantillon sera lancé, tel quel.</div>`;
+    list.innerHTML = `<div class="sb-factors__empty">Aucune variation définie : la structure est lancée telle quelle, sur une plaque ou plusieurs (des réplicats).</div>`;
     return;
   }
   const combos = state.variationFactors.reduce((acc, f) => acc * f.values.length, 1);
@@ -493,25 +493,40 @@ function renderVariationFactorsList() {
   });
 }
 
-function variationRowHtml(row, index) {
+// `removable` : sans variation, chaque ligne est un réplicat qu'on peut retirer (s'il en reste un
+// autre). Partie de plaques existantes (`state.originWafers`), une ligne garde son lasermark.
+function variationRowHtml(row, index, removable) {
   const entity = state.variationEntities[index] || { sample_id: "", location: "" };
   const cells = row.factorValues.map((v) => `<td class="mono sb-samples-table__num">${escapeHtml(formatParamValue(v))}</td>`).join("");
+  const name = state.originWafers
+    ? `<input class="field mono js-wafer-name" data-index="${index}" value="${escapeHtml(entity.sample_id || "")}" placeholder="à renseigner sur la fiche" readonly title="Plaque reprise de l'étude d'origine" aria-label="Nom du wafer, ligne ${index + 1} (repris de l'étude d'origine)">`
+    : `<input class="field js-wafer-name" data-index="${index}" value="${escapeHtml(entity.sample_id || "")}" placeholder="ex : W12-A3" aria-label="Nom du wafer, ligne ${index + 1}">`;
+  const remove = removable
+    ? `<button type="button" class="sb-samples-table__remove js-remove-wafer" data-index="${index}" aria-label="Retirer la plaque de la ligne ${index + 1}" title="Retirer cette plaque">
+         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+       </button>`
+    : "";
   return `
     <tr>
       <td class="sb-samples-table__idx mono">${index + 1}</td>
       <td><div class="variation-thumb">${row.svg}</div></td>
       ${cells}
-      <td><input class="field js-wafer-name" data-index="${index}" value="${escapeHtml(entity.sample_id || "")}" placeholder="ex : W12-A3" aria-label="Nom du wafer, ligne ${index + 1}"></td>
+      <td>${name}</td>
       <td><input class="field js-wafer-location" data-index="${index}" value="${escapeHtml(entity.location || "")}" placeholder="optionnel" aria-label="Emplacement, ligne ${index + 1}"></td>
       <td class="sb-samples-table__fdl"><div class="js-wafer-fdl" data-index="${index}"></div></td>
+      ${removable ? `<td class="sb-samples-table__actions">${remove}</td>` : ""}
     </tr>`;
 }
 
 function renderVariationTable(rows, factorLabels) {
   const wrap = document.getElementById("variation-table-wrap");
-  if (state.variationEntities.length !== rows.length) {
+  // des plaques reprises ne sont jamais coupées : plus de plaques que de variantes bloque le lancement
+  state.variationOverflow = state.originWafers ? Math.max(0, state.variationEntities.filter((e) => e.sample_id).length - rows.length) : 0;
+  if (!state.variationOverflow && state.variationEntities.length !== rows.length) {
     state.variationEntities = rows.map((_, i) => state.variationEntities[i] || { sample_id: "", location: "" });
   }
+  const replicates = state.variationFactors.length === 0;
+  const removable = replicates && rows.length > 1;
   const headerFactors = factorLabels
     .map((label, j) => {
       const factor = state.variationFactors[j];
@@ -528,14 +543,41 @@ function renderVariationTable(rows, factorLabels) {
           <th>Nom du wafer</th>
           <th>Emplacement</th>
           <th title="Feuilles de lancement JIRA - Entrée pour en empiler plusieurs">FDL</th>
+          ${removable ? `<th><span class="sb-visually-hidden">Retirer</span></th>` : ""}
         </tr>
       </thead>
-      <tbody>${rows.map((row, i) => variationRowHtml(row, i)).join("")}</tbody>
-    </table>`;
+      <tbody>${rows.map((row, i) => variationRowHtml(row, i, removable)).join("")}</tbody>
+    </table>
+    ${
+      state.variationOverflow
+        ? `<p class="sb-samples__notice" role="alert">${state.variationEntities.filter((e) => e.sample_id).length} plaques reprises pour ${rows.length} variante${rows.length > 1 ? "s" : ""} : une campagne suit une plaque par variante. Ajoutez des valeurs, ou retirez la variation pour suivre les plaques comme réplicats.</p>`
+        : ""
+    }
+    ${
+      replicates && !state.originWafers
+        ? `<div class="sb-samples__more"><button type="button" class="btn btn-line js-add-wafer">+ Ajouter une plaque</button><span class="help">Des réplicats : plusieurs plaques passées par la même structure.</span></div>`
+        : ""
+    }`;
+  wrap.querySelectorAll(".js-remove-wafer").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.variationEntities.splice(parseInt(btn.dataset.index, 10), 1);
+      refreshVariationTable();
+    });
+  });
+  const add = wrap.querySelector(".js-add-wafer");
+  if (add) {
+    add.addEventListener("click", () => {
+      state.variationEntities.push({ sample_id: "", location: "" });
+      refreshVariationTable();
+      const inputs = document.querySelectorAll("#variation-table-wrap .js-wafer-name");
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    });
+  }
   wrap.querySelectorAll(".js-wafer-name").forEach((input) => {
     input.addEventListener("input", () => {
       const i = parseInt(input.dataset.index, 10);
       state.variationEntities[i] = { ...state.variationEntities[i], sample_id: input.value };
+      updateLaunchVariationsLabel(); // « Lancer le suivi (N plaques) »
     });
   });
   wrap.querySelectorAll(".js-wafer-location").forEach((input) => {
@@ -565,17 +607,22 @@ function renderVariationTable(rows, factorLabels) {
 // campagne (au moins une variation), simple évolution, ou nouveau lancement sans variation.
 function updateLaunchVariationsLabel() {
   const btn = document.getElementById("launch-btn-variations");
-  // des variations définies mais refusées par le serveur : ne jamais lancer sans elles en silence
-  btn.disabled = state.variationFactors.length > 0 && !state.campaignPlan;
-  if (btn.disabled) {
+  // des variations définies mais refusées par le serveur : ne jamais lancer sans elles en silence ;
+  // des plaques reprises en trop pour les variantes non plus
+  const broken = state.variationFactors.length > 0 && !state.campaignPlan;
+  btn.disabled = broken || state.variationOverflow > 0;
+  if (broken) {
     btn.textContent = "Corrigez les variations pour lancer";
+  } else if (state.variationOverflow) {
+    btn.textContent = "Trop de plaques pour ces variantes";
   } else if (state.campaignPlan) {
     const n = state.variationEntities.length || 1;
     btn.textContent = `Lancer la campagne (${n} échantillon${n > 1 ? "s" : ""})`;
   } else if (evolveExperienceId) {
     btn.textContent = "Enregistrer les modifications";
   } else {
-    btn.textContent = "Lancer le suivi de cette expérience";
+    const n = state.variationEntities.filter((e) => (e.sample_id || "").trim()).length;
+    btn.textContent = n > 1 ? `Lancer le suivi (${n} plaques)` : "Lancer le suivi de cette expérience";
   }
 }
 
@@ -584,9 +631,14 @@ let variationTableSeq = 0; // une réponse plus ancienne (ajouts rapprochés) n'
 async function refreshVariationTable() {
   const seq = ++variationTableSeq;
   if (state.variationFactors.length === 0) {
+    // sans variation : une ligne par plaque, toutes de la même structure (des réplicats) ; en
+    // quittant un plan (ou partie de plaques), les lignes vides des variantes tombent
+    const leavingPlan = state.campaignPlan !== null;
     state.campaignPlan = null;
+    if (leavingPlan || state.originWafers) state.variationEntities = state.variationEntities.filter((e) => (e.sample_id || "").trim());
     const frame = state.frames && state.frames.length ? state.frames[state.frames.length - 1] : null;
-    renderVariationTable([{ svg: frame ? frame.svg : "", factorValues: [] }], []);
+    const row = { svg: frame ? frame.svg : "", factorValues: [] };
+    renderVariationTable(Array.from({ length: Math.max(1, state.variationEntities.length) }, () => row), []);
     updateLaunchVariationsLabel();
     return;
   }
@@ -632,7 +684,8 @@ function variationTableEntities() {
 function invalidateVariations() {
   const hadPlan = state.variationFactors.length > 0 || variationEditingStepIndex !== null;
   state.variationFactors = [];
-  state.variationEntities = [];
+  // des plaques reprises restent les plaques de l'étude, quelle que soit la structure
+  state.variationEntities = state.originWafers ? state.variationEntities.filter((e) => e.sample_id) : [];
   state.campaignPlan = null;
   variationEditingStepIndex = null;
   if (hadPlan && state.wizardScreen === "variations") {
@@ -647,7 +700,10 @@ function showWizardStepVariations() {
   // Report l'entité éventuellement saisie sur l'écran 2 (cas évolution) dans la 1re ligne du
   // tableau, pour ne pas la reperdre en basculant d'écran.
   const screenOneSampleId = (document.getElementById("exp-entity-sample-id").value || "").trim();
-  if (screenOneSampleId && !(state.variationEntities[0] && state.variationEntities[0].sample_id)) {
+  if (evolveReplicates && !state.variationEntities.some((e) => e.sample_id)) {
+    // une piste qui suit plusieurs plaques : toutes, pas seulement la première
+    state.variationEntities = evolveReplicates.map((e) => ({ ...e }));
+  } else if (screenOneSampleId && !(state.variationEntities[0] && state.variationEntities[0].sample_id)) {
     state.variationEntities[0] = {
       sample_id: screenOneSampleId,
       location: (document.getElementById("exp-entity-location").value || "").trim(),

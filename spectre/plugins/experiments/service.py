@@ -10,7 +10,8 @@ structure, et celles des plugins qui écrivent dans une étude : le cahier) sont
 passés à :func:`amend` ; une évolution (:func:`evolve`) aussi, formulaire d'intention revalidé.
 Bifurquer, c'est créer une nouvelle piste à partir d'une version (:func:`create` avec
 ``from_version``) ; combiner deux études aussi : une nouvelle piste à deux parents (:func:`create`
-avec ``merge_of``).
+avec ``merge_of``) ; partir de plaques existantes aussi : une nouvelle piste qui reprend la
+structure de l'étude qui les suit (:func:`create` avec ``wafer_origin``).
 """
 
 from __future__ import annotations
@@ -30,7 +31,14 @@ from ...kernel.errors import Conflict, InvalidInput, NotFound, PreconditionFaile
 from ..structures import campaigns, kinds, simulation
 from ..structures.schemas import CampaignPayload, ImagesPayload, StructureImageInput
 from . import refs, versioning
-from .entities import EntityTrackingInput, clean_entity_entries, has_tracked_physical_entity
+from .entities import (
+    EntityTrackingInput,
+    clean_entity_entries,
+    compact,
+    has_tracked_physical_entity,
+    named_entities,
+    refuse_duplicate_wafers,
+)
 from .repository import (
     HOLD_KEY,
     RUNNING_STATUSES,
@@ -42,7 +50,7 @@ from .repository import (
     retired_lines,
     writing,
 )
-from .schemas import ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput
+from .schemas import ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput, WaferOrigin
 
 CONTEXT_METADATA_KEY = "context"
 
@@ -51,6 +59,13 @@ CONTEXT_METADATA_KEY = "context"
 # amend() comme toute métadonnée, gardée par une fourche et par une combinaison (celle de la
 # première étude) quand la requête n'en donne pas.
 REFERENCE_ORIGIN_KEY = "reference_origin"
+
+# L'étude dont viennent les plaques d'une étude partie de plaques existantes (``{microproject,
+# experiment_id, version_id, variant}`` : son µprojet, sa piste, la version dont la structure a été
+# reprise et, pour une campagne, la variante que portaient les plaques). Posée au lancement, reportée
+# par amend() ; une fourche ou une combinaison ne la reprennent pas (leur filiation dit d'où elles
+# viennent). Dans le même µprojet, la nouvelle piste descend aussi de cette version.
+WAFER_ORIGIN_KEY = "wafer_origin"
 
 # Le cahier de données d'une étude (plugin notebook, qui dépend d'experiments et non l'inverse) : ses
 # entrées sont rangées dans les métadonnées, sous NOTEBOOK_KEY, chacune avec son ``id``. Les données
@@ -293,13 +308,21 @@ def step_id_at(repo: follow.Repository, version: follow.Experiment, index: int) 
     return ids[index] if 0 <= index < len(ids) else None
 
 
-def editable_process(repo: follow.Repository, version: follow.Experiment) -> dict[str, Any] | None:
+def editable_process(repo: follow.Repository, version: follow.Experiment, *, variant: int | None = None) -> dict[str, Any] | None:
     """Le procédé éditable de ``version`` (substrat, étapes, paramètres déclarés), chaque étape
     portant son ``id`` (:func:`step_ids_of`), les étiquettes de couches (``layer_labels``, par
     position d'étape comme les paramètres déclarés ; ``{}`` sans étiquette) et les briques dont les
     étapes font partie (``bricks``, par positions d'étape ; ``[]`` sans brique) - ``None`` sans
-    procédé éditable (une structure en images)."""
-    return editable_process_from(version.metadata, step_ids_of(repo, version))
+    procédé éditable (une structure en images). ``variant`` : celui d'une variante d'une campagne
+    (son index), les valeurs de ses facteurs appliquées - ce qu'a vu la plaque de cette variante ;
+    :class:`InvalidInput` hors d'une campagne (``not_a_campaign``)."""
+    ids = step_ids_of(repo, version)
+    if variant is None:
+        return editable_process_from(version.metadata, ids)
+    if version.structure_type != kinds.ProcessLot.registry_key():
+        raise InvalidInput("Cette expérience n'est pas une campagne à plusieurs variantes.", code="not_a_campaign")
+    metadata = {**version.metadata, "structureforge_process": kinds.variant_process(version.metadata, ids, variant)}
+    return editable_process_from(metadata, ids)
 
 
 def editable_process_from(metadata: dict[str, Any], ids: list[str]) -> dict[str, Any] | None:
@@ -501,11 +524,6 @@ def _require_title_and_intent(body: Any) -> None:
         raise InvalidInput("Le titre et l'intention sont obligatoires.", code="title_and_intent_required")
 
 
-def first_tracked_entity(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """An image-mode experiment follows exactly one sample - the first one actually named."""
-    return [e for e in entities if e["sample_id"]][:1]
-
-
 def split_objectives(inputs: list[ObjectiveInput]) -> tuple[list[follow.Objective], dict[str, str]]:
     """``follow.Objective`` has no "how will we check this" field (only ``rationale``, the *why*) -
     ``verification_method`` is Spectre-specific, so it's kept out of the ``Objective`` itself and
@@ -617,34 +635,50 @@ class _PreparedStructure:
 
 def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.Experiment:
     """Une nouvelle piste : à partir de rien, d'une version existante (``from_version`` : la
-    filiation est gardée - référence « baseline », diff, graphe), ou de deux études combinées
-    (``merge_of`` : :func:`combine`). Une piste partie d'une version en reprend, faute de mieux dans
-    la requête, les objectifs, le contexte et l'entité suivie - pas le cahier de données, les
-    étiquettes ni la conclusion : c'est une nouvelle étude. Titre, intention et entité physique
-    obligatoires ; le formulaire d'intention du µprojet s'applique ; la toute première étude d'un
-    µprojet devient sa première ref."""
+    filiation est gardée - référence « baseline », diff, graphe), de plaques existantes
+    (``wafer_origin`` : :func:`_wafer_origin`), ou de deux études combinées (``merge_of`` :
+    :func:`combine`). Une piste partie d'une version en reprend, faute de mieux dans la requête, les
+    objectifs, le contexte et l'entité suivie - pas le cahier de données, les étiquettes ni la
+    conclusion : c'est une nouvelle étude. Une piste partie de plaques ne reprend de l'étude qui les
+    suit que la référence dont celle-ci part : ses plaques sont celles que nomme la requête. Titre,
+    intention et entité physique obligatoires ; le formulaire d'intention du µprojet s'applique ; la
+    toute première étude d'un µprojet devient sa première ref."""
     _require_title_and_intent(body)
     if body.merge_of is not None:
         return combine(slug, body, author=author)
-    start = None
-    if body.from_version and isinstance(body.structure, CampaignPayload) and not any(body.structure.step_ids):
-        reader = get_repository(slug)
-        start = (reader, _source_of(reader, body.from_version))
-    prepared = _PreparedStructure(slug, body.structure, start)
     entities = clean_entity_entries(body.entities)
+    origin = body.wafer_origin
+    # l'étude des plaques, lue dans son µprojet quand c'en est un autre (sinon sous le verrou, plus bas)
+    elsewhere = _wafer_origin(get_repository(origin.microproject), origin, entities) if origin and origin.microproject != slug else None
+    start = None
+    start_ref = body.from_version or (FromVersion(experiment_id=origin.experiment_id, version_id=origin.version_id) if origin else None)
+    if start_ref and isinstance(body.structure, CampaignPayload) and not any(body.structure.step_ids):
+        reader = get_repository(origin.microproject if origin else slug)
+        start = (reader, _source_of(reader, start_ref))
+    prepared = _PreparedStructure(slug, body.structure, start)
     with writing(slug) as repo:
         source = _source_of(repo, body.from_version) if body.from_version else None
+        found = elsewhere or (_wafer_origin(repo, origin, entities) if origin else None)
+        if found is not None and origin.microproject == slug:
+            source = found[0]  # dans le même µprojet, la nouvelle piste descend de l'étude des plaques
         branch = _new_branch_name(slug, repo, body.branch, body.title)
         common = dict(title=body.title.strip(), intent=body.intent.strip(), author=author, hypothesis=body.hypothesis or None)
         if source is not None:
+            forked = origin is None  # une fourche reprend de sa source ce que la requête ne donne pas
             builder = repo.derive(
-                source.id, new_branch=branch, structure=prepared.structure, carry_steps=False, carry_objectives=not body.objectives, **common
+                source.id,
+                new_branch=branch,
+                structure=prepared.structure,
+                carry_steps=False,
+                carry_objectives=forked and not body.objectives,
+                **common,
             )
             builder.steps = prepared.steps
-            carried = [CONTEXT_METADATA_KEY] + ([] if body.objectives else ["objective_verification"])
-            builder.metadata.update({key: copy.deepcopy(source.metadata[key]) for key in carried if key in source.metadata})
-            if not any(e["sample_id"] for e in entities):
-                entities = copy.deepcopy(source.metadata.get("physical_tracking", []))
+            if forked:
+                carried = [CONTEXT_METADATA_KEY] + ([] if body.objectives else ["objective_verification"])
+                builder.metadata.update({key: copy.deepcopy(source.metadata[key]) for key in carried if key in source.metadata})
+                if not any(e["sample_id"] for e in entities):
+                    entities = copy.deepcopy(source.metadata.get("physical_tracking", []))
         else:
             builder = repo.new(branch=branch, structure=prepared.structure, steps=prepared.steps, **common)
         if body.objectives:
@@ -653,7 +687,15 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
         builder.metadata.update(prepared.step_metadata(source, step_ids_of(repo, source) if source is not None else []))
         builder.metadata["physical_tracking"] = _launch_tracking(prepared.kind, prepared.campaign_size, entities)
         apply_context(builder.metadata, body.context)
-        _set_reference_origin(builder.metadata, body, source)
+        if found is not None:
+            version, variant = found
+            builder.metadata[WAFER_ORIGIN_KEY] = {
+                "microproject": origin.microproject,
+                "experiment_id": origin.experiment_id,
+                "version_id": version.id,
+                "variant": variant,
+            }
+        _set_reference_origin(builder.metadata, body, source or (found[0] if found else None))
         builder.form_answers = dict(body.form_answers)
         experiment = _commit(builder, "Impossible de lancer cette expérience")
         if len(repo) == 1:
@@ -686,22 +728,69 @@ def _source_of(repo: follow.Repository, origin: FromVersion) -> follow.Experimen
         raise NotFound(f"Version de départ introuvable : {exc}", code="source_not_found") from exc
 
 
+def wafer_origin_of(version: follow.Experiment) -> dict[str, Any] | None:
+    """L'étude dont viennent les plaques de l'étude (``{microproject, experiment_id, version_id,
+    variant}``), telle qu'enregistrée - ``None`` pour une étude qui n'est pas partie de plaques."""
+    origin = version.metadata.get(WAFER_ORIGIN_KEY)
+    if isinstance(origin, dict) and all(isinstance(origin.get(key), str) for key in ("microproject", "experiment_id", "version_id")):
+        variant = origin.get("variant")
+        return {
+            "microproject": origin["microproject"],
+            "experiment_id": origin["experiment_id"],
+            "version_id": origin["version_id"],
+            "variant": variant if isinstance(variant, int) else None,
+        }
+    return None
+
+
+def _wafer_origin(repo: follow.Repository, origin: WaferOrigin, entities: list[dict[str, Any]]) -> tuple[follow.Experiment, int | None]:
+    """La version dont partent les plaques d'une nouvelle piste (``origin``, lue dans ``repo``, le
+    dépôt de son µprojet) et, pour une campagne, la variante qu'elles portent. Chaque plaque nommée
+    dans ``entities`` doit y être suivie (``wafer_not_in_origin``), et toutes avoir la même
+    structure : une seule variante d'une campagne (``wafers_different_structures``) - les
+    réplicats d'une étude simple partagent la sienne."""
+    version = _source_of(repo, FromVersion(experiment_id=origin.experiment_id, version_id=origin.version_id))
+    position = {
+        compact(entry["sample_id"]): index
+        for index, entry in enumerate(version.metadata.get("physical_tracking", []))
+        if entry.get("sample_id")
+    }
+    named = named_entities(entities)
+    missing = [entry["sample_id"] for entry in named if compact(entry["sample_id"]) not in position]
+    if missing:
+        raise InvalidInput(f"L'étude de départ ne suit pas : {', '.join(missing)}.", code="wafer_not_in_origin")
+    if version.structure_type != kinds.ProcessLot.registry_key():
+        return version, None
+    variants = sorted({position[compact(entry["sample_id"])] for entry in named})
+    if len(variants) > 1:
+        labels = version.metadata.get("campaign_labels") or []
+        names = ", ".join(f"« {labels[i]} »" if i < len(labels) else f"n° {i + 1}" for i in variants)
+        raise InvalidInput(
+            f"Ces plaques portent des variantes différentes de la campagne ({names}) : leurs structures diffèrent. "
+            "Partez de plaques d'une même structure.",
+            code="wafers_different_structures",
+        )
+    return version, variants[0] if variants else None
+
+
 def _launch_tracking(kind: str, campaign_size: int, entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The physical tracking of a new line of study whose structure is of ``kind`` (``process``,
-    ``campaign`` of ``campaign_size`` variants, or ``images``): at least one named sample; exactly
-    one slot per variant of a campaign (the samples given fill the first ones), one sample for
-    pictures."""
-    if kind == "images":
-        tracked = first_tracked_entity(entities)
-        if not tracked:
-            raise _entity_required("pour lancer une expérience")
-        return tracked
-    if not any(e["sample_id"] for e in entities):
+    ``campaign`` of ``campaign_size`` variants, or ``images``): at least one named sample, never the
+    same twice; exactly one slot per variant of a campaign (the samples given fill the first ones -
+    a named one beyond the last variant is refused), the named samples of a simple study (its
+    replicates)."""
+    refuse_duplicate_wafers(entities)
+    if not named_entities(entities):
         raise _entity_required("pour lancer une campagne" if kind == "campaign" else "pour lancer une expérience")
     if kind == "campaign":
+        if named_entities(entities[campaign_size:]):
+            raise InvalidInput(
+                f"{len(named_entities(entities))} plaques pour {campaign_size} variante(s) : une plaque par variante au plus.",
+                code="too_many_entities",
+            )
         padding = [{"sample_id": None, "location": None}] * max(0, campaign_size - len(entities))
         return (entities + padding)[:campaign_size]
-    return entities
+    return named_entities(entities)
 
 
 # Ce qui, dans les métadonnées d'une version, décrit sa structure (le procédé du constructeur, les ids
@@ -783,6 +872,7 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
     _require_title_and_intent(body)
     prepared = _PreparedStructure(slug, body.structure)
     entities = clean_entity_entries(body.entities)
+    refuse_duplicate_wafers(entities)
 
     def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
         # amend a reporté les ids des étapes du parent, tels qu'on les lit (step_ids_of)
@@ -808,9 +898,10 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
                 builder.metadata.pop(key, None)
             if not same:
                 builder.metadata[kinds.IMAGE_REVISION_KEY] = prepared.metadata[kinds.IMAGE_REVISION_KEY]
-            tracked = first_tracked_entity(entities) or first_tracked_entity(
-                clean_entity_entries([EntityTrackingInput(**e) for e in parent.metadata.get("physical_tracking", [])])
-            )
+            # les plaques données, sinon celles de la version précédente : ses réplicats, ou la plaque
+            # de la première variante d'une campagne (des images ne disent pas les variantes)
+            inherited = named_entities(clean_entity_entries([EntityTrackingInput(**e) for e in parent.metadata.get("physical_tracking", [])]))
+            tracked = named_entities(entities) or (inherited[:1] if parent.structure_type == kinds.ProcessLot.registry_key() else inherited)
             if not tracked:
                 raise _entity_required("- renseignez-la avant de continuer")
             builder.metadata["physical_tracking"] = tracked
@@ -908,17 +999,27 @@ def set_tags(slug: str, experiment_id: str, tags: list[str], *, author: str, exp
 def set_entities(
     slug: str, experiment_id: str, entities: list[EntityTrackingInput], *, author: str, expected_version: str | None
 ) -> follow.Experiment:
-    """L'identifiant physique et l'emplacement de chaque échantillon suivi - un pour une étude
-    simple, un par variante d'une campagne."""
+    """L'identifiant physique et l'emplacement de chaque échantillon suivi - un par variante d'une
+    campagne, autant de réplicats qu'on veut pour une étude simple (au moins une entrée ; une entrée
+    vide garde sa place, les liens d'entité désignant une plaque par sa position, mais celles de fin
+    de liste sont retirées). Jamais deux fois la même plaque."""
     cleaned = clean_entity_entries(entities)
+    refuse_duplicate_wafers(cleaned)
 
     def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
-        expected = kinds.entity_count(parent.structure_type, parent.structure)
-        if len(cleaned) != expected:
-            raise InvalidInput(
-                f"Il faut exactement {expected} entrée(s) (une par échantillon suivi par cette expérience).", code="entity_count"
-            )
-        builder.metadata["physical_tracking"] = cleaned
+        tracked = list(cleaned)
+        if parent.structure_type == kinds.ProcessLot.registry_key():
+            expected = kinds.entity_count(parent.structure_type, parent.structure)
+            if len(tracked) != expected:
+                raise InvalidInput(
+                    f"Il faut exactement {expected} entrée(s) (une par variante de cette campagne).", code="entity_count"
+                )
+        else:
+            while len(tracked) > 1 and not tracked[-1]["sample_id"] and not tracked[-1]["location"] and not tracked[-1].get("fdl"):
+                tracked.pop()
+            if not tracked:
+                raise InvalidInput("Il faut au moins une entrée (la plaque suivie).", code="entity_count")
+        builder.metadata["physical_tracking"] = tracked
 
     return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
 

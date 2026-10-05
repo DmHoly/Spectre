@@ -351,6 +351,33 @@ déplacement de classe ne doit jamais la changer.
   étiquettes, évolution) ; une fourche garde celle de sa version de départ et une combinaison celle
   de sa première étude, sauf si la requête en donne une. Le détail d'une étude la rend
   (`reference_origin`, `null` sans origine).
+- **Les plaques suivies** (`physical_tracking`, `experiments.entities`) : une par variante d'une
+  campagne (une place chacune, vide tant qu'elle n'est pas nommée) ; autant qu'on veut pour une
+  étude simple (procédé ou images) - ses **réplicats**, des plaques passées par la même structure
+  (décision du 2026-10-05, l'ancienne règle « une plaque par étude simple » est levée). Jamais deux
+  fois la même plaque dans une version (422 `duplicate_wafer`, lasermark comparé sans casse ni
+  séparateurs) ; au lancement, les lignes vides d'une étude simple tombent et une plaque nommée au-delà
+  de la dernière variante d'une campagne est refusée (422 `too_many_entities`) ; `PUT .../entities`
+  garde la place d'une ligne vidée au milieu (les liens d'entité désignent une plaque par sa
+  position) et retire les vides de fin. Une évolution en images garde les réplicats de la version
+  précédente (la plaque de la première variante pour une campagne).
+- **Partir de plaques existantes** (`POST .../experiments` avec `wafer_origin: {microproject,
+  experiment_id, version_id?}`, `service._wafer_origin`) : l'étude qui suit les plaques (sa pointe
+  par défaut), dans ce µprojet ou dans un autre dont l'appelant est membre (404 µprojet inconnu, 403
+  sinon) ; les plaques sont les `entities`, chacune suivie par cette version (422
+  `wafer_not_in_origin`), toutes de la même structure : une seule variante d'une campagne (422
+  `wafers_different_structures`), les réplicats d'une étude simple. Dans le même µprojet, la
+  nouvelle piste **descend** de cette version (`repo.derive`, comme une fourche, mais sans en
+  reprendre objectifs, contexte ni plaques) ; d'un autre µprojet, elle naît sans parent (pas de
+  filiation d'un dépôt à l'autre). Dans les deux cas l'origine est rangée dans les métadonnées
+  (`WAFER_ORIGIN_KEY` : `{microproject, experiment_id, version_id, variant}`, `variant` l'index de la
+  variante pour une campagne), reportée par `amend()`, pas par une fourche ni une combinaison, et
+  rendue par le détail (`wafer_origin`, `null` sinon) ; la référence dont part l'étude d'origine
+  (`reference_origin`) est reprise. Exclusif de `from_version` et de `merge_of` (422). La structure
+  envoyée est libre (on continue le procédé) ; ses ids d'étape sont gardés (`_settled_step_ids`,
+  avec ou sans parent). Le procédé d'une variante : `GET .../process?variant=` (`kinds.variant_process`,
+  les valeurs de ses facteurs appliquées au procédé commun ; 422 `not_a_campaign`, `unknown_variant`,
+  `no_variant_process` pour une campagne d'avant les plans).
 - **Combiner deux études crée une nouvelle étude** (`POST .../experiments` avec `merge_of`,
   `service.combine`) : deux versions du µprojet (la pointe de chaque piste par défaut), de deux
   pistes différentes, et deux versions différentes (422 `same_experiment` : deux fois la même piste
@@ -686,10 +713,10 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | Avant | Après |
 |---|---|
 | `GET /api/microprojets/{slug}/experiences?status=&offset=&limit=` | `GET /api/microprojects/{mp}/experiments?status=all\|running\|concluded&q=&offset=&limit=` → `{items, total}` (`q` : titre, intention, étiquettes, nom de piste ; chaque élément : `id` = la piste, `version_id` = sa pointe) |
-| `POST …/experiences` | `POST /api/microprojects/{mp}/experiments` `{…, structure: {kind: "process", …}, reference_origin?: {reference, version}}` → 201 (`reference_origin` : la version de référence dont part l'étude, § 4 ; sa forme seule est vérifiée, 422 sinon) |
+| `POST …/experiences` | `POST /api/microprojects/{mp}/experiments` `{…, structure: {kind: "process", …}, reference_origin?: {reference, version}, wafer_origin?: {microproject, experiment_id, version_id?}}` → 201 (`reference_origin` : la version de référence dont part l'étude, § 4 ; sa forme seule est vérifiée, 422 sinon ; `wafer_origin` : partir de plaques existantes, les `entities`, § 4) |
 | `POST …/experiences/image` | idem, avec `structure: {kind: "images", images: [...]}` |
 | `POST …/experiences/campagne` | idem, avec `structure: {kind: "campaign", …, plan}` ; `from_version` pour partir d'une version existante ; les facteurs du plan désignent leur étape par `step_id`, comme l'aperçu. Les étapes envoyées (lancement, évolution, fourche) peuvent porter leur `id` |
-| `GET …/experiences/{ref}` | `GET /api/microprojects/{mp}/experiments/{exp}` (dernière version, `ETag`) ; le détail porte `id` (la piste), `version_id`, `is_tip`, `children` `[{experiment_id, version_id, title, is_tip}]`, `continued_at` (première suite structurelle) et `reference_origin` (`{reference, version}` ou `null`) |
+| `GET …/experiences/{ref}` | `GET /api/microprojects/{mp}/experiments/{exp}` (dernière version, `ETag`) ; le détail porte `id` (la piste), `version_id`, `is_tip`, `children` `[{experiment_id, version_id, title, is_tip}]`, `continued_at` (première suite structurelle), `reference_origin` (`{reference, version}` ou `null`) et `wafer_origin` (`{microproject, experiment_id, version_id, variant}` ou `null`) |
 | `GET …/experiences/{ref}/timeline` | `GET …/experiments/{exp}/versions` → tableau, de la première version à la pointe : `{version_id, experiment_id, title, intent, created_at, author, is_tip, version, change_level}` (la frise des structures : `change_level != "none"`) |
 | *(nouveau)* | `GET …/experiments/{exp}/versions/{version_id}` (une version de l'histoire de la piste, `ETag`) |
 | `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 + `Location` vers la version ; **200 sans `Location`** si rien n'a changé (§ 4) ; une campagne y est refusée (422 `campaign_is_a_new_line`) : elle se lance avec `from_version` |
@@ -698,9 +725,9 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `POST …/{ref}/conclure` | `PUT …/experiments/{exp}/conclusion` (le verdict d'un objectif peut citer des entrées du cahier : `evidence_ids`, des ids d'entrées de la pointe, sinon 422 `notebook_entry_not_found`) |
 | `POST …/{ref}/statut` | `PUT …/experiments/{exp}/status` `{status, hold_reason}` |
 | `POST …/{ref}/etiquettes` | `PUT …/experiments/{exp}/tags` `{tags}` |
-| `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` |
+| `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` (une par variante d'une campagne, 422 `entity_count` sinon ; au moins une pour une étude simple, ses réplicats ; 422 `duplicate_wafer`) |
 | `POST …/{ref}/combiner` | `POST /api/microprojects/{mp}/experiments` `{merge_of: [{experiment_id, version_id?}, {experiment_id, version_id?}], title, intent, hypothesis, entities, objectives?, context?, branch?}` → 201 + `Location` vers la **nouvelle piste** (§ 4 : deux parents, la structure de la première, cahier vide ; les deux études ne changent pas). Exactement deux études, sans `structure` ni `from_version` (422) ; une version inconnue → 404 `source_not_found` ; deux fois la même piste ou la même version → 422 `same_experiment` ; une version d'avant la fourche de la piste désignée → 422 `version_before_line` ; une étude d'un autre µprojet n'y existe pas (404), et un champ de plus dans `merge_of` (`microproject`...) est refusé (422). `POST …/experiments/{exp}/merges` **supprimée** |
-| `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=` (chaque étape porte son `id` ; `layer_labels` : les étiquettes de couches par position d'étape, § 4 ; `bricks` : les briques du procédé par positions d'étape, § 4) |
+| `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=&variant=` (`variant` : le procédé d'une variante d'une campagne, § 4 ; chaque étape porte son `id` ; `layer_labels` : les étiquettes de couches par position d'étape, § 4 ; `bricks` : les briques du procédé par positions d'étape, § 4) |
 | `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?, label_changes, param_changes, step_changes}` (avec une cible, à part : les étiquettes de couches et leur regroupement par brique, `label_changes`, les paramètres déclarés, `param_changes`, et les étapes renommées, `step_changes` ; étapes appariées par id, par position entre deux versions sans id commun, § 4) ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
 | `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
 | `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
@@ -893,7 +920,7 @@ de la copie (un simple renommage ne compte pas, une entrée supprimée non plus)
 | Avant | Après |
 |---|---|
 | `GET /api/plaques/recherche?q=` | `GET /api/wafers?q=` (aussi `fdl=` et `microproject=` ; chaque élément porte `key`) |
-| `GET /api/plaques/{lasermark}` | `GET /api/wafers/{wafer_key}` (le lasermark tel qu'écrit marche aussi ; sans les lots : `GET /api/lots?wafer=` ; une plaque inconnue → 200 sans occurrence, comme avant) ; chaque occurrence : `lasermark` et `experiment: {microproject, member, status, updated_at, id?, title?}` |
+| `GET /api/plaques/{lasermark}` | `GET /api/wafers/{wafer_key}` (le lasermark tel qu'écrit marche aussi ; sans les lots : `GET /api/lots?wafer=` ; une plaque inconnue → 200 sans occurrence, comme avant) ; chaque occurrence : `lasermark`, `entity_index` et `experiment: {microproject, member, status, updated_at, tracked_since, id?, version_id?, title?, campaign?}` (`tracked_since` : la première version de la piste qui suit la plaque ; les champs en `?` pour les membres seulement) |
 | `GET /api/lots?statut=actifs\|sortis\|annules\|tous` | `GET /api/lots?status=planned,wip,hold,done,cancelled&q=&wafer=&code=&view=summary` → tableau ; clés en anglais (`experiments`, `thematics`, `via_experiments`) et `is_active` calculé par le serveur |
 | `GET /api/lots/recherche`, `/selection` | `GET /api/lots?q=…`, `GET /api/lots?view=summary&status=…` |
 | `GET /api/lots/thematiques` | `GET /api/thematics` (plugin areas) |
@@ -1111,7 +1138,27 @@ Supprimée : `/microprojets/{slug}/graphe`.
     de la version **en gardant les ids d'étape** (l'étude descend de cette version : une version
     publiée ensuite s'y compare étape par étape) et envoie `reference_origin` au lancement - la
     version qu'il a bien chargée seulement (`referenceOrigin`, posé au chargement réussi ; une
-    référence retirée ou inconnue n'en laisse aucune).
+    référence retirée ou inconnue n'en laisse aucune). Avec `onWafers` (la page µprojet), un second
+    lien « Partir de plaques existantes ».
+  - `wafers/static/start-picker.js` (global `WaferStartPicker`) : « Partir de plaques existantes »,
+    ouvert depuis la boîte précédente et depuis la boîte « sans référence » de la page µprojet. Les
+    plaques du µprojet, ou cherchées par lasermark ou FDL dans tous les µprojets, se cochent ; leurs
+    passeports (`GET /api/wafers/{key}`) donnent les études qui les suivent toutes (dans un µprojet
+    dont on est membre ; une campagne seulement si elles y portent la même variante), la plus
+    récemment rejointe d'abord (`tracked_since`), une autre au choix ; sinon la boîte dit pourquoi
+    (structures différentes, variantes différentes, plaque illisible hors membre) et ne lance rien
+    - le serveur décide de toute façon. Il ouvre le constructeur sur
+    `/microprojets/{slug}/structures/nouvelle?plaque=…&depuis-mp=…&depuis-etude=…&depuis-version=…`,
+    qui charge le procédé de l'étude (celui de la variante, `?variant=`) en gardant les ids d'étape,
+    met les plaques dans le tableau de l'écran « Variations » (lasermarks fixés, emplacement et FDL
+    repris et modifiables) et envoie `wafer_origin` - l'étude qu'il a bien chargée seulement
+    (`waferOrigin`). Une structure en images part du substrat. Sans variation, le tableau a une ligne
+    par plaque (des réplicats, « + Ajouter une plaque » hors départ de plaques) ; avec un plan, une
+    par variante, et des plaques reprises en trop bloquent le lancement. La fiche dit « Plaques
+    reprises de X » (`tags-refs.js`, titre lu chez l'étude d'origine, le µprojet s'il est autre) ;
+    sa carte « Plaques » ajoute des réplicats à une étude simple. Une évolution d'une piste à
+    plusieurs plaques (constructeur, page en images) les garde toutes : le champ unique s'efface
+    devant leur liste.
   - La fiche affiche « Issue de la référence X 1.1 » (lien vers sa page ; « référence inconnue »
     si `GET .../versions` répond 404 ou n'a pas ce numéro). La page d'évolution d'un µprojet lit
     `GET /api/reference-versions` puis `structure-history` avec ces versions en `include_versions`

@@ -1,5 +1,6 @@
 /* Le pied du bandeau : les étiquettes de l'étude (ajouter, retirer - une écriture sur la piste),
-   la référence dont elle part (« Issue de la référence X 1.1 »), ses refs locales (des repères du
+   la référence dont elle part (« Issue de la référence X 1.1 »), l'étude d'où viennent ses plaques
+   (« Plaques reprises de Y », pour une étude partie de plaques existantes), ses refs locales (des repères du
    µprojet sur la version affichée) et « Publier comme référence » (references/static/publish-dialog.js). */
 
 (() => {
@@ -68,18 +69,48 @@
     }
   }
 
+  // Une étude partie de plaques existantes : « Plaques reprises de X » (un lien vers l'étude qui les
+  // suivait, sa variante pour une campagne). Son titre se lit chez elle - hors de son µprojet (403),
+  // seul son µprojet se dit.
+  async function renderWaferOrigin(ctx, box) {
+    const origin = ctx.detail.wafer_origin;
+    if (!origin) return;
+    const elsewhere = origin.microproject !== ctx.microprojectSlug;
+    const say = (inner) => (box.innerHTML = `<span class="ref-origin">Plaques reprises de ${inner}</span>`);
+    say(`l'étude d'origine${elsewhere ? ` du µprojet ${escapeHtml(origin.microproject)}` : ""}`);
+    try {
+      const source = await experimentsApi.getVersion(origin.microproject, origin.experiment_id, origin.version_id);
+      const url = `/microprojets/${encodeURIComponent(origin.microproject)}/experiences/${encodeURIComponent(origin.experiment_id)}`;
+      let variant = "";
+      if (origin.variant !== null && source.is_batch) {
+        const labels = ((await experimentsApi.variants(origin.microproject, origin.experiment_id, origin.version_id).catch(() => null)) || {}).labels || [];
+        variant = ` (variante ${escapeHtml(labels[origin.variant] || `n° ${origin.variant + 1}`)})`;
+      }
+      let where = "";
+      if (elsewhere) {
+        const mp = await microprojectsApi.get(origin.microproject).catch(() => null);
+        where = ` · µprojet ${escapeHtml(mp ? mp.code || mp.name : origin.microproject)}`;
+      }
+      say(`<a href="${url}">${escapeHtml(source.title)}</a>${variant}${where}`);
+    } catch (err) {
+      // pas membre de ce µprojet, ou étude supprimée : le texte d'attente reste
+    }
+  }
+
   function renderRefs(ctx) {
     const row = document.getElementById("refs-row");
     const evolutionUrl = `/microprojets/${encodeURIComponent(ctx.microprojectSlug)}/evolution`;
     const canPublish = ctx.canEdit && isDrawnProcess(ctx.detail);
     row.innerHTML =
       `<span id="reference-origin"></span>` +
+      `<span id="wafer-origin"></span>` +
       ctx.detail.ref_names.map((name) => `<span class="badge badge-role" title="Ref locale du µprojet">ref ${escapeHtml(name)}</span>`).join("") +
       (canPublish
         ? `<button id="publish-reference-btn" data-report-hide type="button" class="btn btn-line" style="padding:2px 10px;font-size:11.5px;" title="Partager cette structure avec tous les µprojets, comme nouvelle version d'une référence">Publier comme référence</button>`
         : "") +
       `<a class="btn btn-line" data-report-hide href="${evolutionUrl}" style="padding:2px 10px;font-size:11.5px;" title="Les pistes du µprojet, leurs versions, leurs refs et leurs versions de référence">Évolution des structures</a>`;
     renderOrigin(ctx, document.getElementById("reference-origin"));
+    renderWaferOrigin(ctx, document.getElementById("wafer-origin"));
     const publish = document.getElementById("publish-reference-btn");
     if (!publish) return;
     publish.addEventListener("click", () =>

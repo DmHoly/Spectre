@@ -117,6 +117,7 @@ def test_a_study_shows_what_it_is_to_its_microprojects_members_only(client):
             "member": False,
             "status": "draft",
             "updated_at": occurrence["experiment"]["updated_at"],
+            "tracked_since": occurrence["experiment"]["tracked_since"],  # des dates, pas de version ni de titre
         },
     }
     passport = get_wafer(client, "W-PRIV")

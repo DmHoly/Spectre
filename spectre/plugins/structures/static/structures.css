@@ -1739,6 +1739,66 @@
 .sb-samples-table .fdl-field__input {
   min-width: 70px;
 }
+.sb-samples-table .field[readonly] {
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: default;
+}
+.sb-samples-table__actions {
+  width: 40px;
+  text-align: center;
+}
+.sb-samples-table__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.sb-samples-table__remove:hover {
+  color: var(--danger);
+  background: var(--danger-tint);
+}
+.sb-samples-table__remove:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+/* sans variation : ajouter un réplicat */
+.sb-samples__more {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+}
+.sb-samples__more .help {
+  margin: 0;
+}
+/* des plaques reprises en trop pour les variantes : ambre, à corriger avant de lancer */
+.sb-samples__notice {
+  margin: 10px 14px;
+  padding: 9px 12px;
+  border-left: 3px solid var(--hold);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--hold-tint);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.sb-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 
 /* inspecteur */
 .sb-inspector {

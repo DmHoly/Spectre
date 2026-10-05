@@ -15,6 +15,9 @@ let intentFormSection = null;
 // La version de départ d'une évolution : sa version_id part en If-Match (continuer la piste) ou en
 // from_version (une nouvelle piste, une campagne).
 let evolveParent = null;
+// Une évolution d'une piste qui suit plusieurs plaques (des réplicats) : ses plaques, reprises telles
+// quelles (le champ unique de l'écran intention ne les remplace pas ; le tableau de l'écran 3 les liste).
+let evolveReplicates = null;
 
 async function loadExistingProcess() {
   if (!evolveExperienceId) return;
@@ -66,6 +69,14 @@ async function loadExistingProcess() {
     document.getElementById("entity-field-hint").textContent = currentEntity.sample_id
       ? "Reprise de la version précédente - modifiez-la si besoin."
       : "Aucune entité physique n'a encore été renseignée sur cette piste - il en faut une pour continuer.";
+    const named = (detail.physical_tracking || []).filter((e) => e.sample_id);
+    if (!detail.is_batch && named.length > 1) {
+      evolveReplicates = named.map((e) => ({ sample_id: e.sample_id, location: e.location || "", fdl: e.fdl || [] }));
+      const wrap = document.getElementById("entity-fields-wrap");
+      wrap.querySelector(".field-row").hidden = true;
+      document.getElementById("exp-entity-fdl").parentElement.hidden = true;
+      document.getElementById("entity-field-hint").textContent = `${named.length} plaques suivies (${named.map((e) => e.sample_id).join(", ")}) : reprises telles quelles - elles se modifient sur la fiche, carte « Plaques ».`;
+    }
   } catch (err) {
     showError(err);
   }
@@ -105,6 +116,8 @@ async function commitExperience(entities) {
   };
   // une nouvelle étude partie d'une version de référence (chargée) la retient (suivi des usages de la référence)
   if (referenceOrigin && !evolveExperienceId) payload.reference_origin = referenceOrigin;
+  // partie de plaques existantes (chargées) : l'étude d'où elles viennent
+  if (waferOrigin && !evolveExperienceId) payload.wafer_origin = waferOrigin;
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
     const branchName = document.getElementById("new-branch-name").value.trim();
     if (!branchName) {
@@ -140,6 +153,10 @@ async function commitExperience(entities) {
 // (le serveur la reprend automatiquement de la version précédente, voir loadExistingProcess).
 document.getElementById("launch-btn").addEventListener("click", () => {
   clearError();
+  if (evolveReplicates) {
+    commitExperience([]); // les réplicats de la piste restent
+    return;
+  }
   const entitySampleId = document.getElementById("exp-entity-sample-id").value.trim();
   const entityLocation = document.getElementById("exp-entity-location").value.trim();
   commitExperience(entitySampleId ? [{ sample_id: entitySampleId, location: entityLocation || null, fdl: entityFdlField.get() }] : []);
@@ -213,6 +230,66 @@ async function loadReferenceProcess() {
     link.textContent = "voir son évolution";
     link.href = `/references/${encodeURIComponent(version.reference.slug)}?version=${encodeURIComponent(version.number)}`;
     referenceOrigin = { reference: version.reference.slug, version: version.number }; // chargée : l'étude la retiendra
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// Une nouvelle expérience partie de plaques existantes (wafers/static/start-picker.js) : la structure
+// de l'étude qui les suit - le procédé de leur variante pour une campagne -, ses étapes gardant leurs
+// ids (l'étude descend de cette version dans le même µprojet, et s'y compare étape par étape), et ces
+// plaques, qui remplissent le tableau de l'écran 3 (lasermarks fixés). Une structure donnée en images
+// n'a pas de procédé à rouvrir : on part du substrat. Le serveur revérifie tout (`wafer_origin`).
+async function loadWaferOrigin() {
+  if (!requestedWafers) return;
+  setPageTitle("Nouvelle expérience (depuis des plaques)");
+  const { microproject, experimentId, versionId } = requestedWafers;
+  const lasermarks = requestedWafers.lasermarks.filter((mark, i, all) => mark && all.findIndex((m) => waferKey(m) === waferKey(mark)) === i);
+  try {
+    const detail = versionId
+      ? await experimentsApi.getVersion(microproject, experimentId, versionId)
+      : await experimentsApi.get(microproject, experimentId);
+    const tracking = detail.physical_tracking || [];
+    const positions = lasermarks.map((mark) => tracking.findIndex((e) => e.sample_id && waferKey(e.sample_id) === waferKey(mark)));
+    const missing = lasermarks.filter((_, i) => positions[i] < 0);
+    if (missing.length) throw new Error(`L'étude de départ ne suit pas : ${missing.join(", ")}.`);
+    if (detail.is_batch && new Set(positions).size > 1) {
+      throw new Error("Ces plaques portent des variantes différentes de la campagne : leurs structures diffèrent. Partez de plaques d'une même structure.");
+    }
+    let data = null;
+    let warning = null;
+    try {
+      data = await experimentsApi.process(microproject, experimentId, detail.version_id, detail.is_batch ? positions[0] : undefined);
+    } catch (err) {
+      const code = err.data && err.data.code;
+      if (err.status === 404) {
+        warning = "La structure de ces plaques est donnée en images : dessinez la suite à partir du substrat.";
+      } else if (code === "no_variant_process") {
+        // une campagne d'avant les plans : le procédé commun, sans les valeurs de la variante
+        data = await experimentsApi.process(microproject, experimentId, detail.version_id);
+        warning = "Le procédé propre à la variante de ces plaques n'a pas été enregistré : c'est le procédé commun de la campagne qui est repris - vérifiez ses valeurs.";
+      } else {
+        throw err;
+      }
+    }
+    if (data) {
+      setSubstrateFields(data.substrate);
+      state.steps = attachBricks(attachLayerLabels(attachDeclaredParams(data.steps, data.declared_params), data.layer_labels), data.bricks);
+      selectLastStep();
+      renderSteps();
+    }
+    state.originWafers = positions.map((i) => tracking[i].sample_id);
+    state.variationEntities = positions.map((i) => ({ sample_id: tracking[i].sample_id, location: tracking[i].location || "", fdl: tracking[i].fdl || [] }));
+    document.getElementById("based-on-note").hidden = false;
+    document.getElementById("based-on-label").textContent = state.originWafers.length > 1 ? "Plaques :" : "Plaque :";
+    document.getElementById("based-on-name").textContent = `${state.originWafers.join(", ")} · ${detail.title}`;
+    const link = document.getElementById("edit-structure-link");
+    link.textContent = "voir l'étude d'origine";
+    link.href = `/microprojets/${encodeURIComponent(microproject)}/experiences/${encodeURIComponent(experimentId)}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    waferOrigin = { microproject, experiment_id: experimentId, version_id: detail.version_id }; // chargée : l'étude la retiendra
+    if (warning) showError(new Error(warning));
   } catch (err) {
     showError(err);
   }

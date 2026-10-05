@@ -24,7 +24,7 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   └─ thématique           un axe technique du projet (dopage PGaN, double EBL...)
        └─ µprojet         une chaîne d'expériences, numérotée d'après son projet (Nat_0004, lien court /p/Nat_0004)
             └─ expérience     une piste versionnée : brouillon → en cours → conclue
-                 └─ entité physique   une plaque suivie (lasermark, emplacement, FDL)
+                 └─ entités physiques les plaques suivies (lasermark, emplacement, FDL) : des réplicats, ou une par variante d'une campagne
                       └─ structure       le procédé simulé par StructureForge, ou une suite d'images
                            └─ étape          une opération (dépôt, gravure...), regroupable en brique technologique
 ```
@@ -37,6 +37,15 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   structures montrent ses deux parents), avec la structure de la première, son titre (proposé
   « A + B »), son intention, son hypothèse et une nouvelle plaque ; son cahier démarre vide et les
   deux études ne bougent pas.
+- **Plaques et réplicats ; partir de plaques existantes.** Une étude simple suit autant de plaques
+  qu'on veut - des réplicats, passés par la même structure (« + Ajouter une plaque » sur la fiche et
+  à l'écran « Variations ») ; une campagne en suit une par variante. **Partir de plaques
+  existantes** (« Nouvelle expérience », à côté de la structure vierge) : on coche une ou plusieurs
+  plaques déjà suivies, ici ou dans un autre µprojet ; la nouvelle expérience reprend leur structure
+  actuelle (celle de l'étude qui les suit, le procédé de leur variante pour une campagne) et les
+  suit. Dans le même µprojet elle descend de cette étude ; d'un autre, sa fiche dit « Plaques
+  reprises de X ». Des plaques de structures différentes (deux études, deux variantes) ne partent
+  pas ensemble.
 - **Numéro de version.** Chaque version porte un numéro `X.Y.Z` calculé depuis la structure
   (`experiments/versioning.py`) : majeur si le substrat ou la suite d'étapes change, mineur si un
   paramètre d'étape change, correctif si seul un nom d'étape, l'unité ajoutée à un paramètre

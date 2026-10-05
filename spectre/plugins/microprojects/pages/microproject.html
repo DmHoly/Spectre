@@ -286,6 +286,12 @@
             <button class="btn btn-line" id="option-continue-image" type="button">Avec une image</button>
           </div>
         </div>
+
+        <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
+          <label>Partir de plaques existantes</label>
+          <div class="help" style="margin-bottom:8px;">Une ou plusieurs plaques déjà suivies, ici ou dans un autre µprojet : la nouvelle expérience reprend leur structure actuelle et les suit. Plusieurs plaques sont des réplicats.</div>
+          <button class="btn btn-line btn-block" id="option-wafers" type="button">Choisir des plaques…</button>
+        </div>
       </div>
 
       <button class="btn btn-line btn-block" id="cancel-new-experience" type="button" style="margin-top:18px;">Annuler</button>
@@ -312,6 +318,7 @@
   <script src="/static/structures/campaign-carousel.js"></script>
   <script src="/static/structures/structure-images.js"></script>
   <script src="/static/wafers/fdl.js"></script>
+  <script src="/static/wafers/start-picker.js"></script>
   <!-- D3 vendored localement (voir spectre/kernel/static/vendor/D3-LICENSE) - même raison qu'atlas.js. -->
   <script src="/static/kernel/vendor/d3.v7.9.0.min.js"></script>
   <script src="/static/experiments/lineage-graph.js"></script>

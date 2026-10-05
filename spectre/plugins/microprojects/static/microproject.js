@@ -253,10 +253,20 @@ document.getElementById("option-continue-image").addEventListener("click", () =>
 
 document.getElementById("cancel-new-experience").addEventListener("click", () => newExperienceDialog.close());
 
+// partir de plaques déjà suivies (wafers/static/start-picker.js)
+function openStartFromWafers() {
+  WaferStartPicker.open({ microprojectSlug: slug });
+}
+document.getElementById("option-wafers").addEventListener("click", () => {
+  newExperienceDialog.close();
+  openStartFromWafers();
+});
+
 // « Nouvelle expérience » : d'abord une référence (references/static/start-picker.js) ; partir sans
-// référence (dessin vierge, image, structure de la bibliothèque, étude existante) en second.
+// référence (dessin vierge, image, structure de la bibliothèque, étude existante) ou de plaques
+// existantes en second.
 function openStartFromReference(intro) {
-  ReferenceStartPicker.open({ microprojectSlug: slug, intro, onBlank: openNewExperienceDialog });
+  ReferenceStartPicker.open({ microprojectSlug: slug, intro, onBlank: openNewExperienceDialog, onWafers: openStartFromWafers });
 }
 document.getElementById("back-to-reference").addEventListener("click", () => {
   newExperienceDialog.close();
