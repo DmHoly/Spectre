@@ -53,21 +53,45 @@
     const tracking = detail.physical_tracking || [];
     const labels = detail.is_batch ? ((await ctx.variants().catch(() => null)) || {}).labels || [] : null;
     const rows = (tracking.length ? tracking : [{}]).map((entry, i) => plateRowHtml(entry, i, canEdit, labels ? labels[i] || `Variante ${i + 1}` : null));
+    // une étude simple suit autant de réplicats qu'on veut ; une campagne, une plaque par variante
+    const canAdd = canEdit && !detail.is_batch;
     host.innerHTML = `
       <div class="plates-list${detail.is_batch ? " plates-list--batch" : ""}">${rows.join("")}</div>
-      ${canEdit ? `<button class="btn btn-line" id="save-physical-tracking-btn" type="button" data-report-hide style="margin-top:12px;">Enregistrer les plaques</button>` : ""}`;
+      ${
+        canEdit
+          ? `<div class="plates-actions" data-report-hide>
+               <button class="btn btn-line" id="save-physical-tracking-btn" type="button">Enregistrer les plaques</button>
+               ${canAdd ? `<button class="btn btn-tint" id="add-plate-btn" type="button" title="Une autre plaque passée par la même structure (un réplicat)">+ Ajouter une plaque</button>` : ""}
+             </div>
+             ${canAdd ? `<p class="help plates-actions__hint" data-report-hide>Plusieurs plaques sont des réplicats de la même structure ; videz un lasermark pour retirer sa plaque.</p>` : ""}`
+          : ""
+      }`;
     if (!canEdit) return;
     fdlFields = {};
-    host.querySelectorAll(".js-entity-fdl").forEach((el) => {
+    const mountFdl = (el) => {
       const index = Number(el.dataset.index);
       fdlFields[index] = mountFdlField(el, {
         values: (tracking[index] || {}).fdl || [],
         datalistId: "entity-fdl-history",
         label: `FDL de la plaque ${index + 1}`,
       });
-    });
+    };
+    host.querySelectorAll(".js-entity-fdl").forEach(mountFdl);
+    const list = host.querySelector(".plates-list");
+    const addButton = document.getElementById("add-plate-btn");
+    if (addButton) {
+      addButton.addEventListener("click", () => {
+        const index = list.querySelectorAll(".js-entity-sample-id").length;
+        list.insertAdjacentHTML("beforeend", plateRowHtml({}, index, true, null));
+        mountFdl(list.querySelector(`.js-entity-fdl[data-index="${index}"]`));
+        document.getElementById(`plate-lasermark-${index}`).focus();
+      });
+    }
     document.getElementById("save-physical-tracking-btn").addEventListener("click", () => {
-      const entities = Array.from({ length: Math.max(tracking.length, 1) }, (_, i) => ({
+      // les lignes vides de fin ne comptent pas (le serveur les retire), une ligne vidée au milieu
+      // garde sa place : les liens d'entité désignent une plaque par sa position
+      const count = list.querySelectorAll(".js-entity-sample-id").length;
+      const entities = Array.from({ length: count }, (_, i) => ({
         sample_id: host.querySelector(`.js-entity-sample-id[data-index="${i}"]`).value.trim() || null,
         location: host.querySelector(`.js-entity-location[data-index="${i}"]`).value.trim() || null,
         fdl: fdlFields[i] ? fdlFields[i].get() : [],

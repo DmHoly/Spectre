@@ -1,4 +1,4 @@
-/* Page d'une plaque (wafer.html) et FDL (fdl.js). */
+/* Page d'une plaque (wafer.html), FDL (fdl.js) et « Partir de plaques existantes » (start-picker.js). */
 
 /* -- page d'une plaque (wafer.html) : son passeport, puis son parcours d'une étude à l'autre --- */
 .plate-hero {
@@ -247,4 +247,233 @@
   min-width: 64px;
   min-height: 24px;
   font-size: 11.5px;
+}
+
+/* -- « Partir de plaques existantes » (start-picker.js) ---------------------------------------- */
+
+.wafer-dialog {
+  border: none;
+  border-radius: 14px;
+  padding: 0;
+  box-shadow: var(--shadow-lift);
+  width: min(880px, calc(100vw - 32px));
+}
+/* `hidden` l'emporte sur les display des composants */
+.wafer-dialog [hidden] {
+  display: none !important;
+}
+.wafer-dialog__inner {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+.wafer-dialog__title {
+  font-size: 17px;
+  margin: 0 0 4px;
+}
+.wafer-dialog__lead {
+  margin: 0 0 var(--space-4);
+  font-size: 12.5px;
+  line-height: 1.5;
+  max-width: 72ch;
+}
+.wafer-dialog .error {
+  margin-bottom: var(--space-3);
+}
+.wafer-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+}
+.wafer-start {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .wafer-start {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.wafer-start__scope {
+  min-height: 18px;
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.wafer-start__options {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.wafer-start__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--border-soft);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.wafer-start__option:last-child {
+  border-bottom: none;
+}
+.wafer-start__option:hover {
+  background: var(--surface-2);
+}
+.wafer-start__option:focus-visible {
+  outline: 2px solid var(--navy-500);
+  outline-offset: -2px;
+}
+.wafer-start__option[aria-selected="true"] {
+  background: var(--accent-tint);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+/* la case : un repère visuel, l'état est porté par aria-selected */
+.wafer-start__check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 1.5px solid var(--text-faint);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--surface);
+}
+.wafer-start__option[aria-selected="true"] .wafer-start__check {
+  border-color: var(--navy);
+  background: var(--navy);
+}
+.wafer-start__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.wafer-start__lasermark {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.wafer-start__meta {
+  font-size: 12px;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+.wafer-start__empty {
+  padding: 12px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+.wafer-start__side {
+  min-width: 0;
+}
+.wafer-start__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 8px 0 var(--space-4);
+  padding: 0;
+  min-height: 28px;
+}
+.wafer-start__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 10px;
+  border: 1px solid var(--navy-500);
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  color: var(--accent-dark);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.wafer-start__chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.wafer-start__chip-remove:hover {
+  color: var(--danger);
+  background: var(--danger-tint);
+}
+.wafer-start__chip-remove:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.wafer-start__origin {
+  margin-top: 8px;
+  min-height: 200px;
+}
+.wafer-start__study-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+}
+.wafer-start__origin select {
+  margin-bottom: var(--space-3);
+}
+.wafer-start__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.wafer-start__study {
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.wafer-start__head + .wafer-start__meta {
+  margin: 2px 0 var(--space-2);
+}
+.wafer-start__svg {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-2);
+}
+.wafer-start__svg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+}
+.wafer-start__filiation {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+/* pourquoi ces plaques ne partent pas ensemble : ambre, comme une pause - pas une erreur de saisie */
+.wafer-start__notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--hold);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--hold-tint);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
 }

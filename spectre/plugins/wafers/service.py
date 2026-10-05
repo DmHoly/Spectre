@@ -28,6 +28,7 @@ from ..experiments.entities import compact
 from ..experiments.repository import branch_tips, display_status, follow_repo_path, get_repository
 from ..microprojects import service as microprojects
 from ..microprojects.service import Microproject
+from ..structures import kinds
 from . import fdl as fdls
 
 _CACHE: dict[str, tuple[tuple, list[dict[str, Any]]]] = {}
@@ -51,11 +52,28 @@ def _signature(slug: str) -> tuple | None:
     return (refs_stat.st_mtime_ns, refs_stat.st_size, objects_mtime)
 
 
+def _tracked_since(repo: Any, tip: Any) -> dict[str, str]:
+    """Par clé de plaque, la date de la première version de la piste de ``tip`` qui la suit - quand
+    elle y est entrée, plutôt que la dernière écriture sur l'étude (une mesure ajoutée au cahier
+    d'une étude passée ne la rend pas plus « actuelle » pour la plaque)."""
+    since: dict[str, str] = {}
+    for version in repo.log(tip.id):  # de la pointe vers la racine
+        if version.branch != tip.branch:
+            continue
+        for entry in version.metadata.get("physical_tracking", []):
+            key = wafer_key(entry.get("sample_id"))
+            if key:
+                since[key] = version.created_at.isoformat()
+    return since
+
+
 def _build(slug: str) -> list[dict[str, Any]]:
     repo = get_repository(slug)
     entries: list[dict[str, Any]] = []
     for tip in branch_tips(repo):
         labels = tip.metadata.get("campaign_labels") or []
+        campaign = tip.structure_type == kinds.ProcessLot.registry_key()
+        since = _tracked_since(repo, tip)
         for index, entry in enumerate(tip.metadata.get("physical_tracking", [])):
             if not entry.get("sample_id") and not entry.get("fdl"):
                 continue
@@ -68,9 +86,12 @@ def _build(slug: str) -> list[dict[str, Any]]:
                     "variant": labels[index] if index < len(labels) else None,
                     "experiment": {
                         "id": tip.branch,  # la piste (lien vers la fiche)
+                        "version_id": tip.id,  # la version qui suit la plaque aujourd'hui (pour en partir)
                         "title": tip.title,
                         "status": display_status(tip),
                         "updated_at": tip.created_at.isoformat(),
+                        "tracked_since": since.get(wafer_key(entry.get("sample_id"))) or tip.created_at.isoformat(),
+                        "campaign": campaign,
                     },
                 }
             )
@@ -153,24 +174,30 @@ def microproject_ref(microproject: Microproject) -> dict[str, Any]:
 
 def experiment_payload(occurrence: Occurrence, public: dict[str, Any]) -> dict[str, Any]:
     """L'étude d'une occurrence telle que le lecteur la voit : son µprojet et ``public`` (son
-    statut, ses dates) pour tous, son id (la piste) et son titre pour les membres."""
+    statut, ses dates) pour tous ; son id (la piste), sa version actuelle, son titre et si c'est
+    une campagne pour les membres."""
     experiment = occurrence.entry["experiment"]
-    return {
-        "microproject": microproject_ref(occurrence.microproject),
-        "member": occurrence.member,
-        **public,
-        **({"id": experiment["id"], "title": experiment["title"]} if occurrence.member else {}),
-    }
+    member = (
+        {"id": experiment["id"], "version_id": experiment["version_id"], "title": experiment["title"], "campaign": experiment["campaign"]}
+        if occurrence.member
+        else {}
+    )
+    return {"microproject": microproject_ref(occurrence.microproject), "member": occurrence.member, **public, **member}
 
 
 def occurrence_payload(occurrence: Occurrence) -> dict[str, Any]:
     """Une étude qui suit une plaque, telle que le lecteur la voit : où la plaque a été rangée, ses
     FDL et la variante qu'elle porte dans une campagne pour les membres seulement."""
     entry = occurrence.entry
+    public = {
+        "status": entry["experiment"]["status"],
+        "updated_at": occurrence.updated_at,
+        "tracked_since": entry["experiment"]["tracked_since"],  # quand la plaque est entrée dans l'étude
+    }
     payload = {
         "lasermark": entry.get("sample_id"),
         "entity_index": entry["entity_index"],
-        "experiment": experiment_payload(occurrence, {"status": entry["experiment"]["status"], "updated_at": occurrence.updated_at}),
+        "experiment": experiment_payload(occurrence, public),
     }
     if occurrence.member:
         payload.update(location=entry["location"], fdl=entry["fdl"], variant=entry["variant"])

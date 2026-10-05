@@ -45,6 +45,7 @@ from .simulation import (
     declared_params_by_index,
     material_names_in_layers,
     materials_library,
+    process_metadata,
     split_declared_unit,
 )
 
@@ -160,7 +161,9 @@ class StructureKind(Protocol):
         ``metadata`` records - ``None`` when there is nothing to draw."""
 
     def entity_count(self, data: dict[str, Any]) -> int:
-        """How many physical entities a structure of this kind tracks."""
+        """How many distinct structures a structure of this kind holds - one tracked entity slot
+        each for a campaign (one per variant); a simple structure's one is shared by any number of
+        replicate wafers."""
 
 
 class _ProcessKind:
@@ -328,6 +331,31 @@ def layer_annotations(metadata: dict[str, Any], entry_index: int) -> list[LayerA
     origins = [position.get(step_id) if step_id is not None else None for step_id in layer_steps[entry_index]]
     bricks = bricks_from_metadata(metadata.get(BRICKS_METADATA_KEY), list(step_ids))
     return annotations_for(steps, declared, by_index, origins, bricks)
+
+
+def variant_process(metadata: dict[str, Any], step_ids: list[str], entry_index: int) -> dict[str, Any]:
+    """The re-editable process (``structureforge_process``) of variant ``entry_index`` of a
+    committed campaign, from what its version's ``metadata`` records: the process every variant
+    shares, each factor of the plan (naming its step among ``step_ids``) set to this variant's
+    value - what the wafer of that variant went through. :class:`InvalidInput` for a variant the
+    campaign does not have, or a campaign recorded without its plan (before plans were kept)."""
+    process = metadata.get("structureforge_process")
+    plan = metadata.get("campaign_plan")
+    values = metadata.get("campaign_factor_values") or []
+    if not 0 <= entry_index < len(values):
+        raise InvalidInput(f"Cette campagne n'a pas de variante n° {entry_index + 1}.", code="unknown_variant")
+    if not (isinstance(process, dict) and isinstance(plan, dict)):
+        raise InvalidInput("Le procédé de cette variante n'a pas été enregistré (campagne d'avant les plans).", code="no_variant_process")
+    try:
+        variant_plan = campaigns.VariantPlan.model_validate(plan)
+        substrate = SubstrateSpec.model_validate(process["substrate"])
+        steps = _STEP_LIST.validate_python(process.get("steps") or [])
+        declared = declared_params_by_index(_DECLARED.validate_python(process.get("declared_params") or {}))
+        indexes = campaigns.factor_step_indexes(variant_plan, list(step_ids))
+        substrate, steps, declared = campaigns.apply_combination(substrate, steps, declared, variant_plan, indexes, values[entry_index])
+    except (ValidationError, InvalidInput, KeyError, TypeError, ValueError) as exc:
+        raise InvalidInput("Le procédé de cette variante ne se relit pas.", code="no_variant_process") from exc
+    return process_metadata(substrate, steps, declared)
 
 
 # -- ce qui change aux étiquettes et aux paramètres déclarés d'une version à l'autre ---------------
@@ -597,7 +625,8 @@ def render_lot_svgs(lot: ProcessLot, metadata: dict[str, Any] | None = None) -> 
 
 
 def entity_count(structure_type: str, structure_data: dict[str, Any]) -> int:
-    """How many physical entities a structure tracks: one per variant of a campaign, one otherwise."""
+    """How many distinct structures a structure holds: one per variant of a campaign (a tracked
+    entity slot each), one otherwise (shared by the study's replicate wafers)."""
     kind = KINDS.get(structure_type)
     return kind.entity_count(structure_data) if kind else 1
 

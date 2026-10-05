@@ -2,14 +2,17 @@
    expérience. On cherche une référence, sa dernière version est proposée (une autre au choix), on
    voit sa structure, puis le constructeur s'ouvre avec elle, dans le µprojet voulu - l'étude lancée
    retient la version dont elle part (`reference_origin`, structures/static/builder). Partir d'une
-   structure vierge reste possible, en lien secondaire. Ouvert depuis la page d'un µprojet (dont
-   juste après sa création), l'accueil et la page d'une référence (« Partir de cette version ») :
+   structure vierge reste possible, en lien secondaire - et de plaques existantes, quand la page le
+   propose (`onWafers`). Ouvert depuis la page d'un µprojet (dont juste après sa création),
+   l'accueil et la page d'une référence (« Partir de cette version ») :
 
-     ReferenceStartPicker.open({microprojectSlug?, reference?, version?, intro?, onBlank?})
+     ReferenceStartPicker.open({microprojectSlug?, reference?, version?, intro?, onBlank?, onWafers?})
 
    Sans `microprojectSlug`, la boîte demande le µprojet, parmi ceux où l'on peut lancer une étude
    (éditeur). `reference` / `version` : la version proposée d'office. `onBlank(microprojectSlug)` :
-   ce que fait « Partir d'une structure vierge » (sinon : le constructeur vide de ce µprojet). */
+   ce que fait « Partir d'une structure vierge » (sinon : le constructeur vide de ce µprojet).
+   `onWafers(microprojectSlug)` : ce que fait « Partir de plaques existantes » (le lien n'apparaît
+   qu'avec lui - wafers/static/start-picker.js, que la page charge). */
 
 const ReferenceStartPicker = (() => {
   let dialog = null;
@@ -48,7 +51,10 @@ const ReferenceStartPicker = (() => {
           </div>
         </div>
         <div class="ref-dialog__actions ref-dialog__actions--split">
-          <button class="btn-link-secondary" type="button" id="ref-start-blank">Partir d'une structure vierge</button>
+          <span class="ref-dialog__actions">
+            <button class="btn-link-secondary" type="button" id="ref-start-blank">Partir d'une structure vierge</button>
+            <button class="btn-link-secondary" type="button" id="ref-start-wafers" hidden>Partir de plaques existantes</button>
+          </span>
           <span class="ref-dialog__actions">
             <button class="btn btn-line" type="button" id="ref-start-cancel">Annuler</button>
             <button class="btn btn-primary" type="button" id="ref-start-go" disabled>Partir de cette version</button>
@@ -72,6 +78,12 @@ const ReferenceStartPicker = (() => {
     dialog.querySelector("#ref-start-mp").addEventListener("change", updateButtons);
     dialog.querySelector("#ref-start-go").addEventListener("click", go);
     dialog.querySelector("#ref-start-blank").addEventListener("click", blank);
+    dialog.querySelector("#ref-start-wafers").addEventListener("click", () => {
+      const mp = microprojectSlug();
+      if (!mp || !options.onWafers) return;
+      dialog.close();
+      options.onWafers(mp);
+    });
   }
 
   function showError(err) {
@@ -88,6 +100,7 @@ const ReferenceStartPicker = (() => {
     const mp = microprojectSlug();
     dialog.querySelector("#ref-start-go").disabled = !(mp && chosen && chosen.number);
     dialog.querySelector("#ref-start-blank").disabled = !mp;
+    dialog.querySelector("#ref-start-wafers").disabled = !mp;
   }
 
   // -- la liste des références ------------------------------------------------------------------
@@ -234,6 +247,7 @@ const ReferenceStartPicker = (() => {
     dialog.querySelector("#ref-start-intro").textContent =
       opts.intro || "La plupart des expériences partent d'une structure de référence : choisissez-la, sa dernière version est proposée. L'étude retiendra la version dont elle part.";
     dialog.querySelector("#ref-start-search").value = "";
+    dialog.querySelector("#ref-start-wafers").hidden = !opts.onWafers;
     dialog.querySelector("#ref-start-preview").innerHTML = `<p class="help">Choisissez une référence : sa dernière version est proposée.</p>`;
     dialog.querySelector("#ref-start-options").innerHTML = `<li class="ref-start__empty"><div class="skeleton" style="height:16px;"></div></li>`;
     updateButtons();

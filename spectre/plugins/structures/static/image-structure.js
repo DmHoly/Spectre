@@ -16,6 +16,7 @@ const evolveExperienceId = evolveRoute ? evolveRoute.experiment_id : null;
 const evolveVersionId = evolveExperienceId ? new URLSearchParams(window.location.search).get("version") : null;
 const state = { objectives: [] };
 let parentDetail = null; // la version de départ (sa version_id part en If-Match, ou en from_version)
+let keepReplicates = false; // la piste suit plusieurs plaques : la nouvelle version les garde toutes
 
 let imageDrop = null;
 let entityFdlField = null;
@@ -74,6 +75,15 @@ async function loadParent() {
       ? "Reprise du premier échantillon de la campagne - la nouvelle version n'en suit qu'un, changez-le si besoin."
       : "Reprise de la version précédente - modifiez-la si besoin."
     : "Aucune entité physique n'a encore été renseignée sur cette piste - il en faut une pour continuer.";
+  // une piste qui suit plusieurs plaques (des réplicats) : elles restent toutes, le champ unique ne
+  // les remplace pas (elles se modifient sur la fiche)
+  const named = (detail.physical_tracking || []).filter((e) => e.sample_id);
+  if (!detail.is_batch && named.length > 1) {
+    keepReplicates = true;
+    document.getElementById("exp-entity-sample-id").closest(".field-row").hidden = true;
+    document.getElementById("exp-entity-fdl").parentElement.hidden = true;
+    document.getElementById("entity-field-hint").textContent = `${named.length} plaques suivies (${named.map((e) => e.sample_id).join(", ")}) : reprises telles quelles - elles se modifient sur la fiche, carte « Plaques ».`;
+  }
 
   if (detail.structure_images) {
     imageDrop.set(detail.structure_images);
@@ -101,7 +111,10 @@ function collectPayload() {
     hypothesis: document.getElementById("exp-hypothesis").value.trim() || null,
     context: document.getElementById("exp-context").value,
     objectives: state.objectives,
-    entities: sampleId ? [{ sample_id: sampleId, location: document.getElementById("exp-entity-location").value.trim() || null, fdl: entityFdlField.get() }] : [],
+    entities:
+      sampleId && !keepReplicates
+        ? [{ sample_id: sampleId, location: document.getElementById("exp-entity-location").value.trim() || null, fdl: entityFdlField.get() }]
+        : [],
     form_answers: intentFormSection ? intentFormSection.collect() : {},
   };
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {

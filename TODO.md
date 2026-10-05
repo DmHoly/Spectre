@@ -186,6 +186,25 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 ## Fait (pour mémoire, pas d'action)
 
+- **Partir de plaques existantes ; réplicats** (2026-10-05, demande de l'utilisateur ; décisions :
+  plusieurs plaques = des réplicats d'une étude simple, la structure et la filiation reprises de
+  l'étude qui les suit ; `ARCHITECTURE.md` § 4 et § 6).
+  - Une étude simple suit autant de plaques qu'on veut (l'ancienne règle « une plaque » levée) ; une
+    campagne, une par variante ; jamais deux fois la même plaque (`duplicate_wafer`). La carte
+    « Plaques » de la fiche et l'écran « Variations » ajoutent des réplicats ; une évolution
+    (constructeur, images) garde toutes les plaques de la piste.
+  - `POST .../experiments` avec `wafer_origin` : dans le même µprojet, la nouvelle piste descend de
+    la version des plaques ; d'un autre (membre), l'origine est seulement notée (`wafer_origin` du
+    détail, « Plaques reprises de X » sur la fiche). `GET .../process?variant=` donne le procédé
+    d'une variante. Le passeport d'une plaque porte `tracked_since` (et, pour un membre,
+    `version_id` et `campaign`).
+  - Boîte `WaferStartPicker` (plugin wafers), ouverte depuis « Partir d'une référence » et la boîte
+    « sans référence » de la page µprojet. Écarts retenus : pas de choix par lot (le front de wafers
+    ne dépend pas de lots) ; le départ de plaques passe par le constructeur seul (une structure en
+    images y repart du substrat) ; pas de lien « Partir de plaques » sur l'accueil ni sur la page
+    d'une plaque ; les plaques d'une campagne abandonnée en cours de constructeur restent les plaques
+    choisies, des plaques en trop pour un plan bloquent le lancement.
+
 - **Regroupement des refs locales : noms partagés** (2026-10-05, point 3 quater, décision de
   l'utilisateur ; `ARCHITECTURE.md` § 5 « references »).
   - Seuls les noms de refs portés (sur un procédé dessiné) dans **au moins deux µprojets**

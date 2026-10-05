@@ -22,10 +22,12 @@ def test_setting_physical_tracking_on_a_single_experiment(client):
     assert detail["status"] == "draft"  # bookkeeping only, doesn't touch status
 
 
-def test_physical_tracking_rejects_wrong_entity_count_for_a_single_experiment(client):
+def test_physical_tracking_of_a_single_experiment_takes_replicates_but_not_none(client):
     slug = signup_with_microproject(client, "physicalcount@example.com")
     launched = _launch_placeholder(client, slug)
-    response = client.put(f"{experiment_url(slug, launched['id'])}/entities", json={"entities": [{"sample_id": "A"}, {"sample_id": "B"}]})
+    replicates = track_entities(client, slug, launched["id"], [{"sample_id": "A"}, {"sample_id": "B"}])
+    assert [e["sample_id"] for e in replicates["physical_tracking"]] == ["A", "B"]
+    response = client.put(f"{experiment_url(slug, launched['id'])}/entities", json={"entities": []})
     assert response.status_code == 422
     assert response.json()["code"] == "entity_count"
 

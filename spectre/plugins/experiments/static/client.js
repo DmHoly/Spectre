@@ -9,6 +9,7 @@ const experimentsApi = {
     return api.get(api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments`, params));
   },
   // body : {structure: {kind: "process" | "images" | "campaign", ...}, title, intent, ..., from_version?, branch?}
+  // - partie de plaques existantes : wafer_origin = {microproject, experiment_id, version_id?}, les plaques en `entities`
   // ou, pour combiner deux études en une nouvelle : {merge_of: [{experiment_id, version_id?}, {...}], title, intent, entities, ...}
   create(microprojectSlug, body) {
     return api.post(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments`, body);
@@ -30,11 +31,13 @@ const experimentsApi = {
   versions(microprojectSlug, experimentId) {
     return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/versions`);
   },
-  // le procédé éditable d'une version (la pointe sans `version`)
-  process(microprojectSlug, experimentId, version) {
+  // le procédé éditable d'une version (la pointe sans `version`) ; `variant` : celui d'une variante
+  // d'une campagne (son index), les valeurs de ses facteurs appliquées
+  process(microprojectSlug, experimentId, version, variant) {
     return api.get(
       api.withQuery(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/process`, {
         version,
+        variant,
       })
     );
   },

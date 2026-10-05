@@ -9,7 +9,7 @@ import follow
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..structures.schemas import StructureImageInput, StructurePayload
-from .entities import EntityTrackingInput
+from .entities import MAX_TRACKED_ENTITIES, EntityTrackingInput
 
 
 class ObjectiveInput(BaseModel):
@@ -41,6 +41,19 @@ class MergeSource(BaseModel):
     version_id: str | None = None
 
 
+class WaferOrigin(BaseModel):
+    """The study version the wafers of a new line come from - its structure is theirs, as they are
+    now : the tip of ``experiment_id`` when ``version_id`` is left out, in the microproject
+    ``microproject`` (this one: the new line descends from it ; another one the caller is a member
+    of: the origin is only recorded). Any other field is refused rather than ignored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    microproject: str = Field(..., max_length=120)
+    experiment_id: str
+    version_id: str | None = None
+
+
 # La forme d'une origine de référence (plugin references, qui dépend d'experiments et non l'inverse) :
 # le slug d'une référence et le numéro MAJEUR.MINEUR d'une de ses versions. experiments n'en vérifie
 # que la forme ; une origine inconnue se lit telle quelle, sans erreur.
@@ -68,19 +81,22 @@ class _Intention(BaseModel):
     # None keeps the one already there (see service.apply_context)
     context: str | None = None
     objectives: list[ObjectiveInput] = []
-    # the physical samples followed (one per variant of a campaign) - inherited when left empty on
-    # an evolution or a launch from an existing version
-    entities: list[EntityTrackingInput] = []
+    # the physical samples followed (one per variant of a campaign, any number of replicates for a
+    # simple study) - inherited when left empty on an evolution or a launch from an existing version
+    entities: list[EntityTrackingInput] = Field([], max_length=MAX_TRACKED_ENTITIES)
     form_answers: dict[str, Any] = {}
 
 
 class CreateExperimentRequest(_Intention):
-    """A new line of study: a structure (from scratch, or from an existing version with
-    ``from_version``), or the combination of two studies of the microproject (``merge_of``, exactly
-    two : the new line's structure is the combined one, so no ``structure`` is sent)."""
+    """A new line of study: a structure (from scratch, from an existing version with
+    ``from_version``, or from existing wafers with ``wafer_origin`` - the study they come from, the
+    wafers being the ``entities``), or the combination of two studies of the microproject
+    (``merge_of``, exactly two : the new line's structure is the combined one, so no ``structure``
+    is sent)."""
 
     structure: StructurePayload | None = None
     from_version: FromVersion | None = None
+    wafer_origin: WaferOrigin | None = None
     merge_of: list[MergeSource] | None = Field(None, min_length=2, max_length=2)
     branch: str | None = None  # the name of the new line of study - from its title by default
     # la version de référence dont part l'étude (le constructeur l'a chargée) - reportée aux versions
@@ -93,6 +109,8 @@ class CreateExperimentRequest(_Intention):
             raise ValueError("Une structure est nécessaire (ou merge_of, pour combiner deux études).")
         if self.merge_of is not None and (self.structure is not None or self.from_version is not None):
             raise ValueError("Une combinaison (merge_of) ne prend ni structure ni from_version : sa structure est la structure combinée.")
+        if self.wafer_origin is not None and (self.from_version is not None or self.merge_of is not None):
+            raise ValueError("Une étude partie de plaques (wafer_origin) ne prend ni from_version ni merge_of : elle part de l'étude de ses plaques.")
         return self
 
 
@@ -134,7 +152,7 @@ class TagsRequest(BaseModel):
 
 
 class EntitiesRequest(BaseModel):
-    entities: list[EntityTrackingInput]
+    entities: list[EntityTrackingInput] = Field(..., max_length=MAX_TRACKED_ENTITIES)
 
 
 class RefRequest(BaseModel):

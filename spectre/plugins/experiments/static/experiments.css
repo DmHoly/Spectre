@@ -656,6 +656,19 @@
   flex: none;
   align-self: flex-start;
 }
+/* « Enregistrer les plaques » et, pour une étude simple, « + Ajouter une plaque » (un réplicat) */
+.plates-actions {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.plates-actions__hint {
+  flex: none;
+  margin: 6px 0 0;
+  font-size: 12px;
+}
 @media (min-width: 1001px) {
   .fiche-structure-grid {
     grid-auto-rows: minmax(380px, auto);
