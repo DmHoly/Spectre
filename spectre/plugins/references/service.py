@@ -25,8 +25,8 @@ l'autre et dont on suit l'évolution.
   lu dans le dépôt en cache de chaque µprojet) ; une origine qui désigne une référence ou une version
   inconnue n'est comptée nulle part.
 
-Les refs locales d'avant (étiquettes Follow nommées à la main) sont regroupées en références à la
-première lecture : :mod:`.local_refs`.
+Les refs locales (étiquettes Follow nommées à la main) dont le nom est porté dans au moins deux
+µprojets sont regroupées en références à la lecture : :mod:`.local_refs`.
 """
 
 from __future__ import annotations
@@ -118,7 +118,7 @@ class ReferenceVersion:
         return (self.number_major, self.number_minor)
 
 
-def _reference_from_row(row: sqlite3.Row) -> Reference:
+def reference_from_row(row: sqlite3.Row) -> Reference:
     return Reference(**{name: row[name] for name in Reference.__dataclass_fields__})
 
 
@@ -147,14 +147,14 @@ def _checked_name(name: str) -> str:
     return name
 
 
-def _all_references(conn: sqlite3.Connection) -> list[Reference]:
-    return [_reference_from_row(row) for row in conn.execute("SELECT * FROM structure_references ORDER BY id")]
+def all_references(conn: sqlite3.Connection) -> list[Reference]:
+    return [reference_from_row(row) for row in conn.execute("SELECT * FROM structure_references ORDER BY id")]
 
 
 def find_by_name(conn: sqlite3.Connection, name: str) -> Reference | None:
     """La référence dont le nom, comparé par :func:`normalized_name`, est ``name``."""
     wanted = normalized_name(name)
-    return next((ref for ref in _all_references(conn) if normalized_name(ref.name) == wanted), None)
+    return next((ref for ref in all_references(conn) if normalized_name(ref.name) == wanted), None)
 
 
 def _unique_slug(conn: sqlite3.Connection, name: str) -> str:
@@ -177,14 +177,14 @@ def insert_reference(conn: sqlite3.Connection, *, name: str, description: str, c
         "INSERT INTO structure_references (slug, name, description, created_by, created_at, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (_unique_slug(conn, name), name, description, created_by, created_at, created_by, created_at),
     )
-    return _reference_from_row(conn.execute("SELECT * FROM structure_references WHERE id = ?", (cursor.lastrowid,)).fetchone())
+    return reference_from_row(conn.execute("SELECT * FROM structure_references WHERE id = ?", (cursor.lastrowid,)).fetchone())
 
 
 def _get(conn: sqlite3.Connection, slug: str) -> Reference:
     row = conn.execute("SELECT * FROM structure_references WHERE slug = ?", (slug,)).fetchone()
     if row is None:
         raise NotFound(f"Référence « {slug} » introuvable.", code="reference_not_found")
-    return _reference_from_row(row)
+    return reference_from_row(row)
 
 
 def versions_of(conn: sqlite3.Connection, reference_id: int) -> list[ReferenceVersion]:
@@ -468,7 +468,7 @@ def list_references(user: User, q: str = "") -> list[dict[str, Any]]:
     needle = _folded(q.strip())
     viewer = _Viewer(user)
     with get_conn() as conn:
-        references = [ref for ref in _all_references(conn) if not needle or any(needle in _folded(text) for text in (ref.name, ref.slug, ref.description))]
+        references = [ref for ref in all_references(conn) if not needle or any(needle in _folded(text) for text in (ref.name, ref.slug, ref.description))]
         versions = {ref.id: versions_of(conn, ref.id) for ref in references}
         names = _user_names(
             conn, [ref.created_by for ref in references] + [ref.updated_by for ref in references] + [v.published_by for vs in versions.values() for v in vs]

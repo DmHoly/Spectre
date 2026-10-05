@@ -60,8 +60,10 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   (`reference_origin`, reportée à ses versions suivantes et à ses fourches) : la référence en compte
   les usages. Renommer, décrire ou retirer une référence revient à son créateur ou à un admin ; le
   nom (slug) d'une référence retirée n'est jamais redonné à une autre. Les
-  refs locales nommées à la main avant les références (la même « epitaxie-standard » dans deux
-  µprojets) y ont été regroupées par nom, sans toucher aux dépôts Follow.
+  refs locales nommées à la main avant les références dont le nom est porté dans au moins deux
+  µprojets (la même « epitaxie-standard » dans les deux µprojets de la démo) y sont regroupées par
+  nom, sans toucher aux dépôts Follow ; les autres restent des repères locaux de leur µprojet,
+  qu'un editor peut publier à la main.
   Côté pages : **Références** dans la barre du haut (`/references`, aussi depuis la Bibliothèque)
   liste les références, la plus récemment mise à jour d'abord (dernière version, date, µprojet
   source, usages, recherche, « Nouvelle référence ») ; `/references/{slug}` montre l'évolution

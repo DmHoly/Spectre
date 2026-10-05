@@ -99,7 +99,7 @@ placés au-dessus de lui.
 | 8 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
 | 9 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library | JSON par portée |
 | 10 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, combinaison de deux études (une nouvelle piste à deux parents), suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
-| 11 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), le regroupement des refs locales d'avant (`local_refs.py`) | experiments, microprojects, structures | `structure_references`, `reference_versions`, `reference_import_scans`, `retired_reference_slugs` |
+| 11 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), le regroupement des refs locales d'avant dont le nom est porté dans au moins deux µprojets (`local_refs.py`) | experiments, microprojects, structures | `structure_references`, `reference_versions`, `reference_import_scans`, `reference_import_rules`, `retired_reference_slugs` |
 | 12 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
 | 13 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité | experiments, search | cache mémoire |
 | 14 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
@@ -830,20 +830,35 @@ locales d'avant).
   par réponse) ; une fourche ou une combinaison qui a gardé l'origine compte aussi. Une origine
   inconnue n'est comptée nulle part.
 - **Les refs locales d'avant** (`local_refs.import_local_refs`, appelée par chaque fonction du
-  service avant tout le reste) : les étiquettes Follow des µprojets pas encore lus
-  (`reference_import_scans`, un µprojet une fois) sont regroupées par nom normalisé
-  (`service.normalized_name` : sans casse, ni accents, ni ponctuation), sauf les noms automatiques
-  « ref vX.Y.Z » (suffixés ou non) et les étiquettes d'une structure qui n'est pas un procédé
-  dessiné, qui restent des repères locaux. Chaque groupe devient une référence (le nom de sa plus
-  ancienne étiquette ; une référence du même nom existante reçoit les versions ; créateur : celui du
+  service avant tout le reste ; règle décidée le 2026-10-05) : seuls les noms de refs portés dans
+  **au moins deux µprojets** (`SHARED_BY`) deviennent des références. Les étiquettes Follow de tous
+  les µprojets sont relues et regroupées par nom normalisé (`service.normalized_name` : sans casse,
+  ni accents, ni ponctuation), sauf les noms automatiques « ref vX.Y.Z » (suffixés ou non) et les
+  étiquettes d'une structure qui n'est pas un procédé dessiné ; un nom qui n'est porté (sur un
+  procédé dessiné) que dans un µprojet reste un repère local, montré sur sa page d'évolution, qu'un
+  éditeur publie à la main s'il le veut (« Publier comme référence »). Le partage se décide sur
+  l'ensemble des µprojets : un nom qui n'était que dans A et qui apparaît dans B importe, au
+  regroupement suivant, les étiquettes de A et de B (A déjà lu ou non). Chaque nom partagé a sa
+  référence (celle qui a déjà reçu des étiquettes de ce nom, même renommée ; sinon une référence du
+  même nom existante ; sinon une nouvelle : le nom de sa plus ancienne étiquette, créateur : celui du
   µprojet de la première version), chaque étiquette une version (`local_tag`, `published_by` vide,
   `published_at` : la date de la version étiquetée), dans l'ordre des dates ; son parent est la
-  dernière version du groupe dont la version étiquetée descend dans le même dépôt, sinon la
-  précédente en date (`parent_inferred` : un rattachement déduit) ; une version identique à son parent
-  (la même structure étiquetée dans deux µprojets, comme « epitaxie-standard » dans la démo) reçoit
-  le mineur suivant, `change_level` `none`. Les étiquettes restent en place, aucun fichier Follow
-  n'est réécrit. Un µprojet créé ensuite est marqué lu à la première lecture des références qui suit :
-  une ref locale nommée après reste locale.
+  dernière version de la référence dont la version étiquetée descend dans le même dépôt, sinon la
+  précédente (`parent_inferred` : un rattachement déduit) ; une version identique à son parent (la
+  même structure étiquetée dans deux µprojets, comme « epitaxie-standard » dans la démo) reçoit le
+  mineur suivant, `change_level` `none` ; une étiquette déjà importée (même µprojet, même nom) ou
+  dont la version Follow est déjà une version de la référence (publiée à la main) ne l'est pas deux
+  fois. Les étiquettes restent en place, aucun fichier Follow n'est réécrit.
+  Le regroupement passe quand un µprojet n'a pas encore été lu (`reference_import_scans` : un
+  µprojet créé ensuite l'est à la lecture des références qui suit ; une ref posée après dans un
+  µprojet lu attend le regroupement suivant), et une fois pour la règle (`reference_import_rules`,
+  migration `0003_import_rules`) : sur une installation où l'ancienne règle (chaque ref nommée
+  devenait une référence) a tourné, il retire d'abord les références qu'elle a créées depuis un seul
+  µprojet - toutes leurs versions importées, aucune publiée à la main, aucune étude, quelle qu'en
+  soit la version, qui cite leur slug (`reference_origin`), et que personne n'a touchées (ni
+  renommées ni décrites : écart, une référence retouchée à la main est gardée) -, sans réserver
+  leur slug (aucune étude n'en est partie), puis relit tous les µprojets. Idempotent ; sans µprojet
+  à lire ni règle à passer, une requête.
 
 ### intent_forms
 

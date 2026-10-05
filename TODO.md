@@ -68,8 +68,10 @@ Décisions (font foi) :
 - Une **référence** est un objet **global** de l'application, avec des versions qui peuvent venir
   de µprojets différents. « Promouvoir en ref » devient « Publier comme référence » : on choisit la
   référence (proposée d'office : celle dont vient l'étude) ou on en crée une. Les refs locales
-  existantes du même nom (ex. epitaxie-standard) sont **regroupées** en une référence ; les refs à
-  nom automatique (« ref vX.Y.Z ») restent de simples repères locaux.
+  existantes du même nom **dans au moins deux µprojets** (ex. epitaxie-standard) sont **regroupées**
+  en une référence (décidé le 2026-10-05, ci-dessous) ; les autres refs nommées restent des repères
+  locaux, publiables à la main ; les refs à nom automatique (« ref vX.Y.Z ») restent de simples
+  repères locaux.
 - Numérotation **MAJEUR.MINEUR calculée** : la nouvelle version est comparée à la version de
   référence dont elle dérive (majeur → X+1.0 ; mineur ou correctif → X.Y+1 ; identique → 409),
   numéros uniques même entre branches parallèles (deux dérivations d'une même version → 1.1 et
@@ -97,13 +99,12 @@ Décisions (font foi) :
       référence retirée jamais redonné, slug de 80 caractères au plus, étapes renommées dites par
       le diff, origine retenue seulement une fois la version chargée. Fait : voir « Fait »
       (« Relecture des références »).
-- [ ] **À décider** : le regroupement des refs locales fait de **chaque** ref locale nommée
-      (pas seulement celles dont le nom est dans au moins deux µprojets) une référence globale,
-      dont l'instantané (procédé, étapes, recettes, épaisseurs) est lisible par tout compte
-      connecté, sans qu'un éditeur du µprojet source ait choisi de la publier ; son créateur est
-      celui du µprojet (il peut la renommer). Garder (une ref nommée était déjà un point de départ
-      voulu, et la demande est de partager), n'importer que les noms présents dans deux µprojets,
-      ou demander confirmation à un éditeur du µprojet source ? Rien n'est changé en attendant.
+- [x] **Décidé (2026-10-05)** : le regroupement des refs locales ne fait une référence globale
+      que des noms de refs présents dans **au moins deux µprojets** (ex. epitaxie-standard) ; les
+      autres refs nommées restent des repères locaux de leur µprojet, publiables à la main par un
+      éditeur (« Publier comme référence ») ; le partage se décide sur l'ensemble des µprojets ; ce
+      que l'ancienne règle avait importé d'un seul µprojet, sans publication à la main ni usage, est
+      retiré. Fait : voir « Fait » (« Regroupement des refs locales : noms partagés »).
 - [x] **Nouvelle expérience depuis une référence** (page µprojet, accueil, après la création d'un
       µprojet, « Partir de cette version » d'une référence) ; l'origine sur la fiche.
 
@@ -184,6 +185,29 @@ d'étapes (jugé trop lourd à saisir). Reste :
 
 ## Fait (pour mémoire, pas d'action)
 
+- **Regroupement des refs locales : noms partagés** (2026-10-05, point 3 quater, décision de
+  l'utilisateur ; `ARCHITECTURE.md` § 5 « references »).
+  - Seuls les noms de refs portés (sur un procédé dessiné) dans **au moins deux µprojets**
+    deviennent des références (`local_refs.SHARED_BY`) : dans la démo, epitaxie-standard seule ;
+    puits-simple-reference, mqw-ebl-reference et mqw-dopage-optimise restent des repères locaux
+    (page d'évolution de leur µprojet), publiables à la main. Les refs « ref vX.Y.Z » restent
+    ignorées. Aucun objet Follow n'est réécrit (sommes de contrôle vérifiées par les tests).
+  - Le partage se décide sur l'ensemble des µprojets : chaque regroupement relit les étiquettes de
+    tous les µprojets (les `refs.json` d'abord ; les versions seulement pour les noms portés dans
+    plusieurs µprojets) ; un nom qui n'était que dans A et qui apparaît dans B importe celles de A
+    et de B. Le regroupement passe toujours à l'arrivée d'un µprojet pas encore lu
+    (`reference_import_scans`) : une ref posée dans un µprojet déjà lu attend le suivant.
+  - Le nom d'un groupe va à la référence qui a déjà reçu des étiquettes de ce nom (même renommée),
+    sinon à celle du même nom ; une étiquette dont la version Follow est déjà une version de la
+    référence (publiée à la main) n'est pas importée une seconde fois.
+  - Ancienne règle : une fois (`reference_import_rules`, migration `0003_import_rules`), les
+    références qu'elle a créées depuis un seul µprojet, sans version publiée à la main ni étude qui
+    cite leur slug (toute version d'étude, pas seulement la pointe), sont retirées sans réserver
+    leur slug, puis tous les µprojets sont relus. Écart : une telle référence renommée ou décrite à
+    la main depuis est gardée (quelqu'un y a touché). Idempotent (relu, redémarré, règle repassée).
+  - Tests : `tests/plugins/references/test_local_refs.py` (démo semée par `scripts/seed_demo.py`,
+    nom partagé plus tard, nettoyage de l'ancienne règle avec et sans usages, idempotence).
+
 - **Relecture des références** (2026-10-05, point 3 quater ; `ARCHITECTURE.md` § 3, § 4 « Diff »,
   § 5 « references »).
   - *Republier depuis une étude partie d'une référence* : le parent par défaut est la dernière
@@ -206,8 +230,8 @@ d'étapes (jugé trop lourd à saisir). Reste :
   - *Constructeur* : `reference_origin` n'est envoyé que si la version demandée a été chargée
     (`requestedReference` / `referenceOrigin`) ; une adresse vers une référence retirée ou
     inconnue ne laisse plus de fausse origine.
-  - À décider (non codé) : le regroupement de **toutes** les refs locales nommées en références
-    lisibles de tous - voir le point 3 quater.
+  - Le regroupement de **toutes** les refs locales nommées en références lisibles de tous, laissé
+    à décider ici : décidé le 2026-10-05, voir « Regroupement des refs locales : noms partagés ».
 
 - **Références de structure, pages** (2026-10-04, point 3 quater ; `ARCHITECTURE.md` § 5
   « Pages », § 6 « Les références, côté pages »).

@@ -1,6 +1,6 @@
 """Les tables du plugin references : les références de structure (un objet de toute l'application),
-leurs versions, les µprojets dont les refs locales ont déjà été lues (``local_refs``) et les slugs
-des références retirées (jamais redonnés).
+leurs versions, les µprojets dont les refs locales ont déjà été lues (``local_refs``), les règles de
+regroupement déjà passées et les slugs des références retirées (jamais redonnés).
 
 ``structure_references`` plutôt que ``references`` : ``REFERENCES`` est un mot réservé de SQL."""
 
@@ -64,4 +64,18 @@ CREATE TABLE IF NOT EXISTS retired_reference_slugs (
 );
 """
 
-MIGRATIONS = (Migration("0001_initial", SCHEMA), Migration("0002_retired_slugs", RETIRED_SLUGS))
+IMPORT_RULES = """
+-- Les règles de regroupement des refs locales déjà passées (local_refs.RULE) : la règle du
+-- 2026-10-05 (seuls les noms présents dans au moins deux µprojets deviennent des références) retire
+-- une fois ce que l'ancienne avait importé d'un seul µprojet, puis relit tous les µprojets.
+CREATE TABLE IF NOT EXISTS reference_import_rules (
+    rule TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
+"""
+
+MIGRATIONS = (
+    Migration("0001_initial", SCHEMA),
+    Migration("0002_retired_slugs", RETIRED_SLUGS),
+    Migration("0003_import_rules", IMPORT_RULES),
+)
