@@ -62,8 +62,9 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   nom (slug) d'une référence retirée n'est jamais redonné à une autre. Les
   refs locales nommées à la main avant les références dont le nom est porté dans au moins deux
   µprojets (la même « epitaxie-standard » dans les deux µprojets de la démo) y sont regroupées par
-  nom, sans toucher aux dépôts Follow ; les autres restent des repères locaux de leur µprojet,
-  qu'un editor peut publier à la main.
+  nom, sans toucher aux dépôts Follow, dès qu'un second µprojet porte le nom ; les autres restent
+  des repères locaux de leur µprojet, qu'un editor peut publier à la main. Une référence ainsi
+  regroupée qu'un admin retire ne revient pas.
   Côté pages : **Références** dans la barre du haut (`/references`, aussi depuis la Bibliothèque)
   liste les références, la plus récemment mise à jour d'abord (dernière version, date, µprojet
   source, usages, recherche, « Nouvelle référence ») ; `/references/{slug}` montre l'évolution

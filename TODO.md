@@ -104,7 +104,8 @@ Décisions (font foi) :
       autres refs nommées restent des repères locaux de leur µprojet, publiables à la main par un
       éditeur (« Publier comme référence ») ; le partage se décide sur l'ensemble des µprojets ; ce
       que l'ancienne règle avait importé d'un seul µprojet, sans publication à la main ni usage, est
-      retiré. Fait : voir « Fait » (« Regroupement des refs locales : noms partagés »).
+      retiré ; une référence retirée par un admin ne revient pas. Fait : voir « Fait »
+      (« Regroupement des refs locales : noms partagés »).
 - [x] **Nouvelle expérience depuis une référence** (page µprojet, accueil, après la création d'un
       µprojet, « Partir de cette version » d'une référence) ; l'origine sur la fiche.
 
@@ -195,8 +196,13 @@ d'étapes (jugé trop lourd à saisir). Reste :
   - Le partage se décide sur l'ensemble des µprojets : chaque regroupement relit les étiquettes de
     tous les µprojets (les `refs.json` d'abord ; les versions seulement pour les noms portés dans
     plusieurs µprojets) ; un nom qui n'était que dans A et qui apparaît dans B importe celles de A
-    et de B. Le regroupement passe toujours à l'arrivée d'un µprojet pas encore lu
-    (`reference_import_scans`) : une ref posée dans un µprojet déjà lu attend le suivant.
+    et de B. Le regroupement passe à l'arrivée d'un µprojet pas encore lu et dès que l'empreinte
+    des étiquettes nommées d'un µprojet change (`reference_import_scans.tags_fingerprint`,
+    migration `0004_dismissed_local_refs`) : une ref posée dans un µprojet déjà lu est regroupée à
+    la lecture suivante, sans attendre un nouveau µprojet (relecture du commit 5748630).
+  - Une référence retirée par un admin ne revient pas (relecture) : ses étiquettes importées sont
+    notées (`dismissed_local_refs`, par µprojet et nom) et ne comptent plus pour le partage - avant,
+    la relecture de tous les µprojets la recréait sous un slug suffixé (`epitaxie-standard-2`).
   - Le nom d'un groupe va à la référence qui a déjà reçu des étiquettes de ce nom (même renommée),
     sinon à celle du même nom ; une étiquette dont la version Follow est déjà une version de la
     référence (publiée à la main) n'est pas importée une seconde fois.
@@ -204,9 +210,13 @@ d'étapes (jugé trop lourd à saisir). Reste :
     références qu'elle a créées depuis un seul µprojet, sans version publiée à la main ni étude qui
     cite leur slug (toute version d'étude, pas seulement la pointe), sont retirées sans réserver
     leur slug, puis tous les µprojets sont relus. Écart : une telle référence renommée ou décrite à
-    la main depuis est gardée (quelqu'un y a touché). Idempotent (relu, redémarré, règle repassée).
+    la main depuis est gardée (quelqu'un y a touché), comme une référence dont une version vient d'un
+    µprojet supprimé (`microproject_id` vide : son instantané est la seule copie ; avant la
+    relecture, deux µprojets sources supprimés se lisaient comme un seul et la référence partait).
+    Idempotent (relu, redémarré, règle repassée).
   - Tests : `tests/plugins/references/test_local_refs.py` (démo semée par `scripts/seed_demo.py`,
-    nom partagé plus tard, nettoyage de l'ancienne règle avec et sans usages, idempotence).
+    nom partagé plus tard dans des µprojets déjà lus, retrait par un admin définitif, nettoyage de
+    l'ancienne règle avec et sans usages ou µprojets supprimés, idempotence).
 
 - **Relecture des références** (2026-10-05, point 3 quater ; `ARCHITECTURE.md` § 3, § 4 « Diff »,
   § 5 « references »).

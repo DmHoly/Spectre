@@ -2,9 +2,10 @@
 portés dans au moins deux µprojets deviennent des références (le cas de « epitaxie-standard », posée
 dans les deux µprojets de la démo), chaque étiquette une version dans l'ordre des dates ; les autres
 refs nommées restent des repères locaux, publiables à la main ; les noms automatiques
-« ref vX.Y.Z » restent locaux ; le partage se décide sur tous les µprojets ; ce que l'ancienne règle
-avait importé d'un seul µprojet est retiré s'il n'a ni publication à la main ni usage ; rien n'est
-réécrit dans les dépôts Follow."""
+« ref vX.Y.Z » restent locaux ; le partage se décide sur tous les µprojets, dès qu'une ref est posée
+dans un µprojet déjà lu ; une référence retirée par un admin ne revient pas ; ce que l'ancienne règle
+avait importé d'un seul µprojet est retiré s'il n'a ni publication à la main ni usage, ni version
+d'un µprojet supprimé ; rien n'est réécrit dans les dépôts Follow."""
 
 from __future__ import annotations
 
@@ -19,9 +20,10 @@ from fastapi.testclient import TestClient
 from support.accounts import login
 from support.experiments import create_ref, evolve, launch, launch_campaign, refs
 from support.experiments import get_version as get_version_of_study
-from support.microprojects import create_microproject, signup_with_microproject
+from support.microprojects import create_microproject, delete_microproject, signup_with_microproject
 from support.references import (
     create_reference,
+    delete_reference,
     get_version,
     origin,
     publish,
@@ -116,13 +118,17 @@ def test_the_import_happens_once(app, client, data_dir):
         restarted.cookies = client.cookies
         assert references(restarted) == first
 
-    # un µprojet créé ensuite est lu une fois, vide : une ref locale posée après dans un µprojet lu
-    # n'est pas importée tant qu'aucun regroupement ne passe
+    # un µprojet créé ensuite est lu, vide ; une ref locale posée après dans ce µprojet déjà lu change
+    # l'empreinte de ses étiquettes : la lecture suivante l'importe
     late = create_microproject(client, "Tardif")["slug"]
     references(client)
     study = launch(client, late, title="Epitaxie", intent="x", steps=steps(40))
     create_ref(client, late, study["id"], "epitaxie-standard")
-    assert [n["number"] for n in version_graph(client, "epitaxie-standard")["nodes"]] == ["1.0", "1.1"]
+    assert [n["number"] for n in version_graph(client, "epitaxie-standard")["nodes"]] == ["1.0", "1.1", "1.2"]
+    # une étude de plus, sans ref nommée : l'empreinte ne change pas, rien n'est relu
+    launch(client, late, title="Autre", intent="x", steps=steps(30))
+    after = references(client)
+    assert references(client) == after
 
 
 def test_a_name_shared_later_imports_the_tags_of_every_microproject(client, data_dir):
@@ -144,16 +150,44 @@ def test_a_name_shared_later_imports_the_tags_of_every_microproject(client, data
         ("1.1", second, "recette-x", "minor", True),
     ]
 
-    # deux µprojets déjà lus partagent un nom après coup : le regroupement suivant (l'arrivée d'un
-    # µprojet) le relit sur tous les µprojets
+    # deux µprojets déjà lus partagent un nom après coup : la lecture suivante le relit sur tous les
+    # µprojets, sans attendre l'arrivée d'un autre µprojet
     create_ref(client, first, study["id"], "Base Y")
+    assert sorted(r["slug"] for r in references(client)) == ["recette-x"]
     create_ref(client, second, launched["id"], "base-y")
     before = _follow_files(data_dir)
-    assert [r["slug"] for r in references(client)] == ["recette-x"]
-    create_microproject(client, "Troisième")
+    assert sorted(r["slug"] for r in references(client)) == ["base-y", "recette-x"]
     assert [n["source"]["local_tag"] for n in version_graph(client, "base-y")["nodes"]] == ["Base Y", "base-y"]
     assert [n["number"] for n in version_graph(client, "recette-x")["nodes"]] == ["1.0", "1.1"]
     assert _follow_files(data_dir) == before
+
+
+def test_a_reference_retired_by_an_admin_stays_retired(client):
+    single, mqw, base, other = _two_microprojects(client)  # le premier compte est admin
+    assert [(r["slug"], r["version_count"]) for r in references(client)] == [("epitaxie-standard", 2)]
+    assert delete_reference(client, "epitaxie-standard").status_code == 204
+    assert references(client) == []
+
+    # ni l'arrivée d'un µprojet, ni une ref posée dans un µprojet lu ne font revenir les étiquettes
+    # retirées (sous un slug suffixé) ; elles restent des repères locaux
+    late = create_microproject(client, "Sans rapport")["slug"]
+    assert references(client) == []
+    create_ref(client, single, base["id"], "Autre nom")
+    assert references(client) == []
+    assert "epitaxie-standard" in _ref_names(client, single) and "epitaxie-standard" in _ref_names(client, mqw)
+
+    # un troisième µprojet qui porte le nom seul ne le partage avec personne : il reste local ; un
+    # quatrième le partage avec lui : une nouvelle référence (l'ancien slug n'est pas redonné), sans
+    # les étiquettes retirées
+    study = launch(client, late, title="Epitaxie", intent="x", steps=steps(40))
+    create_ref(client, late, study["id"], "epitaxie-standard")
+    assert references(client) == []
+    fourth = create_microproject(client, "Quatrième")["slug"]
+    launched = launch(client, fourth, title="Epitaxie", intent="x", steps=steps(45))
+    create_ref(client, fourth, launched["id"], "epitaxie-standard")
+    assert [(r["slug"], r["version_count"]) for r in references(client)] == [("epitaxie-standard-2", 2)]
+    nodes = version_graph(client, "epitaxie-standard-2")["nodes"]
+    assert [n["source"]["microproject"]["slug"] for n in nodes] == [late, fourth]
 
 
 def test_a_local_ref_joins_an_existing_reference_of_the_same_name(client):
@@ -258,6 +292,26 @@ def test_the_old_rule_imports_from_a_single_microproject_are_retired(app, client
     assert references(client) == listed
     assert _follow_files(data_dir) == before
     assert create_reference(client, "Recette approuvée")["slug"] == "recette-approuvee"
+
+
+def test_the_old_rule_keeps_references_whose_microprojects_were_deleted(client):
+    from spectre.kernel.db import get_conn
+
+    single, mqw, base, other = _two_microprojects(client)
+    create_ref(client, single, base["id"], "puits-simple-reference")
+    create_ref(client, single, base["id"], "a-renommer")
+    me = client.get("/api/users/me").json()
+    _as_under_the_old_rule(me["id"])
+    # les deux µprojets sont supprimés avant que la règle passe : les versions de leurs références
+    # n'ont plus de µprojet (microproject_id vide), leur instantané est la seule copie qui reste
+    assert delete_microproject(client, single, "Puits simple").status_code == 204
+    assert delete_microproject(client, mqw, "MQW").status_code == 204
+    with get_conn() as conn:
+        conn.execute("DELETE FROM reference_import_rules")
+        before = sorted(row["slug"] for row in conn.execute("SELECT slug FROM structure_references"))
+    assert "epitaxie-standard" in before and "recette-approuvee" in before
+    assert sorted(r["slug"] for r in references(client)) == before
+    assert [n["number"] for n in version_graph(client, "epitaxie-standard")["nodes"]] == ["1.0", "1.1"]
 
 
 # -- la démo -------------------------------------------------------------------------------------------

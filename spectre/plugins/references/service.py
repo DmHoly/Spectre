@@ -633,7 +633,9 @@ def delete_reference(user: User, slug: str) -> None:
     admin seulement (409 ``reference_has_versions`` pour son créateur), ses versions partent avec
     elle - les études qui en sont parties gardent leur origine, lue alors comme inconnue : son slug
     n'est plus jamais redonné (``retired_reference_slugs``). Celui d'une référence sans version
-    (aucune étude n'a pu en partir : une version ne se retire pas seule) se libère."""
+    (aucune étude n'a pu en partir : une version ne se retire pas seule) se libère. Les étiquettes
+    importées dans ses versions (``local_tag``) ne sont plus regroupées (``dismissed_local_refs`` :
+    :mod:`.local_refs`) - le retrait reste définitif."""
     _ensure_imported()
     with keyed_lock(LOCK_NAMESPACE, WRITE_LOCK_KEY), get_conn() as conn:
         reference = _get(conn, slug)
@@ -645,7 +647,14 @@ def delete_reference(user: User, slug: str) -> None:
                 "Cette référence a des versions : seul un administrateur peut la retirer.", code="reference_has_versions"
             )
         if has_versions:
-            conn.execute("INSERT OR IGNORE INTO retired_reference_slugs (slug, retired_at) VALUES (?, ?)", (reference.slug, now()))
+            stamp = now()
+            conn.execute("INSERT OR IGNORE INTO retired_reference_slugs (slug, retired_at) VALUES (?, ?)", (reference.slug, stamp))
+            conn.execute(
+                """INSERT OR IGNORE INTO dismissed_local_refs (microproject_id, local_tag, dismissed_at)
+                   SELECT microproject_id, local_tag, ? FROM reference_versions
+                   WHERE reference_id = ? AND local_tag IS NOT NULL AND microproject_id IS NOT NULL""",
+                (stamp, reference.id),
+            )
         conn.execute("DELETE FROM structure_references WHERE id = ?", (reference.id,))
 
 

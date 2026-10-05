@@ -1,6 +1,7 @@
 """Les tables du plugin references : les références de structure (un objet de toute l'application),
-leurs versions, les µprojets dont les refs locales ont déjà été lues (``local_refs``), les règles de
-regroupement déjà passées et les slugs des références retirées (jamais redonnés).
+leurs versions, les µprojets dont les refs locales ont déjà été lues (``local_refs``, avec l'empreinte
+de leurs étiquettes nommées), les règles de regroupement déjà passées, les slugs des références
+retirées (jamais redonnés) et les étiquettes dont un admin a retiré la référence (plus regroupées).
 
 ``structure_references`` plutôt que ``references`` : ``REFERENCES`` est un mot réservé de SQL."""
 
@@ -48,7 +49,8 @@ CREATE TABLE IF NOT EXISTS reference_versions (
 
 CREATE INDEX IF NOT EXISTS idx_reference_versions_source ON reference_versions(microproject_id, version_id);
 
--- Les µprojets dont les refs locales ont été lues (local_refs.import_local_refs) : chacun une fois.
+-- Les µprojets dont les refs locales ont été lues (local_refs.import_local_refs) - relus quand leurs
+-- étiquettes nommées changent (tags_fingerprint, migration 0004).
 CREATE TABLE IF NOT EXISTS reference_import_scans (
     microproject_id INTEGER PRIMARY KEY REFERENCES microprojects(id) ON DELETE CASCADE,
     scanned_at TEXT NOT NULL
@@ -74,8 +76,24 @@ CREATE TABLE IF NOT EXISTS reference_import_rules (
 );
 """
 
+DISMISSED_TAGS = """
+-- L'empreinte des étiquettes nommées d'un µprojet à sa dernière lecture (local_refs._fingerprint) :
+-- le regroupement repasse quand elle change (une ref posée, retirée ou déplacée dans un µprojet lu).
+ALTER TABLE reference_import_scans ADD COLUMN tags_fingerprint TEXT NOT NULL DEFAULT '';
+
+-- Les étiquettes (µprojet, nom) dont la référence où elles avaient été importées a été retirée
+-- (service.delete_reference) : le regroupement ne les relit plus, le retrait reste définitif.
+CREATE TABLE IF NOT EXISTS dismissed_local_refs (
+    microproject_id INTEGER NOT NULL REFERENCES microprojects(id) ON DELETE CASCADE,
+    local_tag TEXT NOT NULL,
+    dismissed_at TEXT NOT NULL,
+    PRIMARY KEY (microproject_id, local_tag)
+);
+"""
+
 MIGRATIONS = (
     Migration("0001_initial", SCHEMA),
     Migration("0002_retired_slugs", RETIRED_SLUGS),
     Migration("0003_import_rules", IMPORT_RULES),
+    Migration("0004_dismissed_local_refs", DISMISSED_TAGS),
 )
