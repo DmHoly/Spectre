@@ -21,6 +21,7 @@ from .lots import PLUGIN as lots
 from .microprojects import PLUGIN as microprojects
 from .notebook import PLUGIN as notebook
 from .process_library import PLUGIN as process_library
+from .references import PLUGIN as references
 from .search import PLUGIN as search
 from .structures import PLUGIN as structures
 from .teams import PLUGIN as teams
@@ -37,6 +38,7 @@ PLUGINS = (
     structures,
     process_library,
     experiments,
+    references,
     intent_forms,
     wafers,
     lots,

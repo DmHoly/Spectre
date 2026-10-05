@@ -1,5 +1,6 @@
-/* Le pied du bandeau : les étiquettes de l'étude (ajouter, retirer - une écriture sur la piste) et
-   ses refs, les noms donnés à la version affichée (une ref ne crée pas de version). */
+/* Le pied du bandeau : les étiquettes de l'étude (ajouter, retirer - une écriture sur la piste),
+   la référence dont elle part (« Issue de la référence X 1.1 »), ses refs locales (des repères du
+   µprojet sur la version affichée) et « Publier comme référence » (references/static/publish-dialog.js). */
 
 (() => {
   const chipInputStyle = "border:1px dashed var(--border-soft);border-radius:999px;padding:4px 10px;font-size:12px;background:transparent;";
@@ -42,39 +43,53 @@
     }
   }
 
+  // Une structure dessinée dans le constructeur (ni des images, ni une campagne) : la seule qui se
+  // publie comme référence.
+  const isDrawnProcess = (detail) => detail.has_editable_process && !detail.is_batch && !(detail.structure_images || []).length;
+
+  // L'origine de l'étude, « Issue de la référence X 1.1 » (un lien vers la page de la référence) :
+  // le nom se lit dans referencesApi.versions ; une référence retirée, ou une version qu'elle n'a
+  // pas, se dit « inconnue ».
+  async function renderOrigin(ctx, box) {
+    const origin = ctx.detail.reference_origin;
+    if (!origin) return;
+    const text = (name, known) =>
+      known
+        ? `<a href="/references/${encodeURIComponent(origin.reference)}?version=${encodeURIComponent(origin.version)}">${escapeHtml(name)} ${escapeHtml(origin.version)}</a>`
+        : `${escapeHtml(origin.reference)} ${escapeHtml(origin.version)} (référence inconnue)`;
+    box.innerHTML = `<span class="ref-origin">Issue de la référence ${text(origin.reference, true)}</span>`;
+    try {
+      const graph = await referencesApi.versions(origin.reference);
+      const known = graph.nodes.some((node) => node.number === origin.version);
+      box.innerHTML = `<span class="ref-origin">Issue de la référence ${text(graph.reference.name, known)}</span>`;
+    } catch (err) {
+      if (err.status !== 404) return; // le lien reste, avec le slug pour nom
+      box.innerHTML = `<span class="ref-origin">Issue de la référence ${text(origin.reference, false)}</span>`;
+    }
+  }
+
   function renderRefs(ctx) {
     const row = document.getElementById("refs-row");
     const evolutionUrl = `/microprojets/${encodeURIComponent(ctx.microprojectSlug)}/evolution`;
+    const canPublish = ctx.canEdit && isDrawnProcess(ctx.detail);
     row.innerHTML =
-      ctx.detail.ref_names.map((name) => `<span class="badge badge-role" title="Ref">ref ${escapeHtml(name)}</span>`).join("") +
-      (ctx.canEdit
-        ? `<button id="make-ref-btn" data-report-hide type="button" class="btn btn-line" style="padding:2px 10px;font-size:11.5px;">+ ref</button>
-           <input id="new-ref-input" data-report-hide placeholder="surnom (optionnel)" aria-label="Nom de la ref" hidden style="${chipInputStyle}width:150px;">`
+      `<span id="reference-origin"></span>` +
+      ctx.detail.ref_names.map((name) => `<span class="badge badge-role" title="Ref locale du µprojet">ref ${escapeHtml(name)}</span>`).join("") +
+      (canPublish
+        ? `<button id="publish-reference-btn" data-report-hide type="button" class="btn btn-line" style="padding:2px 10px;font-size:11.5px;" title="Partager cette structure avec tous les µprojets, comme nouvelle version d'une référence">Publier comme référence</button>`
         : "") +
-      `<a class="btn btn-line" data-report-hide href="${evolutionUrl}" style="padding:2px 10px;font-size:11.5px;" title="Les pistes du µprojet, leurs versions et leurs refs">Évolution des structures</a>`;
-    const makeBtn = document.getElementById("make-ref-btn");
-    const input = document.getElementById("new-ref-input");
-    if (!makeBtn) return;
-    makeBtn.addEventListener("click", () => {
-      makeBtn.style.display = "none";
-      input.hidden = false;
-      input.focus();
-    });
-    input.addEventListener("keydown", async (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      try {
-        const ref = await experimentsApi.createRef(ctx.microprojectSlug, {
-          experiment_id: ctx.experimentId,
-          version_id: ctx.versionId,
-          name: input.value.trim() || null,
-        });
-        ctx.detail.ref_names = ref.names;
-        renderRefs(ctx);
-      } catch (err) {
-        ctx.showError(err);
-      }
-    });
+      `<a class="btn btn-line" data-report-hide href="${evolutionUrl}" style="padding:2px 10px;font-size:11.5px;" title="Les pistes du µprojet, leurs versions, leurs refs et leurs versions de référence">Évolution des structures</a>`;
+    renderOrigin(ctx, document.getElementById("reference-origin"));
+    const publish = document.getElementById("publish-reference-btn");
+    if (!publish) return;
+    publish.addEventListener("click", () =>
+      ReferencePublishDialog.open({
+        microprojectSlug: ctx.microprojectSlug,
+        experimentId: ctx.experimentId,
+        versionId: ctx.versionId,
+        origin: ctx.detail.reference_origin,
+      })
+    );
   }
 
   ExperiencePage.registerPanel({

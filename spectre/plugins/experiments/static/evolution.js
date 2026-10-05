@@ -1,12 +1,16 @@
 /* Évolution des structures d'un µprojet (pages/evolution.html) : le diagramme façon git de
    GET .../structure-history - une colonne par piste, une rangée par version, les fourches et les
    combinaisons (une version à deux parents : une nouvelle piste issue de deux études, ou une
-   fusion d'avant, sur la piste de son premier parent) -, et le panneau d'une version : ses refs (promouvoir, renommer, retirer), la comparer à
-   une autre (structure-diff), partir d'elle (l'éditeur sur ?version=, une nouvelle piste), suivre
-   une ref (ses descendants en évidence), voir sa structure (étiquettes de couches comprises,
-   agrandie au clic ; une structure en images : sa première image, annotations comprises) et publier une ref dans la bibliothèque (une structure
-   enregistrée partagée, avec son origine). Le serveur donne tout ce qui est dessiné : numéros,
-   niveaux, pistes, arêtes ; la page ne fait que poser chaque chose à sa place.
+   fusion d'avant, sur la piste de son premier parent) -, et le panneau d'une version : ses refs
+   locales (renommer, retirer - des repères du µprojet), les versions de référence publiées depuis
+   elle (badges « R nom 1.1 », referencesApi.publishedFrom ; une version publiée qui serait masquée
+   est demandée en plus, include_versions), « Publier comme référence »
+   (references/static/publish-dialog.js), la comparer à une autre (structure-diff), partir d'elle
+   (l'éditeur sur ?version=, une nouvelle piste), suivre une ref (ses descendants en évidence), voir
+   sa structure (étiquettes de couches comprises, agrandie au clic ; une structure en images : sa
+   première image, annotations comprises). Le dessin est celui d'evolution-graph.js, partagé avec la
+   page d'une référence. Le serveur donne tout ce qui est dessiné : numéros, niveaux, pistes, arêtes ;
+   la page ne fait que poser chaque chose à sa place.
 
    Clavier : la liste des versions est une seule étape de tabulation ; flèches haut et bas (Début,
    Fin) pour s'y déplacer, Entrée ou Espace pour choisir, Échap pour annuler une comparaison. */
@@ -14,10 +18,6 @@
 (() => {
   const { slug } = routeParams("/microprojets/{slug}/evolution");
   const query = new URLSearchParams(window.location.search);
-
-  const COL = 26; // écart entre deux pistes
-  const PAD = 18; // marge du diagramme
-  const ROW = 44; // hauteur d'une rangée (cible tactile)
 
   const LEVEL_TEXT = {
     initial: "première",
@@ -32,6 +32,7 @@
     canEdit: false,
     allVersions: query.get("toutes") === "1",
     history: { lanes: [], nodes: [], edges: [] },
+    published: [], // les versions de référence publiées depuis le µprojet (referencesApi.publishedFrom)
     selectedId: null,
     focusId: null,
     compareFrom: null, // la version de départ d'une comparaison en cours
@@ -43,6 +44,7 @@
     // version_id -> {svg} (le dessin, étiquettes de couches comprises) ou {images} (une structure en
     // images, annotations comprises) ; undefined pendant la lecture, null sans rien à montrer
     structures: {},
+    origins: {}, // version_id -> reference_origin de la version (lu avec sa structure)
   };
 
   const errorBox = document.getElementById("error");
@@ -104,44 +106,16 @@
     return seen;
   }
 
-  // -- dessin --------------------------------------------------------------------------------
+  // -- dessin (evolution-graph.js) -------------------------------------------------------------
 
-  const laneX = (lane) => PAD + lane * COL;
-  const rowY = (index) => index * ROW + ROW / 2;
-
-  // La forme d'un nœud (aussi celle de la légende) : le niveau du changement, puis les repères.
-  function nodeShape({ change_level, is_merge = false, refs = [], is_tip = false }) {
-    let shape = "";
-    if (is_tip) shape += `<circle r="13" fill="none" stroke="var(--navy-500)" stroke-width="1.5" stroke-dasharray="2 2"></circle>`;
-    if (refs.length) shape += `<circle r="10" fill="none" stroke="var(--gold)" stroke-width="2.5"></circle>`;
-    if (is_merge) {
-      shape += `<path d="M0,-7 L7,0 L0,7 L-7,0 Z" fill="var(--surface)" stroke="var(--navy)" stroke-width="2"></path>`;
-    } else if (change_level === "initial" || change_level === "major") {
-      shape += `<circle r="6.5" fill="var(--navy)" stroke="var(--surface)" stroke-width="1.5"></circle>`;
-    } else if (change_level === "minor") {
-      shape += `<circle r="5.5" fill="var(--surface)" stroke="var(--navy-500)" stroke-width="2.5"></circle>`;
-    } else if (change_level === "patch") {
-      shape += `<circle r="3.5" fill="var(--text-faint)"></circle>`;
-    } else {
-      shape += `<circle r="3.5" fill="var(--surface)" stroke="var(--text-faint)" stroke-width="1.5"></circle>`;
-    }
-    return shape;
+  // les versions de référence publiées depuis une version (badges « R nom 1.1 »)
+  function publishedOf(node) {
+    return state.published.filter((entry) => entry.version_id === node.version_id);
   }
-
-  function edgePath(edge, index) {
-    const parent = index.get(edge.parent);
-    const child = index.get(edge.child);
-    const x1 = laneX(parent.node.lane);
-    const x2 = laneX(child.node.lane);
-    const y1 = rowY(parent.row);
-    const y2 = rowY(child.row);
-    if (x1 === x2) return `M${x1},${y1} L${x2},${y2}`;
-    if (edge.kind === "merge") {
-      // descend la piste d'un parent, puis rejoint la combinaison (sur une autre piste)
-      return `M${x1},${y1} L${x1},${y2 - ROW * 0.8} C${x1},${y2 - ROW * 0.3} ${x2},${y2 - ROW * 0.5} ${x2},${y2}`;
-    }
-    // une fourche : quitte la version de départ, puis descend la nouvelle piste
-    return `M${x1},${y1} C${x1},${y1 + ROW * 0.5} ${x2},${y1 + ROW * 0.3} ${x2},${y1 + ROW * 0.8} L${x2},${y2}`;
+  function badgesHtml(node) {
+    const refs = node.refs.map((name) => `<span class="evo-ref">${escapeHtml(name)}</span>`);
+    const published = publishedOf(node).map((entry) => `<span class="ref-badge" title="Version de référence">${escapeHtml(entry.label)}</span>`);
+    return published.concat(refs).join("");
   }
 
   function rowLabel(node, index) {
@@ -149,6 +123,7 @@
     const parts = [node.label, LEVEL_TEXT[node.change_level] || node.change_level, node.title, `piste ${lane.experiment_id}`];
     if (node.is_merge) parts.push(`combinaison${mergeParents(node, index) ? ` de ${mergeParents(node, index)}` : ""}`);
     if (node.refs.length) parts.push(`refs : ${node.refs.join(", ")}`);
+    if (publishedOf(node).length) parts.push(`publiée comme ${publishedOf(node).map((entry) => entry.label.replace(/^R /, "référence ")).join(", ")}`);
     if (node.is_tip) parts.push("dernière version de la piste");
     return parts.join(", ");
   }
@@ -187,40 +162,29 @@
 
     const index = new Map(nodes.map((node, row) => [node.version_id, { node, row }]));
     const followed = followedSet();
-    const graphWidth = PAD * 2 + (lanes.length - 1) * COL;
-    rowsEl.style.setProperty("--evo-graph-w", `${graphWidth + 8}px`);
+    rowsEl.style.setProperty("--evo-graph-w", `${EvolutionGraph.width(lanes.length) + 8}px`);
 
-    document.getElementById("lane-header").innerHTML = lanes
-      .map(
-        (lane) =>
-          `<span class="evo-lanes__tag${lane.is_active ? "" : " is-retired"}" style="left:${laneX(lane.index)}px" title="${escapeHtml(lane.experiment_id)}">${lane.index + 1}</span>`
-      )
-      .join("");
+    document.getElementById("lane-header").innerHTML = EvolutionGraph.laneTagsHtml(
+      lanes.map((lane) => ({ lane: lane.index, text: String(lane.index + 1), title: lane.experiment_id, retired: !lane.is_active }))
+    );
 
-    const svg = d3.select("#graph-svg").attr("width", graphWidth).attr("height", nodes.length * ROW);
-    svg
-      .selectAll("path.evo-edge")
-      .data(edges, (edge) => `${edge.parent}>${edge.child}`)
-      .join("path")
-      .attr("class", (edge) => {
+    EvolutionGraph.draw(document.getElementById("graph-svg"), {
+      laneCount: lanes.length,
+      nodes,
+      edges,
+      idOf: (node) => node.version_id,
+      shapeOf: (node) => ({ ...node, marked: node.refs.length > 0 || publishedOf(node).length > 0 }),
+      nodeClass: (node) => (followed && !followed.has(node.version_id) ? "is-dimmed" : ""),
+      edgeClass: (edge) => {
         const inFollow = followed && followed.has(edge.parent) && followed.has(edge.child);
-        return `evo-edge evo-edge--${edge.kind}${inFollow ? " is-followed" : followed ? " is-dimmed" : ""}`;
-      })
-      .attr("d", (edge) => edgePath(edge, index));
-    svg
-      .selectAll("g.evo-node")
-      .data(nodes, (node) => node.version_id)
-      .join("g")
-      .attr("class", (node) => `evo-node${followed && !followed.has(node.version_id) ? " is-dimmed" : ""}`)
-      .attr("transform", (node, row) => `translate(${laneX(node.lane)},${rowY(row)})`)
-      .html((node) => nodeShape(node))
-      .raise();
+        return inFollow ? "is-followed" : followed ? "is-dimmed" : "";
+      },
+    });
 
     if (!state.focusId || !index.has(state.focusId)) state.focusId = state.selectedId && index.has(state.selectedId) ? state.selectedId : nodes[nodes.length - 1].version_id;
     rowsEl.innerHTML = nodes
       .map((node) => {
         const lane = laneOf(node);
-        const refs = node.refs.map((name) => `<span class="evo-ref">${escapeHtml(name)}</span>`).join("");
         const compareTag = state.compareFrom && state.compareFrom.version_id === node.version_id ? `<span class="evo-compare-tag">A</span>` : "";
         const dimmed = followed && !followed.has(node.version_id) ? " is-dimmed" : "";
         return `
@@ -231,7 +195,7 @@
             <span class="evo-row__label">${escapeHtml(node.label)}</span>
             <span class="evo-row__level">${escapeHtml(node.is_merge ? "combinaison" : LEVEL_TEXT[node.change_level] || "")}</span>
             <span class="evo-row__title">${escapeHtml(node.title)} ${forkNote(node, index)}</span>
-            <span class="evo-row__refs">${refs}</span>
+            <span class="evo-row__refs">${badgesHtml(node)}</span>
             <span class="evo-row__meta" title="Piste ${escapeHtml(lane.experiment_id)}"><span class="evo-lanes__tag evo-lanes__tag--inline${lane.is_active ? "" : " is-retired"}">${lane.index + 1}</span> ${escapeHtml(formatDate(node.created_at))}</span>
           </li>`;
       })
@@ -253,17 +217,15 @@
   }
 
   function renderLegend() {
-    const icon = (node) => `<svg width="30" height="30" viewBox="-15 -15 30 30" aria-hidden="true">${nodeShape({ refs: [], ...node })}</svg>`;
-    const items = [
+    document.getElementById("legend").innerHTML = EvolutionGraph.legendHtml([
       [{ change_level: "major" }, "Première version ou changement majeur"],
       [{ change_level: "minor" }, "Changement mineur"],
       [{ change_level: "patch" }, "Correctif (nom d'étape, étiquette de couche)"],
       [{ change_level: "none" }, "Sans changement de structure"],
       [{ change_level: "none", is_merge: true }, "Combinaison de deux études (deux parents)"],
-      [{ change_level: "minor", refs: ["ref"] }, "Porte une ref"],
+      [{ change_level: "minor", marked: true }, "Porte une ref ou une version de référence"],
       [{ change_level: "minor", is_tip: true }, "Dernière version d'une piste"],
-    ];
-    document.getElementById("legend").innerHTML = items.map(([node, text]) => `<li>${icon(node)}${escapeHtml(text)}</li>`).join("");
+    ]);
   }
 
   // -- bandeau de mode (comparaison, suivi d'une ref) ------------------------------------------
@@ -337,25 +299,7 @@
     const from = nodeById(diff.fromId);
     const to = nodeById(diff.toId);
     const title = `${escapeHtml(from ? from.label : "?")} → ${escapeHtml(to ? to.label : "?")}`;
-    let body;
-    if (diff.result.summary) body = diff.result.summary.map((line) => `<div>${escapeHtml(line)}</div>`).join("") || "<div>Aucune différence de structure.</div>";
-    else if (!diff.result.entries.length) body = "<div>Aucune différence de structure.</div>";
-    else {
-      const n = diff.result.entries.length;
-      body =
-        `<div style="font-family:var(--font-ui);font-weight:600;color:var(--abandoned);">${n} paramètre${n > 1 ? "s" : ""} modifié${n > 1 ? "s" : ""}</div>` +
-        diff.result.entries
-          .map((e) => `<div>${escapeHtml(e.path)} : ${escapeHtml(JSON.stringify(e.before))} → ${escapeHtml(JSON.stringify(e.after))}</div>`)
-          .join("");
-    }
-    // les paramètres déclarés (que la géométrie ne porte pas) et les étiquettes de couches (et leur
-    // regroupement par brique), à part de la structure
-    [
-      ["Paramètres", diff.result.param_changes || []],
-      ["Étiquettes", diff.result.label_changes || []],
-    ].forEach(([key, changes]) => {
-      if (changes.length) body += `<div class="evo-diff__labels"><strong>${key} :</strong> ${changes.map((c) => escapeHtml(c.line)).join(" ; ")}</div>`;
-    });
+    const body = EvolutionGraph.diffBodyHtml(diff.result);
     return `
       <div class="evo-panel__section">
         <div class="section-title">Comparaison ${title}</div>
@@ -363,23 +307,22 @@
       </div>`;
   }
 
-  function publishHtml(node) {
-    if (!state.canEdit || !node.refs.length || !node.has_process) return "";
-    const choice =
-      node.refs.length > 1
-        ? `<select class="field" name="ref" aria-label="Ref à publier">${node.refs.map((name) => `<option>${escapeHtml(name)}</option>`).join("")}</select>`
-        : `<input type="hidden" name="ref" value="${escapeHtml(node.refs[0])}">`;
+  // Les versions de référence publiées depuis cette version, et « Publier comme référence » (une
+  // structure dessinée seulement : ni des images, ni une campagne).
+  function referencesHtml(node) {
+    const published = publishedOf(node)
+      .map(
+        (entry) =>
+          `<a class="ref-badge" href="/references/${encodeURIComponent(entry.reference.slug)}?version=${encodeURIComponent(entry.number)}" title="Voir l'évolution de la référence">${escapeHtml(entry.label)}</a>`
+      )
+      .join(" ");
+    const canPublish = state.canEdit && node.structure_kind === "process" && node.has_process;
+    if (!published && !canPublish) return "";
     return `
       <div class="evo-panel__section">
-        <div class="section-title">Publier dans la bibliothèque</div>
-        <p class="help" style="margin:0 0 6px;">Copie la structure de cette ref en structure partagée, avec un lien vers son origine. La ref reste propre au µprojet.</p>
-        <form class="js-publish-form">
-          ${choice}
-          <div class="evo-inline-form">
-            <input class="field" name="name" value="${escapeHtml(`${node.title} (${node.refs[0]})`)}" aria-label="Nom de la structure publiée" required>
-            <button class="btn btn-primary" type="submit">Publier</button>
-          </div>
-        </form>
+        <div class="section-title">Références</div>
+        ${published ? `<div class="evo-panel__refs">${published}</div>` : `<p class="help" style="margin:0 0 8px;">Pas encore publiée comme référence.</p>`}
+        ${canPublish ? `<button class="btn btn-tint js-publish" type="button" style="margin-top:8px;">Publier comme référence</button>` : ""}
       </div>`;
   }
 
@@ -392,6 +335,7 @@
     let shown = null;
     try {
       const detail = await experimentsApi.getVersion(slug, node.experiment_id, node.version_id);
+      state.origins[node.version_id] = detail.reference_origin;
       if (detail.structure_svg) shown = { svg: detail.structure_svg };
       else if ((detail.structure_images || []).length) shown = { images: detail.structure_images };
     } catch (err) {
@@ -423,18 +367,12 @@
   function renderPanel() {
     const node = nodeById(state.selectedId);
     if (!node) {
-      panel.innerHTML = `<p class="help">Choisissez une version dans le diagramme (clic, ou flèches puis Entrée) pour voir son détail, la comparer, en faire une ref ou partir d'elle.</p>`;
+      panel.innerHTML = `<p class="help">Choisissez une version dans le diagramme (clic, ou flèches puis Entrée) pour voir son détail, la comparer, la publier comme référence ou partir d'elle.</p>`;
       return;
     }
     const lane = laneOf(node);
     const level = node.is_merge ? "combinaison" : LEVEL_TEXT[node.change_level] || node.change_level;
-    const refs = node.refs.length ? node.refs.map(refRowHtml).join("") : `<p class="help" style="margin:0;">Aucune ref sur cette version.</p>`;
-    const promote = state.canEdit
-      ? `<form class="evo-inline-form js-promote-form">
-           <input class="field" name="name" placeholder="surnom (facultatif)" aria-label="Nom de la nouvelle ref (facultatif)">
-           <button class="btn btn-tint" type="submit">Promouvoir en ref</button>
-         </form>`
-      : "";
+    const refs = node.refs.map(refRowHtml).join("");
     panel.innerHTML = `
       <div class="page-eyebrow">${escapeHtml(lane.experiment_id)}</div>
       <h2 class="evo-panel__title">${escapeHtml(node.title)}</h2>
@@ -451,12 +389,16 @@
       </div>
       ${diffHtml()}
       ${structureHtml(node)}
-      <div class="evo-panel__section">
-        <div class="section-title">Refs</div>
-        <div class="evo-panel__refs">${refs}</div>
-        ${promote}
-      </div>
-      ${publishHtml(node)}`;
+      ${referencesHtml(node)}
+      ${
+        refs
+          ? `<div class="evo-panel__section">
+               <div class="section-title">Refs locales</div>
+               <p class="help" style="margin:0 0 6px;">Des repères propres au µprojet. Pour partager une structure entre µprojets, publiez-la comme référence.</p>
+               <div class="evo-panel__refs">${refs}</div>
+             </div>`
+          : ""
+      }`;
     loadStructure(node);
   }
 
@@ -469,7 +411,9 @@
   // -- actions -------------------------------------------------------------------------------
 
   async function load() {
-    state.history = await experimentsApi.structureHistory(slug, state.allVersions);
+    // les versions publiées comme référence se montrent même légères (include_versions)
+    state.published = await referencesApi.publishedFrom(slug);
+    state.history = await experimentsApi.structureHistory(slug, state.allVersions, state.published.map((entry) => entry.version_id));
     if (state.selectedId && !nodeById(state.selectedId)) state.selectedId = null;
     if (state.compareFrom && !nodeById(state.compareFrom.version_id)) state.compareFrom = null;
     if (state.follow && !followedNode()) state.follow = null;
@@ -520,39 +464,21 @@
     document.getElementById(`row-${id}`)?.focus();
   }
 
-  rowsEl.addEventListener("click", async (event) => {
-    const row = event.target.closest(".evo-row");
-    if (!row) return;
-    await select(row.dataset.id);
-    // une colonne (écran étroit) : le panneau est sous le diagramme, on l'amène à la vue
-    if (window.matchMedia("(max-width: 1000px)").matches) panel.scrollIntoView({ block: "start" });
-  });
-
-  rowsEl.addEventListener("keydown", (event) => {
-    const ids = state.history.nodes.map((node) => node.version_id);
-    const at = ids.indexOf(state.focusId);
-    let next = null;
-    if (event.key === "ArrowDown") next = ids[Math.min(at + 1, ids.length - 1)];
-    else if (event.key === "ArrowUp") next = ids[Math.max(at - 1, 0)];
-    else if (event.key === "Home") next = ids[0];
-    else if (event.key === "End") next = ids[ids.length - 1];
-    else if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      select(state.focusId);
-      return;
-    } else if (event.key === "Escape" && state.compareFrom) {
+  EvolutionGraph.bindListbox(rowsEl, {
+    ids: () => state.history.nodes.map((node) => node.version_id),
+    getFocus: () => state.focusId,
+    setFocus: (id) => (state.focusId = id),
+    onChoose: async (id, viaClick) => {
+      await select(id);
+      // une colonne (écran étroit) : le panneau est sous le diagramme, on l'amène à la vue
+      if (viaClick && window.matchMedia("(max-width: 1000px)").matches) panel.scrollIntoView({ block: "start" });
+    },
+    onEscape: () => {
+      if (!state.compareFrom) return false;
       state.compareFrom = null;
       render();
-      document.getElementById(`row-${state.focusId}`)?.focus();
-      return;
-    }
-    if (next === null || next === undefined) return;
-    event.preventDefault();
-    rowsEl.querySelectorAll(".evo-row").forEach((row) => (row.tabIndex = row.dataset.id === next ? 0 : -1));
-    state.focusId = next;
-    const row = document.getElementById(`row-${next}`);
-    row.focus();
-    row.scrollIntoView({ block: "nearest" });
+      return true;
+    },
   });
 
   panel.addEventListener("click", (event) => {
@@ -575,6 +501,8 @@
     } else if (target.classList.contains("js-cancel-edit")) {
       state.editing = null;
       renderPanel();
+    } else if (target.classList.contains("js-publish")) {
+      openPublish(node);
     } else if (target.classList.contains("js-confirm-remove")) {
       const name = target.dataset.ref;
       act(() => experimentsApi.deleteRef(slug, name), `Ref « ${escapeHtml(name)} » retirée ; la version reste.`);
@@ -595,13 +523,7 @@
     const node = nodeById(state.selectedId);
     const form = event.target;
     if (!node) return;
-    if (form.classList.contains("js-promote-form")) {
-      const name = form.elements.name.value.trim() || null;
-      act(
-        () => experimentsApi.createRef(slug, { experiment_id: node.experiment_id, version_id: node.version_id, name }),
-        (ref) => `Ref « ${escapeHtml(ref.name)} » posée sur ${escapeHtml(node.label)}.`
-      );
-    } else if (form.classList.contains("js-rename-form")) {
+    if (form.classList.contains("js-rename-form")) {
       const old = form.dataset.ref;
       const name = form.elements.name.value.trim();
       act(
@@ -611,20 +533,41 @@
           return `Ref renommée en « ${escapeHtml(ref.name)} ».`;
         }
       );
-    } else if (form.classList.contains("js-publish-form")) {
-      const ref = form.elements.ref.value;
-      const name = form.elements.name.value.trim();
-      act(async () => {
-        const process = await experimentsApi.process(slug, node.experiment_id, node.version_id);
-        return processLibraryApi.createSavedStructure({
-          ...process,
-          name,
-          scope: "shared",
-          derived_from: { microproject: slug, experiment_id: node.experiment_id, version_id: node.version_id, ref },
-        });
-      }, (saved) => `Publiée dans la bibliothèque : <a href="${microprojectUrl()}/structures/bibliotheque/${encodeURIComponent(saved.id)}">${escapeHtml(saved.name)}</a>.`);
     }
   });
+
+  // « Publier comme référence » : la référence proposée est celle dont vient l'étude (son origine,
+  // lue avec la structure de la version) ; publiée, la page se relit (badges « R nom 1.1 »)
+  async function openPublish(node) {
+    if (!(node.version_id in state.origins)) {
+      try {
+        const detail = await experimentsApi.getVersion(slug, node.experiment_id, node.version_id);
+        state.origins[node.version_id] = detail.reference_origin;
+      } catch (err) {
+        state.origins[node.version_id] = null;
+      }
+    }
+    // les versions dont elle descend (à travers les versions masquées, comme les arêtes)
+    const ancestors = new Set();
+    const queue = [node.version_id];
+    while (queue.length) {
+      const id = queue.shift();
+      state.history.edges.forEach((edge) => {
+        if (edge.child === id && !ancestors.has(edge.parent)) {
+          ancestors.add(edge.parent);
+          queue.push(edge.parent);
+        }
+      });
+    }
+    ReferencePublishDialog.open({
+      microprojectSlug: slug,
+      experimentId: node.experiment_id,
+      versionId: node.version_id,
+      origin: state.origins[node.version_id],
+      ancestors,
+      onPublished: () => load().catch(showError),
+    });
+  }
 
   panel.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.editing) {

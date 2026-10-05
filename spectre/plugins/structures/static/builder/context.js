@@ -21,6 +21,15 @@ const evolveExperienceId = evolveRoute ? evolveRoute.experiment_id : null;
 const evolveVersionId = evolveExperienceId ? queryParams.get("version") : null;
 const templateExperienceId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("depuis") : null;
 const chosenStructureId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("structure") : null;
+// ?reference=<slug>&version=<1.1> : une nouvelle expérience partie d'une version de référence
+// (references/static/start-picker.js) - la version demandée ; l'étude lancée ne retient
+// (`reference_origin`) que celle que le constructeur a bien chargée (loadReferenceProcess) : une
+// adresse vers une référence retirée ou inconnue ne laisse aucune fausse origine
+const requestedReference =
+  !isLibraryMode && !isBrickMode && !evolveExperienceId && queryParams.get("reference") && queryParams.get("version")
+    ? { reference: queryParams.get("reference"), version: queryParams.get("version") }
+    : null;
+let referenceOrigin = null;
 const returnTo = queryParams.get("retour"); // where "Enregistrer" in library/brick mode sends you back to
 
 const state = {

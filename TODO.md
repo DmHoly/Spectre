@@ -54,6 +54,61 @@ Relecture du lot 5 (2026-10-04) :
       où la brique était insérée. Fait.
 - [x] **Largeur des caractères hors ASCII** : « Œ », « 中 », un émoji sortaient du SVG. Fait.
 
+### 3 quater. Références de structure
+
+Demandé le 2026-10-04 : « une structure de ref, c'est pour l'utiliser dans différents projets et
+pouvoir la tracer au fur et à mesure ; une page à l'échelle de toute l'application pour tracer
+l'évolution des références et voir leur dernière mise à jour ; la même vue que l'évolution des
+structures mais en version références, pour tous les projets : on choisit la référence et on voit
+son évolution, uniquement les versions de référence ; quand on démarre une expérience ou un projet
+on part souvent d'une référence, rarement d'une structure vierge ».
+
+Décisions (font foi) :
+
+- Une **référence** est un objet **global** de l'application, avec des versions qui peuvent venir
+  de µprojets différents. « Promouvoir en ref » devient « Publier comme référence » : on choisit la
+  référence (proposée d'office : celle dont vient l'étude) ou on en crée une. Les refs locales
+  existantes du même nom **dans au moins deux µprojets** (ex. epitaxie-standard) sont **regroupées**
+  en une référence (décidé le 2026-10-05, ci-dessous) ; les autres refs nommées restent des repères
+  locaux, publiables à la main ; les refs à nom automatique (« ref vX.Y.Z ») restent de simples
+  repères locaux.
+- Numérotation **MAJEUR.MINEUR calculée** : la nouvelle version est comparée à la version de
+  référence dont elle dérive (majeur → X+1.0 ; mineur ou correctif → X.Y+1 ; identique → 409),
+  numéros uniques même entre branches parallèles (deux dérivations d'une même version → 1.1 et
+  1.2 ; un majeur quand 2.0 existe → 3.0).
+- Publier une version : tout **éditeur** du µprojet source ; renommer, décrire, retirer une
+  référence : son créateur ou un admin. Tout est tracé (qui, quand, depuis quel µprojet, étude,
+  version).
+- Démarrage : « Nouvelle expérience » ouvre **d'abord** le choix d'une référence (dernière version
+  proposée, recherche, choix de version) ; partir d'une structure vierge reste possible mais
+  secondaire. L'étude **retient** la version de référence dont elle part (suivi des usages). Même
+  proposition après la création d'un µprojet.
+
+- [x] **Serveur** : plugin `references` (après experiments), routes `/api/references`,
+      `/api/references/{slug}/versions[/{number}[/structure-diff]]`, `/api/reference-versions`,
+      `reference_origin` au lancement d'une étude, regroupement des refs locales, badges de la page
+      d'évolution (`include_versions`). Fait : voir « Fait » (« Références de structure »).
+- [x] **Page des références** (toute l'application, entrée « Références » de la barre du haut) :
+      la liste (`/references`) et l'évolution d'une référence (`/references/{slug}`), le panneau
+      d'une version, renommer / décrire / retirer, `referencesApi`. Fait : voir « Fait »
+      (« Références de structure, pages »).
+- [x] **Publier comme référence** (page d'évolution d'un µprojet, fiche) à la place de « Promouvoir
+      en ref » et de « Publier dans la bibliothèque ».
+- [x] **Badges « R nom 1.1 »** sur les nœuds de la page d'évolution d'un µprojet.
+- [x] **Relecture** : republier une étude partie d'une référence continue sa suite, slug d'une
+      référence retirée jamais redonné, slug de 80 caractères au plus, étapes renommées dites par
+      le diff, origine retenue seulement une fois la version chargée. Fait : voir « Fait »
+      (« Relecture des références »).
+- [x] **Décidé (2026-10-05)** : le regroupement des refs locales ne fait une référence globale
+      que des noms de refs présents dans **au moins deux µprojets** (ex. epitaxie-standard) ; les
+      autres refs nommées restent des repères locaux de leur µprojet, publiables à la main par un
+      éditeur (« Publier comme référence ») ; le partage se décide sur l'ensemble des µprojets ; ce
+      que l'ancienne règle avait importé d'un seul µprojet, sans publication à la main ni usage, est
+      retiré ; une référence retirée par un admin ne revient pas. Fait : voir « Fait »
+      (« Regroupement des refs locales : noms partagés »).
+- [x] **Nouvelle expérience depuis une référence** (page µprojet, accueil, après la création d'un
+      µprojet, « Partir de cette version » d'une référence) ; l'origine sur la fiche.
+
 ### 4. Documentation intégrée (en tout dernier)
 
 Volontairement à faire **après** les points 1 à 3, pour ne pas réécrire la documentation une fois
@@ -130,6 +185,132 @@ d'étapes (jugé trop lourd à saisir). Reste :
       au fil des besoins réels (le fichier explique le format en commentaire).
 
 ## Fait (pour mémoire, pas d'action)
+
+- **Regroupement des refs locales : noms partagés** (2026-10-05, point 3 quater, décision de
+  l'utilisateur ; `ARCHITECTURE.md` § 5 « references »).
+  - Seuls les noms de refs portés (sur un procédé dessiné) dans **au moins deux µprojets**
+    deviennent des références (`local_refs.SHARED_BY`) : dans la démo, epitaxie-standard seule ;
+    puits-simple-reference, mqw-ebl-reference et mqw-dopage-optimise restent des repères locaux
+    (page d'évolution de leur µprojet), publiables à la main. Les refs « ref vX.Y.Z » restent
+    ignorées. Aucun objet Follow n'est réécrit (sommes de contrôle vérifiées par les tests).
+  - Le partage se décide sur l'ensemble des µprojets : chaque regroupement relit les étiquettes de
+    tous les µprojets (les `refs.json` d'abord ; les versions seulement pour les noms portés dans
+    plusieurs µprojets) ; un nom qui n'était que dans A et qui apparaît dans B importe celles de A
+    et de B. Le regroupement passe à l'arrivée d'un µprojet pas encore lu et dès que l'empreinte
+    des étiquettes nommées d'un µprojet change (`reference_import_scans.tags_fingerprint`,
+    migration `0004_dismissed_local_refs`) : une ref posée dans un µprojet déjà lu est regroupée à
+    la lecture suivante, sans attendre un nouveau µprojet (relecture du commit 5748630).
+  - Une référence retirée par un admin ne revient pas (relecture) : ses étiquettes importées sont
+    notées (`dismissed_local_refs`, par µprojet et nom) et ne comptent plus pour le partage - avant,
+    la relecture de tous les µprojets la recréait sous un slug suffixé (`epitaxie-standard-2`).
+  - Le nom d'un groupe va à la référence qui a déjà reçu des étiquettes de ce nom (même renommée),
+    sinon à celle du même nom ; une étiquette dont la version Follow est déjà une version de la
+    référence (publiée à la main) n'est pas importée une seconde fois.
+  - Ancienne règle : une fois (`reference_import_rules`, migration `0003_import_rules`), les
+    références qu'elle a créées depuis un seul µprojet, sans version publiée à la main ni étude qui
+    cite leur slug (toute version d'étude, pas seulement la pointe), sont retirées sans réserver
+    leur slug, puis tous les µprojets sont relus. Écart : une telle référence renommée ou décrite à
+    la main depuis est gardée (quelqu'un y a touché), comme une référence dont une version vient d'un
+    µprojet supprimé (`microproject_id` vide : son instantané est la seule copie ; avant la
+    relecture, deux µprojets sources supprimés se lisaient comme un seul et la référence partait).
+    Idempotent (relu, redémarré, règle repassée).
+  - Tests : `tests/plugins/references/test_local_refs.py` (démo semée par `scripts/seed_demo.py`,
+    nom partagé plus tard dans des µprojets déjà lus, retrait par un admin définitif, nettoyage de
+    l'ancienne règle avec et sans usages ou µprojets supprimés, idempotence).
+
+- **Relecture des références** (2026-10-05, point 3 quater ; `ARCHITECTURE.md` § 3, § 4 « Diff »,
+  § 5 « references »).
+  - *Republier depuis une étude partie d'une référence* : le parent par défaut est la dernière
+    version de la référence publiée depuis le même µprojet dont la version publiée descend
+    (`service.published_on_line`, la règle de filiation du regroupement des refs locales, sortie
+    de `local_refs.py`), puis l'origine, puis la dernière ; la boîte « Publier comme référence »
+    propose de même la version publiée depuis la piste avant l'origine. Une version Follow déjà
+    publiée dans la référence → 409 `reference_version_already_published` (avant : 1.1, 1.2 et
+    1.3 en trois branches de 1.0, dont un doublon exact).
+  - *Slug d'une référence retirée* : jamais redonné (table `retired_reference_slugs`, migration
+    `0002_retired_slugs`) - une nouvelle référence du même nom reçoit `-2` et ne reprend ni les
+    usages ni la filiation des études parties de l'ancienne. Écart : celui d'une référence retirée
+    **sans version** se libère (aucune étude n'a pu en partir, et la boîte de publication retire
+    la référence qu'elle vient de créer quand la publication échoue).
+  - *Slug long* : 80 caractères au plus, suffixe compris (`MAX_SLUG_LENGTH`, la limite de
+    `reference_origin`).
+  - *Étape renommée* (hérité des études) : un correctif dont le diff était vide ; `structure-diff`
+    (études et références) rend `step_changes` (`kinds.describe_step_changes`), écrit « Étapes : … »
+    sur la fiche, la page d'évolution et celle d'une référence.
+  - *Constructeur* : `reference_origin` n'est envoyé que si la version demandée a été chargée
+    (`requestedReference` / `referenceOrigin`) ; une adresse vers une référence retirée ou
+    inconnue ne laisse plus de fausse origine.
+  - Le regroupement de **toutes** les refs locales nommées en références lisibles de tous, laissé
+    à décider ici : décidé le 2026-10-05, voir « Regroupement des refs locales : noms partagés ».
+
+- **Références de structure, pages** (2026-10-04, point 3 quater ; `ARCHITECTURE.md` § 5
+  « Pages », § 6 « Les références, côté pages »).
+  - `/references` : nom, description, dernière version, date de la dernière mise à jour, µprojet
+    source, nombre de versions et d'usages, la plus récemment mise à jour d'abord ; recherche
+    (`?q=` du serveur, gardée dans l'adresse) ; « Nouvelle référence » ; « Nouvelle expérience
+    depuis une référence ». Entrée « Références » de la barre du haut, carte dans `/bibliotheque`.
+  - `/references/{slug}` : le diagramme de la page d'évolution des structures, **sans le dupliquer**
+    - son dessin est sorti d'`evolution.js` dans `experiments/static/evolution-graph.js`
+    (`EvolutionGraph`), que les deux pages utilisent ; versions de référence seules, majeur
+    (plein) et mineur (anneau) distingués, correctif et import identique aussi, une colonne par
+    branche parallèle, µprojet source sur chaque rangée, nombre d'usages, rattachement déduit en
+    pointillés et écrit sur la rangée ; le panneau : structure étiquetée (SVG serveur, agrandie au
+    clic), auteur (ou « repère importé »), date, note, source (lien vers l'étude pour un membre,
+    sinon le seul nom du µprojet et la raison), parente, usages repliables (« 3 études en sont
+    parties »), comparer avec une autre version ou avec sa parente, « Partir de cette version » ;
+    renommer / décrire / retirer pour son créateur ou un admin (`can_edit`).
+  - « Publier comme référence » (`ReferencePublishDialog`) sur la fiche et la page d'évolution :
+    référence proposée (l'origine de l'étude, sinon celle où une version dont elle descend a été
+    publiée), une autre ou une nouvelle, le parent proposé (« automatique » au choix), la note ;
+    le numéro calculé est affiché ; une référence créée dans la boîte puis refusée est retirée.
+    Écart : une campagne ou une structure en images n'a pas le bouton (le serveur la refuse).
+  - Badges « R nom 1.1 » (navy, distincts de l'or des refs locales) et anneau or sur les nœuds de
+    la page d'évolution, via `include_versions` (`api.withQuery` répète un paramètre donné en
+    tableau). Les refs locales restent affichées (« Refs locales »), renommer / retirer / suivre
+    gardés ; on n'en pose plus (`experimentsApi.createRef` retiré du client, la route reste).
+  - « Nouvelle expérience » (page µprojet ; accueil, écart : bouton ajouté, l'accueil n'en avait
+    pas) ouvre d'abord « Partir d'une référence » (`ReferenceStartPicker` : recherche, dernière
+    version proposée, autre version, aperçu, µprojet à choisir s'il n'est pas donné) ; « Partir
+    d'une structure vierge » ouvre l'ancienne boîte (dessin, image, bibliothèque, étude existante),
+    qui offre de revenir aux références. Après la création d'un µprojet, sa page s'ouvre sur
+    `?premiere-experience=1` et propose la même boîte. Le constructeur
+    (`structures/nouvelle?reference=&version=`) charge le procédé de la version en gardant ses ids
+    d'étape (choix : l'étude en descend, une version publiée ensuite s'y compare par ids) et envoie
+    `reference_origin` ; la fiche dit « Issue de la référence X 1.1 » (lien), « référence
+    inconnue » sinon.
+  - Vérifié dans le navigateur sur la démo : epitaxie-standard regroupée (1.0 du puits simple, 1.1
+    du MQW en rattachement déduit) ; publiée depuis l'évolution du puits simple → 2.0 (majeur,
+    depuis 1.0) ; une expérience du MQW partie de 1.0, publiée depuis sa fiche → 1.2 (correctif,
+    branche depuis 1.0), la page de la référence montre la branche et l'usage ; non-membre du MQW :
+    source masquée. Test : `tests/plugins/references/test_pages.py`.
+
+- **Références de structure, serveur** (2026-10-04, point 3 quater ; `ARCHITECTURE.md` § 3,
+  § 4 « Identité d'une expérience », § 5 « references »).
+  - Plugin `references` (dépend d'experiments, microprojects, structures ; placé juste après
+    experiments) : tables `structure_references`, `reference_versions`, `reference_import_scans`.
+    Écart : `structure_references` et non `references`, mot réservé de SQL.
+  - Numéro calculé (`service.next_number`) avec le versionnage des études ; écritures sérialisées
+    et numéro unique par référence (index) ; 409 `reference_version_identical`.
+  - Instantané de la structure à la publication (structure dessinée, procédé, paramètres déclarés
+    avec unité, ids d'étape, étiquettes, briques) : rendu SVG, procédé éditable et diff sans l'étude.
+    Écart : une structure en images ou une campagne ne se publie pas (422
+    `reference_needs_process`) - une référence est un point de départ du constructeur ; leurs refs
+    locales restent locales.
+  - Règles choisies : le slug d'une référence est fixé à la création (une étude la cite par lui ;
+    renommer ne change que le nom) ; un nom est unique sans casse, ni accents, ni ponctuation ;
+    retirer une référence qui a des versions est réservé à l'admin (409 pour son créateur), ses
+    versions partent avec elle ; « dernière version » = la dernière publiée.
+  - `reference_origin` : forme vérifiée par experiments seul, reporté par `amend()`, gardé par une
+    fourche et (écart, non demandé mais du même ordre) par une combinaison ; usages lus sur la
+    pointe de chaque piste.
+  - Regroupement des refs locales : à la première lecture des références (pas au démarrage : le
+    noyau n'a pas de crochet de démarrage, et la démo sème ses refs après la migration), chaque
+    µprojet lu une fois ; une version identique à son parent à l'import (epitaxie-standard des deux
+    µprojets de la démo) reçoit le mineur suivant, `change_level` `none`, au lieu d'un 409.
+  - Badges de la page d'évolution : `GET /api/reference-versions?microproject=`, et
+    `structure-history?include_versions=` pour montrer une version publiée légère (experiments ne
+    connaît pas les références).
+  - Le front : voir « Références de structure, pages » ci-dessus.
 
 - **Relecture du lot 5** (2026-10-04, point 3 ter ; `ARCHITECTURE.md` § 4, « Étiquettes de
   couches », « Briques d'un procédé »).

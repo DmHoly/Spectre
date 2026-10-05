@@ -435,7 +435,8 @@ document.getElementById("microprojet-form").addEventListener("submit", async (ev
       area: slug,
       thematic: document.getElementById("mp-thematic").value || null,
     });
-    window.location.href = `/microprojets/${encodeURIComponent(p.slug)}`;
+    // sa page propose de lancer la première expérience depuis une référence
+    window.location.href = `/microprojets/${encodeURIComponent(p.slug)}?premiere-experience=1`;
   } catch (err) {
     mpDialog.close();
     showError(err);

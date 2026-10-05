@@ -74,13 +74,14 @@
     return lines.map((line) => `<div style="font-size:12.5px;color:var(--text-soft);padding:2px 0;">${escapeHtml(line)}</div>`).join("");
   }
 
-  // Les changements des paramètres déclarés (valeur, unité...), que la géométrie ne porte pas, puis
-  // ceux des étiquettes de couches (et de leur regroupement par brique), à part de ceux de la
-  // structure : une ligne « Paramètres : … », une ligne « Étiquettes : … », vides s'il n'y en a pas.
+  // Les étapes renommées et les changements des paramètres déclarés (valeur, unité...), que la
+  // géométrie ne porte pas, puis ceux des étiquettes de couches (et de leur regroupement par brique),
+  // à part de ceux de la structure : une ligne « Étapes : … », « Paramètres : … », « Étiquettes : … »,
+  // vides s'il n'y en a pas.
   function apartChangesHtml(diff) {
     const line = (key, changes) =>
       changes.length ? `<div class="fiche-diff-labels"><span class="fiche-diff-labels__key">${key} :</span> ${changes.map((c) => escapeHtml(c.line)).join(" ; ")}</div>` : "";
-    return line("Paramètres", diff.param_changes || []) + line("Étiquettes", diff.label_changes || []);
+    return line("Étapes", diff.step_changes || []) + line("Paramètres", diff.param_changes || []) + line("Étiquettes", diff.label_changes || []);
   }
 
   function entriesHtml(entries, limit, fontSize) {

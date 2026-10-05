@@ -552,6 +552,30 @@ def describe_param_changes(
     return changes
 
 
+def describe_step_changes(
+    before: dict[str, Any], after: dict[str, Any], before_ids: list[str] | None = None, after_ids: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """Les étapes renommées de la version de métadonnées ``before`` à celle de ``after`` (appariées
+    comme pour les étiquettes) - un correctif pour le versionnage, que ni la géométrie comparée par
+    le diff de structure ni les étiquettes ne portent. Chacune : ``step_id`` (celui d'``after``),
+    ``subject`` (son nom lisible d'après), ``change`` ``renamed``, ``name`` ``{before, after}`` (le
+    champ ``name`` de l'étape, ``""`` sans nom) et ``line``, la phrase qui le dit. Une étape ajoutée
+    ou retirée change la structure : le diff de structure la dit."""
+    old, new = _records(before, after, before_ids, after_ids)
+    old_steps = dict(zip(old.order, _process_steps(before)))
+    changes: list[dict[str, Any]] = []
+    for position, (sid, step) in enumerate(zip(new.order, _process_steps(after))):
+        was = old_steps.get(sid)
+        if was is None or (was.get("name") or "") == (step.get("name") or ""):
+            continue
+        shown_before, shown_after = old.step_names[sid], new.step_names[sid]
+        line = f"étape « {shown_before} » renommée « {shown_after} »" if shown_before != shown_after else f"étape {position + 1} — nom « {was.get('name') or ''} » → « {step.get('name') or ''} »"
+        changes.append(
+            {"step_id": sid, "subject": shown_after, "change": "renamed", "name": {"before": was.get("name") or "", "after": step.get("name") or ""}, "line": line}
+        )
+    return changes
+
+
 def render_structure_svg(structure_type: str, structure_data: dict[str, Any], metadata: dict[str, Any] | None = None) -> str | None:
     """SVG for an already-committed experiment's current structure, redrawn by StructureForge from
     its stored, already-flattened layers, with the layer labels its ``metadata`` records - ``None``

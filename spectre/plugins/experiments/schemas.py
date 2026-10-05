@@ -41,6 +41,22 @@ class MergeSource(BaseModel):
     version_id: str | None = None
 
 
+# La forme d'une origine de référence (plugin references, qui dépend d'experiments et non l'inverse) :
+# le slug d'une référence et le numéro MAJEUR.MINEUR d'une de ses versions. experiments n'en vérifie
+# que la forme ; une origine inconnue se lit telle quelle, sans erreur.
+REFERENCE_SLUG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
+REFERENCE_NUMBER_PATTERN = r"^[1-9][0-9]{0,4}\.[0-9]{1,5}$"
+
+
+class ReferenceOrigin(BaseModel):
+    """La version de référence dont part une nouvelle étude : ``{reference, version}`` (« 1.1 »)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reference: str = Field(..., max_length=80, pattern=REFERENCE_SLUG_PATTERN)
+    version: str = Field(..., max_length=12, pattern=REFERENCE_NUMBER_PATTERN)
+
+
 class _Intention(BaseModel):
     """What a launch and an evolution ask again: the intention, the objectives, the entity and the
     answers to the microproject's intention form."""
@@ -67,6 +83,9 @@ class CreateExperimentRequest(_Intention):
     from_version: FromVersion | None = None
     merge_of: list[MergeSource] | None = Field(None, min_length=2, max_length=2)
     branch: str | None = None  # the name of the new line of study - from its title by default
+    # la version de référence dont part l'étude (le constructeur l'a chargée) - reportée aux versions
+    # suivantes et aux fourches ; sans elle, une fourche garde celle de sa source
+    reference_origin: ReferenceOrigin | None = None
 
     @model_validator(mode="after")
     def _structure_or_combination(self) -> "CreateExperimentRequest":

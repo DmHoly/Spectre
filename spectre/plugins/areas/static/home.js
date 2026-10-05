@@ -104,6 +104,9 @@ async function load() {
       document.getElementById("new-theme-btn").style.display = "";
     }
 
+    // Nouvelle expérience : d'abord une référence, puis le µprojet où la lancer (éditeur)
+    if (mine.some((p) => p.can_edit)) document.getElementById("new-experience-btn").style.display = "";
+
     document.getElementById("my-microprojects-count").textContent = `(${mine.length})`;
     document.getElementById("my-microprojects").innerHTML = mine.length
       ? mine.map((p) => microprojectCard(p, stats.find((row) => row.microproject.slug === p.slug))).join("")
@@ -114,6 +117,8 @@ async function load() {
     showError(err);
   }
 }
+
+document.getElementById("new-experience-btn").addEventListener("click", () => ReferenceStartPicker.open());
 
 const dialog = document.getElementById("new-theme-dialog");
 document.getElementById("new-theme-btn").addEventListener("click", () => dialog.showModal());

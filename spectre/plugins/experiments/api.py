@@ -90,6 +90,9 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         "intent": version.intent,
         "hypothesis": version.hypothesis,
         "context": version.metadata.get(service.CONTEXT_METADATA_KEY),
+        # la version de référence dont part l'étude, telle qu'enregistrée ({reference, version}) : le
+        # plugin references la résout (une origine inconnue se montre comme telle)
+        "reference_origin": service.reference_origin_of(version),
         "status": display_status(version, continued=continued_at is not None),
         "continued_at": continued_at.isoformat() if continued_at else None,
         "hold": hold_of(version),
@@ -361,9 +364,11 @@ def structure_diff(
     (``against_experiment``), d'un autre µprojet au besoin (``against_microproject``, lisible par
     l'appelant). Sans rien : la version de structure précédente (:func:`service.structural_baseline`).
     ``{target: {experiment_id, version_id, title, microproject} | null, entries, summary?,
-    label_changes, param_changes}`` - avec une cible, à part : ce qui change aux étiquettes de
-    couches et à leur regroupement par brique (``label_changes``, :func:`kinds.describe_label_changes`)
-    et aux paramètres déclarés (``param_changes``, :func:`kinds.describe_param_changes`)."""
+    label_changes, param_changes, step_changes}`` - avec une cible, à part : ce qui change aux
+    étiquettes de couches et à leur regroupement par brique (``label_changes``,
+    :func:`kinds.describe_label_changes`), aux paramètres déclarés (``param_changes``,
+    :func:`kinds.describe_param_changes`) et aux noms des étapes (``step_changes``,
+    :func:`kinds.describe_step_changes`)."""
     repo = get_repository(microproject.slug)
     base = service.version_of(repo, experiment_id, version)
     target_repo, target_microproject = repo, None
@@ -464,12 +469,18 @@ def delete_ref(ref_name: str, microproject: Microproject = Depends(require_role(
 
 
 @router.get("/structure-history")
-def structure_history(all_versions: bool = False, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+def structure_history(
+    all_versions: bool = False,
+    include_versions: list[str] = Query([]),
+    microproject: Microproject = Depends(require_role("viewer")),
+) -> dict:
     """``{lanes, nodes, edges}`` : les versions du µprojet piste par piste, telles que la page
     « Évolution des structures » les dessine (:func:`~.lineage.structure_history`) - par défaut
     les versions structurelles (majeures, mineures), celles qui portent une ref, les fusions et le
-    début de chaque piste ; ``all_versions=true`` ajoute les versions légères."""
-    return lineage_structure_history(get_repository(microproject.slug), all_versions=all_versions)
+    début de chaque piste ; ``all_versions=true`` ajoute les versions légères, ``include_versions``
+    (des ids de version, répétés) celles-là seulement - les versions publiées comme référence, que la
+    page lit dans le plugin references (un id inconnu est ignoré)."""
+    return lineage_structure_history(get_repository(microproject.slug), all_versions=all_versions, include=set(include_versions))
 
 
 # -- la page d'une étude ---------------------------------------------------------------------------

@@ -50,7 +50,7 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 ## Composants clés (kernel.css, sauf mention)
 
 - **Topbar** commune (`.topbar`, sticky 60px) : logo Aledia (`/static/kernel/img/aledia-logo.svg`) |
-  SPECTRE | fil d'Ariane · nav principale identique sur toutes les pages (Projets, Bibliothèque,
+  SPECTRE | fil d'Ariane · nav principale identique sur toutes les pages (Projets, Bibliothèque, Références,
   Lots, Data, Documentation - plus Atlas sur un projet), rendue par le noyau (`kernel/pages.py`, marqueur
   `<!-- spectre:topbar -->`) à partir des `NavEntry` des plugins ; état actif `aria-current="page"` posé
   par `kernel/static/shell.js` (`data-match` de chaque lien) ·

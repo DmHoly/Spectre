@@ -253,3 +253,21 @@ def test_the_structure_diff_tells_the_declared_parameter_changes_apart(client):
     removed = evolve(client, slug, study["id"], steps=STACK, declared_params={"0": [{"name": "précurseur", "value": "TMGa"}]})
     lines = [c["line"] for c in structure_diff(client, slug, study["id"], version=removed["version_id"])["param_changes"]]
     assert lines == ["p-GaN — dopage Mg retiré (7e18 m⁻³)"]
+
+
+def test_the_structure_diff_tells_a_renamed_step(client):
+    """Renommer une étape est un correctif que ni la géométrie comparée ni les étiquettes ne portent :
+    le diff le dit à part, sous ``step_changes`` - jamais un diff vide pour un correctif."""
+    slug = signup_with_microproject(client, "steps-diff@example.com", "Étapes")
+    study = launch(client, slug, steps=STACK)
+    renamed = evolve(client, slug, study["id"], steps=[{**STACK[0], "name": "n-GaN dopé"}, *STACK[1:]])
+    assert _levels(client, slug, study["id"])[-1] == "patch"
+    diff = structure_diff(client, slug, study["id"], version=renamed["version_id"])
+    assert (diff["entries"], diff["label_changes"], diff["param_changes"]) == ([], [], [])
+    assert [(c["step_id"], c["change"], c["name"], c["line"]) for c in diff["step_changes"]] == [
+        (fixed_step_id(1), "renamed", {"before": "n-GaN", "after": "n-GaN dopé"}, "étape « n-GaN » renommée « n-GaN dopé »")
+    ]
+    # deux études lancées à part, aux mêmes noms : rien (appariées par position)
+    first = launch(client, slug, title="A", steps=_without_ids(STACK))
+    second = launch(client, slug, title="B", steps=_without_ids(STACK))
+    assert structure_diff(client, slug, second["id"], against_experiment=first["id"])["step_changes"] == []
