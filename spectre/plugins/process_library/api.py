@@ -16,7 +16,6 @@ from ..accounts.service import User
 from ..structures import simulation
 from . import service
 from .service import SAVED_STRUCTURES, STEP_PRESETS, TECH_BRICKS, Collection, Entry
-from .step_presets import StepPresetPayload
 from .structure_library import ExperimentOrigin
 
 router = APIRouter(prefix="/api", tags=["process-library"])
@@ -42,6 +41,8 @@ class NewSavedStructure(_NewItem):
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
     layer_labels: dict[str, simulation.LayerLabel] = {}
     bricks: list[simulation.ProcessBrick] = []
+    recipes: simulation.ProcessRecipes = Field(default_factory=simulation.ProcessRecipes)
+    preset_origins: dict[str, simulation.PresetOrigin] = {}
     derived_from: str | ExperimentOrigin | None = None
 
 
@@ -51,15 +52,25 @@ class SavedStructureChanges(_ItemChanges):
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
     layer_labels: dict[str, simulation.LayerLabel] | None = None
     bricks: list[simulation.ProcessBrick] | None = None
+    recipes: simulation.ProcessRecipes | None = None
+    preset_origins: dict[str, simulation.PresetOrigin] | None = None
 
 
 class NewStepPreset(_NewItem):
-    payload: StepPresetPayload
+    step: ProcessStep
+    declared_params: list[simulation.DeclaredParam] = []
+    layer_label: simulation.LayerLabel | None = None
+    recipes: simulation.ProcessRecipes = Field(default_factory=simulation.ProcessRecipes)
+    variable_fields: list[str] = []
     notes: str | None = None
 
 
 class StepPresetChanges(_ItemChanges):
-    payload: StepPresetPayload | None = None
+    step: ProcessStep | None = None
+    declared_params: list[simulation.DeclaredParam] | None = None
+    layer_label: simulation.LayerLabel | None = None
+    recipes: simulation.ProcessRecipes | None = None
+    variable_fields: list[str] | None = None
     notes: str | None = None
 
 
@@ -70,6 +81,8 @@ class NewTechBrick(_NewItem):
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
     layer_labels: dict[str, simulation.LayerLabel] = {}
     bricks: list[simulation.ProcessBrick] = []
+    recipes: simulation.ProcessRecipes = Field(default_factory=simulation.ProcessRecipes)
+    preset_origins: dict[str, simulation.PresetOrigin] = {}
     notes: str | None = None
 
 
@@ -79,15 +92,18 @@ class TechBrickChanges(_ItemChanges):
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
     layer_labels: dict[str, simulation.LayerLabel] | None = None
     bricks: list[simulation.ProcessBrick] | None = None
+    recipes: simulation.ProcessRecipes | None = None
+    preset_origins: dict[str, simulation.PresetOrigin] | None = None
     notes: str | None = None
 
 
 def _content(body: BaseModel) -> dict[str, Any]:
     """Les champs envoyés, sans la portée ; les paramètres déclarés (et les étiquettes de couches,
-    qui suivent la même règle) rangés par indice d'étape."""
+    qui suivent la même règle) rangés par indice d'étape - ceux d'un préset, qui n'a qu'une étape,
+    sont une simple liste."""
     fields = body.model_dump(mode="json", exclude_unset=True, exclude={"scope", "microproject"})
     declared = getattr(body, "declared_params", None)
-    if declared is not None:
+    if isinstance(declared, dict):
         fields["declared_params"] = simulation.declared_params_json(simulation.declared_params_by_index(declared))
     return fields
 

@@ -30,6 +30,8 @@ async function saveTechBrick(forceNew) {
     steps: state.steps,
     declared_params: declaredParamsPayload(state.steps),
     layer_labels: layerLabelsPayload(state.steps),
+    recipes: processRecipesPayload(state.steps),
+    preset_origins: presetOriginsPayload(state.steps),
     bricks: bricksPayload(state.steps),
     notes: document.getElementById("brick-notes").value.trim() || null,
     scope: document.getElementById("brick-shared-checkbox").checked ? "shared" : "microproject",
@@ -63,7 +65,7 @@ async function initBrickMode() {
     // le paramètre ?dupliquer=1 est générique (voir context.js) - réutilisé tel quel ici, comme
     // en mode bibliothèque.
     const found = await processLibraryApi.techBrick(brickId);
-    state.steps = attachBricks(attachLayerLabels(attachDeclaredParams(found.steps, found.declared_params), found.layer_labels), found.bricks);
+    state.steps = attachStepExtras(found.steps, found);
     selectLastStep();
     renderSteps();
     // Une brique intégrée (ou qu'on ne peut pas modifier) n'a rien à éditer en place.

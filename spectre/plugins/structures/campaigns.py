@@ -19,7 +19,7 @@ from structureforge.core.units import Length
 from structureforge.process.steps import ProcessStep
 
 from .rendering import annotations_for, format_number, labelled_svg
-from .simulation import GRADED_NITRIDE_RE, DeclaredParam, LayerLabel, ProcessBrick, SimulationFailedError, SubstrateSpec, simulate_process
+from .simulation import GRADED_NITRIDE_RE, DeclaredParam, LayerLabel, ProcessBrick, ProcessRecipes, SimulationFailedError, SubstrateSpec, simulate_process
 
 
 CAMPAIGN_FIELD_LABELS = {
@@ -301,6 +301,7 @@ def generate_campaign_variants(
     step_ids: list[str | None] | None = None,
     layer_labels: dict[int, LayerLabel] | None = None,
     bricks: list[ProcessBrick] | None = None,
+    recipes: ProcessRecipes | None = None,
 ) -> CampaignVariants:
     """Re-simulate ``steps`` once per combination in the full cross of every factor's values,
     varying each factor's parameter for that combination - everything else (substrate, every
@@ -311,6 +312,7 @@ def generate_campaign_variants(
     untouched - its value per variant lives in ``factor_values``, like every other factor's.
     The factors name their step by id, among ``step_ids`` (the ids the steps came with, in order).
     Each variant's SVG carries the labels of ``layer_labels`` (by step position), with its own values.
+    ``recipes``: the process's own (a factor on ``recipe`` may pick one of them).
     """
     if not plan.factors:
         raise SimulationFailedError("il faut au moins un paramètre à faire varier")
@@ -339,7 +341,7 @@ def generate_campaign_variants(
     layer_origins: list[list[int]] = []
     for combo in itertools.product(*(factor.values for factor in plan.factors)):
         varied_substrate, varied_steps, varied_declared = apply_combination(substrate, steps, base_declared, plan, indexes, list(combo))
-        result = simulate_process(varied_substrate, varied_steps, varied_declared or None)
+        result = simulate_process(varied_substrate, varied_steps, varied_declared or None, recipes)
         entries.append(to_structure(result.geometry))
         material_colors = {m.name: m.color for m in result.materials}
         # chaque variante écrit ses propres valeurs sur ses étiquettes

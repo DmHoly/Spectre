@@ -43,7 +43,7 @@ const ORIENTATION_CHOICES = [
   ["m_plane", "Plan M {10-10}"],
   ["semi_polar", "Semi-polaire"],
 ];
-const NON_VARIABLE_STEP_KEYS = new Set(["id", "kind", "name", "description", "declaredParams", "layerLabel", "brick_group_id", "brick_name", "brick_source", "parameters", "seed_materials", "openings"]);
+const NON_VARIABLE_STEP_KEYS = new Set(["id", "kind", "name", "description", "declaredParams", "layerLabel", "ownRecipe", "presetOrigin", "brick_group_id", "brick_name", "brick_source", "parameters", "seed_materials", "openings"]);
 
 // L'id par lequel un facteur désigne l'étape `stepIndex` (-1 : le substrat) - null tant que le
 // serveur ne lui en a pas donné (une étape toute neuve, avant la simulation qui suit son ajout).
@@ -146,7 +146,8 @@ function variableParams(stepIndex) {
           });
         }
       } else if (key === "recipe") {
-        const recipes = (state.recipes[step.kind] || []).map((r) => [r.name, r.name]);
+        // celles de la bibliothèque et celles du procédé (own-recipe.js)
+        const recipes = [...(state.recipes[step.kind] || []).map((r) => r.name), ...ownRecipes(step.kind).keys()].map((name) => [name, name]);
         params.push({ field: key, label, type: "choice", choices: withCurrentOption(recipes, value), current: value });
       } else if (key === "orientation") {
         params.push({ field: key, label, type: "choice", choices: ORIENTATION_CHOICES, current: value });
@@ -163,6 +164,14 @@ function variableParams(stepIndex) {
     const numeric = typeof p.value === "number";
     params.push({ field: `declared:${p.name}`, label: p.name, declared: true, type: numeric ? "number" : "choice", free: !numeric, unit: "", current: p.value });
   });
+  // ceux que propose le préset d'où vient l'étape (presets.js), en tête
+  const suggested = presetSuggestedFields(step);
+  if (suggested.length) {
+    params.forEach((p) => {
+      if (suggested.includes(p.field)) p.suggested = true;
+    });
+    params.sort((a, b) => Number(Boolean(b.suggested)) - Number(Boolean(a.suggested)));
+  }
   return params;
 }
 
@@ -391,7 +400,7 @@ function startVaryingLayer(stepIndex, field) {
   const declared = params.filter((p) => p.declared);
   const optionHtml = (p) => {
     const varied = factorsOnStep(stepIndex).some((f) => f.field === p.field);
-    return `<option value="${escapeHtml(p.field)}">${escapeHtml(paramDisplayLabel(p))}${varied ? " ✓" : ""}</option>`;
+    return `<option value="${escapeHtml(p.field)}">${escapeHtml(paramDisplayLabel(p))}${p.suggested ? " · proposé par le préset" : ""}${varied ? " ✓" : ""}</option>`;
   };
   document.getElementById("variation-field-select").innerHTML =
     (declared.length ? `<optgroup label="Réglages de l'étape">${own.map(optionHtml).join("")}</optgroup>` : own.map(optionHtml).join("")) +
@@ -650,6 +659,7 @@ async function refreshVariationTable() {
       substrate: substrateSpec(),
       steps: state.steps,
       declared_params: declaredParamsPayload(state.steps),
+      recipes: processRecipesPayload(state.steps),
       plan,
     });
     if (seq !== variationTableSeq) return;

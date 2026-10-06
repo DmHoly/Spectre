@@ -12,7 +12,7 @@ register_library_file(
         key="step-presets",
         filename="presets.yml",
         title="Présets d'étape",
-        description="Raccourcis nommés vers une recette de dépôt ou de gravure, proposés dans le formulaire d'étape.",
+        description="Étapes entières déjà réglées (gravure sélective, croissance, nettoyage...), insérées d'un clic depuis la palette du constructeur.",
         parse=lambda data: {p.name: p for p in parse_entries(data, "presets", step_preset_from_entry)},
         fallback=builtin_step_presets,
         order=30,

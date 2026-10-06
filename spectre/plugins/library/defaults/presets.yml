@@ -1,97 +1,173 @@
-# Présets d'étape Spectre — raccourcis nommés vers une recette de dépôt / gravure de
-# StructureForge. Appliquer un préset ne fait que pré-remplir le formulaire d'étape ; une fois
-# l'étape ajoutée elle porte sa propre recette (pas de lien vivant).
+# Présets d'étape Spectre — une étape entière, déjà réglée, insérée d'un clic depuis la palette du
+# constructeur (une gravure sélective, une croissance en pyramide avec ses vitesses et son dopage,
+# un nettoyage chimique avec son bain et sa durée...). L'étape insérée est une copie : elle garde
+# seulement la trace du préset et de sa version d'origine, et le modifier ensuite ne change aucune
+# structure déjà construite avec lui.
 #
 # Rechargé automatiquement quand le fichier change. Vide/invalide → jeu intégré de repli
 # (spectre/plugins/process_library/step_presets.py, builtin_step_presets).
 #
-# Champs : name (obligatoire), kind (deposition | etch), recipe (nom exact d'une recette —
-# celles de StructureForge ci-dessous, OU une recette maison définie dans recettes.yml,
-# par ex. une gravure sélective), notes (optionnel).
-#
-# Recettes de dépôt StructureForge : ALD Conformal, CVD Conformal, PVD Sputter (tilted),
-#   Evaporation (normal), MOCVD Epitaxial, PECVD Conformal, Sputter Metal (normal),
-#   Electroplating (Cu)
-# Recettes de gravure StructureForge : Dry Oxide Etch, Wet HF Dip, Anisotropic RIE, Ion Mill (tilted),
-#   KOH Anisotropic Wet Etch, Cl2 ICP-RIE (III-N), TMAH Anisotropic Wet Etch, SF6 Deep RIE (Si),
-#   Wet Metal Etch
-# + toute recette de recettes.yml (ex. « Gravure sélective Al2O3 »).
+# Champs d'un préset :
+#   name             (obligatoire) — aussi le nom de l'étape, sauf si step.name le précise
+#   step             (obligatoire) — l'étape, avec son kind : deposition, etch, planarization,
+#                    chemical, lithography, resist_strip, epitaxial_growth, faceted_growth, flip ;
+#                    ses champs sont ceux du constructeur (les longueurs : {value, unit}, nm/um/A)
+#   recipe           (optionnel, dépôt/gravure) — la recette propre au préset, que l'étape nomme
+#                    (step.recipe, sinon le nom du préset) : mode, angle_deg et, pour une gravure,
+#                    default_factor, selectivity_by_material, selectivity_by_category
+#                    (1.0 = vitesse nominale, 0.0 = non gravé : une couche d'arrêt). Sans elle,
+#                    step.recipe nomme une recette de la bibliothèque (StructureForge ou recettes.yml)
+#   declared_params  (optionnel) — [{name, value, unit}] : débits, dopage, température, durée...
+#   label            (optionnel) — {text, values} : l'étiquette sur le dessin (une marque
+#                    d'interface pour une étape sans couche) ; values parmi thickness, composition,
+#                    depth, declared:<nom>
+#   variable         (optionnel) — les paramètres à faire varier dans une campagne, proposés en
+#                    premier : un champ de l'étape (thickness, depth, rate_sp, material...) ou
+#                    declared:<nom>
+#   notes            (optionnel) — à quoi sert le préset, quand l'utiliser
 
 presets:
-  # -- dépôts -----------------------------------------------------------
-  - name: MOCVD Epitaxial
-    kind: deposition
-    recipe: MOCVD Epitaxial
-    notes: Croissance épitaxiale (semi-conducteurs III-N/III-V) sur une base plane.
-  - name: PECVD Conformal
-    kind: deposition
-    recipe: PECVD Conformal
-    notes: Dépôt assisté par plasma, à plus basse température — bonne couverture des reliefs (SiO2, SiNx de passivation).
-  - name: ALD Conformal
-    kind: deposition
-    recipe: ALD Conformal
-    notes: Dépôt uniforme qui épouse parfaitement tous les reliefs de la surface (Al2O3 de grille/passivation).
-  - name: PVD Sputter (tilted)
-    kind: deposition
-    recipe: PVD Sputter (tilted)
-    notes: Dépôt métallique en visée directe, légèrement incliné — les zones cachées sont moins couvertes.
-  - name: Sputter Metal (normal)
-    kind: deposition
-    recipe: Sputter Metal (normal)
-    notes: Pulvérisation métallique par le dessus — couvre mieux les flancs qu'une évaporation, reste directionnel (ITO, contacts).
-  - name: Evaporation (normal)
-    kind: deposition
-    recipe: Evaporation (normal)
-    notes: Dépôt métallique tout droit par le dessus — ne couvre presque pas les flancs, adapté à un lift-off.
-
-  # -- gravures --------------------------------------------------------
-  - name: Cl2 ICP-RIE (III-N)
-    kind: etch
-    recipe: Cl2 ICP-RIE (III-N)
-    notes: Gravure sèche quasi verticale des semi-conducteurs III-N (GaN, AlGaN...) — sélective vs masques, diélectriques et métaux.
-  - name: Anisotropic RIE
-    kind: etch
-    recipe: Anisotropic RIE
-    notes: Gravure sèche quasi verticale — le masque de résine s'érode lentement, tout le reste au rythme normal.
-  - name: Dry Oxide Etch
-    kind: etch
-    recipe: Dry Oxide Etch
-    notes: Gravure sèche qui attaque surtout les oxydes ; grave presque aussi vite tout le reste.
-  - name: Wet HF Dip
-    kind: etch
-    recipe: Wet HF Dip
-    notes: Bain humide très sélectif de l'oxyde — épargne le nitrure, le silicium et les métaux.
-  - name: Wet Metal Etch
-    kind: etch
-    recipe: Wet Metal Etch
-    notes: Bain humide générique pour graver un métal — sous-grave comme toute gravure isotrope.
+  # -- gravures ---------------------------------------------------------------------------------
   - name: Gravure sélective Al2O3
-    kind: etch
-    recipe: Gravure sélective Al2O3   # recette maison, voir recettes.yml
-    notes: Ne grave que l'Al2O3 — tout le reste (GaN, SiO2, métaux, résine) sert de couche d'arrêt.
+    step: {kind: etch, depth: {value: 50, unit: nm}}
+    recipe:
+      mode: isotropic
+      selectivity_by_material: {Al2O3: 1.0}
+      default_factor: 0.0
+    declared_params:
+      - {name: bain, value: H3PO4 chaud}
+      - {name: durée, value: 120, unit: s}
+    label: {text: "", values: ["declared:durée"]}
+    variable: ["declared:durée"]
+    notes: Ne grave que l'Al2O3 — GaN, SiO2, métaux et résine servent de couche d'arrêt.
 
-  # -- retirés du jeu « nitrures » — décommentez pour les réactiver -------
-  # - name: CVD Conformal
-  #   kind: deposition
-  #   recipe: CVD Conformal
-  #   notes: Dépôt uniforme sur les reliefs, une bonne couverture standard.
-  # - name: Electroplating (Cu)
-  #   kind: deposition
-  #   recipe: Electroplating (Cu)
-  #   notes: Remplissage électrochimique en cuivre — nécessite une couche d'amorce.
-  # - name: Ion Mill (tilted)
-  #   kind: etch
-  #   recipe: Ion Mill (tilted)
-  #   notes: Gravure physique inclinée — attaque presque tous les matériaux au même rythme.
-  # - name: KOH Anisotropic Wet Etch
-  #   kind: etch
-  #   recipe: KOH Anisotropic Wet Etch
-  #   notes: Gravure cristallographique du silicium, angle fixe 54,7°.
-  # - name: TMAH Anisotropic Wet Etch
-  #   kind: etch
-  #   recipe: TMAH Anisotropic Wet Etch
-  #   notes: Alternative au KOH sans contamination alcaline.
-  # - name: SF6 Deep RIE (Si)
-  #   kind: etch
-  #   recipe: SF6 Deep RIE (Si)
-  #   notes: Gravure profonde du silicium (type Bosch).
+  - name: Etch back résine O2
+    step: {kind: etch, depth: {value: 300, unit: nm}}
+    recipe:
+      mode: directional
+      angle_deg: 0
+      selectivity_by_category: {resist: 1.0}
+      default_factor: 0.0
+    declared_params:
+      - {name: puissance RF, value: 100, unit: W}
+      - {name: débit O2, value: 50, unit: sccm}
+    label: {text: Etch back, values: [depth]}
+    variable: [depth]
+    notes: Plasma O2 vertical qui n'attaque que la résine — dégage le sommet des nanofils noyés dans la résine.
+
+  - name: Cl2 ICP-RIE GaN
+    step: {kind: etch, recipe: Cl2 ICP-RIE (III-N), depth: {value: 500, unit: nm}}
+    declared_params:
+      - {name: puissance ICP, value: 400, unit: W}
+      - {name: débit Cl2, value: 20, unit: sccm}
+    label: {text: "", values: [depth]}
+    variable: [depth, "declared:puissance ICP"]
+    notes: Gravure sèche quasi verticale des III-N, sélective vis-à-vis des masques, diélectriques et métaux.
+
+  # -- étapes chimiques -------------------------------------------------------------------------
+  - name: Clean HF
+    step: {kind: chemical, description: HF dilué}
+    declared_params:
+      - {name: concentration, value: 1, unit: "%"}
+      - {name: durée, value: 30, unit: s}
+    label: {text: "", values: ["declared:durée"]}
+    variable: ["declared:durée"]
+    notes: Désoxydation de surface avant une reprise de croissance.
+
+  - name: Nettoyage solvants
+    step: {kind: chemical, description: acétone, IPA, rinçage EDI}
+    declared_params:
+      - {name: ultrasons, value: 5, unit: min}
+    notes: Nettoyage organique standard (avant une lithographie, après un retrait de résine).
+
+  - name: Recuit d'activation p-GaN
+    step: {kind: chemical, description: recuit sous N2}
+    declared_params:
+      - {name: température, value: 750, unit: °C}
+      - {name: durée, value: 10, unit: min}
+    label: {text: Recuit Mg, values: ["declared:température", "declared:durée"]}
+    variable: ["declared:température", "declared:durée"]
+    notes: Activation du magnésium (dissociation des complexes Mg-H).
+
+  # -- croissances ------------------------------------------------------------------------------
+  - name: Pyramide GaN
+    step:
+      kind: faceted_growth
+      material: GaN
+      thickness: {value: 200, unit: nm}
+      rate_c: 0.2
+      rate_m: 0.1
+      rate_sp: 1.0
+      semi_polar_angle_deg: 28
+    declared_params:
+      - {name: température, value: 1000, unit: °C}
+      - {name: V/III, value: 2000}
+      - {name: débit TMGa, value: 20, unit: sccm}
+    label: {text: "", values: [thickness]}
+    variable: [thickness, rate_sp, "declared:température"]
+    notes: Croissance facettée où le semipolaire domine — la pointe se referme en pyramide.
+
+  - name: Nanofil GaN (SAG)
+    step:
+      kind: epitaxial_growth
+      material: GaN
+      thickness: {value: 1, unit: um}
+      orientation: c_plane
+      seed_materials: [GaN]
+    declared_params:
+      - {name: température, value: 1050, unit: °C}
+      - {name: V/III, value: 50}
+      - {name: dopage Si, value: 5.0e+18, unit: cm⁻³}
+    label: {text: n-GaN, values: [thickness, "declared:dopage Si"]}
+    variable: [thickness, "declared:dopage Si"]
+    notes: Croissance sélective verticale dans les ouvertures du masque, sur le GaN exposé seulement.
+
+  - name: Puits InGaN
+    step:
+      kind: epitaxial_growth
+      material: In0.20Ga0.80N
+      thickness: {value: 3, unit: nm}
+      orientation: c_plane
+    declared_params:
+      - {name: température, value: 750, unit: °C}
+      - {name: débit TMIn, value: 200, unit: sccm}
+    label: {text: Puits, values: [thickness, composition]}
+    variable: [thickness, material, "declared:température"]
+    notes: Un puits quantique ; la composition se règle dans le matériau (taux d'indium).
+
+  - name: p-GaN Mg
+    step:
+      kind: epitaxial_growth
+      material: GaN
+      thickness: {value: 120, unit: nm}
+      orientation: c_plane
+    declared_params:
+      - {name: dopage Mg, value: 3.0e+19, unit: cm⁻³}
+      - {name: débit Cp2Mg, value: 100, unit: sccm}
+    label: {text: p-GaN, values: [thickness, "declared:dopage Mg"]}
+    variable: [thickness, "declared:dopage Mg"]
+    notes: Couche p dopée magnésium (à activer par un recuit).
+
+  # -- dépôts -----------------------------------------------------------------------------------
+  - name: Passivation SiO2 PECVD
+    step: {kind: deposition, material: SiO2, recipe: PECVD Conformal, thickness: {value: 100, unit: nm}}
+    declared_params:
+      - {name: température, value: 300, unit: °C}
+    label: {text: SiO2, values: [thickness]}
+    variable: [thickness]
+    notes: Diélectrique de passivation, bonne couverture des reliefs.
+
+  - name: Al2O3 ALD
+    step: {kind: deposition, material: Al2O3, recipe: ALD Conformal, thickness: {value: 20, unit: nm}}
+    declared_params:
+      - {name: cycles, value: 200}
+      - {name: température, value: 250, unit: °C}
+    label: {text: Al2O3, values: [thickness]}
+    variable: [thickness, "declared:cycles"]
+    notes: Couche conforme qui épouse tous les reliefs (masque dur, passivation de flancs).
+
+  - name: ITO pulvérisé
+    step: {kind: deposition, material: ITO, recipe: Sputter Metal (normal), thickness: {value: 100, unit: nm}}
+    label: {text: ITO, values: [thickness]}
+    variable: [thickness]
+    notes: Contact transparent, directionnel par le dessus.

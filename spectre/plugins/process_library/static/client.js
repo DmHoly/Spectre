@@ -23,6 +23,9 @@ const processLibraryApi = {
   stepPresets(filters) {
     return api.get(api.withQuery("/api/step-presets", filters));
   },
+  stepPreset(presetId) {
+    return api.get(`/api/step-presets/${encodeURIComponent(presetId)}`);
+  },
   createStepPreset(body) {
     return api.post("/api/step-presets", body);
   },

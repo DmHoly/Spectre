@@ -4,6 +4,19 @@
    constructeur, qui vit sous un µprojet (simulation) : d'où le sélecteur "µprojet de travail",
    mémorisé en local, qui ne sert qu'à ouvrir ces éditeurs. */
 
+// le type de l'étape d'un préset, comme dans la palette du constructeur
+const PRESET_KIND_LABELS = {
+  deposition: "Dépôt",
+  epitaxial_growth: "Croissance épitaxiale",
+  faceted_growth: "Croissance facettée",
+  lithography: "Lithographie",
+  etch: "Gravure",
+  resist_strip: "Retrait de résine",
+  planarization: "Planarisation",
+  chemical: "Étape chimique",
+  flip: "Retournement",
+};
+
 const WORK_MICROPROJECT_KEY = "spectre.libWorkMicroproject";
 
 const SCOPE_LABELS = { builtin: "intégré", shared: "partagé" };
@@ -24,8 +37,8 @@ const COLLECTIONS = [
     list: () => processLibraryApi.stepPresets(),
     update: (id, changes) => processLibraryApi.updateStepPreset(id, changes),
     remove: (id) => processLibraryApi.deleteStepPreset(id),
-    summary: (item) => `${item.payload.kind === "etch" ? "Gravure" : "Dépôt"} · ${item.payload.recipe}`,
-    editorHref: (s) => `/microprojets/${s}/presets-etapes`,
+    summary: (item) => `${PRESET_KIND_LABELS[item.step.kind] || item.step.kind} · v${item.version || 1}`,
+    editorHref: (s, item) => `/microprojets/${s}/presets-etapes/bibliotheque/${encodeURIComponent(item.id)}?retour=bibliotheque`,
   },
   {
     listId: "shared-bricks",

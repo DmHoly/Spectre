@@ -83,7 +83,7 @@ def test_an_invalid_file_is_refused_and_nothing_is_written(client, key, content,
 def test_an_invalid_file_edited_by_hand_falls_back_to_the_builtin_set(client):
     signup(client, "reader@example.com")
     (library_dir() / "presets.yml").write_text("presets: [\n", encoding="utf-8")
-    assert "MOCVD Epitaxial" in names(list_items(client, "step-presets", scope="builtin"))
+    assert "Clean HF" in names(list_items(client, "step-presets", scope="builtin"))
 
 
 def test_the_materials_and_recipes_of_the_library_reach_the_builder(client):

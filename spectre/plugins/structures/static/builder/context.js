@@ -5,8 +5,9 @@
 // Les routes du constructeur (spectre/plugins/structures/__init__.py) ; « nouvelle » tient lieu de l'id.
 const libraryRoute = routeParams("/microprojets/{slug}/structures/bibliotheque/{structure_id}");
 const brickRoute = routeParams("/microprojets/{slug}/briques-technologiques/bibliotheque/{brick_id}");
+const presetRoute = routeParams("/microprojets/{slug}/presets-etapes/bibliotheque/{preset_id}");
 const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experiment_id}/evoluer");
-const { slug } = libraryRoute || brickRoute || evolveRoute || routeParams("/microprojets/{slug}/structures/nouvelle");
+const { slug } = libraryRoute || brickRoute || presetRoute || evolveRoute || routeParams("/microprojets/{slug}/structures/nouvelle");
 const isLibraryMode = Boolean(libraryRoute);
 const libraryStructureId = isLibraryMode && libraryRoute.structure_id !== "nouvelle" ? libraryRoute.structure_id : null;
 // Mode brique : réutilise ce même constructeur pour composer/éditer une brique technologique (une
@@ -14,19 +15,23 @@ const libraryStructureId = isLibraryMode && libraryRoute.structure_id !== "nouve
 // avec le mode bibliothèque, mêmes conventions d'URL (bibliotheque/{id|nouvelle}, ?dupliquer=1).
 const isBrickMode = Boolean(brickRoute);
 const brickId = isBrickMode && brickRoute.brick_id !== "nouvelle" ? brickRoute.brick_id : null;
+// Mode préset : ce même constructeur pour régler un préset d'étape (une seule étape, sans substrat
+// propre - voir preset-mode.js), mêmes conventions d'URL que le mode brique.
+const isPresetMode = Boolean(presetRoute);
+const presetId = isPresetMode && presetRoute.preset_id !== "nouvelle" ? presetRoute.preset_id : null;
 const queryParams = new URLSearchParams(window.location.search);
 const libraryDuplicateMode = queryParams.get("dupliquer") === "1";
 const evolveExperienceId = evolveRoute ? evolveRoute.experiment_id : null;
 // ?version= : partir d'une version passée de la piste (qui ne se continue que sur une nouvelle piste)
 const evolveVersionId = evolveExperienceId ? queryParams.get("version") : null;
-const templateExperienceId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("depuis") : null;
-const chosenStructureId = !isLibraryMode && !isBrickMode && !evolveExperienceId ? queryParams.get("structure") : null;
+const templateExperienceId = !isLibraryMode && !isBrickMode && !isPresetMode && !evolveExperienceId ? queryParams.get("depuis") : null;
+const chosenStructureId = !isLibraryMode && !isBrickMode && !isPresetMode && !evolveExperienceId ? queryParams.get("structure") : null;
 // ?reference=<slug>&version=<1.1> : une nouvelle expérience partie d'une version de référence
 // (references/static/start-picker.js) - la version demandée ; l'étude lancée ne retient
 // (`reference_origin`) que celle que le constructeur a bien chargée (loadReferenceProcess) : une
 // adresse vers une référence retirée ou inconnue ne laisse aucune fausse origine
 const requestedReference =
-  !isLibraryMode && !isBrickMode && !evolveExperienceId && queryParams.get("reference") && queryParams.get("version")
+  !isLibraryMode && !isBrickMode && !isPresetMode && !evolveExperienceId && queryParams.get("reference") && queryParams.get("version")
     ? { reference: queryParams.get("reference"), version: queryParams.get("version") }
     : null;
 let referenceOrigin = null;
@@ -35,7 +40,7 @@ let referenceOrigin = null;
 // l'étude qui les suit ; l'étude lancée ne retient (`wafer_origin`) que celle que le constructeur
 // a bien chargée (loadWaferOrigin), ses plaques (`state.originWafers`) étant les seules suivies
 const requestedWafers =
-  !isLibraryMode && !isBrickMode && !evolveExperienceId && queryParams.getAll("plaque").length && queryParams.get("depuis-mp") && queryParams.get("depuis-etude")
+  !isLibraryMode && !isBrickMode && !isPresetMode && !evolveExperienceId && queryParams.getAll("plaque").length && queryParams.get("depuis-mp") && queryParams.get("depuis-etude")
     ? {
         lasermarks: queryParams.getAll("plaque"),
         microproject: queryParams.get("depuis-mp"),
@@ -71,6 +76,8 @@ const state = {
   selectedBrickGroup: null, // brick_group_id dont l'inspecteur montre les actions (clic sur l'étiquette d'une brique)
   formDeclaredParams: [], // paramètres déclarés (voir form-widgets.js) du formulaire d'étape actuellement ouvert
   formLayerLabel: null, // étiquette de couche ({text, values}, voir layer-label.js) du formulaire d'étape ouvert
+  formOwnRecipe: null, // recette du procédé (voir own-recipe.js) que nomme le formulaire d'étape ouvert, sinon null
+  formOwnRecipeKind: null, // son type : "deposition" ou "etch"
   collapsedBrickGroups: new Set(), // brick_group_id des blocs repliés dans le flow (purement visuel)
   previewMode: "step", // "step" : dessin après l'étape sélectionnée ; "final" : toujours la structure finale
   frameLock: null, // image gardée à l'écran quand on sélectionne une étape en cliquant une couche du dessin (sinon la vue sauterait à cette étape)
@@ -78,6 +85,8 @@ const state = {
   derivedFrom: null, // library mode only: name of the structure this one was derived from, if any
   editingLibraryId: null, // library mode only: id of the saved structure being edited in place (null = new)
   editingBrickId: null, // brick mode only: id of the tech brick being edited in place (null = new)
+  editingPresetId: null, // preset mode only: id of the step preset being edited in place (null = new)
+  presetVariableFields: [], // preset mode only: the fields the preset proposes to vary
   zoom: 1, // 1 = ajusté à la zone de dessin
 };
 

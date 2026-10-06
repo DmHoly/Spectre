@@ -22,8 +22,9 @@ def list_materials() -> list[dict]:
 
 @router.get("/recipes")
 def list_recipes() -> dict:
-    """The named deposition/etch recipes a step can pick from - mode/angle/selectivity live on
-    the recipe (see :mod:`structureforge.core.recipes`), not on the step itself.
+    """The named deposition/etch recipes of the library a step can pick from - mode/angle/selectivity
+    live on the recipe (see :mod:`structureforge.core.recipes`), not on the step itself; a process
+    may define its own besides (:class:`simulation.ProcessRecipes`).
     """
     recipes = simulation.recipes_library()
     return {
@@ -42,7 +43,7 @@ def simulate(body: ProcessInput) -> dict:
     declared_params = simulation.declared_params_by_index(body.declared_params)
     labels = simulation.layer_labels_by_index(body.layer_labels, len(body.steps))
     bricks = simulation.checked_bricks(body.bricks, len(body.steps))
-    result = simulation.simulate_process(body.substrate, body.steps, declared_params or None)
+    result = simulation.simulate_process(body.substrate, body.steps, declared_params or None, body.recipes or None)
     return {
         **rendering.frames_payload(result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels, bricks),
         "step_ids": simulation.settle_step_ids(body.step_ids),
@@ -66,6 +67,7 @@ def preview_campaign(body: CampaignPreviewRequest) -> dict:
         body.step_ids,
         simulation.layer_labels_by_index(body.layer_labels, len(body.steps)),
         simulation.checked_bricks(body.bricks, len(body.steps)),
+        body.recipes or None,
     )
     return {
         "svgs": result.svgs,

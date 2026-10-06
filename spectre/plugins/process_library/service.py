@@ -36,7 +36,7 @@ from ..microprojects import service as microprojects
 from ..microprojects.service import ROLE_ORDER, Microproject
 from ..structures import simulation
 from .models import LibraryItem
-from .step_presets import StepPreset, default_step_presets
+from .step_presets import StepPreset, default_step_presets, revised
 from .structure_library import SavedStructure, default_structure_presets
 from .tech_bricks import TechBrick, default_tech_bricks
 
@@ -55,6 +55,7 @@ class Collection(Generic[ItemT]):
     duplicate: str  # message d'un nom déjà pris, avec {name}
     missing: str  # message d'un élément introuvable
     check: Callable[[ItemT], None] | None = None  # règle propre à la collection ; InvalidInput
+    revise: Callable[[ItemT, ItemT], ItemT] | None = None  # l'élément modifié, d'après l'ancien (sa version)
 
     def shared_store(self) -> ItemStore[ItemT]:
         return ItemStore(data_dir() / self.shared_filename, self.item_cls)
@@ -261,6 +262,8 @@ def update_item(collection: Collection[ItemT], user: User, item_id: str, changes
         if not moved and item.model_dump(mode="json") == current:
             return entry
         item = item.model_copy(update={"updated_by": user.id})
+        if collection.revise:
+            item = collection.revise(entry.item, item)
         _reject_duplicate(collection, target, item.name, except_id=item.id)
         if moved:
             with collection.store(source).edit() as items:
@@ -284,13 +287,17 @@ def delete_item(collection: Collection, user: User, item_id: str) -> None:
 # -- les trois collections -------------------------------------------------------------------------
 
 
-def _check_recipe(preset: StepPreset) -> None:
-    """Un préset nomme une recette existante du bon type (dépôt ou gravure)."""
-    recipes = simulation.recipes_library()
-    known = recipes.deposition if preset.payload.kind == "deposition" else recipes.etch
-    if preset.payload.recipe not in known:
-        kind = "dépôt" if preset.payload.kind == "deposition" else "gravure"
-        raise InvalidInput(f"Recette de {kind} inconnue : {preset.payload.recipe!r}.", code="unknown_recipe")
+def _check_preset(preset: StepPreset) -> None:
+    """L'étape d'un préset de dépôt ou de gravure nomme une recette qui existe : de la bibliothèque,
+    ou celle que le préset définit (ses ``recipes``)."""
+    kind = preset.step.kind
+    if kind not in ("deposition", "etch"):
+        return
+    recipes = simulation.recipes_library(preset.recipes or None)
+    known = recipes.deposition if kind == "deposition" else recipes.etch
+    if preset.step.recipe not in known:
+        label = "dépôt" if kind == "deposition" else "gravure"
+        raise InvalidInput(f"Recette de {label} inconnue : {preset.step.recipe!r}.", code="unknown_recipe")
 
 
 SAVED_STRUCTURES = Collection(
@@ -310,7 +317,8 @@ STEP_PRESETS = Collection(
     builtins=default_step_presets,
     duplicate="Un préset nommé {name!r} existe déjà dans cette bibliothèque.",
     missing="Préset introuvable.",
-    check=_check_recipe,
+    check=_check_preset,
+    revise=revised,
 )
 TECH_BRICKS = Collection(
     key="tech-bricks",

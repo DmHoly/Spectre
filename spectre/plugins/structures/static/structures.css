@@ -866,6 +866,19 @@
   color: var(--navy);
 }
 
+/* l'étape vient d'un préset (presets.js) : en bas à gauche ; « P* » si elle s'en est écartée */
+.sb-chip__badge--preset {
+  top: auto;
+  right: auto;
+  bottom: -9px;
+  left: 8px;
+  color: var(--gold-dark);
+  border-color: var(--gold);
+}
+.sb-chip__badge--preset.is-drift {
+  border-style: dashed;
+}
+
 .sb-chip__check {
   position: absolute;
   top: -8px;
@@ -2065,6 +2078,161 @@
 }
 #layer-label-values .sb-check {
   white-space: normal;
+}
+
+/* recette propre au procédé (own-recipe.js) : sa définition, sous le choix de la recette */
+.sb-own-recipe {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--gold, #c9a45c);
+  border-radius: var(--radius-md);
+}
+.sb-own-recipe__title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-soft);
+}
+.sb-own-recipe__table {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.sb-own-recipe__table legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+#f-own-rows {
+  display: grid;
+  gap: 6px;
+}
+.sb-own-recipe__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+.sb-own-recipe__categories > summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+/* présets d'étape (presets.js) : la palette, l'origine d'une étape et « enregistrer comme préset » */
+#insert-preset-list {
+  display: grid;
+  gap: 6px;
+}
+.sb-preset-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  cursor: grab;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.sb-preset-tool:hover,
+.sb-preset-tool:focus-visible {
+  border-color: var(--gold);
+  background: var(--surface-2);
+}
+.sb-preset-tool__body {
+  display: grid;
+  min-width: 0;
+}
+.sb-preset-tool__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sb-preset-tool__meta {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.sb-preset-panel {
+  display: grid;
+  gap: 10px;
+}
+.sb-preset-panel:empty {
+  display: none;
+}
+.sb-preset-origin,
+.sb-preset-mode {
+  display: grid;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--gold);
+  border-radius: var(--radius-md);
+}
+.sb-preset-origin__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-size: 12.5px;
+}
+.sb-preset-origin__name {
+  font-weight: 600;
+}
+.sb-preset-origin__status {
+  font-size: 11.5px;
+  color: var(--text-soft);
+}
+.sb-preset-origin__status.is-same {
+  color: var(--done);
+}
+.sb-preset-origin__status.is-modified,
+.sb-preset-origin__status.is-outdated {
+  color: var(--gold-dark);
+}
+.sb-preset-origin__status.is-missing {
+  color: var(--danger);
+}
+.sb-preset-origin__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sb-preset-origin__actions .btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.sb-preset-save {
+  display: grid;
+  gap: 10px;
+}
+.sb-preset-save__variables {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.sb-own-recipe__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  margin-top: 8px;
 }
 
 /* une structure dessinée avec ses étiquettes (rendering.labelled_svg) : le cadre suit sa hauteur,

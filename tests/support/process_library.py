@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from support.http import assert_created, assert_ok
-from support.structures import deposition, substrate
+from support.structures import deposition, etch, substrate
 
 COLLECTIONS = ("saved-structures", "step-presets", "tech-bricks")
 
@@ -18,7 +18,15 @@ def saved_structure(name: str, **fields: Any) -> dict:
 
 
 def step_preset(name: str, *, kind: str = "deposition", recipe: str = "CVD Conformal", **fields: Any) -> dict:
-    return {"name": name, "payload": {"kind": kind, "recipe": recipe}, **fields}
+    """Un préset d'étape : par défaut un dépôt de 20 nm de SiO2 (``kind="etch"`` : une gravure de
+    10 nm) qui nomme ``recipe`` ; ``step=`` donne une autre étape entière."""
+    step = deposition(name, "SiO2", recipe=recipe, thickness_nm=20) if kind == "deposition" else etch(name, recipe=recipe, depth_nm=10)
+    return {"name": name, "step": step, **fields}
+
+
+def legacy_step_preset(name: str, *, kind: str = "deposition", recipe: str = "CVD Conformal") -> dict:
+    """Un préset de l'ancienne forme, qui ne nommait qu'une recette (avant les présets entiers)."""
+    return {"name": name, "payload": {"kind": kind, "recipe": recipe}}
 
 
 def tech_brick(name: str, **fields: Any) -> dict:

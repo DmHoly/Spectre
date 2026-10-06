@@ -32,7 +32,7 @@ async function loadExistingProcess() {
     if (data) {
       setSubstrateFields(data.substrate);
       // chaque étape garde son id : l'évolution (ou la fourche) le renvoie, l'étape reste la même
-      state.steps = attachBricks(attachLayerLabels(attachDeclaredParams(data.steps, data.declared_params), data.layer_labels), data.bricks);
+      state.steps = attachStepExtras(data.steps, data);
       selectLastStep();
       renderSteps();
     }
@@ -101,6 +101,8 @@ async function commitExperience(entities) {
     steps: state.steps,
     declared_params: declaredParamsPayload(state.steps),
     layer_labels: layerLabelsPayload(state.steps),
+    recipes: processRecipesPayload(state.steps),
+    preset_origins: presetOriginsPayload(state.steps),
     bricks: bricksPayload(state.steps),
   };
   const payload = {
@@ -220,7 +222,7 @@ async function loadReferenceProcess() {
     const version = await referencesApi.version(requestedReference.reference, requestedReference.version);
     const data = version.process;
     setSubstrateFields(data.substrate);
-    state.steps = attachBricks(attachLayerLabels(attachDeclaredParams(data.steps, data.declared_params), data.layer_labels), data.bricks);
+    state.steps = attachStepExtras(data.steps, data);
     selectLastStep();
     renderSteps();
     document.getElementById("based-on-note").hidden = false;
@@ -274,7 +276,7 @@ async function loadWaferOrigin() {
     }
     if (data) {
       setSubstrateFields(data.substrate);
-      state.steps = attachBricks(attachLayerLabels(attachDeclaredParams(data.steps, data.declared_params), data.layer_labels), data.bricks);
+      state.steps = attachStepExtras(data.steps, data);
       selectLastStep();
       renderSteps();
     }
@@ -302,7 +304,7 @@ async function loadTemplateProcess() {
     const data = await experimentsApi.process(slug, templateExperienceId);
     setSubstrateFields(data.substrate);
     // une nouvelle étude sans filiation : ses étapes sont neuves, le serveur leur donne leurs ids
-    state.steps = attachBricks(attachLayerLabels(attachDeclaredParams(data.steps.map(withoutStepId), data.declared_params), data.layer_labels), data.bricks);
+    state.steps = attachStepExtras(data.steps.map(withoutStepId), data);
     selectLastStep();
     renderSteps();
   } catch (err) {

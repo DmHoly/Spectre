@@ -40,6 +40,14 @@
           <label class="sb-check"><input type="checkbox" id="brick-shared-checkbox"> Partagée</label>
         </div>
 
+        <!-- Mode préset : un nom + des notes + partage - un préset est une seule étape, sans substrat propre. -->
+        <div class="sb-header__fields" id="preset-header" hidden>
+          <input class="sb-title-input" id="preset-name" placeholder="Nom du préset (ex : Gravure sélective Al2O3)" aria-label="Nom du préset" autocomplete="off" maxlength="200">
+          <input class="field sb-notes-input" id="preset-notes" placeholder="Notes : à quoi sert ce préset, quand l'utiliser…" aria-label="Notes du préset (optionnel)">
+          <label class="sb-check"><input type="checkbox" id="preset-shared-checkbox"> Partagé</label>
+          <span class="sb-header__note" id="preset-version" hidden></span>
+        </div>
+
         <!-- Mode expérience : les trois étapes du lancement, pilotables directement. -->
         <div class="sb-header__fields" id="experience-header" hidden>
           <nav class="sb-stages" aria-label="Étapes du lancement">
@@ -74,6 +82,8 @@
         <button class="btn btn-primary" id="library-save-btn" type="button" hidden>Enregistrer</button>
         <button class="btn btn-line" id="brick-save-as-btn" type="button" hidden>Enregistrer sous…</button>
         <button class="btn btn-primary" id="brick-save-btn" type="button" hidden>Enregistrer</button>
+        <button class="btn btn-line" id="preset-save-as-mode-btn" type="button" hidden>Enregistrer sous…</button>
+        <button class="btn btn-primary" id="preset-save-mode-btn" type="button" hidden>Enregistrer</button>
 
         <div class="sb-stage-actions" id="stage-actions" hidden>
           <button class="btn btn-line" id="back-to-structure-btn" type="button" data-show-on="intention">&larr; Structure</button>
@@ -127,6 +137,11 @@
           </div>
           <div class="sb-palette__scroll">
             <div id="palette-tools"></div>
+            <div class="sb-palette__group" id="palette-presets">
+              <div class="sb-palette__group-title">Présets d'étape</div>
+              <input class="field sb-palette__search" id="preset-search" type="search" placeholder="Filtrer les présets…" aria-label="Filtrer les présets d'étape">
+              <div class="sb-palette__bricks" id="insert-preset-list"></div>
+            </div>
             <div class="sb-palette__group" id="palette-bricks">
               <div class="sb-palette__group-title">Briques technologiques</div>
               <input class="field sb-palette__search" id="brick-search" type="search" placeholder="Filtrer les briques…" aria-label="Filtrer les briques">
@@ -222,6 +237,7 @@
                 <div><label for="substrate-thickness-unit" class="sb-sr">Unité d'épaisseur</label><select class="field" id="substrate-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
               </div>
               <div class="help" id="brick-preview-note" hidden>Ce substrat ne sert qu'à prévisualiser les étapes - il n'est pas enregistré avec la brique, qui s'appliquera sur la structure existante au moment de l'insertion.</div>
+              <div class="help" id="preset-preview-note" hidden>Ce substrat ne sert qu'à prévisualiser l'étape - il n'est pas enregistré avec le préset, qui s'appliquera sur la structure existante au moment de l'insertion.</div>
               <div class="sb-insp__tip">Ajoutez la première étape avec la palette d'outils à gauche (ou la touche <kbd>1</kbd> pour un dépôt).</div>
             </div>
           </div>
@@ -249,6 +265,7 @@
               </div>
             </div>
             <div class="sb-insp__body">
+              <div id="step-preset-panel" class="sb-preset-panel"></div>
               <div>
                 <label for="kind-select">Type d'étape</label>
                 <select class="field" id="kind-select"></select>
@@ -452,6 +469,8 @@
   <script src="/static/structures/builder/code-export.js"></script>
   <script src="/static/structures/builder/step-kinds.js"></script>
   <script src="/static/structures/builder/layer-label.js"></script>
+  <script src="/static/structures/builder/own-recipe.js"></script>
+  <script src="/static/structures/builder/presets.js"></script>
   <script src="/static/structures/builder/step-list.js"></script>
   <script src="/static/structures/builder/inspector.js"></script>
   <script src="/static/structures/builder/palette.js"></script>
@@ -465,6 +484,7 @@
   <script src="/static/structures/builder/experience-launch.js"></script>
   <script src="/static/structures/builder/library-mode.js"></script>
   <script src="/static/structures/builder/brick-mode.js"></script>
+  <script src="/static/structures/builder/preset-mode.js"></script>
   <script src="/static/structures/builder/shortcuts.js"></script>
   <script src="/static/structures/builder/main.js"></script>
 </body>

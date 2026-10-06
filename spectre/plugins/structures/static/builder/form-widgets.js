@@ -1,6 +1,5 @@
-/* Petits widgets de formulaire réutilisés par plusieurs types d'étape (matériaux, présets,
-   lignes de sélectivité, paramètres process/estimations dérivées) - voir step-kinds.js pour ce
-   qui, à l'inverse, est spécifique à un seul type d'étape. */
+/* Petits widgets de formulaire réutilisés par plusieurs types d'étape (matériaux, recettes,
+   paramètres process/estimations dérivées) - voir step-kinds.js pour ce qui, à l'inverse, est spécifique à un seul type d'étape. */
 
 // Regroupe le menu déroulant par catégorie de matériau (la liste vient de la bibliothèque racine,
 // library/materiaux.yml - voir spectre.core.registry). L'ordre des <optgroup> est fixe ; à
@@ -133,18 +132,6 @@ function fillGradedMaterialField(id, materialName) {
   }
 }
 
-function presetOptionsHtml(kind) {
-  const scopeSuffix = { builtin: " (intégré)", shared: " (partagé)", microproject: "" };
-  return state.stepPresets
-    .filter((p) => p.payload.kind === kind)
-    .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}${scopeSuffix[p.scope] || ""}</option>`)
-    .join("");
-}
-
-function findStepPreset(id) {
-  return state.stepPresets.find((p) => p.id === id) || null;
-}
-
 function recipeOptions(kind, selectedValue) {
   return (state.recipes[kind] || [])
     .map((r) => `<option value="${escapeHtml(r.name)}" ${r.name === selectedValue ? "selected" : ""}>${escapeHtml(r.name)}</option>`)
@@ -156,27 +143,6 @@ function recipeHint(kind, name) {
   if (!recipe) return "";
   const mode = modeSummary(recipe.mode, recipe.angle_deg);
   return recipe.notes ? `${mode} — ${recipe.notes}` : mode;
-}
-
-// The recipe carries mode/angle(/selectivity for etch) itself now (see structureforge.core.
-// recipes) - the form only needs to pick a name and show what it does, and optionally jump
-// straight to one via a saved préset.
-function wireRecipeField(kind) {
-  const recipeSelect = document.getElementById("f-recipe");
-  const hint = document.getElementById("f-recipe-hint");
-  const update = () => {
-    hint.textContent = recipeHint(kind, recipeSelect.value);
-  };
-  recipeSelect.addEventListener("change", update);
-  update();
-  document.getElementById("f-preset").addEventListener("change", (e) => {
-    const value = e.target.value;
-    if (!value) return;
-    const preset = findStepPreset(value);
-    if (!preset) return;
-    recipeSelect.value = preset.payload.recipe;
-    update();
-  });
 }
 
 function parseCommaList(text) {
