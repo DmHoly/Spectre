@@ -36,6 +36,8 @@ class NavEntry:
     pages: tuple[str, ...] = ()
     id: str | None = None
     admin: bool = False  # montrée aux seuls administrateurs (accounts/static/session.js la révèle)
+    # Le contenu d'un SVG 24x24 à trait : l'entrée devient un bouton à icône, à côté de la session
+    icon: str | None = None
 
 
 @dataclass(frozen=True)

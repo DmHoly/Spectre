@@ -360,6 +360,18 @@ svg {
   color: #fff;
   background: rgba(255, 255, 255, 0.08);
 }
+/* un bouton à icône d'un plugin (NavEntry.icon) : or quand sa section est ouverte */
+.topbar__tool[hidden] {
+  display: none;
+}
+.topbar__tool[aria-current="page"] {
+  color: var(--gold-light);
+  background: rgba(255, 255, 255, 0.08);
+}
+.topbar__tool:focus-visible {
+  outline: 2px solid var(--gold-light);
+  outline-offset: 1px;
+}
 
 @media (max-width: 1100px) {
   .topbar__user-name {

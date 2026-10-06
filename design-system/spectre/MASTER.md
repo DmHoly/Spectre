@@ -66,7 +66,11 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
   (icône sur pastille `--accent-tint`, nom, nom technique mono, phrase, pied : état + dépendances) ;
   **interrupteur** `.switch` = `<button role="switch" aria-checked>` nommé par le titre de la carte
   (`aria-labelledby`), navy quand actif ; un plugin du noyau porte un badge or « Noyau » à la place.
-  L'entrée « Paramètres » de la barre du haut n'apparaît qu'aux administrateurs (`NavEntry.admin`).
+  Les Paramètres s'ouvrent par une **roue crantée** à côté de la session (`.topbar__tool`, `NavEntry.icon`),
+  visible des seuls administrateurs (`NavEntry.admin`), or quand la section est ouverte. Base de données :
+  carte Sauvegarde, puis onglets « Tables SQL » (liste des tables collante à gauche, grille à en-tête
+  collant et colonne d'actions collante, défilement dans la carte, NULL en mono italique, secrets
+  masqués) et « Études » ; toute suppression passe par une boîte de confirmation.
 - **Issue d'une expérience** : une seule clé (`experimentOutcome`, `experiments/static/status.js`) pour le badge, le
   nœud du graphe et la frise d'une thématique. Nœud (`lineage-graph.js`) : **creux = pas terminée**
   (brouillon anneau gris, en cours anneau bleu + point, en pause anneau ambre + ‖), **plein =

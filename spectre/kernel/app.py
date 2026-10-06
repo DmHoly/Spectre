@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from . import plugin_states
 from .db import run_migrations
 from .errors import install_error_handlers
-from .pages import KERNEL_STATIC_DIR, nav_entries_for, page_handler, plugin_dir, render_nav, resolve_page
+from .pages import KERNEL_STATIC_DIR, nav_entries_for, page_handler, plugin_dir, render_topbar_parts, resolve_page
 from .plugin import NavEntry, Plugin, check_dependencies
 from .plugin_states import PluginDisabled, PluginStates
 
@@ -38,9 +38,9 @@ def _guard(states: PluginStates, plugin: Plugin):
 def _nav_renderer(states: PluginStates, entries: list[tuple[str, NavEntry]], page_path: str):
     """La navigation d'une page, sans les entrées des plugins éteints - relue à chaque requête."""
 
-    def nav() -> str:
+    def nav():
         off = states.disabled()
-        return render_nav(nav_entries_for([entry for owner, entry in entries if owner not in off], page_path))
+        return render_topbar_parts(nav_entries_for([entry for owner, entry in entries if owner not in off], page_path))
 
     return nav
 

@@ -24,7 +24,7 @@ import re
 from email.utils import formatdate
 from html import escape
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, NamedTuple
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, Response
@@ -46,7 +46,7 @@ _TOPBAR_TEMPLATE = """<div class="topbar">
       </a>{crumb}
     </div>
     {nav}
-    <div class="topbar__actions">
+    <div class="topbar__actions">{tools}
       <a href="/profil" class="topbar__user" title="Mon profil">
         <span class="js-user-name topbar__user-name"></span>
         <span class="avatar js-user-initials" aria-hidden="true"></span>
@@ -74,6 +74,40 @@ def nav_entries_for(entries: Iterable[NavEntry], page_path: str) -> list[NavEntr
     return [entry for entry in entries if not entry.pages or page_path in entry.pages]
 
 
+class TopbarParts(NamedTuple):
+    """Ce que les plugins mettent dans la barre du haut : la navigation (``nav``, :func:`render_nav`)
+    et les boutons à icône, à côté de la session (``tools``, :func:`render_tools`)."""
+
+    nav: str
+    tools: str = ""
+
+
+def render_tools(entries: Iterable[NavEntry]) -> str:
+    """Les entrées à icône (``NavEntry.icon``) : un bouton par entrée, à gauche de la session,
+    nommé par son libellé (``aria-label``, ``title``) ; ``data-match`` comme la navigation."""
+    buttons = []
+    for entry in sorted(entries, key=lambda e: (e.order, e.label)):
+        element_id = f' id="{escape(entry.id)}"' if entry.id else ""
+        match = f' data-match="{escape(entry.match)}"' if entry.match else ""
+        admin = " data-admin-only hidden" if entry.admin else ""
+        label = escape(entry.label)
+        svg = (
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" '
+            f'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{entry.icon}</svg>'
+        )
+        buttons.append(
+            f'\n      <a href="{escape(entry.href)}" class="topbar__icon-btn topbar__tool"{element_id}{match}{admin} '
+            f'aria-label="{label}" title="{label}">{svg}</a>'
+        )
+    return "".join(buttons)
+
+
+def render_topbar_parts(entries: Iterable[NavEntry]) -> TopbarParts:
+    """La navigation (entrées sans icône) et les boutons (entrées à icône) d'une page."""
+    entries = list(entries)
+    return TopbarParts(render_nav([e for e in entries if not e.icon]), render_tools([e for e in entries if e.icon]))
+
+
 def render_nav(entries: Iterable[NavEntry]) -> str:
     """La navigation principale, dans l'ordre des entrées (``order``). ``data-match`` porte
     l'expression régulière de la section, lue par ``kernel/static/shell.js``."""
@@ -86,21 +120,23 @@ def render_nav(entries: Iterable[NavEntry]) -> str:
     return '<nav class="topbar__nav" aria-label="Navigation principale">\n' + "\n".join(links) + "\n    </nav>"
 
 
-def render_topbar(nav: str, crumb_id: str | None = None, crumb_text: str | None = None) -> str:
-    """La barre du haut complète, avec ``nav`` (:func:`render_nav`) et le fil d'Ariane de la page."""
+def render_topbar(nav: str | TopbarParts, crumb_id: str | None = None, crumb_text: str | None = None) -> str:
+    """La barre du haut complète, avec ``nav`` (:func:`render_nav`, ou :class:`TopbarParts` avec
+    ses boutons) et le fil d'Ariane de la page."""
+    parts = nav if isinstance(nav, TopbarParts) else TopbarParts(nav)
     crumb = ""
     if crumb_id is not None or crumb_text is not None:
         element_id = f' id="{escape(crumb_id)}"' if crumb_id else ""
         crumb = f'\n      <span class="topbar__crumb"{element_id}>{escape(crumb_text or "", quote=False)}</span>'
-    return _TOPBAR_TEMPLATE.format(crumb=crumb, nav=nav)
+    return _TOPBAR_TEMPLATE.format(crumb=crumb, nav=parts.nav, tools=parts.tools)
 
 
-def _replace_marker(match: re.Match, nav: str) -> str:
+def _replace_marker(match: re.Match, nav: str | TopbarParts) -> str:
     attributes = dict(_CRUMB_ATTR_RE.findall(match.group(1)))
     return render_topbar(nav, attributes.get("id"), attributes.get("text"))
 
 
-def render_page(path: Path, nav: str) -> str:
+def render_page(path: Path, nav: str | TopbarParts) -> str:
     """Le HTML de la page ``path``, avec la barre du haut (navigation ``nav``) à la place du
     marqueur s'il y figure - sinon le fichier tel quel."""
     html = path.read_text(encoding="utf-8")
@@ -126,7 +162,7 @@ def without_plugins(html: str, disabled: Iterable[str]) -> str:
     return re.sub(r"<html\b", f'<html data-plugins-off="{escape(" ".join(names))}"', html, count=1)
 
 
-def page_response(path: Path, nav: str, request: Request | None = None, disabled: Iterable[str] = ()) -> Response:
+def page_response(path: Path, nav: str | TopbarParts, request: Request | None = None, disabled: Iterable[str] = ()) -> Response:
     """La page rendue (:func:`render_page`, sans les statiques des plugins ``disabled``), avec un
     ``ETag`` (empreinte du HTML servi, barre du haut comprise) et un ``Last-Modified`` (date du
     fichier) ; une revalidation dont le ``If-None-Match`` porte cet ``ETag`` reçoit un 304 sans corps."""
@@ -165,14 +201,14 @@ _DISABLED_PAGE = """<!doctype html>
 """
 
 
-def disabled_page(nav: str) -> HTMLResponse:
+def disabled_page(nav: str | TopbarParts) -> HTMLResponse:
     """La page d'un plugin éteint : un 404 qui garde la barre du haut."""
     return HTMLResponse(_DISABLED_PAGE.format(topbar=render_topbar(nav)), status_code=404)
 
 
 def page_handler(
     path: Path,
-    nav: Callable[[], str],
+    nav: Callable[[], str | TopbarParts],
     disabled: Callable[[], set[str]] = set,
     plugin_name: str | None = None,
 ) -> Callable[[Request], Response]:

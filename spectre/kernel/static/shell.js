@@ -16,7 +16,7 @@
 
   function markCurrentSection() {
     const path = window.location.pathname;
-    const links = [...document.querySelectorAll(".topbar__nav .topbar__link")];
+    const links = [...document.querySelectorAll(".topbar__nav .topbar__link, .topbar__tool")];
     const current = links.find((link) => sectionMatches(link, path));
     if (current) current.setAttribute("aria-current", "page");
   }

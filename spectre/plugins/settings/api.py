@@ -17,9 +17,11 @@ from ...kernel.plugin_states import PluginStates
 from ..accounts.deps import require_admin
 from ..accounts.service import User
 from . import service as settings
+from .database_api import router as database_router
 from .schemas import PluginPatch
 
 router = APIRouter(prefix="/api", tags=["settings"])
+router.include_router(database_router)  # /api/database
 page_router = APIRouter()
 
 
