@@ -99,4 +99,5 @@ def test_the_settings_page_and_its_admin_only_nav_entry(client):
     assert (redirect.status_code, redirect.headers["location"]) == (302, "/parametres/plugins")
     page = client.get("/parametres/plugins")
     assert page.status_code == 200 and "settings/plugins.js" in page.text
-    assert 'href="/parametres/plugins" class="topbar__link" data-match="^/parametres" data-admin-only hidden' in page.text
+    # une roue crantée à côté de la session, cachée jusqu'à ce que session.js voie un admin
+    assert 'href="/parametres/plugins" class="topbar__icon-btn topbar__tool" data-match="^/parametres" data-admin-only hidden' in page.text
