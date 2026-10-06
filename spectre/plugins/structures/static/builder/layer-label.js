@@ -10,7 +10,7 @@
 
 // Les types d'étape qui créent une couche ; un nitrure à composition se reconnaît à son nom
 // (GRADED_NITRIDE_RE, form-widgets.js).
-const LAYER_STEP_KINDS = new Set(["deposition", "epitaxial_growth", "faceted_growth", "lithography"]);
+const LAYER_STEP_KINDS = new Set(["deposition", "epitaxial_growth", "faceted_growth", "facet_envelope", "lithography"]);
 // Ceux qui n'en créent pas : une marque d'interface (simulation.INTERFACE_STEP_KINDS côté serveur).
 const INTERFACE_STEP_KINDS = new Set(["etch", "planarization", "chemical", "resist_strip"]);
 const LABELLED_STEP_KINDS = new Set([...LAYER_STEP_KINDS, ...INTERFACE_STEP_KINDS]);

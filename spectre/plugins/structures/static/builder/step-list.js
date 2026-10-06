@@ -432,7 +432,7 @@ async function groupSelectionIntoBrick() {
 // Matériau "produit" par une étape - sa pastille reprend la couleur du dessin et de la légende.
 function stepMaterial(step) {
   if (step.kind === "lithography") return step.resist_material;
-  if (step.kind === "deposition" || step.kind === "epitaxial_growth" || step.kind === "faceted_growth") return step.material;
+  if (step.kind === "deposition" || step.kind === "epitaxial_growth" || step.kind === "faceted_growth" || step.kind === "facet_envelope") return step.material;
   return null;
 }
 

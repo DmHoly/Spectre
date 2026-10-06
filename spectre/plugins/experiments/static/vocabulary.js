@@ -11,6 +11,7 @@ const ExperimentVocabulary = {
     planarization: "Planarisation",
     chemical: "Étape chimique",
     faceted_growth: "Croissance facettée",
+    facet_envelope: "Rattrapage des plans",
     epitaxial_growth: "Croissance épitaxiale",
     flip: "Retournement",
   },

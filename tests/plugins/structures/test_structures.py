@@ -51,6 +51,31 @@ def test_selective_growth_seed_ingan_matches_any_composition(client):
     assert "In0.30Ga0.70N" in body["frames"][-1]["materials"]  # la reprise sélective a bien eu lieu
 
 
+def test_facet_envelope_sets_a_pyramid_on_a_sag_pedestal(client):
+    _owner_microproject(client)
+    process_steps = [
+        {"kind": "deposition", "name": "sag", "material": "SiO2", "recipe": "ALD Conformal", "thickness": {"value": 20, "unit": "nm"}},
+        {"kind": "deposition", "name": "sag#2", "material": "Si3N4", "recipe": "ALD Conformal", "thickness": {"value": 20, "unit": "nm"}},
+        {"kind": "lithography", "name": "Lithographie", "resist_material": "Photoresist", "thickness": {"value": 50, "unit": "nm"}, "openings": [[200, 300]]},
+        {"kind": "etch", "name": "Gravure", "recipe": "Anisotropic RIE", "depth": {"value": 41, "unit": "nm"}},
+        {"kind": "resist_strip", "name": "Retrait de résine", "material": "Photoresist"},
+        {"kind": "epitaxial_growth", "name": "Pied", "material": "GaN", "thickness": {"value": 20, "unit": "nm"}, "orientation": "c_plane", "seed_materials": ["GaN"]},
+        {"kind": "facet_envelope", "name": "Pyramide", "material": "GaN", "c_plane": False, "semi_polar_angle_deg": 30, "seed_materials": ["GaN"]},
+    ]
+    response = simulate(client, {"substrate": substrate("GaN", width_nm=500), "steps": process_steps})
+    assert response.status_code == 200
+    last = response.json()["frames"][-1]
+    assert last["step_kind"] == "facet_envelope"
+    assert any(layer["step_index"] == 6 and layer["material"] == "GaN" for layer in last["layers"])
+
+
+def test_facet_envelope_without_a_top_is_refused(client):
+    _owner_microproject(client)
+    process_steps = [{"kind": "facet_envelope", "name": "Sans dessus", "material": "GaN", "c_plane": False, "semi_polar_angle_deg": None}]
+    response = simulate(client, {"substrate": substrate("GaN"), "steps": process_steps})
+    assert response.status_code == 422
+
+
 def test_simulate_accepts_a_flip_step_for_backside_processing(client):
     _owner_microproject(client)
     process_steps = [

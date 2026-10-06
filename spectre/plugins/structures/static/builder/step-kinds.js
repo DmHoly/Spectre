@@ -319,6 +319,86 @@ const STEP_KIND_DEFS = {
     },
   },
 
+  // Rattrapage des plans : une forme facettée imposée au cristal exposé plutôt que poussée vitesse
+  // par vitesse (structureforge.process.steps.FacetEnvelope) - chaque plan coché est poussé
+  // jusqu'au point le plus extérieur du cristal, puis tout ce qui est sous ces plans est rempli.
+  facet_envelope: {
+    label: "Rattrapage des plans",
+    color: "#9a6b12",
+    tint: "#f7efdc",
+    iconPath: '<path d="M3 20h18M7 20l5-12 5 12M9 8h6"/>',
+    campaignFields: [["semi_polar_angle_deg", "Angle semipolaire"]],
+    pyClass: "FacetEnvelope",
+    renderFields: () => `
+      <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Rattrapage des plans"></div>
+      ${gradedMaterialFieldHtml("f-material", "Matériau", "GaN")}
+      <div class="help">Chaque plan coché est poussé jusqu'au point le plus extérieur du cristal exposé, puis tout ce qui est sous ces plans est rempli. Semipolaire seul sur un sommet plat : la pyramide posée sur ce sommet ; C + M + semipolaire : un cristal irrégulier remis en facettes nettes (rien n'est ajouté à un cristal déjà régulier). Chaque ouverture du masque a sa propre forme.</div>
+      <label class="sb-check"><input type="checkbox" id="f-env-c" checked> Plan C (sommet plat)</label>
+      <label class="sb-check"><input type="checkbox" id="f-env-m"> Plan M (flancs verticaux)</label>
+      <label class="sb-check"><input type="checkbox" id="f-env-sp"> Plans semipolaires</label>
+      <div id="f-env-angle-wrap"><label>Angle semipolaire (° depuis l'axe c)</label><input class="field" id="f-angle-sp" type="number" value="30" min="1" max="89" step="1"></div>
+      <label class="sb-check"><input type="checkbox" id="f-env-top"> Tronquer par un plan C à un niveau donné</label>
+      <div class="field-row" id="f-env-top-wrap"><div><label>Niveau de troncature</label><input class="field" id="f-top-level" type="number" value="40" step="0.1"></div>
+      <div><label>Unité</label><select class="field" id="f-top-level-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div></div>
+      <div class="help" id="f-env-hint" style="margin-top:-6px;"></div>
+      <div><label>Matériaux d'amorçage (optionnel)</label><input class="field" id="f-seed-materials" placeholder="ex : GaN">
+        <div class="help" style="margin-top:4px;">Le cristal dont on prend l'enveloppe, noms séparés par des virgules. Vide = le matériau de l'étape. Seul le cristal exposé à l'air compte : un masque SAG laissé en place protège le reste de la plaque.</div>
+      </div>`,
+    wire: () => {
+      wireGradedMaterialField("f-material");
+      wireFacetEnvelopeToggles();
+    },
+    buildFromForm: (name) => {
+      const step = {
+        kind: "facet_envelope",
+        name,
+        material: gradedMaterialValue("f-material"),
+        c_plane: document.getElementById("f-env-c").checked,
+        m_plane: document.getElementById("f-env-m").checked,
+        semi_polar_angle_deg: document.getElementById("f-env-sp").checked ? parseFloat(document.getElementById("f-angle-sp").value) || 30 : null,
+        seed_materials: parseCommaList(document.getElementById("f-seed-materials").value),
+      };
+      if (document.getElementById("f-env-top").checked) {
+        step.top_level = { value: parseFloat(document.getElementById("f-top-level").value) || 0, unit: document.getElementById("f-top-level-unit").value };
+      }
+      return step;
+    },
+    fillFields: (step) => {
+      fillGradedMaterialField("f-material", step.material);
+      document.getElementById("f-env-c").checked = step.c_plane !== false;
+      document.getElementById("f-env-m").checked = Boolean(step.m_plane);
+      document.getElementById("f-env-sp").checked = step.semi_polar_angle_deg != null;
+      document.getElementById("f-angle-sp").value = step.semi_polar_angle_deg ?? 30;
+      document.getElementById("f-env-top").checked = Boolean(step.top_level);
+      if (step.top_level) {
+        document.getElementById("f-top-level").value = step.top_level.value;
+        ensureSelectValue("f-top-level-unit", step.top_level.unit, "");
+      }
+      document.getElementById("f-seed-materials").value = (step.seed_materials || []).join(", ");
+      updateFacetEnvelopeFields();
+    },
+    summary: (step) => {
+      const planes = [];
+      if (step.c_plane !== false) planes.push("C");
+      if (step.m_plane) planes.push("M");
+      if (step.semi_polar_angle_deg != null) planes.push(`SP ${step.semi_polar_angle_deg}°`);
+      return (
+        `${step.material} · ${planes.join(" + ") || "sans plan"}` +
+        (step.top_level ? ` · tronqué à ${step.top_level.value} ${step.top_level.unit}` : "") +
+        (step.seed_materials && step.seed_materials.length ? ` · sur ${step.seed_materials.join("/")}` : "")
+      );
+    },
+    pyCode: (step) => {
+      const parts = [`name=${pyStr(step.name)}`, `material=${pyStr(step.material)}`];
+      if (step.c_plane === false) parts.push("c_plane=False");
+      if (step.m_plane) parts.push("m_plane=True");
+      if (step.semi_polar_angle_deg != null) parts.push(`semi_polar_angle_deg=${step.semi_polar_angle_deg}`);
+      if (step.top_level) parts.push(`top_level=${pyLength(step.top_level)}`);
+      if (step.seed_materials && step.seed_materials.length) parts.push(`seed_materials=${pyList(step.seed_materials)}`);
+      return `FacetEnvelope(${parts.join(", ")})`;
+    },
+  },
+
   epitaxial_growth: {
     label: "Croissance épitaxiale",
     color: "#2e8b57",

@@ -58,13 +58,14 @@ test("pyStr/pyLength/pyDict/toNm render Python literals", () => {
   assert.equal(toNm({ value: 5, unit: "nm" }), 5);
 });
 
-test("STEP_KIND_DEFS registers exactly the nine known step kinds", () => {
+test("STEP_KIND_DEFS registers exactly the ten known step kinds", () => {
   const kinds = Object.keys(STEP_KIND_DEFS).sort();
   assert.deepEqual(kinds, [
     "chemical",
     "deposition",
     "epitaxial_growth",
     "etch",
+    "facet_envelope",
     "faceted_growth",
     "flip",
     "lithography",
@@ -125,6 +126,16 @@ const SAMPLE_STEPS = {
     semi_polar_angle_deg: 30,
     seed_materials: ["GaN"],
   },
+  facet_envelope: {
+    kind: "facet_envelope",
+    name: "Pyramide",
+    material: "GaN",
+    c_plane: false,
+    m_plane: false,
+    semi_polar_angle_deg: 30,
+    seed_materials: ["GaN"],
+    top_level: { value: 40, unit: "nm" },
+  },
   epitaxial_growth: {
     kind: "epitaxial_growth",
     name: "Croissance épitaxiale",
@@ -147,6 +158,8 @@ const EXPECTED_PY_CODE = {
   resist_strip: 'ResistStrip(name="Retrait de résine", material="Photoresist")',
   faceted_growth:
     'FacetedGrowth(name="Croissance facettée", material="GaN", thickness=Length(value=10, unit="nm"), rate_c=1, rate_m=0.4, rate_sp=0.15, semi_polar_angle_deg=30, seed_materials=["GaN"])',
+  facet_envelope:
+    'FacetEnvelope(name="Pyramide", material="GaN", c_plane=False, semi_polar_angle_deg=30, top_level=Length(value=40, unit="nm"), seed_materials=["GaN"])',
   epitaxial_growth:
     'EpitaxialGrowth(name="Croissance épitaxiale", material="GaN", thickness=Length(value=20, unit="nm"), orientation=GrowthOrientation.semi_polar, angle_deg=32)',
   flip: 'Flip(name="Retournement")',
@@ -168,6 +181,8 @@ test("stepSummary renders a human-readable one-liner for every step kind", () =>
   assert.equal(stepSummary({ kind: "chemical", description: "bain HF" }), "bain HF");
   assert.equal(stepSummary(SAMPLE_STEPS.resist_strip), "Photoresist");
   assert.equal(stepSummary(SAMPLE_STEPS.faceted_growth), "GaN · +10 nm (C) · M×0.4 · SP×0.15 · SAG sur GaN");
+  assert.equal(stepSummary(SAMPLE_STEPS.facet_envelope), "GaN · SP 30° · tronqué à 40 nm · sur GaN");
+  assert.equal(stepSummary({ kind: "facet_envelope", material: "GaN", c_plane: true, m_plane: true, semi_polar_angle_deg: null, seed_materials: [] }), "GaN · C + M");
   assert.equal(stepSummary(SAMPLE_STEPS.epitaxial_growth), "GaN · +20 nm · semi-polaire 32°");
   assert.equal(stepSummary(SAMPLE_STEPS.flip), "face avant ↔ face arrière");
 });

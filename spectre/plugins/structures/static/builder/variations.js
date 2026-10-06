@@ -26,6 +26,7 @@ const PARAM_FIELD_LABELS = {
   rate_m: "Vitesse plan M",
   rate_sp: "Vitesse semipolaire",
   semi_polar_angle_deg: "Angle semipolaire",
+  top_level: "Niveau de troncature",
   angle_deg: "Angle",
   material: "Matériau",
   material_c: "Matériau plan C",

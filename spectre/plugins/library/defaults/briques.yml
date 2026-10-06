@@ -10,7 +10,7 @@
 # JSON que celui envoyé par le constructeur — kind + champs propres au type).
 #
 # Types d'étape : deposition, etch, planarization, lithography, chemical, resist_strip,
-#   faceted_growth, epitaxial_growth, flip.
+#   faceted_growth, facet_envelope, epitaxial_growth, flip.
 
 bricks: []
 

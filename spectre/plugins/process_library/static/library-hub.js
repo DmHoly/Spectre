@@ -9,6 +9,7 @@ const PRESET_KIND_LABELS = {
   deposition: "Dépôt",
   epitaxial_growth: "Croissance épitaxiale",
   faceted_growth: "Croissance facettée",
+  facet_envelope: "Rattrapage des plans",
   lithography: "Lithographie",
   etch: "Gravure",
   resist_strip: "Retrait de résine",

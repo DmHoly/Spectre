@@ -178,6 +178,28 @@ function wireFacetedGrowthTipHint() {
   update();
 }
 
+// Rattrapage des plans : l'angle et le niveau ne s'affichent que pour les plans cochés, et la forme
+// doit avoir un dessus (plan C, semipolaire ou troncature) - voir FacetEnvelope côté StructureForge.
+function updateFacetEnvelopeFields() {
+  const sp = document.getElementById("f-env-sp").checked;
+  const top = document.getElementById("f-env-top").checked;
+  document.getElementById("f-env-angle-wrap").style.display = sp ? "" : "none";
+  document.getElementById("f-env-top-wrap").style.display = top ? "" : "none";
+  const hint = document.getElementById("f-env-hint");
+  if (!document.getElementById("f-env-c").checked && !sp && !top) {
+    hint.textContent = "→ la forme n'a pas de dessus : cochez le plan C, les plans semipolaires ou une troncature";
+  } else if (sp && !document.getElementById("f-env-c").checked && !top) {
+    hint.textContent = "→ semipolaire sans plan C : pyramide en pointe";
+  } else {
+    hint.textContent = "";
+  }
+}
+
+function wireFacetEnvelopeToggles() {
+  ["f-env-c", "f-env-m", "f-env-sp", "f-env-top"].forEach((id) => document.getElementById(id).addEventListener("change", updateFacetEnvelopeFields));
+  updateFacetEnvelopeFields();
+}
+
 function wireEpitaxialOrientationToggle() {
   const orientationSelect = document.getElementById("f-orientation");
   const angleWrap = document.getElementById("f-angle-wrap");

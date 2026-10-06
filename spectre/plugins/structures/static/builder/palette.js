@@ -4,14 +4,15 @@
    Aussi le petit menu d'insertion ouvert par les « + » du flow. */
 
 const TOOL_GROUPS = [
-  { title: "Ajout de matière", kinds: ["deposition", "epitaxial_growth", "faceted_growth"] },
+  { title: "Ajout de matière", kinds: ["deposition", "epitaxial_growth", "faceted_growth", "facet_envelope"] },
   { title: "Motif & retrait", kinds: ["lithography", "etch", "resist_strip", "planarization"] },
   { title: "Autres", kinds: ["chemical", "flip"] },
 ];
-const TOOL_ORDER = TOOL_GROUPS.flatMap((g) => g.kinds); // aussi l'ordre des raccourcis 1-9
+const TOOL_ORDER = TOOL_GROUPS.flatMap((g) => g.kinds); // aussi l'ordre des raccourcis 1-9 (les neuf premiers)
 const TOOL_HINTS = {
   epitaxial_growth: "SAG, nanofils",
   faceted_growth: "pointe crayon / pyramide",
+  facet_envelope: "forme facettée imposée",
   flip: "face arrière",
 };
 
@@ -31,10 +32,10 @@ function renderPaletteTools() {
             const key = TOOL_ORDER.indexOf(kind) + 1;
             const hint = TOOL_HINTS[kind] ? ` (${TOOL_HINTS[kind]})` : "";
             return `
-              <button class="sb-tool" type="button" draggable="true" data-kind="${kind}" title="${escapeHtml(def.label + hint)} - clic : insérer après la sélection · glisser : dans le flow · touche ${key}">
+              <button class="sb-tool" type="button" draggable="true" data-kind="${kind}" title="${escapeHtml(def.label + hint)} - clic : insérer après la sélection · glisser : dans le flow${key <= 9 ? ` · touche ${key}` : ""}">
                 ${toolIconHtml(kind)}
                 <span class="sb-tool__label">${escapeHtml(def.label)}</span>
-                <kbd class="sb-tool__key">${key}</kbd>
+                ${key <= 9 ? `<kbd class="sb-tool__key">${key}</kbd>` : ""}
               </button>`;
           })
           .join("")}
@@ -147,7 +148,7 @@ function openKindMenu(anchor, gap) {
     TOOL_ORDER.map(
       (kind, k) => `
         <button class="sb-kind-menu__item" type="button" role="menuitem" data-kind="${kind}" data-gap="${gap}">
-          ${toolIconHtml(kind, 13)}<span>${escapeHtml(STEP_KIND_DEFS[kind].label)}</span><kbd>${k + 1}</kbd>
+          ${toolIconHtml(kind, 13)}<span>${escapeHtml(STEP_KIND_DEFS[kind].label)}</span>${k < 9 ? `<kbd>${k + 1}</kbd>` : ""}
         </button>`
     ).join("");
   kindMenu.hidden = false;

@@ -10,6 +10,7 @@ const KINDS = {
   deposition: { label: "Dépôt", family: "Ajout de matière", color: "#1d6fae" },
   epitaxial_growth: { label: "Croissance épitaxiale", family: "Ajout de matière", color: "#2e8b57" },
   faceted_growth: { label: "Croissance facettée", family: "Ajout de matière", color: "#b8860b" },
+  facet_envelope: { label: "Rattrapage des plans", family: "Ajout de matière", color: "#9a6b12" },
   lithography: { label: "Lithographie", family: "Motif & retrait", color: "#7a4a97" },
   etch: { label: "Gravure", family: "Motif & retrait", color: "#a45a3a" },
   resist_strip: { label: "Retrait de résine", family: "Motif & retrait", color: "#a45a3a" },
@@ -32,6 +33,7 @@ const FIELD_LABELS = {
   recipe: "recette",
   orientation: "orientation",
   target_level: "niveau cible",
+  top_level: "niveau de troncature",
 };
 
 const state = { presets: [], canWrite: false, filter: "", scope: "" };
@@ -67,6 +69,10 @@ function stepSummary(preset) {
     }
     case "faceted_growth":
       return `${step.material} · ${lengthText(step.thickness)} · C×${step.rate_c} M×${step.rate_m} SP×${step.rate_sp} (${step.semi_polar_angle_deg}°)`;
+    case "facet_envelope": {
+      const planes = [step.c_plane !== false ? "C" : "", step.m_plane ? "M" : "", step.semi_polar_angle_deg != null ? `SP ${step.semi_polar_angle_deg}°` : ""].filter(Boolean);
+      return [step.material, planes.join(" + "), step.top_level ? `tronqué à ${lengthText(step.top_level)}` : ""].filter(Boolean).join(" · ");
+    }
     case "epitaxial_growth":
       return [step.material, lengthText(step.thickness), step.seed_materials && step.seed_materials.length ? `SAG sur ${step.seed_materials.join("/")}` : ""].filter(Boolean).join(" · ");
     case "lithography":

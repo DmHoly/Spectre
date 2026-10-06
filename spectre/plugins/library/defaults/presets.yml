@@ -10,7 +10,7 @@
 # Champs d'un préset :
 #   name             (obligatoire) — aussi le nom de l'étape, sauf si step.name le précise
 #   step             (obligatoire) — l'étape, avec son kind : deposition, etch, planarization,
-#                    chemical, lithography, resist_strip, epitaxial_growth, faceted_growth, flip ;
+#                    chemical, lithography, resist_strip, epitaxial_growth, faceted_growth, facet_envelope, flip ;
 #                    ses champs sont ceux du constructeur (les longueurs : {value, unit}, nm/um/A)
 #   recipe           (optionnel, dépôt/gravure) — la recette propre au préset, que l'étape nomme
 #                    (step.recipe, sinon le nom du préset) : mode, angle_deg et, pour une gravure,
