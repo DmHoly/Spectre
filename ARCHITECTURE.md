@@ -54,9 +54,10 @@ Le noyau ne connaît **aucune** fonctionnalité métier. Il fournit :
 | `annotations.py` | La forme des annotations d'une image, la même pour toute image que Spectre montre : `ImageAnnotation` (`{type: "arrow" \| "box", x, y, x2, y2, label}`, en % de l'image, champs en plus refusés) et `clean_annotations(raw, limit=100)` (positions dans l'image : des nombres finis entre 0 et 100 ; libellé de 200 caractères au plus ; 422 `invalid_annotation`). Le noyau ne sait pas à quelle image une annotation appartient : le cahier la range dans la mesure par une clé d'image, une structure en images sur l'image elle-même. Au noyau plutôt qu'à `attachments` : une image externe n'est pas une pièce jointe, et `notebook` et `structures` s'en servent tous deux |
 | `json_store.py` | Collections JSON `{"items": [...]}` d'éléments à `id`, lues et écrites sous un verrou par chemin, de façon atomique ; un élément illisible est écarté à la lecture et gardé tel quel à l'écriture (`ItemStore`, `read_json`, `write_json`, `path_lock`) - les bibliothèques de `process_library` |
 | `mail.py` | `send_email(to, subject, body)` : SMTP si `SPECTRE_SMTP_HOST`, sinon journalisation **sans le corps** hors `SPECTRE_EMAIL_DEBUG=1` |
-| `pages.py` | Service des pages HTML d'un plugin, avec la barre du haut commune à la place du marqueur `<!-- spectre:topbar -->` (fil d'Ariane déclaré dans le marqueur : `crumb-id`, `crumb-text`) : marque, navigation construite à partir des `NavEntry` de tous les plugins (une entrée peut être réservée à certaines pages : `NavEntry.pages`), place de la session |
+| `pages.py` | Service des pages HTML d'un plugin, avec la barre du haut commune à la place du marqueur `<!-- spectre:topbar -->` (fil d'Ariane déclaré dans le marqueur : `crumb-id`, `crumb-text`) : marque, navigation construite à partir des `NavEntry` des plugins actifs, relue à chaque requête (une entrée peut être réservée à certaines pages : `NavEntry.pages`, ou aux administrateurs : `NavEntry.admin`, rendue cachée et révélée par `accounts/static/session.js`), place de la session. Retire d'une page les `<script>` et `<link>` des statiques des plugins éteints et les nomme sur `<html data-plugins-off="...">` ; la page d'un plugin éteint est un 404 « Module désactivé » |
+| `plugin_states.py` | L'activation des plugins, réglée à chaud par un administrateur (§ 3, *Activer et désactiver un plugin*) : `PluginStates` (`is_enabled`, `blocked_by`, `all_dependents`, `set_enabled`, `core`), installé par `create_app` (`app.state.plugin_states`) ; `is_enabled(name)` pour un plugin qui en sert d'autres (`search`, `experiments.repository`). Sa table `plugin_states(plugin, enabled, updated_at, updated_by)` est, avec `schema_migrations`, la seule table du noyau |
 | `http.py` | Petits helpers HTTP : `created(response, location)`, conversion `ETag` / `If-Match` |
-| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles ; `withQuery` répète un paramètre donné en tableau, `?id=a&id=b`), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`), `timeline.js` (axe des mois et hachures des frises : lots, thématique), `annotations.js` (global `ImageAnnotations` : les annotations d'une image dessinées et numérotées, leur liste et leurs outils - § 6), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
+| `static/` | Front du noyau : `api.js` (client HTTP : JSON, `upload(FormData)`, `blob`, `If-Match`, redirection 401, erreurs 422 lisibles ; `withQuery` répète un paramètre donné en tableau, `?id=a&id=b`), `ui.js` (`escapeHtml`, `initials`, dates, durées, `routeParams(pattern)`, `pluginEnabled(name)`), `timeline.js` (axe des mois et hachures des frises : lots, thématique), `annotations.js` (global `ImageAnnotations` : les annotations d'une image dessinées et numérotées, leur liste et leurs outils - § 6), `shell.js` (barre du haut : navigation active), `kernel.css` (tokens et composants de la charte), `img/`, `vendor/` (d3, codemirror) |
 
 ```python
 @dataclass(frozen=True)
@@ -68,7 +69,11 @@ class Plugin:
     pages: tuple[Page, ...] = ()           # Page("/lots/{code}", "lot.html")
     nav: tuple[NavEntry, ...] = ()         # entrées de la barre du haut
     migrations: tuple[Migration, ...] = ()
-    enabled: Callable[[], bool] = lambda: True   # ex. kpis_demo : SPECTRE_DEMO_DATA=1
+    enabled: Callable[[], bool] = lambda: True   # disponible sur l'instance, lu au démarrage (kpis_demo : SPECTRE_DEMO_DATA=1)
+    title: str = ""                        # ce que montre Paramètres > Plugins : un nom lisible,
+    description: str = ""                  # une phrase sur ce qu'il apporte,
+    icon: str = "puzzle"                   # une clé de settings/static/icons.js
+    required: bool = False                 # du noyau : ne se désactive pas, ni ce dont il dépend
 ```
 
 Le `page_router` d'un plugin est inclus **avant** ses pages : une redirection peut viser un gabarit
@@ -90,27 +95,58 @@ placés au-dessus de lui.
 | # | Plugin | Responsabilité | Dépend de | Tables / stockage |
 |---|---|---|---|---|
 | 1 | `accounts` | Comptes, sessions, mot de passe, profil, rôle admin global. Fournit `deps.current_user` et `deps.require_admin` | — | `users`, `sessions`, `password_resets` |
-| 2 | `teams` | Équipes et leurs membres (`manager` ou `member`), page Équipes. Fournit `service.managed_team_ids(user_id)`. Ce qu'une équipe possède est dit par `areas` | accounts | `teams`, `team_members` |
-| 3 | `search` | `GET /api/search`, qui agrège les fournisseurs déclarés par les autres plugins (`register_provider`) | accounts | — |
-| 4 | `library` | Bibliothèque racine YAML de l'instance (matériaux, recettes, présets, briques, textes d'UI), chargeur générique avec cache mtime, registre `LibraryFile` alimenté par les plugins propriétaires, édition réservée à l'admin | accounts | `data_dir/library/*.yml` (copiés depuis `library/defaults/` au premier démarrage, et les `*.yml` d'un `<dépôt>/library` d'avant par-dessus) |
-| 5 | `areas` | Projets corporate (*management areas*), leur équipe, thématiques, objectifs. Pages accueil, projet et thématique. Fournit `service.can_manage(user, area)`, `managed_area_ids(user)` et `can_place_microproject(user, area)` | accounts, teams | `management_areas` (dont `team_id`, `ON DELETE SET NULL`), `thematics`, `area_objectives` |
-| 6 | `microprojects` | µprojets (CRUD, numéro, rattachement à un projet ou une thématique, recherche), membres, rôles, invitations. Fournit la règle d'accès (`service.access`, `effective_role`, `check_role`) et `deps.require_role` | accounts, areas, search | `microprojects`, `memberships`, `invitations` |
-| 7 | `attachments` | Fichiers téléversés d'un µprojet (blob + sidecar), types, tailles, service des octets | microprojects | `data/microprojects/<slug>/attachments/` |
-| 8 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
-| 9 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library | JSON par portée |
-| 10 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, combinaison de deux études (une nouvelle piste à deux parents), suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
-| 11 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), le regroupement des refs locales d'avant dont le nom est porté dans au moins deux µprojets (`local_refs.py`) | experiments, microprojects, structures | `structure_references`, `reference_versions`, `reference_import_scans`, `reference_import_rules`, `retired_reference_slugs`, `dismissed_local_refs` |
-| 12 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
-| 13 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité | experiments, search | cache mémoire |
-| 14 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
-| 15 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
-| 16 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
-| 17 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
-| 18 | `external_images` | Politique des images externes référencées (TEM, scans) : racines autorisées, formats affichables, lecture bornée ; parcours des dossiers autorisés | microprojects | — |
-| 19 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens), rattachées aux plaques et aux étapes ; sert les images externes d'une entrée par identifiant ; lit les vues, les preuves et les jeux d'images d'avant (`legacy.py`) | characterization, experiments, attachments, external_images | `snapshots/`, métadonnées Follow (`notebook_entries`) |
-| 20 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
-| 21 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
-| 22 | `docs` | Pages de documentation (contenu inchangé) | — | — |
+| 2 | `settings` | Paramètres de l'application, réservés aux administrateurs : page `/parametres` à menu latéral, une section par couche réglable. Première section : les plugins (`GET /api/plugins`, `PATCH /api/plugins/{plugin_name}` `{enabled}`), dont la règle est au noyau (`kernel.plugin_states`) | accounts | — (la table `plugin_states` est au noyau) |
+| 3 | `teams` | Équipes et leurs membres (`manager` ou `member`), page Équipes. Fournit `service.managed_team_ids(user_id)`. Ce qu'une équipe possède est dit par `areas` | accounts | `teams`, `team_members` |
+| 4 | `search` | `GET /api/search`, qui agrège les fournisseurs déclarés par les autres plugins (`register_provider`) | accounts | — |
+| 5 | `library` | Bibliothèque racine YAML de l'instance (matériaux, recettes, présets, briques, textes d'UI), chargeur générique avec cache mtime, registre `LibraryFile` alimenté par les plugins propriétaires, édition réservée à l'admin | accounts | `data_dir/library/*.yml` (copiés depuis `library/defaults/` au premier démarrage, et les `*.yml` d'un `<dépôt>/library` d'avant par-dessus) |
+| 6 | `areas` | Projets corporate (*management areas*), leur équipe, thématiques, objectifs. Pages accueil, projet et thématique. Fournit `service.can_manage(user, area)`, `managed_area_ids(user)` et `can_place_microproject(user, area)` | accounts, teams | `management_areas` (dont `team_id`, `ON DELETE SET NULL`), `thematics`, `area_objectives` |
+| 7 | `microprojects` | µprojets (CRUD, numéro, rattachement à un projet ou une thématique, recherche), membres, rôles, invitations. Fournit la règle d'accès (`service.access`, `effective_role`, `check_role`) et `deps.require_role` | accounts, areas, search | `microprojects`, `memberships`, `invitations` |
+| 8 | `attachments` | Fichiers téléversés d'un µprojet (blob + sidecar), types, tailles, service des octets | microprojects | `data/microprojects/<slug>/attachments/` |
+| 9 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
+| 10 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library | JSON par portée |
+| 11 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, combinaison de deux études (une nouvelle piste à deux parents), suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
+| 12 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), le regroupement des refs locales d'avant dont le nom est porté dans au moins deux µprojets (`local_refs.py`) | experiments, microprojects, structures | `structure_references`, `reference_versions`, `reference_import_scans`, `reference_import_rules`, `retired_reference_slugs`, `dismissed_local_refs` |
+| 13 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
+| 14 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité | experiments, search | cache mémoire |
+| 15 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
+| 16 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
+| 17 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
+| 18 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
+| 19 | `external_images` | Politique des images externes référencées (TEM, scans) : racines autorisées, formats affichables, lecture bornée ; parcours des dossiers autorisés | microprojects | — |
+| 20 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens), rattachées aux plaques et aux étapes ; sert les images externes d'une entrée par identifiant ; lit les vues, les preuves et les jeux d'images d'avant (`legacy.py`) | characterization, experiments, attachments, external_images | `snapshots/`, métadonnées Follow (`notebook_entries`) |
+| 21 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
+| 22 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
+| 23 | `docs` | Pages de documentation (contenu inchangé) | — | — |
+
+### Activer et désactiver un plugin
+
+Un administrateur active ou désactive un plugin depuis **Paramètres > Plugins** (`/parametres/plugins`,
+plugin `settings`), **à chaud** : rien à redémarrer. La règle est au noyau (`kernel.plugin_states`) :
+
+- **Noyau** : les plugins `required` - `accounts`, `settings`, `microprojects`, `experiments`,
+  `wafers`, `process_library` - et tout plugin dont l'un d'eux dépend (`teams`, `search`, `library`,
+  `areas`, `attachments`, `structures`) ne se désactivent pas (409 `plugin_required`). `wafers` et
+  `process_library` en sont parce que le constructeur et la fiche d'étude s'en servent partout
+  (champ FDL, liens de plaque, structures enregistrées, présets).
+- **Actif** = disponible (`Plugin.enabled()`, lu au démarrage : un plugin indisponible n'a pas de
+  routes ; 409 `plugin_unavailable` pour l'activer), activé (le choix enregistré, actif par défaut)
+  et tous ses prérequis actifs. Désactiver un plugin **éteint ceux qui en dépendent** sans toucher à
+  leur choix (`blocked_by` : ce qui les éteint) ; le réactiver les rallume. La page demande
+  confirmation en nommant les modules qui s'éteindront avec lui.
+- **Éteint**, un plugin reste installé (migrations appliquées, tables et fichiers gardés, statiques
+  servis) mais : ses routes `/api` et ses redirections répondent 404 `plugin_disabled` (une
+  dépendance posée par `create_app` sur son routeur - avant l'authentification : une route éteinte
+  n'existe plus, pour personne), ses pages un 404 « Module désactivé », ses entrées quittent la
+  barre du haut, ses `<script>` / `<link>` sont retirés des pages des autres plugins (ses panneaux
+  ne se montent plus), et la recherche n'interroge plus ses fournisseurs (`SearchProvider.plugin`).
+- **Le front d'un plugin du noyau** qui se sert d'un plugin optionnel le vérifie avec
+  `pluginEnabled(name)` (`kernel/static/ui.js`) avant d'en appeler les globaux, et cache ce qui le
+  concerne : bloc KPI d'un projet (`kpis`), lien Atlas (`atlas`), départ depuis une référence,
+  « Publier comme référence » et versions publiées (`references`), badges et affectation de lots
+  (`lots`), « Données en base » (`characterization`), onglet Données et citations de la conclusion
+  (`notebook`), formulaire d'intention du constructeur (`intent_forms`). Côté serveur, sans
+  `intent_forms` le formulaire d'un µprojet n'est pas exigé (`experiments.repository.writing`) : ses
+  questions ne peuvent plus être posées.
 
 **Les tables d'un autre plugin.** Un plugin possède ses tables : il est seul à y écrire. Il peut
 en revanche les **lire par jointure SQL** chez les plugins dont il dépend, pour une liste qui en

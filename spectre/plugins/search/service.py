@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Callable
 
+from ...kernel import plugin_states
 from ...kernel.errors import InvalidInput
 from ..accounts.service import User
 
@@ -35,6 +36,7 @@ class SearchProvider:
     search: Callable[[str, User], list[SearchHit]]  # ce qu'il trouve pour cette saisie, vu par ce lecteur
     order: int = 100  # rang de son groupe
     leads: Callable[[str], bool] = _never  # son groupe passe en tête pour cette saisie (« 1234 » : une FDL)
+    plugin: str = ""  # le plugin qui le déclare : éteint (kernel.plugin_states), il ne cherche plus
 
 
 _PROVIDERS: dict[str, SearchProvider] = {}
@@ -54,7 +56,11 @@ def search(query: str, user: User, types: list[str] | None = None) -> list[dict]
     if not query:
         return []
     selected = sorted(
-        (provider for provider in _PROVIDERS.values() if not types or provider.type in types),
+        (
+            provider
+            for provider in _PROVIDERS.values()
+            if (not types or provider.type in types) and (not provider.plugin or plugin_states.is_enabled(provider.plugin))
+        ),
         key=lambda provider: (not provider.leads(query), provider.order, provider.type),
     )
     return [{"type": provider.type, **asdict(hit)} for provider in selected for hit in provider.search(query, user)]

@@ -12,11 +12,15 @@
    compteurs de experimentsApi.stats, le rôle d'admin de accountsApi.me (is_admin). */
 
 const { slug } = routeParams("/management/{slug}");
-document.getElementById("atlas-link").href = `/management/${encodeURIComponent(slug)}/atlas`;
+// le lien « Atlas » de la barre du haut (absent si le plugin atlas est désactivé)
+const atlasLink = document.getElementById("atlas-link");
+if (atlasLink) atlasLink.href = `/management/${encodeURIComponent(slug)}/atlas`;
 
 // Tendances, juste sous les objectifs : bloc KPI à onglets réutilisable (kpis/static/kpi-trend.js), un
-// onglet par KPI déclaré côté serveur (spectre/plugins/kpis/service.py).
-KpiTrendBlock.mount(document.getElementById("trends"), {
+// onglet par KPI déclaré côté serveur (spectre/plugins/kpis/service.py). Sans le plugin kpis, la
+// section reste cachée.
+if (!pluginEnabled("kpis")) document.getElementById("trends").hidden = true;
+else KpiTrendBlock.mount(document.getElementById("trends"), {
   eyebrow: "Tendances",
   title: "Évolution des KPI",
   loadKpis: () => kpisApi.list(slug),

@@ -10,4 +10,7 @@ PLUGIN = Plugin(
     depends_on=("kpis", "structures"),
     router=router,
     enabled=enabled,
+    title="KPI de démonstration",
+    description="Des séries fictives pour les démonstrations ; disponible seulement avec SPECTRE_DEMO_DATA=1.",
+    icon="sparkles",
 )

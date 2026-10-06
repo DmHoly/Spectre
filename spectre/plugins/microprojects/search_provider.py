@@ -29,4 +29,4 @@ def _microprojects(query: str, user: User) -> list[SearchHit]:
     ]
 
 
-register_provider(SearchProvider(type="microproject", search=_microprojects, order=10))
+register_provider(SearchProvider(type="microproject", plugin="microprojects", search=_microprojects, order=10))

@@ -12,4 +12,7 @@ PLUGIN = Plugin(
     pages=(Page("/lots", "lots.html"), Page("/lots/{code}", "lot.html")),
     nav=(NavEntry("Lots", "/lots", order=30, match=r"^/lots"),),
     migrations=MIGRATIONS,
+    title="Lots",
+    description="Les lots de fabrication, leurs plaques, leurs thématiques visées et le Gantt.",
+    icon="calendar",
 )

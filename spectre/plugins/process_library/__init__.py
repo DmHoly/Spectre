@@ -17,4 +17,8 @@ PLUGIN = Plugin(
     ),
     nav=(NavEntry("Bibliothèque", "/bibliotheque", order=20, match=r"^/bibliotheque"),),
     migrations=MIGRATIONS,
+    title="Bibliothèque de procédés",
+    description="Structures enregistrées, présets d'étape et briques technologiques à reprendre dans le constructeur.",
+    icon="library",
+    required=True,
 )

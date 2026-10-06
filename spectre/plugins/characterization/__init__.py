@@ -10,4 +10,7 @@ PLUGIN = Plugin(
     router=router,
     pages=(Page("/donnees", "data-types.html"), Page("/donnees/{key}", "data-types.html")),
     nav=(NavEntry("Data", "/donnees", order=40, match=r"^/donnees"),),
+    title="Caractérisation",
+    description="Les données de caractérisation PRISM : catalogue, requêtes et graphiques.",
+    icon="chart",
 )

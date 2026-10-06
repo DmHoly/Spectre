@@ -68,5 +68,5 @@ def _looks_like_an_fdl(query: str) -> bool:
     return re.fullmatch(r"\s*(fdl)?[\s_\-#:]*\d+\s*", query, re.IGNORECASE) is not None
 
 
-register_provider(SearchProvider(type="wafer", search=_wafers, order=30))
-register_provider(SearchProvider(type="fdl", search=_fdls, order=40, leads=_looks_like_an_fdl))
+register_provider(SearchProvider(type="wafer", plugin="wafers", search=_wafers, order=30))
+register_provider(SearchProvider(type="fdl", plugin="wafers", search=_fdls, order=40, leads=_looks_like_an_fdl))

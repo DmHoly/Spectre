@@ -112,3 +112,11 @@ function routeParams(patterns, path = window.location.pathname) {
   }
   return null;
 }
+
+/* Un plugin est-il actif ? Le noyau nomme les plugins éteints sur <html data-plugins-off="a b">
+   (kernel/pages.py) et retire leurs <script> de la page : une page qui se sert d'un plugin
+   optionnel le vérifie ici avant d'appeler ses globaux, et cache ce qui le concerne. */
+function pluginEnabled(name) {
+  const off = (document.documentElement.dataset.pluginsOff || "").split(" ");
+  return !off.includes(name);
+}

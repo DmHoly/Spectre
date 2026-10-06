@@ -23,12 +23,14 @@ from .notebook import PLUGIN as notebook
 from .process_library import PLUGIN as process_library
 from .references import PLUGIN as references
 from .search import PLUGIN as search
+from .settings import PLUGIN as settings
 from .structures import PLUGIN as structures
 from .teams import PLUGIN as teams
 from .wafers import PLUGIN as wafers
 
 PLUGINS = (
     accounts,
+    settings,
     teams,
     search,
     library,

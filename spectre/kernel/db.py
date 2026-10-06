@@ -4,7 +4,8 @@ store) keep their own data as flat JSON files (see ``follow.storage.backends.Jso
 Spectre does not touch that; the database only ever stores rows that need to be queried by
 something other than an id (an email, a microproject membership).
 
-The kernel owns the connection and the migration runner, never a table: each plugin declares its
+The kernel owns the connection and the migration runner, and no business table (only its own
+bookkeeping: ``schema_migrations`` here, ``plugin_states`` in :mod:`spectre.kernel.plugin_states`): each plugin declares its
 own schema as versioned :class:`~spectre.kernel.plugin.Migration` steps (its ``migrations.py``),
 applied once each, in the order of the plugins then of their migrations - see
 :func:`run_migrations`.

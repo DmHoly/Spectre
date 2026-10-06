@@ -118,7 +118,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
           }
         </div>`;
       if (variation) renderLineageStructureCarousel(variation);
-      if (canEvolve) {
+      if (canEvolve && pluginEnabled("lots")) {
         // mettre un wafer de l'expérience dans un lot (lot-picker.js) ; le badge suit dans le graphe
         mountLotAssign(panel.querySelector("#lineage-lot-assign"), {
           lasermarks: (detail.physical_tracking || []).map((e) => e.sample_id),
@@ -265,7 +265,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
   // Les lots (lotsApi, en une requête) qui contiennent un wafer de chaque nœud : son badge de lot.
   async function attachLots(nodes) {
     const marks = [...new Set(nodes.flatMap((n) => n.wafers || []))];
-    const lots = marks.length ? await lotsApi.list({ wafer: marks.map(waferKey), view: "summary" }) : [];
+    const lots = marks.length && pluginEnabled("lots") ? await lotsApi.list({ wafer: marks.map(waferKey), view: "summary" }) : [];
     nodes.forEach((node) => {
       const keys = new Set((node.wafers || []).map(waferKey));
       node.lots = lots.filter((l) => l.wafers.some((w) => keys.has(w.key)));

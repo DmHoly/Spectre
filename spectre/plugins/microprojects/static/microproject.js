@@ -264,10 +264,13 @@ document.getElementById("option-wafers").addEventListener("click", () => {
 
 // « Nouvelle expérience » : d'abord une référence (references/static/start-picker.js) ; partir sans
 // référence (dessin vierge, image, structure de la bibliothèque, étude existante) ou de plaques
-// existantes en second.
+// existantes en second. Sans le plugin references, directement les départs sans référence.
+const referencesOn = pluginEnabled("references");
 function openStartFromReference(intro) {
+  if (!referencesOn) return openNewExperienceDialog();
   ReferenceStartPicker.open({ microprojectSlug: slug, intro, onBlank: openNewExperienceDialog, onWafers: openStartFromWafers });
 }
+document.getElementById("back-to-reference").hidden = !referencesOn;
 document.getElementById("back-to-reference").addEventListener("click", () => {
   newExperienceDialog.close();
   openStartFromReference();

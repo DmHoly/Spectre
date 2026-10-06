@@ -287,6 +287,9 @@ svg {
   color: rgba(255, 255, 255, 0.68);
   white-space: nowrap;
 }
+.topbar__link[hidden] {
+  display: none; /* une entrée réservée aux administrateurs, avant que session.js la révèle */
+}
 .topbar__link:hover {
   color: #fff;
 }

@@ -14,13 +14,35 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from . import plugin_states
 from .db import run_migrations
 from .errors import install_error_handlers
 from .pages import KERNEL_STATIC_DIR, nav_entries_for, page_handler, plugin_dir, render_nav, resolve_page
-from .plugin import Plugin, check_dependencies
+from .plugin import NavEntry, Plugin, check_dependencies
+from .plugin_states import PluginDisabled, PluginStates
+
+
+def _guard(states: PluginStates, plugin: Plugin):
+    """La dépendance posée sur toutes les routes d'un plugin : 404 ``plugin_disabled`` s'il est éteint."""
+
+    def require_enabled() -> None:
+        if not states.is_enabled(plugin.name):
+            raise PluginDisabled(f"Le module « {plugin.title or plugin.name} » est désactivé.")
+
+    return require_enabled
+
+
+def _nav_renderer(states: PluginStates, entries: list[tuple[str, NavEntry]], page_path: str):
+    """La navigation d'une page, sans les entrées des plugins éteints - relue à chaque requête."""
+
+    def nav() -> str:
+        off = states.disabled()
+        return render_nav(nav_entries_for([entry for owner, entry in entries if owner not in off], page_path))
+
+    return nav
 
 
 def create_app(plugins: Sequence[Plugin] | None = None) -> FastAPI:
@@ -34,11 +56,15 @@ def create_app(plugins: Sequence[Plugin] | None = None) -> FastAPI:
 
     app = FastAPI(title="Spectre", docs_url=None, redoc_url=None)
     install_error_handlers(app)
+    # L'activation des plugins se règle à chaud (spectre.kernel.plugin_states) : tout plugin
+    # disponible est monté, et chacune de ses routes vérifie à la requête qu'il est actif.
+    states = plugin_states.install(plugins)
+    app.state.plugin_states = states
 
     active = [plugin for plugin in plugins if plugin.enabled()]
     for plugin in active:
         if plugin.router is not None:
-            app.include_router(plugin.router)
+            app.include_router(plugin.router, dependencies=[Depends(_guard(states, plugin))])
 
     if KERNEL_STATIC_DIR.is_dir():
         app.mount("/static/kernel", StaticFiles(directory=KERNEL_STATIC_DIR), name="static-kernel")
@@ -61,14 +87,14 @@ def create_app(plugins: Sequence[Plugin] | None = None) -> FastAPI:
             response.headers["Cache-Control"] = "no-cache"
         return response
 
-    nav_entries = [entry for plugin in active for entry in plugin.nav]
+    nav_entries = [(plugin.name, entry) for plugin in active for entry in plugin.nav]
     for plugin in active:
         # ses routes de pages spéciales d'abord : une redirection peut viser un gabarit plus
         # étroit qu'une page du plugin (un ancien id de version sous la page d'une étude)
         if plugin.page_router is not None:
-            app.include_router(plugin.page_router)
+            app.include_router(plugin.page_router, dependencies=[Depends(_guard(states, plugin))])
         for page in plugin.pages:
-            nav = render_nav(nav_entries_for(nav_entries, page.path))
-            app.get(page.path)(page_handler(resolve_page(plugin.name, page.file), nav))
+            nav = _nav_renderer(states, nav_entries, page.path)
+            app.get(page.path)(page_handler(resolve_page(plugin.name, page.file), nav, states.disabled, plugin.name))
 
     return app

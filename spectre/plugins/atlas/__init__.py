@@ -18,4 +18,7 @@ PLUGIN = Plugin(
             pages=("/management/{slug}", "/management/{slug}/thematiques/{thematique_slug}"),
         ),
     ),
+    title="Atlas",
+    description="La vue graphe d'un projet corporate : µprojets, études et liens.",
+    icon="network",
 )

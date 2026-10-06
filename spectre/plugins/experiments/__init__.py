@@ -15,4 +15,8 @@ PLUGIN = Plugin(
         Page("/microprojets/{slug}/experiences/{experiment_id}", "experiment.html"),
         Page("/microprojets/{slug}/evolution", "evolution.html"),
     ),
+    title="Études",
+    description="Les études d'un µprojet et leurs versions : évolution, statut, conclusion, filiation.",
+    icon="flask",
+    required=True,
 )

@@ -13,4 +13,7 @@ PLUGIN = Plugin(
     pages=(Page("/references", "references.html"), Page("/references/{slug}", "reference.html")),
     nav=(NavEntry("Références", "/references", order=25, match=r"^/references"),),
     migrations=MIGRATIONS,
+    title="Références de structure",
+    description="Les références de toute l'application : versions publiées depuis les études, leur évolution et leurs usages.",
+    icon="bookmark",
 )

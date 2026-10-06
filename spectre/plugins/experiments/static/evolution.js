@@ -316,7 +316,7 @@
           `<a class="ref-badge" href="/references/${encodeURIComponent(entry.reference.slug)}?version=${encodeURIComponent(entry.number)}" title="Voir l'évolution de la référence">${escapeHtml(entry.label)}</a>`
       )
       .join(" ");
-    const canPublish = state.canEdit && node.structure_kind === "process" && node.has_process;
+    const canPublish = state.canEdit && node.structure_kind === "process" && node.has_process && pluginEnabled("references");
     if (!published && !canPublish) return "";
     return `
       <div class="evo-panel__section">
@@ -411,8 +411,9 @@
   // -- actions -------------------------------------------------------------------------------
 
   async function load() {
-    // les versions publiées comme référence se montrent même légères (include_versions)
-    state.published = await referencesApi.publishedFrom(slug);
+    // les versions publiées comme référence se montrent même légères (include_versions) ; aucune
+    // sans le plugin references
+    state.published = pluginEnabled("references") ? await referencesApi.publishedFrom(slug) : [];
     state.history = await experimentsApi.structureHistory(slug, state.allVersions, state.published.map((entry) => entry.version_id));
     if (state.selectedId && !nodeById(state.selectedId)) state.selectedId = null;
     if (state.compareFrom && !nodeById(state.compareFrom.version_id)) state.compareFrom = null;

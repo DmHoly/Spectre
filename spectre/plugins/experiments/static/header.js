@@ -114,7 +114,7 @@
       : `<span class="help" style="margin:0;">Aucun lasermark renseigné</span>`;
     document.getElementById("fdl-row").innerHTML = fdlChipsHtml(fdlsOfTracking(detail.physical_tracking));
     // « Données en base » (characterization/static/wafer-data-links.js) : les requêtes ouvertes sur ses plaques
-    renderWaferDbLinks(document.querySelectorAll(".js-db-link"), lasermarks);
+    if (pluginEnabled("characterization")) renderWaferDbLinks(document.querySelectorAll(".js-db-link"), lasermarks);
   }
 
   // Une version passée (lecture seule, avec de quoi en partir sur une nouvelle piste), une pause et

@@ -3,4 +3,8 @@
 from ...kernel.plugin import Plugin
 from .api import router
 
-PLUGIN = Plugin(name="attachments", depends_on=("microprojects",), router=router)
+PLUGIN = Plugin(name="attachments", depends_on=("microprojects",), router=router,
+    title="Pièces jointes",
+    description="Les fichiers téléversés dans un µprojet.",
+    icon="paperclip",
+)

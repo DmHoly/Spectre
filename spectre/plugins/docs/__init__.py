@@ -11,4 +11,7 @@ PLUGIN = Plugin(
         Page("/docs/architecture", "architecture.html"),
     ),
     nav=(NavEntry("Documentation", "/docs", order=50, match=r"^/docs"),),
+    title="Documentation",
+    description="Les pages d'aide de Spectre.",
+    icon="help",
 )
