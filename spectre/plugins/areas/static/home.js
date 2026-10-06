@@ -104,8 +104,9 @@ async function load() {
       document.getElementById("new-theme-btn").style.display = "";
     }
 
-    // Nouvelle expérience : d'abord une référence, puis le µprojet où la lancer (éditeur)
-    if (mine.some((p) => p.can_edit)) document.getElementById("new-experience-btn").style.display = "";
+    // Nouvelle expérience : d'abord une référence, puis le µprojet où la lancer (éditeur) - un
+    // départ du plugin references : sans lui, on lance une expérience depuis la page d'un µprojet
+    if (pluginEnabled("references") && mine.some((p) => p.can_edit)) document.getElementById("new-experience-btn").style.display = "";
 
     document.getElementById("my-microprojects-count").textContent = `(${mine.length})`;
     document.getElementById("my-microprojects").innerHTML = mine.length

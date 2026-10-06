@@ -63,7 +63,7 @@ async function loadParent() {
   const verification = detail.objective_verification || {};
   state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
   renderObjectives();
-  intentFormSection.fill(detail.form_answers);
+  if (intentFormSection) intentFormSection.fill(detail.form_answers);
 
   const entity = (detail.physical_tracking || []).find((e) => e.sample_id) || {};
   document.getElementById("exp-entity-sample-id").value = entity.sample_id || "";
@@ -212,7 +212,9 @@ async function initStructureImagePage() {
     }
     const label = microproject.code ? `${microproject.code} · ${microproject.name}` : microproject.name;
     document.getElementById("crumb").innerHTML = `/ <a href="/microprojets/${encodeURIComponent(slug)}">${escapeHtml(label)}</a> / ${escapeHtml(document.getElementById("page-title").textContent)}`;
-    intentFormSection = await mountIntentFormSection(document.getElementById("intent-form-box"), { microprojectSlug: slug, onError: showError });
+    if (pluginEnabled("intent_forms")) {
+      intentFormSection = await mountIntentFormSection(document.getElementById("intent-form-box"), { microprojectSlug: slug, onError: showError });
+    }
     if (evolveExperienceId) await loadParent();
   } catch (err) {
     showError(err);

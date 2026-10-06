@@ -7,4 +7,8 @@ external_images), servies par identifiant."""
 from ...kernel.plugin import Plugin
 from .api import router
 
-PLUGIN = Plugin(name="notebook", depends_on=("characterization", "experiments", "attachments", "external_images"), router=router)
+PLUGIN = Plugin(name="notebook", depends_on=("characterization", "experiments", "attachments", "external_images"), router=router,
+    title="Cahier de données",
+    description="Le cahier d'une étude : mesures PRISM et manuelles, rattachées aux plaques et aux étapes.",
+    icon="notebook",
+)

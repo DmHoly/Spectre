@@ -54,6 +54,11 @@
   async function renderOrigin(ctx, box) {
     const origin = ctx.detail.reference_origin;
     if (!origin) return;
+    if (!pluginEnabled("references")) {
+      // plugin désactivé : l'origine se dit, sans lien ni lecture du nom
+      box.innerHTML = `<span class="ref-origin">Issue de la référence ${escapeHtml(origin.reference)} ${escapeHtml(origin.version)}</span>`;
+      return;
+    }
     const text = (name, known) =>
       known
         ? `<a href="/references/${encodeURIComponent(origin.reference)}?version=${encodeURIComponent(origin.version)}">${escapeHtml(name)} ${escapeHtml(origin.version)}</a>`
@@ -100,7 +105,7 @@
   function renderRefs(ctx) {
     const row = document.getElementById("refs-row");
     const evolutionUrl = `/microprojets/${encodeURIComponent(ctx.microprojectSlug)}/evolution`;
-    const canPublish = ctx.canEdit && isDrawnProcess(ctx.detail);
+    const canPublish = ctx.canEdit && isDrawnProcess(ctx.detail) && pluginEnabled("references");
     row.innerHTML =
       `<span id="reference-origin"></span>` +
       `<span id="wafer-origin"></span>` +

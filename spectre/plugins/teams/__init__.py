@@ -12,4 +12,7 @@ PLUGIN = Plugin(
     pages=(Page("/equipes", "teams.html"), Page("/equipes/{slug}", "team.html")),
     nav=(NavEntry("Équipes", "/equipes", order=45, match=r"^/equipes"),),
     migrations=MIGRATIONS,
+    title="Équipes",
+    description="Les équipes, leurs managers et leurs membres : qui gère quels projets corporate.",
+    icon="users",
 )

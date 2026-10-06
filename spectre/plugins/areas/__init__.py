@@ -16,4 +16,7 @@ PLUGIN = Plugin(
     ),
     nav=(NavEntry("Projets", "/", order=10, match=r"^/(management|microprojets|$)"),),
     migrations=MIGRATIONS,
+    title="Projets corporate",
+    description="Les projets corporate, leurs thématiques et objectifs ; la page d'accueil.",
+    icon="folder",
 )

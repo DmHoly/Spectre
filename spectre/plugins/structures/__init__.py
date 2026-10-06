@@ -19,4 +19,7 @@ PLUGIN = Plugin(
         Page("/microprojets/{slug}/experiences/{experiment_id}/evoluer", "builder.html"),
         Page("/microprojets/{slug}/experiences/{experiment_id}/evoluer-image", "image-structure.html"),
     ),
+    title="Structures",
+    description="Le constructeur : matériaux, recettes, simulation StructureForge, campagnes DOE et rendu des structures.",
+    icon="layers",
 )

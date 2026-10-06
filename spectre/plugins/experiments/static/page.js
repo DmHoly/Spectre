@@ -169,7 +169,12 @@ const ExperiencePage = (() => {
   // --- onglets ------------------------------------------------------------------------------------
 
   // L'onglet ouvert est dans l'adresse (#structure / #donnees / #conclusion) et survit au rechargement.
-  const TABS = ["structure", "donnees", "conclusion"];
+  // Sans le plugin notebook, pas d'onglet Données : il n'aurait rien à montrer.
+  const TABS = pluginEnabled("notebook") ? ["structure", "donnees", "conclusion"] : ["structure", "conclusion"];
+  if (!TABS.includes("donnees")) {
+    document.getElementById("tab-donnees").hidden = true;
+    document.getElementById("panel-donnees").hidden = true;
+  }
   const tabList = document.querySelector(".fiche-tabs");
 
   function showTab(name, { focus = false } = {}) {

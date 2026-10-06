@@ -53,7 +53,9 @@ async function init() {
   } else if (isBrickMode) {
     await initBrickMode();
   } else {
-    intentFormSection = await mountIntentFormSection(document.getElementById("intent-form-box"), { microprojectSlug: slug, onError: showError });
+    if (pluginEnabled("intent_forms")) {
+      intentFormSection = await mountIntentFormSection(document.getElementById("intent-form-box"), { microprojectSlug: slug, onError: showError });
+    }
     await loadExistingProcess();
     await loadTemplateProcess();
     await loadReferenceProcess();

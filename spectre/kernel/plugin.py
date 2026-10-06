@@ -35,6 +35,7 @@ class NavEntry:
     match: str | None = None
     pages: tuple[str, ...] = ()
     id: str | None = None
+    admin: bool = False  # montrée aux seuls administrateurs (accounts/static/session.js la révèle)
 
 
 @dataclass(frozen=True)
@@ -63,7 +64,14 @@ class Plugin:
     pages: tuple[Page, ...] = ()
     nav: tuple[NavEntry, ...] = ()
     migrations: tuple[Migration, ...] = ()
-    enabled: Callable[[], bool] = _always
+    enabled: Callable[[], bool] = _always  # disponible sur cette instance (ex. kpis_demo : SPECTRE_DEMO_DATA=1)
+    # Ce que la page Paramètres > Plugins en montre (spectre.kernel.plugin_states) : un nom lisible,
+    # une phrase sur ce qu'il apporte et une icône (clé de settings/static/icons.js).
+    title: str = ""
+    description: str = ""
+    icon: str = "puzzle"
+    # Du noyau de l'application : ne se désactive pas, ni aucun plugin dont il dépend.
+    required: bool = False
 
 
 class PluginOrderError(ValueError):

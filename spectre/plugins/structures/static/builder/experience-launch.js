@@ -55,7 +55,7 @@ async function loadExistingProcess() {
     const verification = detail.objective_verification || {};
     state.objectives = detail.objectives.map((o) => ({ ...o, verification_method: verification[o.name] || null }));
     renderObjectives();
-    intentFormSection.fill(detail.form_answers);
+    if (intentFormSection) intentFormSection.fill(detail.form_answers);
     updateStageMeta();
 
     // en évolution, l'entité physique se transmet automatiquement de la version précédente

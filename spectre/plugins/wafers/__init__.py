@@ -10,4 +10,8 @@ PLUGIN = Plugin(
     depends_on=("experiments", "search"),
     router=router,
     pages=(Page("/plaques/{lasermark}", "wafer.html"),),
+    title="Plaques",
+    description="L'index des plaques suivies, leur passeport et leur recherche par lasermark ou FDL.",
+    icon="disc",
+    required=True,
 )

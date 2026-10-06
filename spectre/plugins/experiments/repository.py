@@ -28,7 +28,7 @@ from typing import Iterator
 
 from follow.storage.backends import JsonFileStore
 
-from ...kernel import fs
+from ...kernel import fs, plugin_states
 from ...kernel.errors import Conflict
 from ...kernel.locks import keyed_lock
 from ..microprojects.service import microproject_dir
@@ -104,11 +104,16 @@ def get_repository(slug: str):
 @contextmanager
 def writing(slug: str) -> Iterator:
     """``with writing(slug) as repo:`` - the microproject's repository, freshly reloaded under its
-    lock (one writer at a time per microproject), the cache invalidated on the way out."""
+    lock (one writer at a time per microproject), the cache invalidated on the way out. With the
+    intent_forms plugin turned off, the microproject's intent form is not enforced: its questions
+    can't be shown, so they can't be answered."""
     key = str(follow_repo_path(slug))
     with keyed_lock(LOCK_NAMESPACE, slug):
         try:
-            yield _load(slug)
+            repo = _load(slug)
+            if not plugin_states.is_enabled("intent_forms"):
+                repo.commit_form = None
+            yield repo
         finally:
             with _CACHE_GUARD:
                 _GENERATIONS[key] = _GENERATIONS.get(key, 0) + 1

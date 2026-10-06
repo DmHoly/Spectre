@@ -10,7 +10,8 @@
 
 const { slug: areaSlug, thematique_slug: thematicSlug } = routeParams("/management/{slug}/thematiques/{thematique_slug}");
 const areaPath = `/management/${encodeURIComponent(areaSlug)}`;
-document.getElementById("atlas-link").href = `${areaPath}/atlas`;
+const atlasLink = document.getElementById("atlas-link"); // absent si le plugin atlas est désactivé
+if (atlasLink) atlasLink.href = `${areaPath}/atlas`;
 
 const errorBox = document.getElementById("error");
 function showError(err) {

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plugins — Paramètres — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/settings/settings.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Paramètres" -->
+
+  <div class="settings-shell">
+    <aside class="settings-side" aria-label="Sections des paramètres">
+      <div class="settings-side__head">
+        <div class="page-eyebrow">Administration</div>
+        <div class="settings-side__title">Paramètres</div>
+      </div>
+      <nav class="settings-side__nav" id="settings-nav"></nav>
+    </aside>
+
+    <main class="settings-main">
+      <header class="settings-head">
+        <div>
+          <div class="page-eyebrow">Paramètres</div>
+          <h1>Plugins</h1>
+          <p>Chaque plugin apporte une partie de Spectre. Désactivé, il disparaît de l'application - pages, navigation, panneaux et recherche - sans redémarrage, et ses données restent en place : il se réactive à tout moment.</p>
+        </div>
+      </header>
+
+      <div id="denied" class="settings-denied card card-pad" hidden>
+        <strong>Réservé aux administrateurs.</strong>
+        <p>Les paramètres de l'application ne sont ouverts qu'aux comptes administrateurs.</p>
+      </div>
+
+      <div id="content">
+        <div class="settings-toolbar">
+          <div class="view-toggle" role="group" aria-label="Filtrer les plugins">
+            <button type="button" class="view-toggle__btn active" data-filter="all" aria-pressed="true">Tous</button>
+            <button type="button" class="view-toggle__btn" data-filter="active" aria-pressed="false">Actifs</button>
+            <button type="button" class="view-toggle__btn" data-filter="inactive" aria-pressed="false">Désactivés</button>
+          </div>
+          <label class="settings-search">
+            <span class="visually-hidden">Rechercher un plugin</span>
+            <input id="plugin-search" class="field" type="search" placeholder="Rechercher un plugin…" autocomplete="off">
+          </label>
+          <span id="plugin-count" class="settings-count mono" aria-live="polite"></span>
+        </div>
+
+        <div id="error" class="error" role="alert" style="display:none;margin-bottom:16px;"></div>
+        <div id="flash" class="flash flash-ok" role="status" style="display:none;"></div>
+
+        <section aria-labelledby="optional-title">
+          <h2 id="optional-title" class="section-title settings-section-title">Modules</h2>
+          <div id="optional" class="plugin-grid" aria-busy="true">
+            <div class="skeleton plugin-skeleton"></div>
+            <div class="skeleton plugin-skeleton"></div>
+            <div class="skeleton plugin-skeleton"></div>
+          </div>
+        </section>
+
+        <section aria-labelledby="core-title">
+          <h2 id="core-title" class="section-title settings-section-title">Noyau</h2>
+          <p class="help settings-section-help">Le socle de Spectre et ce dont il dépend : toujours actifs.</p>
+          <div id="core" class="plugin-grid"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="confirm-dialog" class="settings-dialog" aria-labelledby="confirm-title">
+    <div class="card-pad settings-dialog__body">
+      <h2 id="confirm-title" class="settings-dialog__title"></h2>
+      <p id="confirm-text"></p>
+      <ul id="confirm-list" class="settings-dialog__list"></ul>
+      <div class="settings-dialog__actions">
+        <button type="button" id="confirm-cancel" class="btn btn-line">Annuler</button>
+        <button type="button" id="confirm-ok" class="btn btn-danger">Désactiver</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/settings/client.js"></script>
+  <script src="/static/settings/icons.js"></script>
+  <script src="/static/settings/sections.js"></script>
+  <script src="/static/settings/plugins.js"></script>
+</body>
+</html>

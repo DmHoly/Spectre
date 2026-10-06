@@ -10,4 +10,7 @@ PLUGIN = Plugin(
     router=router,
     pages=(Page("/microprojets/{slug}/formulaire-intention", "intent-forms.html"),),
     migrations=MIGRATIONS,
+    title="Formulaires d'intention",
+    description="Les questions posées au lancement d'une étude, choisies par µprojet.",
+    icon="clipboard",
 )

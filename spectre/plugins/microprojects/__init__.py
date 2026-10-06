@@ -13,4 +13,8 @@ PLUGIN = Plugin(
     page_router=page_router,
     pages=(Page("/microprojets/{slug}", "microproject.html"),),
     migrations=MIGRATIONS,
+    title="µprojets",
+    description="Les µprojets, leurs membres, rôles et invitations.",
+    icon="box",
+    required=True,
 )

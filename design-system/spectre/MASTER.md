@@ -61,6 +61,12 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 - **KPI** : `.kpi > .kpi__value + .kpi__label` (valeur légère + libellé mono).
 - **Chargement** : `.skeleton` (réserve la place, pas de saut de mise en page).
 - **Onglets** `.tab.active` : souligné or · **bascule** `.view-toggle__btn.active` : pastille navy.
+- **Paramètres** (admin, `settings/static/settings.css`) : menu latéral des sections (lien courant navy +
+  filet or à gauche ; onglets défilants sous 860px), cartes de plugin en grille `minmax(300px, 1fr)`
+  (icône sur pastille `--accent-tint`, nom, nom technique mono, phrase, pied : état + dépendances) ;
+  **interrupteur** `.switch` = `<button role="switch" aria-checked>` nommé par le titre de la carte
+  (`aria-labelledby`), navy quand actif ; un plugin du noyau porte un badge or « Noyau » à la place.
+  L'entrée « Paramètres » de la barre du haut n'apparaît qu'aux administrateurs (`NavEntry.admin`).
 - **Issue d'une expérience** : une seule clé (`experimentOutcome`, `experiments/static/status.js`) pour le badge, le
   nœud du graphe et la frise d'une thématique. Nœud (`lineage-graph.js`) : **creux = pas terminée**
   (brouillon anneau gris, en cours anneau bleu + point, en pause anneau ambre + ‖), **plein =

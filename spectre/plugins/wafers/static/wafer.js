@@ -44,7 +44,11 @@ async function init() {
   document.getElementById("crumb").textContent = `/ Plaques / ${lasermark}`;
   document.title = `${lasermark} — Spectre`;
   try {
-    const [plate, lots] = await Promise.all([wafersApi.get(lasermark), lotsApi.list({ wafer: lasermark, view: "summary" })]);
+    const lotsOn = pluginEnabled("lots");
+    const [plate, lots] = await Promise.all([
+      wafersApi.get(lasermark),
+      lotsOn ? lotsApi.list({ wafer: lasermark, view: "summary" }) : [],
+    ]);
     const n = plate.occurrences.length;
     document.getElementById("plate-lasermark").textContent = plate.lasermark;
     document.getElementById("plate-summary").textContent = n
@@ -58,13 +62,15 @@ async function init() {
           .join(" ")
       : "—";
     // le(s) lot(s) de fabrication qui la contiennent (suivi de lots, /lots)
-    document.getElementById("plate-lots").innerHTML = lots.length
+    document.getElementById("plate-lots").innerHTML = !lotsOn
+      ? `<span class="help" style="margin:0;">Suivi des lots désactivé</span>`
+      : lots.length
       ? lots.map((l) => `<a class="fiche-code" href="/lots/${encodeURIComponent(l.code)}" title="${escapeHtml(l.title || "Lot")}">${escapeHtml(l.code)}</a>`).join(" ")
       : "—";
     document.getElementById("plate-trail").innerHTML = n
       ? plate.occurrences.map(trailItemHtml).join("")
       : `<li class="help">Le lasermark se renseigne dans la carte « Plaques & entités physiques » d'une fiche, ou au lancement d'une expérience.</li>`;
-    if (n) renderWaferDbLinks(document.querySelectorAll(".js-db-link"), [plate.lasermark]);
+    if (n && pluginEnabled("characterization")) renderWaferDbLinks(document.querySelectorAll(".js-db-link"), [plate.lasermark]);
   } catch (err) {
     showError(err);
   }

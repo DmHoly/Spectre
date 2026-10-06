@@ -25,4 +25,4 @@ def _lots(query: str, user: User) -> list[SearchHit]:
     ]
 
 
-register_provider(SearchProvider(type="lot", search=_lots, order=20))
+register_provider(SearchProvider(type="lot", plugin="lots", search=_lots, order=20))

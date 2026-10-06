@@ -26,6 +26,7 @@
 
   // Les entrées du cahier à cocher sous un objectif : celles qui lui sont liées d'abord.
   function citeChoicesHtml(ctx, objective, cited, i) {
+    if (!pluginEnabled("notebook")) return `<span class="help" style="margin:0;">Cahier de données désactivé.</span>`;
     if (!ctx.notebook) return `<span class="help" style="margin:0;">Lecture du cahier…</span>`;
     const entries = notebookEntries(ctx);
     if (!entries.length) return `<span class="help" style="margin:0;">Le cahier n'a pas encore de donnée à citer.</span>`;

@@ -4,4 +4,8 @@ autres plugins (``service.register_provider``) - µprojets, plaques, FDL, lots."
 from ...kernel.plugin import Plugin
 from .api import router
 
-PLUGIN = Plugin(name="search", depends_on=("accounts",), router=router)
+PLUGIN = Plugin(name="search", depends_on=("accounts",), router=router,
+    title="Recherche",
+    description="La recherche de la barre du haut : µprojets, lots, plaques par lasermark ou FDL.",
+    icon="search",
+)

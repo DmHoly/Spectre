@@ -9,6 +9,12 @@ Une page qui ne porte pas le marqueur garde sa propre barre du haut (ou n'en a p
 Le fil d'Ariane se déclare dans le marqueur : ``<!-- spectre:topbar crumb-id="crumb" crumb-text="/ Lots" -->``
 (``crumb-id`` : l'id que le script de la page remplit ; ``crumb-text`` : son texte initial). Sans
 l'un ni l'autre, la barre n'a pas de fil d'Ariane.
+
+Les plugins éteints (``spectre.kernel.plugin_states``) sont relus à chaque requête : leurs entrées
+quittent la navigation, les ``<script>`` et ``<link>`` qui chargent leurs statiques
+(``/static/<plugin>/...``) sont retirés de la page, et la balise ``<html>`` les nomme
+(``data-plugins-off``, lu par ``pluginEnabled`` de ``kernel/static/ui.js``). Une entrée réservée aux
+administrateurs (``NavEntry.admin``) est rendue cachée ; ``accounts/static/session.js`` la révèle.
 """
 
 from __future__ import annotations
@@ -75,7 +81,8 @@ def render_nav(entries: Iterable[NavEntry]) -> str:
     for entry in sorted(entries, key=lambda e: (e.order, e.label)):
         element_id = f' id="{escape(entry.id)}"' if entry.id else ""
         match = f' data-match="{escape(entry.match)}"' if entry.match else ""
-        links.append(f'      <a href="{escape(entry.href)}" class="topbar__link"{element_id}{match}>{escape(entry.label)}</a>')
+        admin = " data-admin-only hidden" if entry.admin else ""
+        links.append(f'      <a href="{escape(entry.href)}" class="topbar__link"{element_id}{match}{admin}>{escape(entry.label)}</a>')
     return '<nav class="topbar__nav" aria-label="Navigation principale">\n' + "\n".join(links) + "\n    </nav>"
 
 
@@ -107,11 +114,23 @@ def _etag_matches(if_none_match: str | None, etag: str) -> bool:
     return "*" in tags or etag in tags
 
 
-def page_response(path: Path, nav: str, request: Request | None = None) -> Response:
-    """La page rendue (:func:`render_page`), avec un ``ETag`` (empreinte du HTML servi, barre du
-    haut comprise) et un ``Last-Modified`` (date du fichier) ; une revalidation dont le
-    ``If-None-Match`` porte cet ``ETag`` reçoit un 304 sans corps."""
-    html = render_page(path, nav)
+def without_plugins(html: str, disabled: Iterable[str]) -> str:
+    """``html`` sans les ``<script src>`` ni les ``<link href>`` qui chargent les statiques des
+    plugins ``disabled``, sa balise ``<html>`` marquée ``data-plugins-off="a b"``."""
+    names = sorted(disabled)
+    if not names:
+        return html
+    asset = r'"/static/(?:' + "|".join(re.escape(name) for name in names) + r')/[^"]*"'
+    html = re.sub(r"[ \t]*<script\b[^>]*\bsrc=" + asset + r"[^>]*>\s*</script>[ \t]*\r?\n?", "", html)
+    html = re.sub(r"[ \t]*<link\b[^>]*\bhref=" + asset + r"[^>]*>[ \t]*\r?\n?", "", html)
+    return re.sub(r"<html\b", f'<html data-plugins-off="{escape(" ".join(names))}"', html, count=1)
+
+
+def page_response(path: Path, nav: str, request: Request | None = None, disabled: Iterable[str] = ()) -> Response:
+    """La page rendue (:func:`render_page`, sans les statiques des plugins ``disabled``), avec un
+    ``ETag`` (empreinte du HTML servi, barre du haut comprise) et un ``Last-Modified`` (date du
+    fichier) ; une revalidation dont le ``If-None-Match`` porte cet ``ETag`` reçoit un 304 sans corps."""
+    html = without_plugins(render_page(path, nav), disabled)
     etag = '"' + hashlib.sha256(html.encode("utf-8")).hexdigest()[:32] + '"'
     headers = {"ETag": etag, "Last-Modified": formatdate(path.stat().st_mtime, usegmt=True)}
     if request is not None and _etag_matches(request.headers.get("if-none-match"), etag):
@@ -119,8 +138,51 @@ def page_response(path: Path, nav: str, request: Request | None = None) -> Respo
     return HTMLResponse(html, headers=headers)
 
 
-def page_handler(path: Path, nav: str) -> Callable[[Request], Response]:
+_DISABLED_PAGE = """<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Module désactivé — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+</head>
+<body>
+  {topbar}
+  <div class="page" style="padding-top:60px;">
+    <div class="empty-state">
+      <h1 style="font-size:20px;margin-bottom:8px;">Module désactivé</h1>
+      <p>Cette page appartient à un module qu'un administrateur a désactivé.</p>
+      <p style="margin-top:16px;"><a href="/" class="btn btn-line">Retour à l'accueil</a></p>
+    </div>
+  </div>
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/accounts/session.js"></script>
+</body>
+</html>
+"""
+
+
+def disabled_page(nav: str) -> HTMLResponse:
+    """La page d'un plugin éteint : un 404 qui garde la barre du haut."""
+    return HTMLResponse(_DISABLED_PAGE.format(topbar=render_topbar(nav)), status_code=404)
+
+
+def page_handler(
+    path: Path,
+    nav: Callable[[], str],
+    disabled: Callable[[], set[str]] = set,
+    plugin_name: str | None = None,
+) -> Callable[[Request], Response]:
+    """Le handler d'une page : sa navigation (``nav()``) et les plugins éteints (``disabled()``),
+    relus à chaque requête ; la page d'un plugin éteint (``plugin_name``) est :func:`disabled_page`."""
+
     def handler(request: Request) -> Response:
-        return page_response(path, nav, request)
+        off = disabled()
+        if plugin_name is not None and plugin_name in off:
+            return disabled_page(nav())
+        return page_response(path, nav(), request, off)
 
     return handler

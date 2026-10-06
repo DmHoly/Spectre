@@ -15,4 +15,8 @@ PLUGIN = Plugin(
         Page("/profil", "profile.html"),
     ),
     migrations=MIGRATIONS,
+    title="Comptes",
+    description="Comptes, connexion, mot de passe et profil ; le rôle administrateur.",
+    icon="user",
+    required=True,
 )
