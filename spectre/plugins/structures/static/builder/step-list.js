@@ -262,7 +262,7 @@ function insertBrickAt(brick, at = defaultInsertIndex()) {
   clearError();
   const target = snapGapOutsideBricks(at, true);
   const groupId = generateBrickGroupId();
-  const copied = JSON.parse(JSON.stringify(brick.steps)).map((s) => ({
+  const copied = reconcileOwnRecipes(JSON.parse(JSON.stringify(brick.steps))).map((s) => ({
     ...withoutStepId(stripBrickTag(s)),
     brick_group_id: groupId,
     brick_name: brick.name,
@@ -404,6 +404,7 @@ async function groupSelectionIntoBrick() {
       steps: selectedSteps,
       declared_params: declaredParamsPayload(selectedSteps),
       layer_labels: layerLabelsPayload(selectedSteps),
+      recipes: processRecipesPayload(selectedSteps),
       scope: "microproject",
       microproject: slug,
     });

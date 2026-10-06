@@ -11,7 +11,7 @@ from structureforge.process.steps import ProcessStep
 from ...kernel.annotations import ImageAnnotation
 
 from .campaigns import VariantPlan
-from .simulation import DeclaredParam, LayerLabel, ProcessBrick, SubstrateSpec
+from .simulation import DeclaredParam, LayerLabel, ProcessBrick, ProcessRecipes, SubstrateSpec
 
 
 class ProcessInput(BaseModel):
@@ -32,6 +32,8 @@ class ProcessInput(BaseModel):
     layer_labels: dict[str, LayerLabel] = {}
     # the bricks the steps belong to (see simulation.ProcessBrick) - by step index, like layer_labels
     bricks: list[ProcessBrick] = []
+    # the process's own recipes (a selective etch defined in the builder, see simulation.ProcessRecipes)
+    recipes: ProcessRecipes = Field(default_factory=ProcessRecipes)
     _step_ids: list[str | None] = PrivateAttr(default_factory=list)
 
     @model_validator(mode="wrap")

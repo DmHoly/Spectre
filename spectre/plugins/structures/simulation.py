@@ -2,7 +2,8 @@
 draw on, and turning a substrate + step list into simulated frames the page can show. All the
 physics stays in ``structureforge`` - a ``Deposition``/``Etch`` step names a recipe from the
 recipe library by string key (mode/angle/selectivity live on the recipe, not the step), resolved
-here at simulation time. Turning each ``Frame`` into ready-to-embed SVG is
+here at simulation time - the library's recipes, plus the process's own
+(:class:`ProcessRecipes`: a selective etch defined right in the builder). Turning each ``Frame`` into ready-to-embed SVG is
 :mod:`spectre.plugins.structures.rendering`'s, through ``structureforge.presentation.svg.frame_to_svg``,
 so Spectre never draws a cross-section itself.
 """
@@ -13,9 +14,9 @@ import re
 import secrets
 from typing import Any, NamedTuple
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 from structureforge.core.materials import Material, MaterialLibrary, aluminum_gan, default_library, indium_gan
-from structureforge.core.recipes import RecipeLibrary, default_recipes
+from structureforge.core.recipes import DepositionRecipe, EtchRecipe, RecipeLibrary, default_recipes
 from structureforge.core.traced import Traced
 from structureforge.core.units import Length
 from structureforge.geometry.engine import Geometry, LayerProvenance
@@ -202,17 +203,58 @@ def _expand_seed_material_aliases(steps: list[ProcessStep], substrate_material: 
     return result
 
 
-def recipes_library() -> RecipeLibrary:
+MAX_PROCESS_RECIPES = 50  # par type (dépôt, gravure)
+
+
+class ProcessRecipes(BaseModel):
+    """The process's own recipes: a deposition or an etch defined right in the builder (a selective
+    etch of one material, its mode, angle and selectivity table) rather than in the root library's
+    ``recettes.yml``. A step names one like any other recipe; one of them wins over a library
+    recipe of the same name. They travel with the process (a request's ``recipes``, a study's
+    ``structureforge_process``, a saved structure, a brick, a step preset) - so an edit of the
+    library never changes a process that defined its own."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    deposition: list[DepositionRecipe] = Field(default_factory=list, max_length=MAX_PROCESS_RECIPES)
+    etch: list[EtchRecipe] = Field(default_factory=list, max_length=MAX_PROCESS_RECIPES)
+
+    @model_validator(mode="after")
+    def _named_once(self) -> "ProcessRecipes":
+        for kind, recipes in (("dépôt", self.deposition), ("gravure", self.etch)):
+            names = [recipe.name.strip() for recipe in recipes]
+            if any(not name or len(name) > 120 for name in names):
+                raise ValueError(f"une recette de {kind} du procédé a un nom (120 caractères au plus)")
+            if len(set(names)) != len(names):
+                raise ValueError(f"deux recettes de {kind} du procédé portent le même nom")
+        return self
+
+    def __bool__(self) -> bool:
+        return bool(self.deposition or self.etch)
+
+    def as_json(self) -> dict[str, Any]:
+        """As a process records them: only the kinds that have some."""
+        data = self.model_dump(mode="json")
+        return {kind: recipes for kind, recipes in data.items() if recipes}
+
+
+def process_recipes(raw: Any) -> ProcessRecipes | None:
+    """The recipes a recorded process carries (its ``"recipes"``), ``None`` without any."""
+    recipes = ProcessRecipes.model_validate(raw) if isinstance(raw, dict) else None
+    return recipes or None
+
+
+def recipes_library(own: ProcessRecipes | None = None) -> RecipeLibrary:
     """StructureForge's default recipes plus any extra ones from the editable root library
-    (``library/recettes.yml`` via :func:`spectre.plugins.structures.library_files.recipes`) - where a
-    selective etch (etch only Al2O3, say) is defined, since a recipe carries the whole
-    selectivity table and a step/preset only names one.
+    (``library/recettes.yml`` via :func:`spectre.plugins.structures.library_files.recipes`), plus
+    the process's ``own`` (:class:`ProcessRecipes`), which win over a library recipe of the same name.
     """
     from .library_files import recipes
 
     deposition, etch = recipes()
     base = default_recipes()
-    return base.with_recipes(deposition=deposition, etch=etch) if (deposition or etch) else base
+    library = base.with_recipes(deposition=deposition, etch=etch) if (deposition or etch) else base
+    return library.with_recipes(deposition=own.deposition, etch=own.etch) if own else library
 
 
 SUBSTRATE_ORIGIN = -1  # l'« étape » d'une couche du substrat de départ
@@ -289,6 +331,7 @@ def simulate_process(
     substrate: SubstrateSpec,
     steps: list[ProcessStep],
     declared_params: dict[int, list[DeclaredParam]] | None = None,
+    recipes: ProcessRecipes | None = None,
 ) -> SimulationResult:
     """Build the starting geometry and apply ``steps`` to it, the same way
     ``structureforge.api.app`` does for its own ``/api/simulate`` - returns the live objects
@@ -298,11 +341,12 @@ def simulate_process(
 
     ``declared_params`` (step_index -> extra parameters the user attached in the builder, see
     :class:`DeclaredParam`) is Spectre-only bookkeeping never seen by ``structureforge`` itself -
-    it's merged onto the resulting layers' ``provenance`` after simulation succeeds.
+    it's merged onto the resulting layers' ``provenance`` after simulation succeeds. ``recipes``:
+    the process's own (:class:`ProcessRecipes`), on top of the library's.
     """
     steps = _expand_seed_material_aliases(steps, substrate.material)
     materials = materials_library(substrate.material, *_material_names_in_steps(steps))
-    recipes = recipes_library()
+    recipe_library = recipes_library(recipes)
     try:
         materials.get(substrate.material)
     except KeyError as exc:
@@ -310,7 +354,7 @@ def simulate_process(
 
     geometry = Geometry.substrate(substrate.material, substrate.domain_width.to_nm(), substrate.thickness.to_nm())
     try:
-        frames, origins = _simulate_tracking(geometry, steps, materials, recipes)
+        frames, origins = _simulate_tracking(geometry, steps, materials, recipe_library)
     except SimulationError as exc:
         raise SimulationFailedError(str(exc)) from exc
     if declared_params:
@@ -374,7 +418,10 @@ def settle_step_ids(requested: list[str | None]) -> list[str]:
 
 
 def process_metadata(
-    substrate: SubstrateSpec, steps: list[ProcessStep], declared_params: dict[int, list[DeclaredParam]] | None = None
+    substrate: SubstrateSpec,
+    steps: list[ProcessStep],
+    declared_params: dict[int, list[DeclaredParam]] | None = None,
+    recipes: ProcessRecipes | None = None,
 ) -> dict[str, Any]:
     """The raw, re-editable process (substrate + typed steps) as plain JSON - stashed on the
     committed ``Experiment.metadata`` under this key, since the ``Structure`` Follow stores is the
@@ -385,7 +432,8 @@ def process_metadata(
     The steps' declared parameters (:class:`DeclaredParam` - never part of a ``ProcessStep``) ride
     along under ``"declared_params"``, keyed by step index - only when there are some, so a
     process without any keeps exactly its former shape (and :mod:`spectre.plugins.experiments.versioning` sees no
-    spurious change on lineages recorded before they were kept).
+    spurious change on lineages recorded before they were kept). The process's own recipes
+    (:class:`ProcessRecipes`) ride along under ``"recipes"`` the same way, only when there are some.
     """
     process: dict[str, Any] = {
         "substrate": substrate.model_dump(mode="json"),
@@ -394,6 +442,8 @@ def process_metadata(
     declared = declared_params_json(declared_params)
     if declared:
         process["declared_params"] = declared
+    if recipes:
+        process["recipes"] = recipes.as_json()
     return process
 
 
@@ -415,16 +465,22 @@ LAYER_STEPS_METADATA_KEY = "process_layer_steps"
 
 LABEL_THICKNESS = "thickness"
 LABEL_COMPOSITION = "composition"
+LABEL_DEPTH = "depth"  # la profondeur d'une gravure, sur sa marque d'interface
 LABEL_DECLARED_PREFIX = "declared:"
 MAX_LABEL_TEXT = 40
 MAX_LABEL_VALUES = 6
+# les étapes qui ne créent pas de couche (un nettoyage, une gravure, un etch back...) : leur étiquette
+# est une marque d'interface, reliée à la surface telle qu'elle était quand l'étape a eu lieu - entre
+# les couches d'avant et celles d'après (spectre.plugins.structures.rendering)
+INTERFACE_STEP_KINDS = frozenset({"etch", "planarization", "chemical", "resist_strip"})
 
 
 class LayerLabel(BaseModel):
     """L'étiquette d'une étape : son texte et les valeurs à écrire dessous, dans l'ordre -
-    ``"thickness"``, ``"composition"`` (le taux d'In/Al d'un nitrure à composition) ou
-    ``"declared:<nom>"`` (un :class:`DeclaredParam` de l'étape). Une valeur que l'étape n'a pas
-    n'est simplement pas écrite."""
+    ``"thickness"``, ``"composition"`` (le taux d'In/Al d'un nitrure à composition), ``"depth"``
+    (la profondeur d'une gravure) ou ``"declared:<nom>"`` (un :class:`DeclaredParam` de l'étape).
+    Une valeur que l'étape n'a pas n'est simplement pas écrite. Sur une étape qui ne crée pas de
+    couche (:data:`INTERFACE_STEP_KINDS`), l'étiquette est une marque d'interface."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -442,8 +498,8 @@ class LayerLabel(BaseModel):
         cleaned: list[str] = []
         for value in values:
             declared = value.startswith(LABEL_DECLARED_PREFIX) and 0 < len(value) - len(LABEL_DECLARED_PREFIX) <= 100
-            if value not in (LABEL_THICKNESS, LABEL_COMPOSITION) and not declared:
-                raise ValueError(f"valeur d'étiquette inconnue : {value!r} (thickness, composition ou declared:<nom>)")
+            if value not in (LABEL_THICKNESS, LABEL_COMPOSITION, LABEL_DEPTH) and not declared:
+                raise ValueError(f"valeur d'étiquette inconnue : {value!r} (thickness, composition, depth ou declared:<nom>)")
             if value not in cleaned:
                 cleaned.append(value)
         return cleaned

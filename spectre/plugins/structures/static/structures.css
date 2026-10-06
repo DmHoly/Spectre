@@ -2067,6 +2067,61 @@
   white-space: normal;
 }
 
+/* recette propre au procédé (own-recipe.js) : sa définition, sous le choix de la recette */
+.sb-own-recipe {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--gold, #c9a45c);
+  border-radius: var(--radius-md);
+}
+.sb-own-recipe__title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-soft);
+}
+.sb-own-recipe__table {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.sb-own-recipe__table legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+#f-own-rows {
+  display: grid;
+  gap: 6px;
+}
+.sb-own-recipe__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+.sb-own-recipe__categories > summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.sb-own-recipe__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+
 /* une structure dessinée avec ses étiquettes (rendering.labelled_svg) : le cadre suit sa hauteur,
    pour que le texte reste lisible, sans dépasser la largeur */
 .builder-canvas-svg.has-layer-labels {

@@ -33,6 +33,7 @@ from .simulation import (
     BRICKS_METADATA_KEY,
     LABEL_COMPOSITION,
     LABEL_DECLARED_PREFIX,
+    LABEL_DEPTH,
     LABEL_THICKNESS,
     LAYER_LABELS_METADATA_KEY,
     LAYER_STEPS_METADATA_KEY,
@@ -46,6 +47,7 @@ from .simulation import (
     material_names_in_layers,
     materials_library,
     process_metadata,
+    process_recipes,
     split_declared_unit,
 )
 
@@ -353,9 +355,10 @@ def variant_process(metadata: dict[str, Any], step_ids: list[str], entry_index: 
         declared = declared_params_by_index(_DECLARED.validate_python(process.get("declared_params") or {}))
         indexes = campaigns.factor_step_indexes(variant_plan, list(step_ids))
         substrate, steps, declared = campaigns.apply_combination(substrate, steps, declared, variant_plan, indexes, values[entry_index])
+        recipes = process_recipes(process.get("recipes"))
     except (ValidationError, InvalidInput, KeyError, TypeError, ValueError) as exc:
         raise InvalidInput("Le procédé de cette variante ne se relit pas.", code="no_variant_process") from exc
-    return process_metadata(substrate, steps, declared)
+    return process_metadata(substrate, steps, declared, recipes)
 
 
 # -- ce qui change aux étiquettes et aux paramètres déclarés d'une version à l'autre ---------------
@@ -367,7 +370,7 @@ def variant_process(metadata: dict[str, Any], step_ids: list[str], entry_index: 
 # voit (``versioning._label_groups``) : son nom et ses étapes étiquetées, jamais son identifiant de
 # groupe - dissocier puis regrouper les mêmes étapes sous le même nom ne change rien.
 
-_VALUE_NAMES = {LABEL_THICKNESS: "épaisseur", LABEL_COMPOSITION: "composition"}
+_VALUE_NAMES = {LABEL_THICKNESS: "épaisseur", LABEL_COMPOSITION: "composition", LABEL_DEPTH: "profondeur"}
 
 
 def _value_name(key: str) -> str:

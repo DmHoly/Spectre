@@ -17,11 +17,9 @@ const STEP_KIND_DEFS = {
     renderFields: () => `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Dépôt"></div>
       ${gradedMaterialFieldHtml("f-material", "Matériau", null)}
-      <div><label>Préset (optionnel)</label><select class="field" id="f-preset"><option value="">Personnalisé</option>${presetOptionsHtml("deposition")}</select>
-        <div class="help" style="margin-top:4px;">Choisit la recette ci-dessous — reste ensuite librement modifiable.</div>
-      </div>
-      <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("deposition")}</select>
+      <div><label>Recette</label><select class="field" id="f-recipe">${recipeSelectOptionsHtml("deposition")}</select>
         <div class="help" id="f-recipe-hint" style="margin-top:4px;"></div>
+        <div id="f-own-recipe-slot"></div>
       </div>
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="20"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>`,
@@ -35,14 +33,16 @@ const STEP_KIND_DEFS = {
       material: gradedMaterialValue("f-material"),
       recipe: document.getElementById("f-recipe").value,
       thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
+      ...withOwnRecipe(document.getElementById("f-recipe").value),
     }),
     fillFields: (step) => {
       fillGradedMaterialField("f-material", step.material);
       ensureSelectValue("f-recipe", step.recipe);
+      updateRecipeHint("deposition");
       document.getElementById("f-thickness").value = step.thickness.value;
       ensureSelectValue("f-thickness-unit", step.thickness.unit, "");
     },
-    summary: (step) => `${step.material} · ${step.thickness.value} ${step.thickness.unit} · ${step.recipe}`,
+    summary: (step) => `${step.material} · ${step.thickness.value} ${step.thickness.unit} · ${recipeLabel(step)}`,
     pyCode: (step) =>
       `Deposition(name=${pyStr(step.name)}, material=${pyStr(step.material)}, recipe=${pyStr(step.recipe)}, thickness=${pyLength(step.thickness)})`,
   },
@@ -56,11 +56,9 @@ const STEP_KIND_DEFS = {
     pyClass: "Etch",
     renderFields: () => `
       <div><label>Nom de l'étape</label><input class="field" id="f-name" value="Gravure"></div>
-      <div><label>Préset (optionnel)</label><select class="field" id="f-preset"><option value="">Personnalisé</option>${presetOptionsHtml("etch")}</select>
-        <div class="help" style="margin-top:4px;">Choisit la recette ci-dessous — reste ensuite librement modifiable.</div>
-      </div>
-      <div><label>Recette</label><select class="field" id="f-recipe">${recipeOptions("etch")}</select>
+      <div><label>Recette</label><select class="field" id="f-recipe">${recipeSelectOptionsHtml("etch")}</select>
         <div class="help" id="f-recipe-hint" style="margin-top:4px;"></div>
+        <div id="f-own-recipe-slot"></div>
       </div>
       <div class="field-row"><div><label>Profondeur</label><input class="field" id="f-depth" type="number" value="10"></div>
       <div><label>Unité</label><select class="field" id="f-depth-unit"><option value="nm" selected>nm</option><option value="um">µm</option><option value="A">Å</option></select></div></div>`,
@@ -70,13 +68,15 @@ const STEP_KIND_DEFS = {
       name,
       recipe: document.getElementById("f-recipe").value,
       depth: { value: parseFloat(document.getElementById("f-depth").value) || 0, unit: document.getElementById("f-depth-unit").value },
+      ...withOwnRecipe(document.getElementById("f-recipe").value),
     }),
     fillFields: (step) => {
       ensureSelectValue("f-recipe", step.recipe);
+      updateRecipeHint("etch");
       document.getElementById("f-depth").value = step.depth.value;
       ensureSelectValue("f-depth-unit", step.depth.unit, "");
     },
-    summary: (step) => `${step.recipe} · ${step.depth.value} ${step.depth.unit}`,
+    summary: (step) => `${recipeLabel(step)} · ${step.depth.value} ${step.depth.unit}`,
     pyCode: (step) => `Etch(name=${pyStr(step.name)}, recipe=${pyStr(step.recipe)}, depth=${pyLength(step.depth)})`,
   },
 
@@ -409,6 +409,16 @@ const STEP_KINDS = Object.fromEntries(
 );
 const CAMPAIGN_FIELD_OPTIONS = Object.fromEntries(Object.entries(STEP_KIND_DEFS).map(([kind, def]) => [kind, def.campaignFields || []]));
 const PY_STEP_CLASS = Object.fromEntries(Object.entries(STEP_KIND_DEFS).map(([kind, def]) => [kind, def.pyClass]));
+
+// La recette du procédé que lit le formulaire, à poser sur l'étape (rien pour une recette de la bibliothèque).
+function withOwnRecipe(recipeName) {
+  const recipe = ownRecipeFromForm(recipeName);
+  return recipe ? { ownRecipe: recipe } : {};
+}
+
+function recipeLabel(step) {
+  return step.ownRecipe && step.ownRecipe.name === step.recipe ? `${step.recipe} (procédé)` : step.recipe;
+}
 
 function stepIconHtml(kind) {
   const def = STEP_KIND_DEFS[kind];

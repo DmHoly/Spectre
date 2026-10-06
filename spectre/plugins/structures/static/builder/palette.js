@@ -58,7 +58,7 @@ const BRICK_SCOPE_LABELS = { builtin: "intégrée", shared: "partagée", micropr
 
 function allTechBricks() {
   // paramètres déclarés et étiquettes rattachés à leurs étapes : une brique insérée garde son dopage & co
-  return state.techBricks.map((b) => ({ ...b, steps: attachLayerLabels(attachDeclaredParams(b.steps, b.declared_params), b.layer_labels) }));
+  return state.techBricks.map((b) => ({ ...b, steps: attachRecipes(attachLayerLabels(attachDeclaredParams(b.steps, b.declared_params), b.layer_labels), b.recipes) }));
 }
 
 function findBrickEntry(id) {

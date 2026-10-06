@@ -43,7 +43,7 @@ const ORIENTATION_CHOICES = [
   ["m_plane", "Plan M {10-10}"],
   ["semi_polar", "Semi-polaire"],
 ];
-const NON_VARIABLE_STEP_KEYS = new Set(["id", "kind", "name", "description", "declaredParams", "layerLabel", "brick_group_id", "brick_name", "brick_source", "parameters", "seed_materials", "openings"]);
+const NON_VARIABLE_STEP_KEYS = new Set(["id", "kind", "name", "description", "declaredParams", "layerLabel", "ownRecipe", "presetOrigin", "brick_group_id", "brick_name", "brick_source", "parameters", "seed_materials", "openings"]);
 
 // L'id par lequel un facteur désigne l'étape `stepIndex` (-1 : le substrat) - null tant que le
 // serveur ne lui en a pas donné (une étape toute neuve, avant la simulation qui suit son ajout).
@@ -146,7 +146,8 @@ function variableParams(stepIndex) {
           });
         }
       } else if (key === "recipe") {
-        const recipes = (state.recipes[step.kind] || []).map((r) => [r.name, r.name]);
+        // celles de la bibliothèque et celles du procédé (own-recipe.js)
+        const recipes = [...(state.recipes[step.kind] || []).map((r) => r.name), ...ownRecipes(step.kind).keys()].map((name) => [name, name]);
         params.push({ field: key, label, type: "choice", choices: withCurrentOption(recipes, value), current: value });
       } else if (key === "orientation") {
         params.push({ field: key, label, type: "choice", choices: ORIENTATION_CHOICES, current: value });
@@ -650,6 +651,7 @@ async function refreshVariationTable() {
       substrate: substrateSpec(),
       steps: state.steps,
       declared_params: declaredParamsPayload(state.steps),
+      recipes: processRecipesPayload(state.steps),
       plan,
     });
     if (seq !== variationTableSeq) return;

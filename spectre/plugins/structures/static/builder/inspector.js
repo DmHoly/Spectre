@@ -65,6 +65,7 @@ function fillKindFields(step) {
   document.getElementById("kind-select").value = step.kind;
   state.formDeclaredParams = JSON.parse(JSON.stringify(step.declaredParams || []));
   state.formLayerLabel = step.layerLabel ? JSON.parse(JSON.stringify(step.layerLabel)) : null;
+  setFormOwnRecipe(step);
   renderKindFields(step.kind);
   document.getElementById("f-name").value = step.name;
   const def = STEP_KIND_DEFS[step.kind];
@@ -77,6 +78,7 @@ function fillKindFields(step) {
 function defaultStepOfKind(kind) {
   state.formDeclaredParams = [];
   state.formLayerLabel = null;
+  setFormOwnRecipe(null);
   document.getElementById("kind-select").value = kind;
   renderKindFields(kind);
   return buildStepFromForm();
@@ -132,6 +134,7 @@ function livePreviewFromForm() {
     if (previous.brick_source) step.brick_source = previous.brick_source;
   }
   state.steps[i] = step;
+  shareOwnRecipe(step, previous.ownRecipe ? previous.ownRecipe.name : null);
   refreshLayerLabelValues(step);
   updateStepInspectorHeader();
   invalidateVariations();
@@ -140,7 +143,10 @@ function livePreviewFromForm() {
 }
 
 const stepFormSection = document.getElementById("step-form-section");
-document.getElementById("kind-select").addEventListener("change", (e) => renderKindFields(e.target.value));
+document.getElementById("kind-select").addEventListener("change", (e) => {
+  setFormOwnRecipe(null);
+  renderKindFields(e.target.value);
+});
 stepFormSection.addEventListener("input", (e) => {
   // changement de type : attendre son "change", qui reconstruit d'abord les champs du nouveau type
   if (e.target.id !== "kind-select") livePreviewFromForm();

@@ -42,6 +42,7 @@ class NewSavedStructure(_NewItem):
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
     layer_labels: dict[str, simulation.LayerLabel] = {}
     bricks: list[simulation.ProcessBrick] = []
+    recipes: simulation.ProcessRecipes = Field(default_factory=simulation.ProcessRecipes)
     derived_from: str | ExperimentOrigin | None = None
 
 
@@ -51,6 +52,7 @@ class SavedStructureChanges(_ItemChanges):
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
     layer_labels: dict[str, simulation.LayerLabel] | None = None
     bricks: list[simulation.ProcessBrick] | None = None
+    recipes: simulation.ProcessRecipes | None = None
 
 
 class NewStepPreset(_NewItem):
@@ -70,6 +72,7 @@ class NewTechBrick(_NewItem):
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
     layer_labels: dict[str, simulation.LayerLabel] = {}
     bricks: list[simulation.ProcessBrick] = []
+    recipes: simulation.ProcessRecipes = Field(default_factory=simulation.ProcessRecipes)
     notes: str | None = None
 
 
@@ -79,6 +82,7 @@ class TechBrickChanges(_ItemChanges):
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
     layer_labels: dict[str, simulation.LayerLabel] | None = None
     bricks: list[simulation.ProcessBrick] | None = None
+    recipes: simulation.ProcessRecipes | None = None
     notes: str | None = None
 
 

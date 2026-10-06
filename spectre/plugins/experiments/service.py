@@ -581,13 +581,16 @@ class _PreparedStructure:
         self.bricks = simulation.checked_bricks(payload.bricks, len(payload.steps))
         self.steps = follow_adapter.to_steps(payload.steps)
         self.requested_step_ids = payload.step_ids
-        self.metadata["structureforge_process"] = simulation.process_metadata(payload.substrate, payload.steps, declared)
+        recipes = payload.recipes or None
+        self.metadata["structureforge_process"] = simulation.process_metadata(payload.substrate, payload.steps, declared, recipes)
         if isinstance(payload, CampaignPayload):
             factor_ids: list[str | None] = list(payload.step_ids)
             if start is not None and not any(factor_ids):
                 reader, source = start
                 factor_ids = list(_settled_step_ids(factor_ids, self.metadata["structureforge_process"], source, step_ids_of(reader, source)))
-            result = campaigns.generate_campaign_variants(payload.substrate, payload.steps, payload.plan, declared, factor_ids, self.labels, self.bricks)
+            result = campaigns.generate_campaign_variants(
+                payload.substrate, payload.steps, payload.plan, declared, factor_ids, self.labels, self.bricks, recipes
+            )
             self.structure = kinds.ProcessLot(entries=result.entries)
             self.campaign_size = len(result.entries)
             self.layer_origins = result.layer_origins
@@ -603,7 +606,7 @@ class _PreparedStructure:
                 }
             )
             return
-        simulated = simulation.simulate_process(payload.substrate, payload.steps)
+        simulated = simulation.simulate_process(payload.substrate, payload.steps, recipes=recipes)
         self.structure = follow_adapter.to_structure(simulated.geometry)
         self.layer_origins = [simulated.layer_origins[-1]]
 

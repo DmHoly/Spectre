@@ -22,7 +22,7 @@ from pydantic import Field, model_validator
 from structureforge.process.steps import ProcessStep
 
 from ..library.service import load
-from ..structures.simulation import DeclaredParam, LayerLabel, ProcessBrick, checked_bricks, layer_labels_by_index
+from ..structures.simulation import DeclaredParam, LayerLabel, ProcessBrick, ProcessRecipes, checked_bricks, layer_labels_by_index
 from .models import LibraryItem
 
 
@@ -35,6 +35,8 @@ class TechBrick(LibraryItem):
     # the bricks its own steps belong to (a brick composed with another inserted in it, see
     # spectre.plugins.structures.simulation.ProcessBrick), by step index
     bricks: list[ProcessBrick] = Field(default_factory=list)
+    # the process's own recipes (see spectre.plugins.structures.simulation.ProcessRecipes)
+    recipes: ProcessRecipes = Field(default_factory=ProcessRecipes)
     notes: str | None = None
 
     @model_validator(mode="after")

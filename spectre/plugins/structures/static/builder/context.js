@@ -71,6 +71,8 @@ const state = {
   selectedBrickGroup: null, // brick_group_id dont l'inspecteur montre les actions (clic sur l'étiquette d'une brique)
   formDeclaredParams: [], // paramètres déclarés (voir form-widgets.js) du formulaire d'étape actuellement ouvert
   formLayerLabel: null, // étiquette de couche ({text, values}, voir layer-label.js) du formulaire d'étape ouvert
+  formOwnRecipe: null, // recette du procédé (voir own-recipe.js) que nomme le formulaire d'étape ouvert, sinon null
+  formOwnRecipeKind: null, // son type : "deposition" ou "etch"
   collapsedBrickGroups: new Set(), // brick_group_id des blocs repliés dans le flow (purement visuel)
   previewMode: "step", // "step" : dessin après l'étape sélectionnée ; "final" : toujours la structure finale
   frameLock: null, // image gardée à l'écran quand on sélectionne une étape en cliquant une couche du dessin (sinon la vue sauterait à cette étape)

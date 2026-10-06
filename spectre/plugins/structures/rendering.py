@@ -8,6 +8,10 @@ stacked on its right - each one's text, its values below, a thin line to the lay
 created. The labelled steps of one brick (:class:`~spectre.plugins.structures.simulation.ProcessBrick`,
 at least :data:`~spectre.plugins.structures.simulation.MIN_GROUPED_LABELS` of them) share a single
 label instead: the brick's name, one line per step, and a bracket over the layers they created.
+A labelled step that creates no layer (a clean, an etch, an etch back:
+:data:`~spectre.plugins.structures.simulation.INTERFACE_STEP_KINDS`) is drawn as an **interface
+mark** - a dashed line to the surface as it was when the step took place, between the layers made
+before it and those made after.
 The provenance of the layers (which step created which layer) always comes from the
 server's simulation (``simulation.SimulationResult.layer_origins``, or what a study recorded of
 it), never from matching materials. The result is a self-contained SVG: colours are the page's
@@ -23,7 +27,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 from structureforge.adapters.follow_adapter import ProcessStructure
 from structureforge.core.materials import MaterialLibrary
@@ -34,8 +38,10 @@ from structureforge.process.steps import ProcessStep
 
 from .simulation import (
     GRADED_NITRIDE_RE,
+    INTERFACE_STEP_KINDS,
     LABEL_COMPOSITION,
     LABEL_DECLARED_PREFIX,
+    LABEL_DEPTH,
     LABEL_THICKNESS,
     SUBSTRATE_ORIGIN,
     DeclaredParam,
@@ -97,13 +103,17 @@ class LayerAnnotation:
     positions in ``frame.layers`` of the layers its step created (the line points at the largest).
     ``grouped``: the label of a brick - its name, one line per labelled step, and a bracket over all
     their layers instead of a line to one of them, its lines written from the highest layer down
-    (``line_layers``: the layers of each line's step)."""
+    (``line_layers``: the layers of each line's step). ``interface``: the mark of a step that
+    created no layer - ``layers`` are then the layers made before it, ``after`` those made after
+    it, and the line points at the surface between the two."""
 
     title: str
     lines: tuple[str, ...]
     layers: tuple[int, ...]
     grouped: bool = False
     line_layers: tuple[tuple[int, ...], ...] = ()
+    interface: bool = False
+    after: tuple[int, ...] = ()
 
 
 def length_text(nm: float) -> str:
@@ -130,7 +140,10 @@ def _declared_value(name: str, params: list[DeclaredParam]) -> str | None:
 
 
 def label_title(step: ProcessStep, label: LayerLabel) -> str:
-    """The text of ``step``'s label: its own, or else the step's material, or else its name."""
+    """The text of ``step``'s label: its own, or else the step's material, or else its name (always
+    its name for an interface mark: the material of a resist strip is not what it made)."""
+    if step.kind in INTERFACE_STEP_KINDS:
+        return label.text or step.name
     material = getattr(step, "material", None) or getattr(step, "resist_material", None)
     return label.text or (material if isinstance(material, str) else None) or step.name
 
@@ -146,6 +159,10 @@ def label_values(step: ProcessStep, declared: list[DeclaredParam], label: LayerL
             thickness = getattr(step, "thickness", None)
             if isinstance(thickness, Length):
                 values.append(("", length_text(thickness.to_nm())))
+        elif key == LABEL_DEPTH:
+            depth = getattr(step, "depth", None)
+            if isinstance(depth, Length):
+                values.append(("", length_text(depth.to_nm())))
         elif key == LABEL_COMPOSITION:
             match = GRADED_NITRIDE_RE.match(str(getattr(step, "material", "") or ""))
             if match:
@@ -183,15 +200,29 @@ def annotations_for(
     position per layer of ``frame.layers``, :data:`SUBSTRATE_ORIGIN` or ``None`` for the
     substrate) - one per labelled step that has a layer in it, in the order of the steps. The
     labelled steps of one brick (``bricks``, see :func:`~.simulation.grouped_labels`) share the
-    brick's label instead, one line per step that has a layer in the drawing."""
-    labelled = {index: label for index, label in labels.items() if 0 <= index < len(steps)}
+    brick's label instead, one line per step that has a layer in the drawing. A labelled step that
+    creates no layer (:data:`~.simulation.INTERFACE_STEP_KINDS`) is an interface mark of its own,
+    never grouped: between the layers made before it (the substrate among them) and those made
+    after it."""
+    marks = {index: label for index, label in labels.items() if 0 <= index < len(steps) and steps[index].kind in INTERFACE_STEP_KINDS}
+    labelled = {index: label for index, label in labels.items() if 0 <= index < len(steps) and index not in marks}
     groups = grouped_labels(bricks or [], labelled)
     in_group = {index for _brick, members in groups for index in members}
 
     def layers_of(indexes: set[int]) -> tuple[int, ...]:
         return tuple(k for k, origin in enumerate(origins) if origin in indexes and origin != SUBSTRATE_ORIGIN)
 
+    def substrate(origin: int | None) -> bool:
+        return origin is None or origin == SUBSTRATE_ORIGIN
+
     ordered: list[tuple[int, LayerAnnotation]] = []
+    for index in sorted(marks):
+        before = tuple(k for k, origin in enumerate(origins) if substrate(origin) or origin < index)
+        after = tuple(k for k, origin in enumerate(origins) if not substrate(origin) and origin > index)
+        if not before:
+            continue
+        title, lines = label_text(steps[index], declared.get(index, []), marks[index])
+        ordered.append((index, LayerAnnotation(title, lines, before, interface=True, after=after)))
     for index in sorted(labelled):
         layers = layers_of({index})
         if index in in_group or not layers:
@@ -225,6 +256,9 @@ BRACKET_MIN_HEIGHT = 8.0
 # des accolades dont les hauteurs se recouvrent (les coquilles d'un nanofil enveloppent son cœur) :
 # chacune dans sa colonne, la plus courte au plus près du dessin
 BRACKET_COLUMN = BRACKET_DEPTH + 4.0
+# la marque d'une étape sans couche : un tiret de part et d'autre du point, un losange dessus
+INTERFACE_TICK = 9.0
+INTERFACE_DIAMOND = 3.8
 MAX_TITLE_CHARS = 40
 MAX_LINE_CHARS = 48
 MAX_GROUPED_LINE_CHARS = 64
@@ -256,6 +290,39 @@ def _anchor(rings: list[dict]) -> tuple[float, float] | None:
     seg_min, seg_max = right.bounds[0], right.bounds[2]
     inset = min((seg_max - seg_min) / 2, 0.06 * (max_x - min_x))
     return seg_max - inset, inside.y
+
+
+def _union(frame: Frame, layers: tuple[int, ...]) -> Any:
+    shapes = [shape for k in layers if k < len(frame.layers) for shape in [_shape(frame.layers[k].rings())] if shape is not None and not shape.is_empty]
+    return unary_union(shapes) if shapes else None
+
+
+# où chercher la surface d'une marque d'interface, en fraction de la largeur : à droite d'abord, du
+# côté des étiquettes
+_INTERFACE_SAMPLES = (0.92, 0.85, 0.75, 0.65, 0.5, 0.35, 0.2, 0.08)
+
+
+def _interface_anchor(frame: Frame, before: tuple[int, ...], after: tuple[int, ...]) -> tuple[float, float] | None:
+    """A point on the surface a step that made no layer left behind: the top of the layers made
+    before it (``before``), where a layer made after it (``after``) lies on it - the interface -,
+    else where that surface is bare; towards the right edge, like the labels."""
+    below = _union(frame, before)
+    if below is None:
+        return None
+    above = _union(frame, after)
+    min_x, min_y, max_x, max_y = below.bounds
+    tolerance = 0.01 * max(max_x - min_x, max_y - min_y, 1e-9)
+    bare = None
+    for fraction in _INTERFACE_SAMPLES:
+        x = min_x + fraction * (max_x - min_x)
+        crossing = below.intersection(LineString([(x, min_y - 1), (x, max_y + 1)]))
+        if crossing.is_empty:
+            continue
+        top = crossing.bounds[3]
+        if above is None or above.distance(Point(x, top)) <= tolerance:
+            return x, top
+        bare = bare or (x, top)
+    return bare
 
 
 # La largeur d'un texte, estimée (le serveur ne mesure pas le texte) et par excès : la chasse de
@@ -366,13 +433,18 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
     bracket_x = PAD + sw + BRACKET_GAP
     blocks = []
     for annotation in annotations:
+        bracket = None
         rings_by_layer = [frame.layers[k].rings() for k in annotation.layers if k < len(frame.layers)]
         candidates = [(rings, _shape(rings)) for rings in rings_by_layer]
         candidates = [(rings, shape) for rings, shape in candidates if shape is not None and not shape.is_empty]
         if not candidates:
             continue
-        bracket = None
-        if annotation.grouped:
+        if annotation.interface:
+            point = _interface_anchor(frame, annotation.layers, annotation.after)
+            if point is None:
+                continue
+            anchor = to_svg(*point)
+        elif annotation.grouped:
             # une accolade sur toute la hauteur des couches de la brique (jamais plus fine qu'un trait lisible)
             _min_x, min_y, _max_x, max_y = unary_union([shape for _rings, shape in candidates]).bounds
             top, bottom = to_svg(0, max_y)[1], to_svg(0, min_y)[1]
@@ -393,7 +465,9 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         lines = [_ellipsis(line, MAX_GROUPED_LINE_CHARS if annotation.grouped else MAX_LINE_CHARS) for line in lines]
         height = TITLE_SIZE * LINE_HEIGHT + len(lines) * VALUE_SIZE * LINE_HEIGHT
         width = max([_text_width(title, TITLE_SIZE)] + [_text_width(line, VALUE_SIZE) for line in lines])
-        blocks.append({"anchor": anchor, "bracket": bracket, "title": title, "lines": lines, "height": height, "width": width})
+        blocks.append(
+            {"anchor": anchor, "bracket": bracket, "title": title, "lines": lines, "height": height, "width": width, "interface": annotation.interface}
+        )
     if not blocks:
         return base
     columns = _bracket_columns([b["bracket"] for b in blocks])
@@ -429,6 +503,15 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
                 f'fill="none" stroke-width="1.4" stroke-linejoin="round" style="stroke:{_TEXT_SOFT}"/>'
                 f'<polyline points="{_n(ax)},{_n(ay)} {_n(elbow)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
             )
+        elif block["interface"]:
+            # une marque d'interface : un trait pointillé, un tiret posé sur la surface et un losange
+            points = f"{_n(ax)},{_n(ay)} {_n(elbow)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}"
+            r = INTERFACE_DIAMOND
+            mark = (
+                f'<polyline points="{points}" fill="none" stroke-width="1.2" stroke-dasharray="4 3" style="stroke:{_TEXT_SOFT}"/>'
+                f'<path d="M{_n(ax - INTERFACE_TICK)},{_n(ay)} H{_n(ax + INTERFACE_TICK)}" stroke-width="2" stroke-linecap="round" style="stroke:{_TEXT}"/>'
+                f'<path d="M{_n(ax)},{_n(ay - r)} L{_n(ax + r)},{_n(ay)} L{_n(ax)},{_n(ay + r)} L{_n(ax - r)},{_n(ay)} Z" stroke-width="1.4" style="fill:{_SURFACE};stroke:{_TEXT}"/>'
+            )
         else:
             points = f"{_n(ax)},{_n(ay)} {_n(elbow)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}"
             mark = (
@@ -443,7 +526,7 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
             texts.append(
                 f'<text x="{_n(column_x)}" y="{_n(baseline)}" font-size="{_n(VALUE_SIZE)}" style="fill:{_TEXT_SOFT}">{html.escape(line)}</text>'
             )
-        grouped = ' data-grouped="true"' if block["bracket"] is not None else ""
+        grouped = ' data-grouped="true"' if block["bracket"] is not None else ' data-interface="true"' if block["interface"] else ""
         parts.append(
             f'<g class="sp-layer-label" data-top="{_n(block_top)}" data-height="{_n(block["height"])}"{grouped}>' + mark + "".join(texts) + "</g>"
         )
