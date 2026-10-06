@@ -70,7 +70,7 @@ function recipeSelectOptionsHtml(kind) {
   return (
     `<optgroup label="Bibliothèque">${recipeOptions(kind)}</optgroup>` +
     ownGroup +
-    `<option value="${NEW_RECIPE_VALUE}">＋ Nouvelle recette du procédé…</option>`
+    `<option value="${NEW_RECIPE_VALUE}">+ Nouvelle recette du procédé…</option>`
   );
 }
 

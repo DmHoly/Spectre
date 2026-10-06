@@ -432,6 +432,7 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
 
     bracket_x = PAD + sw + BRACKET_GAP
     blocks = []
+    marks_at: list[tuple[float, float]] = []
     for annotation in annotations:
         bracket = None
         rings_by_layer = [frame.layers[k].rings() for k in annotation.layers if k < len(frame.layers)]
@@ -444,6 +445,10 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
             if point is None:
                 continue
             anchor = to_svg(*point)
+            # deux étapes sur la même interface (une gravure puis un nettoyage) : côte à côte
+            while any(abs(anchor[0] - x) < INTERFACE_TICK and abs(anchor[1] - y) < INTERFACE_TICK for x, y in marks_at):
+                anchor = (anchor[0] - 2.4 * INTERFACE_TICK, anchor[1])
+            marks_at.append(anchor)
         elif annotation.grouped:
             # une accolade sur toute la hauteur des couches de la brique (jamais plus fine qu'un trait lisible)
             _min_x, min_y, _max_x, max_y = unary_union([shape for _rings, shape in candidates]).bounds

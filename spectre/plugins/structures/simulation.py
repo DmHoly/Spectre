@@ -257,6 +257,33 @@ def recipes_library(own: ProcessRecipes | None = None) -> RecipeLibrary:
     return library.with_recipes(deposition=own.deposition, etch=own.etch) if own else library
 
 
+class PresetOrigin(BaseModel):
+    """The step preset a step was inserted from (``process_library``'s ``StepPreset``): its id, its
+    name and its version then - a trace, never a live link: the step keeps its own fields, and a
+    later edit of the preset changes nothing here. Travels with the process, by step index, like
+    the declared parameters (``preset_origins``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=200)
+    version: int = Field(1, ge=1)
+
+
+def preset_origins_by_index(raw: dict[str, PresetOrigin] | None, step_count: int) -> dict[int, PresetOrigin]:
+    """A request's ``preset_origins`` by step position - one outside the process is dropped."""
+    origins: dict[int, PresetOrigin] = {}
+    for key, origin in (raw or {}).items():
+        index = int(key) if key.isascii() and key.isdigit() else -1
+        if 0 <= index < step_count:
+            origins[index] = origin
+    return origins
+
+
+def preset_origins_json(origins: dict[int, PresetOrigin] | None) -> dict[str, dict[str, Any]]:
+    return {str(i): origin.model_dump(mode="json") for i, origin in sorted((origins or {}).items())}
+
+
 SUBSTRATE_ORIGIN = -1  # l'« étape » d'une couche du substrat de départ
 
 
@@ -422,6 +449,7 @@ def process_metadata(
     steps: list[ProcessStep],
     declared_params: dict[int, list[DeclaredParam]] | None = None,
     recipes: ProcessRecipes | None = None,
+    preset_origins: dict[int, PresetOrigin] | None = None,
 ) -> dict[str, Any]:
     """The raw, re-editable process (substrate + typed steps) as plain JSON - stashed on the
     committed ``Experiment.metadata`` under this key, since the ``Structure`` Follow stores is the
@@ -433,7 +461,9 @@ def process_metadata(
     along under ``"declared_params"``, keyed by step index - only when there are some, so a
     process without any keeps exactly its former shape (and :mod:`spectre.plugins.experiments.versioning` sees no
     spurious change on lineages recorded before they were kept). The process's own recipes
-    (:class:`ProcessRecipes`) ride along under ``"recipes"`` the same way, only when there are some.
+    (:class:`ProcessRecipes`) ride along under ``"recipes"`` the same way, only when there are some,
+    and so do the presets the steps were inserted from (:class:`PresetOrigin`, ``"preset_origins"``,
+    by step index).
     """
     process: dict[str, Any] = {
         "substrate": substrate.model_dump(mode="json"),
@@ -444,6 +474,9 @@ def process_metadata(
         process["declared_params"] = declared
     if recipes:
         process["recipes"] = recipes.as_json()
+    origins = preset_origins_json(preset_origins)
+    if origins:
+        process["preset_origins"] = origins
     return process
 
 

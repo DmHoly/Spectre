@@ -405,6 +405,7 @@ async function groupSelectionIntoBrick() {
       declared_params: declaredParamsPayload(selectedSteps),
       layer_labels: layerLabelsPayload(selectedSteps),
       recipes: processRecipesPayload(selectedSteps),
+      preset_origins: presetOriginsPayload(selectedSteps),
       scope: "microproject",
       microproject: slug,
     });
@@ -491,9 +492,18 @@ function stepChipHtml(i) {
       </span>
       ${declared ? `<span class="sb-chip__badge" title="${declared} paramètre(s) déclaré(s)">+${declared}</span>` : ""}
       ${step.layerLabel ? `<span class="sb-chip__badge sb-chip__badge--label" title="Étiquetée sur la structure : ${escapeHtml(step.layerLabel.text || stepMaterial(step) || step.name)}" aria-label="Étiquetée sur la structure"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span>` : ""}
+      ${step.presetOrigin ? presetChipBadgeHtml(step) : ""}
       ${hasFactor ? `<span class="sb-chip__badge sb-chip__badge--factor" title="Paramètre varié">×${factorCount}</span>` : ""}
       ${multi ? `<span class="sb-chip__check" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>` : ""}
     </div>`;
+}
+
+// La pastille d'une étape issue d'un préset (presets.js) : son nom, et si elle s'en est écartée.
+function presetChipBadgeHtml(step) {
+  const status = presetStatus(step);
+  const text = status ? PRESET_STATUS_TEXT[status.state] : "";
+  const drift = status && status.state !== "same";
+  return `<span class="sb-chip__badge sb-chip__badge--preset ${drift ? "is-drift" : ""}" title="Préset « ${escapeHtml(step.presetOrigin.name)} » v${step.presetOrigin.version} - ${escapeHtml(text)}" aria-label="Issue d'un préset${drift ? ", modifiée" : ""}">P${drift ? "*" : ""}</span>`;
 }
 
 function gapHtml(gap) {
@@ -664,7 +674,7 @@ flowTrack.addEventListener(
 
 // -- glisser-déposer : réordonner les puces, ou déposer un outil / une brique de la palette -----
 
-let dragPayload = null; // {type: "move", start, end} | {type: "kind", kind} | {type: "brick", brick}
+let dragPayload = null; // {type: "move", start, end} | {type: "kind", kind} | {type: "brick", brick} | {type: "preset", preset}
 
 function startFlowDrag(event, payload) {
   dragPayload = payload;
@@ -742,6 +752,7 @@ flowTrack.addEventListener("drop", (event) => {
   if (payload.type === "move") moveBlockToGap(payload.start, payload.end, gap);
   else if (payload.type === "kind") insertStepOfKind(payload.kind, gap);
   else if (payload.type === "brick") insertBrickAt(payload.brick, gap);
+  else if (payload.type === "preset") insertPresetAt(payload.preset, gap);
 });
 
 document.addEventListener("dragend", endFlowDrag);

@@ -582,7 +582,8 @@ class _PreparedStructure:
         self.steps = follow_adapter.to_steps(payload.steps)
         self.requested_step_ids = payload.step_ids
         recipes = payload.recipes or None
-        self.metadata["structureforge_process"] = simulation.process_metadata(payload.substrate, payload.steps, declared, recipes)
+        origins = simulation.preset_origins_by_index(payload.preset_origins, len(payload.steps))
+        self.metadata["structureforge_process"] = simulation.process_metadata(payload.substrate, payload.steps, declared, recipes, origins)
         if isinstance(payload, CampaignPayload):
             factor_ids: list[str | None] = list(payload.step_ids)
             if start is not None and not any(factor_ids):

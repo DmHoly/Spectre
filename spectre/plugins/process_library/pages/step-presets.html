@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/kernel/kernel.css">
   <link rel="stylesheet" href="/static/search/search.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
+  <link rel="stylesheet" href="/static/process_library/step-presets.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -14,47 +15,33 @@
 <body>
   <!-- spectre:topbar crumb-id="crumb" -->
 
-  <div class="page" style="max-width:960px;">
-    <p style="color:var(--text-faint);margin-bottom:8px;"><a id="back-link" href="#">&larr; Bibliothèque</a></p>
-    <h1 style="font-size:22px;margin-bottom:4px;">Présets d'étape</h1>
-    <p style="color:var(--text-soft);font-size:14px;margin-bottom:20px;">Un raccourci nommé vers une recette de dépôt ou de gravure de StructureForge, pour la retrouver en un clic dans le formulaire d'étape du constructeur de structure.</p>
-
-    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
-    <div id="flash" class="flash flash-ok" style="display:none;margin-bottom:16px;"></div>
-
-    <div class="card card-pad" style="margin-bottom:24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div class="section-title" id="form-title" style="margin-bottom:0;">Nouveau préset</div>
-        <button class="btn btn-line" id="cancel-edit-btn" type="button" style="padding:5px 10px;font-size:12px;display:none;">Annuler</button>
+  <div class="page" style="max-width:1040px;">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a id="back-link" href="/bibliotheque">&larr; Bibliothèque</a></p>
+    <div class="sp-presets__head">
+      <div>
+        <h1 style="font-size:22px;margin-bottom:4px;">Présets d'étape</h1>
+        <p style="color:var(--text-soft);font-size:14px;margin:0;max-width:68ch;">Une étape entière déjà réglée - une gravure sélective, une croissance avec ses vitesses et son dopage, un nettoyage avec son bain et sa durée - à insérer d'un clic depuis la palette du constructeur. L'étape insérée est une copie : elle retient seulement de quel préset et de quelle version elle vient.</p>
       </div>
-      <form id="preset-form" class="field-group">
-        <div class="field-row">
-          <div><label>Nom</label><input class="field" id="f-name" required></div>
-          <div><label>Type</label>
-            <select class="field" id="f-kind">
-              <option value="deposition">Dépôt</option>
-              <option value="etch">Gravure</option>
-            </select>
-          </div>
-        </div>
-        <div><label>Recette</label><select class="field" id="f-recipe"></select>
-          <div class="help" id="f-recipe-hint" style="margin-top:4px;"></div>
-        </div>
-        <div><label>Notes (optionnel)</label><input class="field" id="f-notes"></div>
-        <div><label>Portée</label>
-          <select class="field" id="f-scope">
-            <option value="microproject">Ce µprojet uniquement</option>
-            <option value="shared">Partagé avec tous les µprojets</option>
-          </select>
-        </div>
-        <button class="btn btn-primary btn-block" id="submit-btn" type="submit">Créer le préset</button>
-      </form>
+      <div class="sp-presets__new" id="new-preset" hidden>
+        <span class="sp-presets__new-label">Nouveau préset</span>
+        <div class="sp-presets__new-kinds" id="new-preset-kinds"></div>
+      </div>
     </div>
 
-    <div class="card card-pad">
-      <div class="section-title" style="margin-bottom:12px;">Présets disponibles</div>
-      <div id="presets-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <div id="error" class="error" style="display:none;margin:16px 0;"></div>
+    <div id="flash" class="flash flash-ok" style="display:none;margin:16px 0;"></div>
+
+    <div class="sp-presets__tools">
+      <input class="field" id="preset-filter" type="search" placeholder="Filtrer par nom, type, matériau…" aria-label="Filtrer les présets">
+      <div class="sp-presets__scopes" role="group" aria-label="Portée">
+        <button class="chip-btn is-active" type="button" data-scope="">Tous</button>
+        <button class="chip-btn" type="button" data-scope="microproject">Ce µprojet</button>
+        <button class="chip-btn" type="button" data-scope="shared">Partagés</button>
+        <button class="chip-btn" type="button" data-scope="builtin">Intégrés</button>
+      </div>
     </div>
+
+    <div id="presets-list" class="sp-presets__groups"></div>
   </div>
 
   <script src="/static/kernel/api.js"></script>
@@ -65,7 +52,6 @@
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/accounts/client.js"></script>
   <script src="/static/microprojects/client.js"></script>
-  <script src="/static/structures/client.js"></script>
   <script src="/static/process_library/client.js"></script>
   <script src="/static/process_library/step-presets.js"></script>
 </body>

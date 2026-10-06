@@ -106,11 +106,11 @@
           <h2>Ajouter des étapes</h2>
           <p>Une structure se construit étape par étape. Neuf types d'étapes sont disponibles dans la palette, groupés par famille (ajout de matière, motif et retrait, autres) :</p>
           <ul>
-            <li><strong>Dépôt</strong> — ajoute une couche d'un matériau, avec une recette (mode conforme ou directionnel, angle) et une épaisseur. Un préset d'étape (voir <a href="#presets-etapes">Gérer les présets d'étapes</a>) préremplit la recette en un clic.</li>
-            <li><strong>Gravure</strong> — retire de la matière selon une recette (mode isotrope ou directionnel, sélectivité par matériau), et une profondeur.</li>
+            <li><strong>Dépôt</strong> — ajoute une couche d'un matériau, avec une recette (mode conforme ou directionnel, angle) et une épaisseur.</li>
+            <li><strong>Gravure</strong> — retire de la matière selon une recette (mode isotrope ou directionnel, sélectivité par matériau), et une profondeur. Pour une gravure sélective, choisissez « + Nouvelle recette du procédé… » (ou « Personnaliser cette recette ») : une vitesse de 0 pour tout autre matériau et de 1 pour le matériau visé ne grave que lui. Cette recette est enregistrée avec la structure, la bibliothèque peut changer sans la modifier.</li>
             <li><strong>Planarisation</strong> — aplanit jusqu'à un niveau précis ou jusqu'à atteindre un matériau donné.</li>
             <li><strong>Lithographie</strong> — dépose une résine avec des ouvertures (zones non couvertes).</li>
-            <li><strong>Étape chimique</strong> — un nettoyage, un recuit... sans effet visible sur la coupe, gardé pour la traçabilité.</li>
+            <li><strong>Étape chimique</strong> — un nettoyage, un recuit... sans effet visible sur la coupe, gardé pour la traçabilité. Comme une gravure, un etch back ou une planarisation, elle peut quand même apparaître sur le schéma : « Afficher sur la structure » y pose une marque reliée en pointillé à l'interface où elle a eu lieu (entre les couches d'avant et celles d'après), avec ses paramètres déclarés (durée, bain...).</li>
             <li><strong>Retrait de résine</strong> — retire la résine posée par une lithographie.</li>
             <li><strong>Croissance facettée</strong> — construction de Wulff cinétique : trois familles de plans cristallins (C, M, semipolaire) avancent chacune à leur propre vitesse relative, ce qui fait émerger une pointe de nanofil en crayon ou une facette de LED III-N naturellement, au fil de plusieurs étapes.</li>
             <li><strong>Croissance épitaxiale</strong> — croissance sélective (SAG) ou non selon un matériau d'amorçage, dans une orientation cristalline donnée (plan C vertical, plan M latéral, ou semipolaire à un angle choisi).</li>
@@ -265,7 +265,9 @@
 
         <section id="presets-etapes">
           <h2>Gérer les présets d'étapes</h2>
-          <p>Un préset d'étape est un raccourci nommé vers une recette de dépôt ou de gravure de StructureForge — le sélectionner dans le formulaire d'une étape en préremplit la recette, sans créer de lien permanent avec le préset : l'étape ajoutée reste ensuite librement modifiable, exactement comme une structure dupliquée depuis la bibliothèque. L'onglet « Structures » d'un projet propose un lien « Gérer les présets d'étapes » vers une page dédiée qui liste les présets intégrés (non modifiables, seulement duplicables), ceux partagés entre tous les projets, et ceux propres au projet — avec la possibilité d'en créer, modifier ou supprimer un.</p>
+          <p>Un préset d'étape est une étape entière déjà réglée : une gravure sélective avec sa recette, une croissance en pyramide avec ses vitesses par plan, son dopage et ses débits, un nettoyage avec son bain et sa durée. Il porte les champs de l'étape, ses paramètres déclarés, son étiquette sur le schéma et les paramètres qu'il propose de faire varier dans une campagne. Les présets sont listés dans la palette du constructeur, sous les outils : un clic (ou un glisser) insère l'étape complète.</p>
+          <p>L'étape insérée est une copie, librement modifiable : elle retient seulement de quel préset et de quelle version elle vient. L'inspecteur indique si elle est restée conforme au préset, si elle a été modifiée depuis ou si le préset a changé, et propose de <em>réappliquer</em> le préset ou de le <em>mettre à jour</em> avec l'étape (une nouvelle version, sans toucher aux structures déjà construites). N'importe quelle étape réglée peut devenir un préset par « Enregistrer comme préset ». Sur l'écran des variations, les paramètres proposés par le préset viennent en tête.</p>
+          <p>La page « Présets d'étape » d'un projet les regroupe par famille (intégrés, partagés entre tous les projets, propres au projet). « Nouveau préset » et « Modifier » ouvrent le constructeur en mode préset, avec tous les formulaires d'étape ; un préset intégré se duplique avant d'être modifié.</p>
           <p class="docs-shot-caption">(Capture d'écran à refaire pour cette page.)</p>
         </section>
 

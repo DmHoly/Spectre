@@ -12,6 +12,8 @@ PLUGIN = Plugin(
     pages=(
         Page("/microprojets/{slug}/briques-technologiques/bibliotheque/nouvelle", "builder.html"),
         Page("/microprojets/{slug}/briques-technologiques/bibliotheque/{brick_id}", "builder.html"),
+        Page("/microprojets/{slug}/presets-etapes/bibliotheque/nouvelle", "builder.html"),
+        Page("/microprojets/{slug}/presets-etapes/bibliotheque/{preset_id}", "builder.html"),
         Page("/microprojets/{slug}/structures/bibliotheque/nouvelle", "builder.html"),
         Page("/microprojets/{slug}/structures/bibliotheque/{structure_id}", "builder.html"),
         Page("/microprojets/{slug}/structures/nouvelle", "builder.html"),

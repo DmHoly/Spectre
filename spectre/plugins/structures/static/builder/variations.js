@@ -164,6 +164,14 @@ function variableParams(stepIndex) {
     const numeric = typeof p.value === "number";
     params.push({ field: `declared:${p.name}`, label: p.name, declared: true, type: numeric ? "number" : "choice", free: !numeric, unit: "", current: p.value });
   });
+  // ceux que propose le préset d'où vient l'étape (presets.js), en tête
+  const suggested = presetSuggestedFields(step);
+  if (suggested.length) {
+    params.forEach((p) => {
+      if (suggested.includes(p.field)) p.suggested = true;
+    });
+    params.sort((a, b) => Number(Boolean(b.suggested)) - Number(Boolean(a.suggested)));
+  }
   return params;
 }
 
@@ -392,7 +400,7 @@ function startVaryingLayer(stepIndex, field) {
   const declared = params.filter((p) => p.declared);
   const optionHtml = (p) => {
     const varied = factorsOnStep(stepIndex).some((f) => f.field === p.field);
-    return `<option value="${escapeHtml(p.field)}">${escapeHtml(paramDisplayLabel(p))}${varied ? " ✓" : ""}</option>`;
+    return `<option value="${escapeHtml(p.field)}">${escapeHtml(paramDisplayLabel(p))}${p.suggested ? " · proposé par le préset" : ""}${varied ? " ✓" : ""}</option>`;
   };
   document.getElementById("variation-field-select").innerHTML =
     (declared.length ? `<optgroup label="Réglages de l'étape">${own.map(optionHtml).join("")}</optgroup>` : own.map(optionHtml).join("")) +

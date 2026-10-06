@@ -1,0 +1,159 @@
+/* Page des présets d'étape (step-presets.js) : regroupés par famille, une carte par préset. */
+
+.sp-presets__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.sp-presets__new {
+  display: grid;
+  gap: 6px;
+}
+.sp-presets__new-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+.sp-presets__new-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sp-presets__new-kinds .btn {
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+.sp-presets__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.sp-presets__tools .field {
+  flex: 1 1 240px;
+  max-width: 360px;
+}
+.sp-presets__scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.chip-btn {
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.chip-btn:hover {
+  color: var(--navy);
+  border-color: var(--navy-500);
+}
+.chip-btn.is-active {
+  color: var(--surface);
+  background: var(--navy);
+  border-color: var(--navy);
+}
+.chip-btn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.sp-presets__groups {
+  display: grid;
+  gap: 24px;
+}
+.sp-presets__group-title {
+  margin: 0 0 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sp-presets__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+.sp-preset {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-top: 3px solid var(--kind, var(--navy));
+  border-radius: var(--radius-md);
+}
+.sp-preset__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sp-preset__name {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.sp-preset__meta {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.sp-preset__kind {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--kind, var(--text-soft));
+}
+.sp-preset__summary {
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+.sp-preset__params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.sp-preset__param {
+  padding: 1px 7px;
+  font-size: 11.5px;
+  color: var(--text-soft);
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+}
+.sp-preset__param.is-variable {
+  color: var(--gold-dark);
+  border-color: var(--gold);
+  background: var(--gold-tint);
+}
+.sp-preset__notes {
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+.sp-preset__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.sp-preset__actions .btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.sp-presets__legend {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-faint);
+}

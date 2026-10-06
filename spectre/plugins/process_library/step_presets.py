@@ -1,40 +1,71 @@
-"""Saved, reusable step presets: a named shortcut to one of StructureForge's own deposition/etch
-recipes (see :mod:`structureforge.core.recipes`), persisted independently of any structure - handy
-for a team's own vocabulary ("notre gravure standard") on top of the recipe library's own names.
+"""Saved, reusable step presets: one whole step, already set up - a selective etch of one material,
+a pyramid growth with its rates and doping, a chemical clean with its bath and duration - persisted
+independently of any structure and inserted in one click from the builder's palette.
+
+A preset holds the step itself (any kind, every field), its declared parameters (flows, doping,
+temperature... :class:`~spectre.plugins.structures.simulation.DeclaredParam`), its label on the
+drawing (:class:`~spectre.plugins.structures.simulation.LayerLabel`, an interface mark for a step
+that makes no layer), the process recipe it names if it defines its own
+(:class:`~spectre.plugins.structures.simulation.ProcessRecipes`: the selectivity of a selective
+etch), and the fields worth varying in a campaign (``variable_fields``: ``"thickness"``,
+``"declared:dopage"``...). Its ``version`` goes up each time its content changes.
 
 Like every library item (:mod:`spectre.plugins.process_library.service`), a preset is built in,
-shared across every microproject, or private to one. Applying a preset only pre-fills a step's
-form fields client-side (see ``structures/static/builder/form-widgets.js``); once added, a step carries its own
-``recipe`` independently, the same "point of departure, not a live link" relationship the
-structure library already has between a preset structure and the experience derived from it.
+shared across every microproject, or private to one. Inserting it copies the step into the process
+(``structures/static/builder/presets.js``): the step then lives its own life, remembering only which
+preset and which version it came from (:class:`~spectre.plugins.structures.simulation.PresetOrigin`)
+- a later edit of the preset never changes a structure already built with it.
 """
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Union
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field, TypeAdapter, field_validator, model_validator
+from structureforge.process.steps import ProcessStep
 
 from ..library.service import load
+from ..structures.simulation import LABEL_DECLARED_PREFIX, DeclaredParam, LayerLabel, ProcessRecipes
 from .models import LibraryItem
 
+# the content of a preset - what a change of makes a new version (its name, notes or scope do not)
+CONTENT_FIELDS = ("step", "declared_params", "layer_label", "recipes", "variable_fields")
+# a step's fields that are never varied in a campaign (see structures.campaigns._variable_fields)
+_NOT_VARIABLE = {"kind", "name", "description", "parameters", "seed_materials", "openings"}
+MAX_VARIABLE_FIELDS = 12
 
-class DepositionPreset(BaseModel):
-    kind: Literal["deposition"] = "deposition"
-    recipe: str
-
-
-class EtchPreset(BaseModel):
-    kind: Literal["etch"] = "etch"
-    recipe: str
-
-
-StepPresetPayload = Annotated[Union[DepositionPreset, EtchPreset], Field(discriminator="kind")]
+_STEP: TypeAdapter[ProcessStep] = TypeAdapter(ProcessStep)
 
 
 class StepPreset(LibraryItem):
-    payload: StepPresetPayload
+    step: ProcessStep
+    declared_params: list[DeclaredParam] = Field(default_factory=list)
+    layer_label: LayerLabel | None = None
+    recipes: ProcessRecipes = Field(default_factory=ProcessRecipes)
+    variable_fields: list[str] = Field(default_factory=list, max_length=MAX_VARIABLE_FIELDS)
     notes: str | None = None
+    version: int = Field(1, ge=1)
+
+    @field_validator("variable_fields")
+    @classmethod
+    def _unique(cls, fields: list[str]) -> list[str]:
+        return list(dict.fromkeys(field.strip() for field in fields if field.strip()))
+
+    @model_validator(mode="after")
+    def _variable_fields_exist(self) -> "StepPreset":
+        declared = {param.name for param in self.declared_params}
+        own = set(type(self.step).model_fields) - _NOT_VARIABLE
+        for field in self.variable_fields:
+            name = field[len(LABEL_DECLARED_PREFIX) :] if field.startswith(LABEL_DECLARED_PREFIX) else None
+            if (name is not None and name not in declared) or (name is None and field not in own):
+                raise ValueError(f"paramètre à faire varier inconnu pour cette étape : {field!r}")
+        return self
+
+
+def revised(old: StepPreset, new: StepPreset) -> StepPreset:
+    """``new``, one version above ``old`` when its content changed (:data:`CONTENT_FIELDS`)."""
+    before, after = old.model_dump(mode="json", include=set(CONTENT_FIELDS)), new.model_dump(mode="json", include=set(CONTENT_FIELDS))
+    return new.model_copy(update={"version": old.version + 1}) if before != after else new.model_copy(update={"version": old.version})
 
 
 def default_step_presets() -> dict[str, StepPreset]:
@@ -45,97 +76,80 @@ def default_step_presets() -> dict[str, StepPreset]:
     return load("step-presets")
 
 
-def step_preset_from_entry(entry: dict[str, Any]) -> StepPreset:
-    """One entry of ``presets.yml`` (``name``, ``kind``, ``recipe``, ``notes``)."""
-    kind = entry["kind"]
+def legacy_step(name: str, kind: str, recipe: str) -> dict[str, Any]:
+    """The step of a preset from before whole-step presets, which only named a recipe: that recipe,
+    with the builder's defaults for the rest."""
     if kind == "deposition":
-        payload: DepositionPreset | EtchPreset = DepositionPreset(recipe=entry["recipe"])
-    elif kind == "etch":
-        payload = EtchPreset(recipe=entry["recipe"])
+        return {"kind": "deposition", "name": name, "material": "SiO2", "recipe": recipe, "thickness": {"value": 20, "unit": "nm"}}
+    if kind == "etch":
+        return {"kind": "etch", "name": name, "recipe": recipe, "depth": {"value": 10, "unit": "nm"}}
+    raise ValueError(f"type de préset inconnu : {kind!r} (attendu deposition ou etch)")
+
+
+def step_preset_from_entry(entry: dict[str, Any]) -> StepPreset:
+    """One entry of ``presets.yml``: ``name``, ``step`` (the step, ``kind`` included; its ``name``
+    defaults to the preset's), and optionally ``declared_params``, ``label`` (``{text, values}``),
+    ``recipe`` (the process recipe the step names - an etch one when it has a selectivity table),
+    ``variable`` (the fields worth varying) and ``notes``. An entry of the former shape (``kind`` +
+    ``recipe`` only) still reads, with the builder's defaults for the rest."""
+    name = entry["name"]
+    if "step" in entry:
+        step = {"name": name, **entry["step"]}
     else:
-        raise ValueError(f"type de préset inconnu : {kind!r} (attendu deposition ou etch)")
-    return StepPreset(name=entry["name"], payload=payload, notes=entry.get("notes"), created_at="preset")
+        step = legacy_step(name, entry.get("kind", ""), entry["recipe"])
+    recipes: dict[str, list[Any]] = {}
+    own = entry.get("recipe") if "step" in entry else None
+    if isinstance(own, dict):
+        recipes[step["kind"]] = [{"name": step.get("recipe") or name, **own}]
+        step.setdefault("recipe", recipes[step["kind"]][0]["name"])
+    return StepPreset(
+        name=name,
+        step=_STEP.validate_python(step),
+        declared_params=entry.get("declared_params") or [],
+        layer_label=entry.get("label"),
+        recipes=ProcessRecipes.model_validate(recipes),
+        variable_fields=entry.get("variable") or [],
+        notes=entry.get("notes"),
+        created_at="preset",
+    )
 
 
 def builtin_step_presets() -> dict[str, StepPreset]:
-    """Fallback preset set when ``presets.yml`` is missing - a nitride/semiconductor-
-    oriented subset (III-N epitaxy, passivation dielectrics, contact metals, the etches that go
-    with them). The shipped YAML file mirrors this list; edit that file to grow it.
-    """
-    deposition = [
-        StepPreset(
-            name="ALD Conformal",
-            payload=DepositionPreset(recipe="ALD Conformal"),
-            notes="Dépôt uniforme qui épouse parfaitement tous les reliefs de la surface.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="PVD Sputter (tilted)",
-            payload=DepositionPreset(recipe="PVD Sputter (tilted)"),
-            notes="Dépôt métallique en visée directe, légèrement incliné — les zones cachées sont moins couvertes.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="Evaporation (normal)",
-            payload=DepositionPreset(recipe="Evaporation (normal)"),
-            notes="Dépôt métallique tout droit par le dessus — ne couvre presque pas les flancs, adapté à un lift-off.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="MOCVD Epitaxial",
-            payload=DepositionPreset(recipe="MOCVD Epitaxial"),
-            notes="Croissance épitaxiale (semi-conducteurs III-N/III-V) sur une base plane.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="PECVD Conformal",
-            payload=DepositionPreset(recipe="PECVD Conformal"),
-            notes="Dépôt assisté par plasma, à plus basse température — bonne couverture des reliefs.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="Sputter Metal (normal)",
-            payload=DepositionPreset(recipe="Sputter Metal (normal)"),
-            notes="Dépôt métallique par pulvérisation, par le dessus — couvre mieux les flancs qu'une évaporation, reste directionnel.",
-            created_at="preset",
-        ),
+    """Fallback preset set when ``presets.yml`` is missing - a few nitride-oriented examples of
+    each kind of preset. The shipped YAML file holds the full set; edit that file to grow it."""
+    entries = [
+        {
+            "name": "Gravure sélective Al2O3",
+            "step": {"kind": "etch", "recipe": "Gravure sélective Al2O3", "depth": {"value": 50, "unit": "nm"}},
+            "recipe": {"mode": "isotropic", "selectivity_by_material": {"Al2O3": 1.0}, "default_factor": 0.0},
+            "declared_params": [{"name": "durée", "value": 120, "unit": "s"}],
+            "label": {"text": "", "values": ["declared:durée"]},
+            "variable": ["declared:durée"],
+            "notes": "Ne grave que l'Al2O3 : tout le reste sert de couche d'arrêt.",
+        },
+        {
+            "name": "Pyramide GaN",
+            "step": {
+                "kind": "faceted_growth",
+                "material": "GaN",
+                "thickness": {"value": 200, "unit": "nm"},
+                "rate_c": 0.2,
+                "rate_m": 0.1,
+                "rate_sp": 1.0,
+                "semi_polar_angle_deg": 28,
+            },
+            "declared_params": [{"name": "température", "value": 1000, "unit": "°C"}, {"name": "V/III", "value": 2000}],
+            "label": {"text": "", "values": ["thickness"]},
+            "variable": ["thickness", "rate_sp", "declared:température"],
+            "notes": "Croissance facettée où le semipolaire domine : la pointe se referme en pyramide.",
+        },
+        {
+            "name": "Clean HF",
+            "step": {"kind": "chemical", "description": "HF dilué"},
+            "declared_params": [{"name": "durée", "value": 30, "unit": "s"}, {"name": "concentration", "value": 1, "unit": "%"}],
+            "label": {"text": "", "values": ["declared:durée"]},
+            "variable": ["declared:durée"],
+            "notes": "Désoxydation avant reprise de croissance.",
+        },
     ]
-    etch = [
-        StepPreset(
-            name="Dry Oxide Etch",
-            payload=EtchPreset(recipe="Dry Oxide Etch"),
-            notes="Gravure sèche qui attaque surtout les oxydes ; grave presque aussi vite tout le reste.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="Wet HF Dip",
-            payload=EtchPreset(recipe="Wet HF Dip"),
-            notes="Bain humide très sélectif de l'oxyde — épargne le nitrure, le silicium et les métaux.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="Anisotropic RIE",
-            payload=EtchPreset(recipe="Anisotropic RIE"),
-            notes="Gravure sèche quasi verticale — le masque de résine s'érode lentement, tout le reste au rythme normal.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="Ion Mill (tilted)",
-            payload=EtchPreset(recipe="Ion Mill (tilted)"),
-            notes="Gravure physique inclinée (usinage ionique) — attaque presque tous les matériaux au même rythme.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="Cl2 ICP-RIE (III-N)",
-            payload=EtchPreset(recipe="Cl2 ICP-RIE (III-N)"),
-            notes="Gravure sèche quasi verticale des semi-conducteurs III-N (GaN, AlGaN...) — sélective par rapport aux masques, diélectriques et métaux.",
-            created_at="preset",
-        ),
-        StepPreset(
-            name="Wet Metal Etch",
-            payload=EtchPreset(recipe="Wet Metal Etch"),
-            notes="Bain humide générique pour graver un métal — attaque lentement tout le reste ; sous-grave comme toute gravure isotrope.",
-            created_at="preset",
-        ),
-    ]
-    return {p.name: p for p in [*deposition, *etch]}
+    return {preset.name: preset for preset in map(step_preset_from_entry, entries)}

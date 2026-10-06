@@ -88,6 +88,7 @@ function renderStepInspector() {
   showInspectorSection("step-form-section");
   fillKindFields(state.steps[state.selectedIndex]);
   updateStepInspectorHeader();
+  renderPresetPanel();
 }
 
 function updateStepInspectorHeader() {
@@ -128,6 +129,7 @@ function livePreviewFromForm() {
   // faire perdre son identité (son id, voir withoutStepId dans step-list.js).
   const previous = state.steps[i];
   if (previous.id) step.id = previous.id;
+  if (previous.presetOrigin) step.presetOrigin = previous.presetOrigin; // sa trace, pas un lien : l'étape garde ses modifications
   if (previous.brick_group_id) {
     step.brick_group_id = previous.brick_group_id;
     step.brick_name = previous.brick_name;
@@ -136,6 +138,7 @@ function livePreviewFromForm() {
   state.steps[i] = step;
   shareOwnRecipe(step, previous.ownRecipe ? previous.ownRecipe.name : null);
   refreshLayerLabelValues(step);
+  refreshPresetStatus();
   updateStepInspectorHeader();
   invalidateVariations();
   renderRail();

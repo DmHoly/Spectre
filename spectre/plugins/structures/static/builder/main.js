@@ -14,6 +14,7 @@ async function loadPickers() {
   populateKindSelect();
   renderPaletteTools();
   renderBrickList();
+  renderPresetList();
 }
 
 function setupExperienceMode() {
@@ -38,8 +39,8 @@ function setupExperienceMode() {
 }
 
 async function init() {
-  setPageTitle(isLibraryMode ? "Nouvelle structure" : isBrickMode ? "Nouvelle brique technologique" : "Nouvelle expérience");
-  if (!isLibraryMode && !isBrickMode) setupExperienceMode();
+  setPageTitle(isLibraryMode ? "Nouvelle structure" : isBrickMode ? "Nouvelle brique technologique" : isPresetMode ? "Nouveau préset d'étape" : "Nouvelle expérience");
+  if (!isLibraryMode && !isBrickMode && !isPresetMode) setupExperienceMode();
   setStage("structure");
   try {
     await loadPickers();
@@ -52,6 +53,8 @@ async function init() {
     await initLibraryMode();
   } else if (isBrickMode) {
     await initBrickMode();
+  } else if (isPresetMode) {
+    await initPresetMode();
   } else {
     if (pluginEnabled("intent_forms")) {
       intentFormSection = await mountIntentFormSection(document.getElementById("intent-form-box"), { microprojectSlug: slug, onError: showError });
@@ -67,7 +70,7 @@ async function init() {
   renderSteps();
   resetHistory();
   // « Éditer la fiche » depuis l'en-tête d'une fiche : on arrive directement sur l'intention
-  if (!isLibraryMode && !isBrickMode && queryParams.get("etape") === "intention") setStage("intention");
+  if (!isLibraryMode && !isBrickMode && !isPresetMode && queryParams.get("etape") === "intention") setStage("intention");
   const selectedChip = document.getElementById(`sb-chip-${state.selectedIndex}`);
   if (selectedChip) selectedChip.scrollIntoView({ block: "nearest", inline: "nearest" });
 }

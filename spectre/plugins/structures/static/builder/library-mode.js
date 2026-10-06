@@ -6,7 +6,7 @@ async function loadChosenStructureForExperience() {
   try {
     const found = await processLibraryApi.savedStructure(chosenStructureId);
     setSubstrateFields(found.substrate);
-    state.steps = attachBricks(attachRecipes(attachLayerLabels(attachDeclaredParams(found.steps, found.declared_params), found.layer_labels), found.recipes), found.bricks);
+    state.steps = attachStepExtras(found.steps, found);
     selectLastStep();
     renderSteps();
     document.getElementById("based-on-note").hidden = false;
@@ -36,6 +36,7 @@ async function saveLibraryStructure(forceNew) {
     declared_params: declaredParamsPayload(state.steps),
     layer_labels: layerLabelsPayload(state.steps),
     recipes: processRecipesPayload(state.steps),
+    preset_origins: presetOriginsPayload(state.steps),
     bricks: bricksPayload(state.steps),
     scope: document.getElementById("library-shared-checkbox").checked ? "shared" : "microproject",
     microproject: slug,
@@ -72,7 +73,7 @@ async function initLibraryMode() {
   try {
     const found = await processLibraryApi.savedStructure(libraryStructureId);
     setSubstrateFields(found.substrate);
-    state.steps = attachBricks(attachRecipes(attachLayerLabels(attachDeclaredParams(found.steps, found.declared_params), found.layer_labels), found.recipes), found.bricks);
+    state.steps = attachStepExtras(found.steps, found);
     selectLastStep();
     renderSteps();
     // A built-in structure (or one we may not change) has nothing to edit in place - forcing
