@@ -178,8 +178,10 @@ function lineagePlanShapeHtml({ radius = 9, selected = false } = {}) {
   return `${halo}<circle class="lineage-shape" r="${radius - 1}" fill="var(--surface)" style="stroke:var(--gold-dark);stroke-width:1.8px;stroke-dasharray:3 2.4"></circle>`;
 }
 
-// Ce qu'une expérience prévue reprendra : « 2 plaques reprises » ou « ~6 plaques prévues ».
+// Ce qu'une expérience prévue reprendra : « 2 plaques reprises », « ~6 plaques prévues », ou
+// « plaques à cocher » (à la suite d'une prévision qui ne les nomme pas encore).
 function lineagePlanWafersLabel(plan) {
+  if (plan.mode === "same_wafers" && !plan.wafers.length) return "mêmes plaques, à cocher";
   if (plan.mode === "same_wafers") return `${plan.wafers.length} plaque${plan.wafers.length > 1 ? "s" : ""} reprise${plan.wafers.length > 1 ? "s" : ""}`;
   return `~${plan.wafer_count} plaque${plan.wafer_count > 1 ? "s" : ""} prévue${plan.wafer_count > 1 ? "s" : ""}`;
 }

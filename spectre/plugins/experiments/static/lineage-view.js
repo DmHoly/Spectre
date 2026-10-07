@@ -14,6 +14,9 @@
    estimé). L'expérience prévue apparaît en pointillé, pastille « Prévu », reliée à son nœud ; sa
    carte la lance (le constructeur, prérempli : la structure est définie là, le split et les vraies
    plaques aussi), la modifie ou la supprime. planRoot() prévoit une racine (nouvelles plaques).
+   Une prévision a aussi son « + » : on prévoit à sa suite (ses plaques, si elle les nomme, ou de
+   nouvelles) ; elle ne se lance qu'une fois sa mère lancée. La mère supprimée, ses filles restent,
+   détachées (pastille « DÉTACHÉE ») : leur carte propose de les rattacher sous un autre nœud.
 
    Le layout et le dessin d'un nœud/trait vivent dans lineage-graph.js (chargé avant ce fichier) -
    partagés avec le mini-arbre qu'atlas.js affiche au clic sur une étude, pour resituer son
@@ -38,6 +41,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
   let selectedId = null;
   let positionedById = new Map(); // les nœuds dessinés, par id (réels et prévus)
   let currentEdges = []; // les arêtes dessinées (filiations, rattachements, prévisions)
+  let currentPlans = []; // les expériences prévues (GET .../lineage, `plans`)
 
   function panelEmptyState() {
     return `<p class="help">Cliquez un nœud pour voir la structure, l'objectif et la conclusion de cette expérience ici.</p>`;
@@ -189,9 +193,9 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
     return currentEdges.find((e) => e.child === node.id && !e.planned);
   }
 
-  // Les nœuds sous lesquels rattacher `node` : tous les autres nœuds réels, sauf ceux qui en
-  // découlent (le serveur le vérifie aussi).
-  function attachTargets(node) {
+  // Les nœuds sous lesquels rattacher `node` : tous les autres nœuds réels (et prévus, avec
+  // `plans`), sauf ceux qui en découlent (le serveur le vérifie aussi).
+  function attachTargets(node, { plans = false } = {}) {
     const below = new Set([node.id]);
     const frontier = [node.id];
     while (frontier.length) {
@@ -203,7 +207,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
         }
       });
     }
-    return [...positionedById.values()].filter((n) => !n.is_plan && !below.has(n.id)).sort((a, b) => a.title.localeCompare(b.title, "fr"));
+    return [...positionedById.values()].filter((n) => (plans || !n.is_plan) && !below.has(n.id)).sort((a, b) => a.title.localeCompare(b.title, "fr"));
   }
 
   // Dans la carte : « Rattachée à … » (et Détacher) pour un nœud rattaché ; pour une étude partie
@@ -296,27 +300,61 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       .join("");
   }
 
-  // Le formulaire, dans la carte : `parent` = {node, detail} (à la suite d'un nœud), `plan` = la
-  // prévision qu'on modifie (sa version de départ est relue), rien = une nouvelle racine.
-  async function renderPlanForm({ parent = null, plan = null } = {}) {
+  // Le formulaire, dans la carte. Ce dont la prévision part : `parent` = {node, detail} (un nœud
+  // réel), `parentPlan` = le nœud d'une autre prévision, rien = une nouvelle racine. `plan` = la
+  // prévision qu'on modifie (son départ est relu) ; avec `reattach`, on la rattache sous `parent`
+  // ou `parentPlan` (une prévision détachée).
+  async function renderPlanForm({ parent = null, parentPlan = null, plan = null, reattach = false } = {}) {
     let detail = parent ? parent.detail : null;
-    if (plan && plan.parent && !detail) {
-      panel.innerHTML = `<p class="help">Chargement…</p>`;
-      try {
-        detail = await fetchVersion(plan.parent.experiment_id, plan.parent.version_id);
-      } catch (err) {
-        detail = null; // la version de départ n'existe plus : seules les nouvelles plaques restent possibles
+    if (plan && !reattach && !parent && !parentPlan) {
+      if (plan.parent) {
+        panel.innerHTML = `<p class="help">Chargement…</p>`;
+        try {
+          detail = await fetchVersion(plan.parent.experiment_id, plan.parent.version_id);
+        } catch (err) {
+          detail = null; // la version de départ n'existe plus : seules les nouvelles plaques restent possibles
+        }
+      } else if (plan.parent_plan_id != null) {
+        parentPlan = positionedById.get(`${PLAN_PREFIX}${plan.parent_plan_id}`) || null;
       }
     }
-    const hasParent = Boolean(parent || (plan && plan.parent));
-    const wafers = detail ? trackedWafers(detail) : [];
+    const fromPlan = parentPlan ? parentPlan.plan : null;
+    // les plaques à cocher : celles que suit la version de départ, ou celles que la prévision mère nomme
+    const source = detail || (fromPlan ? { physical_tracking: fromPlan.wafers.map((mark) => ({ sample_id: mark })), is_batch: false } : null);
+    const choices = source ? trackedWafers(source) : [];
+    // détachée (ou sa version disparue) sur les mêmes plaques : elles attendent un rattachement
+    const waiting = Boolean(plan) && !source && plan.mode === "same_wafers";
+    const hasStart = Boolean(source);
     const mode = plan ? plan.mode : "new_wafers";
-    const sameAllowed = Boolean(detail) && wafers.length > 0;
-    const parentLabel = detail ? `À la suite de « ${escapeHtml(detail.title)} »` : hasParent ? "La version de départ n'existe plus." : "Une nouvelle racine dans l'arbre.";
+    const sameAllowed = detail ? choices.length > 0 : Boolean(fromPlan) || waiting;
+    const parentLabel = detail
+      ? `À la suite de « ${escapeHtml(detail.title)} »`
+      : fromPlan
+        ? `À la suite de la prévision « ${escapeHtml(fromPlan.title)} » : elle se lancera une fois celle-ci lancée.`
+        : plan && plan.detached_from && !reattach
+          ? `Détachée : « ${escapeHtml(plan.detached_from)} », la prévision dont elle partait, a été supprimée.`
+          : plan && plan.parent && !reattach
+            ? "La version de départ n'existe plus."
+            : "Une nouvelle racine dans l'arbre.";
+    const sameDesc = detail
+      ? sameAllowed
+        ? "Des tests supplémentaires sur une ou plusieurs plaques de cette expérience."
+        : "Cette expérience ne suit aucune plaque."
+      : fromPlan
+        ? fromPlan.wafers.length
+          ? "Des tests supplémentaires sur des plaques que cette prévision reprend."
+          : "Les plaques qu'elle aura : vous les cocherez une fois qu'elle sera lancée."
+        : "Ses plaques attendent qu'on la rattache.";
+    const sameBlock = choices.length
+      ? `<div class="plan-wafers" role="group" aria-labelledby="plan-wafers-label">${waferChecksHtml(source, plan && plan.mode === "same_wafers" ? plan.wafers : [])}</div>`
+      : waiting && plan.wafers.length
+        ? `<div class="plan-card__wafers">${plan.wafers.map((w) => `<span class="plan-wafer__mark">${escapeHtml(w)}</span>`).join("")}</div>`
+        : `<p class="help" style="margin:0;">${fromPlan ? `« ${escapeHtml(fromPlan.title)} » ne nomme pas encore ses plaques : vous les cocherez une fois qu'elle sera lancée.` : "Aucune plaque nommée."}</p>`;
+    const launchable = !fromPlan && !waiting;
     panel.innerHTML = `
       <form class="plan-form" id="plan-form" novalidate>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-          <div class="section-title" style="margin-bottom:0;">${plan ? "Modifier la prévision" : "Prévoir une expérience"}</div>
+          <div class="section-title" style="margin-bottom:0;">${reattach ? "Rattacher la prévision" : plan ? "Modifier la prévision" : "Prévoir une expérience"}</div>
           <span class="badge badge-planned"><span class="dot"></span>Prévisionnelle</span>
         </div>
         <p class="help" style="margin:4px 0 12px;">${parentLabel}</p>
@@ -329,21 +367,21 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
           <textarea class="field" id="plan-intent" rows="3" maxlength="4000" placeholder="Ce que je veux démontrer">${escapeHtml(plan ? plan.intent : "")}</textarea>
         </div>
         ${
-          hasParent
+          hasStart || waiting
             ? `<fieldset class="plan-modes">
                 <legend class="plan-form__legend">Plaques</legend>
                 <label class="plan-mode${sameAllowed ? "" : " is-disabled"}">
-                  <input type="radio" name="plan-mode" value="same_wafers"${mode === "same_wafers" ? " checked" : ""}${sameAllowed ? "" : " disabled"}>
+                  <input type="radio" name="plan-mode" value="same_wafers"${mode === "same_wafers" && sameAllowed ? " checked" : ""}${sameAllowed ? "" : " disabled"}>
                   <span class="plan-mode__body">
                     <span class="plan-mode__title">Mêmes plaques</span>
-                    <span class="plan-mode__desc">${sameAllowed ? "Des tests supplémentaires sur une ou plusieurs plaques de cette expérience." : "Cette expérience ne suit aucune plaque."}</span>
+                    <span class="plan-mode__desc">${sameDesc}</span>
                   </span>
                 </label>
                 <label class="plan-mode">
                   <input type="radio" name="plan-mode" value="new_wafers"${mode === "new_wafers" || !sameAllowed ? " checked" : ""}>
                   <span class="plan-mode__body">
                     <span class="plan-mode__title">Nouvelles plaques</span>
-                    <span class="plan-mode__desc">Relancer de nouvelles plaques pour continuer l'étude, depuis cette structure.</span>
+                    <span class="plan-mode__desc">${fromPlan ? "De nouvelles plaques, depuis la structure qu'elle aura." : "Relancer de nouvelles plaques pour continuer l'étude, depuis cette structure."}</span>
                   </span>
                 </label>
               </fieldset>`
@@ -351,7 +389,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
         }
         <div class="plan-form__field" id="plan-same" hidden>
           <span class="plan-form__legend" id="plan-wafers-label">Plaques reprises</span>
-          <div class="plan-wafers" role="group" aria-labelledby="plan-wafers-label">${detail ? waferChecksHtml(detail, plan && plan.mode === "same_wafers" ? plan.wafers : []) : ""}</div>
+          ${sameBlock}
         </div>
         <div class="plan-form__field" id="plan-new" hidden>
           <label for="plan-count">Nombre de plaques prévu</label>
@@ -362,8 +400,8 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
         </div>
         <div class="error" id="plan-error" role="alert" style="display:none;"></div>
         <div class="plan-form__actions">
-          <button class="btn btn-primary" type="submit">${plan ? "Enregistrer" : "Ajouter au prévisionnel"}</button>
-          <button class="btn btn-line" type="button" id="plan-launch-now">Lancer maintenant</button>
+          <button class="btn btn-primary" type="submit">${reattach ? "Rattacher" : plan ? "Enregistrer" : "Ajouter au prévisionnel"}</button>
+          ${launchable ? `<button class="btn btn-line" type="button" id="plan-launch-now">Lancer maintenant</button>` : ""}
         </div>
         <button class="btn-link-secondary" type="button" id="plan-cancel">Annuler</button>
       </form>`;
@@ -394,12 +432,16 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
         return showFormError("Donnez un titre à l'expérience prévue.");
       }
       if (body.mode === "same_wafers") {
-        const checked = [...form.querySelectorAll(".plan-wafers input:checked")];
-        if (!checked.length) return showFormError("Cochez au moins une plaque à reprendre.");
-        if (detail.is_batch && new Set(checked.map((c) => c.dataset.variant)).size > 1) {
-          return showFormError("Ces plaques portent des variantes différentes de la campagne : leurs structures diffèrent. Reprenez des plaques d'une même variante.");
+        if (choices.length) {
+          const checked = [...form.querySelectorAll(".plan-wafers input:checked")];
+          if (!checked.length) return showFormError("Cochez au moins une plaque à reprendre.");
+          if (source.is_batch && new Set(checked.map((c) => c.dataset.variant)).size > 1) {
+            return showFormError("Ces plaques portent des variantes différentes de la campagne : leurs structures diffèrent. Reprenez des plaques d'une même variante.");
+          }
+          body.wafers = checked.map((c) => c.value);
+        } else if (fromPlan) {
+          body.wafers = []; // à cocher une fois la prévision mère lancée
         }
-        body.wafers = checked.map((c) => c.value);
       } else {
         const count = parseInt(form.querySelector("#plan-count").value, 10);
         if (!(count >= 1 && count <= 200)) {
@@ -407,6 +449,10 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
           return showFormError("Indiquez combien de plaques vous pensez lancer (entre 1 et 200).");
         }
         body.wafer_count = count;
+      }
+      if (reattach || !plan) {
+        if (parent) body.parent = { experiment_id: parent.detail.id, version_id: parent.detail.version_id };
+        else if (fromPlan) body.parent_plan_id = fromPlan.id;
       }
       return body;
     }
@@ -416,8 +462,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       if (!body) return null;
       try {
         if (plan) return await experimentsApi.updatePlan(slug, plan.id, body);
-        const source = parent ? { experiment_id: parent.detail.id, version_id: parent.detail.version_id } : null;
-        return await experimentsApi.createPlan(slug, source ? { ...body, parent: source } : body);
+        return await experimentsApi.createPlan(slug, body);
       } catch (err) {
         showFormError(err.message || String(err));
         return null;
@@ -431,19 +476,24 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       selectedId = `${PLAN_PREFIX}${saved.id}`;
       await loadLineage();
     });
-    form.querySelector("#plan-launch-now").addEventListener("click", async () => {
-      const saved = await save();
-      if (!saved) return;
-      window.location.href = planLaunchUrl(saved, { editor: saved.mode === "new_wafers" ? editorOf(detail) : "builder" });
-    });
+    const launchNow = form.querySelector("#plan-launch-now");
+    if (launchNow) {
+      launchNow.addEventListener("click", async () => {
+        const saved = await save();
+        if (!saved) return;
+        window.location.href = planLaunchUrl(saved, { editor: saved.mode === "new_wafers" ? editorOf(detail) : "builder" });
+      });
+    }
     form.querySelector("#plan-cancel").addEventListener("click", () => {
       if (plan) return loadPlanCard(positionedById.get(`${PLAN_PREFIX}${plan.id}`) || { plan });
       if (parent) return loadCard(parent.node);
+      if (parentPlan) return loadPlanCard(parentPlan);
       panel.innerHTML = panelEmptyState();
     });
   }
 
-  // La carte d'une expérience prévue : ce qu'elle continue, et la lancer, la modifier, la supprimer.
+  // La carte d'une expérience prévue : ce qu'elle continue, et la lancer, la modifier, prévoir sa
+  // suite, la rattacher (détachée) ou la supprimer.
   async function loadPlanCard(node) {
     const plan = node.plan;
     let detail = null;
@@ -451,35 +501,81 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       panel.innerHTML = `<p class="help">Chargement…</p>`;
       detail = await fetchVersion(plan.parent.experiment_id, plan.parent.version_id).catch(() => null);
     }
+    const parentPlanNode = plan.parent_plan_id != null ? positionedById.get(`${PLAN_PREFIX}${plan.parent_plan_id}`) : null;
     const orphan = Boolean(plan.parent) && !detail;
-    const parentLine = plan.parent
-      ? detail
-        ? `À la suite de <button class="btn-link-secondary plan-card__parent" type="button" id="plan-parent-link">« ${escapeHtml(detail.title)} »</button>`
-        : `<span style="color:var(--danger);">La version de départ n'existe plus.</span>`
-      : "Une nouvelle racine dans l'arbre.";
+    const detached = Boolean(plan.detached_from) || orphan;
+    const parentLine = detail
+      ? `À la suite de <button class="btn-link-secondary plan-card__parent" type="button" id="plan-parent-link">« ${escapeHtml(detail.title)} »</button>`
+      : parentPlanNode
+        ? `À la suite de la prévision <button class="btn-link-secondary plan-card__parent" type="button" id="plan-parent-link">« ${escapeHtml(parentPlanNode.plan.title)} »</button>`
+        : detached
+          ? ""
+          : "Une nouvelle racine dans l'arbre.";
+    const detachedBlock = detached
+      ? `<div class="plan-card__detached">${
+          plan.detached_from
+            ? `Détachée : « ${escapeHtml(plan.detached_from)} », la prévision dont elle partait, a été supprimée.`
+            : "Détachée : la version dont elle partait n'existe plus."
+        } Rattachez-la sous l'expérience, réelle ou prévue, qu'elle continue.</div>`
+      : "";
     const wafersBlock =
       plan.mode === "same_wafers"
-        ? `<div class="plan-card__wafers"><span class="plan-card__mode">Mêmes plaques</span>${plan.wafers.map((w) => `<span class="plan-wafer__mark">${escapeHtml(w)}</span>`).join("")}</div>`
+        ? `<div class="plan-card__wafers"><span class="plan-card__mode">Mêmes plaques</span>${
+            plan.wafers.length
+              ? plan.wafers.map((w) => `<span class="plan-wafer__mark">${escapeHtml(w)}</span>`).join("")
+              : `<span class="help" style="margin:0;">à cocher${parentPlanNode ? ` une fois « ${escapeHtml(parentPlanNode.plan.title)} » lancée` : ""}</span>`
+          }</div>`
         : `<div class="plan-card__wafers"><span class="plan-card__mode">Nouvelles plaques</span><strong class="plan-card__count">~${plan.wafer_count}</strong><span class="help" style="margin:0;">prévue${plan.wafer_count > 1 ? "s" : ""}</span></div>`;
-    const imagesLaunch = plan.mode === "new_wafers" && !orphan;
+    // se lance : depuis sa version (ou de rien pour une racine) - pas tant que sa prévision mère ne
+    // l'est pas, ni détachée de ce dont elle part, ni sur des plaques encore à cocher
+    const launchable = !parentPlanNode && (plan.mode === "new_wafers" ? !orphan : Boolean(detail) && plan.wafers.length > 0);
+    const waitLine = parentPlanNode
+      ? `Elle se lancera une fois « ${escapeHtml(parentPlanNode.plan.title)} » lancée.`
+      : detached
+        ? plan.mode === "same_wafers" || orphan
+          ? "Rattachez-la pour la lancer."
+          : ""
+        : plan.mode === "same_wafers" && !plan.wafers.length
+          ? "Cochez ses plaques (Modifier) pour la lancer."
+          : "";
+    const imagesLaunch = launchable && plan.mode === "new_wafers";
     const launchEditor = editorOf(detail);
+    const targets = detached && canEdit ? attachTargets(node, { plans: true }) : [];
     panel.innerHTML = `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
         <div class="section-title" style="margin-bottom:0;">${escapeHtml(plan.title)}</div>
         <span class="badge badge-planned"><span class="dot"></span>Prévisionnelle</span>
       </div>
       ${plan.intent ? `<p class="help" style="margin-bottom:10px;">${escapeHtml(plan.intent)}</p>` : ""}
-      <p style="font-size:12.5px;color:var(--text-soft);margin-bottom:10px;">${parentLine}</p>
+      ${detachedBlock}
+      ${parentLine ? `<p style="font-size:12.5px;color:var(--text-soft);margin-bottom:10px;">${parentLine}</p>` : ""}
       ${wafersBlock}
       <p class="help" style="margin-top:10px;">Pas encore de structure, de split ni de plaques réelles : on les définit au lancement.</p>
+      ${
+        targets.length
+          ? `<details class="lineage-attach" open>
+              <summary>Rattacher à une autre expérience</summary>
+              <p class="help" style="margin:6px 0 8px;">Sous une expérience lancée ou prévue : le formulaire s'ouvre pour revoir ses plaques avant de rattacher.</p>
+              <div style="display:flex;gap:6px;">
+                <select class="field" id="plan-attach-target" aria-label="Expérience sous laquelle la rattacher" style="flex:1;min-width:0;">
+                  ${targets.map((t) => `<option value="${escapeHtml(t.id)}">${t.is_plan ? "Prévue · " : ""}${escapeHtml(t.title)}</option>`).join("")}
+                </select>
+                <button class="btn btn-primary" type="button" id="plan-attach">Rattacher</button>
+              </div>
+              <div id="plan-attach-error"></div>
+            </details>`
+          : ""
+      }
       <div style="font-size:12px;color:var(--text-faint);margin-top:12px;padding-top:10px;border-top:1px solid var(--border-soft);">
         Prévue par ${escapeHtml(plan.author || "un membre")} &middot; ${timeAgo(plan.created_at)}
       </div>
       ${
         canEdit
-          ? `<div style="display:flex;gap:8px;margin-top:14px;">
-              ${orphan && plan.mode === "same_wafers" ? "" : `<a class="btn btn-primary" style="flex:1;" href="${planLaunchUrl(plan, { editor: plan.mode === "new_wafers" ? launchEditor : "builder" })}">Lancer</a>`}
+          ? `${waitLine ? `<p class="plan-card__wait">${waitLine}</p>` : ""}
+            <div style="display:flex;gap:8px;margin-top:14px;">
+              ${launchable ? `<a class="btn btn-primary" style="flex:1;" href="${planLaunchUrl(plan, { editor: plan.mode === "new_wafers" ? launchEditor : "builder" })}">Lancer</a>` : ""}
               <button class="btn btn-line" style="flex:1;" type="button" id="plan-edit">Modifier</button>
+              <button class="btn btn-line" style="flex:1;" type="button" id="plan-next">Prévoir la suite</button>
             </div>
             ${
               imagesLaunch
@@ -495,9 +591,36 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
     const parentLink = panel.querySelector("#plan-parent-link");
     if (parentLink) parentLink.addEventListener("click", () => selectNode(node.parentNodeId));
     if (!canEdit) return;
-    panel.querySelector("#plan-edit").addEventListener("click", () => renderPlanForm({ plan, parent: detail && positionedById.get(node.parentNodeId) ? { node: positionedById.get(node.parentNodeId), detail } : null }));
+    panel.querySelector("#plan-edit").addEventListener("click", () =>
+      renderPlanForm({
+        plan,
+        parent: detail && positionedById.get(node.parentNodeId) ? { node: positionedById.get(node.parentNodeId), detail } : null,
+        parentPlan: parentPlanNode || null,
+      })
+    );
+    panel.querySelector("#plan-next").addEventListener("click", () => renderPlanForm({ parentPlan: node }));
+    const attachButton = panel.querySelector("#plan-attach");
+    if (attachButton) {
+      attachButton.addEventListener("click", async () => {
+        const target = positionedById.get(panel.querySelector("#plan-attach-target").value);
+        if (!target) return;
+        if (target.is_plan) return renderPlanForm({ plan, parentPlan: target, reattach: true });
+        attachButton.disabled = true;
+        try {
+          const targetDetail = await fetchVersion(target.experiment_id, target.is_tip ? null : target.version_id);
+          renderPlanForm({ plan, parent: { node: target, detail: targetDetail }, reattach: true });
+        } catch (err) {
+          attachButton.disabled = false;
+          panel.querySelector("#plan-attach-error").innerHTML = `<div class="error" style="margin-top:8px;">${escapeHtml(err.message || String(err))}</div>`;
+        }
+      });
+    }
     panel.querySelector("#plan-delete").addEventListener("click", async () => {
-      if (!window.confirm(`Supprimer l'expérience prévue « ${plan.title} » ?`)) return;
+      const followers = currentPlans.filter((p) => p.parent_plan_id === plan.id).length;
+      const warning = followers
+        ? `\n\n${followers > 1 ? `Les ${followers} prévisions qui en partent resteront` : "La prévision qui en part restera"} dans l'arbre, détachée${followers > 1 ? "s" : ""} : vous pourrez ${followers > 1 ? "les" : "la"} rattacher ailleurs.`
+        : "";
+      if (!window.confirm(`Supprimer l'expérience prévue « ${plan.title} » ?${warning}`)) return;
       try {
         await experimentsApi.removePlan(slug, plan.id);
         selectedId = null;
@@ -540,7 +663,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
     if (!node) return;
     selectedId = id;
     highlight(id);
-    if (node.is_plan) return loadPlanCard(node);
+    if (node.is_plan) return andPlan ? renderPlanForm({ parentPlan: node }) : loadPlanCard(node);
     if (!andPlan) return loadCard(node);
     panel.innerHTML = `<p class="help">Chargement…</p>`;
     try {
@@ -553,14 +676,26 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
 
   function render(nodes, edges, plans) {
     const real = new Set(nodes.map((n) => n.id));
-    const planNodes = plans.map((plan) => ({
-      id: `${PLAN_PREFIX}${plan.id}`,
-      is_plan: true,
-      plan,
-      title: plan.title,
-      created_at: plan.created_at,
-      parentNodeId: plan.parent_node && real.has(plan.parent_node) ? plan.parent_node : null,
-    }));
+    const planned = new Set(plans.map((p) => p.id));
+    currentPlans = plans;
+    const planNodes = plans.map((plan) => {
+      const parentNodeId =
+        plan.parent_plan_id != null && planned.has(plan.parent_plan_id)
+          ? `${PLAN_PREFIX}${plan.parent_plan_id}`
+          : plan.parent_node && real.has(plan.parent_node)
+            ? plan.parent_node
+            : null;
+      return {
+        id: `${PLAN_PREFIX}${plan.id}`,
+        is_plan: true,
+        plan,
+        title: plan.title,
+        created_at: plan.created_at,
+        parentNodeId,
+        // sa prévision mère supprimée, ou sa version de départ disparue : à rattacher à la main
+        detached: Boolean(plan.detached_from) || (Boolean(plan.parent) && !parentNodeId),
+      };
+    });
     const allNodes = [...nodes, ...planNodes];
     const allEdges = [...edges, ...planNodes.filter((p) => p.parentNodeId).map((p) => ({ parent: p.parentNodeId, child: p.id, planned: true }))];
     currentEdges = allEdges;
@@ -609,12 +744,12 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       .selectAll("g")
       .data(positioned)
       .join("g")
-      .attr("class", (d) => `lineage-node${d.is_plan ? " is-planned" : ""}`)
+      .attr("class", (d) => `lineage-node${d.is_plan ? " is-planned" : ""}${d.detached ? " is-detached" : ""}`)
       .attr("transform", (d) => `translate(${d.x},${d.y})`)
       .attr("data-id", (d) => d.id)
       .attr("tabindex", 0)
       .attr("role", "button")
-      .attr("aria-label", (d) => (d.is_plan ? `Prévue : ${d.title} · ${lineagePlanWafersLabel(d.plan)}` : lineageNodeTooltip(d).replace(/\n/g, " · ")))
+      .attr("aria-label", (d) => (d.is_plan ? `${d.detached ? "Prévue, détachée" : "Prévue"} : ${d.title} · ${lineagePlanWafersLabel(d.plan)}` : lineageNodeTooltip(d).replace(/\n/g, " · ")))
       .on("click", (event, d) => selectNode(d.id))
       .on("keydown", (event, d) => {
         if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
@@ -626,7 +761,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       d3.select(this).html(d.is_plan ? lineagePlanShapeHtml({ radius: NODE_RADIUS }) : lineageNodeShapeHtml(d, { radius: NODE_RADIUS }));
       d3.select(this)
         .append("title")
-        .text(d.is_plan ? `${d.title}\nPrévisionnelle · ${lineagePlanWafersLabel(d.plan)}` : lineageNodeTooltip(d));
+        .text(d.is_plan ? `${d.title}\nPrévisionnelle${d.detached ? ", détachée" : ""} · ${lineagePlanWafersLabel(d.plan)}` : lineageNodeTooltip(d));
     });
 
     nodeGroups
@@ -636,15 +771,18 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       .attr("text-anchor", "middle")
       .text((d) => (d.title.length > 16 ? d.title.slice(0, 15) + "…" : d.title));
 
-    // Pastille « Prévu » à droite d'une expérience prévue (à la place du badge de lot d'un nœud réel).
+    // Pastille « Prévu » à droite d'une expérience prévue (à la place du badge de lot d'un nœud
+    // réel) - « Détachée » quand elle a perdu ce dont elle partait.
     nodeGroups
       .filter((d) => d.is_plan)
       .append("g")
-      .attr("class", "lineage-planned-pill")
+      .attr("class", (d) => `lineage-planned-pill${d.detached ? " is-detached" : ""}`)
       .attr("transform", `translate(${NODE_RADIUS + 9},${-NODE_RADIUS - 6})`)
-      .call((pill) => {
-        pill.append("rect").attr("width", 40).attr("height", 15).attr("rx", 7.5);
-        pill.append("text").attr("x", 20).attr("y", 10.5).attr("text-anchor", "middle").text("PRÉVU");
+      .each(function (d) {
+        const width = d.detached ? 60 : 40;
+        const pill = d3.select(this);
+        pill.append("rect").attr("width", width).attr("height", 15).attr("rx", 7.5);
+        pill.append("text").attr("x", width / 2).attr("y", 10.5).attr("text-anchor", "middle").text(d.detached ? "DÉTACHÉE" : "PRÉVU");
       });
 
     // Badge du lot (suivi de lots) à droite du nœud : l'expérience suit un wafer de ce lot. Lien
@@ -706,10 +844,9 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       .attr("text-anchor", "middle")
       .text((d) => (d.is_plan ? lineagePlanWafersLabel(d.plan) : lineageElapsedLabel(d)));
 
-    // « + » à droite d'un nœud réel : prévoir une expérience à sa suite, sans quitter l'arbre.
+    // « + » à droite d'un nœud (réel ou prévu) : prévoir une expérience à sa suite, sans quitter l'arbre.
     if (canEdit) {
       nodeGroups
-        .filter((d) => !d.is_plan)
         .append("g")
         .attr("class", "lineage-add")
         .attr("transform", `translate(${NODE_RADIUS + 12},${NODE_RADIUS - 2})`)

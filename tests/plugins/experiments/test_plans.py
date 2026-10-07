@@ -128,3 +128,85 @@ def test_a_study_continued_without_changing_the_structure_hangs_from_its_parent(
     assert (root["version_id"], tests["version_id"]) in edges
     assert (tests["version_id"], again["version_id"]) in edges
     assert (root["version_id"], again["version_id"]) not in edges
+
+
+def test_a_plan_follows_another_plan(client):
+    slug = signup_with_microproject(client, "plans-chain@example.com", "Prévisions")
+    study = launch(client, slug, entities=[{"sample_id": "W1"}, {"sample_id": "W2"}, {"sample_id": "W3"}])
+    first = _plan(client, slug, title="Recuit", parent={"experiment_id": study["id"]}, mode="same_wafers", wafers=["W1", "W2"])
+    second = _plan(client, slug, title="Mesures", parent_plan_id=first["id"], mode="same_wafers", wafers=["w-2"])
+    assert second["parent"] is None and second["parent_plan_id"] == first["id"] and second["wafers"] == ["w-2"]
+    third = _plan(client, slug, title="Relance", parent_plan_id=second["id"], wafer_count=4)
+    assert third["parent_plan_id"] == second["id"] and third["wafer_count"] == 4
+
+    # des plaques que la prévision mère ne reprend pas : refusées
+    other = client.post(_plans_url(slug), json={"title": "x", "parent_plan_id": first["id"], "mode": "same_wafers", "wafers": ["W3"]})
+    assert other.status_code == 422 and other.json()["code"] == "wafer_not_in_origin"
+    # une mère sur de nouvelles plaques : les plaques se cocheront une fois lancée
+    fresh = _plan(client, slug, title="Nouvelles", parent={"experiment_id": study["id"]}, wafer_count=2)
+    later = _plan(client, slug, title="Sur celles-là", parent_plan_id=fresh["id"], mode="same_wafers", wafers=["W1"])
+    assert later["wafers"] == []
+    both = client.post(_plans_url(slug), json={"title": "x", "parent": {"experiment_id": study["id"]}, "parent_plan_id": first["id"], "wafer_count": 1})
+    assert both.status_code == 422 and both.json()["code"] == "parent_conflict"
+    lost = client.post(_plans_url(slug), json={"title": "x", "parent_plan_id": 9999, "wafer_count": 1})
+    assert lost.status_code == 404 and lost.json()["code"] == "source_not_found"
+
+    graph = lineage(client, slug)
+    by_id = {p["id"]: p for p in graph["plans"]}
+    assert by_id[second["id"]]["parent_node"] is None and by_id[second["id"]]["parent_plan_id"] == first["id"]
+
+
+def test_launching_a_plan_hands_its_followers_to_the_new_study(client):
+    slug = signup_with_microproject(client, "plans-chain-launch@example.com", "Prévisions")
+    study = launch(client, slug, entities=[{"sample_id": "W1"}])
+    first = _plan(client, slug, parent={"experiment_id": study["id"]}, wafer_count=2)
+    follower = _plan(client, slug, title="Mesures", parent_plan_id=first["id"], mode="same_wafers")
+    body = launch_body(title="Suite", entities=[{"sample_id": "W7"}, {"sample_id": "W8"}], from_version={"experiment_id": study["id"]}, plan_id=first["id"])
+    started = assert_created(client.post(f"/api/microprojects/{slug}/experiments", json=body))
+
+    [plan] = lineage(client, slug)["plans"]
+    assert plan["id"] == follower["id"] and plan["parent_plan_id"] is None
+    assert plan["parent"] == {"experiment_id": started["id"], "version_id": started["version_id"]}
+    assert plan["parent_node"] == started["version_id"] and plan["wafers"] == []
+    # ses plaques se cochent maintenant parmi celles de la nouvelle étude
+    url = f"{_plans_url(slug)}/{follower['id']}"
+    assert assert_ok(client.patch(url, json={"wafers": ["W8"]}))["wafers"] == ["W8"]
+    wrong = client.patch(url, json={"wafers": ["W1"]})
+    assert wrong.status_code == 422 and wrong.json()["code"] == "wafer_not_in_origin"
+
+
+def test_deleting_a_plan_leaves_its_followers_detached_until_reattached(client):
+    slug = signup_with_microproject(client, "plans-chain-delete@example.com", "Prévisions")
+    study = launch(client, slug, entities=[{"sample_id": "W1"}, {"sample_id": "W2"}])
+    first = _plan(client, slug, title="Recuit", parent={"experiment_id": study["id"]}, mode="same_wafers", wafers=["W1", "W2"])
+    same = _plan(client, slug, title="Mesures", parent_plan_id=first["id"], mode="same_wafers", wafers=["W2"])
+    new = _plan(client, slug, title="Relance", parent_plan_id=first["id"], wafer_count=3)
+    grandchild = _plan(client, slug, title="Après", parent_plan_id=new["id"], wafer_count=1)
+    assert client.delete(f"{_plans_url(slug)}/{first['id']}").status_code == 204
+
+    by_id = {p["id"]: p for p in lineage(client, slug)["plans"]}
+    assert set(by_id) == {same["id"], new["id"], grandchild["id"]}
+    for floating in (same, new):
+        plan = by_id[floating["id"]]
+        assert (plan["parent"], plan["parent_plan_id"], plan["parent_node"], plan["detached_from"]) == (None, None, None, "Recuit")
+    assert by_id[same["id"]]["wafers"] == ["W2"]  # gardées, en attente d'un rattachement
+    assert by_id[grandchild["id"]]["parent_plan_id"] == new["id"] and by_id[grandchild["id"]]["detached_from"] is None
+
+    # détachée, elle se modifie encore ; passer aux mêmes plaques sans départ, non
+    same_url, new_url = f"{_plans_url(slug)}/{same['id']}", f"{_plans_url(slug)}/{new['id']}"
+    assert assert_ok(client.patch(same_url, json={"title": "Mesures C-V"}))["detached_from"] == "Recuit"
+    switch = client.patch(new_url, json={"mode": "same_wafers", "wafers": ["W1"]})
+    assert switch.status_code == 422 and switch.json()["code"] == "parent_required"
+
+    # rattachée à la main : sous une étude (ses plaques revérifiées), ou sous une autre prévision
+    reattached = assert_ok(client.patch(same_url, json={"parent": {"experiment_id": study["id"]}}))
+    assert reattached["parent"]["experiment_id"] == study["id"] and reattached["detached_from"] is None and reattached["wafers"] == ["W2"]
+    under_plan = assert_ok(client.patch(new_url, json={"parent_plan_id": same["id"]}))
+    assert under_plan["parent_plan_id"] == same["id"] and under_plan["detached_from"] is None
+    # jamais sous elle-même ni sous ce qui en découle
+    loop = client.patch(new_url, json={"parent_plan_id": grandchild["id"]})
+    assert loop.status_code == 422 and loop.json()["code"] == "plan_cycle"
+    assert client.patch(new_url, json={"parent_plan_id": new["id"]}).json()["code"] == "plan_cycle"
+    # ou en racine
+    root = assert_ok(client.patch(new_url, json={"parent": None, "parent_plan_id": None}))
+    assert (root["parent"], root["parent_plan_id"]) == (None, None)

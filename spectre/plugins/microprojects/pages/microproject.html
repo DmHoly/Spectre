@@ -176,6 +176,32 @@
       letter-spacing: 0.04em;
       fill: var(--gold-dark);
     }
+    /* une prévision détachée (sa prévision mère supprimée, ou sa version de départ disparue) :
+       pastille « DÉTACHÉE », à rattacher à la main */
+    .lineage-planned-pill.is-detached rect {
+      fill: var(--danger-tint);
+      stroke: var(--danger);
+    }
+    .lineage-planned-pill.is-detached text {
+      fill: var(--danger);
+    }
+    .lineage-node.is-detached .lineage-shape {
+      stroke: var(--danger) !important;
+    }
+    .plan-card__detached {
+      font-size: 12.5px;
+      color: var(--danger);
+      background: var(--danger-tint);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+    .plan-card__wait {
+      font-size: 12.5px;
+      color: var(--text-soft);
+      margin-top: 14px;
+    }
     /* « + » d'un nœud : prévoir la suite - visible au survol, au clavier et sur le nœud choisi */
     .lineage-add {
       cursor: pointer;
