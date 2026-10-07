@@ -69,6 +69,8 @@ const state = {
   materialColors: {},
   currentFrame: 0,
   campaignPlan: null,
+  waferCount: null, // le nombre de plaques d'une étude sans variation, à donner avant de lancer (null : pas encore dit)
+  repeats: false, // plusieurs plaques sans variation : déclarées comme répétitions exactes de la référence
   variationOverflow: 0, // plaques reprises en trop pour les variantes du plan (le lancement attend qu'on corrige)
   variationFactors: [], // [{step_id, field, field_label, values, scale}] - the DOE plan being built on écran 2
   variationEntities: [], // [{sample_id, location, fdl}] - one per row of the écran 3 table (a place), positional - sample_id blank until associated

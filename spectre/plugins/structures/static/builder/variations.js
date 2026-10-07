@@ -585,27 +585,49 @@ function renderVariationTable(rows, factorLabels) {
     }
     ${
       replicates && !state.originWafers
-        ? `<div class="sb-samples__more">
-             <label class="sb-samples__count">Plaques prévues <input class="field mono js-wafer-count" type="number" min="1" max="200" step="1" value="${rows.length}"></label>
-             <span class="help">Des réplicats : plusieurs plaques passées par la même structure. Chaque place s'associe à une vraie plaque, ici ou plus tard sur la fiche.</span>
+        ? `<div class="sb-samples__more${needWaferCount() ? " is-required" : ""}">
+             <label class="sb-samples__count">Nombre de plaques <input class="field mono js-wafer-count" type="number" min="1" max="200" step="1" value="${needWaferCount() ? "" : rows.length}" placeholder="?" required aria-describedby="samples-count-help"></label>
+             <span class="help" id="samples-count-help">${
+               needWaferCount()
+                 ? "À indiquer avant de lancer - il pourra changer (prévu 9, lancé 5…). Plusieurs plaques : définissez une variation, ou déclarez-les comme répétitions."
+                 : "Chaque place s'associe à une vraie plaque, ici ou plus tard sur la fiche."
+             }</span>
            </div>`
+        : ""
+    }
+    ${
+      replicates && rows.length > 1 && !evolvingInPlace()
+        ? `<label class="sb-samples__repeats">
+             <input type="checkbox" class="js-repeats"${state.repeats ? " checked" : ""}>
+             <span><strong>Répétitions exactes de la référence</strong> <span class="help">- ${rows.length} plaques, même structure, même procédé (repeats). Sinon, définissez une variation (à gauche) : une plaque par variante.</span></span>
+           </label>`
         : ""
     }`;
   updateSamplesHead(rows.length);
   wrap.querySelectorAll(".js-remove-wafer").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.variationEntities.splice(parseInt(btn.dataset.index, 10), 1);
+      if (state.waferCount) state.waferCount = state.variationEntities.length;
       refreshVariationTable();
     });
   });
   const count = wrap.querySelector(".js-wafer-count");
   if (count) {
     count.addEventListener("change", () => {
+      if (!count.value.trim()) return;
       const n = Math.max(1, Math.min(200, parseInt(count.value, 10) || 1));
+      state.waferCount = n;
       state.variationEntities = Array.from({ length: n }, (_, i) => state.variationEntities[i] || { sample_id: "", location: "" });
       refreshVariationTable();
       const again = document.querySelector("#variation-table-wrap .js-wafer-count");
       if (again) again.focus();
+    });
+  }
+  const repeats = wrap.querySelector(".js-repeats");
+  if (repeats) {
+    repeats.addEventListener("change", () => {
+      state.repeats = repeats.checked;
+      updateLaunchVariationsLabel();
     });
   }
   // une plaque choisie dans les FDL de l'étude : la place la suit, avec cette FDL
@@ -710,11 +732,18 @@ function mountLaunchStudyFdl() {
 function updateLaunchVariationsLabel() {
   const btn = document.getElementById("launch-btn-variations");
   // des variations définies mais refusées par le serveur : ne jamais lancer sans elles en silence ;
-  // des plaques reprises en trop pour les variantes non plus
+  // des plaques reprises en trop pour les variantes non plus ; sans variation, le nombre de plaques
+  // se dit, et plusieurs plaques sont soit des variantes, soit des répétitions déclarées
   const broken = state.variationFactors.length > 0 && !state.campaignPlan;
-  btn.disabled = broken || state.variationOverflow > 0;
+  const needCount = needWaferCount();
+  const needRepeats = !broken && needRepeatsChoice();
+  btn.disabled = broken || state.variationOverflow > 0 || needCount || needRepeats;
   if (broken) {
     btn.textContent = "Corrigez les variations pour lancer";
+  } else if (needCount) {
+    btn.textContent = "Indiquez le nombre de plaques";
+  } else if (needRepeats) {
+    btn.textContent = "Variation ou répétitions à préciser";
   } else if (state.variationOverflow) {
     btn.textContent = "Trop de plaques pour ces variantes";
   } else if (state.campaignPlan) {
@@ -726,6 +755,22 @@ function updateLaunchVariationsLabel() {
     const n = Math.max(1, state.variationEntities.length);
     btn.textContent = n > 1 ? `Lancer le suivi (${n} plaques${toAssociateLabel()})` : `Lancer le suivi de cette expérience${toAssociateLabel() ? " (plaque à associer)" : ""}`;
   }
+}
+
+// Une évolution enregistrée sur sa piste (ni prévision ni campagne) : ses plaques sont déjà là.
+function evolvingInPlace() {
+  return Boolean(evolveExperienceId && !planId);
+}
+
+// Sans variation, une nouvelle étude dit combien de plaques elle lance (partie de plaques
+// existantes, ce sont elles) - une estimation qui peut changer, mais jamais sautée.
+function needWaferCount() {
+  return state.variationFactors.length === 0 && !state.originWafers && !evolvingInPlace() && !state.waferCount;
+}
+
+// Plusieurs plaques sans variation : des répétitions exactes de la référence, à déclarer comme telles.
+function needRepeatsChoice() {
+  return state.variationFactors.length === 0 && !evolvingInPlace() && state.variationEntities.length > 1 && !state.repeats;
 }
 
 // « , 2 à associer » : les places encore sans plaque - elles s'associeront sur la fiche
@@ -747,6 +792,10 @@ async function refreshVariationTable() {
     const leavingPlan = state.campaignPlan !== null;
     state.campaignPlan = null;
     if (leavingPlan || state.originWafers) state.variationEntities = state.variationEntities.filter((e) => (e.sample_id || "").trim());
+    // le nombre de plaques donné tient, même après un changement de structure qui vide le tableau
+    if (state.waferCount && !state.originWafers) {
+      state.variationEntities = Array.from({ length: state.waferCount }, (_, i) => state.variationEntities[i] || { sample_id: "", location: "" });
+    }
     const frame = state.frames && state.frames.length ? state.frames[state.frames.length - 1] : null;
     const row = { svg: frame ? frame.svg : "", factorValues: [] };
     renderVariationTable(Array.from({ length: Math.max(1, state.variationEntities.length) }, () => row), []);

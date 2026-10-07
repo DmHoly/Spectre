@@ -149,7 +149,6 @@
           <div class="fiche-card__head">
             <div class="section-title" id="structure-title">Structure actuelle</div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-              <div style="font-size:12px;color:var(--text-faint);" id="diff-note"></div>
               <button type="button" class="btn btn-line" id="structure-labels-btn" data-report-hide aria-pressed="true" style="display:none;min-height:32px;padding:5px 12px;font-size:12.5px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
                 <span id="structure-labels-btn-text">Étiquettes : masquer</span>
@@ -163,7 +162,6 @@
           </div>
           <div class="layer-clickable builder-canvas-svg" id="structure-svg"></div>
           <div class="help" id="structure-click-hint" style="margin-top:8px;display:none;">Survolez ou cliquez une couche pour voir les paramètres de l'étape qui l'a produite.</div>
-          <div id="diff-details" class="fiche-card__scroll" style="margin-top:10px;"></div>
         </div>
 
         <div class="card card-pad fiche-card plates-card" id="physical-tracking-card" data-panel="plates">
@@ -180,6 +178,17 @@
         </div>
       </div>
 
+      <!-- La feuille de split : une ligne par plaque (une place par variante d'une campagne, ses
+           réplicats sinon) avec ce qu'on en sait - ses paramètres variés, sa plaque, ses FDL, son
+           emplacement (structure-view.js). -->
+      <div class="card card-pad fiche-card" id="split-card">
+        <div class="fiche-card__head">
+          <div class="section-title" id="split-title">Feuille de split</div>
+          <div class="help" id="split-note" style="margin:0;"></div>
+        </div>
+        <div id="split-content" class="split-table-wrap"></div>
+      </div>
+
       <!-- Les étapes du procédé, chacune avec le nombre de données du cahier qui la concernent : un
            clic filtre le cahier sur l'étape (structure-view.js ; les nombres viennent du panneau du
            cahier, par ctx.setNotebook). -->
@@ -189,49 +198,6 @@
           <div class="help" id="process-steps-note" style="margin:0;"></div>
         </div>
         <ol class="process-steps" id="process-steps" aria-labelledby="process-steps-title"></ol>
-      </div>
-
-      <div class="card card-pad" id="matrix-card" style="display:none;">
-        <div class="section-title" style="margin-bottom:16px;">Cartographie des variantes</div>
-        <div id="atlas-content" style="margin-bottom:20px;"></div>
-        <div class="section-title" style="margin-bottom:16px;">Feuille de split</div>
-        <div id="matrix-content"></div>
-      </div>
-
-      <div class="fiche-grid">
-        <div class="card card-pad fiche-card" data-panel="versions">
-          <div class="section-title" style="margin-bottom:4px;">Versions du procédé</div>
-          <div class="help" style="margin-bottom:12px;">Chaque changement de structure ou de procédé (X.Y.Z) - une donnée, un tag ou un titre modifié n'en crée pas ; retrouvez-les dans l'historique complet.</div>
-          <div class="timeline fiche-card__scroll" id="timeline"></div>
-          <div id="forks-note" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);"></div>
-          <div id="references-card" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);">
-            <div class="section-title" style="margin-bottom:8px;">Liens</div>
-            <div id="references-list"></div>
-          </div>
-          <details class="fiche-history" id="full-history-card" data-report-hide>
-            <summary>Historique complet</summary>
-            <div class="help" style="margin:8px 0 12px;">Toutes les versions, et tout le reste : données, tags, titres, objectifs... Les entrées en retrait n'ont pas changé le procédé.</div>
-            <div class="timeline" id="full-history"></div>
-          </details>
-        </div>
-
-        <div class="card card-pad fiche-card" data-report-hide>
-          <div class="section-title" style="margin-bottom:14px;">Comparer la structure avec</div>
-          <div class="field-row">
-            <div>
-              <label for="compare-microproject-select" style="font-size:11px;">µprojet</label>
-              <select class="field" id="compare-microproject-select"></select>
-            </div>
-            <div>
-              <label for="compare-search" style="font-size:11px;">Rechercher</label>
-              <input class="field" type="search" id="compare-search" placeholder="titre, étiquette, piste…" autocomplete="off">
-            </div>
-          </div>
-          <label for="compare-select" style="font-size:11px;margin-top:8px;">Expérience</label>
-          <select class="field" id="compare-select"></select>
-          <button class="btn btn-line btn-block" id="compare-btn" type="button" style="margin-top:10px;">Voir les différences</button>
-          <div id="compare-result" style="margin-top:12px;max-height:260px;overflow:auto;"></div>
-        </div>
       </div>
 
       <!-- Autocomplétion des lasermarks/emplacements/FDL déjà utilisés ailleurs dans le µprojet -
@@ -493,7 +459,6 @@
   <script src="/static/experiments/tags-refs.js"></script>
   <script src="/static/experiments/structure-view.js"></script>
   <script src="/static/experiments/plates.js"></script>
-  <script src="/static/experiments/versions.js"></script>
   <script src="/static/experiments/conclusion.js"></script>
   <script src="/static/experiments/advanced.js"></script>
   <script src="/static/experiments/report.js"></script>

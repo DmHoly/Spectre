@@ -75,7 +75,8 @@
     .lineage-duration.is-hold {
       fill: var(--hold);
     }
-    /* badge « N wafers » à gauche du nœud */
+    /* badge « N plaques » à gauche du nœud : rouge (à associer, sans FDL), orange (FDL donnée,
+       à associer), vert (toutes associées) */
     .lineage-wafers rect {
       fill: var(--surface);
       stroke: var(--border);
@@ -92,6 +93,15 @@
       font-weight: 600;
       fill: var(--text-soft);
     }
+    .lineage-wafers.is-missing rect { fill: var(--danger-tint); stroke: var(--danger); }
+    .lineage-wafers.is-missing path { stroke: var(--danger); }
+    .lineage-wafers.is-missing text { fill: var(--danger); }
+    .lineage-wafers.is-fdl rect { fill: var(--hold-tint); stroke: var(--hold); }
+    .lineage-wafers.is-fdl path { stroke: var(--hold); }
+    .lineage-wafers.is-fdl text { fill: var(--hold); }
+    .lineage-wafers.is-done rect { fill: var(--done-tint); stroke: var(--done); }
+    .lineage-wafers.is-done path { stroke: var(--done); }
+    .lineage-wafers.is-done text { fill: var(--done); }
     /* badge « dans le lot … » à droite du nœud (suivi de lots) */
     .lineage-lot rect {
       fill: var(--navy-500);

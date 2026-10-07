@@ -145,6 +145,8 @@ async function commitExperience(entities) {
   if (evolveExperienceId && (payload.branch || state.campaignPlan || planId)) {
     payload.from_version = { experiment_id: evolveExperienceId, version_id: evolveParent ? evolveParent.version_id : null };
   }
+  // plusieurs plaques sans variation, déclarées comme répétitions exactes de la référence
+  if (!state.campaignPlan && state.repeats && !(evolveExperienceId && !payload.from_version)) payload.repeats = true;
   try {
     const result =
       evolveExperienceId && !payload.from_version
@@ -347,6 +349,7 @@ async function loadPlan() {
 // Les lignes de l'écran 3 d'une prévision sur de nouvelles plaques : autant que de plaques prévues,
 // à nommer (une estimation - on en retire ou en ajoute).
 function plannedWaferRows() {
-  if (!launchedPlan || launchedPlan.mode !== "new_wafers" || state.originWafers || state.variationEntities.some((e) => e.sample_id)) return;
+  if (state.waferCount || !launchedPlan || launchedPlan.mode !== "new_wafers" || state.originWafers || state.variationEntities.some((e) => e.sample_id)) return;
+  state.waferCount = launchedPlan.wafer_count;
   state.variationEntities = Array.from({ length: launchedPlan.wafer_count }, () => ({ sample_id: "", location: "" }));
 }

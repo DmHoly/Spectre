@@ -221,9 +221,14 @@ function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = fal
     );
   }
   if (wafers) {
-    // badge dessiné par lineage-view.js (styles .lineage-wafers dans microproject.html)
+    // badge dessiné par lineage-view.js (styles .lineage-wafers dans microproject.html) : le nombre
+    // de plaques de l'expérience, coloré selon leur association
+    const badge = (state, label) =>
+      `<li><svg width="30" height="16" viewBox="0 0 30 16" aria-hidden="true"><g class="lineage-wafers ${state}"><rect x="1" y="0.5" width="28" height="15" rx="7.5"></rect><path d="M6,9.9 A4,4 0 1 1 12,9.9 Z"></path><text x="17" y="11">3</text></g></svg>${label}</li>`;
     items.push(
-      `<li><svg width="30" height="16" viewBox="0 0 30 16" aria-hidden="true"><g class="lineage-wafers"><rect x="1" y="0.5" width="28" height="15" rx="7.5"></rect><path d="M6,9.9 A4,4 0 1 1 12,9.9 Z"></path><text x="17" y="11">3</text></g></svg>Wafers suivis</li>`
+      badge("is-missing", "Plaques à associer, sans FDL"),
+      badge("is-fdl", "FDL donnée, plaques à associer"),
+      badge("is-done", "Plaques toutes associées")
     );
   }
   if (lot) {

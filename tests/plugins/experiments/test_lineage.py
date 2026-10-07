@@ -229,3 +229,15 @@ def test_lineage_nodes_list_the_wafers_they_track(client):
     slug = _owner_microproject(client)
     launch(client, slug)
     assert lineage(client, slug)["nodes"][0]["wafers"] == ["W1"]
+
+
+def test_lineage_nodes_count_their_places_for_the_plate_badge(client):
+    # the plate badge: every place (blank ones included), how many are named, and whether the study
+    # has its FDL - red (to associate, no FDL), orange (FDL given), green (all associated)
+    slug = _owner_microproject(client)
+    launch(client, slug, entities=[{"sample_id": "W1"}, {"sample_id": None}, {"sample_id": None}])
+    assert lineage(client, slug)["nodes"][0]["plates"] == {"total": 3, "named": 1, "has_fdl": False}
+
+    other = signup_with_microproject(client, "other@example.com", "Autre salle", name="Other")
+    launch(client, other, entities=[{"sample_id": None}], fdl=["1234"])
+    assert lineage(client, other)["nodes"][0]["plates"] == {"total": 1, "named": 0, "has_fdl": True}

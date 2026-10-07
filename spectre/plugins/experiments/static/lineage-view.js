@@ -649,18 +649,27 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
         badge.append("text").attr("x", width / 2).attr("y", 10.5).attr("text-anchor", "middle").text(text);
       });
 
-    // Badge wafers à gauche du nœud : combien de wafers (lasermarks) l'expérience suit - la liste au survol.
+    // Badge plaques à gauche du nœud : combien de places l'expérience a (une par variante, ses
+    // réplicats sinon), en attente comprises - rouge tant qu'il en reste à associer sans FDL donnée,
+    // orange si la FDL est là mais pas encore toutes les associations, vert quand tout est associé.
     nodeGroups
-      .filter((d) => d.wafers && d.wafers.length)
+      .filter((d) => !d.is_plan && d.plates && d.plates.total)
       .each(function (d) {
-        const text = String(d.wafers.length);
+        const { total, named, has_fdl: hasFdl } = d.plates;
+        const state = named >= total ? "is-done" : hasFdl ? "is-fdl" : "is-missing";
+        const text = String(total);
         const width = 22 + text.length * 6;
         const badge = d3
           .select(this)
           .append("g")
-          .attr("class", "lineage-wafers")
+          .attr("class", `lineage-wafers ${state}`)
           .attr("transform", `translate(${-NODE_RADIUS - 9 - width},${-NODE_RADIUS - 6})`);
-        badge.append("title").text(`${d.wafers.length} wafer${d.wafers.length > 1 ? "s" : ""} : ${d.wafers.join(", ")}`);
+        const plural = (n) => (n > 1 ? "s" : "");
+        const status =
+          named >= total
+            ? `${total > 1 ? "toutes associées" : "associée"} : ${d.wafers.join(", ")}`
+            : `${total - named} à associer${hasFdl ? " (FDL donnée)" : " (pas de FDL)"}${named ? ` - associée${plural(named)} : ${d.wafers.join(", ")}` : ""}`;
+        badge.append("title").text(`${total} plaque${plural(total)}, ${status}`);
         badge.append("rect").attr("width", width).attr("height", 15).attr("rx", 7.5);
         // un wafer : un disque au méplat
         badge.append("path").attr("d", "M5,9.4 A4,4 0 1 1 11,9.4 Z");

@@ -50,3 +50,15 @@ def test_physical_tracking_carries_forward_through_the_notebook_and_conclude(cli
 
     add_manual(client, slug, launched["id"], measurements=[{"text": "profilometre"}])
     assert get_experiment(client, slug, launched["id"])["physical_tracking"] == [{"sample_id": "W1", "location": "boite 3"}]
+
+
+def test_a_simple_study_declares_its_wafers_as_exact_repeats(client):
+    # several wafers without a variation: exact repeats of the reference, said at launch
+    slug = signup_with_microproject(client, "repeats@example.com")
+    repeated = launch(client, slug, entities=[{"sample_id": "A"}, {"sample_id": None}], repeats=True)
+    assert get_experiment(client, slug, repeated["id"])["repeats"] is True
+    # one wafer, or a campaign (one per variant), never repeats
+    single = launch(client, slug, title="Seule", entities=[{"sample_id": "B"}], repeats=True)
+    assert get_experiment(client, slug, single["id"])["repeats"] is False
+    campaign = launch_campaign(client, slug, entities=[{"sample_id": "C"}], repeats=True)
+    assert get_experiment(client, slug, campaign["id"])["repeats"] is False

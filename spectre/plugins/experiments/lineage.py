@@ -12,7 +12,7 @@ from typing import Any
 
 from ..structures import kinds
 from . import versioning
-from .entities import compact
+from .entities import compact, study_fdl
 from .repository import CONCLUDED_STATUSES, display_status, hold_of
 
 # Ce que montre l'historique des structures par défaut : les versions qui changent la structure en
@@ -294,6 +294,14 @@ def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dic
             if compact(lasermark) not in seen:
                 seen.add(compact(lasermark))
                 node["wafers"].append(lasermark)
+        # ses places (une par variante, ses réplicats sinon) : combien, combien associées, et si
+        # l'étude a déjà ses FDL - la couleur du badge (rouge / orange / vert)
+        places = experiments[node["id"]].metadata.get("physical_tracking", [])
+        node["plates"] = {
+            "total": len(places),
+            "named": sum(1 for e in places if e.get("sample_id")),
+            "has_fdl": bool(study_fdl(experiments[node["id"]].metadata)),
+        }
 
     if anchors:
         return {"nodes": nodes, "edges": edges, "anchors": {vid: shown_as(vid) if vid in experiments else None for vid in anchors}}

@@ -1,9 +1,8 @@
-/* Onglet « Structure & plaques », côté structure : la structure affichée et ce qui a changé depuis la
-   version de structure précédente (en carrousel pour une campagne, en planche pour une structure en
-   images), le détail de chaque couche (aperçu au survol, paramètres de l'étape au clic), les étapes
-   du procédé avec le nombre de données du cahier de chacune (un clic filtre le cahier), la
-   cartographie et la feuille de split d'une campagne, la comparaison avec une autre étude, et la
-   modification des images d'une structure en images et de leurs annotations. Les étiquettes de
+/* Onglet « Structure & plaques », côté structure : la structure affichée (en carrousel pour une
+   campagne, en planche pour une structure en images), le détail de chaque couche (aperçu au survol,
+   paramètres de l'étape au clic), la feuille de split - une ligne par plaque, avec ce qu'on en sait -,
+   les étapes du procédé avec le nombre de données du cahier de chacune (un clic filtre le cahier), et
+   la modification des images d'une structure en images et de leurs annotations. Les étiquettes de
    couches, dessinées par le serveur à droite de la structure, se masquent et s'affichent
    (préférence de ce navigateur). */
 
@@ -68,29 +67,6 @@
     applyLabelsEverywhere();
   });
 
-  // Ce qui a changé quand une structure en images est en jeu : le résumé en clair calculé par le
-  // serveur plutôt que les chemins bruts (images[1].image_id...).
-  function summaryHtml(lines) {
-    return lines.map((line) => `<div style="font-size:12.5px;color:var(--text-soft);padding:2px 0;">${escapeHtml(line)}</div>`).join("");
-  }
-
-  // Les étapes renommées et les changements des paramètres déclarés (valeur, unité...), que la
-  // géométrie ne porte pas, puis ceux des étiquettes de couches (et de leur regroupement par brique),
-  // à part de ceux de la structure : une ligne « Étapes : … », « Paramètres : … », « Étiquettes : … »,
-  // vides s'il n'y en a pas.
-  function apartChangesHtml(diff) {
-    const line = (key, changes) =>
-      changes.length ? `<div class="fiche-diff-labels"><span class="fiche-diff-labels__key">${key} :</span> ${changes.map((c) => escapeHtml(c.line)).join(" ; ")}</div>` : "";
-    return line("Étapes", diff.step_changes || []) + line("Paramètres", diff.param_changes || []) + line("Étiquettes", diff.label_changes || []);
-  }
-
-  function entriesHtml(entries, limit, fontSize) {
-    return entries
-      .slice(0, limit)
-      .map((e) => `<div class="mono" style="font-size:${fontSize};color:var(--text-soft);padding:2px 0;">${escapeHtml(e.path)} : ${escapeHtml(JSON.stringify(e.before))} &rarr; ${escapeHtml(JSON.stringify(e.after))}</div>`)
-      .join("");
-  }
-
   // Les annotations de chaque image de la planche (kernel/static/annotations.js) : leur liste ; pour
   // un éditeur, leurs outils. Les enregistrer remplace la planche telle quelle, avec les annotations
   // de cette image (PUT .../structure-images) : une écriture légère, pas de nouvelle version de
@@ -122,10 +98,7 @@
   async function renderStructure(detail) {
     const container = document.getElementById("structure-svg");
     const hint = document.getElementById("structure-click-hint");
-    const diffNote = document.getElementById("diff-note");
-    const diffDetails = document.getElementById("diff-details");
     variantIndex = 0;
-    const diffPromise = experimentsApi.structureDiff(ctx.microprojectSlug, ctx.experimentId, { version: ctx.versionId });
 
     if (detail.structure_images) {
       // une structure en images (schéma, coupes TEM...) : la planche
@@ -160,28 +133,6 @@
       hint.style.display = ctx.process ? "" : "none";
     }
     applyLabelsEverywhere();
-
-    const diff = await diffPromise;
-    const lines = diff.summary || [];
-    const labels = apartChangesHtml(diff);
-    // seuls les paramètres déclarés ou les étiquettes (ou leur regroupement par brique) changent : on
-    // le dit, plutôt qu'« identique »
-    const same = labels ? "" : "identique à la version précédente";
-    if (!diff.target) {
-      diffNote.textContent = "";
-      diffDetails.innerHTML = "";
-    } else if (diff.summary) {
-      // une structure en images d'un côté ou de l'autre : pas de liste de paramètres qui ait un sens
-      diffNote.textContent = lines.length ? "" : same;
-      diffDetails.innerHTML = summaryHtml(lines) + labels;
-    } else if (!diff.entries.length) {
-      diffNote.textContent = same;
-      diffDetails.innerHTML = labels;
-    } else {
-      const n = diff.entries.length;
-      diffNote.innerHTML = `<span style="color:var(--abandoned);font-weight:600;">${n} paramètre${n > 1 ? "s" : ""} modifié${n > 1 ? "s" : ""}</span>`;
-      diffDetails.innerHTML = entriesHtml(diff.entries, 12, "11.5px") + labels;
-    }
   }
 
   // --- les couches : la convention data-layer-index du constructeur (0 = substrat, N = l'étape N-1) --
@@ -318,150 +269,79 @@
     if (ctx) renderProcessSteps();
   });
 
-  // --- une campagne : cartographie des variantes et feuille de split --------------------------------
+  // --- la feuille de split : une ligne par plaque, avec ce qu'on en sait ------------------------------
 
-  async function renderBatchMatrix(detail) {
-    const card = document.getElementById("matrix-card");
-    card.style.display = detail.is_batch ? "" : "none";
-    if (!detail.is_batch) return;
-    const variation = await ctx.variants();
-    const labels = variation.labels || variation.svgs.map((_, i) => `#${i + 1}`);
-    const tracking = variation.physical_tracking || [];
-
-    // Cartographie : chaque variante telle que StructureForge l'a simulée, avec le lasermark de sa plaque.
-    document.getElementById("atlas-content").innerHTML = `
-      <div class="atlas-grid">
-        ${variation.svgs
-          .map((svg, i) => {
-            const lasermark = (tracking[i] || {}).sample_id;
-            return `<div class="atlas-tile">${svg}<div class="atlas-label">${escapeHtml(labels[i])}</div>${lasermark ? `<div class="atlas-tile__lasermark mono">${escapeHtml(lasermark)}</div>` : ""}</div>`;
-          })
-          .join("")}
-      </div>`;
-    applyLabelsEverywhere();
-
-    const el = document.getElementById("matrix-content");
-    const hasFactors = variation.factor_labels && variation.factor_labels.length > 0;
-    if (variation.varying.length === 0 && !hasFactors) {
-      el.innerHTML = `<div class="help">Les ${variation.entity_count} échantillons sont identiques sur tous les paramètres suivis.</div>`;
-      return;
+  // Une campagne : une place par variante, ses paramètres variés en colonnes (les campagnes d'avant le
+  // multi-paramètre n'ont pas factor_labels : une colonne « Paramètre »). Une étude simple : ses
+  // réplicats, la même structure - « répétition » quand ils ont été déclarés comme tels au lancement.
+  async function renderSplit(detail) {
+    const tracking = detail.physical_tracking && detail.physical_tracking.length ? detail.physical_tracking : [{}];
+    let factorLabels = [];
+    let factorScales = [];
+    let rows;
+    if (detail.is_batch) {
+      const variation = await ctx.variants().catch(() => null);
+      const labels = (variation && variation.labels) || tracking.map((_, i) => `Variante ${i + 1}`);
+      const hasFactors = variation && variation.factor_labels && variation.factor_labels.length > 0;
+      factorLabels = hasFactors ? variation.factor_labels : ["Paramètre"];
+      factorScales = (variation && variation.factor_scales) || [];
+      // la première variante est la référence, comme dans le carrousel
+      rows = labels.map((label, i) => ({
+        variant: i === 0 ? "Référence" : `Variante ${i + 1}`,
+        values: hasFactors && variation.factor_values[i] ? variation.factor_values[i].map(formatParamValue) : [label],
+        entry: tracking[i] || {},
+      }));
+    } else {
+      const many = tracking.length > 1;
+      rows = tracking.map((entry, i) => ({
+        variant: !many ? "Référence" : detail.repeats ? (i === 0 ? "Référence" : "Répétition de la réf.") : `Réplicat ${i + 1}`,
+        values: [],
+        entry,
+      }));
     }
 
-    // Feuille de split : une ligne par échantillon, une colonne par paramètre varié (les campagnes
-    // d'avant le multi-paramètre n'ont pas factor_labels : une colonne « Paramètre »).
-    const factorLabels = hasFactors ? variation.factor_labels : ["Paramètre"];
-    const splitSheet = `
-      <table style="border-collapse:collapse;font-size:13px;width:100%;">
-        <thead><tr style="text-align:left;color:var(--text-faint);font-size:11px;text-transform:uppercase;">
-          <th style="padding:4px 10px 4px 0;">Échantillon</th>
-          ${factorLabels
-            .map((label, j) => {
-              const log = (variation.factor_scales || [])[j] === "log";
-              return `<th style="padding:4px 10px;">${escapeHtml(label)}${log ? ` <span style="text-transform:none;font-weight:500;">(échelle log)</span>` : ""}</th>`;
-            })
-            .join("")}
-        </tr></thead>
-        <tbody>
-          ${labels
-            .map((label, i) => {
-              const values = variation.factor_values && variation.factor_values[i] ? variation.factor_values[i] : [label];
-              return `<tr style="border-top:1px solid var(--border-soft);">
-                <td class="mono" style="padding:6px 10px 6px 0;">${escapeHtml(label)}</td>
-                ${values.map((v) => `<td class="mono" style="padding:6px 10px;">${escapeHtml(formatParamValue(v))}</td>`).join("")}
-              </tr>`;
-            })
-            .join("")}
-        </tbody>
-      </table>`;
+    const named = rows.filter((r) => r.entry.sample_id).length;
+    const studyFdl = detail.fdl || [];
+    document.getElementById("split-note").textContent = [
+      `${rows.length} plaque${rows.length > 1 ? "s" : ""}`,
+      named === rows.length ? "toutes associées" : `${rows.length - named} à associer`,
+      detail.is_batch ? "" : detail.repeats && rows.length > 1 ? "répétitions exactes de la référence" : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
-    const rawTable = variation.varying.length
-      ? `
-      <table style="border-collapse:collapse;font-size:12px;width:100%;">
-        <thead><tr style="text-align:left;color:var(--text-faint);font-size:11px;text-transform:uppercase;">
-          <th style="padding:4px 10px 4px 0;">Repère interne</th>
-          ${variation.varying[0].values.map((_, i) => `<th style="padding:4px 10px;">#${i + 1}</th>`).join("")}
+    const plateCell = (entry) =>
+      entry.sample_id
+        ? `<a class="split-table__plate mono" href="${plateUrl(entry.sample_id)}" title="Le parcours de cette plaque">${escapeHtml(entry.sample_id)}</a>`
+        : `<span class="split-table__missing ${studyFdl.length ? "is-fdl" : ""}">à associer${studyFdl.length ? " (FDL)" : ""}</span>`;
+    document.getElementById("split-content").innerHTML = `
+      <table class="split-table">
+        <thead><tr>
+          <th scope="col">#</th>
+          <th scope="col">${detail.is_batch ? "Variante" : "Rôle"}</th>
+          ${factorLabels
+            .map((label, j) => `<th scope="col">${escapeHtml(label)}${factorScales[j] === "log" ? ` <span class="split-table__scale">log</span>` : ""}</th>`)
+            .join("")}
+          <th scope="col">Plaque</th>
+          <th scope="col">FDL</th>
+          <th scope="col">Emplacement</th>
         </tr></thead>
         <tbody>
-          ${variation.varying
+          ${rows
             .map(
-              (f) => `<tr style="border-top:1px solid var(--border-soft);">
-                <td class="mono" style="padding:6px 10px 6px 0;color:var(--text-soft);">${escapeHtml(f.path)}</td>
-                ${f.values.map((v) => `<td class="mono" style="padding:6px 10px;">${escapeHtml(JSON.stringify(v))}</td>`).join("")}
+              (row, i) => `<tr>
+                <td class="mono split-table__idx">${i + 1}</td>
+                <td>${escapeHtml(row.variant)}</td>
+                ${row.values.map((v) => `<td class="mono">${escapeHtml(v)}</td>`).join("")}
+                <td>${plateCell(row.entry)}</td>
+                <td>${row.entry.fdl && row.entry.fdl.length ? fdlChipsHtml(row.entry.fdl, { label: false }) : `<span class="split-table__empty">-</span>`}</td>
+                <td>${row.entry.location ? escapeHtml(row.entry.location) : `<span class="split-table__empty">-</span>`}</td>
               </tr>`
             )
             .join("")}
         </tbody>
-      </table>`
-      : `<div class="help">Ces paramètres ne changent pas la géométrie simulée (ex : un paramètre process ou une estimation) - rien à comparer structure par structure.</div>`;
-
-    el.innerHTML = `
-      <div style="overflow-x:auto;">${splitSheet}</div>
-      <details style="margin-top:12px;">
-        <summary style="cursor:pointer;font-size:12px;color:var(--text-faint);">Détails techniques</summary>
-        <div style="overflow-x:auto;margin-top:8px;">${rawTable}</div>
-      </details>`;
+      </table>`;
   }
-
-  // --- comparer la structure avec une autre étude (de ce µprojet ou d'un autre) ---------------------
-
-  const compareMicroproject = document.getElementById("compare-microproject-select");
-  const compareSearch = document.getElementById("compare-search");
-  const compareSelect = document.getElementById("compare-select");
-  const compareResult = document.getElementById("compare-result");
-
-  async function fillCompareSelect() {
-    try {
-      const items = await ExperiencePage.otherExperiments(compareMicroproject.value || ctx.microprojectSlug, compareSearch.value.trim());
-      compareSelect.innerHTML = items.length
-        ? items.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title)}</option>`).join("")
-        : `<option value="">Aucune expérience à comparer</option>`;
-    } catch (err) {
-      compareSelect.innerHTML = `<option value="">—</option>`;
-    }
-  }
-
-  let microprojectsLoaded = false;
-  async function renderCompare() {
-    compareResult.innerHTML = "";
-    if (!microprojectsLoaded) {
-      microprojectsLoaded = true;
-      try {
-        const mine = await microprojectsApi.list();
-        compareMicroproject.innerHTML = mine
-          .map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}${p.slug === ctx.microprojectSlug ? " (ce µprojet)" : ""}</option>`)
-          .join("");
-        compareMicroproject.value = ctx.microprojectSlug;
-      } catch (err) {
-        // la comparaison est secondaire : ce µprojet seulement
-      }
-    }
-    await fillCompareSelect();
-  }
-
-  let searchTimer = null;
-  compareSearch.addEventListener("input", () => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(fillCompareSelect, 250);
-  });
-  compareMicroproject.addEventListener("change", fillCompareSelect);
-  document.getElementById("compare-btn").addEventListener("click", async () => {
-    const target = compareSelect.value;
-    if (!target) return;
-    const other = compareMicroproject.value || ctx.microprojectSlug;
-    try {
-      const diff = await experimentsApi.structureDiff(ctx.microprojectSlug, ctx.experimentId, {
-        version: ctx.versionId,
-        against_experiment: target,
-        against_microproject: other === ctx.microprojectSlug ? null : other,
-      });
-      const labels = apartChangesHtml(diff);
-      if (diff.summary) compareResult.innerHTML = summaryHtml(diff.summary) + labels;
-      else if (!diff.entries.length) compareResult.innerHTML = `<div class="help">Aucune différence de structure.</div>` + labels;
-      else compareResult.innerHTML = entriesHtml(diff.entries, 20, "11px") + labels;
-    } catch (err) {
-      ctx.showError(err);
-    }
-  });
 
   // --- structure en images : modifier la planche, sans nouvelle version de structure ----------------
 
@@ -516,7 +396,7 @@
       evolveLink.style.display = ctx.canEdit && ctx.process ? "" : "none";
       replaceBtn.style.display = ctx.canEdit && ctx.detail.structure_images ? "" : "none";
       renderProcessSteps();
-      return Promise.all([renderStructure(ctx.detail), renderBatchMatrix(ctx.detail), renderCompare()]);
+      return Promise.all([renderStructure(ctx.detail), renderSplit(ctx.detail)]);
     },
   });
 })();

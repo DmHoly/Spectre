@@ -1109,11 +1109,10 @@ Supprimée : `/microprojets/{slug}/graphe`.
   `[data-panel="<key>"]` de la page, dans l'ordre de chargement des scripts (un panneau sans élément
   est ignoré). Les modules de la fiche sont eux-mêmes des panneaux, un fichier chacun, sans global :
   `header.js` (bandeau, verdict, statut et pause), `objectives.js` (objectifs, réponses au
-  formulaire d'intention), `tags-refs.js`, `structure-view.js` (structure, couches, campagne,
-  comparaison, images de la structure ; le bouton « Étiquettes : masquer / afficher » des
+  formulaire d'intention), `tags-refs.js`, `structure-view.js` (structure, couches, feuille de split - une
+  ligne par plaque -, étapes du procédé, images de la structure ; le bouton « Étiquettes : masquer / afficher » des
   étiquettes de couches, préférence de ce navigateur, affichées par défaut : il passe chaque
-  `svg.sp-labelled-structure` à sa `data-bare-viewbox`), `plates.js` (plaques suivies), `versions.js` (frise,
-  historique, pistes filles, liens - pour une combinaison, ses deux études d'origine), `conclusion.js`,
+  `svg.sp-labelled-structure` à sa `data-bare-viewbox`), `plates.js` (plaques suivies), `conclusion.js`,
   `advanced.js` (la boîte « Combiner deux études » : l'autre étude, cherchée parmi celles du
   µprojet, le titre proposé « A + B », l'intention, l'hypothèse et la nouvelle plaque - lasermark,
   emplacement, FDL, comme au lancement -, puis la fiche de la nouvelle étude ; suppression), `report.js`. Ceux des autres plugins suivent :

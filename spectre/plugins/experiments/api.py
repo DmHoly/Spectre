@@ -121,6 +121,8 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         "physical_tracking": version.metadata.get("physical_tracking", []),
         # les FDL de l'étude, d'où ses plaques sont lues (plugin wafers, GET /api/fdls/{fdl}/wafers)
         "fdl": study_fdl(version.metadata),
+        # ses plaques sont des répétitions exactes de la référence (déclarées au lancement)
+        "repeats": bool(version.metadata.get(service.REPEATS_KEY)),
         "form_answers": dict(version.form_answers),
     }
 

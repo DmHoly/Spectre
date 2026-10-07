@@ -68,6 +68,8 @@ REFERENCE_ORIGIN_KEY = "reference_origin"
 # par amend() ; une fourche ou une combinaison ne la reprennent pas (leur filiation dit d'où elles
 # viennent). Dans le même µprojet, la nouvelle piste descend aussi de cette version.
 WAFER_ORIGIN_KEY = "wafer_origin"
+# les plaques d'une étude simple déclarées comme répétitions exactes de la structure de référence
+REPEATS_KEY = "repeats"
 
 # Le cahier de données d'une étude (plugin notebook, qui dépend d'experiments et non l'inverse) : ses
 # entrées sont rangées dans les métadonnées, sous NOTEBOOK_KEY, chacune avec son ``id``. Les données
@@ -691,6 +693,11 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
         builder.metadata.update(prepared.metadata)
         builder.metadata.update(prepared.step_metadata(source, step_ids_of(repo, source) if source is not None else []))
         builder.metadata["physical_tracking"] = _launch_tracking(prepared.kind, prepared.campaign_size, entities)
+        # des réplicats déclarés comme répétitions exactes de la référence (étude simple, plusieurs plaques)
+        if body.repeats and prepared.kind != "campaign" and len(builder.metadata["physical_tracking"]) > 1:
+            builder.metadata[REPEATS_KEY] = True
+        else:
+            builder.metadata.pop(REPEATS_KEY, None)
         set_study_fdl(builder.metadata, body.fdl)
         apply_context(builder.metadata, body.context)
         if found is not None:

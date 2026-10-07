@@ -98,6 +98,9 @@ class CreateExperimentRequest(_Intention):
     is sent)."""
 
     structure: StructurePayload | None = None
+    # several wafers of a simple study (no variation) declared as exact repeats of the reference
+    # structure - stored as Experiment.metadata["repeats"], shown on the split sheet
+    repeats: bool = False
     from_version: FromVersion | None = None
     wafer_origin: WaferOrigin | None = None
     merge_of: list[MergeSource] | None = Field(None, min_length=2, max_length=2)
