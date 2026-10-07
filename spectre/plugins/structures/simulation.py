@@ -118,7 +118,10 @@ def materials_library(*extra_names: str) -> MaterialLibrary:
     """
     from .library_files import materials
 
-    library = default_library().with_materials(*materials())
+    base = default_library()
+    if "AlGaN" in base:  # l'AlGaN générique, au même rose que les compositions
+        base = base.with_materials(base.get("AlGaN").model_copy(update={"color": aluminum_gan_color(0.3)}))
+    library = base.with_materials(*materials())
     graded = [_graded_nitride_material(name) for name in extra_names if name not in library]
     resolved = [material for material in graded if material is not None]
     return library.with_materials(*resolved) if resolved else library
@@ -139,7 +142,23 @@ def _graded_nitride_material(name: str) -> Material | None:
     symbol, fraction_str = match.group(1), match.group(2)
     factory = indium_gan if symbol == "In" else aluminum_gan
     material = factory(float(fraction_str))
-    return material if material.name == name else None
+    if material.name != name:
+        return None
+    if symbol == "Al":
+        material = material.model_copy(update={"color": aluminum_gan_color(float(fraction_str))})
+    return material
+
+
+# AlGaN en rose/magenta : StructureForge le fond entre le violet-gris du GaN et le violet pâle de
+# l'AlN, impossible à distinguer du GaN à 10-20 % d'Al. Le magenta est la seule teinte que ni le
+# GaN ni l'arc-en-ciel de l'InGaN (violet → rouge) n'utilisent ; plus d'Al = plus pâle.
+_ALGAN_LOW_AL = (0xD0, 0x1C, 0x8B)  # peu d'aluminium : magenta franc
+_ALGAN_HIGH_AL = (0xF6, 0xC8, 0xE0)  # beaucoup d'aluminium : rose pâle
+
+
+def aluminum_gan_color(fraction: float) -> str:
+    t = min(max(fraction, 0.0), 1.0)
+    return "#" + "".join(f"{round(a + (b - a) * t):02x}" for a, b in zip(_ALGAN_LOW_AL, _ALGAN_HIGH_AL))
 
 
 def _material_names_in_steps(steps: list[ProcessStep]) -> set[str]:
