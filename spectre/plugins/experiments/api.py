@@ -29,6 +29,7 @@ from ..microprojects.deps import get_microproject, require_role
 from ..microprojects.service import Microproject
 from ..structures import campaigns, kinds
 from . import plans, refs, service, versioning
+from .entities import study_fdl
 from .lineage import lineage_graph
 from .lineage import structure_history as lineage_structure_history
 from .repository import CONCLUDED_STATUSES, RUNNING_STATUSES, branch_tips, display_status, get_repository, hold_of
@@ -117,6 +118,8 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         # nombre d'entrées seulement (toutes, y compris celles d'autres plaques)
         "notebook_count": len(service.notebook_entry_ids(version)),
         "physical_tracking": version.metadata.get("physical_tracking", []),
+        # les FDL de l'étude, d'où ses plaques sont lues (plugin wafers, GET /api/fdls/{fdl}/wafers)
+        "fdl": study_fdl(version.metadata),
         "form_answers": dict(version.form_answers),
     }
 
@@ -396,9 +399,10 @@ def set_entities(
     user: User = Depends(current_user),
 ) -> dict:
     """Les échantillons physiques suivis : un par variante d'une campagne, au moins un sinon (les
-    réplicats d'une étude simple) - jamais deux fois la même plaque."""
+    réplicats d'une étude simple ; une place vide reste à associer) - jamais deux fois la même
+    plaque - et, avec ``fdl``, les FDL de l'étude d'où elles viennent."""
     after = service.set_entities(
-        microproject.slug, experiment_id, body.entities, author=user.name, expected_version=if_match_version(if_match)
+        microproject.slug, experiment_id, body.entities, author=user.name, expected_version=if_match_version(if_match), fdl=body.fdl
     )
     return _written(response, microproject.slug, experiment_id, None, after)
 

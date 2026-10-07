@@ -33,11 +33,13 @@ from ..structures.schemas import CampaignPayload, ImagesPayload, StructureImageI
 from . import refs, versioning
 from .entities import (
     EntityTrackingInput,
+    blank_entity,
     clean_entity_entries,
     compact,
     has_tracked_physical_entity,
     named_entities,
     refuse_duplicate_wafers,
+    set_study_fdl,
 )
 from .repository import (
     HOLD_KEY,
@@ -547,10 +549,6 @@ def _set_objectives(builder: follow.ExperimentBuilder, inputs: list[ObjectiveInp
         builder.metadata.pop("objective_verification", None)
 
 
-def _entity_required(what: str) -> InvalidInput:
-    return InvalidInput(f"Une entité physique (l'échantillon réel suivi) est obligatoire {what}.", code="entity_required")
-
-
 class _PreparedStructure:
     """A structure payload turned into what a commit needs, outside the lock (the simulation is the
     slow part): the Follow structure, its protocol steps and the Spectre metadata that describes it
@@ -644,14 +642,17 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
     :func:`combine`). Une piste partie d'une version en reprend, faute de mieux dans la requête, les
     objectifs et le contexte - pas ses plaques (la requête nomme les siennes), le cahier de données,
     les étiquettes ni la conclusion : c'est une nouvelle étude. Une piste partie de plaques ne reprend de l'étude qui les
-    suit que la référence dont celle-ci part : ses plaques sont celles que nomme la requête. Titre,
-    intention et entité physique obligatoires ; le formulaire d'intention du µprojet s'applique ; la
-    toute première étude d'un µprojet devient sa première ref."""
+    suit que la référence dont celle-ci part : ses plaques sont celles que nomme la requête. Titre et
+    intention obligatoires ; les plaques, non (leurs places restent à associer, depuis la FDL de
+    l'étude - ``fdl``) ; le formulaire d'intention du µprojet s'applique ; la toute première étude
+    d'un µprojet devient sa première ref."""
     _require_title_and_intent(body)
     if body.merge_of is not None:
         return combine(slug, body, author=author)
     entities = clean_entity_entries(body.entities)
     origin = body.wafer_origin
+    if origin and not named_entities(entities):
+        raise InvalidInput("Nommez les plaques dont part l'étude.", code="entity_required")
     # l'étude des plaques, lue dans son µprojet quand c'en est un autre (sinon sous le verrou, plus bas)
     elsewhere = resolve_wafer_origin(get_repository(origin.microproject), origin, entities) if origin and origin.microproject != slug else None
     start = None
@@ -690,6 +691,7 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
         builder.metadata.update(prepared.metadata)
         builder.metadata.update(prepared.step_metadata(source, step_ids_of(repo, source) if source is not None else []))
         builder.metadata["physical_tracking"] = _launch_tracking(prepared.kind, prepared.campaign_size, entities)
+        set_study_fdl(builder.metadata, body.fdl)
         apply_context(builder.metadata, body.context)
         if found is not None:
             version, variant = found
@@ -779,22 +781,21 @@ def resolve_wafer_origin(repo: follow.Repository, origin: WaferOrigin, entities:
 
 def _launch_tracking(kind: str, campaign_size: int, entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The physical tracking of a new line of study whose structure is of ``kind`` (``process``,
-    ``campaign`` of ``campaign_size`` variants, or ``images``): at least one named sample, never the
-    same twice; exactly one slot per variant of a campaign (the samples given fill the first ones -
-    a named one beyond the last variant is refused), the named samples of a simple study (its
-    replicates)."""
+    ``campaign`` of ``campaign_size`` variants, or ``images``), never the same sample twice: exactly
+    one slot per variant of a campaign (the samples given fill the first ones - a named one beyond
+    the last variant is refused), the slots of a simple study (its replicates, as many as given, at
+    least one). A slot may stay blank: the wafers actually launched are associated later, from the
+    FDL of the study - a study is concluded only once one of them is named (:func:`conclude`)."""
     refuse_duplicate_wafers(entities)
-    if not named_entities(entities):
-        raise _entity_required("pour lancer une campagne" if kind == "campaign" else "pour lancer une expérience")
     if kind == "campaign":
         if named_entities(entities[campaign_size:]):
             raise InvalidInput(
                 f"{len(named_entities(entities))} plaques pour {campaign_size} variante(s) : une plaque par variante au plus.",
                 code="too_many_entities",
             )
-        padding = [{"sample_id": None, "location": None}] * max(0, campaign_size - len(entities))
+        padding = [blank_entity() for _ in range(max(0, campaign_size - len(entities)))]
         return (entities + padding)[:campaign_size]
-    return named_entities(entities)
+    return entities or [blank_entity()]
 
 
 # Ce qui, dans les métadonnées d'une version, décrit sa structure (le procédé du constructeur, les ids
@@ -859,6 +860,7 @@ def combine(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.
         builder.metadata["physical_tracking"] = _launch_tracking(
             _structure_kind(a.structure_type), kinds.entity_count(a.structure_type, a.structure), entities
         )
+        set_study_fdl(builder.metadata, body.fdl)
         builder.form_answers = dict(body.form_answers)
         return _commit(builder, "Impossible de combiner ces deux études")
 
@@ -889,6 +891,8 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
         if body.objectives:
             _set_objectives(builder, body.objectives)
         apply_context(builder.metadata, body.context)
+        if body.fdl is not None:
+            set_study_fdl(builder.metadata, body.fdl)
         builder.form_answers = dict(body.form_answers)
         builder.structure = prepared.structure
         builder.steps = prepared.steps
@@ -902,13 +906,13 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
                 builder.metadata.pop(key, None)
             if not same:
                 builder.metadata[kinds.IMAGE_REVISION_KEY] = prepared.metadata[kinds.IMAGE_REVISION_KEY]
-            # les plaques données, sinon celles de la version précédente : ses réplicats, ou la plaque
-            # de la première variante d'une campagne (des images ne disent pas les variantes)
-            inherited = named_entities(clean_entity_entries([EntityTrackingInput(**e) for e in parent.metadata.get("physical_tracking", [])]))
-            tracked = named_entities(entities) or (inherited[:1] if parent.structure_type == kinds.ProcessLot.registry_key() else inherited)
-            if not tracked:
-                raise _entity_required("- renseignez-la avant de continuer")
-            builder.metadata["physical_tracking"] = tracked
+            # les plaques données, sinon celles de la version précédente : ses réplicats (places à
+            # associer comprises), ou la plaque de la première variante d'une campagne (des images ne
+            # disent pas les variantes) - une place à associer s'il n'y en a aucune
+            inherited = clean_entity_entries([EntityTrackingInput(**e) for e in parent.metadata.get("physical_tracking", [])])
+            if parent.structure_type == kinds.ProcessLot.registry_key():
+                inherited = named_entities(inherited)[:1]
+            builder.metadata["physical_tracking"] = named_entities(entities) or inherited or [blank_entity()]
         else:
             process = prepared.metadata["structureforge_process"]
             # les étiquettes de couches et les briques ne changent pas la structure, ni l'unité ajoutée
@@ -926,8 +930,8 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
             builder.metadata.update(prepared.step_metadata(parent, parent_ids))
             if entities:
                 builder.metadata["physical_tracking"] = entities
-            if not has_tracked_physical_entity(builder.metadata):
-                raise _entity_required("- ajoutez-en une sur la version actuelle avant de continuer")
+            elif not builder.metadata.get("physical_tracking"):
+                builder.metadata["physical_tracking"] = [blank_entity()]
         if not same:
             builder.conclusion = follow.Conclusion()
 
@@ -964,7 +968,8 @@ def conclude(slug: str, experiment_id: str, body: ConclusionRequest, *, author: 
     def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
         if not has_tracked_physical_entity(parent.metadata):
             raise InvalidInput(
-                "Impossible de conclure : aucune entité physique (échantillon réel) n'a été renseignée sur cette expérience.",
+                "Impossible de conclure : aucune plaque réelle n'est encore associée à cette expérience - "
+                "associez-en au moins une (carte « Plaques », depuis la FDL de l'étude).",
                 code="entity_required",
             )
         known = set(notebook_entry_ids(parent))
@@ -1001,12 +1006,19 @@ def set_tags(slug: str, experiment_id: str, tags: list[str], *, author: str, exp
 
 
 def set_entities(
-    slug: str, experiment_id: str, entities: list[EntityTrackingInput], *, author: str, expected_version: str | None
+    slug: str,
+    experiment_id: str,
+    entities: list[EntityTrackingInput],
+    *,
+    author: str,
+    expected_version: str | None,
+    fdl: list[str] | None = None,
 ) -> follow.Experiment:
     """L'identifiant physique et l'emplacement de chaque échantillon suivi - un par variante d'une
     campagne, autant de réplicats qu'on veut pour une étude simple (au moins une entrée ; une entrée
-    vide garde sa place, les liens d'entité désignant une plaque par sa position, mais celles de fin
-    de liste sont retirées). Jamais deux fois la même plaque."""
+    vide est une place encore à associer à une vraie plaque, et garde sa position : les liens
+    d'entité désignent une plaque par sa position). Jamais deux fois la même plaque. ``fdl`` : les
+    FDL de l'étude (``None`` les garde)."""
     cleaned = clean_entity_entries(entities)
     refuse_duplicate_wafers(cleaned)
 
@@ -1019,11 +1031,11 @@ def set_entities(
                     f"Il faut exactement {expected} entrée(s) (une par variante de cette campagne).", code="entity_count"
                 )
         else:
-            while len(tracked) > 1 and not tracked[-1]["sample_id"] and not tracked[-1]["location"] and not tracked[-1].get("fdl"):
-                tracked.pop()
             if not tracked:
                 raise InvalidInput("Il faut au moins une entrée (la plaque suivie).", code="entity_count")
         builder.metadata["physical_tracking"] = tracked
+        if fdl is not None:
+            set_study_fdl(builder.metadata, fdl)
 
     return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
 

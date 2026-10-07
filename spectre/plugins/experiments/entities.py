@@ -4,8 +4,16 @@ wafer per entry - its lasermark (``sample_id``), where it is stored, and the FDL
 in, the same way for every route that writes them.
 
 How many: one per variant of a campaign (a slot each, blank until named); any number for a simple
-study (a process or pictures) - its replicates, wafers run through the same structure. The same
-wafer is never tracked twice by one version (:func:`refuse_duplicate_wafers`).
+study (a process or pictures) - its replicates, wafers run through the same structure, each slot
+blank until it is associated with a real wafer. The same wafer is never tracked twice by one version
+(:func:`refuse_duplicate_wafers`). Naming them is optional at launch - the wafers actually launched
+are often only known once the FDL is filled in - but a study is concluded only once at least one
+slot names a real wafer (:func:`has_tracked_physical_entity`).
+
+The study itself carries its FDL too (``Experiment.metadata["fdl"]``, :func:`study_fdl`): the launch
+sheets its wafers went through, given at launch or later on the fiche. The wafers an FDL actually
+contains are read from the wafers plugin (:mod:`spectre.plugins.wafers.fdl_source`) and each slot is
+then associated, by hand, with one of them.
 
 FDL numbers are normalized as typed - « fdl 1234 », « FDL_1234 », « 1234 » all become ``FDL-1234``,
 and any other JIRA-style key (« abc 12 ») becomes ``ABC-12`` - so the same FDL is always spelled the
@@ -23,6 +31,8 @@ from pydantic import BaseModel
 from ...kernel.errors import InvalidInput
 
 MAX_FDL_PER_ENTITY = 20
+# les FDL de l'étude elle-même (Experiment.metadata["fdl"]), d'où viennent ses plaques
+STUDY_FDL_KEY = "fdl"
 # les réplicats d'une étude simple : autant qu'un lot de fabrication peut en contenir (lots.MAX_WAFERS)
 MAX_TRACKED_ENTITIES = 200
 
@@ -62,6 +72,27 @@ def clean_fdl_list(values: Iterable[str] | None) -> list[str]:
         if value and value not in cleaned:
             cleaned.append(value)
     return cleaned[:MAX_FDL_PER_ENTITY]
+
+
+def study_fdl(metadata: dict[str, Any]) -> list[str]:
+    """The FDL of the study itself (its wafers are read from them), in the order given."""
+    values = metadata.get(STUDY_FDL_KEY)
+    return [value for value in values if isinstance(value, str)] if isinstance(values, list) else []
+
+
+def set_study_fdl(metadata: dict[str, Any], values: Iterable[str] | None) -> None:
+    """Record the FDL of the study (normalized) - none removes the key, so a study without any reads
+    exactly as before."""
+    cleaned = clean_fdl_list(values)
+    if cleaned:
+        metadata[STUDY_FDL_KEY] = cleaned
+    else:
+        metadata.pop(STUDY_FDL_KEY, None)
+
+
+def blank_entity() -> dict[str, Any]:
+    """A slot not yet associated with a real wafer."""
+    return {"sample_id": None, "location": None}
 
 
 def clean_entity_entries(entities: list[Any]) -> list[dict[str, Any]]:

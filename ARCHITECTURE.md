@@ -108,7 +108,7 @@ placés au-dessus de lui.
 | 11 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, combinaison de deux études (une nouvelle piste à deux parents), suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
 | 12 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), le regroupement des refs locales d'avant dont le nom est porté dans au moins deux µprojets (`local_refs.py`) | experiments, microprojects, structures | `structure_references`, `reference_versions`, `reference_import_scans`, `reference_import_rules`, `retired_reference_slugs`, `dismissed_local_refs` |
 | 13 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
-| 14 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité | experiments, search | cache mémoire |
+| 14 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité, plaques de chaque FDL (`fdl_source` : démo, base locale, PRISM à venir) | experiments, search | cache mémoire, `fdl_wafers` |
 | 15 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
 | 16 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
 | 17 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
@@ -378,8 +378,17 @@ déplacement de classe ne doit jamais la changer.
   libre parmi les pistes, les refs **et** les pistes supprimées (sinon 409 `branch_name_taken`).
 - Une piste créée depuis une version (`from_version`, `version_id` facultatif : la pointe par
   défaut) en reprend, faute de mieux dans la requête, les objectifs et le contexte - pas ses plaques
-  (la requête nomme les siennes, les mêmes ou de nouvelles : 422 `entity_required` sinon, décision du
-  2026-10-07), le cahier de données, les étiquettes ni la conclusion : c'est une nouvelle étude.
+  (la requête nomme les siennes, les mêmes, de nouvelles, ou aucune encore - décision du 2026-10-07),
+  ni ses FDL, le cahier de données, les étiquettes ni la conclusion : c'est une nouvelle étude.
+- **Plaques à associer, FDL de l'étude** (décision du 2026-10-07) : nommer les plaques est optionnel
+  au lancement, à l'évolution et à la combinaison - une place (une par variante d'une campagne, une
+  par plaque prévue d'une étude simple, au moins une) reste `{sample_id: null}` jusqu'à ce qu'on
+  l'associe à une vraie plaque ; une étude ne se **conclut** qu'avec au moins une place associée
+  (422 `entity_required`). Partir de plaques (`wafer_origin`) les nomme toujours. L'étude porte ses
+  FDL (`metadata["fdl"]`, normalisées, `fdl` au lancement, à l'évolution - `null` les garde - et
+  dans `PUT .../entities`, renvoyées dans `fdl` du détail) ; les plaques qu'elles contiennent se
+  lisent dans le plugin wafers (`GET /api/fdls/{fdl}`, § wafers) et chaque place s'y associe à la
+  main, par un menu déroulant (constructeur, écran 3 ; carte « Plaques » de la fiche).
 - **Les expériences prévisionnelles** (`experiments.plans`, table `experiment_plans`, migration
   `experiments/0001_plans`) : prévues depuis l'arbre du µprojet, avant d'en savoir la structure, le
   split ou les vraies plaques - un titre, une intention, la version dont elles partent (aucune pour
@@ -444,8 +453,8 @@ déplacement de classe ne doit jamais la changer.
   une nouvelle branche (références `baseline` vers A, `merge_source` vers B). Sa structure est la
   structure combinée selon la règle de Follow sans résolution de conflit, celle d'avant : celle de A
   (structure, protocole, et les métadonnées qui la décrivent : procédé, ids d'étape, campagne,
-  révision d'une structure en images). C a ses titre, intention, hypothèse et plaque (obligatoires
-  comme pour un lancement) ; objectifs et contexte viennent de A faute de mieux dans la requête ; son
+  révision d'une structure en images). C a ses titre, intention et hypothèse (titre et intention
+  obligatoires comme pour un lancement), sa plaque et ses FDL (optionnelles) ; objectifs et contexte viennent de A faute de mieux dans la requête ; son
   cahier démarre vide, sans étiquettes ni conclusion. A et B ne bougent pas : aucune version ne s'y
   ajoute. Son numéro de version suit la règle d'une nouvelle piste (l'histoire de son premier
   parent, A : celui de A tant que la structure ne change pas). Les fusions d'avant (une version de A
@@ -993,6 +1002,18 @@ de la copie (un simple renommage ne compte pas, une entrée supprimée non plus)
 | `POST /api/liens-entites` | `POST /api/entity-links` `{a: {microproject, experiment_id, entity_index}, b: {…}, note}` → 201, sans `Location` (désigne la piste : piste inconnue → 422 `unknown_experiment`, index hors de la pointe → 422 `unknown_entity`, même entité des deux côtés → 422 `self_link`) ; les lignes existantes sont migrées vers la piste, les irrésolubles gardées dans `entity_links_unresolved` et journalisées |
 | `DELETE /api/liens-entites/{id}` | `DELETE /api/entity-links/{link_id}` → 204 |
 | *(nouveau)* | `GET /api/entity-links?microproject=&area=` (mêmes règles) |
+
+Les plaques d'une FDL (`wafers.fdl_source`) : `GET /api/fdls/{fdl}` → `{fdl, source, editable,
+known, wafers: [{lasermark, slot}]}` (le numéro tel qu'écrit, normalisé ; `known` faux pour une FDL
+que la source ne connaît pas) et `PUT /api/fdls/{fdl}/wafers` `{lasermarks}` (dans l'ordre du lot,
+chacune une fois ; aucune efface la FDL) - seulement quand la source est la base locale, 409
+`fdl_source_read_only` sinon. Une seule fonction choisit la source (`fdl_source.current_source`) :
+la démo avec `SPECTRE_DEMO_DATA=1` (des plaques inventées, toujours les mêmes pour un même
+`FDL-n`, lecture seule), la base locale sinon (table `fdl_wafers`, migration `wafers/0001_fdl_wafers`,
+saisie à la main) ; **PRISM** la remplacera, en lecture seule, derrière le même contrat (`FdlSource`).
+Côté front, `wafers/fdl.js` : `mountStudyFdl` (le champ des FDL de l'étude et ce que la base dit de
+chacune, avec la saisie de ses lasermarks), `fdlWaferChoices`, `fdlWaferSelectHtml` (le menu d'une
+place : « à associer », les plaques par FDL, une déjà prise grisée), `withFdl`.
 
 Visibilité des plaques : une seule règle (`wafers.service`), partagée par les lots. Tout compte
 connecté voit qu'un autre µprojet suit une plaque (µprojet, statut, dates) ; titre, lien,

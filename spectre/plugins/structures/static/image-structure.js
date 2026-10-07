@@ -89,7 +89,7 @@ async function loadParent() {
     ? detail.is_batch
       ? "Reprise du premier échantillon de la campagne - la nouvelle version n'en suit qu'un, changez-le si besoin."
       : "Reprise de la version précédente - modifiez-la si besoin."
-    : "Aucune entité physique n'a encore été renseignée sur cette piste - il en faut une pour continuer.";
+    : "Aucune plaque n'est encore associée à cette piste - ici, ou plus tard sur la fiche depuis la FDL de l'étude (il en faut une pour conclure).";
   // une piste qui suit plusieurs plaques (des réplicats) : elles restent toutes, le champ unique ne
   // les remplace pas (elles se modifient sur la fiche)
   const named = (detail.physical_tracking || []).filter((e) => e.sample_id);
@@ -116,9 +116,6 @@ function collectPayload() {
   if (!images.length) return { error: "Collez ou choisissez d'abord au moins une image de la structure.", focus: document.querySelector(".img-board__add:not([disabled])") };
   if (!title) return { error: "Le titre est obligatoire.", focus: document.getElementById("exp-title") };
   if (!intent) return { error: "L'intention est obligatoire.", focus: document.getElementById("exp-intent") };
-  if ((!evolveExperienceId || planId) && !sampleId) {
-    return { error: "L'entité physique (l'échantillon réel suivi) est obligatoire.", focus: document.getElementById("exp-entity-sample-id") };
-  }
   const payload = {
     structure: { kind: "images", images: images.map((img) => ({ ...img, caption: (img.caption || "").trim() || null })) },
     title,
@@ -134,6 +131,8 @@ function collectPayload() {
           : [],
     form_answers: intentFormSection ? intentFormSection.collect() : {},
   };
+  // une nouvelle piste : la FDL tapée est aussi celle de l'étude (ses plaques s'y choisiront sur la fiche)
+  if (!evolveExperienceId || planId || document.getElementById("branch-fork").checked) payload.fdl = entityFdlField.get();
   if (planId && launchedPlan) payload.plan_id = launchedPlan.id;
   if (evolveExperienceId && planId) {
     payload.from_version = { experiment_id: evolveExperienceId, version_id: parentDetail ? parentDetail.version_id : null };
@@ -168,8 +167,8 @@ async function loadPlan() {
   document.getElementById("entity-field-label").textContent = "Plaque lancée - lasermark";
   document.getElementById("entity-field-hint").textContent =
     launchedPlan.mode === "new_wafers"
-      ? `Prévisionnel : ~${launchedPlan.wafer_count} plaque${launchedPlan.wafer_count > 1 ? "s" : ""}. Nommez la plaque lancée - les suivantes s'ajoutent sur la fiche, carte « Plaques ».`
-      : "Nommez la plaque lancée.";
+      ? `Prévisionnel : ~${launchedPlan.wafer_count} plaque${launchedPlan.wafer_count > 1 ? "s" : ""}. Nommez la plaque lancée si vous la connaissez - les autres s'associent sur la fiche, carte « Plaques », depuis la FDL de l'étude.`
+      : "Nommez la plaque lancée si vous la connaissez - sinon, associez-la plus tard sur la fiche.";
 }
 
 // Une version passée : on n'écrit jamais que sur la pointe d'une piste, on en part donc sur une nouvelle.

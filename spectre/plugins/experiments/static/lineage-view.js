@@ -118,7 +118,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
           ${statusBadgeHtml(detail.status, detail.conclusion.decision)}
         </div>
         <p class="help" style="margin-bottom:10px;">${escapeHtml(detail.intent)}</p>
-        ${fdlsOfTracking(detail.physical_tracking).length ? `<div style="margin-bottom:10px;">${fdlChipsHtml(fdlsOfTracking(detail.physical_tracking))}</div>` : ""}
+        ${fdlsOfTracking(detail.physical_tracking, detail.fdl).length ? `<div style="margin-bottom:10px;">${fdlChipsHtml(fdlsOfTracking(detail.physical_tracking, detail.fdl))}</div>` : ""}
         ${
           node && node.lots && node.lots.length
             ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;font-size:12px;color:var(--text-faint);">Dans le lot ${node.lots

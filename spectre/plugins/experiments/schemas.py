@@ -9,7 +9,7 @@ import follow
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..structures.schemas import StructureImageInput, StructurePayload
-from .entities import MAX_TRACKED_ENTITIES, EntityTrackingInput
+from .entities import MAX_FDL_PER_ENTITY, MAX_TRACKED_ENTITIES, EntityTrackingInput
 
 
 class ObjectiveInput(BaseModel):
@@ -82,8 +82,11 @@ class _Intention(BaseModel):
     context: str | None = None
     objectives: list[ObjectiveInput] = []
     # the physical samples followed (one per variant of a campaign, any number of replicates for a
-    # simple study) - inherited when left empty on an evolution or a launch from an existing version
+    # simple study) - optional at launch (a slot stays blank until associated with a real wafer),
+    # inherited when left empty on an evolution
     entities: list[EntityTrackingInput] = Field([], max_length=MAX_TRACKED_ENTITIES)
+    # the FDL of the study (its wafers are read from them) - None keeps those already there
+    fdl: list[str] | None = Field(None, max_length=MAX_FDL_PER_ENTITY)
     form_answers: dict[str, Any] = {}
 
 
@@ -155,6 +158,8 @@ class TagsRequest(BaseModel):
 
 class EntitiesRequest(BaseModel):
     entities: list[EntityTrackingInput] = Field(..., max_length=MAX_TRACKED_ENTITIES)
+    # the FDL of the study - None keeps those already there, [] removes them
+    fdl: list[str] | None = Field(None, max_length=MAX_FDL_PER_ENTITY)
 
 
 class RefRequest(BaseModel):

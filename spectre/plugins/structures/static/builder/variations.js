@@ -504,13 +504,23 @@ function renderVariationFactorsList() {
 }
 
 // `removable` : sans variation, chaque ligne est un réplicat qu'on peut retirer (s'il en reste un
-// autre). Partie de plaques existantes (`state.originWafers`), une ligne garde son lasermark.
+// autre). Partie de plaques existantes (`state.originWafers`), une ligne garde son lasermark. Sinon,
+// chaque ligne est une place associée à une vraie plaque - choisie parmi celles des FDL de l'étude
+// quand la base les connaît (menu déroulant, fdl.js), tapée sinon - ou laissée « à associer ».
 function variationRowHtml(row, index, removable) {
   const entity = state.variationEntities[index] || { sample_id: "", location: "" };
   const cells = row.factorValues.map((v) => `<td class="mono sb-samples-table__num">${escapeHtml(formatParamValue(v))}</td>`).join("");
+  const choices = fdlWaferChoices(state.fdlContents);
   const name = state.originWafers
     ? `<input class="field mono js-wafer-name" data-index="${index}" value="${escapeHtml(entity.sample_id || "")}" placeholder="à renseigner sur la fiche" readonly title="Plaque reprise de l'étude d'origine" aria-label="Nom du wafer, ligne ${index + 1} (repris de l'étude d'origine)">`
-    : `<input class="field js-wafer-name" data-index="${index}" value="${escapeHtml(entity.sample_id || "")}" placeholder="ex : W12-A3" aria-label="Nom du wafer, ligne ${index + 1}">`;
+    : choices.length
+      ? fdlWaferSelectHtml({
+          value: entity.sample_id || "",
+          choices,
+          taken: state.variationEntities.map((e) => e.sample_id),
+          attrs: `class="field js-wafer-pick" data-index="${index}" aria-label="Plaque de la ligne ${index + 1}"`,
+        })
+      : `<input class="field js-wafer-name" data-index="${index}" value="${escapeHtml(entity.sample_id || "")}" placeholder="à associer" aria-label="Nom du wafer, ligne ${index + 1} (optionnel)">`;
   const remove = removable
     ? `<button type="button" class="sb-samples-table__remove js-remove-wafer" data-index="${index}" aria-label="Retirer la plaque de la ligne ${index + 1}" title="Retirer cette plaque">
          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -528,7 +538,12 @@ function variationRowHtml(row, index, removable) {
     </tr>`;
 }
 
+// les dernières lignes affichées : le tableau se redessine sans relancer la simulation quand une
+// place change de plaque ou que les FDL de l'étude sont lues
+let lastVariationTable = null;
+
 function renderVariationTable(rows, factorLabels) {
+  lastVariationTable = { rows, factorLabels };
   const wrap = document.getElementById("variation-table-wrap");
   // des plaques reprises ne sont jamais coupées : plus de plaques que de variantes bloque le lancement
   state.variationOverflow = state.originWafers ? Math.max(0, state.variationEntities.filter((e) => e.sample_id).length - rows.length) : 0;
@@ -550,7 +565,7 @@ function renderVariationTable(rows, factorLabels) {
           <th>#</th>
           <th>Aperçu</th>
           ${headerFactors}
-          <th>Nom du wafer</th>
+          <th>Plaque</th>
           <th>Emplacement</th>
           <th title="Feuilles de lancement JIRA - Entrée pour en empiler plusieurs">FDL</th>
           ${removable ? `<th><span class="sb-visually-hidden">Retirer</span></th>` : ""}
@@ -570,7 +585,10 @@ function renderVariationTable(rows, factorLabels) {
     }
     ${
       replicates && !state.originWafers
-        ? `<div class="sb-samples__more"><button type="button" class="btn btn-line js-add-wafer">+ Ajouter une plaque</button><span class="help">Des réplicats : plusieurs plaques passées par la même structure.</span></div>`
+        ? `<div class="sb-samples__more">
+             <label class="sb-samples__count">Plaques prévues <input class="field mono js-wafer-count" type="number" min="1" max="200" step="1" value="${rows.length}"></label>
+             <span class="help">Des réplicats : plusieurs plaques passées par la même structure. Chaque place s'associe à une vraie plaque, ici ou plus tard sur la fiche.</span>
+           </div>`
         : ""
     }`;
   wrap.querySelectorAll(".js-remove-wafer").forEach((btn) => {
@@ -579,15 +597,26 @@ function renderVariationTable(rows, factorLabels) {
       refreshVariationTable();
     });
   });
-  const add = wrap.querySelector(".js-add-wafer");
-  if (add) {
-    add.addEventListener("click", () => {
-      state.variationEntities.push({ sample_id: "", location: "" });
+  const count = wrap.querySelector(".js-wafer-count");
+  if (count) {
+    count.addEventListener("change", () => {
+      const n = Math.max(1, Math.min(200, parseInt(count.value, 10) || 1));
+      state.variationEntities = Array.from({ length: n }, (_, i) => state.variationEntities[i] || { sample_id: "", location: "" });
       refreshVariationTable();
-      const inputs = document.querySelectorAll("#variation-table-wrap .js-wafer-name");
-      if (inputs.length) inputs[inputs.length - 1].focus();
+      const again = document.querySelector("#variation-table-wrap .js-wafer-count");
+      if (again) again.focus();
     });
   }
+  // une plaque choisie dans les FDL de l'étude : la place la suit, avec cette FDL
+  wrap.querySelectorAll(".js-wafer-pick").forEach((select) => {
+    select.addEventListener("change", () => {
+      const i = parseInt(select.dataset.index, 10);
+      const picked = select.selectedOptions[0];
+      const entity = state.variationEntities[i] || {};
+      state.variationEntities[i] = { ...entity, sample_id: select.value, fdl: withFdl(entity.fdl, picked && picked.dataset.fdl) };
+      redrawVariationTable(`.js-wafer-pick[data-index="${i}"]`);
+    });
+  });
   wrap.querySelectorAll(".js-wafer-name").forEach((input) => {
     input.addEventListener("input", () => {
       const i = parseInt(input.dataset.index, 10);
@@ -615,6 +644,33 @@ function renderVariationTable(rows, factorLabels) {
   });
 }
 
+// Redessine les dernières lignes (une plaque choisie se grise dans les autres menus) et rend le focus.
+function redrawVariationTable(focusSelector) {
+  if (!lastVariationTable) return;
+  renderVariationTable(lastVariationTable.rows, lastVariationTable.factorLabels);
+  updateLaunchVariationsLabel();
+  const el = focusSelector && document.querySelector(`#variation-table-wrap ${focusSelector}`);
+  if (el) el.focus();
+}
+
+// Les FDL de l'étude (au-dessus du tableau), montées à la première ouverture de l'écran 3 : celles
+// de la version qu'on modifie sur place, aucune pour une nouvelle piste (ses plaques sont les siennes).
+let studyFdlField = null;
+function mountLaunchStudyFdl() {
+  if (studyFdlField) return;
+  const inPlace = evolveExperienceId && evolveParent && !planId && !document.getElementById("branch-fork").checked;
+  state.studyFdl = inPlace ? (evolveParent.fdl || []).slice() : [];
+  studyFdlField = mountStudyFdl(document.getElementById("study-fdl-launch"), {
+    values: state.studyFdl,
+    onChange: (fdls, contents) => {
+      state.studyFdl = fdls;
+      state.fdlContents = contents;
+      redrawVariationTable();
+    },
+  });
+  document.querySelector("#study-fdl-launch .fdl-field__input").id = "study-fdl-launch-input";
+}
+
 // Régénère le tableau depuis le plan courant - un appel serveur avec le plan complet s'il y a au
 // moins un facteur (même endpoint que l'ancien campaign.js utilisait pour prévisualiser), sinon
 // une seule ligne locale à partir de la dernière simulation (voir simulation.js/state.frames).
@@ -632,13 +688,21 @@ function updateLaunchVariationsLabel() {
     btn.textContent = "Trop de plaques pour ces variantes";
   } else if (state.campaignPlan) {
     const n = state.variationEntities.length || 1;
-    btn.textContent = `Lancer la campagne (${n} échantillon${n > 1 ? "s" : ""})`;
+    btn.textContent = `Lancer la campagne (${n} échantillon${n > 1 ? "s" : ""}${toAssociateLabel()})`;
   } else if (evolveExperienceId && !planId) {
     btn.textContent = "Enregistrer les modifications";
   } else {
-    const n = state.variationEntities.filter((e) => (e.sample_id || "").trim()).length;
-    btn.textContent = n > 1 ? `Lancer le suivi (${n} plaques)` : "Lancer le suivi de cette expérience";
+    const n = Math.max(1, state.variationEntities.length);
+    btn.textContent = n > 1 ? `Lancer le suivi (${n} plaques${toAssociateLabel()})` : `Lancer le suivi de cette expérience${toAssociateLabel() ? " (plaque à associer)" : ""}`;
   }
+}
+
+// « , 2 à associer » : les places encore sans plaque - elles s'associeront sur la fiche
+function toAssociateLabel() {
+  const rows = Math.max(1, state.variationEntities.length);
+  const named = state.variationEntities.filter((e) => (e.sample_id || "").trim()).length;
+  const left = rows - named;
+  return left <= 0 ? "" : rows === 1 ? " à associer" : `, ${left} à associer`;
 }
 
 let variationTableSeq = 0; // une réponse plus ancienne (ajouts rapprochés) n'écrase jamais la plus récente
@@ -647,7 +711,8 @@ async function refreshVariationTable() {
   const seq = ++variationTableSeq;
   if (state.variationFactors.length === 0) {
     // sans variation : une ligne par plaque, toutes de la même structure (des réplicats) ; en
-    // quittant un plan (ou partie de plaques), les lignes vides des variantes tombent
+    // quittant un plan (ou partie de plaques), les lignes vides des variantes tombent - les places
+    // à associer d'une étude simple restent : ce sont ses plaques prévues
     const leavingPlan = state.campaignPlan !== null;
     state.campaignPlan = null;
     if (leavingPlan || state.originWafers) state.variationEntities = state.variationEntities.filter((e) => (e.sample_id || "").trim());
@@ -727,6 +792,7 @@ function showWizardStepVariations() {
     };
   }
   plannedWaferRows();
+  mountLaunchStudyFdl();
   setStage("variations");
   renderVariationFactorsList();
   refreshVariationTable();

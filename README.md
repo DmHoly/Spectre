@@ -332,7 +332,7 @@ ses tables (`migrations.py`), ses pages (`pages/`) et son front (`static/`, serv
 | `experiments` | Pistes et versions Follow : création, évolution, statut, conclusion, étiquettes, entités, combinaison de deux études, diff, filiation, refs, statistiques | `/api/microprojects/{mp}/experiments`, `.../lineage`, `.../refs`, `.../structure-history`, `/api/experiment-stats`, `/api/experiment-timeline` | `/microprojets/{slug}/experiences/{experiment_id}`, `/microprojets/{slug}/evolution` |
 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études, instantanés, évolution, usages, regroupement des refs locales d'avant | `/api/references`, `/api/reference-versions` | `/references`, `/references/{slug}` |
 | `intent_forms` | Formulaires d'intention et formulaire actif d'un µprojet | `/api/intent-forms`, `/api/microprojects/{mp}/active-intent-form` | `/microprojets/{slug}/formulaire-intention` |
-| `wafers` | Index des plaques suivies, recherche par lasermark et FDL, visibilité | `/api/wafers` | `/plaques/{lasermark}` |
+| `wafers` | Index des plaques suivies, recherche par lasermark et FDL, visibilité, plaques de chaque FDL | `/api/wafers`, `/api/fdls` | `/plaques/{lasermark}` |
 | `lots` | Lots de fabrication, wafers, thématiques visées, Gantt | `/api/lots`, `/api/lot-priorities` | `/lots`, `/lots/{code}` |
 | `links` | Liens entre µprojets et entre entités physiques | `/api/microproject-links`, `/api/entity-links` | — |
 | `atlas` | Vue graphe d'un projet corporate | `/api/areas/{area_slug}/atlas` | `/management/{slug}/atlas` |

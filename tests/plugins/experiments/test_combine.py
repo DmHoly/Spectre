@@ -112,8 +112,11 @@ def test_a_combination_asks_what_a_launch_asks(client):
 
     assert refused(title=" ") == (422, "title_and_intent_required")
     assert refused(intent="") == (422, "title_and_intent_required")
-    assert refused(entities=[]) == (422, "entity_required")
-    assert refused(entities=[{"sample_id": " "}]) == (422, "entity_required")
+    # la plaque, non : sans elle, la place de C reste à associer (depuis la FDL de l'étude)
+    without = post_combine(client, slug, a["id"], b["id"], entities=[], fdl=["12"])
+    assert without.status_code == 201
+    assert without.json()["physical_tracking"] == [{"sample_id": None, "location": None}] and without.json()["fdl"] == ["FDL-12"]
+    count += 1
     # exactement deux études, et pas de structure ni de version de départ à côté
     url = f"/api/microprojects/{slug}/experiments"
     base = {"title": "C", "intent": "x", "entities": [{"sample_id": "W9"}]}

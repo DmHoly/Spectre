@@ -1,5 +1,6 @@
-/* FDL d'un wafer (normalisation, pastilles, champ de saisie), lien vers la page d'une plaque, clé
-   d'une plaque et autocomplétion des plaques d'un µprojet. */
+/* FDL d'un wafer (normalisation, pastilles, champ de saisie), FDL d'une étude et plaques qu'elles
+   contiennent (menu déroulant d'association), lien vers la page d'une plaque, clé d'une plaque et
+   autocomplétion des plaques d'un µprojet. */
 
 /* FDL - feuille de lancement (ticket JIRA) : le numéro de suivi avec lequel un wafer passe en
    ligne, celui qu'on cite pour le retrouver. Un wafer peut en avoir plusieurs (une par passage) :
@@ -23,9 +24,11 @@ function fdlChipsHtml(fdls, { label = true } = {}) {
     .join("")}</span>`;
 }
 
-// Toutes les FDL des entités d'une expérience, chacune une fois.
-function fdlsOfTracking(tracking) {
+// Toutes les FDL d'une expérience - les siennes (`studyFdl`, detail.fdl) puis celles de ses plaques -,
+// chacune une fois.
+function fdlsOfTracking(tracking, studyFdl = []) {
   const seen = [];
+  (studyFdl || []).forEach((f) => seen.includes(f) || seen.push(f));
   (tracking || []).forEach((entry) => (entry.fdl || []).forEach((f) => seen.includes(f) || seen.push(f)));
   return seen;
 }
@@ -139,4 +142,159 @@ function waferSuggestions(wafers) {
     locations: unique(wafers.flatMap((w) => w.locations || [])),
     fdls: unique(wafers.flatMap((w) => w.fdl || [])),
   };
+}
+
+/* -- Les FDL d'une étude et les plaques qu'elles contiennent ------------------------------------
+   Une étude porte ses FDL (detail.fdl) ; chacune est lue dans la base (wafersApi.fdl : la démo, la
+   base locale saisie à la main, PRISM plus tard) et ses plaques alimentent le menu déroulant de
+   chaque place de l'étude (une par variante d'une campagne, ses réplicats sinon) : on associe, à la
+   main, chaque place à la vraie plaque. */
+
+const FDL_SOURCE_LABELS = { demo: "démo", local: "saisie dans Spectre", prism: "PRISM" };
+
+/* Le champ des FDL de l'étude et, sous lui, ce que la base dit de chacune : ses plaques, ou « inconnue »
+   avec de quoi coller ses lasermarks quand la source l'accepte (base locale). `onChange(fdls,
+   contents)` : à chaque FDL lue - contents : [{fdl, source, editable, known, wafers, error?}].
+   Renvoie {get, contents}. */
+function mountStudyFdl(container, { values = [], datalistId = null, onChange = () => {} } = {}) {
+  let contents = [];
+  let seq = 0;
+  let editing = null; // la FDL dont on saisit les plaques
+  container.classList.add("study-fdl");
+  container.innerHTML = `<div class="study-fdl__field"></div><ul class="study-fdl__sheets" aria-live="polite"></ul>`;
+  const list = container.querySelector(".study-fdl__sheets");
+  const field = mountFdlField(container.querySelector(".study-fdl__field"), {
+    values,
+    datalistId,
+    label: "FDL de l'étude",
+    onChange: (fdls) => load(fdls),
+  });
+
+  function sheetHtml(sheet) {
+    const name = `<span class="fdl-chip">${escapeHtml(sheet.fdl)}</span>`;
+    if (sheet.loading) return `<li class="study-fdl__sheet">${name}<span class="study-fdl__state">lecture…</span></li>`;
+    if (sheet.error) return `<li class="study-fdl__sheet is-error">${name}<span class="study-fdl__state">illisible : ${escapeHtml(sheet.error)}</span></li>`;
+    if (editing === sheet.fdl) {
+      return `
+        <li class="study-fdl__sheet study-fdl__sheet--editing">
+          ${name}
+          <label class="study-fdl__state" for="study-fdl-paste">Les lasermarks de cette FDL, dans l'ordre du lot (un par ligne, ou séparés par des virgules)</label>
+          <textarea class="field mono study-fdl__paste" id="study-fdl-paste" rows="4" spellcheck="false">${escapeHtml(sheet.wafers.map((w) => w.lasermark).join("\n"))}</textarea>
+          <span class="study-fdl__actions">
+            <button type="button" class="btn btn-primary js-fdl-save" data-fdl="${escapeHtml(sheet.fdl)}">Enregistrer</button>
+            <button type="button" class="btn btn-line js-fdl-cancel">Annuler</button>
+          </span>
+        </li>`;
+    }
+    const source = FDL_SOURCE_LABELS[sheet.source] || sheet.source;
+    const edit = sheet.editable
+      ? `<button type="button" class="study-fdl__link js-fdl-edit" data-fdl="${escapeHtml(sheet.fdl)}">${sheet.known ? "modifier la liste" : "saisir ses plaques"}</button>`
+      : "";
+    if (!sheet.known) {
+      return `<li class="study-fdl__sheet is-unknown">${name}<span class="study-fdl__state">${
+        sheet.editable ? "plaques inconnues pour l'instant" : `inconnue de la base (${escapeHtml(source)})`
+      }</span>${edit}</li>`;
+    }
+    const n = sheet.wafers.length;
+    return `<li class="study-fdl__sheet">${name}<span class="study-fdl__state">${n} plaque${n > 1 ? "s" : ""} · ${escapeHtml(source)}</span>${edit}</li>`;
+  }
+  function paint(sheets) {
+    list.innerHTML = sheets.map(sheetHtml).join("");
+    const paste = list.querySelector(".study-fdl__paste");
+    if (paste) paste.focus();
+  }
+  async function load(fdls) {
+    const mine = ++seq;
+    paint(fdls.map((fdl) => ({ fdl, loading: true })));
+    const loaded = await Promise.all(fdls.map((fdl) => wafersApi.fdl(fdl).catch((err) => ({ fdl, error: err.message || String(err) }))));
+    if (mine !== seq) return;
+    contents = loaded;
+    paint(contents);
+    onChange(fdls.slice(), contents);
+  }
+
+  list.addEventListener("click", async (event) => {
+    const editBtn = event.target.closest(".js-fdl-edit");
+    if (editBtn) {
+      editing = editBtn.dataset.fdl;
+      paint(contents);
+      return;
+    }
+    if (event.target.closest(".js-fdl-cancel")) {
+      editing = null;
+      paint(contents);
+      return;
+    }
+    const saveBtn = event.target.closest(".js-fdl-save");
+    if (!saveBtn) return;
+    const lasermarks = list.querySelector(".study-fdl__paste").value.split(/[\n,;\t]+/).map((v) => v.trim()).filter(Boolean);
+    saveBtn.disabled = true;
+    try {
+      const saved = await wafersApi.setFdlWafers(saveBtn.dataset.fdl, lasermarks);
+      contents = contents.map((sheet) => (sheet.fdl === saved.fdl ? saved : sheet));
+      editing = null;
+      paint(contents);
+      onChange(field.get(), contents);
+    } catch (err) {
+      saveBtn.disabled = false;
+      const state = list.querySelector(".study-fdl__sheet--editing .study-fdl__state");
+      state.textContent = err.message || String(err);
+      state.classList.add("is-error");
+    }
+  });
+
+  if (values && values.length) load(field.get());
+  return {
+    get: () => field.get(),
+    contents: () => contents,
+  };
+}
+
+// Les plaques que proposent les FDL lues : [{lasermark, fdl, slot}], chacune une fois.
+function fdlWaferChoices(contents) {
+  const seen = new Set();
+  const choices = [];
+  (contents || []).forEach((sheet) =>
+    (sheet.wafers || []).forEach((w) => {
+      const key = waferKey(w.lasermark);
+      if (seen.has(key)) return;
+      seen.add(key);
+      choices.push({ lasermark: w.lasermark, fdl: sheet.fdl, slot: w.slot });
+    })
+  );
+  return choices;
+}
+
+/* Le menu déroulant d'une place : « à associer », puis les plaques de chaque FDL (une déjà prise par
+   une autre place est grisée). Une plaque déjà nommée hors de ces FDL reste proposée, telle quelle.
+   `attrs` : les attributs de la balise (classe, data-index, id, aria-label). */
+function fdlWaferSelectHtml({ value = "", choices = [], taken = [], attrs = "" } = {}) {
+  const current = waferKey(value);
+  const takenKeys = new Set(taken.map(waferKey).filter((key) => key && key !== current));
+  const option = (c) => {
+    const key = waferKey(c.lasermark);
+    const slot = c.slot ? ` · fente ${c.slot}` : "";
+    return `<option value="${escapeHtml(c.lasermark)}" data-fdl="${escapeHtml(c.fdl)}"${key === current ? " selected" : ""}${takenKeys.has(key) ? " disabled" : ""}>${escapeHtml(c.lasermark)}${slot}${takenKeys.has(key) ? " (déjà associée)" : ""}</option>`;
+  };
+  const byFdl = [];
+  choices.forEach((c) => {
+    let group = byFdl.find((g) => g.fdl === c.fdl);
+    if (!group) byFdl.push((group = { fdl: c.fdl, choices: [] }));
+    group.choices.push(c);
+  });
+  const outside = value && !choices.some((c) => waferKey(c.lasermark) === current)
+    ? `<option value="${escapeHtml(value)}" selected>${escapeHtml(value)} (hors FDL)</option>`
+    : "";
+  return `<select ${attrs}>
+    <option value=""${value ? "" : " selected"}>— à associer —</option>
+    ${outside}
+    ${byFdl.map((g) => `<optgroup label="${escapeHtml(g.fdl)}">${g.choices.map(option).join("")}</optgroup>`).join("")}
+  </select>`;
+}
+
+// Les FDL d'une place après qu'on l'a associée à une plaque lue dans `fdl` : celle-ci s'y ajoute.
+function withFdl(fdls, fdl) {
+  const list = (fdls || []).slice();
+  if (fdl && !list.includes(fdl)) list.push(fdl);
+  return list;
 }

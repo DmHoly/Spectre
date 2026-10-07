@@ -71,7 +71,9 @@ const state = {
   campaignPlan: null,
   variationOverflow: 0, // plaques reprises en trop pour les variantes du plan (le lancement attend qu'on corrige)
   variationFactors: [], // [{step_id, field, field_label, values, scale}] - the DOE plan being built on écran 2
-  variationEntities: [], // [{sample_id, location}] - one per row of the écran 3 table, positional
+  variationEntities: [], // [{sample_id, location, fdl}] - one per row of the écran 3 table (a place), positional - sample_id blank until associated
+  studyFdl: null, // les FDL de l'étude (écran 3) - null tant que l'écran 3 n'a pas été ouvert : une évolution garde alors celles en place
+  fdlContents: [], // ce que la base dit de chacune (wafersApi.fdl) : leurs plaques alimentent le menu déroulant de chaque place
   originWafers: null, // partie de plaques existantes : leurs lasermarks, fixés (le tableau de l'écran 3 n'en change que l'emplacement et les FDL)
   wizardScreen: "structure", // écran courant de l'atelier : "structure", "intention" ou "variations" (ces deux derniers : mode expérience uniquement) - voir stages.js
   // Sélection dans le process flow (step-list.js) : -1 = le substrat, 0..n-1 = une étape. Pilote à
