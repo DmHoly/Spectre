@@ -267,7 +267,9 @@ async function init() {
     document.getElementById("microproject-description").textContent = microproject.description;
     const codeEl = document.getElementById("microproject-code");
     if (microproject.code) {
-      codeEl.textContent = `µprojet ${microproject.code}`;
+      // le µ hors de la mise en capitales du bandeau : capitalisé, il deviendrait un M (Μ grec)
+      // (un seul enfant : le bandeau est un flex, chaque morceau y serait un élément à part)
+      codeEl.innerHTML = `<span><span style="text-transform:none;">µ</span>projet ${escapeHtml(microproject.code)}</span>`;
       codeEl.style.display = "";
       document.title = `${microproject.code} · ${microproject.name} — Spectre`;
     }
@@ -308,7 +310,7 @@ async function init() {
     return;
   }
 
-  document.getElementById("lineage-legend").innerHTML = lineageLegendHtml({ lot: true, wafers: true, planned: true });
+  document.getElementById("lineage-legend").innerHTML = lineageLegendHtml({ lot: true, wafers: true, planned: true, attached: true });
   const lineage = mountLineage(document.querySelector(".lineage-layout"), { microprojectSlug: slug, canEdit });
   if (canEdit) {
     // prévoir une expérience racine (nouvelles plaques), dans la carte de l'arbre

@@ -4,7 +4,9 @@
 const lotsApi = {
   // filters : {status: "planned,wip,hold", q, wafer: [clés de wafer], code, view: "summary"}
   list(filters) {
-    return api.get(api.withQuery("/api/lots", filters));
+    // l'API lit `wafer` en une liste séparée par des virgules : répété (?wafer=a&wafer=b), seul le dernier compterait
+    const { wafer, ...rest } = filters || {};
+    return api.get(api.withQuery("/api/lots", { ...rest, wafer: Array.isArray(wafer) ? wafer.join(",") : wafer }));
   },
   // les priorités proposées à la saisie (P10, P20...)
   priorities() {

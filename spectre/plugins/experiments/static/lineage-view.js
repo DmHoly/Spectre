@@ -37,6 +37,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
   const panel = el.querySelector("#lineage-panel");
   let selectedId = null;
   let positionedById = new Map(); // les nœuds dessinés, par id (réels et prévus)
+  let currentEdges = []; // les arêtes dessinées (filiations, rattachements, prévisions)
 
   function panelEmptyState() {
     return `<p class="help">Cliquez un nœud pour voir la structure, l'objectif et la conclusion de cette expérience ici.</p>`;
@@ -130,6 +131,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
         ${objectivesBlock}
         ${conclusionBlock}
         ${node && node.started_at ? spanBlockHtml(node) : ""}
+        ${attachBlockHtml(node)}
         ${
           canEdit
             ? `<div class="lineage-panel__lot">
@@ -146,6 +148,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
           ${canEdit ? `<button class="btn btn-primary" style="flex:1;" type="button" id="lineage-plan-next">Prévoir la suite</button>` : ""}
         </div>`;
       if (variation) renderLineageStructureCarousel(variation);
+      if (canEdit) bindAttach(node);
       if (canEdit) {
         panel.querySelector("#lineage-plan-next").addEventListener("click", () => renderPlanForm({ parent: { node, detail } }));
         if (pluginEnabled("lots")) {
@@ -158,6 +161,100 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       }
     } catch (err) {
       panel.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div>`;
+    }
+  }
+
+  // -- rattacher une expérience partie de rien ------------------------------------------------------
+
+  // L'arête qui arrive sur un nœud (une filiation, ou un rattachement posé à la main).
+  function incomingEdge(node) {
+    return currentEdges.find((e) => e.child === node.id && !e.planned);
+  }
+
+  // Les nœuds sous lesquels rattacher `node` : tous les autres nœuds réels, sauf ceux qui en
+  // découlent (le serveur le vérifie aussi).
+  function attachTargets(node) {
+    const below = new Set([node.id]);
+    const frontier = [node.id];
+    while (frontier.length) {
+      const id = frontier.pop();
+      currentEdges.forEach((e) => {
+        if (e.parent === id && !below.has(e.child)) {
+          below.add(e.child);
+          frontier.push(e.child);
+        }
+      });
+    }
+    return [...positionedById.values()].filter((n) => !n.is_plan && !below.has(n.id)).sort((a, b) => a.title.localeCompare(b.title, "fr"));
+  }
+
+  // Dans la carte : « Rattachée à … » (et Détacher) pour un nœud rattaché ; pour une étude partie
+  // de rien, le choix de l'expérience sous laquelle la rattacher.
+  function attachBlockHtml(node) {
+    const edge = incomingEdge(node);
+    if (edge && edge.attached) {
+      const parent = positionedById.get(edge.parent);
+      return `<div class="lineage-attach">
+          <div class="lineage-attach__line">
+            <svg width="16" height="16" viewBox="-8 -8 16 16" aria-hidden="true" class="lineage-attach-mark">${LINEAGE_ATTACH_MARK}</svg>
+            <span>Rattachée à la main à <strong>« ${escapeHtml(parent ? parent.title : "?")} »</strong></span>
+          </div>
+          <div class="lineage-attach__meta">par ${escapeHtml(edge.attached.author || "?")} · ${escapeHtml(new Date(edge.attached.created_at).toLocaleDateString("fr-FR"))}</div>
+          ${canEdit ? `<button class="btn btn-line" type="button" id="lineage-detach">Détacher</button>` : ""}
+          <div id="lineage-attach-error"></div>
+        </div>`;
+    }
+    if (edge || !canEdit) return "";
+    const targets = attachTargets(node);
+    if (!targets.length) return "";
+    return `<details class="lineage-attach">
+        <summary>Rattacher à une autre expérience</summary>
+        <p class="help" style="margin:6px 0 8px;">Lancée en racine par erreur ? Accrochez-la sous l'expérience qu'elle continue. Le lien reste marqué comme posé à la main, et se défait.</p>
+        <div style="display:flex;gap:6px;">
+          <select class="field" id="lineage-attach-target" aria-label="Expérience sous laquelle la rattacher" style="flex:1;min-width:0;">
+            ${targets.map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.title)}</option>`).join("")}
+          </select>
+          <button class="btn btn-primary" type="button" id="lineage-attach">Rattacher</button>
+        </div>
+        <div id="lineage-attach-error"></div>
+      </details>`;
+  }
+
+  function bindAttach(node) {
+    const showError = (err) => {
+      const box = panel.querySelector("#lineage-attach-error");
+      if (box) box.innerHTML = `<div class="error" style="margin-top:8px;">${escapeHtml(err.message || String(err))}</div>`;
+    };
+    const attachButton = panel.querySelector("#lineage-attach");
+    if (attachButton) {
+      attachButton.addEventListener("click", async () => {
+        const target = positionedById.get(panel.querySelector("#lineage-attach-target").value);
+        if (!target) return;
+        attachButton.disabled = true;
+        try {
+          await experimentsApi.attach(slug, node.experiment_id, { experiment_id: target.experiment_id, version_id: target.version_id });
+          await loadLineage();
+          if (positionedById.has(node.id)) selectNode(node.id);
+        } catch (err) {
+          attachButton.disabled = false;
+          showError(err);
+        }
+      });
+    }
+    const detachButton = panel.querySelector("#lineage-detach");
+    if (detachButton) {
+      detachButton.addEventListener("click", async () => {
+        if (!window.confirm(`Détacher « ${node.title} » ? Elle redevient une expérience partie de rien.`)) return;
+        detachButton.disabled = true;
+        try {
+          await experimentsApi.detach(slug, node.experiment_id);
+          await loadLineage();
+          if (positionedById.has(node.id)) selectNode(node.id);
+        } catch (err) {
+          detachButton.disabled = false;
+          showError(err);
+        }
+      });
     }
   }
 
@@ -445,6 +542,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
     }));
     const allNodes = [...nodes, ...planNodes];
     const allEdges = [...edges, ...planNodes.filter((p) => p.parentNodeId).map((p) => ({ parent: p.parentNodeId, child: p.id, planned: true }))];
+    currentEdges = allEdges;
 
     el.querySelector("#lineage-empty").style.display = allNodes.length ? "none" : "";
     if (!allNodes.length) {
@@ -465,8 +563,25 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       .selectAll("path")
       .data(allEdges)
       .join("path")
-      .attr("class", (e) => `lineage-edge${e.planned ? " is-planned" : ""}`)
+      .attr("class", (e) => `lineage-edge${e.planned ? " is-planned" : ""}${e.attached ? " is-attached" : ""}`)
       .attr("d", (e) => lineageEdgePath(byId.get(e.parent), byId.get(e.child)));
+
+    // Un rattachement (posé à la main, pas une filiation) : un maillon au milieu du trait, qui dit
+    // qui l'a posé et quand.
+    svg
+      .append("g")
+      .selectAll("g")
+      .data(allEdges.filter((e) => e.attached))
+      .join("g")
+      .attr("class", "lineage-attach-mark")
+      .attr("transform", (e) => {
+        const a = byId.get(e.parent);
+        const b = byId.get(e.child);
+        return `translate(${(a.x + b.x) / 2},${(a.y + b.y) / 2})`;
+      })
+      .html(LINEAGE_ATTACH_MARK)
+      .append("title")
+      .text((e) => `Rattachée à la main à « ${byId.get(e.parent).title} » par ${e.attached.author || "?"} · ${new Date(e.attached.created_at).toLocaleDateString("fr-FR")}`);
 
     const nodeGroups = svg
       .append("g")
@@ -588,6 +703,13 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
           add.append("path").attr("d", "M-3.5,0 H3.5 M0,-3.5 V3.5");
         });
     }
+
+    // Le badge de lot d'un nœud du bord droit (ou un libellé) dépasse la marge : on élargit le dessin
+    // à ce qui est vraiment tracé, sinon il est rogné.
+    const drawn = svg.node().getBBox();
+    const left = Math.min(0, Math.floor(drawn.x) - 8);
+    const right = Math.max(width, Math.ceil(drawn.x + drawn.width) + 8);
+    svg.attr("width", right - left).attr("viewBox", `${left} 0 ${right - left} ${height}`);
 
     if (selectedId && byId.has(selectedId)) highlight(selectedId);
   }

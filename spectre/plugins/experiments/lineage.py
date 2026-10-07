@@ -146,7 +146,7 @@ def structure_history(repo: Any, *, all_versions: bool = False, include: set[str
     return {"lanes": lanes, "nodes": nodes, "edges": edges}
 
 
-def lineage_graph(repo: Any, *, anchors: Any = ()) -> dict:
+def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dict:
     """The ``{"nodes", "edges"}`` payload of the µprojet's lineage (``GET .../lineage``, see
     :func:`spectre.plugins.experiments.api.microproject_lineage` for what each node means) for one
     repository - shared with the frise of a thématique (:mod:`spectre.plugins.experiments.insights`),
@@ -157,7 +157,12 @@ def lineage_graph(repo: Any, *, anchors: Any = ()) -> dict:
 
     ``anchors`` (version ids) adds ``{"anchors": {version_id: node id | None}}`` : the node that
     shows each of these versions (``None`` for one no longer in the repository) - where the
-    µprojet page hangs a planned experiment (:mod:`.plans`) that continues it."""
+    µprojet page hangs a planned experiment (:mod:`.plans`) that continues it.
+
+    ``attachments`` (:func:`.attachments.graph_attachments` : ``{root, parent, author, created_at}``
+    in version ids) adds an edge from the node showing ``parent`` to the node of the floating line
+    starting at ``root``, marked ``attached`` (``{author, created_at}``) - drawn as a link set by
+    hand, not a filiation. It counts as a continuation like any other edge."""
     experiments = {exp.id: exp for exp in repo}
     if not experiments:
         return {"nodes": [], "edges": [], **({"anchors": dict.fromkeys(anchors)} if anchors else {})}
@@ -266,6 +271,11 @@ def lineage_graph(repo: Any, *, anchors: Any = ()) -> dict:
     for exp_id, resolved_tips in tips_by_anchor.items():
         if len(resolved_tips) > 1:
             edges.extend({"parent": shown_as(hung_from(tip_id, exp_id)), "child": tip_id} for tip_id in resolved_tips)
+
+    for attachment in attachments:
+        parent, child = shown_as(attachment["parent"]), shown_as(attachment["root"])
+        if parent != child:
+            edges.append({"parent": parent, "child": child, "attached": {"author": attachment["author"], "created_at": attachment["created_at"]}})
 
     # When the work moved on from a node: its first child's start - what ends the elapsed time of a
     # draft that was never concluded but continued into a new version (« poursuivie »). And the

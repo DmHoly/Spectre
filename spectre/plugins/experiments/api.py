@@ -28,12 +28,13 @@ from ..microprojects import service as microprojects
 from ..microprojects.deps import get_microproject, require_role
 from ..microprojects.service import Microproject
 from ..structures import campaigns, kinds
-from . import plans, refs, service, versioning
+from . import attachments, plans, refs, service, versioning
 from .entities import study_fdl
 from .lineage import lineage_graph
 from .lineage import structure_history as lineage_structure_history
 from .repository import CONCLUDED_STATUSES, RUNNING_STATUSES, branch_tips, display_status, get_repository, hold_of
 from .schemas import (
+    AttachmentRequest,
     ConclusionRequest,
     CreateExperimentRequest,
     EntitiesRequest,
@@ -199,9 +200,17 @@ def microproject_lineage(microproject: Microproject = Depends(require_role("view
     place. Each node is a version (``version_id``) of a line of study (``experiment_id``).
 
     ``plans`` : the planned experiments (:mod:`.plans`), each with ``parent_node`` - the node it
-    hangs from (``None`` for a root, or when its starting version is gone)."""
+    hangs from (``None`` for a root, or when its starting version is gone).
+
+    An edge with ``attached`` (``{author, created_at}``) is an attachment (:mod:`.attachments`): a
+    study that started from nothing, hung by hand under another one - not a filiation."""
     planned = plans.list_plans(microproject.id)
-    graph = lineage_graph(get_repository(microproject.slug), anchors=[p.parent_version_id for p in planned if p.parent_version_id])
+    repo = get_repository(microproject.slug)
+    graph = lineage_graph(
+        repo,
+        anchors=[p.parent_version_id for p in planned if p.parent_version_id],
+        attachments=attachments.graph_attachments(repo, microproject.id),
+    )
     anchors = graph.pop("anchors", {})
     graph["plans"] = [{**p.payload(), "parent_node": anchors.get(p.parent_version_id)} for p in planned]
     return graph
@@ -249,6 +258,32 @@ def update_plan(plan_id: int, body: PlanUpdate, microproject: Microproject = Dep
 @router.delete("/experiment-plans/{plan_id}", status_code=204)
 def delete_plan(plan_id: int, microproject: Microproject = Depends(require_role("editor"))) -> Response:
     plans.delete_plan(microproject.id, plan_id)
+    return Response(status_code=204)
+
+
+# -- les rattachements ------------------------------------------------------------------------------
+
+
+@router.put("/experiments/{experiment_id}/attachment")
+def attach_experiment(
+    experiment_id: str,
+    body: AttachmentRequest,
+    microproject: Microproject = Depends(require_role("editor")),
+    user: User = Depends(current_user),
+) -> dict:
+    """Rattache cette étude, partie de rien, sous une version d'une autre étude du µprojet (la
+    pointe sans ``version_id``) - remplace le rattachement précédent. 400 si elle a une expérience
+    de départ (``not_floating``) ou si la cible en découle (``attachment_cycle``)."""
+    attached = attachments.attach(
+        microproject.id, microproject.slug, experiment_id, body.experiment_id, body.version_id, user_id=user.id, author=user.name
+    )
+    return attached.payload()
+
+
+@router.delete("/experiments/{experiment_id}/attachment", status_code=204)
+def detach_experiment(experiment_id: str, microproject: Microproject = Depends(require_role("editor"))) -> Response:
+    """Détache l'étude : elle redevient flottante - 404 si elle n'était rattachée à rien."""
+    attachments.detach(microproject.id, experiment_id)
     return Response(status_code=204)
 
 

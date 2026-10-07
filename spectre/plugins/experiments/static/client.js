@@ -132,6 +132,13 @@ const experimentsApi = {
   removePlan(microprojectSlug, planId) {
     return api.del(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiment-plans/${encodeURIComponent(planId)}`);
   },
+  // rattacher une étude partie de rien sous une version d'une autre : target = {experiment_id, version_id?}
+  attach(microprojectSlug, experimentId, target) {
+    return api.put(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/attachment`, target);
+  },
+  detach(microprojectSlug, experimentId) {
+    return api.del(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/attachment`);
+  },
   // les compteurs de chaque µprojet : filters = {area, microproject} (slugs, facultatifs)
   stats(filters) {
     return api.get(api.withQuery("/api/experiment-stats", filters));

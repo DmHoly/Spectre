@@ -128,6 +128,25 @@
       stroke: var(--gold);
       stroke-dasharray: 4 4;
     }
+    /* rattachement : une étude partie de rien, accrochée à la main sous une autre - un trait
+       à part (pas une filiation) et un maillon au milieu */
+    .lineage-edge.is-attached {
+      stroke: var(--navy-500);
+      stroke-width: 1.5px;
+      stroke-dasharray: 1 3;
+      stroke-linecap: round;
+    }
+    .lineage-attach-mark circle {
+      fill: var(--surface);
+      stroke: var(--navy-500);
+      stroke-width: 1.2px;
+    }
+    .lineage-attach-mark rect {
+      fill: none;
+      stroke: var(--navy-500);
+      stroke-width: 1.3px;
+      stroke-linecap: round;
+    }
     .lineage-node.is-planned .lineage-label {
       font-style: italic;
     }
@@ -351,6 +370,31 @@
       display: block;
       margin-top: 10px;
       color: var(--danger);
+    }
+    /* rattachement à la main, dans la carte d'un nœud */
+    .lineage-attach {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border-soft);
+      font-size: 12.5px;
+      color: var(--text-soft);
+    }
+    .lineage-attach summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .lineage-attach__line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text);
+    }
+    .lineage-attach__meta {
+      margin: 2px 0 8px 22px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-faint);
     }
     .lineage-panel__lot {
       margin-top: 12px;

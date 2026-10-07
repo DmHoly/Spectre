@@ -199,3 +199,13 @@ class PlanUpdate(BaseModel):
     mode: Literal["same_wafers", "new_wafers"] | None = None
     wafers: list[str] | None = Field(None, max_length=MAX_TRACKED_ENTITIES)
     wafer_count: int | None = Field(None, ge=1, le=MAX_TRACKED_ENTITIES)
+
+
+class AttachmentRequest(BaseModel):
+    """Where a study that started from nothing is attached (see :mod:`.attachments`): a version of
+    another study of the microproject - the tip of ``experiment_id`` when ``version_id`` is left out."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    experiment_id: str
+    version_id: str | None = None

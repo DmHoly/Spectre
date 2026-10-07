@@ -184,9 +184,14 @@ function lineagePlanWafersLabel(plan) {
   return `~${plan.wafer_count} plaque${plan.wafer_count > 1 ? "s" : ""} prévue${plan.wafer_count > 1 ? "s" : ""}`;
 }
 
+// Le maillon posé au milieu d'un rattachement (une étude partie de rien, accrochée à la main sous
+// une autre) : centré sur (0,0), dans l'arbre comme dans la légende.
+const LINEAGE_ATTACH_MARK =
+  '<circle r="7"></circle><g transform="rotate(-45)"><rect x="-4.6" y="-1.7" width="5.4" height="3.4" rx="1.7"></rect><rect x="-0.8" y="-1.7" width="5.4" height="3.4" rx="1.7"></rect></g>';
+
 // Légende du code ci-dessus (une puce par issue + combinaison + pointe de piste) - affichée sous le graphe
 // d'un µprojet et au-dessus de la frise d'une thématique, pour qu'aucune couleur ne reste à deviner.
-function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = false, planned = false } = {}) {
+function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = false, planned = false, attached = false } = {}) {
   const icon = (node) =>
     `<svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true">${lineageNodeShapeHtml(node, { radius: 6.5, tipRing: false })}</svg>`;
   const items = [
@@ -208,6 +213,12 @@ function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = fal
   }
   if (planned) {
     items.push(`<li><svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true">${lineagePlanShapeHtml({ radius: 6.5 })}</svg>Prévisionnelle (pas encore lancée)</li>`);
+  }
+  if (attached) {
+    // trait et maillon dessinés par lineage-view.js (styles .lineage-edge.is-attached, .lineage-attach-mark dans microproject.html)
+    items.push(
+      `<li><svg width="30" height="16" viewBox="0 0 30 16" aria-hidden="true"><path class="lineage-edge is-attached" d="M1,8 H29"></path><g class="lineage-attach-mark" transform="translate(15,8)">${LINEAGE_ATTACH_MARK}</g></svg>Rattachée à la main</li>`
+    );
   }
   if (wafers) {
     // badge dessiné par lineage-view.js (styles .lineage-wafers dans microproject.html)
