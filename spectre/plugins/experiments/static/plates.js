@@ -65,14 +65,24 @@
         <div id="plates-study-fdl"></div>
       </div>
       <div class="report-only">${studyFdl.length ? `<div class="plates-study-fdl">${fdlChipsHtml(studyFdl)}</div>` : ""}</div>
-      <p class="help plates-summary" data-report-hide aria-live="polite"></p>
-      <div class="plates-list${detail.is_batch ? " plates-list--batch" : ""}"></div>
+      <div class="plates-head" data-report-hide>
+        <p class="help plates-summary" aria-live="polite"></p>
+        <button class="btn btn-tint plates-fill" id="fill-plates-btn" type="button" hidden title="Associe les places encore vides aux plaques libres des FDL de l'étude, dans l'ordre">Remplir dans l'ordre de la FDL</button>
+      </div>
+      <ol class="plates-list plates-list--edit${detail.is_batch ? " plates-list--batch" : ""}"></ol>
       <div class="plates-actions" data-report-hide>
         <button class="btn btn-line" id="save-physical-tracking-btn" type="button">Enregistrer les plaques</button>
         ${canAdd ? `<button class="btn btn-tint" id="add-plate-btn" type="button" title="Une autre plaque passée par la même structure (un réplicat)">+ Ajouter une place</button>` : ""}
       </div>`;
     const list = host.querySelector(".plates-list");
     const summary = host.querySelector(".plates-summary");
+    const fillButton = document.getElementById("fill-plates-btn");
+
+    // les plaques des FDL de l'étude qu'aucune place n'a encore prises, dans l'ordre des FDL
+    function freeChoices() {
+      const taken = new Set(entries.map((e) => waferKey(e.sample_id)).filter(Boolean));
+      return fdlWaferChoices(contents).filter((c) => !taken.has(waferKey(c.lasermark)));
+    }
 
     const studyField = mountStudyFdl(document.getElementById("plates-study-fdl"), {
       values: studyFdl,
@@ -91,24 +101,26 @@
       });
     }
 
+    // Une place, en liste : son numéro (et sa variante), sa plaque et ×, puis son emplacement et ses FDL.
     function rowHtml(entry, index, choices, removable) {
       const label = labelOf(index);
       const lasermark = entry.sample_id;
+      const name = label ? `${label} (place ${index + 1})` : `place ${index + 1}`;
       const pick = choices.length
         ? fdlWaferSelectHtml({
             value: lasermark,
             choices,
             taken: entries.map((e) => e.sample_id),
-            attrs: `class="field mono js-entity-pick" id="plate-lasermark-${index}" data-index="${index}"`,
+            attrs: `class="field mono js-entity-pick" id="plate-lasermark-${index}" data-index="${index}" aria-label="Plaque - ${escapeHtml(name)}"`,
           })
-        : `<input class="field mono js-entity-sample-id" id="plate-lasermark-${index}" data-index="${index}" list="entity-sample-id-history" value="${escapeHtml(lasermark)}" placeholder="à associer" autocomplete="off">`;
+        : `<input class="field mono js-entity-sample-id" id="plate-lasermark-${index}" data-index="${index}" list="entity-sample-id-history" value="${escapeHtml(lasermark)}" placeholder="plaque à associer" autocomplete="off" aria-label="Plaque - ${escapeHtml(name)}">`;
       return `
-        <div class="plate-row">
-          ${label ? `<div class="plate-row__label">${escapeHtml(label)}</div>` : ""}
-          <div class="plate-row__fields" data-report-hide>
-            <div><label for="plate-lasermark-${index}">Plaque${lasermark ? ` <a class="plate-row__trail" href="${plateUrl(lasermark)}">parcours &rarr;</a>` : ""}</label>${pick}</div>
-            <div><label for="plate-location-${index}">Emplacement</label><input class="field js-entity-location" id="plate-location-${index}" data-index="${index}" list="entity-location-history" value="${escapeHtml(entry.location)}" placeholder="ex : boîte B, tiroir 2" autocomplete="off"></div>
-            <div class="plate-row__fdl-field"><label>FDL de la plaque</label><div class="js-entity-fdl" data-index="${index}"></div></div>
+        <li class="plate-item">
+          <div class="plate-item__line" data-report-hide>
+            <span class="plate-item__idx">${index + 1}</span>
+            ${label ? `<span class="plate-item__label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>` : ""}
+            <span class="plate-item__pick">${pick}</span>
+            ${lasermark ? `<a class="plate-item__trail" href="${plateUrl(lasermark)}" title="Le parcours de ${escapeHtml(lasermark)}" aria-label="Le parcours de ${escapeHtml(lasermark)}">&rarr;</a>` : ""}
             ${
               removable
                 ? `<button type="button" class="plate-row__remove js-remove-plate" data-index="${index}" aria-label="Retirer la place ${index + 1}" title="Retirer cette place">
@@ -117,8 +129,12 @@
                 : ""
             }
           </div>
-          <div class="report-only">${readonlyHtml(entry)}</div>
-        </div>`;
+          <div class="plate-item__meta" data-report-hide>
+            <input class="field js-entity-location" id="plate-location-${index}" data-index="${index}" list="entity-location-history" value="${escapeHtml(entry.location)}" placeholder="emplacement" autocomplete="off" aria-label="Emplacement - ${escapeHtml(name)}">
+            <div class="js-entity-fdl" data-index="${index}"></div>
+          </div>
+          <div class="report-only">${label ? `<div class="plate-row__label">${escapeHtml(label)}</div>` : ""}${readonlyHtml(entry)}</div>
+        </li>`;
     }
 
     function paint(focusSelector) {
@@ -131,7 +147,8 @@
         fdlFields[index] = mountFdlField(el, {
           values: entries[index].fdl,
           datalistId: "entity-fdl-history",
-          label: `FDL de la plaque ${index + 1}`,
+          compact: true,
+          label: `FDL de la place ${index + 1}`,
           onChange: (fdl) => (entries[index].fdl = fdl),
         });
       });
@@ -143,6 +160,7 @@
           : named
             ? `${named} place${named > 1 ? "s" : ""} associée${named > 1 ? "s" : ""} sur ${entries.length} - ${left} à associer.`
             : `${left} place${left > 1 ? "s" : ""} à associer (il en faut une associée pour conclure).`;
+      fillButton.hidden = !left || !freeChoices().length;
       const el = focusSelector && list.querySelector(focusSelector);
       if (el) el.focus();
     }
@@ -167,6 +185,18 @@
       if (!btn) return;
       collectFdls();
       entries.splice(Number(btn.dataset.index), 1);
+      paint();
+    });
+    // chaque place vide reçoit, dans l'ordre, la prochaine plaque libre des FDL de l'étude
+    fillButton.addEventListener("click", () => {
+      collectFdls();
+      const free = freeChoices();
+      entries.forEach((entry) => {
+        if (entry.sample_id.trim() || !free.length) return;
+        const pick = free.shift();
+        entry.sample_id = pick.lasermark;
+        entry.fdl = withFdl(entry.fdl, pick.fdl);
+      });
       paint();
     });
     const addButton = document.getElementById("add-plate-btn");

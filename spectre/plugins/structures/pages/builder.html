@@ -150,11 +150,11 @@
           </div>
         </aside>
 
-        <!-- Variations (écran 3 du lancement) : prend la place de la palette. -->
+        <!-- Variations (écran 3 du lancement) : sous la structure de référence, à gauche. -->
         <aside class="sb-factors" id="wizard-step-variations" aria-label="Variations" hidden>
           <div class="sb-factors__head">
             <div class="sb-palette__title">Variations</div>
-            <p class="help">Cliquez une étape du flow (ou une couche du dessin) pour faire varier un de ses paramètres. Plusieurs paramètres = toutes les combinaisons.</p>
+            <p class="help">Cliquez une étape du flow ou une couche du dessin pour faire varier un paramètre - plusieurs = toutes les combinaisons.</p>
           </div>
           <div class="sb-factors__list" id="variation-factors-list"></div>
         </aside>
@@ -205,9 +205,13 @@
           <!-- Écran 3 : une ligne par combinaison (une place), associée - tout de suite ou plus tard sur
                la fiche - à une vraie plaque, choisie parmi celles des FDL de l'étude. -->
           <div class="sb-samples" id="samples-panel" hidden>
-            <div class="sb-samples__head"><span class="sb-palette__title">Échantillons à lancer</span></div>
+            <div class="sb-samples__head">
+              <span class="sb-palette__title">Échantillons à lancer</span>
+              <span class="sb-samples__summary" id="samples-summary" aria-live="polite"></span>
+              <button type="button" class="btn btn-tint sb-samples__fill" id="samples-fill-btn" hidden title="Associe les places encore vides aux plaques libres des FDL de l'étude, dans l'ordre">Remplir dans l'ordre de la FDL</button>
+            </div>
             <div class="sb-samples__fdl">
-              <label for="study-fdl-launch-input">FDL de l'étude <span class="help">- optionnelle, ici ou plus tard sur la fiche : ses plaques se choisissent ensuite place par place</span></label>
+              <label for="study-fdl-launch-input">FDL de l'étude <span class="help">- optionnelle, ici ou plus tard sur la fiche : ses plaques se choisissent ensuite ligne par ligne</span></label>
               <div id="study-fdl-launch"></div>
             </div>
             <div class="sb-samples__scroll" id="variation-table-wrap"></div>

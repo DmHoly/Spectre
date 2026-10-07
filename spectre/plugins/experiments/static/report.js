@@ -87,7 +87,7 @@
   .report-banner{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:20px;font-size:12px;color:var(--text-faint);}
   .report-only{display:inline !important;}
   .fiche-panel{margin-bottom:8px;}
-  .fiche-card__scroll,.fiche-history .timeline{max-height:none;overflow:visible;}
+  .fiche-card__scroll,.fiche-history .timeline,.plates-list{max-height:none;overflow:visible;}
   @media print{body{padding:0;background:#fff;}.card{box-shadow:none;break-inside:avoid;}.report-section-title{break-after:avoid;}}
 </style>
 </head>

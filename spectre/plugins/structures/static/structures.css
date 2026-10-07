@@ -1120,8 +1120,40 @@
   grid-template-rows: minmax(0, 1fr);
   gap: var(--space-3);
 }
+/* écran 3 en trois colonnes : la structure de référence et ses variations à gauche, le tableau des
+   échantillons sur toute la hauteur au milieu, les paramètres (l'inspecteur) à droite - le centre
+   s'efface (display: contents) pour que le dessin et le tableau se placent chacun dans sa colonne */
 .sb-shell[data-stage="variations"] .sb-work {
-  grid-template-columns: clamp(220px, 18vw, 280px) minmax(0, 1fr) clamp(290px, 24vw, 350px);
+  grid-template-columns: clamp(260px, 21vw, 340px) minmax(0, 1fr) clamp(280px, 22vw, 340px);
+  grid-template-rows: minmax(0, 1fr) minmax(0, auto);
+}
+@media (min-width: 1101px) {
+  .sb-shell[data-stage="variations"] .sb-center {
+    display: contents;
+  }
+  .sb-shell[data-stage="variations"] .sb-canvas {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 220px;
+  }
+  .sb-shell[data-stage="variations"] .sb-factors {
+    grid-column: 1;
+    grid-row: 2;
+    max-height: 42vh;
+  }
+  .sb-shell[data-stage="variations"] .sb-samples {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+  .sb-shell[data-stage="variations"] .sb-inspector {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+  /* la barre du dessin, étroite ici : la navigation au-dessus des outils */
+  .sb-shell[data-stage="variations"] .sb-canvas__bar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
 }
 
 /* palette d'outils */
@@ -1373,9 +1405,6 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-.sb-shell[data-stage="variations"] .sb-canvas {
-  flex: 0.8;
 }
 
 .sb-canvas__bar {
@@ -1702,17 +1731,40 @@
 }
 .sb-samples__head {
   flex: none;
-  padding: 10px 14px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-height: 44px;
+  padding: 6px 10px 6px 14px;
   border-bottom: 1px solid var(--border-soft);
+}
+.sb-samples__summary {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-soft);
+}
+.sb-samples__fill[hidden] {
+  display: none;
+}
+.sb-samples__fill {
+  margin-left: auto;
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 12.5px;
 }
 /* les FDL de l'étude, au-dessus du tableau des places */
 .sb-samples__fdl {
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 14px;
+  gap: 5px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--border-soft);
+}
+.sb-samples__fdl .fdl-field {
+  min-height: 34px;
+  padding: 2px 6px;
 }
 .sb-samples__fdl > label {
   font-size: 12px;
@@ -1725,7 +1777,7 @@
   font-weight: 400;
 }
 .sb-samples-table select.field {
-  min-width: 160px;
+  min-width: 150px;
   font-family: var(--font-mono);
 }
 .sb-samples__count {
@@ -1755,7 +1807,7 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 8px 10px;
+  padding: 7px 8px;
   font-size: 11.5px;
   font-weight: 600;
   text-align: left;
@@ -1765,28 +1817,51 @@
   border-bottom: 1px solid var(--border-soft);
 }
 .sb-samples-table td {
-  padding: 6px 10px;
+  padding: 3px 8px;
   border-bottom: 1px solid var(--border-soft);
   vertical-align: middle;
 }
 .sb-samples-table .field {
-  min-width: 120px;
-  min-height: 32px;
-  padding: 5px 9px;
+  width: 100%;
+  min-width: 110px;
+  min-height: 30px;
+  padding: 4px 8px;
   font-size: 12.5px;
 }
+.sb-samples-table tbody tr:hover td {
+  background: var(--surface-2);
+}
+/* l'aperçu d'une variante, en vignette : la structure complète est à gauche */
+.sb-samples-table .variation-thumb {
+  width: 56px;
+}
+/* les FDL d'une ligne : des pastilles, sans cadre tant qu'on n'y écrit pas */
+.sb-samples-table .fdl-field {
+  flex-wrap: nowrap;
+  min-height: 30px;
+  padding-block: 0;
+  border-color: transparent;
+  background: transparent;
+}
+.sb-samples-table tr:hover .fdl-field,
+.sb-samples-table .fdl-field:focus-within {
+  border-color: var(--border);
+  background: var(--surface);
+}
 .sb-samples-table__idx {
-  width: 32px;
+  width: 28px;
   color: var(--text-faint);
 }
 .sb-samples-table__num {
   white-space: nowrap;
 }
 .sb-samples-table__fdl {
-  min-width: 170px;
+  min-width: 140px;
 }
 .sb-samples-table .fdl-field__input {
-  min-width: 70px;
+  min-width: 44px;
+  min-height: 22px;
+  padding-block: 0;
 }
 .sb-samples-table .field[readonly] {
   background: var(--surface-2);
@@ -1801,8 +1876,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border: none;
   border-radius: var(--radius-sm);
   background: none;

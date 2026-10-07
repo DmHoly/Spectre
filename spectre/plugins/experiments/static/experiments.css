@@ -625,14 +625,14 @@
 }
 
 /* onglet 1 : la structure, et à côté les plaques */
-/* Structure et plaques côte à côte, à la même hauteur : c'est la structure qui la donne, la carte
-   des plaques s'étire pour la suivre et sa liste défile en interne si elle est plus longue (le
-   bouton « Enregistrer les plaques » restant visible en bas). Une seule colonne sous 1000px. */
+/* Structure et plaques côte à côte, chacune à sa hauteur : la liste des places grandit avec elles
+   et ne défile qu'au-delà d'une dizaine - jamais écrasée à la hauteur de la structure. Une seule
+   colonne sous 1000px. */
 .fiche-structure-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr);
   gap: 18px;
-  align-items: stretch;
+  align-items: start;
 }
 .fiche-structure-grid > .fiche-card {
   display: flex;
@@ -673,17 +673,129 @@
   .fiche-structure-grid {
     grid-auto-rows: minmax(380px, auto);
   }
-  /* contain: size - sa hauteur ne dépend plus de son contenu : la rangée prend celle de la
-     structure, et la carte s'y étire */
-  .plates-card {
-    contain: size;
-  }
-  .plates-list {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding-right: 2px;
-  }
+}
+/* la liste des places défile dans la carte au-delà d'une dizaine : la carte grandit avec elle
+   jusque-là, sans jamais l'écraser */
+.plates-list {
+  max-height: min(56vh, 560px);
+  overflow-y: auto;
+}
+.plates-list--edit {
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border-soft);
+}
+.plate-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 2px 6px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.plate-item__line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.plate-item__idx {
+  flex: none;
+  width: 22px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.plate-item__label {
+  flex: 0 1 auto;
+  max-width: 38%;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gold-dark);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.plate-item__pick {
+  flex: 1;
+  min-width: 0;
+}
+.plate-item__pick .field {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.plate-item__trail {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--dur) var(--ease);
+}
+.plate-item__trail:hover {
+  background: var(--accent-tint);
+}
+.plate-item__trail:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+/* emplacement et FDL de la place, sous sa plaque */
+.plate-item__meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  padding-left: 30px;
+}
+.plate-item__meta .field {
+  min-height: 30px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.plate-item__meta .fdl-field {
+  flex-wrap: nowrap;
+  min-height: 30px;
+  padding-block: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.plate-item__meta .fdl-field__input {
+  min-width: 40px;
+  min-height: 22px;
+  padding-block: 0;
+}
+.plate-item .plate-row__remove {
+  position: static;
+  flex: none;
+}
+.plates-head {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  margin: 0 0 8px;
+}
+.plates-head .plates-summary {
+  margin: 0;
+}
+.plates-fill[hidden] {
+  display: none;
+}
+.plates-fill {
+  min-height: 30px;
+  padding: 3px 10px;
+  font-size: 12px;
 }
 .plate-row {
   padding: 10px 12px;
@@ -697,22 +809,6 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--gold-dark);
-}
-.plate-row__fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px 10px;
-}
-.plate-row__fields label {
-  font-size: 11px;
-}
-.plate-row__fields .field {
-  min-height: 34px;
-  padding: 6px 9px;
-  font-size: 13px;
-}
-.plate-row__fdl-field {
-  grid-column: 1 / -1;
 }
 /* les FDL de l'étude, d'où viennent les plaques de ses places (mountStudyFdl, wafers/static/fdl.js) */
 .plates-study {
@@ -742,9 +838,6 @@
 }
 .plate-row {
   position: relative;
-}
-.plate-row__fields select.field {
-  font-family: var(--font-mono);
 }
 /* retirer une place d'une étude simple (un réplicat) */
 .plate-row__remove {
@@ -812,11 +905,6 @@ a.plate-row__lasermark:hover {
 a.plate-row__lasermark {
   text-decoration: none;
 }
-.plate-row__trail {
-  margin-left: 4px;
-  font-weight: 500;
-  text-decoration: none;
-}
 
 @media (max-width: 1000px) {
   .fiche-structure-grid {
@@ -844,7 +932,7 @@ a.plate-row__lasermark {
   }
 }
 @media (max-width: 520px) {
-  .plate-row__fields {
+  .plate-item__meta {
     grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -591,6 +591,7 @@ function renderVariationTable(rows, factorLabels) {
            </div>`
         : ""
     }`;
+  updateSamplesHead(rows.length);
   wrap.querySelectorAll(".js-remove-wafer").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.variationEntities.splice(parseInt(btn.dataset.index, 10), 1);
@@ -622,6 +623,7 @@ function renderVariationTable(rows, factorLabels) {
       const i = parseInt(input.dataset.index, 10);
       state.variationEntities[i] = { ...state.variationEntities[i], sample_id: input.value };
       updateLaunchVariationsLabel(); // « Lancer le suivi (N plaques) »
+      updateSamplesHead(lastVariationTable.rows.length);
     });
   });
   wrap.querySelectorAll(".js-wafer-location").forEach((input) => {
@@ -643,6 +645,35 @@ function renderVariationTable(rows, factorLabels) {
     });
   });
 }
+
+// L'en-tête du tableau : combien de places, combien déjà associées, et « Remplir dans l'ordre de
+// la FDL » dès que les FDL de l'étude proposent des plaques libres pour des places vides.
+function updateSamplesHead(rowCount) {
+  const named = state.variationEntities.filter((e) => (e.sample_id || "").trim()).length;
+  document.getElementById("samples-summary").textContent =
+    `${rowCount} place${rowCount > 1 ? "s" : ""} · ${named} associée${named > 1 ? "s" : ""}`;
+  document.getElementById("samples-fill-btn").hidden = state.originWafers || !freeFdlWafers().length || named >= rowCount;
+}
+
+// Les plaques des FDL de l'étude qu'aucune place n'a encore prises, dans l'ordre des FDL.
+function freeFdlWafers() {
+  const taken = new Set(state.variationEntities.map((e) => waferKey(e.sample_id)).filter(Boolean));
+  return fdlWaferChoices(state.fdlContents).filter((c) => !taken.has(waferKey(c.lasermark)));
+}
+
+// Chaque place vide reçoit, dans l'ordre, la prochaine plaque libre des FDL de l'étude.
+document.getElementById("samples-fill-btn").addEventListener("click", () => {
+  if (!lastVariationTable) return;
+  const free = freeFdlWafers();
+  const rowCount = lastVariationTable.rows.length;
+  for (let i = 0; i < rowCount && free.length; i++) {
+    const entity = state.variationEntities[i] || { sample_id: "", location: "" };
+    if ((entity.sample_id || "").trim()) continue;
+    const pick = free.shift();
+    state.variationEntities[i] = { ...entity, sample_id: pick.lasermark, fdl: withFdl(entity.fdl, pick.fdl) };
+  }
+  redrawVariationTable();
+});
 
 // Redessine les dernières lignes (une plaque choisie se grise dans les autres menus) et rend le focus.
 function redrawVariationTable(focusSelector) {
@@ -741,6 +772,8 @@ async function refreshVariationTable() {
   } catch (err) {
     if (seq !== variationTableSeq) return;
     state.campaignPlan = null;
+    document.getElementById("samples-fill-btn").hidden = true;
+    document.getElementById("samples-summary").textContent = "";
     document.getElementById("variation-table-wrap").innerHTML = `<div class="sb-samples__error">Variation impossible : ${escapeHtml(err.message || String(err))}</div>`;
     updateLaunchVariationsLabel();
   }
