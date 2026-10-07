@@ -45,7 +45,7 @@ def _launch_response(client, slug, images, title="Coupe TEM", **extra):
     fields = {
         "intent": "Documenter la structure réelle",
         "hypothesis": "Le puits fait 3 nm",
-        "entities": [{"sample_id": ""}, {"sample_id": "W7", "location": "boîte 3"}],
+        "entities": [{"sample_id": "W7", "location": "boîte 3"}],
         **extra,
     }
     return client.post(f"/api/microprojects/{slug}/experiments", json=launch_body(kind="images", images=images, title=title, **fields))
@@ -88,7 +88,7 @@ def test_launch_an_experiment_with_several_pictures(client):
     assert _structural_versions(client, slug, detail["id"]) == [("1.0.0", "initial")]
 
 
-def test_launch_requires_uploaded_images_a_sample_and_an_intention(client):
+def test_launch_requires_uploaded_images_and_an_intention(client):
     slug = _owner_microproject(client)
     good = _image(client, slug)
 
@@ -98,8 +98,9 @@ def test_launch_requires_uploaded_images_a_sample_and_an_intention(client):
     assert _launch_response(client, slug, [good, good]).status_code == 422  # deux fois la même
     too_many = [_image(client, slug) for _ in range(13)]
     assert _launch_response(client, slug, too_many).status_code == 422
+    # la plaque est optionnelle au lancement : sa place reste à associer (depuis la FDL de l'étude)
     no_sample = _launch_response(client, slug, [good], entities=[{"sample_id": " "}])
-    assert no_sample.status_code == 422 and "entité physique" in no_sample.json()["detail"]
+    assert no_sample.status_code == 201 and no_sample.json()["physical_tracking"] == [{"sample_id": None, "location": None}]
     assert _launch_response(client, slug, [good], intent="  ").status_code == 422
 
     # un fichier non image (un CSV des anciennes pièces jointes d'une expérience) ne peut pas servir

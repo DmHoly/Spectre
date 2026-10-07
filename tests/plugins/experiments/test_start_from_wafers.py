@@ -43,15 +43,15 @@ def test_a_simple_study_tracks_replicates(client):
     study = _replicates(client, slug)
     assert [e["sample_id"] for e in study["physical_tracking"]] == ["W1", "W2"]
 
-    # au lancement, une ligne vide ne compte pas ; la même plaque deux fois est refusée
+    # au lancement, une ligne vide est une place à associer plus tard ; la même plaque deux fois est refusée
     blank = launch(client, slug, title="Autre", entities=[{"sample_id": "W3"}, {"sample_id": ""}])
-    assert blank["physical_tracking"] == [{"sample_id": "W3", "location": None}]
+    assert blank["physical_tracking"] == [{"sample_id": "W3", "location": None}, {"sample_id": None, "location": None}]
     twice = post_launch(client, slug, title="Doublon", entities=[{"sample_id": "W4"}, {"sample_id": "w-4"}])
     assert twice.status_code == 422 and twice.json()["code"] == "duplicate_wafer"
 
-    # la carte « Plaques » en ajoute, en vide une (elle garde sa place), et retire les vides de fin
+    # la carte « Plaques » en ajoute, en vide une : chaque place vide garde sa position, à associer
     updated = track_entities(client, slug, study["id"], [{"sample_id": "W1"}, {"sample_id": None}, {"sample_id": "W5"}, {"sample_id": None}])
-    assert [e["sample_id"] for e in updated["physical_tracking"]] == ["W1", None, "W5"]
+    assert [e["sample_id"] for e in updated["physical_tracking"]] == ["W1", None, "W5", None]
     duplicate = client.put(f"{experiment_url(slug, study['id'])}/entities", json={"entities": [{"sample_id": "W1"}, {"sample_id": "W1"}]})
     assert duplicate.status_code == 422 and duplicate.json()["code"] == "duplicate_wafer"
     empty = client.put(f"{experiment_url(slug, study['id'])}/entities", json={"entities": []})

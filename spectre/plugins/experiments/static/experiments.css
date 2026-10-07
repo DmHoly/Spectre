@@ -656,7 +656,7 @@
   flex: none;
   align-self: flex-start;
 }
-/* « Enregistrer les plaques » et, pour une étude simple, « + Ajouter une plaque » (un réplicat) */
+/* « Enregistrer les plaques » et, pour une étude simple, « + Ajouter une place » (un réplicat) */
 .plates-actions {
   flex: none;
   display: flex;
@@ -713,6 +713,64 @@
 }
 .plate-row__fdl-field {
   grid-column: 1 / -1;
+}
+/* les FDL de l'étude, d'où viennent les plaques de ses places (mountStudyFdl, wafers/static/fdl.js) */
+.plates-study {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.plates-study > label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.plates-study > label .help {
+  display: inline;
+  margin: 0;
+  font-weight: 400;
+}
+.plates-study-fdl {
+  flex: none;
+  margin-bottom: 10px;
+}
+.plates-summary {
+  flex: none;
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+.plate-row {
+  position: relative;
+}
+.plate-row__fields select.field {
+  font-family: var(--font-mono);
+}
+/* retirer une place d'une étude simple (un réplicat) */
+.plate-row__remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-soft);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.plate-row__remove:hover {
+  color: var(--danger);
+  background: var(--danger-tint);
+}
+.plate-row__remove:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 .plate-row__ro {
   display: flex;

@@ -112,7 +112,7 @@
       ? shown.map((l) => `<a class="hero-wafer" href="${plateUrl(l)}" title="Le parcours de la plaque ${escapeHtml(l)}">${escapeHtml(l)}</a>`).join("") +
         (lasermarks.length > shown.length ? `<span class="hero-wafer hero-wafer--more">+${lasermarks.length - shown.length}</span>` : "")
       : `<span class="help" style="margin:0;">Aucun lasermark renseigné</span>`;
-    document.getElementById("fdl-row").innerHTML = fdlChipsHtml(fdlsOfTracking(detail.physical_tracking));
+    document.getElementById("fdl-row").innerHTML = fdlChipsHtml(fdlsOfTracking(detail.physical_tracking, detail.fdl));
     // « Données en base » (characterization/static/wafer-data-links.js) : les requêtes ouvertes sur ses plaques
     if (pluginEnabled("characterization")) renderWaferDbLinks(document.querySelectorAll(".js-db-link"), lasermarks);
   }

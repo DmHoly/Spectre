@@ -62,8 +62,8 @@ async function loadExistingProcess() {
     if (planId) return;
 
     // en évolution, l'entité physique se transmet automatiquement de la version précédente
-    // (voir experiments.py::evolve_experience) - le champ reste modifiable pour la corriger,
-    // mais n'est obligatoire que si la piste n'en a jamais eu.
+    // (voir service.evolve) - le champ reste modifiable pour la corriger ; jamais obligatoire ici :
+    // une place sans plaque s'associe plus tard sur la fiche, depuis la FDL de l'étude.
     const currentEntity = (detail.physical_tracking && detail.physical_tracking[0]) || {};
     document.getElementById("exp-entity-sample-id").value = currentEntity.sample_id || "";
     document.getElementById("exp-entity-location").value = currentEntity.location || "";
@@ -71,7 +71,7 @@ async function loadExistingProcess() {
     document.getElementById("entity-field-label").textContent = "Plaque suivie - lasermark";
     document.getElementById("entity-field-hint").textContent = currentEntity.sample_id
       ? "Reprise de la version précédente - modifiez-la si besoin."
-      : "Aucune entité physique n'a encore été renseignée sur cette piste - il en faut une pour continuer.";
+      : "Aucune plaque n'est encore associée à cette piste - ici, ou plus tard sur la fiche depuis la FDL de l'étude (il en faut une pour conclure).";
     const named = (detail.physical_tracking || []).filter((e) => e.sample_id);
     if (!detail.is_batch && named.length > 1) {
       evolveReplicates = named.map((e) => ({ sample_id: e.sample_id, location: e.location || "", fdl: e.fdl || [] }));
@@ -119,6 +119,8 @@ async function commitExperience(entities) {
     entities,
     form_answers: intentFormSection ? intentFormSection.collect() : {},
   };
+  // les FDL de l'étude, dès que l'écran 3 les a montrées (sinon, une évolution garde celles en place)
+  if (state.studyFdl) payload.fdl = studyFdlField ? studyFdlField.get() : state.studyFdl;
   // une nouvelle étude partie d'une version de référence (chargée) la retient (suivi des usages de la référence)
   if (referenceOrigin && !evolveExperienceId) payload.reference_origin = referenceOrigin;
   // partie de plaques existantes (chargées) : l'étude d'où elles viennent
@@ -188,22 +190,18 @@ function goToVariations() {
 document.getElementById("continue-btn").addEventListener("click", goToVariations);
 
 // Nouveau lancement, écran 3 : les entités viennent du tableau de variations plutôt que d'un
-// unique champ - au moins un échantillon doit être nommé pour lancer le suivi (même garde-fou
-// qu'avant, appliqué à la colonne "Nom du wafer" du tableau plutôt qu'à un champ unique).
+// unique champ - une ligne par place, associée à une plaque ou laissée vide (à associer plus tard
+// sur la fiche, depuis la FDL de l'étude ; il en faudra une pour conclure).
 document.getElementById("launch-btn-variations").addEventListener("click", () => {
   clearError();
   const tableEntities = variationTableEntities();
   // Une évolution simple (sans variation) peut laisser le tableau vide - le serveur reprend
   // l'entité de la version précédente. On envoie alors une liste vide plutôt qu'une ligne blanche,
-  // qui écraserait l'entité héritée (voir evolve_experience). Un nouveau lancement / une campagne
-  // exigent au moins un échantillon nommé (positions gardées pour l'alignement des variantes).
+  // qui écraserait l'entité héritée (voir service.evolve). Un nouveau lancement / une campagne
+  // envoient toutes leurs places, vides comprises (positions gardées pour l'alignement des variantes).
   const evolveNoSplit = evolveExperienceId && !state.campaignPlan && !planId;
   if (evolveNoSplit) {
     commitExperience(tableEntities.filter((e) => e.sample_id));
-    return;
-  }
-  if (!tableEntities.some((e) => e.sample_id)) {
-    showError(new Error("L'entité physique (l'échantillon réel suivi) est obligatoire - nommez au moins un wafer dans le tableau."));
     return;
   }
   commitExperience(tableEntities);

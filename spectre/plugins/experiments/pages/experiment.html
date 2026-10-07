@@ -171,7 +171,7 @@
             <div class="section-title">Plaques &amp; entités physiques</div>
             <div class="js-db-link" data-report-hide></div>
           </div>
-          <div class="help" style="margin-bottom:12px;">Chaque plaque suivie : son lasermark, où elle est rangée, et ses FDL (feuilles de lancement JIRA, Entrée pour en empiler une).</div>
+          <div class="help" style="margin-bottom:12px;">Chaque place de l'étude (une par variante d'une campagne, ses réplicats sinon) s'associe à une vraie plaque, choisie parmi celles des FDL de l'étude (feuilles de lancement JIRA) - avec où elle est rangée. Il en faut une associée pour conclure.</div>
           <div class="plates-card__body">
             <div id="physical-tracking-content" class="plates-card__rows"></div>
             <!-- mettre une plaque de l'expérience dans un lot : panneau du plugin lots (lot-picker.js) -->
@@ -337,11 +337,11 @@
         <fieldset class="combine-dialog__plate">
           <legend>Nouvelle plaque</legend>
           <div class="combine-dialog__plate-grid">
-            <div><label for="combine-sample-id">Lasermark (obligatoire)</label><input class="field mono" id="combine-sample-id" list="entity-sample-id-history" placeholder="ex : W12-A3" autocomplete="off" required></div>
+            <div><label for="combine-sample-id">Lasermark (optionnel)</label><input class="field mono" id="combine-sample-id" list="entity-sample-id-history" placeholder="ex : W12-A3 - ou plus tard, depuis la FDL" autocomplete="off"></div>
             <div><label for="combine-location">Emplacement (optionnel)</label><input class="field" id="combine-location" list="entity-location-history" placeholder="ex : boîte B, tiroir 2" autocomplete="off"></div>
           </div>
           <div style="margin-top:10px;"><label for="combine-fdl-input">FDL <span class="help" style="display:inline;margin:0;font-weight:400;">- feuilles de lancement JIRA du wafer, Entrée pour en empiler plusieurs</span></label><div id="combine-fdl"></div></div>
-          <p class="help" id="combine-plate-help" style="margin:8px 0 0;">Chaque étude est reliée à un échantillon réel : c'est cet identifiant qui permet de la retrouver.</p>
+          <p class="help" id="combine-plate-help" style="margin:8px 0 0;">Optionnelle ici : la plaque s'associe aussi plus tard sur la fiche, depuis la FDL de l'étude - il en faut une pour conclure.</p>
         </fieldset>
         <div class="error" id="combine-error" role="alert" style="display:none;"></div>
       </div>

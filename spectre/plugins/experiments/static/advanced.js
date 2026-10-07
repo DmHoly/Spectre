@@ -86,7 +86,7 @@
     $("combine-first-title").textContent = `« ${ctx.detail.title} » (cette fiche)`;
     $("combine-plate-help").textContent = ctx.detail.is_batch
       ? "La plaque de la première variante de la campagne ; les autres se renseignent ensuite dans « Plaques & entités physiques »."
-      : "Chaque étude est reliée à un échantillon réel : c'est cet identifiant qui permet de la retrouver.";
+      : "Optionnelle ici : la plaque s'associe aussi plus tard sur la fiche, depuis la FDL de l'étude - il en faut une pour conclure.";
     dialog.showModal();
     search.focus();
     fillSelect();
@@ -104,13 +104,17 @@
     }
     const title = required(titleInput, "Donnez un titre à la nouvelle étude.");
     const intent = required($("combine-intent"), "Dites ce que la nouvelle étude veut démontrer.");
-    const sampleId = required($("combine-sample-id"), "La nouvelle plaque est obligatoire : indiquez son lasermark.");
+    // la plaque est optionnelle : sans elle, la place reste à associer sur la fiche, depuis la FDL
+    // (tapée ici, elle est aussi celle de l'étude)
+    const sampleId = $("combine-sample-id").value.trim() || null;
+    const fdl = fdlField.get();
     return {
       merge_of: [{ experiment_id: ctx.experimentId, version_id: ctx.versionId }, { experiment_id: select.value }],
       title,
       intent,
       hypothesis: $("combine-hypothesis").value.trim() || null,
-      entities: [{ sample_id: sampleId, location: $("combine-location").value.trim() || null, fdl: fdlField.get() }],
+      entities: [{ sample_id: sampleId, location: $("combine-location").value.trim() || null, fdl }],
+      fdl,
     };
   }
 
