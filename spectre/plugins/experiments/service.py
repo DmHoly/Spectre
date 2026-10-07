@@ -52,7 +52,7 @@ from .repository import (
     retired_lines,
     writing,
 )
-from .schemas import ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput, WaferOrigin
+from .schemas import CompositionOrigin, ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput, WaferOrigin
 
 CONTEXT_METADATA_KEY = "context"
 
@@ -78,6 +78,20 @@ REFERENCE_PLACE_KEY = "reference_place"
 # version_id, sample_id}`` - une étude du µprojet (celle dont la campagne part, par défaut dans le
 # constructeur) et, au choix, une de ses plaques. Facultative.
 COMPARISON_KEY = "comparison_reference"
+# Une étude partie de la meilleure plaque d'une autre (sur de nouvelles plaques) : ``{experiment_id,
+# version_id, place, sample_id, variant}`` - la version dont elle descend, la place de cette plaque
+# (son lasermark s'il était connu) et, pour une campagne, sa variante, dont la structure est reprise.
+START_WAFER_KEY = "start_wafer"
+# Une étude combinée « au marché » : ``{sources: [{kind, label, experiment_id, version_id, place,
+# sample_id, reference, version}], bricks: [{name, source}]}`` - d'où vient chaque brique. Elle
+# descend de la première source quand c'est une étude du µprojet ; les autres études sources sont
+# reliées dans l'arbre (lineage.py).
+COMPOSITION_KEY = "composition"
+# La plaque témoin : une place de plus, toujours la dernière du split, qui reçoit exactement une
+# version de référence (``{reference, version, place}`` - la dernière connue de la référence d'origine
+# au lancement). Hors des variantes d'une campagne et des réplicats d'une étude simple : les places
+# qu'on ajoute ou retire sur la fiche sont avant elle.
+REFERENCE_REPEAT_KEY = "reference_repeat"
 
 # Le cahier de données d'une étude (plugin notebook, qui dépend d'experiments et non l'inverse) : ses
 # entrées sont rangées dans les métadonnées, sous NOTEBOOK_KEY, chacune avec son ``id``. Les données
@@ -668,20 +682,32 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
     if body.merge_of is not None:
         return combine(slug, body, author=author)
     entities = clean_entity_entries(body.entities)
+    # la plaque témoin (une répétition exacte de la référence) : la dernière place donnée, à part
+    repeat_entity = None
+    if body.reference_repeat is not None:
+        if body.structure is None or body.structure.kind not in ("process", "campaign"):
+            raise InvalidInput(
+                "Une répétition de la référence s'ajoute au split d'une structure dessinée (simple ou campagne).", code="reference_repeat_kind"
+            )
+        repeat_entity = entities.pop() if entities else blank_entity()
     origin = body.wafer_origin
+    # une étude combinée descend de sa source principale quand c'est une étude du µprojet
+    composed_from = _composition_main(body.composition)
     if origin and not named_entities(entities):
         raise InvalidInput("Nommez les plaques dont part l'étude.", code="entity_required")
     # l'étude des plaques, lue dans son µprojet quand c'en est un autre (sinon sous le verrou, plus bas)
     elsewhere = resolve_wafer_origin(get_repository(origin.microproject), origin, entities) if origin and origin.microproject != slug else None
     start = None
-    start_ref = body.from_version or (FromVersion(experiment_id=origin.experiment_id, version_id=origin.version_id) if origin else None)
+    start_ref = body.from_version or composed_from or (FromVersion(experiment_id=origin.experiment_id, version_id=origin.version_id) if origin else None)
     if start_ref and isinstance(body.structure, CampaignPayload) and not any(body.structure.step_ids):
         reader = get_repository(origin.microproject if origin else slug)
         start = (reader, _source_of(reader, start_ref))
     prepared = _PreparedStructure(slug, body.structure, start)
     _check_reference_place(body, prepared)
     with writing(slug) as repo:
-        source = _source_of(repo, body.from_version) if body.from_version else None
+        source = _source_of(repo, body.from_version or composed_from) if (body.from_version or composed_from) else None
+        start_wafer = _start_wafer(source, body.from_version) if source is not None and body.from_version is not None else None
+        composition = _composition_record(repo, body.composition) if body.composition is not None else None
         found = elsewhere or (resolve_wafer_origin(repo, origin, entities) if origin else None)
         if found is not None and origin.microproject == slug:
             source = found[0]  # dans le même µprojet, la nouvelle piste descend de l'étude des plaques
@@ -710,8 +736,12 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
         builder.metadata.update(prepared.metadata)
         builder.metadata.update(prepared.step_metadata(source, step_ids_of(repo, source) if source is not None else []))
         builder.metadata["physical_tracking"] = _launch_tracking(prepared.kind, prepared.campaign_size, entities)
+        if repeat_entity is not None:
+            refuse_duplicate_wafers([*builder.metadata["physical_tracking"], repeat_entity])
+            builder.metadata[REFERENCE_REPEAT_KEY] = {**body.reference_repeat.model_dump(), "place": len(builder.metadata["physical_tracking"])}
+            builder.metadata["physical_tracking"].append(repeat_entity)
         # des réplicats déclarés comme répétitions exactes de la référence (étude simple, plusieurs plaques)
-        if body.repeats and prepared.kind not in ("campaign", "declared") and len(builder.metadata["physical_tracking"]) > 1:
+        if body.repeats and prepared.kind not in ("campaign", "declared") and len(builder.metadata["physical_tracking"]) - (repeat_entity is not None) > 1:
             builder.metadata[REPEATS_KEY] = True
         else:
             builder.metadata.pop(REPEATS_KEY, None)
@@ -726,12 +756,128 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
                 "version_id": version.id,
                 "variant": variant,
             }
+        if start_wafer is not None:
+            builder.metadata[START_WAFER_KEY] = start_wafer
+        if composition is not None:
+            builder.metadata[COMPOSITION_KEY] = composition
         _set_reference_origin(builder.metadata, body, source or (found[0] if found else None))
+        if REFERENCE_ORIGIN_KEY not in builder.metadata and body.composition is not None:
+            # combinée avec une référence (et aucune origine connue par ailleurs) : celle-ci
+            cited = next((src for src in body.composition.sources if src.kind == "reference"), None)
+            if cited is not None:
+                builder.metadata[REFERENCE_ORIGIN_KEY] = {"reference": cited.reference, "version": cited.version}
         builder.form_answers = dict(body.form_answers)
         experiment = _commit(builder, "Impossible de lancer cette expérience")
         if len(repo) == 1:
             refs.create_ref(repo, experiment.id)
         return experiment
+
+
+def _tracked_place(version: follow.Experiment, place: int) -> dict[str, Any]:
+    """La place ``place`` de ``version`` (``physical_tracking``) - refusée hors du split
+    (``place_out_of_range``), ou quand c'est sa plaque témoin, qui n'a pas sa structure
+    (``place_is_reference_repeat`` : on part alors de la référence)."""
+    tracking = version.metadata.get("physical_tracking", [])
+    if not 0 <= place < len(tracking):
+        raise InvalidInput(f"L'étude de départ n'a pas de plaque n° {place + 1}.", code="place_out_of_range")
+    repeat = reference_repeat_of(version)
+    if repeat is not None and repeat["place"] == place:
+        raise InvalidInput(
+            "Cette plaque est la répétition de la référence : partez plutôt de la référence elle-même.", code="place_is_reference_repeat"
+        )
+    return tracking[place]
+
+
+def _start_wafer(source: follow.Experiment, start: FromVersion) -> dict[str, Any] | None:
+    """Ce qu'une étude partie de la plaque ``start.place`` de ``source`` en retient
+    (:data:`START_WAFER_KEY`) - ``None`` sans plaque nommée dans la requête."""
+    if start.place is None:
+        return None
+    entry = _tracked_place(source, start.place)
+    return {
+        "experiment_id": source.branch,
+        "version_id": source.id,
+        "place": start.place,
+        "sample_id": entry.get("sample_id") or None,
+        "variant": start.place if source.structure_type == kinds.ProcessLot.registry_key() else None,
+    }
+
+
+def _composition_main(composition: CompositionOrigin | None) -> FromVersion | None:
+    """La version dont descend une étude combinée : sa source principale, si c'est une étude."""
+    if composition is None or composition.sources[0].kind != "study":
+        return None
+    main = composition.sources[0]
+    return FromVersion(experiment_id=main.experiment_id, version_id=main.version_id)
+
+
+def _composition_record(repo: follow.Repository, composition: CompositionOrigin) -> dict[str, Any]:
+    """Ce qu'une étude combinée retient (:data:`COMPOSITION_KEY`) : chaque étude source lue dans
+    ``repo`` (sa version - la pointe par défaut -, la plaque choisie et son lasermark), chaque
+    référence telle que citée, et la source de chaque brique (``bad_composition`` : une brique
+    d'une source qui n'existe pas)."""
+    sources = []
+    for cited in composition.sources:
+        if cited.kind == "reference":
+            sources.append({"kind": "reference", "label": cited.label, "reference": cited.reference, "version": cited.version})
+            continue
+        version = _source_of(repo, FromVersion(experiment_id=cited.experiment_id, version_id=cited.version_id))
+        entry = _tracked_place(version, cited.place) if cited.place is not None else {}
+        sources.append(
+            {
+                "kind": "study",
+                "label": cited.label,
+                "experiment_id": version.branch,
+                "version_id": version.id,
+                "place": cited.place,
+                "sample_id": entry.get("sample_id") or None,
+            }
+        )
+    if any(brick.source is not None and brick.source >= len(sources) for brick in composition.bricks):
+        raise InvalidInput("Une brique vient d'une source qui n'est pas dans la combinaison.", code="bad_composition")
+    return {"sources": sources, "bricks": [brick.model_dump() for brick in composition.bricks]}
+
+
+def start_wafer_of(version: follow.Experiment) -> dict[str, Any] | None:
+    """La plaque dont part l'étude (:data:`START_WAFER_KEY`), telle qu'enregistrée - ``None`` sinon."""
+    cited = version.metadata.get(START_WAFER_KEY)
+    if isinstance(cited, dict) and isinstance(cited.get("experiment_id"), str) and isinstance(cited.get("place"), int):
+        return {key: cited.get(key) for key in ("experiment_id", "version_id", "place", "sample_id", "variant")}
+    return None
+
+
+def composition_of(version: follow.Experiment) -> dict[str, Any] | None:
+    """D'où vient chaque brique d'une étude combinée (:data:`COMPOSITION_KEY`) - ``None`` sinon."""
+    cited = version.metadata.get(COMPOSITION_KEY)
+    if isinstance(cited, dict) and isinstance(cited.get("sources"), list):
+        return copy.deepcopy({"sources": cited["sources"], "bricks": cited.get("bricks") or []})
+    return None
+
+
+def reference_repeat_of(version: follow.Experiment) -> dict[str, Any] | None:
+    """La plaque témoin de l'étude (:data:`REFERENCE_REPEAT_KEY`, ``{reference, version, place}``)
+    - ``None`` sans elle, ou quand sa place n'est plus dans le split."""
+    cited = version.metadata.get(REFERENCE_REPEAT_KEY)
+    if not (isinstance(cited, dict) and isinstance(cited.get("reference"), str) and isinstance(cited.get("version"), str)):
+        return None
+    place = cited.get("place")
+    if not isinstance(place, int) or isinstance(place, bool) or not 0 <= place < len(version.metadata.get("physical_tracking", [])):
+        return None
+    return {"reference": cited["reference"], "version": cited["version"], "place": place}
+
+
+def _settle_reference_repeat(metadata: dict[str, Any], kind: str) -> None:
+    """Après un changement des places (une évolution vers une structure de type ``kind``) : la
+    plaque témoin reste la dernière place d'une structure dessinée qui en a au moins une autre ;
+    sinon (des images, sans structure, une seule place) elle n'est plus - la clé tombe."""
+    cited = metadata.get(REFERENCE_REPEAT_KEY)
+    if not isinstance(cited, dict):
+        return
+    places = len(metadata.get("physical_tracking", []))
+    if kind == "process" and places >= 2:
+        metadata[REFERENCE_REPEAT_KEY] = {**cited, "place": places - 1}
+    else:
+        metadata.pop(REFERENCE_REPEAT_KEY, None)
 
 
 def _check_reference_place(body: CreateExperimentRequest, prepared: _PreparedStructure) -> None:
@@ -841,6 +987,17 @@ def resolve_wafer_origin(repo: follow.Repository, origin: WaferOrigin, entities:
     missing = [entry["sample_id"] for entry in named if compact(entry["sample_id"]) not in position]
     if missing:
         raise InvalidInput(f"L'étude de départ ne suit pas : {', '.join(missing)}.", code="wafer_not_in_origin")
+    witness = reference_repeat_of(version)
+    if witness is not None and any(position[compact(entry["sample_id"])] == witness["place"] for entry in named):
+        # la plaque témoin porte la référence, pas la structure de l'étude
+        if len(named) > 1:
+            raise InvalidInput(
+                "La plaque témoin (répétition de la référence) n'a pas la structure des autres : partez-en séparément.",
+                code="wafers_different_structures",
+            )
+        raise InvalidInput(
+            "Cette plaque est la répétition de la référence : partez plutôt de la référence elle-même.", code="place_is_reference_repeat"
+        )
     if version.structure_type != kinds.ProcessLot.registry_key():
         return version, None
     variants = sorted({position[compact(entry["sample_id"])] for entry in named})
@@ -1051,6 +1208,7 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
                 builder.metadata["physical_tracking"] = inherited
             elif not builder.metadata.get("physical_tracking"):
                 builder.metadata["physical_tracking"] = [blank_entity()]
+        _settle_reference_repeat(builder.metadata, prepared.kind)
         if not same:
             builder.conclusion = follow.Conclusion()
 
@@ -1143,8 +1301,10 @@ def set_entities(
 
     def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
         tracked = list(cleaned)
+        witness = reference_repeat_of(parent)
         if parent.structure_type == kinds.ProcessLot.registry_key():
-            expected = kinds.entity_count(parent.structure_type, parent.structure)
+            # une place par variante, et la plaque témoin s'il y en a une
+            expected = kinds.entity_count(parent.structure_type, parent.structure) + (witness is not None)
             if len(tracked) != expected:
                 raise InvalidInput(
                     f"Il faut exactement {expected} entrée(s) (une par variante de cette campagne).", code="entity_count"
@@ -1159,7 +1319,12 @@ def set_entities(
         else:
             if not tracked:
                 raise InvalidInput("Il faut au moins une entrée (la plaque suivie).", code="entity_count")
+            if witness is not None and len(tracked) < 2:
+                raise InvalidInput("La plaque témoin (répétition de la référence) ne se retire pas du split.", code="entity_count")
         builder.metadata["physical_tracking"] = tracked
+        if witness is not None:
+            # toujours la dernière place : celles qu'on ajoute ou retire sont avant elle
+            builder.metadata[REFERENCE_REPEAT_KEY] = {**builder.metadata[REFERENCE_REPEAT_KEY], "place": len(tracked) - 1}
         if fdl is not None:
             set_study_fdl(builder.metadata, fdl)
 

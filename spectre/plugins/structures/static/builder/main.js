@@ -63,6 +63,8 @@ async function init() {
     await loadTemplateProcess();
     await loadReferenceProcess();
     await loadWaferOrigin();
+    await loadStartPlace();
+    await loadComposition();
     await loadChosenStructureForExperience();
     await loadPlan();
   }

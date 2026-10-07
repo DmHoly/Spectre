@@ -557,7 +557,110 @@ function settleReferencePlace(plan, rows) {
 function defaultComparison() {
   if (evolveExperienceId) return { experiment_id: evolveExperienceId, version_id: evolveParent ? evolveParent.version_id : null, sample_id: null };
   if (waferOrigin && waferOrigin.microproject === slug) return { experiment_id: waferOrigin.experiment_id, version_id: waferOrigin.version_id || null, sample_id: null };
+  if (startPlace) {
+    const entry = ((startDetail && startDetail.physical_tracking) || [])[startPlace.place] || {};
+    return { experiment_id: startPlace.experiment_id, version_id: startPlace.version_id, sample_id: entry.sample_id || null };
+  }
+  const main = compositionOrigin && compositionOrigin.sources[0];
+  if (main && main.kind === "study") return { experiment_id: main.experiment_id, version_id: main.version_id || null, sample_id: null };
   return null;
+}
+
+// -- la plaque témoin : une répétition exacte de la dernière version connue de la référence ---------
+
+// La version de référence dont part l'étude, quel que soit son départ : la référence chargée, sinon
+// celle de l'étude de départ (une plaque, des plaques reprises, la version qu'on fait évoluer), ou
+// pour une combinaison celle de sa principale, à défaut la référence qu'elle cite - null sans elle.
+function originReference() {
+  if (referenceOrigin) return referenceOrigin;
+  const cited = [startDetail, waferOriginDetail, compositionMainDetail, evolveParent].find((d) => d && d.reference_origin);
+  if (cited) return cited.reference_origin;
+  const source = compositionOrigin && compositionOrigin.sources.find((s) => s.kind === "reference");
+  return source ? { reference: source.reference, version: source.version } : null;
+}
+
+// Ce que propose le bouton (une fois, à l'ouverture de l'écran 3) : la dernière version de la
+// référence d'origine, son nom et son dessin - null sans référence d'origine connue.
+async function prepareRefRepeatOffer() {
+  if (state.refRepeatOffer !== undefined || evolvingInPlace()) return;
+  const origin = originReference();
+  if (!origin || typeof referencesApi === "undefined" || !pluginEnabled("references")) {
+    state.refRepeatOffer = null;
+    return;
+  }
+  try {
+    const graph = await referencesApi.versions(origin.reference);
+    const latest = graph.nodes.length ? graph.nodes[graph.nodes.length - 1].number : origin.version;
+    const version = await referencesApi.version(origin.reference, latest);
+    state.refRepeatOffer = {
+      reference: origin.reference,
+      version: latest,
+      name: (graph.reference && graph.reference.name) || origin.reference,
+      from: origin.version,
+      svg: version.structure_svg || "",
+    };
+  } catch (err) {
+    state.refRepeatOffer = null; // une référence retirée ou inaccessible : pas de bouton
+  }
+  redrawVariationTable();
+}
+
+// La ligne de la plaque témoin, à la fin du tableau (mêmes colonnes que les autres).
+function witnessRowHtml(rowCount, factorCount, campaign) {
+  const witness = state.refRepeat;
+  const entity = witness.entity;
+  const choices = fdlWaferChoices(state.fdlContents);
+  const name = choices.length
+    ? fdlWaferSelectHtml({
+        value: entity.sample_id || "",
+        choices,
+        taken: state.variationEntities.map((e) => e.sample_id),
+        attrs: `class="field js-witness-pick" aria-label="Plaque témoin"`,
+      })
+    : `<input class="field js-witness-name" value="${escapeHtml(entity.sample_id || "")}" placeholder="à associer" aria-label="Nom du wafer de la plaque témoin (optionnel)">`;
+  return `
+    <tr class="is-witness">
+      <td class="sb-samples-table__idx mono">${rowCount + 1}</td>
+      ${campaign ? `<td class="sb-samples-table__ref"><span class="badge badge-witness">TÉMOIN</span></td>` : ""}
+      <td>
+        <div class="variation-thumb">${witness.svg}</div>
+      </td>
+      ${
+        factorCount
+          ? `<td colspan="${factorCount}" class="sb-samples-table__witness">Réf. ${escapeHtml(witness.name)} ${escapeHtml(witness.version)} <span class="help">- répétition exacte</span></td>`
+          : ""
+      }
+      <td>${name}${factorCount ? "" : `<div class="help sb-samples-table__witness-note">Témoin : réf. ${escapeHtml(witness.name)} ${escapeHtml(witness.version)}, à l'identique</div>`}</td>
+      <td><input class="field js-witness-location" value="${escapeHtml(entity.location || "")}" placeholder="optionnel" aria-label="Emplacement de la plaque témoin"></td>
+      <td class="sb-samples-table__fdl"><div class="js-witness-fdl"></div></td>
+      <td class="sb-samples-table__actions">
+        <button type="button" class="sb-samples-table__remove js-remove-witness" aria-label="Retirer la plaque témoin" title="Retirer la répétition de la référence">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </td>
+    </tr>`;
+}
+
+// Le bouton sous le tableau : inclure la plaque témoin (ou dire pourquoi il n'y en a pas).
+function witnessOfferHtml() {
+  if (evolvingInPlace() || state.refRepeat) return "";
+  const offer = state.refRepeatOffer;
+  if (offer === undefined) return "";
+  if (offer === null) {
+    return `<p class="help sb-samples__witness">Pas de référence d'origine connue pour cette étude : pas de répétition de la référence à proposer.</p>`;
+  }
+  const older = offer.from && offer.from !== offer.version ? ` - l'étude part de la ${escapeHtml(offer.from)}` : "";
+  return `
+    <div class="sb-samples__witness">
+      <button class="btn btn-tint js-add-witness" type="button">+ Inclure une répétition de la référence</button>
+      <span class="help">Réf. ${escapeHtml(offer.name)} ${escapeHtml(offer.version)}, dernière version connue${older}. Une plaque de plus, à la fin du split : la structure de référence à l'identique, hors variantes.</span>
+    </div>`;
+}
+
+// La place de la plaque témoin telle que le lancement l'envoie (la dernière des entities).
+function witnessEntity() {
+  const entity = (state.refRepeat && state.refRepeat.entity) || {};
+  return { sample_id: (entity.sample_id || "").trim() || null, location: (entity.location || "").trim() || null, fdl: entity.fdl || [] };
 }
 
 // Ce que le lancement envoie (comparison_reference) : null sans étude citée.
@@ -717,11 +820,14 @@ function renderVariationTable(rows, factorLabels) {
           <th>Plaque</th>
           <th>Emplacement</th>
           <th title="Feuilles de lancement JIRA - Entrée pour en empiler plusieurs">FDL</th>
-          ${removable ? `<th><span class="sb-visually-hidden">Retirer</span></th>` : ""}
+          ${removable || state.refRepeat ? `<th><span class="sb-visually-hidden">Retirer</span></th>` : ""}
         </tr>
       </thead>
-      <tbody>${rows.map((row, i) => variationRowHtml(row, i, removable, campaign)).join("")}</tbody>
+      <tbody>${rows.map((row, i) => variationRowHtml(row, i, removable, campaign)).join("")}${
+        state.refRepeat ? witnessRowHtml(rows.length, factorLabels.length, campaign) : ""
+      }</tbody>
     </table>
+    ${witnessOfferHtml()}
     ${campaign && state.referencePlace === null ? `<div class="sb-samples__comparison" role="group" aria-labelledby="comparison-title"></div>` : ""}
     ${
       state.variationOverflow
@@ -749,7 +855,7 @@ function renderVariationTable(rows, factorLabels) {
       replicates && rows.length > 1 && !evolvingInPlace()
         ? `<label class="sb-samples__repeats">
              <input type="checkbox" class="js-repeats"${state.repeats ? " checked" : ""}>
-             <span><strong>Répétitions exactes de la référence</strong> <span class="help">- ${rows.length} plaques, même structure, même procédé (repeats). Sinon, définissez une variation (à gauche) : une plaque par variante.</span></span>
+             <span><strong>Répétitions exactes de cette structure</strong> <span class="help">- ${rows.length} plaques, même structure, même procédé (repeats). Sinon, définissez une variation (à gauche) : une plaque par variante.</span></span>
            </label>`
         : ""
     }`;
@@ -784,6 +890,54 @@ function renderVariationTable(rows, factorLabels) {
   });
   const comparison = wrap.querySelector(".sb-samples__comparison");
   if (comparison) paintComparison(comparison);
+  const addWitness = wrap.querySelector(".js-add-witness");
+  if (addWitness) {
+    addWitness.addEventListener("click", () => {
+      state.refRepeat = { ...state.refRepeatOffer, entity: { sample_id: "", location: "", fdl: [] } };
+      redrawVariationTable(".js-remove-witness");
+    });
+  }
+  const removeWitness = wrap.querySelector(".js-remove-witness");
+  if (removeWitness) {
+    removeWitness.addEventListener("click", () => {
+      state.refRepeat = null;
+      redrawVariationTable(".js-add-witness");
+    });
+  }
+  const witnessPick = wrap.querySelector(".js-witness-pick");
+  if (witnessPick) {
+    witnessPick.addEventListener("change", () => {
+      const picked = witnessPick.selectedOptions[0];
+      const entity = state.refRepeat.entity;
+      state.refRepeat.entity = { ...entity, sample_id: witnessPick.value, fdl: withFdl(entity.fdl, picked && picked.dataset.fdl) };
+      redrawVariationTable(".js-witness-pick");
+    });
+  }
+  const witnessName = wrap.querySelector(".js-witness-name");
+  if (witnessName) {
+    witnessName.addEventListener("input", () => {
+      state.refRepeat.entity = { ...state.refRepeat.entity, sample_id: witnessName.value };
+      updateLaunchVariationsLabel();
+      updateSamplesHead(lastVariationTable.rows.length);
+    });
+  }
+  const witnessLocation = wrap.querySelector(".js-witness-location");
+  if (witnessLocation) {
+    witnessLocation.addEventListener("input", () => {
+      state.refRepeat.entity = { ...state.refRepeat.entity, location: witnessLocation.value };
+    });
+  }
+  const witnessFdl = wrap.querySelector(".js-witness-fdl");
+  if (witnessFdl) {
+    mountFdlField(witnessFdl, {
+      values: state.refRepeat.entity.fdl || [],
+      compact: true,
+      label: "FDL de la plaque témoin",
+      onChange: (fdl) => {
+        state.refRepeat.entity = { ...state.refRepeat.entity, fdl };
+      },
+    });
+  }
   const repeats = wrap.querySelector(".js-repeats");
   if (repeats) {
     repeats.addEventListener("change", () => {
@@ -832,7 +986,10 @@ function renderVariationTable(rows, factorLabels) {
 // L'en-tête du tableau : combien de places, combien déjà associées, et « Remplir dans l'ordre de
 // la FDL » dès que les FDL de l'étude proposent des plaques libres pour des places vides.
 function updateSamplesHead(rowCount) {
-  const named = state.variationEntities.filter((e) => (e.sample_id || "").trim()).length;
+  // la plaque témoin compte parmi les places
+  const witness = state.refRepeat ? 1 : 0;
+  const named = state.variationEntities.filter((e) => (e.sample_id || "").trim()).length + (witness && (state.refRepeat.entity.sample_id || "").trim() ? 1 : 0);
+  rowCount += witness;
   document.getElementById("samples-summary").textContent =
     `${rowCount} place${rowCount > 1 ? "s" : ""} · ${named} associée${named > 1 ? "s" : ""}`;
   document.getElementById("samples-fill-btn").hidden = state.originWafers || !freeFdlWafers().length || named >= rowCount;
@@ -908,12 +1065,12 @@ function updateLaunchVariationsLabel() {
   } else if (state.variationOverflow) {
     btn.textContent = "Trop de plaques pour ces variantes";
   } else if (state.campaignPlan) {
-    const n = state.variationEntities.length || 1;
+    const n = (state.variationEntities.length || 1) + (state.refRepeat ? 1 : 0);
     btn.textContent = `Lancer la campagne (${n} échantillon${n > 1 ? "s" : ""}${toAssociateLabel()})`;
   } else if (evolveExperienceId && !planId) {
     btn.textContent = "Enregistrer les modifications";
   } else {
-    const n = Math.max(1, state.variationEntities.length);
+    const n = Math.max(1, state.variationEntities.length) + (state.refRepeat ? 1 : 0);
     btn.textContent = n > 1 ? `Lancer le suivi (${n} plaques${toAssociateLabel()})` : `Lancer le suivi de cette expérience${toAssociateLabel() ? " (plaque à associer)" : ""}`;
   }
 }
@@ -936,8 +1093,9 @@ function needRepeatsChoice() {
 
 // « , 2 à associer » : les places encore sans plaque - elles s'associeront sur la fiche
 function toAssociateLabel() {
-  const rows = Math.max(1, state.variationEntities.length);
-  const named = state.variationEntities.filter((e) => (e.sample_id || "").trim()).length;
+  const witness = state.refRepeat ? [state.refRepeat.entity] : [];
+  const rows = Math.max(1, state.variationEntities.length) + witness.length;
+  const named = [...state.variationEntities, ...witness].filter((e) => (e.sample_id || "").trim()).length;
   const left = rows - named;
   return left <= 0 ? "" : rows === 1 ? " à associer" : `, ${left} à associer`;
 }
@@ -1040,6 +1198,7 @@ function showWizardStepVariations() {
   setStage("variations");
   renderVariationFactorsList();
   refreshVariationTable();
+  prepareRefRepeatOffer();
 }
 
 function showWizardStepIntention() {

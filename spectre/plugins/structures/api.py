@@ -9,8 +9,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from ..accounts.deps import current_user
-from . import campaigns, rendering, simulation
-from .schemas import CampaignPreviewRequest, ProcessInput
+from . import campaigns, composition, rendering, simulation
+from .schemas import CampaignPreviewRequest, CompositionRequest, ProcessInput
 
 router = APIRouter(prefix="/api", tags=["structures"], dependencies=[Depends(current_user)])
 
@@ -76,3 +76,12 @@ def preview_campaign(body: CampaignPreviewRequest) -> dict:
         "factor_labels": result.factor_labels,
         "factor_values": result.factor_values,
     }
+
+
+@router.post("/compositions")
+def compose_structure(body: CompositionRequest) -> dict:
+    """Combiner des études « au marché » (:mod:`.composition`) : les procédés des sources (la
+    principale d'abord - celui d'une plaque d'une étude, d'une version de référence) et, une fois
+    choisi, l'index de la source de chaque ligne ; en retour, les lignes à choisir (une par brique,
+    alignées par leur nom, et le substrat) et le procédé assemblé. Rien n'est stocké."""
+    return composition.compose(body.sources, body.choices)

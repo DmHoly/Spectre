@@ -41,7 +41,7 @@
         <div class="docs-nav__group">Faire évoluer</div>
         <a href="#prevoir">Prévoir la suite depuis l'arbre</a>
         <a href="#evoluer">Modifier une expérience ou explorer une nouvelle piste</a>
-        <a href="#gabarit">Nouvelle expérience à partir d'une structure existante</a>
+        <a href="#gabarit">D'où part une nouvelle étude</a>
 
         <div class="docs-nav__group">Campagnes</div>
         <a href="#campagnes">Plusieurs échantillons (DOE)</a>
@@ -225,8 +225,15 @@
         </section>
 
         <section id="gabarit">
-          <h2>Nouvelle expérience à partir d'une structure existante</h2>
-          <p>Le bouton « Nouvelle expérience » sur un projet propose d'abord une structure de référence, puis, sans référence :</p>
+          <h2>D'où part une nouvelle étude</h2>
+          <p>Le bouton « Nouvelle expérience » d'un µprojet pose d'abord une seule question : <strong>d'où part-elle ?</strong> Toujours la même idée, trois cas :</p>
+          <ul>
+            <li><strong>Depuis la référence</strong> — on choisit la structure de référence ; sa dernière version est proposée (une autre au choix).</li>
+            <li><strong>Depuis une plaque</strong> — on choisit une étude du µprojet, puis la plaque qu'on retient (la meilleure : le choix est le vôtre). La nouvelle étude reprend la structure de <em>cette</em> plaque - sa variante, pour une campagne -, sur de nouvelles plaques, et descend de l'étude dans l'arbre. La fiche le dit : « Depuis la plaque W07 de … ».</li>
+            <li><strong>Combiner des études</strong> — comme au marché : on choisit 2 à 4 sources (une plaque d'une étude, ou une version de référence), la première étant la <em>principale</em> (elle donne l'ordre des couches et la filiation). Un tableau liste alors chaque <strong>brique</strong> - alignées par leur nom : « Zone active », « EBL », « p-GaN »… - et une colonne par source : on coche d'où vient chacune, ou « non reprise ». « = principale » signale une brique identique. Une brique que la principale n'a pas se glisse sous celle qui la suit dans sa source. Le constructeur s'ouvre sur la structure assemblée, modifiable comme toute autre. La fiche dit d'où vient chaque brique, et l'arbre relie la nouvelle étude à ses autres études sources par un trait violet pointillé. Une structure sans brique nommée ne se combine pas : groupez d'abord ses étapes en briques dans le constructeur.</li>
+          </ul>
+          <p><strong>Inclure une répétition de la référence.</strong> Dans les trois cas, l'écran du split propose « + Inclure une répétition de la référence » : une plaque de plus, la <em>plaque témoin</em>, qui reçoit exactement la dernière version connue de la référence d'où vient l'étude (même si l'étude partait d'une version plus ancienne, ce que le bouton signale). Elle est hors des variantes, toujours en dernière ligne de la feuille de split (« Témoin »), ne se retire pas de la carte « Plaques », et on ne part pas d'elle (partez de la référence). Sans référence d'origine connue, le bouton n'est pas proposé.</p>
+          <p>« Autres départs », en bas de la même boîte, garde les départs sans référence ni étude :</p>
           <ul>
             <li><strong>Dessiner la structure</strong> — un constructeur vide ; ou <strong>coller une image</strong> ; ou <strong>sans structure</strong> — une description et le split en tableau (voir <a href="#sans-structure">Sans structure</a>).</li>
             <li><strong>Utiliser cette structure</strong> — reprend une structure de la bibliothèque comme point de départ, sans lien de filiation.</li>
@@ -271,7 +278,7 @@
 
         <section id="combiner">
           <h2>Combiner deux expériences</h2>
-          <p>Sous « Actions avancées » (repliées), « Combiner avec une autre expérience » crée une nouvelle version qui garde la structure de la fiche courante, mais relie l'historique et les preuves de l'expérience choisie. Les deux doivent être du même type (une expérience simple ne se combine pas avec une campagne).</p>
+          <p>Pour composer une structure brique par brique à partir de plusieurs études, utilisez plutôt « Nouvelle expérience » &gt; « Combiner des études » (voir <a href="#gabarit">D'où part une nouvelle étude</a>). Sous « Actions avancées » (repliées), « Combiner avec une autre expérience » crée une nouvelle version qui garde la structure de la fiche courante, mais relie l'historique et les preuves de l'expérience choisie. Les deux doivent être du même type (une expérience simple ne se combine pas avec une campagne).</p>
           <img class="docs-shot" src="/static/docs/img/19-combiner.png" alt="Formulaire de combinaison de deux expériences">
         </section>
 

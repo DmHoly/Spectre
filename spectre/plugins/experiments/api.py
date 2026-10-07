@@ -101,6 +101,13 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         # experiment_id, version_id, variant}), telle qu'enregistrée : son titre se lit chez elle,
         # pour qui est membre de son µprojet
         "wafer_origin": service.wafer_origin_of(version),
+        # partie de la meilleure plaque d'une étude, sur de nouvelles plaques ({experiment_id,
+        # version_id, place, sample_id, variant}) ; combinée au marché ({sources, bricks}) - None sinon
+        "start_wafer": service.start_wafer_of(version),
+        "composition": service.composition_of(version),
+        # la plaque témoin : la place qui répète exactement une version de référence ({reference,
+        # version, place}) - None sans elle
+        "reference_repeat": service.reference_repeat_of(version),
         "status": display_status(version, continued=continued_at is not None),
         "continued_at": continued_at.isoformat() if continued_at else None,
         "hold": hold_of(version),

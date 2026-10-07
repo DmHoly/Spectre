@@ -18,6 +18,11 @@ let evolveParent = null;
 // Une évolution d'une piste qui suit plusieurs plaques (des réplicats) : ses plaques, reprises telles
 // quelles (le champ unique de l'écran intention ne les remplace pas ; le tableau de l'écran 3 les liste).
 let evolveReplicates = null;
+// Sa plaque témoin (une répétition de la référence), hors des réplicats : renvoyée telle quelle à la fin
+// des places quand on modifie la piste sur place.
+let evolveWitness = null;
+// La fiche de l'étude dont viennent des plaques reprises (sa référence d'origine : la plaque témoin).
+let waferOriginDetail = null;
 
 async function loadExistingProcess() {
   if (!evolveExperienceId) return;
@@ -72,7 +77,12 @@ async function loadExistingProcess() {
     document.getElementById("entity-field-hint").textContent = currentEntity.sample_id
       ? "Reprise de la version précédente - modifiez-la si besoin."
       : "Aucune plaque n'est encore associée à cette piste - ici, ou plus tard sur la fiche depuis la FDL de l'étude (il en faut une pour conclure).";
-    const named = (detail.physical_tracking || []).filter((e) => e.sample_id);
+    const witnessPlace = detail.reference_repeat ? detail.reference_repeat.place : -1;
+    if (witnessPlace >= 0) {
+      const entry = detail.physical_tracking[witnessPlace] || {};
+      evolveWitness = { sample_id: entry.sample_id || null, location: entry.location || null, fdl: entry.fdl || [] };
+    }
+    const named = (detail.physical_tracking || []).filter((e, i) => e.sample_id && i !== witnessPlace);
     if (!detail.is_batch && named.length > 1) {
       evolveReplicates = named.map((e) => ({ sample_id: e.sample_id, location: e.location || "", fdl: e.fdl || [] }));
       const wrap = document.getElementById("entity-fields-wrap");
@@ -125,6 +135,10 @@ async function commitExperience(entities) {
   if (referenceOrigin && !evolveExperienceId) payload.reference_origin = referenceOrigin;
   // partie de plaques existantes (chargées) : l'étude d'où elles viennent
   if (waferOrigin && !evolveExperienceId) payload.wafer_origin = waferOrigin;
+  // partie de la meilleure plaque d'une étude (chargée) : elle en descend, sur de nouvelles plaques
+  if (startPlace && !evolveExperienceId) payload.from_version = { ...startPlace };
+  // combinée au marché (chargée) : ses sources et la source de chaque brique
+  if (compositionOrigin && !evolveExperienceId) payload.composition = compositionOrigin;
   if (launchedPlan) payload.plan_id = launchedPlan.id;
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
     const branchName = document.getElementById("new-branch-name").value.trim();
@@ -151,6 +165,14 @@ async function commitExperience(entities) {
   }
   // plusieurs plaques sans variation, déclarées comme répétitions exactes de la référence
   if (!state.campaignPlan && state.repeats && !(evolveExperienceId && !payload.from_version)) payload.repeats = true;
+  // la plaque témoin : une place de plus, à la fin - une nouvelle étude l'inclut au lancement ; une
+  // piste modifiée sur place garde la sienne (renvoyée à la fin de ses places, quand on en envoie)
+  if (state.refRepeat && !(evolveExperienceId && !payload.from_version)) {
+    payload.reference_repeat = { reference: state.refRepeat.reference, version: state.refRepeat.version };
+    payload.entities = [...entities, witnessEntity()];
+  } else if (evolveWitness && evolveExperienceId && !payload.from_version && entities.length) {
+    payload.entities = [...entities, evolveWitness];
+  }
   try {
     const result =
       evolveExperienceId && !payload.from_version
@@ -300,7 +322,90 @@ async function loadWaferOrigin() {
     link.target = "_blank";
     link.rel = "noopener";
     waferOrigin = { microproject, experiment_id: experimentId, version_id: detail.version_id }; // chargée : l'étude la retiendra
+    waferOriginDetail = detail;
     if (warning) showError(new Error(warning));
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// Une nouvelle étude partie de la meilleure plaque d'une étude du µprojet (study-start.js) : la
+// structure de sa variante (celle de l'étude pour une étude simple), ses étapes gardant leurs ids -
+// l'étude en descend. La plaque témoin d'une étude (une répétition de la référence) n'est pas un départ.
+async function loadStartPlace() {
+  if (!requestedStart) return;
+  setPageTitle("Nouvelle expérience (depuis une plaque)");
+  const { experimentId, versionId, place } = requestedStart;
+  try {
+    const detail = versionId ? await experimentsApi.getVersion(slug, experimentId, versionId) : await experimentsApi.get(slug, experimentId);
+    const tracking = detail.physical_tracking || [];
+    if (place >= Math.max(1, tracking.length)) throw new Error(`L'étude de départ n'a pas de plaque n° ${place + 1}.`);
+    if (detail.reference_repeat && detail.reference_repeat.place === place) {
+      throw new Error("Cette plaque est la répétition de la référence : partez plutôt de la référence elle-même.");
+    }
+    let data;
+    try {
+      data = await experimentsApi.process(slug, experimentId, detail.version_id, detail.is_batch ? place : undefined);
+    } catch (err) {
+      if (!(err.data && err.data.code === "no_variant_process")) throw err;
+      data = await experimentsApi.process(slug, experimentId, detail.version_id);
+      showError(new Error("Le procédé propre à la variante de cette plaque n'a pas été enregistré : c'est le procédé commun de la campagne qui est repris - vérifiez ses valeurs."));
+    }
+    setSubstrateFields(data.substrate);
+    state.steps = attachStepExtras(data.steps, data);
+    selectLastStep();
+    renderSteps();
+    const mark = (tracking[place] || {}).sample_id;
+    document.getElementById("based-on-note").hidden = false;
+    document.getElementById("based-on-label").textContent = "Depuis la plaque :";
+    document.getElementById("based-on-name").textContent = `${mark || `n° ${place + 1}`} · ${detail.title}`;
+    const link = document.getElementById("edit-structure-link");
+    link.textContent = "voir l'étude d'origine";
+    link.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(experimentId)}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    startDetail = detail;
+    startPlace = { experiment_id: experimentId, version_id: detail.version_id, place }; // chargée : l'étude la retiendra
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// Une nouvelle étude combinée au marché (study-start.js) : la combinaison est refaite à partir de ses
+// sources et des choix (le serveur assemble) ; les étapes de la source principale gardent leurs ids.
+async function loadComposition() {
+  if (!requestedComposition) return;
+  setPageTitle("Nouvelle expérience (combinaison)");
+  try {
+    const { sources, choices } = requestedComposition;
+    const result = await StudyStart.composeSources(slug, sources, choices);
+    const data = result.process;
+    setSubstrateFields(data.substrate);
+    state.steps = attachStepExtras(data.steps, data);
+    selectLastStep();
+    renderSteps();
+    document.getElementById("based-on-note").hidden = false;
+    document.getElementById("based-on-label").textContent = "Combinaison :";
+    // la principale, puis seulement ce qui vient d'ailleurs (ou n'est pas repris)
+    const elsewhere = result.rows
+      .filter((row) => row.chosen !== 0 && (row.chosen !== null || row.in_main))
+      .map((row) => (row.chosen === null ? `sans ${row.name}` : `${row.name} ← ${sources[row.chosen].label}`));
+    document.getElementById("based-on-name").textContent = `${sources[0].label}${elsewhere.length ? `, avec ${elsewhere.join(" · ")}` : ""}`;
+    const main = sources[0];
+    const link = document.getElementById("edit-structure-link");
+    link.hidden = main.kind !== "study";
+    if (main.kind === "study") {
+      link.textContent = "voir l'étude principale";
+      link.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(main.experiment_id)}`;
+      link.target = "_blank";
+      link.rel = "noopener";
+      compositionMainDetail = await experimentsApi.get(slug, main.experiment_id).catch(() => null);
+    }
+    compositionOrigin = {
+      sources: sources.map((s) => ({ ...s })),
+      bricks: result.rows.map((row) => ({ name: row.name, source: row.chosen })),
+    }; // chargée : l'étude la retiendra
+    if (result.warnings.length) showError(new Error(result.warnings.join(" ")));
   } catch (err) {
     showError(err);
   }

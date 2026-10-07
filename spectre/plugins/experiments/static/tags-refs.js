@@ -102,6 +102,39 @@
     }
   }
 
+  // Partie de la meilleure plaque d'une étude : « Depuis la plaque W07 de X » ; combinée au marché :
+  // d'où vient chaque brique (« EBL ← B · W03 »), les études sources en liens.
+  async function renderStartOrigin(ctx, box) {
+    const start = ctx.detail.start_wafer;
+    const composition = ctx.detail.composition;
+    const studyUrl = (id, version) =>
+      `/microprojets/${encodeURIComponent(ctx.microprojectSlug)}/experiences/${encodeURIComponent(id)}${version ? `?version=${encodeURIComponent(version)}` : ""}`;
+    if (start) {
+      const mark = start.sample_id ? `<span class="mono">${escapeHtml(start.sample_id)}</span>` : `n° ${start.place + 1}`;
+      const say = (title) => (box.innerHTML = `<span class="ref-origin">Depuis la plaque ${mark} de <a href="${studyUrl(start.experiment_id, start.version_id)}">${escapeHtml(title)}</a></span>`);
+      say(start.experiment_id);
+      const source = await experimentsApi.getVersion(ctx.microprojectSlug, start.experiment_id, start.version_id).catch(() => null);
+      if (source) say(source.title);
+      return;
+    }
+    if (!composition) return;
+    const label = (source) =>
+      source.kind === "study"
+        ? `<a href="${studyUrl(source.experiment_id, source.version_id)}">${escapeHtml(source.label)}</a>`
+        : pluginEnabled("references")
+          ? `<a href="/references/${encodeURIComponent(source.reference)}?version=${encodeURIComponent(source.version)}">${escapeHtml(source.label)}</a>`
+          : escapeHtml(source.label);
+    // la principale, puis ce qui vient d'ailleurs (le détail de chaque brique en infobulle)
+    const main = composition.sources[0];
+    const picks = composition.bricks
+      .filter((brick) => brick.source !== 0 && (brick.source === null || composition.sources[brick.source]))
+      .map((brick) => (brick.source === null ? `sans ${escapeHtml(brick.name)}` : `${escapeHtml(brick.name)} ← ${label(composition.sources[brick.source])}`));
+    const detail = composition.bricks
+      .map((brick) => `${brick.name} : ${brick.source === null ? "non reprise" : (composition.sources[brick.source] || {}).label || "?"}`)
+      .join("\n");
+    box.innerHTML = `<span class="ref-origin" title="${escapeHtml(`Combinée au marché - la source de chaque brique :\n${detail}`)}">Combinaison : ${label(main)}${picks.length ? `, avec ${picks.join(" · ")}` : ""}</span>`;
+  }
+
   function renderRefs(ctx) {
     const row = document.getElementById("refs-row");
     const evolutionUrl = `/microprojets/${encodeURIComponent(ctx.microprojectSlug)}/evolution`;
@@ -109,6 +142,7 @@
     row.innerHTML =
       `<span id="reference-origin"></span>` +
       `<span id="wafer-origin"></span>` +
+      `<span id="start-origin"></span>` +
       ctx.detail.ref_names.map((name) => `<span class="badge badge-role" title="Ref locale du µprojet">ref ${escapeHtml(name)}</span>`).join("") +
       (canPublish
         ? `<button id="publish-reference-btn" data-report-hide type="button" class="btn btn-line" style="padding:2px 10px;font-size:11.5px;" title="Partager cette structure avec tous les µprojets, comme nouvelle version d'une référence">Publier comme référence</button>`
@@ -116,6 +150,7 @@
       `<a class="btn btn-line" data-report-hide href="${evolutionUrl}" style="padding:2px 10px;font-size:11.5px;" title="Les pistes du µprojet, leurs versions, leurs refs et leurs versions de référence">Évolution des structures</a>`;
     renderOrigin(ctx, document.getElementById("reference-origin"));
     renderWaferOrigin(ctx, document.getElementById("wafer-origin"));
+    renderStartOrigin(ctx, document.getElementById("start-origin"));
     const publish = document.getElementById("publish-reference-btn");
     if (!publish) return;
     publish.addEventListener("click", () =>

@@ -247,18 +247,21 @@ document.getElementById("option-wafers").addEventListener("click", () => {
   openStartFromWafers();
 });
 
-// « Nouvelle expérience » : d'abord une référence (references/static/start-picker.js) ; partir sans
-// référence (dessin vierge, image, structure de la bibliothèque, étude existante) ou de plaques
-// existantes en second. Sans le plugin references, directement les départs sans référence.
+// « Nouvelle expérience » : d'abord « D'où part-elle ? » (experiments/static/study-start.js) - la
+// référence (references/static/start-picker.js), la meilleure plaque d'une étude, ou plusieurs études
+// combinées au marché ; les autres départs (dessin vierge, image, sans structure, bibliothèque,
+// plaques existantes) en second. Sans le plugin references, pas de départ depuis une référence.
 const referencesOn = pluginEnabled("references");
 function openStartFromReference(intro) {
   if (!referencesOn) return openNewExperienceDialog();
   ReferenceStartPicker.open({ microprojectSlug: slug, intro, onBlank: openNewExperienceDialog, onWafers: openStartFromWafers });
 }
-document.getElementById("back-to-reference").hidden = !referencesOn;
+function openStudyStart(intro) {
+  StudyStart.open({ microprojectSlug: slug, intro, onReference: () => openStartFromReference(), onOthers: openNewExperienceDialog });
+}
 document.getElementById("back-to-reference").addEventListener("click", () => {
   newExperienceDialog.close();
-  openStartFromReference();
+  openStudyStart();
 });
 
 async function init() {
@@ -303,7 +306,7 @@ async function init() {
 
     if (canEdit) {
       document.getElementById("new-structure-btn").style.display = "";
-      document.getElementById("new-structure-btn").addEventListener("click", () => openStartFromReference());
+      document.getElementById("new-structure-btn").addEventListener("click", () => openStudyStart());
     }
     if (canManage) {
       document.getElementById("add-member-form").style.display = "grid";
@@ -314,7 +317,7 @@ async function init() {
     return;
   }
 
-  document.getElementById("lineage-legend").innerHTML = lineageLegendHtml({ lot: true, wafers: true, planned: true, attached: true });
+  document.getElementById("lineage-legend").innerHTML = lineageLegendHtml({ lot: true, wafers: true, planned: true, attached: true, composed: true });
   const lineage = mountLineage(document.querySelector(".lineage-layout"), { microprojectSlug: slug, canEdit });
   if (canEdit) {
     // prévoir une expérience racine (nouvelles plaques), dans la carte de l'arbre
@@ -332,7 +335,7 @@ async function init() {
     params.delete("premiere-experience");
     const rest = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
-    if (canEdit) openStartFromReference(`µprojet « ${currentMicroprojectName} » créé. Lancez sa première expérience depuis une structure de référence - ou partez d'une structure vierge.`);
+    if (canEdit) openStudyStart(`µprojet « ${currentMicroprojectName} » créé. Lancez sa première expérience - depuis la structure de référence, le plus souvent.`);
   }
 }
 
