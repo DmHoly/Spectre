@@ -503,11 +503,144 @@ function renderVariationFactorsList() {
   });
 }
 
+// -- la plaque de référence d'une campagne ----------------------------------------------------
+//
+// Une case « Réf. » par ligne, une seule cochée au plus : la variante dont la plaque répète la
+// structure de référence. Cochée d'office sur celle qui garde, pour chaque paramètre varié, la
+// valeur de la structure de départ (state.steps, non variée) ; aucune si aucune ne la garde. Un
+// choix de l'utilisateur (cocher, décocher) tient jusqu'au prochain plan. Sans plaque de référence,
+// un bloc « Plaque de comparaison » sous le tableau cite, au choix, celle d'une étude proche - par
+// défaut l'étude dont on part.
+
+let referencePlanKey = null; // le plan pour lequel la plaque de référence a été choisie
+let comparisonDefaulted = false; // la plaque de comparaison a reçu sa valeur par défaut (une fois)
+let comparisonStudies = null; // les études du µprojet (promesse, une lecture par page)
+const comparisonWafers = new Map(); // par étude (et version), les lasermarks qu'elle suit (promesse)
+
+// La valeur qu'a, dans la structure de départ, le paramètre que fait varier `factor` - undefined
+// quand son étape n'existe plus.
+function factorBaseValue(factor) {
+  const stepIndex = factorStepIndex(factor);
+  if (stepIndex === -2) return undefined;
+  const param = variableParams(stepIndex).find((p) => p.field === factor.field);
+  return param ? param.current : undefined;
+}
+
+// Deux valeurs d'un paramètre égales : à 1e-6 près, ou écrites pareil (une valeur en échelle log
+// est arrondie à 3 chiffres significatifs : 3.16e17 pour 3.1623e17).
+function sameParamValue(a, b) {
+  if (a === undefined || a === null || b === undefined || b === null) return false;
+  if (typeof a === "number" && typeof b === "number") {
+    return Math.abs(a - b) <= 1e-6 * Math.max(Math.abs(a), Math.abs(b)) || formatParamValue(a) === formatParamValue(b);
+  }
+  return String(a) === String(b);
+}
+
+// La ligne dont chaque paramètre varié garde la valeur de la structure de départ, null sans elle.
+function autoReferencePlace(rows) {
+  const base = state.variationFactors.map(factorBaseValue);
+  const index = rows.findIndex((row) => row.factorValues && base.every((value, j) => sameParamValue(value, row.factorValues[j])));
+  return index === -1 ? null : index;
+}
+
+// Un nouveau plan : la plaque de référence redevient automatique ; sinon le choix fait tient.
+function settleReferencePlace(plan, rows) {
+  const key = JSON.stringify(plan.factors);
+  if (key !== referencePlanKey) {
+    referencePlanKey = key;
+    state.referenceTouched = false;
+  }
+  if (!state.referenceTouched) state.referencePlace = autoReferencePlace(rows);
+}
+
+// L'étude dont on part (évolution ou fourche, plaques reprises dans ce µprojet) : la comparaison par défaut.
+function defaultComparison() {
+  if (evolveExperienceId) return { experiment_id: evolveExperienceId, version_id: evolveParent ? evolveParent.version_id : null, sample_id: null };
+  if (waferOrigin && waferOrigin.microproject === slug) return { experiment_id: waferOrigin.experiment_id, version_id: waferOrigin.version_id || null, sample_id: null };
+  return null;
+}
+
+// Ce que le lancement envoie (comparison_reference) : null sans étude citée.
+function comparisonPayload() {
+  const cited = state.comparison;
+  if (!cited || !cited.experiment_id) return null;
+  return { experiment_id: cited.experiment_id, version_id: cited.version_id || null, sample_id: (cited.sample_id || "").trim() || null };
+}
+
+function loadComparisonStudies() {
+  if (!comparisonStudies) {
+    comparisonStudies = experimentsApi
+      .list(slug, { limit: 200 })
+      .then((page) => page.items || [])
+      .catch(() => []);
+  }
+  return comparisonStudies;
+}
+
+function loadComparisonWafers(cited) {
+  const key = `${cited.experiment_id}@${cited.version_id || ""}`;
+  if (!comparisonWafers.has(key)) {
+    const detail = cited.version_id ? experimentsApi.getVersion(slug, cited.experiment_id, cited.version_id) : experimentsApi.get(slug, cited.experiment_id);
+    comparisonWafers.set(
+      key,
+      detail.then((d) => (d.physical_tracking || []).map((e) => e.sample_id).filter(Boolean)).catch(() => [])
+    );
+  }
+  return comparisonWafers.get(key);
+}
+
+// Le bloc « Plaque de comparaison » (`el`, sous le tableau) : l'étude (celles du µprojet) et la
+// plaque (celles que suit cette étude, proposées, ou un lasermark tapé). Redessiné seul quand les
+// études ou les plaques arrivent - pas le tableau.
+async function paintComparison(el) {
+  if (!comparisonDefaulted) {
+    comparisonDefaulted = true;
+    state.comparison = defaultComparison();
+  }
+  const cited = state.comparison;
+  const draw = (studies, wafers) => {
+    const known = studies.some((s) => cited && s.id === cited.experiment_id);
+    const options = [
+      `<option value="">- aucune -</option>`,
+      ...(cited && !known ? [`<option value="${escapeHtml(cited.experiment_id)}" selected>${escapeHtml(cited.experiment_id)}</option>`] : []),
+      ...studies.map((s) => `<option value="${escapeHtml(s.id)}"${cited && s.id === cited.experiment_id ? " selected" : ""}>${escapeHtml(s.title)}</option>`),
+    ].join("");
+    el.innerHTML = `
+      <p class="sb-samples__comparison-title"><strong id="comparison-title">Plaque de comparaison</strong> <span class="help">- pas de référence dans le split : citez, si vous voulez, la plaque la plus proche d'une autre étude (facultatif).</span></p>
+      <div class="sb-samples__comparison-fields">
+        <label>Étude <select class="field js-comparison-study">${options}</select></label>
+        <label>Plaque <input class="field mono js-comparison-wafer" list="comparison-wafers" value="${escapeHtml((cited && cited.sample_id) || "")}" placeholder="${wafers.length ? "lasermark - choisir ou taper" : "lasermark (optionnel)"}"${cited ? "" : " disabled"} autocomplete="off">
+          <datalist id="comparison-wafers">${wafers.map((w) => `<option value="${escapeHtml(w)}"></option>`).join("")}</datalist></label>
+      </div>`;
+    el.querySelector(".js-comparison-study").addEventListener("change", (event) => {
+      const id = event.target.value;
+      const fallback = defaultComparison();
+      // la version de départ ne vaut que pour l'étude dont on part ; une autre est citée à sa pointe
+      state.comparison = id ? { experiment_id: id, version_id: fallback && fallback.experiment_id === id ? fallback.version_id : null, sample_id: null } : null;
+      paintComparison(el).then(() => {
+        const select = el.querySelector(".js-comparison-study");
+        if (select) select.focus();
+      });
+    });
+    el.querySelector(".js-comparison-wafer").addEventListener("input", (event) => {
+      if (state.comparison) state.comparison = { ...state.comparison, sample_id: event.target.value };
+    });
+  };
+  draw([], []);
+  const [studies, wafers] = await Promise.all([loadComparisonStudies(), cited ? loadComparisonWafers(cited) : Promise.resolve([])]);
+  // entre-temps, une autre étude choisie ou le bloc retiré (une case cochée) : rien à redessiner
+  if (state.comparison !== cited || !el.isConnected) return;
+  // ni une saisie en cours coupée
+  if (document.activeElement && el.contains(document.activeElement) && document.activeElement.classList.contains("js-comparison-wafer")) return;
+  draw(studies, wafers);
+}
+
 // `removable` : sans variation, chaque ligne est un réplicat qu'on peut retirer (s'il en reste un
-// autre). Partie de plaques existantes (`state.originWafers`), une ligne garde son lasermark. Sinon,
+// autre). `campaign` : une case « Réf. », la plaque de référence. Partie de plaques existantes
+// (`state.originWafers`), une ligne garde son lasermark. Sinon,
 // chaque ligne est une place associée à une vraie plaque - choisie parmi celles des FDL de l'étude
 // quand la base les connaît (menu déroulant, fdl.js), tapée sinon - ou laissée « à associer ».
-function variationRowHtml(row, index, removable) {
+function variationRowHtml(row, index, removable, campaign) {
   const entity = state.variationEntities[index] || { sample_id: "", location: "" };
   const cells = row.factorValues.map((v) => `<td class="mono sb-samples-table__num">${escapeHtml(formatParamValue(v))}</td>`).join("");
   const choices = fdlWaferChoices(state.fdlContents);
@@ -526,9 +659,18 @@ function variationRowHtml(row, index, removable) {
          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
        </button>`
     : "";
+  const isReference = campaign && state.referencePlace === index;
+  const reference = campaign
+    ? `<td class="sb-samples-table__ref">
+         <input type="checkbox" class="js-reference" data-index="${index}"${isReference ? " checked" : ""} aria-label="Plaque de référence, ligne ${index + 1}">${
+           isReference ? ` <span class="badge badge-role">RÉF</span>` : ""
+         }
+       </td>`
+    : "";
   return `
-    <tr>
+    <tr${isReference ? ` class="is-reference"` : ""}>
       <td class="sb-samples-table__idx mono">${index + 1}</td>
+      ${reference}
       <td><div class="variation-thumb">${row.svg}</div></td>
       ${cells}
       <td>${name}</td>
@@ -552,6 +694,8 @@ function renderVariationTable(rows, factorLabels) {
   }
   const replicates = state.variationFactors.length === 0;
   const removable = replicates && rows.length > 1;
+  const campaign = !replicates;
+  if (state.referencePlace !== null && state.referencePlace >= rows.length) state.referencePlace = null;
   const headerFactors = factorLabels
     .map((label, j) => {
       const factor = state.variationFactors[j];
@@ -563,6 +707,11 @@ function renderVariationTable(rows, factorLabels) {
       <thead>
         <tr>
           <th>#</th>
+          ${
+            campaign
+              ? `<th title="La plaque de référence : la variante qui répète la structure de départ (cochée d'office quand une variante en garde toutes les valeurs). Décochez-la pour un split sans référence.">Réf.</th>`
+              : ""
+          }
           <th>Aperçu</th>
           ${headerFactors}
           <th>Plaque</th>
@@ -571,8 +720,9 @@ function renderVariationTable(rows, factorLabels) {
           ${removable ? `<th><span class="sb-visually-hidden">Retirer</span></th>` : ""}
         </tr>
       </thead>
-      <tbody>${rows.map((row, i) => variationRowHtml(row, i, removable)).join("")}</tbody>
+      <tbody>${rows.map((row, i) => variationRowHtml(row, i, removable, campaign)).join("")}</tbody>
     </table>
+    ${campaign && state.referencePlace === null ? `<div class="sb-samples__comparison" role="group" aria-labelledby="comparison-title"></div>` : ""}
     ${
       state.variationOverflow
         ? `<p class="sb-samples__notice" role="alert">${state.variationEntities.filter((e) => e.sample_id).length} plaques reprises pour ${rows.length} variante${rows.length > 1 ? "s" : ""} : une campagne suit une plaque par variante. Ajoutez des valeurs, ou retirez la variation pour suivre les plaques comme réplicats.</p>`
@@ -623,6 +773,17 @@ function renderVariationTable(rows, factorLabels) {
       if (again) again.focus();
     });
   }
+  // une seule plaque de référence au plus : en cocher une décoche l'autre ; décocher, aucune
+  wrap.querySelectorAll(".js-reference").forEach((box) => {
+    box.addEventListener("change", () => {
+      const i = parseInt(box.dataset.index, 10);
+      state.referencePlace = box.checked ? i : null;
+      state.referenceTouched = true;
+      redrawVariationTable(`.js-reference[data-index="${i}"]`);
+    });
+  });
+  const comparison = wrap.querySelector(".sb-samples__comparison");
+  if (comparison) paintComparison(comparison);
   const repeats = wrap.querySelector(".js-repeats");
   if (repeats) {
     repeats.addEventListener("change", () => {
@@ -816,6 +977,7 @@ async function refreshVariationTable() {
     if (seq !== variationTableSeq) return;
     state.campaignPlan = plan;
     const rows = result.svgs.map((svg, i) => ({ svg, factorValues: result.factor_values[i] }));
+    settleReferencePlace(plan, rows);
     renderVariationTable(rows, result.factor_labels);
     updateLaunchVariationsLabel();
   } catch (err) {

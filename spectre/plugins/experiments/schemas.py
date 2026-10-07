@@ -54,6 +54,19 @@ class WaferOrigin(BaseModel):
     version_id: str | None = None
 
 
+class ComparisonReference(BaseModel):
+    """La plaque de comparaison d'une campagne sans plaque de référence dans son split : l'étude du
+    µprojet la plus proche (la piste ``experiment_id``, à sa version ``version_id`` si donnée) et,
+    au choix, la plaque de cette étude qui sert de comparaison (son lasermark). Seulement cité :
+    rien n'est vérifié, l'étude a pu changer depuis."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    experiment_id: str = Field(..., min_length=1, max_length=200)
+    version_id: str | None = Field(None, max_length=200)
+    sample_id: str | None = Field(None, max_length=120)
+
+
 # La forme d'une origine de référence (plugin references, qui dépend d'experiments et non l'inverse) :
 # le slug d'une référence et le numéro MAJEUR.MINEUR d'une de ses versions. experiments n'en vérifie
 # que la forme ; une origine inconnue se lit telle quelle, sans erreur.
@@ -101,6 +114,11 @@ class CreateExperimentRequest(_Intention):
     # several wafers of a simple study (no variation) declared as exact repeats of the reference
     # structure - stored as Experiment.metadata["repeats"], shown on the split sheet
     repeats: bool = False
+    # for a campaign, the variant (its index) whose wafer is the reference - a repeat of the
+    # reference structure - or None when the split has none; then, optionally, the wafer of a nearby
+    # study it is compared with. Ignored for anything but a campaign
+    reference_place: int | None = None
+    comparison_reference: ComparisonReference | None = None
     from_version: FromVersion | None = None
     wafer_origin: WaferOrigin | None = None
     merge_of: list[MergeSource] | None = Field(None, min_length=2, max_length=2)

@@ -71,6 +71,14 @@ const state = {
   campaignPlan: null,
   waferCount: null, // le nombre de plaques d'une étude sans variation, à donner avant de lancer (null : pas encore dit)
   repeats: false, // plusieurs plaques sans variation : déclarées comme répétitions exactes de la référence
+  // une campagne : la ligne (index de variante) de la plaque de référence, null sans référence dans
+  // le split - cochée d'office sur la variante qui garde les valeurs de la structure de départ, tant
+  // que referenceTouched est faux (un choix de l'utilisateur tient jusqu'au prochain plan)
+  referencePlace: null,
+  referenceTouched: false,
+  // sans plaque de référence : celle d'une étude proche, citée pour comparaison - {experiment_id,
+  // version_id, sample_id} (null : rien de cité ; experiment_id par défaut, l'étude dont on part)
+  comparison: null,
   variationOverflow: 0, // plaques reprises en trop pour les variantes du plan (le lancement attend qu'on corrige)
   variationFactors: [], // [{step_id, field, field_label, values, scale}] - the DOE plan being built on écran 2
   variationEntities: [], // [{sample_id, location, fdl}] - one per row of the écran 3 table (a place), positional - sample_id blank until associated

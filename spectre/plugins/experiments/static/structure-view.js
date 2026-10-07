@@ -8,7 +8,7 @@
 
 (() => {
   let ctx = null;
-  let variantIndex = 0; // la variante affichée par le carrousel d'une campagne (0 = la référence)
+  let variantIndex = 0; // la variante affichée par le carrousel d'une campagne (0 = la première)
 
   // --- les étiquettes de couches : affichées par défaut, masquées au choix ---------------------------
 
@@ -272,8 +272,27 @@
   // --- la feuille de split : une ligne par plaque, avec ce qu'on en sait ------------------------------
 
   // Une campagne : une place par variante, ses paramètres variés en colonnes (les campagnes d'avant le
-  // multi-paramètre n'ont pas factor_labels : une colonne « Paramètre »). Une étude simple : ses
-  // réplicats, la même structure - « répétition » quand ils ont été déclarés comme tels au lancement.
+  // multi-paramètre n'ont pas factor_labels : une colonne « Paramètre »), la plaque de référence
+  // choisie au lancement (reference_place ; sans elle, la plaque d'une étude proche citée pour
+  // comparaison, dans la note). Une étude simple : ses réplicats, la même structure - « répétition »
+  // quand ils ont été déclarés comme tels au lancement.
+  // Une campagne sans plaque de référence dans son split : la plaque citée pour comparaison (lasermark
+  // et étude, en liens - le titre de l'étude lu chez elle, son id faute de mieux), sinon le dire. Du
+  // HTML échappé ; rien quand le split a sa référence.
+  async function comparisonNote(detail) {
+    if (detail.reference_place !== null && detail.reference_place !== undefined) return "";
+    const cited = detail.comparison_reference;
+    if (!cited) return "pas de référence dans le split";
+    const study = await experimentsApi.get(ctx.microprojectSlug, cited.experiment_id).catch(() => null);
+    const studyUrl = `/microprojets/${encodeURIComponent(ctx.microprojectSlug)}/experiences/${encodeURIComponent(cited.experiment_id)}${
+      cited.version_id ? `?version=${encodeURIComponent(cited.version_id)}` : ""
+    }`;
+    const studyLink = `<a href="${studyUrl}" title="L'étude de la plaque de comparaison">${escapeHtml(study ? study.title : cited.experiment_id)}</a>`;
+    return cited.sample_id
+      ? `comparaison : <a class="mono" href="${plateUrl(cited.sample_id)}" title="Le parcours de cette plaque">${escapeHtml(cited.sample_id)}</a> (${studyLink})`
+      : `comparaison : ${studyLink}`;
+  }
+
   async function renderSplit(detail) {
     const tracking = detail.physical_tracking && detail.physical_tracking.length ? detail.physical_tracking : [{}];
     let factorLabels = [];
@@ -285,9 +304,9 @@
       const hasFactors = variation && variation.factor_labels && variation.factor_labels.length > 0;
       factorLabels = hasFactors ? variation.factor_labels : ["Paramètre"];
       factorScales = (variation && variation.factor_scales) || [];
-      // la première variante est la référence, comme dans le carrousel
+      // la plaque de référence choisie au lancement, marquée « RÉF » aussi dans le carrousel
       rows = labels.map((label, i) => ({
-        variant: i === 0 ? "Référence" : `Variante ${i + 1}`,
+        variant: i === detail.reference_place ? "Référence" : `Variante ${i + 1}`,
         values: hasFactors && variation.factor_values[i] ? variation.factor_values[i].map(formatParamValue) : [label],
         entry: tracking[i] || {},
       }));
@@ -302,12 +321,13 @@
 
     const named = rows.filter((r) => r.entry.sample_id).length;
     const studyFdl = detail.fdl || [];
-    document.getElementById("split-note").textContent = [
+    document.getElementById("split-note").innerHTML = [
       `${rows.length} plaque${rows.length > 1 ? "s" : ""}`,
       named === rows.length ? "toutes associées" : `${rows.length - named} à associer`,
-      detail.is_batch ? "" : detail.repeats && rows.length > 1 ? "répétitions exactes de la référence" : "",
+      detail.is_batch ? await comparisonNote(detail) : detail.repeats && rows.length > 1 ? "répétitions exactes de la référence" : "",
     ]
       .filter(Boolean)
+      .map((part, i) => (i < 2 ? escapeHtml(part) : part))
       .join(" · ");
 
     const plateCell = (entry) =>

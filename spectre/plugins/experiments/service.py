@@ -70,6 +70,14 @@ REFERENCE_ORIGIN_KEY = "reference_origin"
 WAFER_ORIGIN_KEY = "wafer_origin"
 # les plaques d'une étude simple déclarées comme répétitions exactes de la structure de référence
 REPEATS_KEY = "repeats"
+# La plaque de référence d'une campagne : la place (l'index de la variante, dans physical_tracking)
+# qui répète la structure de référence, ou None quand le split n'en a pas. Une campagne d'avant ce
+# choix n'a pas la clé : sa première variante était la référence (reference_place_of).
+REFERENCE_PLACE_KEY = "reference_place"
+# Sans plaque de référence dans le split, celle à laquelle on se compare : ``{experiment_id,
+# version_id, sample_id}`` - une étude du µprojet (celle dont la campagne part, par défaut dans le
+# constructeur) et, au choix, une de ses plaques. Facultative.
+COMPARISON_KEY = "comparison_reference"
 
 # Le cahier de données d'une étude (plugin notebook, qui dépend d'experiments et non l'inverse) : ses
 # entrées sont rangées dans les métadonnées, sous NOTEBOOK_KEY, chacune avec son ``id``. Les données
@@ -663,6 +671,7 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
         reader = get_repository(origin.microproject if origin else slug)
         start = (reader, _source_of(reader, start_ref))
     prepared = _PreparedStructure(slug, body.structure, start)
+    _check_reference_place(body, prepared)
     with writing(slug) as repo:
         source = _source_of(repo, body.from_version) if body.from_version else None
         found = elsewhere or (resolve_wafer_origin(repo, origin, entities) if origin else None)
@@ -698,6 +707,7 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
             builder.metadata[REPEATS_KEY] = True
         else:
             builder.metadata.pop(REPEATS_KEY, None)
+        _set_reference_place(builder.metadata, body, prepared)
         set_study_fdl(builder.metadata, body.fdl)
         apply_context(builder.metadata, body.context)
         if found is not None:
@@ -714,6 +724,57 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
         if len(repo) == 1:
             refs.create_ref(repo, experiment.id)
         return experiment
+
+
+def _check_reference_place(body: CreateExperimentRequest, prepared: _PreparedStructure) -> None:
+    """La plaque de référence d'une campagne doit être une de ses variantes (``reference_place_out_of_range``)."""
+    place = body.reference_place
+    if prepared.kind == "campaign" and place is not None and not 0 <= place < prepared.campaign_size:
+        raise InvalidInput(
+            f"La plaque de référence n° {place + 1} n'existe pas : la campagne a {prepared.campaign_size} variante(s).",
+            code="reference_place_out_of_range",
+        )
+
+
+def _set_reference_place(metadata: dict[str, Any], body: CreateExperimentRequest, prepared: _PreparedStructure) -> None:
+    """La plaque de référence d'une campagne (:data:`REFERENCE_PLACE_KEY`), telle que la requête la
+    donne - ``None`` gardé tel quel : le split n'en a pas, avec alors, au choix, la plaque de
+    comparaison (:data:`COMPARISON_KEY`). Une requête qui ne dit rien laisse la clé absente (la
+    première variante, comme avant ce choix) ; rien de tout cela hors d'une campagne."""
+    metadata.pop(REFERENCE_PLACE_KEY, None)
+    metadata.pop(COMPARISON_KEY, None)
+    if prepared.kind != "campaign" or "reference_place" not in body.model_fields_set:
+        return
+    metadata[REFERENCE_PLACE_KEY] = body.reference_place
+    if body.reference_place is None and body.comparison_reference is not None:
+        metadata[COMPARISON_KEY] = body.comparison_reference.model_dump()
+
+
+def reference_place_of(version: follow.Experiment) -> int | None:
+    """La place de la plaque de référence d'une campagne : celle enregistrée (``None`` : pas de
+    référence dans le split), la première pour une campagne d'avant ce choix ; ``None`` pour tout
+    ce qui n'est pas une campagne."""
+    if version.structure_type != kinds.ProcessLot.registry_key():
+        return None
+    if REFERENCE_PLACE_KEY not in version.metadata:
+        return 0
+    place = version.metadata[REFERENCE_PLACE_KEY]
+    return place if isinstance(place, int) and not isinstance(place, bool) else None
+
+
+def comparison_reference_of(version: follow.Experiment) -> dict[str, Any] | None:
+    """La plaque de comparaison d'une campagne sans référence dans son split (``{experiment_id,
+    version_id, sample_id}``), telle qu'enregistrée - ``None`` sinon."""
+    if reference_place_of(version) is not None:
+        return None
+    cited = version.metadata.get(COMPARISON_KEY)
+    if not (isinstance(cited, dict) and isinstance(cited.get("experiment_id"), str)):
+        return None
+    return {
+        "experiment_id": cited["experiment_id"],
+        "version_id": cited.get("version_id") if isinstance(cited.get("version_id"), str) else None,
+        "sample_id": cited.get("sample_id") if isinstance(cited.get("sample_id"), str) else None,
+    }
 
 
 def _set_reference_origin(metadata: dict[str, Any], body: CreateExperimentRequest, source: follow.Experiment | None) -> None:
@@ -856,6 +917,8 @@ def combine(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.
         )
         structure = _metadata_with_step_ids(repo, a)
         builder.metadata = {key: structure[key] for key in _STRUCTURE_METADATA_KEYS if key in structure}
+        # deux campagnes : la plaque de référence (ou de comparaison) de la première, avec sa structure
+        builder.metadata.update({key: copy.deepcopy(a.metadata[key]) for key in (REFERENCE_PLACE_KEY, COMPARISON_KEY) if key in a.metadata})
         if body.objectives:
             _set_objectives(builder, body.objectives)
         elif "objective_verification" in a.metadata:
@@ -903,6 +966,10 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
         builder.form_answers = dict(body.form_answers)
         builder.structure = prepared.structure
         builder.steps = prepared.steps
+        # une évolution n'est jamais une campagne (refusée plus haut) : plus de plaque de référence
+        # parmi des variantes
+        builder.metadata.pop(REFERENCE_PLACE_KEY, None)
+        builder.metadata.pop(COMPARISON_KEY, None)
         if prepared.kind == "images":
             # les mêmes images (leurs annotations n'y comptent pas) : la même structure
             same = kinds.is_image_structure(parent.structure_type) and bool(parent.metadata.get(kinds.IMAGE_REVISION_KEY)) and (

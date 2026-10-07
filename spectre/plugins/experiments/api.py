@@ -123,6 +123,11 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         "fdl": study_fdl(version.metadata),
         # ses plaques sont des répétitions exactes de la référence (déclarées au lancement)
         "repeats": bool(version.metadata.get(service.REPEATS_KEY)),
+        # une campagne : la place de sa plaque de référence (None : pas de référence dans le split -
+        # la première pour une campagne d'avant ce choix ; None hors campagne) et, sans elle, la
+        # plaque d'une étude proche à laquelle on se compare ({experiment_id, version_id, sample_id})
+        "reference_place": service.reference_place_of(version),
+        "comparison_reference": service.comparison_reference_of(version),
         "form_answers": dict(version.form_answers),
     }
 
@@ -530,6 +535,8 @@ def experiment_variants(
     payload["factor_scales"] = experiment.metadata.get("campaign_factor_scales", [])
     payload["labels"] = experiment.metadata.get("campaign_labels") or [f"#{i + 1}" for i in range(variation.entity_count)]
     payload["physical_tracking"] = experiment.metadata.get("physical_tracking", [])
+    # la variante de la plaque de référence (« RÉF » du carrousel), None sans référence dans le split
+    payload["reference_index"] = service.reference_place_of(experiment)
     return payload
 
 

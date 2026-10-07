@@ -33,9 +33,10 @@ function variantCaption(variation, i) {
   return labels[i] != null ? String(labels[i]) : `#${i + 1}`;
 }
 
-// Carrousel des structures d'une campagne (réponse de /matrice : `svgs`, `labels`, facteurs) : la
-// référence (1re variante, marquée « RÉF » comme partout ailleurs - voir
-// structures.render_structure_svg) puis chaque variante, avec la valeur de ses paramètres variés.
+// Carrousel des structures d'une campagne (réponse de /variants : `svgs`, `labels`, facteurs) : chaque
+// variante, avec la valeur de ses paramètres variés, celle de la plaque de référence marquée « RÉF »
+// (`reference_index`, choisie au lancement ; null : pas de référence dans le split - absent, la
+// première, comme avant ce choix).
 // Flèches, points, et ← → au clavier une fois le carrousel focalisé. `onChange(index)` suit le
 // défilement. Partagé par la fiche d'expérience, l'atlas et la vue d'ensemble d'un µprojet.
 function mountStructureCarousel(container, variation, { onChange } = {}) {
@@ -45,11 +46,12 @@ function mountStructureCarousel(container, variation, { onChange } = {}) {
     return null;
   }
   let index = 0;
+  const referenceIndex = variation.reference_index === undefined ? 0 : variation.reference_index;
   function paint() {
     const single = svgs.length < 2;
     container.innerHTML = `
       <div class="atlas-carousel" tabindex="0" role="group" aria-roledescription="carrousel" aria-label="Structures des ${svgs.length} variantes">
-        <div class="atlas-carousel__badge">${index === 0 ? `<span class="badge badge-role">RÉF</span>` : ""}<span>${escapeHtml(variantCaption(variation, index))}</span></div>
+        <div class="atlas-carousel__badge">${index === referenceIndex ? `<span class="badge badge-role">RÉF</span>` : ""}<span>${escapeHtml(variantCaption(variation, index))}</span></div>
         <div class="atlas-carousel__stage">${svgs[index]}</div>
         <div class="atlas-carousel__nav">
           <button type="button" class="btn btn-line" data-dir="-1" aria-label="Variante précédente" ${single ? "disabled" : ""}>&larr;</button>

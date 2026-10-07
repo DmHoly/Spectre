@@ -426,6 +426,17 @@ déplacement de classe ne doit jamais la changer.
   garde la place d'une ligne vidée au milieu (les liens d'entité désignent une plaque par sa
   position) et retire les vides de fin. Une évolution en images garde les réplicats de la version
   précédente (la plaque de la première variante pour une campagne).
+- **La plaque de référence d'une campagne** (`REFERENCE_PLACE_KEY`, décision du 2026-10-07) : la
+  place (index de variante) dont la plaque répète la structure de référence, donnée au lancement
+  (`reference_place`, 422 `reference_place_out_of_range` hors des variantes) ; `null` gardé tel quel :
+  le split n'a pas de référence, et cite alors, au choix, la plaque d'une étude proche
+  (`comparison_reference: {experiment_id, version_id?, sample_id?}`, `COMPARISON_KEY`, seulement
+  citée, rien n'est vérifié). Une requête sans `reference_place` laisse la clé absente : la première
+  variante, comme pour les campagnes d'avant ce choix (`service.reference_place_of`). Rien hors d'une
+  campagne (une évolution, jamais une campagne, retire les deux clés) ; une combinaison reprend celles
+  de sa première étude. Le détail rend `reference_place` (`null` hors campagne) et
+  `comparison_reference`, `GET .../variants` `reference_index` (le « RÉF » du carrousel). Le
+  constructeur coche d'office la variante qui garde les valeurs de la structure de départ.
 - **Partir de plaques existantes** (`POST .../experiments` avec `wafer_origin: {microproject,
   experiment_id, version_id?}`, `service.resolve_wafer_origin`) : l'étude qui suit les plaques (sa pointe
   par défaut), dans ce µprojet ou dans un autre dont l'appelant est membre (404 µprojet inconnu, 403
@@ -780,7 +791,7 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `GET /api/microprojets/{slug}/experiences?status=&offset=&limit=` | `GET /api/microprojects/{mp}/experiments?status=all\|running\|concluded&q=&offset=&limit=` → `{items, total}` (`q` : titre, intention, étiquettes, nom de piste ; chaque élément : `id` = la piste, `version_id` = sa pointe) |
 | `POST …/experiences` | `POST /api/microprojects/{mp}/experiments` `{…, structure: {kind: "process", …}, reference_origin?: {reference, version}, wafer_origin?: {microproject, experiment_id, version_id?}}` → 201 (`reference_origin` : la version de référence dont part l'étude, § 4 ; sa forme seule est vérifiée, 422 sinon ; `wafer_origin` : partir de plaques existantes, les `entities`, § 4) |
 | `POST …/experiences/image` | idem, avec `structure: {kind: "images", images: [...]}` |
-| `POST …/experiences/campagne` | idem, avec `structure: {kind: "campaign", …, plan}` ; `from_version` pour partir d'une version existante ; les facteurs du plan désignent leur étape par `step_id`, comme l'aperçu. Les étapes envoyées (lancement, évolution, fourche) peuvent porter leur `id` |
+| `POST …/experiences/campagne` | idem, avec `structure: {kind: "campaign", …, plan}` ; `from_version` pour partir d'une version existante ; les facteurs du plan désignent leur étape par `step_id`, comme l'aperçu. `reference_place` (index de variante, `null` : pas de référence dans le split) et `comparison_reference` (§ 4). Les étapes envoyées (lancement, évolution, fourche) peuvent porter leur `id` |
 | `GET …/experiences/{ref}` | `GET /api/microprojects/{mp}/experiments/{exp}` (dernière version, `ETag`) ; le détail porte `id` (la piste), `version_id`, `is_tip`, `children` `[{experiment_id, version_id, title, is_tip}]`, `continued_at` (première suite structurelle), `reference_origin` (`{reference, version}` ou `null`) et `wafer_origin` (`{microproject, experiment_id, version_id, variant}` ou `null`) |
 | `GET …/experiences/{ref}/timeline` | `GET …/experiments/{exp}/versions` → tableau, de la première version à la pointe : `{version_id, experiment_id, title, intent, created_at, author, is_tip, version, change_level}` (la frise des structures : `change_level != "none"`) |
 | *(nouveau)* | `GET …/experiments/{exp}/versions/{version_id}` (une version de l'histoire de la piste, `ETag`) |

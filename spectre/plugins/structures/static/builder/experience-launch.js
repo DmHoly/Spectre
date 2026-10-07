@@ -139,6 +139,10 @@ async function commitExperience(entities) {
   if (state.campaignPlan) {
     structure.kind = "campaign";
     structure.plan = state.campaignPlan;
+    // la plaque de référence (index de variante, null : pas de référence dans le split) et, sans
+    // elle, la plaque d'une étude proche citée pour comparaison (variations.js)
+    payload.reference_place = state.referencePlace;
+    payload.comparison_reference = state.referencePlace === null ? comparisonPayload() : null;
   }
   // Une nouvelle piste partie de la version de départ (une fourche, ou une campagne) garde le lien
   // de filiation ; continuer la piste envoie la version affichée (If-Match).
