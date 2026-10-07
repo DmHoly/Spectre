@@ -198,24 +198,31 @@ class PlanRequest(BaseModel):
     """An experiment planned from the microproject's tree (see :mod:`.plans`): a title, an intent and
     what it continues - some of ``parent``'s wafers (``same_wafers``, their lasermarks in ``wafers``)
     or new ones (``new_wafers``, the estimated ``wafer_count``) ; without ``parent``, a new root (new
-    wafers only). No structure, no split: those come when it is launched."""
+    wafers only). ``parent_plan_id`` instead of ``parent``: it follows another planned experiment,
+    what that one will give once launched (its wafers, if it names them). No structure, no split:
+    those come when it is launched."""
 
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(..., max_length=200)
     intent: str = Field("", max_length=4000)
     parent: FromVersion | None = None
+    parent_plan_id: int | None = None
     mode: Literal["same_wafers", "new_wafers"] = "new_wafers"
     wafers: list[str] = Field([], max_length=MAX_TRACKED_ENTITIES)
     wafer_count: int | None = Field(None, ge=1, le=MAX_TRACKED_ENTITIES)
 
 
 class PlanUpdate(BaseModel):
-    """What changes on a planned experiment - its starting version stays."""
+    """What changes on a planned experiment. Its starting point stays unless ``parent`` or
+    ``parent_plan_id`` is given - re-attaching it (a detached one, typically) under a version or
+    another planned experiment ; both given as ``null``, it becomes a root."""
 
     model_config = ConfigDict(extra="forbid")
 
     title: str | None = Field(None, max_length=200)
+    parent: FromVersion | None = None
+    parent_plan_id: int | None = None
     intent: str | None = Field(None, max_length=4000)
     mode: Literal["same_wafers", "new_wafers"] | None = None
     wafers: list[str] | None = Field(None, max_length=MAX_TRACKED_ENTITIES)

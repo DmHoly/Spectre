@@ -199,7 +199,7 @@ def create_experiment(
             raise Forbidden("Vous n'avez pas accès au µprojet de ces plaques.")
     experiment = service.create(microproject.slug, body, author=user.name)
     if body.plan_id is not None:
-        plans.consume_plan(microproject.id, body.plan_id)
+        plans.consume_plan(microproject.id, body.plan_id, experiment_id=experiment.branch, version_id=experiment.id)
     created(response, _experiment_url(microproject.slug, experiment.branch))
     return _respond(response, microproject.slug, experiment.branch, experiment.id)
 
@@ -212,7 +212,9 @@ def microproject_lineage(microproject: Microproject = Depends(require_role("view
     place. Each node is a version (``version_id``) of a line of study (``experiment_id``).
 
     ``plans`` : the planned experiments (:mod:`.plans`), each with ``parent_node`` - the node it
-    hangs from (``None`` for a root, or when its starting version is gone).
+    hangs from (``None`` for a root, when its starting version is gone, when it follows another
+    planned experiment - ``parent_plan_id`` - or when that one's deletion left it detached -
+    ``detached_from``).
 
     An edge with ``attached`` (``{author, created_at}``) is an attachment (:mod:`.attachments`): a
     study that started from nothing, hung by hand under another one - not a filiation."""
@@ -263,12 +265,14 @@ def get_plan(plan_id: int, microproject: Microproject = Depends(require_role("vi
 
 @router.patch("/experiment-plans/{plan_id}")
 def update_plan(plan_id: int, body: PlanUpdate, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    """Son titre, son intention, ses plaques (reprises, ou nombre prévu) - sa version de départ reste."""
+    """Son titre, son intention, ses plaques (reprises, ou nombre prévu) ; avec ``parent`` ou
+    ``parent_plan_id``, la rattacher (une prévision détachée) sous une version ou une autre prévision."""
     return plans.update_plan(microproject.id, microproject.slug, plan_id, body).payload()
 
 
 @router.delete("/experiment-plans/{plan_id}", status_code=204)
 def delete_plan(plan_id: int, microproject: Microproject = Depends(require_role("editor"))) -> Response:
+    """Celles qui en partent restent, détachées (``detached_from``), à rattacher à la main."""
     plans.delete_plan(microproject.id, plan_id)
     return Response(status_code=204)
 

@@ -48,4 +48,42 @@ CREATE TABLE IF NOT EXISTS experiment_attachments (
 );
 """
 
-MIGRATIONS = (Migration("0001_plans", SCHEMA), Migration("0002_attachments", ATTACHMENTS))
+CHAINED_PLANS = """
+-- Une prévision peut partir d'une autre prévision (parent_plan_id) : elle continue ce que l'autre
+-- donnera, une fois lancée. La prévision mère supprimée, la fille reste, détachée (parent_plan_id
+-- remis à NULL, detached_from = le titre de la mère) - on la rattache ensuite à la main. Plus de
+-- CHECK sur le mode : des mêmes plaques peuvent partir d'une prévision, ou rester détachées - la
+-- règle est vérifiée dans spectre.plugins.experiments.plans. Table reconstruite (SQLite ne retire
+-- pas un CHECK).
+CREATE TABLE experiment_plans_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    microproject_id INTEGER NOT NULL REFERENCES microprojects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    intent TEXT NOT NULL DEFAULT '',
+    parent_experiment_id TEXT,
+    parent_version_id TEXT,
+    parent_plan_id INTEGER,
+    detached_from TEXT,
+    mode TEXT NOT NULL CHECK (mode IN ('same_wafers', 'new_wafers')),
+    wafers TEXT NOT NULL DEFAULT '[]',
+    wafer_count INTEGER,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    author TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (parent_plan_id IS NULL OR parent_version_id IS NULL)
+);
+
+INSERT INTO experiment_plans_new (id, microproject_id, title, intent, parent_experiment_id, parent_version_id, mode, wafers,
+                                  wafer_count, created_by, author, created_at, updated_at)
+SELECT id, microproject_id, title, intent, parent_experiment_id, parent_version_id, mode, wafers,
+       wafer_count, created_by, author, created_at, updated_at
+FROM experiment_plans;
+
+DROP TABLE experiment_plans;
+ALTER TABLE experiment_plans_new RENAME TO experiment_plans;
+CREATE INDEX IF NOT EXISTS idx_experiment_plans_microproject ON experiment_plans(microproject_id);
+CREATE INDEX IF NOT EXISTS idx_experiment_plans_parent_plan ON experiment_plans(parent_plan_id);
+"""
+
+MIGRATIONS = (Migration("0001_plans", SCHEMA), Migration("0002_attachments", ATTACHMENTS), Migration("0003_chained_plans", CHAINED_PLANS))

@@ -420,6 +420,13 @@ nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ 
   la version (`from_version`, jamais une modification sur place) ; racine → structure vierge.
   « Continuer » depuis l'arbre passe toujours par là ; la modification sur place d'une étude reste
   « Éditer la fiche ».
+  Une prévision peut partir d'une autre (`parent_plan_id`, migration `experiments/0003_chained_plans`,
+  qui reconstruit la table sans le CHECK sur le mode) : mêmes plaques parmi celles que la mère nomme
+  (aucune si elle n'en nomme pas - à cocher une fois lancée), ou nouvelles plaques. Elle ne se lance
+  qu'après la mère ; `consume_plan` accroche les filles à l'étude lancée (`parent_version_id`).
+  `delete_plan` ne supprime pas les filles : `parent_plan_id` remis à NULL, `detached_from` = le titre
+  de la mère - détachées, elles se rattachent par `PATCH` avec `parent` ou `parent_plan_id`
+  (`plan_cycle` refusé), plaques revérifiées ; une détachée sur les mêmes plaques les garde en attente.
 - Dans le graphe, une étude partie d'une autre **sans changer la structure** (des tests sur les mêmes
   plaques...) est accrochée à celle dont elle part, et non au dernier changement de structure
   (`lineage_graph`, `hung_from`).

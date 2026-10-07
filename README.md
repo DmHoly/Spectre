@@ -43,7 +43,10 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   des plaques de cette expérience, pour des tests supplémentaires) ou **de nouvelles plaques** (un
   nombre estimé). Elle apparaît en pointillé, pastille « Prévu » ; « Lancer » ouvre l'éditeur
   prérempli, où l'on définit la structure, le split et les vraies plaques. Une fois lancée, elle
-  devient une étude comme les autres (le prévisionnel n'est pas gardé).
+  devient une étude comme les autres (le prévisionnel n'est pas gardé). On prévoit aussi à la suite
+  d'une prévision (sur ses plaques ou de nouvelles) : elle se lance après sa mère, et s'accroche à
+  l'étude lancée. Supprimer une prévision laisse ses suites dans l'arbre, **détachées**, à rattacher
+  à la main sous une autre expérience, lancée ou prévue.
 - **Plaques et réplicats ; partir de plaques existantes.** Une étude simple suit autant de plaques
   qu'on veut - des réplicats, passés par la même structure (« + Ajouter une plaque » sur la fiche et
   à l'écran « Variations ») ; une campagne en suit une par variante. **Partir de plaques
