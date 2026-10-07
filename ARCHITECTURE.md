@@ -872,7 +872,10 @@ in_report, created_at, created_by, updated_at, updated_by}`, plus, à la lecture
     {number, unit, name} | null, text, table: {columns, rows} | null, attachments: [{id, caption,
     filename, content_type, size, url}], links: [{label, url}], annotations: [{attachment_id |
     external_image, type: "arrow" | "box", x, y, x2, y2, label}], external_images: [{index, name,
-    path, caption, status, url}]}`. À l'écriture, `attachments` accepte des ids ou
+    path, caption, status, url}], image_folder}` (`external_images` et `image_folder` absents quand
+    vides ; `image_folder` : le dossier d'où on a épinglé les images, sous les racines et présent à
+    l'écriture - 403 `outside_roots`, 422 `directory_not_found`, 503 sans racines -, ou déjà sur
+    l'entrée, gardé tel quel même s'il a disparu). À l'écriture, `attachments` accepte des ids ou
     `{id, caption}` (des fichiers `purpose=notebook` de ce µprojet, 12 au plus) ; `links` n'accepte
     que `http`/`https` (10 au plus, 422 `invalid_link`) ; un tableau a de 1 à 50 colonnes, 1000
     lignes au plus, une cellule par colonne (texte de 500 caractères au plus, nombre fini, booléen
@@ -887,7 +890,8 @@ in_report, created_at, created_by, updated_at, updated_by}`, plus, à la lecture
 |---|---|
 | *(dans le détail : `data_items`)*, `POST …/{ref}/data`, `PATCH …/{ref}/data/{id}/epingle`, `DELETE …/{ref}/data/{id}` | **supprimées**, avec les routes `…/experiments/{exp}/image-sets` qui les avaient remplacées : les images externes sont un contenu d'une mesure manuelle du cahier (`external_images`, écrites par `POST`/`PATCH …/notebook-entries`), et les anciens jeux se lisent comme des entrées du cahier (§ 4) |
 | `GET /api/microprojets/{slug}/data/image?chemin=` | `GET …/experiments/{exp}/notebook-entries/{entry_id}/external-images/{index}?version=` (viewer ; `index` : le rang de l'image dans l'entrée, ses mesures dans l'ordre ; le chemin est lu dans le cahier de la version, jamais reçu du client, et revérifié à chaque lecture : une image d'avant qui pointe hors des racines répond 403) ; c'est l'`url` que porte chaque image, qui nomme toujours la version lue (`?version=`, la pointe comprise) : le rang d'une image change quand on réordonne ou retire les images d'une mesure, une adresse ne désigne ainsi qu'une seule image et le navigateur peut la garder en cache |
-| `GET /api/microprojets/{slug}/data/parcourir?dossier=` | `GET /api/microprojects/{mp}/external-images?directory=` (editor) → `[{name, path, size, displayable}]` ; limité à `SPECTRE_EXTERNAL_IMAGE_ROOTS` (racines connues telles qu'écrites et résolues : un nom court Windows passe), désactivé sans cette variable (503 `browsing_disabled` ; les chemins locaux restent acceptés à la création, les chemins UNC non) ; les TIFF sont listés, non affichables ; seules les images d'un dossier sont listées, pas ses sous-dossiers |
+| `GET /api/microprojets/{slug}/data/parcourir?dossier=` | `GET /api/microprojects/{mp}/external-images?directory=` (editor) → `[{name, path, size, displayable, url}]` (`url` : l'aperçu de l'image, ci-dessous) ; limité à `SPECTRE_EXTERNAL_IMAGE_ROOTS` (racines connues telles qu'écrites et résolues : un nom court Windows passe), désactivé sans cette variable (503 `browsing_disabled` ; les chemins locaux restent acceptés à la création, les chemins UNC non) ; les TIFF sont listés, non affichables ; seules les images d'un dossier sont listées, pas ses sous-dossiers |
+| *(nouveau)* | `GET /api/microprojects/{mp}/external-images/file?path=` (editor) : les octets d'une image d'un dossier parcouru, pour la voir avant de l'épingler (le carrousel de l'éditeur du cahier) ; sous les racines seulement, 503 `browsing_disabled` sans elles (jamais un fichier local quelconque), formats affichables, 404 si absente |
 | *(nouveau)* | `GET /api/microprojects/{mp}/external-images/roots` (editor) → `[chemin]` : les dossiers autorisés tels qu'écrits dans `SPECTRE_EXTERNAL_IMAGE_ROOTS` (absolus, sans doublon, sans toucher au disque), d'où partir pour choisir des images ; `[]` : le parcours est désactivé |
 
 Une image externe d'une mesure : `{path, caption}` à l'écriture (100 au plus par mesure, sans
@@ -1179,11 +1183,16 @@ Supprimée : `/microprojets/{slug}/graphe`.
   stepper statique et ses mesures côte à côte, les entrées d'autres plaques repliées, les
   annotations de chaque image, téléversée ou externe (`ImageAnnotations`), les images externes d'une mesure - leur chemin affiché, et ce qui empêche
   de montrer une image -, le filtre), `entry-dialog.js` (global `NotebookEntryDialog`, la boîte
-  d'ajout et d'édition : type, plaques, stepper à cocher, une mesure par bulle, tableau collé en TSV,
-  images par `mountImageDrop` avec `purpose: "notebook"`, images externes - choisies dans un
-  dossier autorisé (`externalImagesApi.roots`, puis `browse`) ou par leur chemin, légendées,
-  réordonnées (la première est la principale), retirées ; une image déjà sur la mesure s'aperçoit
-  par son `url`, une nouvelle une fois enregistrée -, fichiers, liens) et `stepper.js`
+  d'ajout et d'édition, sur un seul écran : titre et type (saisie libre ou PRISM), la donnée - en
+  saisie libre une description (le `text` de la mesure), un dossier d'images (son chemin, ses images
+  dans un carrousel - `externalImagesApi.browse` et l'`url` d'aperçu de chaque image -, celles qu'on
+  épingle deviennent les `external_images` de la mesure, légendées, réordonnées, et le dossier son
+  `image_folder`, rouvert à la modification ; sans racines, une image par son chemin), images par
+  `mountImageDrop` avec `purpose: "notebook"`, tableau collé en TSV, fichiers, liens ; la valeur
+  chiffrée n'a plus de champ, sauf sur une mesure d'avant qui en a une -, le commentaire (`note`,
+  et l'`interpretation` d'une entrée d'avant tant qu'elle en a une), puis « Options » replié
+  (ouvert pour PRISM, résumé sur son titre) : plaques, stepper à cocher - une mesure par bulle -,
+  objectif, rapport) et `stepper.js`
   (`mountStepper(el, {steps, measured, retired, selectable, onChange})`). Le rapport les reprend
   tels qu'affichés : `data-report-show` y montre ce que l'écran masque ou replie (entrées hors du
   filtre, « Autres plaques »).

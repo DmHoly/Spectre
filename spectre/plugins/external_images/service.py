@@ -114,13 +114,35 @@ def readable_file(raw: str) -> Path:
     return path
 
 
-def browse(directory: str) -> list[dict]:
-    """Les images d'un dossier autorisé (sans descendre dans ses sous-dossiers), TIFF compris mais
-    signalés (``displayable``) - pour choisir celles d'une mesure sans rien copier."""
+def _require_browsing() -> None:
     if roots() is None:
         raise Unavailable(
             f"Le parcours des dossiers est désactivé sur ce serveur ({ROOTS_ENV} n'est pas défini).", code="browsing_disabled"
         )
+
+
+def checked_folder(raw: str) -> str:
+    """Le chemin, résolu, d'un dossier d'images qu'une mesure retient (celui qu'on a parcouru pour en
+    épingler des images) : sous les racines - le parcours doit être permis - et présent sur le disque."""
+    _require_browsing()
+    path = _resolve(raw)
+    if not path.is_dir():
+        raise InvalidInput(f"Dossier introuvable : {raw}", code="directory_not_found")
+    return str(path)
+
+
+def preview_file(raw: str) -> Path:
+    """Le fichier d'une image d'un dossier qu'on parcourt, à montrer avant de l'épingler (le
+    carrousel de l'éditeur) : seulement quand le parcours est permis, sous les racines, dans un format
+    que le navigateur affiche - jamais un chemin local quelconque."""
+    _require_browsing()
+    return readable_file(raw)
+
+
+def browse(directory: str) -> list[dict]:
+    """Les images d'un dossier autorisé (sans descendre dans ses sous-dossiers), TIFF compris mais
+    signalés (``displayable``) - pour choisir celles d'une mesure sans rien copier."""
+    _require_browsing()
     path = _resolve(directory)
     if not path.is_dir():
         raise NotFound("Dossier introuvable.", code="directory_not_found")

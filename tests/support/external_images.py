@@ -26,6 +26,11 @@ def browse(client: Any, slug: str, directory: str) -> Any:
     return client.get(f"/api/microprojects/{slug}/external-images", params={"directory": directory})
 
 
+def preview(client: Any, slug: str, path: str) -> Any:
+    """GET /external-images/file?path= (la réponse) : une image d'un dossier qu'on parcourt."""
+    return client.get(f"/api/microprojects/{slug}/external-images/file", params={"path": path})
+
+
 def roots(client: Any, slug: str) -> Any:
     """GET /external-images/roots (la réponse) : les dossiers autorisés d'où partir."""
     return client.get(f"/api/microprojects/{slug}/external-images/roots")

@@ -13,8 +13,8 @@ from spectre.kernel.errors import Forbidden, InvalidInput
 from spectre.plugins.external_images import service
 
 from support.accounts import login, signup
-from support.external_images import browse, png_files, roots
-from support.http import ROUTER_NOT_FOUND, assert_handler_404
+from support.external_images import browse, png_files, preview, roots
+from support.http import PNG_1PX, ROUTER_NOT_FOUND, assert_handler_404
 from support.microprojects import add_member, signup_with_microproject
 
 
@@ -112,6 +112,30 @@ def test_a_referenced_image_must_be_a_displayable_existing_file(root):
     assert refused == {"coupe.tif": "unsupported_format", "notes.txt": "not_an_image", "absente.png": "file_not_found"}
 
 
+def test_a_browsed_image_is_previewed_by_its_url(client, root, tmp_path):
+    """Le carrousel de l'éditeur montre les images d'un dossier avant qu'on en épingle : chaque image
+    listée a l'``url`` de son aperçu, servi sous les racines seulement."""
+    slug = signup_with_microproject(client, "preview@example.com")
+    [path] = png_files(root / "W12", "coupe.png")
+    [listed] = browse(client, slug, str(root / "W12")).json()
+    shown = client.get(listed["url"])
+    assert shown.status_code == 200 and shown.content == PNG_1PX and shown.headers["content-type"] == "image/png"
+    assert preview(client, slug, path).content == PNG_1PX
+    outside = png_files(tmp_path / "ailleurs", "secret.png")[0]
+    assert preview(client, slug, outside).json()["code"] == "outside_roots"
+    (root / "coupe.tif").write_bytes(b"II*\x00")
+    assert preview(client, slug, str(root / "coupe.tif")).json()["code"] == "unsupported_format"
+    assert preview(client, slug, str(root / "absente.png")).status_code == 404
+
+
+def test_without_roots_nothing_is_previewed(client, no_roots, tmp_path):
+    """Sans dossier autorisé, l'aperçu par chemin est fermé : il ne lit pas un fichier local quelconque."""
+    slug = signup_with_microproject(client, "preview-off@example.com")
+    local = png_files(tmp_path / "local", "coupe.png")[0]
+    response = preview(client, slug, local)
+    assert response.status_code == 503 and response.json()["code"] == "browsing_disabled"
+
+
 def test_only_editors_browse(client, root):
     signup(client, "admin-browse@example.com")  # le premier compte est admin : il a accès à tout µprojet
     signup(client, "viewer-browse@example.com", name="V")
@@ -120,6 +144,7 @@ def test_only_editors_browse(client, root):
     login(client, "viewer-browse@example.com")
     assert browse(client, slug, str(root)).status_code == 403
     assert roots(client, slug).status_code == 403
+    assert preview(client, slug, png_files(root, "vue.png")[0]).status_code == 403
     # membre (propriétaire, même) d'un autre µprojet, pas de celui-ci
     signup_with_microproject(client, "other-browse@example.com", "Ailleurs")
     assert browse(client, slug, str(root)).status_code == 403

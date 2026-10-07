@@ -90,7 +90,8 @@ class MeasurementInput(BaseModel):
     """Une mesure de l'entrée, à une étape du procédé (``step_id``, ``None`` : non située). Une
     entrée PRISM y met une vue d'un instantané (``snapshot_id``, ``component``, ``options``) ; une
     entrée manuelle, au choix, une valeur, un texte, un tableau, des fichiers, des images externes,
-    les annotations de ses images (fichiers et images externes) et des liens."""
+    les annotations de ses images (fichiers et images externes) et des liens - et le dossier d'images
+    qu'on y a pointé (``image_folder`` : on en épingle des images externes, et on le rouvre)."""
 
     step_id: str | None = None
     snapshot_id: str | None = None
@@ -101,6 +102,7 @@ class MeasurementInput(BaseModel):
     table: TableInput | None = None
     attachments: list[AttachmentRef] = []
     external_images: list[ExternalImageInput] = []
+    image_folder: str | None = None
     links: list[LinkInput] = []
     annotations: list[AnnotationInput] = []
 
