@@ -8,9 +8,9 @@ repris dans son rapport. Une entrée a deux types (``kind``), une seule forme :
 - ``manual`` : ce que PRISM ne peut pas prévoir - une valeur mesurée, un texte, un tableau collé,
   des fichiers (images, documents), des images externes (TEM, scans : référencées à leur
   emplacement sur le disque du serveur, sans être copiées, sous la politique du plugin
-  external_images, et servies par l'entrée et leur rang, jamais par un chemin reçu), les
-  annotations de ses images (fichiers et images externes, désignés par leur id ou leur chemin) et
-  des liens.
+  external_images, et servies par l'entrée et leur rang, jamais par un chemin reçu), le dossier
+  d'images d'où on les a épinglées (``image_folder``, rouvert par l'éditeur), les annotations de
+  ses images (fichiers et images externes, désignés par leur id ou leur chemin) et des liens.
 
 ``{id, kind, title, note, objective, interpretation, wafers, measurements, in_report, created_at,
 created_by, updated_at, updated_by}`` : ``wafers``, les plaques mesurées (clés de wafer ; vide :
@@ -72,7 +72,7 @@ MAX_CELL = 500
 MAX_TABLE_SIZE = 200000
 _COMPONENT_RE = re.compile(r"^[a-z0-9][a-z0-9.\-]{1,48}$")
 _PRISM_FIELDS = ("snapshot_id", "component", "options")
-_MANUAL_FIELDS = ("value", "text", "table", "attachments", "external_images", "links", "annotations")
+_MANUAL_FIELDS = ("value", "text", "table", "attachments", "external_images", "image_folder", "links", "annotations")
 
 
 # -- lecture ---------------------------------------------------------------------------------------
@@ -381,6 +381,7 @@ def _measurements(
     known_snapshots = {m["snapshot_id"]: m.get("snapshot") for m in previous if m.get("snapshot_id") and m.get("snapshot")}
     known_files = {a["id"]: a for m in previous for a in m.get("attachments") or []}
     known_images = {image["path"] for m in previous for image in m.get("external_images") or []}
+    known_folders = {m["image_folder"] for m in previous if m.get("image_folder")}
     measurements = []
     for measurement in raw:
         if measurement.step_id is not None and measurement.step_id not in known_steps:
@@ -421,6 +422,9 @@ def _measurements(
         # enregistrées seulement s'il y en a : une mesure sans image externe garde la forme d'avant
         if images:
             stored["external_images"] = images
+        # le dossier pointé : sous un dossier autorisé, ou déjà sur l'entrée (même déplacé depuis)
+        if folder := (measurement.image_folder or "").strip():
+            stored["image_folder"] = folder if folder in known_folders else external_images.checked_folder(folder)
         measurements.append(stored)
     return measurements
 

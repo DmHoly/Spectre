@@ -344,9 +344,11 @@
     </div>
   </dialog>
 
-  <!-- Ajouter ou modifier une donnée du cahier : son type (PRISM ou chargée à la main), les plaques
-       mesurées, les étapes du procédé où la mesure a été faite (le stepper : une mesure par bulle
-       cochée), puis le contenu de chaque mesure et sa lecture - voir notebook/static/entry-dialog.js. -->
+  <!-- Ajouter ou modifier une donnée du cahier, sur un seul écran : un titre, la donnée (saisie libre :
+       une description, un tableau collé, des images collées ou épinglées depuis un dossier, des
+       fichiers ; ou une vue PRISM), un commentaire. Les plaques, les étapes du procédé, l'objectif et
+       la place dans le rapport sont repliés dans « Options » (ouverts pour PRISM) - voir
+       notebook/static/entry-dialog.js. -->
   <dialog id="notebook-dialog" class="nb-dialog" aria-labelledby="nb-dialog-title">
     <div class="nb-dialog__inner">
       <div class="nb-dialog__head">
@@ -355,33 +357,21 @@
       </div>
       <div class="nb-dialog__body">
         <div class="nb-demo-note" id="nb-dialog-demo" hidden>Instance de démonstration : les données chargées sont <strong>fictives</strong>.</div>
-        <section class="nb-step" id="nb-kind-step" aria-labelledby="nb-kind-label">
-          <div class="nb-step__label" id="nb-kind-label"><span>1</span> Type de donnée</div>
-          <div class="nb-kinds" role="radiogroup" aria-labelledby="nb-kind-label">
-            <label class="nb-source">
-              <input type="radio" name="nb-kind" value="manual">
-              <span class="nb-source__title">Chargée à la main</span>
-              <span class="nb-source__cat">valeur, texte, tableau collé, images, fichiers, liens</span>
-            </label>
-            <label class="nb-source">
-              <input type="radio" name="nb-kind" value="prism">
-              <span class="nb-source__title">PRISM</span>
-              <span class="nb-source__cat">les mesures des plaques en base (EQE, PL, NCEL…)</span>
-            </label>
+        <div class="nb-top">
+          <div class="nb-top__title">
+            <label for="nb-title">Titre</label>
+            <input class="field" id="nb-title" maxlength="200" placeholder="ex : rugosité AFM après recuit" autocomplete="off">
           </div>
-        </section>
-        <section class="nb-step" aria-labelledby="nb-plates-label">
-          <div class="nb-step__label" id="nb-plates-label"><span>2</span> Plaques mesurées</div>
-          <div class="nb-plates" id="nb-plates" role="group" aria-labelledby="nb-plates-label"></div>
-          <p class="help">La donnée suit la plaque : elle reste au cahier des versions suivantes tant que l'étude suit l'une de ces plaques. Aucune cochée : elle vaut pour toute la piste.</p>
-        </section>
-        <section class="nb-step" aria-labelledby="nb-steps-label">
-          <div class="nb-step__label" id="nb-steps-label"><span>3</span> Étapes mesurées</div>
-          <div id="nb-stepper-host"></div>
-          <p class="help" id="nb-stepper-help">Cochez l'étape (ou les étapes) du procédé après laquelle la mesure a été faite : une mesure par bulle, pour comparer avant et après. Aucune bulle : une mesure non située.</p>
+          <div class="nb-kind-switch" role="radiogroup" aria-label="Type de donnée">
+            <label><input type="radio" name="nb-kind" value="manual"><span>Saisie libre</span></label>
+            <label><input type="radio" name="nb-kind" value="prism"><span>PRISM</span></label>
+          </div>
+        </div>
+        <section class="nb-step" id="nb-manual" aria-label="La donnée">
+          <div class="nb-measure-forms" id="nb-measures"></div>
         </section>
         <section class="nb-step" id="nb-prism" aria-labelledby="nb-prism-label" hidden>
-          <div class="nb-step__label" id="nb-prism-label"><span>4</span> Données PRISM</div>
+          <div class="nb-step__label" id="nb-prism-label">Données PRISM</div>
           <div class="nb-sources" id="nb-sources" role="radiogroup" aria-label="Type de données"></div>
           <div class="nb-plates__extra">
             <label for="nb-extra-plates">Autres plaques, pour comparer (lasermarks séparés par des virgules)</label>
@@ -402,20 +392,33 @@
             </div>
           </div>
         </section>
-        <section class="nb-step" id="nb-manual" aria-labelledby="nb-manual-label">
-          <div class="nb-step__label" id="nb-manual-label"><span>4</span> Mesures</div>
-          <div class="nb-measure-forms" id="nb-measures"></div>
-        </section>
-        <section class="nb-step" aria-labelledby="nb-reading-label">
-          <div class="nb-step__label" id="nb-reading-label"><span>5</span> Titre et lecture</div>
-          <div class="nb-reading">
-            <div class="viz-opt nb-reading__title"><label for="nb-title">Titre</label><input class="field" id="nb-title" maxlength="200" placeholder="ex : rugosité AFM avant et après recuit"></div>
-            <div class="viz-opt"><label for="nb-objective">Objectif lié (optionnel)</label><select class="field" id="nb-objective"></select></div>
-            <label class="viz-check viz-opt viz-opt--check"><input type="checkbox" id="nb-in-report" checked> Dans le rapport</label>
-            <div class="viz-opt nb-reading__wide"><label for="nb-interpretation">Interprétation (optionnelle)</label><textarea class="field" id="nb-interpretation" rows="2" placeholder="Ce que la mesure montre, au regard du changement fait"></textarea></div>
-            <div class="viz-opt nb-reading__wide"><label for="nb-note">Observations (optionnelles)</label><textarea class="field" id="nb-note" rows="2" placeholder="Ce qu'on voit, ce qu'il reste à vérifier…"></textarea></div>
+        <section class="nb-step nb-comment">
+          <label for="nb-note">Commentaire</label>
+          <textarea class="field" id="nb-note" rows="3" placeholder="Ce qu'on observe, ce qu'on en retient…"></textarea>
+          <div class="nb-comment__legacy" id="nb-interpretation-row" hidden>
+            <label for="nb-interpretation">Interprétation</label>
+            <textarea class="field" id="nb-interpretation" rows="2"></textarea>
           </div>
         </section>
+        <details class="nb-more" id="nb-more">
+          <summary><span class="nb-more__title">Options</span> <span class="nb-more__sum" id="nb-more-sum"></span></summary>
+          <div class="nb-more__body">
+            <section class="nb-step" aria-labelledby="nb-plates-label">
+              <div class="nb-step__label" id="nb-plates-label">Plaques mesurées</div>
+              <div class="nb-plates" id="nb-plates" role="group" aria-labelledby="nb-plates-label"></div>
+              <p class="help">La donnée suit la plaque : elle reste au cahier des versions suivantes tant que l'étude suit l'une de ces plaques. Aucune cochée : elle vaut pour toute la piste.</p>
+            </section>
+            <section class="nb-step" aria-labelledby="nb-steps-label">
+              <div class="nb-step__label" id="nb-steps-label">Étape du procédé</div>
+              <div id="nb-stepper-host"></div>
+              <p class="help" id="nb-stepper-help"></p>
+            </section>
+            <div class="nb-more__row">
+              <div class="viz-opt"><label for="nb-objective">Objectif lié</label><select class="field" id="nb-objective"></select></div>
+              <label class="viz-check viz-opt viz-opt--check"><input type="checkbox" id="nb-in-report" checked> Dans le rapport</label>
+            </div>
+          </div>
+        </details>
         <div class="error" id="nb-dialog-error" role="alert" style="display:none;"></div>
       </div>
       <div class="nb-dialog__foot">

@@ -290,3 +290,40 @@ def test_an_old_set_of_a_campaign_variant_follows_the_variant_wafer(client, root
     # une variante sans plaque : l'entrée vaut pour toute la piste, la variante rappelée dans le texte
     unnamed = converted["data_" + "4" * 20]
     assert unnamed["wafers"] == [] and unnamed["measurements"][0]["text"].startswith("Variante n° 3")
+
+
+def test_a_measurement_keeps_the_folder_its_images_were_pinned_from(client, root, tmp_path):
+    """On pointe un dossier, on en épingle des images : la mesure retient les images (des liens, pas
+    des copies) et le dossier, rouvert à la modification ; un dossier hors des racines ou absent est
+    refusé, celui déjà sur l'entrée reste même s'il a disparu."""
+    slug, line = _setup(client, "folder@example.com")
+    folder = root / "W12-A3"
+    [pinned, _other] = png_files(folder, "coupe-1.png", "coupe-2.png")
+    entry = post_entry(client, slug, line, **_manual([{"path": pinned}], image_folder=str(folder))).json()
+    [measurement] = entry["measurements"]
+    assert measurement["image_folder"] == str(folder.resolve())
+    assert [i["path"] for i in measurement["external_images"]] == [str(pathlib.Path(pinned).resolve())]
+    # un dossier seul, sans image épinglée ni rien d'autre, suffit à faire une mesure
+    alone = post_entry(client, slug, line, kind="manual", title="Dossier", measurements=[{"image_folder": str(folder)}]).json()
+    assert alone["measurements"][0]["image_folder"] == str(folder.resolve())
+
+    png_files(tmp_path / "ailleurs", "x.png")
+    for refused, code in ((tmp_path / "ailleurs", "outside_roots"), (root / "absent", "directory_not_found")):
+        response = post_entry(client, slug, line, **_manual([], image_folder=str(refused)))
+        assert response.status_code in (403, 422) and response.json()["code"] == code
+
+    # le dossier a disparu depuis : la mesure le garde à la modification
+    (folder / "coupe-1.png").unlink()
+    (folder / "coupe-2.png").unlink()
+    folder.rmdir()
+    kept = update_entry(client, slug, line, entry["id"], measurements=[as_input(measurement) | {"text": "revu"}])
+    assert kept["measurements"][0]["image_folder"] == str(folder.resolve()) and kept["measurements"][0]["text"] == "revu"
+    # retiré : la mesure n'en a plus
+    cleared = update_entry(client, slug, line, entry["id"], measurements=[{**as_input(measurement), "image_folder": None}])
+    assert "image_folder" not in cleared["measurements"][0]
+
+
+def test_a_prism_measurement_has_no_image_folder(client, root):
+    slug, line = _setup(client, "folder-prism@example.com")
+    response = post_entry(client, slug, line, kind="prism", title="Vue", measurements=[{"snapshot_id": "x", "component": "table", "image_folder": str(root)}])
+    assert response.status_code == 422

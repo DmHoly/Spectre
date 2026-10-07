@@ -133,6 +133,7 @@
       table: m.table || null,
       attachments: (m.attachments || []).map((a) => ({ id: a.id, caption: a.caption || null })),
       external_images: (m.external_images || []).map((i) => ({ path: i.path, caption: i.caption || null })),
+      image_folder: m.image_folder || null,
       links: (m.links || []).map((l) => ({ url: l.url, label: l.label || null })),
       annotations: (m.annotations || []).filter((a) => images.has(imageKey(a)) && (a.type === "arrow" || a.type === "box")),
     };
@@ -217,7 +218,8 @@
           )
           .join("")}</ul>`
       : "";
-    const body = value + text + table + figures + externalFigures + files + links;
+    const folder = m.image_folder ? `<div class="nb-folder-ref" title="${escapeHtml(m.image_folder)}">Dossier d'images : <span class="mono">${escapeHtml(m.image_folder)}</span></div>` : "";
+    const body = value + text + table + figures + externalFigures + folder + files + links;
     return body || `<p class="help" style="margin:0;">Mesure faite à cette étape, sans contenu joint.</p>`;
   }
 
