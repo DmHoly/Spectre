@@ -7,6 +7,10 @@
      images) avec de nouvelles images (experimentsApi.evolve), ou en partir sur une nouvelle piste
      (experimentsApi.create avec from_version), préremplie depuis la version de départ - sa dernière
      version, ou celle de ?version= (une version passée ne se continue que sur une nouvelle piste).
+   Avec ?prevision=<id>, sur l'une ou l'autre adresse : on lance une expérience prévisionnelle (prévue
+   depuis l'arbre du µprojet) - son titre et son intention préremplis ; partie d'une version, c'est
+   une nouvelle piste sur de nouvelles plaques (rien n'est repris de celles de la version de départ),
+   et le lancement envoie son `plan_id` : elle cesse d'être prévue.
    objectives.js / intention-copy.js du constructeur sont repris tels quels : ils lisent `slug` et
    `state`, définis ici. Le formulaire d'intention est monté par mountIntentFormSection (intent_forms). */
 
@@ -14,6 +18,9 @@ const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experiment_id
 const { slug } = evolveRoute || routeParams("/microprojets/{slug}/structures/image");
 const evolveExperienceId = evolveRoute ? evolveRoute.experiment_id : null;
 const evolveVersionId = evolveExperienceId ? new URLSearchParams(window.location.search).get("version") : null;
+const planParam = new URLSearchParams(window.location.search).get("prevision");
+const planId = /^\d+$/.test(planParam || "") ? parseInt(planParam, 10) : null;
+let launchedPlan = null; // la prévision chargée (loadPlan)
 const state = { objectives: [] };
 let parentDetail = null; // la version de départ (sa version_id part en If-Match, ou en from_version)
 let keepReplicates = false; // la piste suit plusieurs plaques : la nouvelle version les garde toutes
@@ -55,6 +62,14 @@ async function loadParent() {
     ? await experimentsApi.getVersion(slug, evolveExperienceId, evolveVersionId)
     : await experimentsApi.get(slug, evolveExperienceId);
   parentDetail = detail;
+  if (planId) {
+    // une expérience prévue : une nouvelle piste, sur de nouvelles plaques à nommer
+    if (detail.structure_images) {
+      imageDrop.set(detail.structure_images);
+      document.getElementById("previous-image-note").hidden = false;
+    }
+    return detail;
+  }
   if (!detail.is_tip) forceNewBranch();
   document.getElementById("exp-title").value = detail.title;
   document.getElementById("exp-intent").value = detail.intent;
@@ -101,7 +116,7 @@ function collectPayload() {
   if (!images.length) return { error: "Collez ou choisissez d'abord au moins une image de la structure.", focus: document.querySelector(".img-board__add:not([disabled])") };
   if (!title) return { error: "Le titre est obligatoire.", focus: document.getElementById("exp-title") };
   if (!intent) return { error: "L'intention est obligatoire.", focus: document.getElementById("exp-intent") };
-  if (!evolveExperienceId && !sampleId) {
+  if ((!evolveExperienceId || planId) && !sampleId) {
     return { error: "L'entité physique (l'échantillon réel suivi) est obligatoire.", focus: document.getElementById("exp-entity-sample-id") };
   }
   const payload = {
@@ -114,16 +129,47 @@ function collectPayload() {
     entities:
       sampleId && !keepReplicates
         ? [{ sample_id: sampleId, location: document.getElementById("exp-entity-location").value.trim() || null, fdl: entityFdlField.get() }]
-        : [],
+        : keepReplicates && document.getElementById("branch-fork").checked
+          ? replicatesOf(parentDetail) // une nouvelle piste nomme ses plaques : les réplicats affichés
+          : [],
     form_answers: intentFormSection ? intentFormSection.collect() : {},
   };
-  if (evolveExperienceId && document.getElementById("branch-fork").checked) {
+  if (planId && launchedPlan) payload.plan_id = launchedPlan.id;
+  if (evolveExperienceId && planId) {
+    payload.from_version = { experiment_id: evolveExperienceId, version_id: parentDetail ? parentDetail.version_id : null };
+  } else if (evolveExperienceId && document.getElementById("branch-fork").checked) {
     const branchName = document.getElementById("new-branch-name").value.trim();
     if (!branchName) return { error: "Donnez un nom à la nouvelle piste.", focus: document.getElementById("new-branch-name") };
     payload.branch = branchName;
     payload.from_version = { experiment_id: evolveExperienceId, version_id: parentDetail ? parentDetail.version_id : null };
   }
   return { payload };
+}
+
+// Les plaques nommées d'une version (ses réplicats), telles qu'une nouvelle piste les reprend.
+function replicatesOf(detail) {
+  return ((detail && detail.physical_tracking) || [])
+    .filter((e) => e.sample_id)
+    .map((e) => ({ sample_id: e.sample_id, location: e.location || null, fdl: e.fdl || [] }));
+}
+
+// Une expérience prévisionnelle qu'on lance (?prevision=) : son titre, son intention, et le nombre de
+// plaques prévu rappelé sous le champ de la plaque. Lancée ou supprimée entre-temps : on lance sans elle.
+async function loadPlan() {
+  if (!planId) return;
+  try {
+    launchedPlan = await experimentsApi.getPlan(slug, planId);
+  } catch (err) {
+    showError(err.status === 404 ? new Error("Cette expérience prévisionnelle n'existe plus (déjà lancée ou supprimée) : l'expérience se lancera sans elle.") : err);
+    return;
+  }
+  document.getElementById("exp-title").value = launchedPlan.title;
+  if (launchedPlan.intent) document.getElementById("exp-intent").value = launchedPlan.intent;
+  document.getElementById("entity-field-label").textContent = "Plaque lancée - lasermark";
+  document.getElementById("entity-field-hint").textContent =
+    launchedPlan.mode === "new_wafers"
+      ? `Prévisionnel : ~${launchedPlan.wafer_count} plaque${launchedPlan.wafer_count > 1 ? "s" : ""}. Nommez la plaque lancée - les suivantes s'ajoutent sur la fiche, carte « Plaques ».`
+      : "Nommez la plaque lancée.";
 }
 
 // Une version passée : on n'écrit jamais que sur la pointe d'une piste, on en part donc sur une nouvelle.
@@ -159,7 +205,13 @@ async function launch() {
 async function initStructureImagePage() {
   const builderLink = document.getElementById("builder-link");
   const cancelLink = document.getElementById("cancel-link");
-  if (evolveExperienceId) {
+  if (evolveExperienceId && planId) {
+    setPageTitle("Lancer une expérience prévue · structure en images");
+    document.getElementById("launch-btn").textContent = "Lancer l'expérience";
+    builderLink.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(evolveExperienceId)}/evoluer${window.location.search}`;
+    builderLink.textContent = "Lancer dans le constructeur";
+    cancelLink.href = `/microprojets/${encodeURIComponent(slug)}`;
+  } else if (evolveExperienceId) {
     setPageTitle("Éditer la fiche · structure en images");
     document.getElementById("launch-btn").textContent = "Enregistrer les modifications";
     document.getElementById("branch-choice-wrap").hidden = false;
@@ -168,7 +220,7 @@ async function initStructureImagePage() {
     cancelLink.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(evolveExperienceId)}${window.location.search}`;
   } else {
     setPageTitle("Nouvelle expérience · structure en image");
-    builderLink.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle`;
+    builderLink.href = `/microprojets/${encodeURIComponent(slug)}/structures/nouvelle${planId ? `?prevision=${planId}` : ""}`;
     cancelLink.href = `/microprojets/${encodeURIComponent(slug)}`;
   }
 
@@ -216,6 +268,7 @@ async function initStructureImagePage() {
       intentFormSection = await mountIntentFormSection(document.getElementById("intent-form-box"), { microprojectSlug: slug, onError: showError });
     }
     if (evolveExperienceId) await loadParent();
+    await loadPlan();
   } catch (err) {
     showError(err);
   }

@@ -640,10 +640,10 @@ class _PreparedStructure:
 def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.Experiment:
     """Une nouvelle piste : à partir de rien, d'une version existante (``from_version`` : la
     filiation est gardée - référence « baseline », diff, graphe), de plaques existantes
-    (``wafer_origin`` : :func:`_wafer_origin`), ou de deux études combinées (``merge_of`` :
+    (``wafer_origin`` : :func:`resolve_wafer_origin`), ou de deux études combinées (``merge_of`` :
     :func:`combine`). Une piste partie d'une version en reprend, faute de mieux dans la requête, les
-    objectifs, le contexte et l'entité suivie - pas le cahier de données, les étiquettes ni la
-    conclusion : c'est une nouvelle étude. Une piste partie de plaques ne reprend de l'étude qui les
+    objectifs et le contexte - pas ses plaques (la requête nomme les siennes), le cahier de données,
+    les étiquettes ni la conclusion : c'est une nouvelle étude. Une piste partie de plaques ne reprend de l'étude qui les
     suit que la référence dont celle-ci part : ses plaques sont celles que nomme la requête. Titre,
     intention et entité physique obligatoires ; le formulaire d'intention du µprojet s'applique ; la
     toute première étude d'un µprojet devient sa première ref."""
@@ -653,7 +653,7 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
     entities = clean_entity_entries(body.entities)
     origin = body.wafer_origin
     # l'étude des plaques, lue dans son µprojet quand c'en est un autre (sinon sous le verrou, plus bas)
-    elsewhere = _wafer_origin(get_repository(origin.microproject), origin, entities) if origin and origin.microproject != slug else None
+    elsewhere = resolve_wafer_origin(get_repository(origin.microproject), origin, entities) if origin and origin.microproject != slug else None
     start = None
     start_ref = body.from_version or (FromVersion(experiment_id=origin.experiment_id, version_id=origin.version_id) if origin else None)
     if start_ref and isinstance(body.structure, CampaignPayload) and not any(body.structure.step_ids):
@@ -662,7 +662,7 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
     prepared = _PreparedStructure(slug, body.structure, start)
     with writing(slug) as repo:
         source = _source_of(repo, body.from_version) if body.from_version else None
-        found = elsewhere or (_wafer_origin(repo, origin, entities) if origin else None)
+        found = elsewhere or (resolve_wafer_origin(repo, origin, entities) if origin else None)
         if found is not None and origin.microproject == slug:
             source = found[0]  # dans le même µprojet, la nouvelle piste descend de l'étude des plaques
         branch = _new_branch_name(slug, repo, body.branch, body.title)
@@ -680,9 +680,9 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
             builder.steps = prepared.steps
             if forked:
                 carried = [CONTEXT_METADATA_KEY] + ([] if body.objectives else ["objective_verification"])
+                # ses plaques, non : une nouvelle piste nomme les siennes - les mêmes (cochées, ou
+                # partie de plaques : wafer_origin) ou de nouvelles ; aucune n'est reprise en silence
                 builder.metadata.update({key: copy.deepcopy(source.metadata[key]) for key in carried if key in source.metadata})
-                if not any(e["sample_id"] for e in entities):
-                    entities = copy.deepcopy(source.metadata.get("physical_tracking", []))
         else:
             builder = repo.new(branch=branch, structure=prepared.structure, steps=prepared.steps, **common)
         if body.objectives:
@@ -747,7 +747,7 @@ def wafer_origin_of(version: follow.Experiment) -> dict[str, Any] | None:
     return None
 
 
-def _wafer_origin(repo: follow.Repository, origin: WaferOrigin, entities: list[dict[str, Any]]) -> tuple[follow.Experiment, int | None]:
+def resolve_wafer_origin(repo: follow.Repository, origin: WaferOrigin, entities: list[dict[str, Any]]) -> tuple[follow.Experiment, int | None]:
     """La version dont partent les plaques d'une nouvelle piste (``origin``, lue dans ``repo``, le
     dépôt de son µprojet) et, pour une campagne, la variante qu'elles portent. Chaque plaque nommée
     dans ``entities`` doit y être suivie (``wafer_not_in_origin``), et toutes avoir la même

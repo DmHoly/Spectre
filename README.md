@@ -37,6 +37,13 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   structures montrent ses deux parents), avec la structure de la première, son titre (proposé
   « A + B »), son intention, son hypothèse et une nouvelle plaque ; son cahier démarre vide et les
   deux études ne bougent pas.
+- **Prévoir depuis l'arbre.** Sans quitter l'arbre du µprojet, le « + » d'un nœud (ou « Prévoir la
+  suite » sur sa carte, « Prévoir une expérience » pour une racine) ajoute une **expérience
+  prévisionnelle** : un titre, une intention et ce qu'on continue - **les mêmes plaques** (on coche
+  des plaques de cette expérience, pour des tests supplémentaires) ou **de nouvelles plaques** (un
+  nombre estimé). Elle apparaît en pointillé, pastille « Prévu » ; « Lancer » ouvre l'éditeur
+  prérempli, où l'on définit la structure, le split et les vraies plaques. Une fois lancée, elle
+  devient une étude comme les autres (le prévisionnel n'est pas gardé).
 - **Plaques et réplicats ; partir de plaques existantes.** Une étude simple suit autant de plaques
   qu'on veut - des réplicats, passés par la même structure (« + Ajouter une plaque » sur la fiche et
   à l'écran « Variations ») ; une campagne en suit une par variante. **Partir de plaques

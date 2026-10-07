@@ -24,7 +24,7 @@ def _owner_microproject(client):
 
 def test_lineage_on_empty_microproject(client):
     slug = _owner_microproject(client)
-    assert lineage(client, slug) == {"nodes": [], "edges": []}
+    assert lineage(client, slug) == {"nodes": [], "edges": [], "plans": []}
 
 
 def test_lineage_single_experiment_is_a_root_and_a_tip(client):

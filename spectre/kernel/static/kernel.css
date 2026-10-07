@@ -676,6 +676,18 @@ a.card:hover {
   height: 8px;
 }
 
+/* expérience prévisionnelle (prévue depuis l'arbre, pas encore lancée) : or foncé, point creux en pointillé */
+.badge-planned {
+  background: var(--gold-tint);
+  color: var(--gold-dark);
+}
+.badge-planned .dot {
+  background: transparent;
+  border: 1.5px dashed var(--gold-dark);
+  width: 8px;
+  height: 8px;
+}
+
 /* brouillon repris par une version suivante : le gris du brouillon, mais plein (= ce n'est plus en cours) */
 .badge-continued {
   background: var(--draft);

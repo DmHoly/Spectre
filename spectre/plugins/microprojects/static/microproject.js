@@ -204,14 +204,7 @@ function savedStructureOptionsHtml(entries) {
 async function openNewExperienceDialog() {
   clearErrorFlash();
   try {
-    const [experiences, library] = await Promise.all([
-      experimentsApi.list(slug, { status: "all", limit: 200 }),
-      fetchSavedStructures(),
-    ]);
-    const expOptions = experiences.items.map((exp) => `<option value="${exp.id}">${escapeHtml(exp.title)}</option>`).join("");
-    document.getElementById("continue-select").innerHTML = experiences.items.length
-      ? expOptions
-      : `<option value="">Aucune expérience pour l'instant</option>`;
+    const library = await fetchSavedStructures();
     document.getElementById("template-select").innerHTML = savedStructureOptionsHtml(library).html;
 
     newExperienceDialog.showModal();
@@ -237,18 +230,6 @@ document.getElementById("option-template").addEventListener("click", () => {
 document.getElementById("option-new-library-structure").addEventListener("click", (event) => {
   event.preventDefault();
   window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/bibliotheque/nouvelle?retour=nouvelle-experience`;
-});
-
-document.getElementById("option-continue").addEventListener("click", () => {
-  const source = document.getElementById("continue-select").value;
-  if (!source) return;
-  window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer`;
-});
-
-document.getElementById("option-continue-image").addEventListener("click", () => {
-  const source = document.getElementById("continue-select").value;
-  if (!source) return;
-  window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(source)}/evoluer-image`;
 });
 
 document.getElementById("cancel-new-experience").addEventListener("click", () => newExperienceDialog.close());
@@ -327,8 +308,14 @@ async function init() {
     return;
   }
 
-  document.getElementById("lineage-legend").innerHTML = lineageLegendHtml({ lot: true, wafers: true });
-  mountLineage(document.querySelector(".lineage-layout"), { microprojectSlug: slug, canEdit });
+  document.getElementById("lineage-legend").innerHTML = lineageLegendHtml({ lot: true, wafers: true, planned: true });
+  const lineage = mountLineage(document.querySelector(".lineage-layout"), { microprojectSlug: slug, canEdit });
+  if (canEdit) {
+    // prévoir une expérience racine (nouvelles plaques), dans la carte de l'arbre
+    const planRootBtn = document.getElementById("plan-root-btn");
+    planRootBtn.style.display = "";
+    planRootBtn.addEventListener("click", () => lineage.planRoot());
+  }
   loadMembers();
   loadInvitations();
 

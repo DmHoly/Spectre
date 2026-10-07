@@ -146,17 +146,21 @@ def structure_history(repo: Any, *, all_versions: bool = False, include: set[str
     return {"lanes": lanes, "nodes": nodes, "edges": edges}
 
 
-def lineage_graph(repo: Any) -> dict:
+def lineage_graph(repo: Any, *, anchors: Any = ()) -> dict:
     """The ``{"nodes", "edges"}`` payload of the µprojet's lineage (``GET .../lineage``, see
     :func:`spectre.plugins.experiments.api.microproject_lineage` for what each node means) for one
     repository - shared with the frise of a thématique (:mod:`spectre.plugins.experiments.insights`),
     which lays out the same nodes on a time axis, and with the lots (:mod:`spectre.plugins.lots.views`).
     Each node is a version (``version_id``, also its ``id`` in ``edges``) of a line of study
     (``experiment_id``), the line's tip or not (``is_tip``). The lots holding a node's wafers are
-    the lots plugin's own (``GET /api/lots?wafer=``) : the page composes their badges."""
+    the lots plugin's own (``GET /api/lots?wafer=``) : the page composes their badges.
+
+    ``anchors`` (version ids) adds ``{"anchors": {version_id: node id | None}}`` : the node that
+    shows each of these versions (``None`` for one no longer in the repository) - where the
+    µprojet page hangs a planned experiment (:mod:`.plans`) that continues it."""
     experiments = {exp.id: exp for exp in repo}
     if not experiments:
-        return {"nodes": [], "edges": []}
+        return {"nodes": [], "edges": [], **({"anchors": dict.fromkeys(anchors)} if anchors else {})}
 
     dag = {exp_id: exp.parents for exp_id, exp in experiments.items()}
     processes = {exp_id: versioning.structure_signature(exp.metadata) for exp_id, exp in experiments.items()}
@@ -179,14 +183,26 @@ def lineage_graph(repo: Any) -> dict:
 
     def line_start(exp_id: str, anchor_id: str) -> datetime:
         """When the line ending at tip ``exp_id`` started, for two tips forked off the same
-        structural point ``anchor_id``: its first commit after that point."""
+        structural point ``anchor_id``: its first commit after the node it hangs from
+        (:func:`hung_from`)."""
         start = experiments[exp_id].created_at
         parents = dag[exp_id]
-        while len(parents) == 1 and parents[0] != anchor_id:
+        while len(parents) == 1 and parents[0] != anchor_id and parents[0] not in tips:
             exp_id = parents[0]
             start = experiments[exp_id].created_at
             parents = dag[exp_id]
         return start
+
+    def hung_from(exp_id: str, anchor_id: str) -> str:
+        """The node a tip forked off the structural point ``anchor_id`` hangs from: the nearest
+        other tip it descends from on the way back - a study started from another one without
+        changing the structure (tests on the same wafers...) stays under it -, else that point."""
+        parents = dag[exp_id]
+        while len(parents) == 1 and parents[0] != anchor_id:
+            if parents[0] in tips:
+                return parents[0]
+            parents = dag[parents[0]]
+        return anchor_id
 
     def node_payload(exp_id: str, *, is_tip: bool, is_merge_id: str, started_at: datetime) -> dict:
         exp = experiments[exp_id]
@@ -249,7 +265,7 @@ def lineage_graph(repo: Any) -> dict:
         edges.extend({"parent": parent, "child": display_id[child]} for parent in parents)
     for exp_id, resolved_tips in tips_by_anchor.items():
         if len(resolved_tips) > 1:
-            edges.extend({"parent": display_id[exp_id], "child": tip_id} for tip_id in resolved_tips)
+            edges.extend({"parent": shown_as(hung_from(tip_id, exp_id)), "child": tip_id} for tip_id in resolved_tips)
 
     # When the work moved on from a node: its first child's start - what ends the elapsed time of a
     # draft that was never concluded but continued into a new version (« poursuivie »). And the
@@ -269,6 +285,8 @@ def lineage_graph(repo: Any) -> dict:
                 seen.add(compact(lasermark))
                 node["wafers"].append(lasermark)
 
+    if anchors:
+        return {"nodes": nodes, "edges": edges, "anchors": {vid: shown_as(vid) if vid in experiments else None for vid in anchors}}
     return {"nodes": nodes, "edges": edges}
 
 

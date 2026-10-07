@@ -104,10 +104,15 @@ def test_concluding_a_tracked_experiment_still_works(client):
     assert response.json()["status"] == "concluded"
 
 
-def test_a_line_from_a_version_inherits_its_entity(client):
+def test_a_line_from_a_version_names_its_own_wafers(client):
+    # une nouvelle piste ne reprend pas en silence les plaques de sa version de départ : elle nomme
+    # les siennes - les mêmes, ou de nouvelles
     slug = signup_with_microproject(client, "mandatory-from-version@example.com")
     launched = launch(client, slug, entities=[{"sample_id": "W9"}])
     body = launch_body(title="Suite", intent="x", entities=[], from_version={"experiment_id": launched["id"]})
+    response = client.post(f"/api/microprojects/{slug}/experiments", json=body)
+    assert response.status_code == 422 and response.json()["code"] == "entity_required"
+    body = launch_body(title="Suite", intent="x", entities=[{"sample_id": "W9"}], from_version={"experiment_id": launched["id"]})
     response = client.post(f"/api/microprojects/{slug}/experiments", json=body)
     assert response.status_code == 201
     assert response.json()["physical_tracking"] == [{"sample_id": "W9", "location": None}]

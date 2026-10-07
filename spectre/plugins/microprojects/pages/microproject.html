@@ -123,6 +123,235 @@
     .lineage-lot:focus-visible {
       outline: none;
     }
+    /* expérience prévisionnelle : trait en pointillé, pastille « PRÉVU », libellé en italique */
+    .lineage-edge.is-planned {
+      stroke: var(--gold);
+      stroke-dasharray: 4 4;
+    }
+    .lineage-node.is-planned .lineage-label {
+      font-style: italic;
+    }
+    .lineage-duration.is-planned {
+      fill: var(--gold-dark);
+    }
+    .lineage-planned-pill rect {
+      fill: var(--gold-tint);
+      stroke: var(--gold-dark);
+      stroke-width: 1px;
+      stroke-dasharray: 3 2;
+    }
+    .lineage-planned-pill text {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      fill: var(--gold-dark);
+    }
+    /* « + » d'un nœud : prévoir la suite - visible au survol, au clavier et sur le nœud choisi */
+    .lineage-add {
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 150ms ease;
+    }
+    .lineage-node:hover .lineage-add,
+    .lineage-node:focus-within .lineage-add,
+    .lineage-node-selected .lineage-add {
+      opacity: 1;
+    }
+    @media (hover: none) {
+      .lineage-add {
+        opacity: 1;
+      }
+    }
+    .lineage-add__hit {
+      fill: transparent;
+    }
+    .lineage-add__disc {
+      fill: var(--surface);
+      stroke: var(--accent);
+      stroke-width: 1.4px;
+      transition: fill 150ms ease;
+    }
+    .lineage-add path {
+      stroke: var(--accent);
+      stroke-width: 1.8px;
+      stroke-linecap: round;
+      pointer-events: none;
+    }
+    .lineage-add:hover .lineage-add__disc,
+    .lineage-add:focus-visible .lineage-add__disc {
+      fill: var(--accent);
+    }
+    .lineage-add:hover path,
+    .lineage-add:focus-visible path {
+      stroke: var(--surface);
+    }
+    .lineage-add:focus-visible {
+      outline: none;
+    }
+    /* formulaire de prévision, dans la carte */
+    .plan-form__field {
+      margin-bottom: 12px;
+    }
+    .plan-form__legend {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+      padding: 0;
+    }
+    .plan-modes {
+      border: none;
+      margin: 0 0 12px;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .plan-mode {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: border-color 150ms ease, background 150ms ease;
+      font-weight: 400;
+      margin: 0;
+    }
+    .plan-mode:hover {
+      border-color: var(--accent);
+    }
+    .plan-mode:has(input:checked) {
+      border-color: var(--accent);
+      background: var(--accent-tint);
+    }
+    .plan-mode:has(input:focus-visible) {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .plan-mode.is-disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    .plan-mode input {
+      margin-top: 3px;
+      accent-color: var(--accent);
+    }
+    .plan-mode__body {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .plan-mode__title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .plan-mode__desc {
+      font-size: 12px;
+      color: var(--text-soft);
+      line-height: 1.45;
+    }
+    .plan-wafers {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .plan-wafer {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 32px;
+      padding: 4px 10px 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      font-weight: 400;
+      margin: 0;
+    }
+    .plan-wafer:has(input:checked) {
+      border-color: var(--accent);
+      background: var(--accent-tint);
+    }
+    .plan-wafer input {
+      accent-color: var(--accent);
+      margin: 0;
+    }
+    .plan-wafer__mark {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text);
+    }
+    .plan-wafer__variant {
+      font-size: 11px;
+      color: var(--text-faint);
+    }
+    .plan-count {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .plan-count .field {
+      width: 90px;
+      flex: none;
+      font-variant-numeric: tabular-nums;
+    }
+    .plan-form__actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .plan-form__actions .btn {
+      flex: 1;
+    }
+    .plan-form #plan-cancel {
+      margin-top: 8px;
+    }
+    .plan-form .error {
+      margin-bottom: 10px;
+    }
+    .plan-card__wafers {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px 8px;
+      padding: 8px 10px;
+      border: 1px dashed var(--gold-dark);
+      border-radius: var(--radius-sm);
+      background: var(--gold-tint);
+    }
+    .plan-card__wafers .plan-wafer__mark {
+      padding: 1px 7px;
+      border-radius: var(--radius-pill);
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .plan-card__mode {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--gold-dark);
+      margin-right: 4px;
+    }
+    .plan-card__count {
+      font-size: 16px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+    .plan-card__parent {
+      min-height: 0;
+      padding: 0;
+      font-size: inherit;
+    }
+    .plan-card__delete {
+      display: block;
+      margin-top: 10px;
+      color: var(--danger);
+    }
     .lineage-panel__lot {
       margin-top: 12px;
       padding-top: 10px;
@@ -178,6 +407,10 @@
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <a id="evolution-link" class="btn btn-line" href="#">Évolution des structures</a>
+        <button id="plan-root-btn" class="btn btn-line" type="button" style="display:none;" title="Prévoir une expérience (titre, intention, nombre de plaques) sans encore définir sa structure">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 3" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>
+          Prévoir une expérience
+        </button>
         <button id="members-btn" class="btn btn-line" type="button">Membres</button>
         <button id="new-structure-btn" class="btn btn-primary" style="display:none;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
@@ -190,7 +423,7 @@
       <div class="card lineage-canvas-wrap">
         <div id="lineage-empty" class="empty-state" style="display:none;">
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/></svg>
-          <p>Aucune expérience pour l'instant. « Nouvelle expérience » pour commencer.</p>
+          <p>Aucune expérience pour l'instant. « Nouvelle expérience » pour commencer, ou « Prévoir une expérience » pour la planifier d'abord.</p>
         </div>
         <svg id="lineage-svg"></svg>
         <div class="lineage-legend" id="lineage-legend"></div>
@@ -253,7 +486,7 @@
   <dialog id="new-experience-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
     <div class="card-pad" style="width:min(460px,92vw);">
       <h2 style="font-size:16px;margin-bottom:4px;">Nouvelle expérience sans référence</h2>
-      <p class="help" style="margin-bottom:12px;">Comment voulez-vous donner la structure ? <button class="btn-link-secondary" id="back-to-reference" type="button" style="min-height:0;padding:0;font-size:12px;">Revenir aux références</button></p>
+      <p class="help" style="margin-bottom:12px;">Comment voulez-vous donner la structure ? Pour continuer une expérience, utilisez le « + » de son nœud dans l'arbre. <button class="btn-link-secondary" id="back-to-reference" type="button" style="min-height:0;padding:0;font-size:12px;">Revenir aux références</button></p>
 
       <div style="display:flex;flex-direction:column;gap:16px;">
         <div class="new-exp-modes">
@@ -275,16 +508,6 @@
           <select class="field" id="template-select" style="margin-bottom:8px;"></select>
           <button class="btn btn-line btn-block" id="option-template" type="button">Utiliser cette structure</button>
           <a class="btn btn-line btn-block" id="option-new-library-structure" href="#" style="margin-top:8px;">+ Créer une nouvelle structure</a>
-        </div>
-
-        <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
-          <label>Continuer une expérience existante</label>
-          <div class="help" style="margin-bottom:8px;">Garde le lien avec la version de départ - hérite de sa structure et de son contexte (intention, objectifs, entité physique). Cliquer un nœud du graphe fait la même chose.</div>
-          <select class="field" id="continue-select" style="margin-bottom:8px;"></select>
-          <div class="btn-pair">
-            <button class="btn btn-line" id="option-continue" type="button">Dans le constructeur</button>
-            <button class="btn btn-line" id="option-continue-image" type="button">Avec une image</button>
-          </div>
         </div>
 
         <div style="padding-top:14px;border-top:1px solid var(--border-soft);">
