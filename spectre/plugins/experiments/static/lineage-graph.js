@@ -170,9 +170,23 @@ function lineageNodeShapeHtml(node, { radius = 9, selected = false, tipRing = tr
   return `${halo}${ring}${shape}${dot}${glyph}`;
 }
 
+// Une expérience prévisionnelle (prévue depuis l'arbre, pas encore lancée - GET .../lineage, `plans`) :
+// un cercle en pointillé or foncé, vide - ni structure ni plaques réelles encore. Jamais la couleur
+// seule : le pointillé, et la pastille « Prévu » que lineage-view.js pose à côté.
+function lineagePlanShapeHtml({ radius = 9, selected = false } = {}) {
+  const halo = `<circle class="lineage-halo" r="${radius + 7}" fill="none" stroke="var(--accent)" stroke-width="2"${selected ? "" : ` visibility="hidden"`}></circle>`;
+  return `${halo}<circle class="lineage-shape" r="${radius - 1}" fill="var(--surface)" style="stroke:var(--gold-dark);stroke-width:1.8px;stroke-dasharray:3 2.4"></circle>`;
+}
+
+// Ce qu'une expérience prévue reprendra : « 2 plaques reprises » ou « ~6 plaques prévues ».
+function lineagePlanWafersLabel(plan) {
+  if (plan.mode === "same_wafers") return `${plan.wafers.length} plaque${plan.wafers.length > 1 ? "s" : ""} reprise${plan.wafers.length > 1 ? "s" : ""}`;
+  return `~${plan.wafer_count} plaque${plan.wafer_count > 1 ? "s" : ""} prévue${plan.wafer_count > 1 ? "s" : ""}`;
+}
+
 // Légende du code ci-dessus (une puce par issue + combinaison + pointe de piste) - affichée sous le graphe
 // d'un µprojet et au-dessus de la frise d'une thématique, pour qu'aucune couleur ne reste à deviner.
-function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = false } = {}) {
+function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = false, planned = false } = {}) {
   const icon = (node) =>
     `<svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true">${lineageNodeShapeHtml(node, { radius: 6.5, tipRing: false })}</svg>`;
   const items = [
@@ -191,6 +205,9 @@ function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = fal
     items.push(
       `<li><svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true"><circle r="8.5" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 2"></circle><circle r="4.5" fill="var(--surface)" style="stroke:var(--draft);stroke-width:1.6px"></circle></svg>Dernière version d'une piste</li>`
     );
+  }
+  if (planned) {
+    items.push(`<li><svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true">${lineagePlanShapeHtml({ radius: 6.5 })}</svg>Prévisionnelle (pas encore lancée)</li>`);
   }
   if (wafers) {
     // badge dessiné par lineage-view.js (styles .lineage-wafers dans microproject.html)

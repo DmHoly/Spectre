@@ -4,6 +4,7 @@ conclusion, étiquettes, entités physiques, fusion, suppression, diff, filiatio
 
 from ...kernel.plugin import Page, Plugin
 from .api import page_router, router
+from .migrations import MIGRATIONS
 
 PLUGIN = Plugin(
     name="experiments",
@@ -11,6 +12,7 @@ PLUGIN = Plugin(
     router=router,
     # un ancien lien vers un id de version -> la page de sa piste ; l'ancienne page des refs -> l'évolution
     page_router=page_router,
+    migrations=MIGRATIONS,
     pages=(
         Page("/microprojets/{slug}/experiences/{experiment_id}", "experiment.html"),
         Page("/microprojets/{slug}/evolution", "evolution.html"),

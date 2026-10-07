@@ -39,7 +39,8 @@
         <a href="#conclure">Conclure</a>
 
         <div class="docs-nav__group">Faire évoluer</div>
-        <a href="#evoluer">Continuer ou explorer une nouvelle piste</a>
+        <a href="#prevoir">Prévoir la suite depuis l'arbre</a>
+        <a href="#evoluer">Modifier une expérience ou explorer une nouvelle piste</a>
         <a href="#gabarit">Nouvelle expérience à partir d'une structure existante</a>
 
         <div class="docs-nav__group">Campagnes</div>
@@ -185,8 +186,18 @@
           <img class="docs-shot" src="/static/docs/img/13-conclure.png" alt="Formulaire de conclusion, réponse à un objectif">
         </section>
 
+        <section id="prevoir">
+          <h2>Prévoir la suite depuis l'arbre</h2>
+          <p>Sur la page d'un µprojet, le « + » à côté d'un nœud (ou « Prévoir la suite » sur sa carte) prévoit une expérience à sa suite sans quitter l'arbre : un titre, une intention, et ce qu'on continue :</p>
+          <ul>
+            <li><strong>Mêmes plaques</strong> — on coche une ou plusieurs plaques de cette expérience, qui vont subir des tests supplémentaires (pour une campagne, des plaques d'une même variante).</li>
+            <li><strong>Nouvelles plaques</strong> — on relance de nouvelles plaques pour continuer l'étude, depuis cette structure : on indique seulement combien on pense en lancer.</li>
+          </ul>
+          <p>« Prévoir une expérience », en tête de page, en prévoit une sans point de départ (de nouvelles plaques). L'expérience prévue apparaît en pointillé avec la pastille « Prévu » ; sa carte la lance, la modifie ou la supprime. « Lancer » ouvre l'éditeur prérempli (titre, intention, plaques reprises ou autant de lignes que de plaques prévues) : la structure, le split et les vraies plaques se définissent là. Lancée, elle devient une expérience comme les autres.</p>
+        </section>
+
         <section id="evoluer">
-          <h2>Continuer ou explorer une nouvelle piste</h2>
+          <h2>Modifier une expérience ou explorer une nouvelle piste</h2>
           <p>Le bouton « Éditer la fiche » rouvre l'éditeur, préchargé avec la fiche actuelle (sur l'écran d'intention ; « Modifier la structure », à côté du dessin, l'ouvre sur la structure). Enregistrer crée une nouvelle version. Deux choix apparaissent alors :</p>
           <ul>
             <li><strong>Continuer cette piste</strong> — la nouvelle version prolonge directement celle-ci.</li>
@@ -197,12 +208,13 @@
 
         <section id="gabarit">
           <h2>Nouvelle expérience à partir d'une structure existante</h2>
-          <p>Le bouton « Nouvelle expérience » sur un projet propose trois départs :</p>
+          <p>Le bouton « Nouvelle expérience » sur un projet propose d'abord une structure de référence, puis, sans référence :</p>
           <ul>
-            <li><strong>Partir de zéro</strong> — un constructeur vide.</li>
-            <li><strong>Utiliser cette structure</strong> — reprend la structure d'une expérience existante comme point de départ, sans lien de filiation avec elle (une nouvelle piste indépendante).</li>
-            <li><strong>Continuer cette expérience</strong> — équivaut à ouvrir « Éditer la fiche » depuis cette expérience.</li>
+            <li><strong>Dessiner la structure</strong> — un constructeur vide ; ou <strong>coller une image</strong>.</li>
+            <li><strong>Utiliser cette structure</strong> — reprend une structure de la bibliothèque comme point de départ, sans lien de filiation.</li>
+            <li><strong>Partir de plaques existantes</strong> — des plaques déjà suivies, ici ou dans un autre µprojet : leur structure actuelle est reprise.</li>
           </ul>
+          <p>Pour continuer une expérience, utilisez le « + » de son nœud dans l'arbre (voir <a href="#prevoir">Prévoir la suite</a>).</p>
         </section>
 
         <section id="campagnes">

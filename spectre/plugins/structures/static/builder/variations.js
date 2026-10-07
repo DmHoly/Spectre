@@ -564,6 +564,11 @@ function renderVariationTable(rows, factorLabels) {
         : ""
     }
     ${
+      launchedPlan && launchedPlan.mode === "new_wafers"
+        ? `<p class="help sb-samples__planned"><span class="badge badge-planned"><span class="dot"></span>Prévisionnel</span> ~${launchedPlan.wafer_count} plaque${launchedPlan.wafer_count > 1 ? "s" : ""} prévue${launchedPlan.wafer_count > 1 ? "s" : ""} : nommez celles réellement lancées.</p>`
+        : ""
+    }
+    ${
       replicates && !state.originWafers
         ? `<div class="sb-samples__more"><button type="button" class="btn btn-line js-add-wafer">+ Ajouter une plaque</button><span class="help">Des réplicats : plusieurs plaques passées par la même structure.</span></div>`
         : ""
@@ -628,7 +633,7 @@ function updateLaunchVariationsLabel() {
   } else if (state.campaignPlan) {
     const n = state.variationEntities.length || 1;
     btn.textContent = `Lancer la campagne (${n} échantillon${n > 1 ? "s" : ""})`;
-  } else if (evolveExperienceId) {
+  } else if (evolveExperienceId && !planId) {
     btn.textContent = "Enregistrer les modifications";
   } else {
     const n = state.variationEntities.filter((e) => (e.sample_id || "").trim()).length;
@@ -721,6 +726,7 @@ function showWizardStepVariations() {
       fdl: entityFdlField ? entityFdlField.get() : [],
     };
   }
+  plannedWaferRows();
   setStage("variations");
   renderVariationFactorsList();
   refreshVariationTable();

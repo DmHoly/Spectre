@@ -377,8 +377,27 @@ déplacement de classe ne doit jamais la changer.
   ou `branch` à la création - un seul segment sans `/`, ni `.`/`..`, ni la forme d'un id de version,
   libre parmi les pistes, les refs **et** les pistes supprimées (sinon 409 `branch_name_taken`).
 - Une piste créée depuis une version (`from_version`, `version_id` facultatif : la pointe par
-  défaut) en reprend, faute de mieux dans la requête, les objectifs, le contexte et l'entité suivie -
-  pas le cahier de données, les étiquettes ni la conclusion : c'est une nouvelle étude.
+  défaut) en reprend, faute de mieux dans la requête, les objectifs et le contexte - pas ses plaques
+  (la requête nomme les siennes, les mêmes ou de nouvelles : 422 `entity_required` sinon, décision du
+  2026-10-07), le cahier de données, les étiquettes ni la conclusion : c'est une nouvelle étude.
+- **Les expériences prévisionnelles** (`experiments.plans`, table `experiment_plans`, migration
+  `experiments/0001_plans`) : prévues depuis l'arbre du µprojet, avant d'en savoir la structure, le
+  split ou les vraies plaques - un titre, une intention, la version dont elles partent (aucune pour
+  une racine ; la version choisie reste même si la piste avance) et ce qu'elles continuent :
+  **les mêmes plaques** (`same_wafers`, des lasermarks suivis par cette version, d'une seule variante
+  pour une campagne - la règle de `resolve_wafer_origin`, vérifiée dès la prévision) ou **de
+  nouvelles plaques** (`new_wafers`, `wafer_count` estimé, 1 à 200). Ce n'est pas encore une étude :
+  elles vivent dans la base, pas dans le dépôt Follow. `GET .../lineage` les rend (`plans`, chacune
+  avec `parent_node`, le nœud qui montre sa version de départ - `lineage_graph(anchors=)`).
+  Lancées (`POST .../experiments` avec `plan_id`), elles sont supprimées : l'étude ne garde que ses
+  plaques réelles (le prévisionnel est oublié). L'éditeur les lance par `?prevision=<id>` : mêmes
+  plaques → départ de plaques existantes (`wafer_origin`) ; nouvelles plaques → nouvelle piste depuis
+  la version (`from_version`, jamais une modification sur place) ; racine → structure vierge.
+  « Continuer » depuis l'arbre passe toujours par là ; la modification sur place d'une étude reste
+  « Éditer la fiche ».
+- Dans le graphe, une étude partie d'une autre **sans changer la structure** (des tests sur les mêmes
+  plaques...) est accrochée à celle dont elle part, et non au dernier changement de structure
+  (`lineage_graph`, `hung_from`).
 - **L'origine de référence** (`reference_origin`, `experiments.service.REFERENCE_ORIGIN_KEY`) : la
   version de référence dont part une étude, `{reference, version}` (un slug et un numéro « 1.1 »),
   donnée au lancement (`POST .../experiments`) et rangée dans les métadonnées. experiments ne connaît
@@ -399,7 +418,7 @@ déplacement de classe ne doit jamais la changer.
   position) et retire les vides de fin. Une évolution en images garde les réplicats de la version
   précédente (la plaque de la première variante pour une campagne).
 - **Partir de plaques existantes** (`POST .../experiments` avec `wafer_origin: {microproject,
-  experiment_id, version_id?}`, `service._wafer_origin`) : l'étude qui suit les plaques (sa pointe
+  experiment_id, version_id?}`, `service.resolve_wafer_origin`) : l'étude qui suit les plaques (sa pointe
   par défaut), dans ce µprojet ou dans un autre dont l'appelant est membre (404 µprojet inconnu, 403
   sinon) ; les plaques sont les `entities`, chacune suivie par cette version (422
   `wafer_not_in_origin`), toutes de la même structure : une seule variante d'une campagne (422
@@ -756,6 +775,7 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `GET …/experiences/{ref}` | `GET /api/microprojects/{mp}/experiments/{exp}` (dernière version, `ETag`) ; le détail porte `id` (la piste), `version_id`, `is_tip`, `children` `[{experiment_id, version_id, title, is_tip}]`, `continued_at` (première suite structurelle), `reference_origin` (`{reference, version}` ou `null`) et `wafer_origin` (`{microproject, experiment_id, version_id, variant}` ou `null`) |
 | `GET …/experiences/{ref}/timeline` | `GET …/experiments/{exp}/versions` → tableau, de la première version à la pointe : `{version_id, experiment_id, title, intent, created_at, author, is_tip, version, change_level}` (la frise des structures : `change_level != "none"`) |
 | *(nouveau)* | `GET …/experiments/{exp}/versions/{version_id}` (une version de l'histoire de la piste, `ETag`) |
+| *(nouveau)* | `GET /api/microprojects/{mp}/experiment-plans` → `{items}` ; `POST` `{title, intent, parent?: {experiment_id, version_id?}, mode: same_wafers\|new_wafers, wafers?, wafer_count?}` → 201 + `Location` (editor ; 422 `title_required`, `parent_required`, `entity_required`, `wafer_count_required`, `wafer_not_in_origin`, `wafers_different_structures` ; 404 `source_not_found`) ; `GET`/`PATCH` `{title?, intent?, mode?, wafers?, wafer_count?}`/`DELETE …/experiment-plans/{id}` (404 `plan_not_found`) - les expériences prévisionnelles (§ 4) ; `POST …/experiments` accepte `plan_id` |
 | `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 + `Location` vers la version ; **200 sans `Location`** si rien n'a changé (§ 4) ; une campagne y est refusée (422 `campaign_is_a_new_line`) : elle se lance avec `from_version` |
 | `POST …/{ref}/evoluer-image` | idem, avec `structure: {kind: "images", …}` |
 | `POST …/{ref}/dessin` | `PUT …/experiments/{exp}/structure-images` (toute la planche, dans l'ordre : `{image_id, kind, caption, annotations}` ; écriture légère, même révision de structure - c'est aussi par elle que se posent les annotations d'une image) |

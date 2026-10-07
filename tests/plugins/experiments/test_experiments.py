@@ -132,13 +132,13 @@ def test_a_line_from_a_version_starts_afresh_but_keeps_its_defaults(client):
     conclude(client, slug, source["id"], summary="Fini")
 
     fork = launch(
-        client, slug, title="Fourche", intent="Explorer", steps=steps(40), entities=[], branch="fourche",
+        client, slug, title="Fourche", intent="Explorer", steps=steps(40), entities=[{"sample_id": "W5"}], branch="fourche",
         from_version={"experiment_id": source["id"]},
     )
     assert fork["id"] == "fourche"
     assert fork["objectives"][0]["name"] == "Isolation"  # repris faute d'autres
     assert fork["context"] == "Le contexte"
-    assert fork["physical_tracking"] == [{"sample_id": "W1", "location": None}]
+    assert fork["physical_tracking"] == [{"sample_id": "W5", "location": None}]  # ses plaques, jamais celles de la source en silence
     assert fork["tags"] == [] and fork["status"] == "draft"  # une nouvelle étude
     assert get_experiment(client, slug, source["id"])["status"] == "concluded"  # la source est intacte
 
@@ -159,7 +159,7 @@ def test_delete_removes_the_whole_line_and_refuses_when_something_derives_from_i
     assert_handler_404(client.get(experiment_url(slug, b)))
 
     # une piste partie de A : A ne peut plus être supprimée tant qu'elle existe
-    a2 = launch(client, slug, title="A2", intent="x", steps=steps(40), entities=[], from_version={"experiment_id": a})["id"]
+    a2 = launch(client, slug, title="A2", intent="x", steps=steps(40), entities=[{"sample_id": "W2"}], from_version={"experiment_id": a})["id"]
     refused = delete_experiment(client, slug, a)
     assert refused.status_code == 409
     assert refused.json()["code"] == "has_descendants"

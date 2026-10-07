@@ -57,6 +57,9 @@ async function loadExistingProcess() {
     renderObjectives();
     if (intentFormSection) intentFormSection.fill(detail.form_answers);
     updateStageMeta();
+    // une expérience prévue partie de cette version : une nouvelle piste, sur de nouvelles plaques -
+    // celles de la version de départ ne sont pas reprises (voir loadPlan)
+    if (planId) return;
 
     // en évolution, l'entité physique se transmet automatiquement de la version précédente
     // (voir experiments.py::evolve_experience) - le champ reste modifiable pour la corriger,
@@ -120,6 +123,7 @@ async function commitExperience(entities) {
   if (referenceOrigin && !evolveExperienceId) payload.reference_origin = referenceOrigin;
   // partie de plaques existantes (chargées) : l'étude d'où elles viennent
   if (waferOrigin && !evolveExperienceId) payload.wafer_origin = waferOrigin;
+  if (launchedPlan) payload.plan_id = launchedPlan.id;
   if (evolveExperienceId && document.getElementById("branch-fork").checked) {
     const branchName = document.getElementById("new-branch-name").value.trim();
     if (!branchName) {
@@ -136,7 +140,7 @@ async function commitExperience(entities) {
   }
   // Une nouvelle piste partie de la version de départ (une fourche, ou une campagne) garde le lien
   // de filiation ; continuer la piste envoie la version affichée (If-Match).
-  if (evolveExperienceId && (payload.branch || state.campaignPlan)) {
+  if (evolveExperienceId && (payload.branch || state.campaignPlan || planId)) {
     payload.from_version = { experiment_id: evolveExperienceId, version_id: evolveParent ? evolveParent.version_id : null };
   }
   try {
@@ -156,7 +160,8 @@ async function commitExperience(entities) {
 document.getElementById("launch-btn").addEventListener("click", () => {
   clearError();
   if (evolveReplicates) {
-    commitExperience([]); // les réplicats de la piste restent
+    // les réplicats de la piste restent ; une nouvelle piste les nomme (aucune plaque n'est reprise en silence)
+    commitExperience(document.getElementById("branch-fork").checked ? evolveReplicates : []);
     return;
   }
   const entitySampleId = document.getElementById("exp-entity-sample-id").value.trim();
@@ -192,7 +197,7 @@ document.getElementById("launch-btn-variations").addEventListener("click", () =>
   // l'entité de la version précédente. On envoie alors une liste vide plutôt qu'une ligne blanche,
   // qui écraserait l'entité héritée (voir evolve_experience). Un nouveau lancement / une campagne
   // exigent au moins un échantillon nommé (positions gardées pour l'alignement des variantes).
-  const evolveNoSplit = evolveExperienceId && !state.campaignPlan;
+  const evolveNoSplit = evolveExperienceId && !state.campaignPlan && !planId;
   if (evolveNoSplit) {
     commitExperience(tableEntities.filter((e) => e.sample_id));
     return;
@@ -310,4 +315,40 @@ async function loadTemplateProcess() {
   } catch (err) {
     showError(err);
   }
+}
+
+// Une expérience prévisionnelle qu'on lance (?prevision=) : son titre, son intention, et ce qu'elle
+// reprend - ses plaques (déjà chargées par loadWaferOrigin) ou le nombre prévu de nouvelles plaques,
+// rappelé sur l'écran 3. Elle a pu être lancée ou supprimée entre-temps : l'expérience se lance alors
+// sans elle.
+async function loadPlan() {
+  if (!planId) return;
+  try {
+    launchedPlan = await experimentsApi.getPlan(slug, planId);
+  } catch (err) {
+    if (err.status !== 404) return showError(err);
+    showError(new Error("Cette expérience prévisionnelle n'existe plus (déjà lancée ou supprimée) : l'expérience se lancera sans elle."));
+    return;
+  }
+  setPageTitle(`Lancer « ${launchedPlan.title} »`);
+  document.getElementById("exp-title").value = launchedPlan.title;
+  if (launchedPlan.intent) document.getElementById("exp-intent").value = launchedPlan.intent;
+  if (evolveExperienceId && evolveParent) {
+    document.getElementById("based-on-note").hidden = false;
+    document.getElementById("based-on-label").textContent = "À la suite de :";
+    document.getElementById("based-on-name").textContent = evolveParent.title;
+    const link = document.getElementById("edit-structure-link");
+    link.textContent = "voir l'expérience de départ";
+    link.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(evolveExperienceId)}${evolveVersionId ? `?version=${encodeURIComponent(evolveVersionId)}` : ""}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+  }
+  updateStageMeta();
+}
+
+// Les lignes de l'écran 3 d'une prévision sur de nouvelles plaques : autant que de plaques prévues,
+// à nommer (une estimation - on en retire ou en ajoute).
+function plannedWaferRows() {
+  if (!launchedPlan || launchedPlan.mode !== "new_wafers" || state.originWafers || state.variationEntities.some((e) => e.sample_id)) return;
+  state.variationEntities = Array.from({ length: launchedPlan.wafer_count }, () => ({ sample_id: "", location: "" }));
 }

@@ -28,7 +28,7 @@ from ..microprojects import service as microprojects
 from ..microprojects.deps import get_microproject, require_role
 from ..microprojects.service import Microproject
 from ..structures import campaigns, kinds
-from . import refs, service, versioning
+from . import plans, refs, service, versioning
 from .lineage import lineage_graph
 from .lineage import structure_history as lineage_structure_history
 from .repository import CONCLUDED_STATUSES, RUNNING_STATUSES, branch_tips, display_status, get_repository, hold_of
@@ -37,6 +37,8 @@ from .schemas import (
     CreateExperimentRequest,
     EntitiesRequest,
     EvolveRequest,
+    PlanRequest,
+    PlanUpdate,
     RefChanges,
     RefRequest,
     StatusRequest,
@@ -173,12 +175,15 @@ def create_experiment(
     d'une version existante (``from_version``), de plaques existantes (``wafer_origin`` : l'étude
     qui les suit, dans ce µprojet ou dans un autre dont l'appelant est membre - 404 / 403 sinon ;
     les plaques sont les ``entities``), ou de deux études du µprojet combinées (``merge_of``, sans
-    structure : la nouvelle piste a les deux pour parents) - ``Location`` vers la nouvelle piste."""
+    structure : la nouvelle piste a les deux pour parents) - ``Location`` vers la nouvelle piste.
+    Avec ``plan_id``, c'est une expérience prévisionnelle qu'on lance : elle cesse de l'être."""
     if body.wafer_origin is not None and body.wafer_origin.microproject != microproject.slug:
         other = get_microproject(body.wafer_origin.microproject)
         if microprojects.effective_role(user, other) is None:
             raise Forbidden("Vous n'avez pas accès au µprojet de ces plaques.")
     experiment = service.create(microproject.slug, body, author=user.name)
+    if body.plan_id is not None:
+        plans.consume_plan(microproject.id, body.plan_id)
     created(response, _experiment_url(microproject.slug, experiment.branch))
     return _respond(response, microproject.slug, experiment.branch, experiment.id)
 
@@ -188,8 +193,60 @@ def microproject_lineage(microproject: Microproject = Depends(require_role("view
     """The microproject's structural lineage (:func:`lineage_graph`) - what the µprojet page draws.
     Only a genuine structural change creates a node (a root, a merge, or a version that actually
     moved the process forward); a status, tags or a title change updates the node of its line in
-    place. Each node is a version (``version_id``) of a line of study (``experiment_id``)."""
-    return lineage_graph(get_repository(microproject.slug))
+    place. Each node is a version (``version_id``) of a line of study (``experiment_id``).
+
+    ``plans`` : the planned experiments (:mod:`.plans`), each with ``parent_node`` - the node it
+    hangs from (``None`` for a root, or when its starting version is gone)."""
+    planned = plans.list_plans(microproject.id)
+    graph = lineage_graph(get_repository(microproject.slug), anchors=[p.parent_version_id for p in planned if p.parent_version_id])
+    anchors = graph.pop("anchors", {})
+    graph["plans"] = [{**p.payload(), "parent_node": anchors.get(p.parent_version_id)} for p in planned]
+    return graph
+
+
+# -- les expériences prévisionnelles ---------------------------------------------------------------
+
+
+def _plan_url(slug: str, plan_id: int) -> str:
+    return f"/api/microprojects/{slug}/experiment-plans/{plan_id}"
+
+
+@router.get("/experiment-plans")
+def list_plans(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    """Les expériences prévues du µprojet (pas encore lancées), les plus anciennes d'abord."""
+    return {"items": [p.payload() for p in plans.list_plans(microproject.id)]}
+
+
+@router.post("/experiment-plans", status_code=201)
+def create_plan(
+    body: PlanRequest,
+    response: Response,
+    microproject: Microproject = Depends(require_role("editor")),
+    user: User = Depends(current_user),
+) -> dict:
+    """Prévoir une expérience depuis l'arbre : à la suite d'une version (``parent``) sur certaines
+    de ses plaques (``same_wafers``) ou sur de nouvelles (``new_wafers`` et leur nombre estimé), ou
+    en racine - ``Location`` vers elle."""
+    plan = plans.create_plan(microproject.id, microproject.slug, body, user_id=user.id, author=user.name)
+    created(response, _plan_url(microproject.slug, plan.id))
+    return plan.payload()
+
+
+@router.get("/experiment-plans/{plan_id}")
+def get_plan(plan_id: int, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
+    return plans.get_plan(microproject.id, plan_id).payload()
+
+
+@router.patch("/experiment-plans/{plan_id}")
+def update_plan(plan_id: int, body: PlanUpdate, microproject: Microproject = Depends(require_role("editor"))) -> dict:
+    """Son titre, son intention, ses plaques (reprises, ou nombre prévu) - sa version de départ reste."""
+    return plans.update_plan(microproject.id, microproject.slug, plan_id, body).payload()
+
+
+@router.delete("/experiment-plans/{plan_id}", status_code=204)
+def delete_plan(plan_id: int, microproject: Microproject = Depends(require_role("editor"))) -> Response:
+    plans.delete_plan(microproject.id, plan_id)
+    return Response(status_code=204)
 
 
 @router.get("/experiment-versions/{version_id}")

@@ -208,6 +208,9 @@ class Microproject:
         }
         if new_branch is None:
             return self._write(session, "POST", exp, "versions", body, days_ago)
+        # une nouvelle piste nomme ses plaques : ici, les mêmes que sa version de départ
+        source = session.get(f"{self._experiments()}/{exp['id']}/versions/{exp['version_id']}")
+        body["entities"] = [e for e in source["physical_tracking"] if e.get("sample_id")]
         result = session.post(self._experiments(), json={**body, "branch": new_branch, "from_version": {"experiment_id": exp["id"], "version_id": exp["version_id"]}})
         record(result["version_id"], days_ago)
         return {"id": result["id"], "version_id": result["version_id"]}

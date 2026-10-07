@@ -21,7 +21,7 @@ function setupExperienceMode() {
   document.getElementById("experience-header").hidden = false;
   document.getElementById("stage-actions").hidden = false;
   setPageTitle("Nouvelle expérience");
-  if (evolveExperienceId) {
+  if (evolveExperienceId && !planId) {
     // Évolution / « partir d'une ref » : #launch-btn « Enregistrer cette évolution » enregistre
     // directement (entité + choix de piste sur l'écran intention). #continue-btn reste disponible
     // pour aller à l'écran variations faire varier un paramètre - c'est ce qui lance une campagne
@@ -64,6 +64,7 @@ async function init() {
     await loadReferenceProcess();
     await loadWaferOrigin();
     await loadChosenStructureForExperience();
+    await loadPlan();
   }
   // Tout ce qui est chargé programmatiquement (structure existante, modèle, brique...) constitue le
   // point de départ : l'historique d'annulation ne commence qu'à partir d'ici.

@@ -49,6 +49,13 @@ const requestedWafers =
       }
     : null;
 let waferOrigin = null;
+// ?prevision=<id> : on lance une expérience prévisionnelle (prévue depuis l'arbre du µprojet - voir
+// experiments/static/lineage-view.js) : son titre et son intention préremplissent l'écran 2, son nombre
+// de plaques prévu les lignes de l'écran 3 ; partie de la structure d'une version (?version= sur une
+// adresse d'évolution), c'est toujours une nouvelle piste - jamais une modification sur place. Le
+// lancement envoie son `plan_id` : elle cesse alors d'être prévue.
+const planId = !isLibraryMode && !isBrickMode && !isPresetMode && /^\d+$/.test(queryParams.get("prevision") || "") ? parseInt(queryParams.get("prevision"), 10) : null;
+let launchedPlan = null; // la prévision chargée (loadPlan)
 const returnTo = queryParams.get("retour"); // where "Enregistrer" in library/brick mode sends you back to
 
 const state = {

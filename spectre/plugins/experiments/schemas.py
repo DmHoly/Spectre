@@ -102,6 +102,8 @@ class CreateExperimentRequest(_Intention):
     # la version de référence dont part l'étude (le constructeur l'a chargée) - reportée aux versions
     # suivantes et aux fourches ; sans elle, une fourche garde celle de sa source
     reference_origin: ReferenceOrigin | None = None
+    # l'expérience prévisionnelle qu'on lance (plans.py) : elle cesse de l'être une fois l'étude créée
+    plan_id: int | None = None
 
     @model_validator(mode="after")
     def _structure_or_combination(self) -> "CreateExperimentRequest":
@@ -164,3 +166,31 @@ class RefRequest(BaseModel):
 class RefChanges(BaseModel):
     name: str | None = None  # the new name ; left out, nothing changes
 
+
+
+class PlanRequest(BaseModel):
+    """An experiment planned from the microproject's tree (see :mod:`.plans`): a title, an intent and
+    what it continues - some of ``parent``'s wafers (``same_wafers``, their lasermarks in ``wafers``)
+    or new ones (``new_wafers``, the estimated ``wafer_count``) ; without ``parent``, a new root (new
+    wafers only). No structure, no split: those come when it is launched."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(..., max_length=200)
+    intent: str = Field("", max_length=4000)
+    parent: FromVersion | None = None
+    mode: Literal["same_wafers", "new_wafers"] = "new_wafers"
+    wafers: list[str] = Field([], max_length=MAX_TRACKED_ENTITIES)
+    wafer_count: int | None = Field(None, ge=1, le=MAX_TRACKED_ENTITIES)
+
+
+class PlanUpdate(BaseModel):
+    """What changes on a planned experiment - its starting version stays."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(None, max_length=200)
+    intent: str | None = Field(None, max_length=4000)
+    mode: Literal["same_wafers", "new_wafers"] | None = None
+    wafers: list[str] | None = Field(None, max_length=MAX_TRACKED_ENTITIES)
+    wafer_count: int | None = Field(None, ge=1, le=MAX_TRACKED_ENTITIES)

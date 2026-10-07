@@ -112,8 +112,25 @@ const experimentsApi = {
       })
     );
   },
+  // {nodes, edges, plans} - plans : les expériences prévisionnelles, chacune avec parent_node (le nœud
+  // de sa version de départ, null pour une racine)
   lineage(microprojectSlug) {
     return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/lineage`);
+  },
+  // une expérience prévisionnelle (prévue depuis l'arbre, pas encore lancée) : body = {title, intent,
+  // parent?: {experiment_id, version_id}, mode: "same_wafers" | "new_wafers", wafers?, wafer_count?}
+  getPlan(microprojectSlug, planId) {
+    return api.get(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiment-plans/${encodeURIComponent(planId)}`);
+  },
+  createPlan(microprojectSlug, body) {
+    return api.post(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiment-plans`, body);
+  },
+  // changes : {title?, intent?, mode?, wafers?, wafer_count?} - la version de départ ne change pas
+  updatePlan(microprojectSlug, planId, changes) {
+    return api.patch(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiment-plans/${encodeURIComponent(planId)}`, changes);
+  },
+  removePlan(microprojectSlug, planId) {
+    return api.del(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiment-plans/${encodeURIComponent(planId)}`);
   },
   // les compteurs de chaque µprojet : filters = {area, microproject} (slugs, facultatifs)
   stats(filters) {
