@@ -229,7 +229,7 @@ spectre/plugins/<plugin>/
 
 | Extension | Où | Implémentations réelles |
 |---|---|---|
-| `StructureKind` (Protocol : `key`, `render_svg`, `entity_count` ; `KINDS` indexé par les clés figées). Le corps reçu est lu par l'union `structures.schemas.StructurePayload`, discriminée par `kind` | `structures/kinds.py` | process, campaign, images |
+| `StructureKind` (Protocol : `key`, `render_svg`, `entity_count` ; `KINDS` indexé par les clés figées). Le corps reçu est lu par l'union `structures.schemas.StructurePayload`, discriminée par `kind` | `structures/kinds.py` | process, campaign, images, declared (sans structure) |
 | `DataSource` (Protocol : `list_types`, `describe`, `query`, `chart`), choisie à un seul endroit (`characterization.service.current_source()`, `SPECTRE_DEMO_DATA`) | `characterization/source.py` | PRISM (`prism_source.py`), démo (`demo.py`) |
 | `register_provider(SearchProvider)` | `search` | microprojects, wafers (lasermark, FDL), lots |
 | `register_library_file(LibraryFile)` : clé en kebab-case anglais (le nom du fichier YAML reste le nom historique), `parse` (mapping YAML → contenu, `ValueError` si invalide : sert à valider avant l'écriture et à charger) et `fallback` (contenu quand le fichier est absent ou invalide) | `library` | structures (matériaux, recettes), process_library (présets, briques), library (textes de la section intention, servis par `GET /api/ui-texts/intention`) |
@@ -250,7 +250,23 @@ annotations modifiées ».
 **Clés de type de structure figées.** `ProcessLot` et `StructureImage` surchargent
 `registry_key()` pour renvoyer leur chaîne historique (`spectre.core.structures.…`). Follow
 persiste cette clé dans `structure_type` et l'utilise dans le hachage de l'id, si bien qu'un
-déplacement de classe ne doit jamais la changer.
+déplacement de classe ne doit jamais la changer. `DeclaredStructure` a la sienne, figée dès sa
+création : `spectre.structures.DeclaredStructure`.
+
+**Expérience sans structure (`DeclaredStructure`, kind `declared`).** Pas de structure complète :
+une `description` libre, des `images` facultatives (la forme de `StructureImage`, 0 à 12) et le split
+déclaré - `factors` (les colonnes : ce qu'on change) et `wafers` (`[{label, values}]`, une ligne par
+plaque, au moins une, une valeur texte par colonne). Rien à simuler ni d'étapes (`steps = []`, pas
+de `structureforge_process`, les mesures du cahier se rattachent à la plaque ou à l'étude). Comme une
+campagne, une place de `physical_tracking` par ligne (`entity_count`), à sa position, et
+`PUT …/physical-tracking` en exige exactement autant ; `campaign_labels` reçoit le nom de chaque ligne
+(`label`, sinon ses valeurs, sinon « Plaque n » - `kinds.declared_wafer_label`) pour la liste des
+plaques et le cahier. Les versions se distinguent par la révision des images
+(`structure_image_revision`) : une évolution qui garde description, images (sans leurs annotations)
+et tableau garde la révision et la conclusion ; sinon nouvelle révision (changement majeur). Le
+détail porte `structure_kind` et `declared_structure` (`{description, images (avec url), factors,
+wafers: [{label, values, name}]}`). Partie dans le constructeur, une telle étude garde ses plaques
+nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ `declared-structure.js`).
 
 ## 4. Conventions REST
 
@@ -798,6 +814,7 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | *(nouveau)* | `GET /api/microprojects/{mp}/experiment-plans` → `{items}` ; `POST` `{title, intent, parent?: {experiment_id, version_id?}, mode: same_wafers\|new_wafers, wafers?, wafer_count?}` → 201 + `Location` (editor ; 422 `title_required`, `parent_required`, `entity_required`, `wafer_count_required`, `wafer_not_in_origin`, `wafers_different_structures` ; 404 `source_not_found`) ; `GET`/`PATCH` `{title?, intent?, mode?, wafers?, wafer_count?}`/`DELETE …/experiment-plans/{id}` (404 `plan_not_found`) - les expériences prévisionnelles (§ 4) ; `POST …/experiments` accepte `plan_id` |
 | `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 + `Location` vers la version ; **200 sans `Location`** si rien n'a changé (§ 4) ; une campagne y est refusée (422 `campaign_is_a_new_line`) : elle se lance avec `from_version` |
 | `POST …/{ref}/evoluer-image` | idem, avec `structure: {kind: "images", …}` |
+| *(nouveau)* | idem, avec `structure: {kind: "declared", description, images, factors, wafers: [{label, values}]}` (sans structure) - le lancement aussi (`POST …/experiments`) ; 422 `declared_no_wafer`, `declared_factor_unnamed`, `declared_factor_duplicate`, `declared_values_mismatch`, `too_many_entities` |
 | `POST …/{ref}/dessin` | `PUT …/experiments/{exp}/structure-images` (toute la planche, dans l'ordre : `{image_id, kind, caption, annotations}` ; écriture légère, même révision de structure - c'est aussi par elle que se posent les annotations d'une image) |
 | `POST …/{ref}/conclure` | `PUT …/experiments/{exp}/conclusion` (le verdict d'un objectif peut citer des entrées du cahier : `evidence_ids`, des ids d'entrées de la pointe, sinon 422 `notebook_entry_not_found`) |
 | `POST …/{ref}/statut` | `PUT …/experiments/{exp}/status` `{status, hold_reason}` |
@@ -1060,7 +1077,7 @@ PRISM absente 503 ; connexion, requête ou fiche `hook.yml` invalide 502 (une fi
 | microprojects | `/microprojets/{slug}`, `/p/{code}` (redirection, **après** contrôle de session), `/projets/{rest:path}` (redirection héritée, 308) |
 | experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/evolution` (nouvelle : « Évolution des structures », diagramme des pistes, versions, refs locales et versions de référence ; liée depuis la page µprojet et la fiche), `/microprojets/{slug}/refs` (302 vers `/evolution`) |
 | references | `/references` (la liste des références de toute l'application ; entrée « Références » de la barre du haut), `/references/{slug}` (l'évolution d'une référence, `?version=1.1` : la version choisie) |
-| structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
+| structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/structures/sans-structure`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image`, `/experiences/{experiment_id}/evoluer-sans-structure` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
 | process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
 | intent_forms | `/microprojets/{slug}/formulaire-intention` |
 | wafers | `/plaques/{lasermark}` |

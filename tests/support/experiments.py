@@ -12,7 +12,7 @@ from .http import assert_created, assert_ok
 from .structures import campaign_plan, steps, substrate
 
 # Les champs d'une structure, rangés sous ``structure`` (le reste est l'intention).
-STRUCTURE_FIELDS = ("substrate", "steps", "declared_params", "layer_labels", "bricks", "recipes", "preset_origins", "plan", "images")
+STRUCTURE_FIELDS = ("substrate", "steps", "declared_params", "layer_labels", "bricks", "recipes", "preset_origins", "plan", "images", "description", "factors", "wafers")
 
 
 def experiments_url(slug: str) -> str:
@@ -30,7 +30,7 @@ def _headers(if_match: str | None) -> dict:
 def _split(kind: str, fields: dict) -> dict:
     """``fields`` dont les champs de structure passent sous ``structure`` (``kind`` compris)."""
     structure = {"kind": kind, **{key: fields.pop(key) for key in STRUCTURE_FIELDS if key in fields}}
-    if kind != "images":
+    if kind not in ("images", "declared"):
         structure.setdefault("substrate", substrate())
         structure.setdefault("steps", steps())
     return {"structure": structure, **fields}
@@ -63,6 +63,15 @@ def launch_image(client: Any, slug: str, images: list[dict], **fields: Any) -> d
     """Une structure donnée en images (``{image_id, kind, caption}``)."""
     fields = {"title": "Coupe", "intent": "Documenter", **fields}
     return launch(client, slug, kind="images", images=images, **fields)
+
+
+def launch_declared(client: Any, slug: str, factors: list[str] | None = None, wafers: list[dict] | None = None, **fields: Any) -> dict:
+    """Une expérience sans structure : décrite, son split déclaré (par défaut une colonne « Recuit »,
+    deux plaques - la réf et un recuit long), aucune plaque nommée sauf ``entities=``."""
+    fields = {"title": "Recuit", "intent": "Voir l'effet du recuit", "entities": [], "description": "Contact P sur GaN", **fields}
+    factors = ["Recuit"] if factors is None else factors
+    wafers = [{"label": "réf", "values": ["standard"]}, {"values": ["long"]}] if wafers is None else wafers
+    return launch(client, slug, kind="declared", factors=factors, wafers=wafers, **fields)
 
 
 def get_experiment(client: Any, slug: str, ref: str) -> dict:

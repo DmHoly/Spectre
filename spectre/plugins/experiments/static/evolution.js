@@ -66,7 +66,7 @@
     return node.is_tip ? page : `${page}?version=${encodeURIComponent(node.version_id)}`;
   }
   function forkUrl(node) {
-    const mode = node.structure_kind === "images" ? "evoluer-image" : "evoluer";
+    const mode = node.structure_kind === "images" ? "evoluer-image" : node.structure_kind === "declared" ? "evoluer-sans-structure" : "evoluer";
     return `${microprojectUrl()}/experiences/${encodeURIComponent(node.experiment_id)}/${mode}?version=${encodeURIComponent(node.version_id)}`;
   }
   function syncUrl() {

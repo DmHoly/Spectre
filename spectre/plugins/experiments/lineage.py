@@ -22,9 +22,8 @@ STRUCTURAL_LEVELS = ("initial", "major", "minor")
 
 
 def _structure_kind(structure_type: str) -> str:
-    """« process », « campaign » ou « images » : ce que l'éditeur ouvre pour partir de la version."""
-    kind = kinds.KINDS.get(structure_type)
-    return "images" if kind is kinds.IMAGES else "campaign" if kind is kinds.CAMPAIGN else "process"
+    """« process », « campaign », « images » ou « declared » : ce que l'éditeur ouvre pour partir de la version."""
+    return kinds.structure_kind_name(structure_type)
 
 
 def structure_history(repo: Any, *, all_versions: bool = False, include: set[str] | None = None) -> dict:
