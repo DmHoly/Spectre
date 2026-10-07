@@ -10,6 +10,7 @@ so Spectre never draws a cross-section itself.
 
 from __future__ import annotations
 
+import math
 import re
 import secrets
 from typing import Any, NamedTuple
@@ -521,6 +522,9 @@ LABEL_DEPTH = "depth"  # la profondeur d'une gravure, sur sa marque d'interface
 LABEL_DECLARED_PREFIX = "declared:"
 MAX_LABEL_TEXT = 40
 MAX_LABEL_VALUES = 6
+# le plus loin qu'on puisse déplacer une étiquette de sa place automatique (unités du dessin, où la
+# structure tient dans un carré de 400 : spectre.plugins.structures.rendering.STRUCTURE_BOX)
+MAX_LABEL_OFFSET = 2000.0
 # les étapes qui ne créent pas de couche (un nettoyage, une gravure, un etch back...) : leur étiquette
 # est une marque d'interface, reliée à la surface telle qu'elle était quand l'étape a eu lieu - entre
 # les couches d'avant et celles d'après (spectre.plugins.structures.rendering)
@@ -532,12 +536,34 @@ class LayerLabel(BaseModel):
     ``"thickness"``, ``"composition"`` (le taux d'In/Al d'un nitrure à composition), ``"depth"``
     (la profondeur d'une gravure) ou ``"declared:<nom>"`` (un :class:`DeclaredParam` de l'étape).
     Une valeur que l'étape n'a pas n'est simplement pas écrite. Sur une étape qui ne crée pas de
-    couche (:data:`INTERFACE_STEP_KINDS`), l'étiquette est une marque d'interface."""
+    couche (:data:`INTERFACE_STEP_KINDS`), l'étiquette est une marque d'interface.
+    ``offset`` : ``(dx, dy)``, de combien le texte a été déplacé à la main depuis sa place
+    automatique (unités du dessin) - ``None`` (et absent de l'enregistrement) : à sa place. Le trait
+    suit le texte ; le point d'accroche sur la couche ne bouge pas."""
 
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field("", max_length=MAX_LABEL_TEXT)
     values: list[str] = Field(default_factory=list, max_length=MAX_LABEL_VALUES)
+    offset: tuple[float, float] | None = None
+
+    @field_validator("offset")
+    @classmethod
+    def _bounded_offset(cls, offset: tuple[float, float] | None) -> tuple[float, float] | None:
+        if offset is None:
+            return None
+        if not all(math.isfinite(v) and abs(v) <= MAX_LABEL_OFFSET for v in offset):
+            raise ValueError(f"déplacement d'étiquette hors limites (±{MAX_LABEL_OFFSET:g})")
+        dx, dy = (round(v, 1) for v in offset)
+        return None if dx == 0 and dy == 0 else (dx, dy)
+
+    @model_serializer(mode="wrap")
+    def _without_default_offset(self, handler: Any) -> dict[str, Any]:
+        # une étiquette à sa place s'enregistre comme avant les déplacements : {text, values}
+        data = handler(self)
+        if data.get("offset") is None:
+            data.pop("offset", None)
+        return data
 
     @field_validator("text")
     @classmethod

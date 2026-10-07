@@ -2803,3 +2803,25 @@
     min-height: 300px;
   }
 }
+
+/* une étiquette se place à la main : on glisse son texte sur le dessin (layer-label.js) */
+.sb-layer-label__place {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.sb-canvas__svg .sp-layer-label[data-step] .sp-layer-label__text {
+  cursor: grab;
+  user-select: none;
+}
+.sb-canvas__svg .sp-layer-label[data-step] .sp-layer-label__text:hover {
+  opacity: 0.75;
+}
+.sb-canvas__svg .sp-layer-label.is-dragging .sp-layer-label__text {
+  cursor: grabbing;
+  opacity: 0.85;
+}

@@ -105,7 +105,9 @@ class LayerAnnotation:
     their layers instead of a line to one of them, its lines written from the highest layer down
     (``line_layers``: the layers of each line's step). ``interface``: the mark of a step that
     created no layer - ``layers`` are then the layers made before it, ``after`` those made after
-    it, and the line points at the surface between the two."""
+    it, and the line points at the surface between the two. ``step``: the position of the step
+    whose label this is (a brick's: its first labelled step's, which keeps the brick's
+    ``offset``); ``offset``: how far its text was moved by hand from its automatic place."""
 
     title: str
     lines: tuple[str, ...]
@@ -114,6 +116,8 @@ class LayerAnnotation:
     line_layers: tuple[tuple[int, ...], ...] = ()
     interface: bool = False
     after: tuple[int, ...] = ()
+    step: int | None = None
+    offset: tuple[float, float] | None = None
 
 
 def length_text(nm: float) -> str:
@@ -222,20 +226,24 @@ def annotations_for(
         if not before:
             continue
         title, lines = label_text(steps[index], declared.get(index, []), marks[index])
-        ordered.append((index, LayerAnnotation(title, lines, before, interface=True, after=after)))
+        ordered.append((index, LayerAnnotation(title, lines, before, interface=True, after=after, step=index, offset=marks[index].offset)))
     for index in sorted(labelled):
         layers = layers_of({index})
         if index in in_group or not layers:
             continue
         title, lines = label_text(steps[index], declared.get(index, []), labelled[index])
-        ordered.append((index, LayerAnnotation(title, lines, layers)))
+        ordered.append((index, LayerAnnotation(title, lines, layers, step=index, offset=labelled[index].offset)))
     for brick, members in groups:
         present = [index for index in members if layers_of({index})]
         if not present:
             continue
         lines = tuple(grouped_line(steps[index], declared.get(index, []), labelled[index]) for index in present)
         line_layers = tuple(layers_of({index}) for index in present)
-        ordered.append((present[0], LayerAnnotation(brick.name, lines, layers_of(set(present)), grouped=True, line_layers=line_layers)))
+        first = present[0]
+        annotation = LayerAnnotation(
+            brick.name, lines, layers_of(set(present)), grouped=True, line_layers=line_layers, step=first, offset=labelled[first].offset
+        )
+        ordered.append((first, annotation))
     return [annotation for _index, annotation in sorted(ordered, key=lambda item: item[0])]
 
 
@@ -471,7 +479,17 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         height = TITLE_SIZE * LINE_HEIGHT + len(lines) * VALUE_SIZE * LINE_HEIGHT
         width = max([_text_width(title, TITLE_SIZE)] + [_text_width(line, VALUE_SIZE) for line in lines])
         blocks.append(
-            {"anchor": anchor, "bracket": bracket, "title": title, "lines": lines, "height": height, "width": width, "interface": annotation.interface}
+            {
+                "anchor": anchor,
+                "bracket": bracket,
+                "title": title,
+                "lines": lines,
+                "height": height,
+                "width": width,
+                "interface": annotation.interface,
+                "step": annotation.step,
+                "offset": annotation.offset or (0.0, 0.0),
+            }
         )
     if not blocks:
         return base
@@ -490,14 +508,22 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
     column_x = PAD + sw + LEADER_GAP + extra
     # la colonne est aussi large que la plus large des étiquettes (estimée par excès) : rien ne déborde
     column_w = max(90.0, max(b["width"] for b in blocks))
-    width = column_x + column_w + PAD
-    height = max(PAD + sh + PAD, tops[-1] + blocks[-1]["height"] + PAD)
+    # une étiquette déplacée à la main (LayerLabel.offset) : son texte quitte la colonne, le trait le
+    # suit ; le cadre s'agrandit pour la contenir, de tous les côtés
+    tops = [top + block["offset"][1] for top, block in zip(tops, blocks)]
+    lefts = [column_x + block["offset"][0] for block in blocks]
+    min_x = min([0.0] + [x - 6 - PAD for x in lefts])
+    min_y = min([0.0] + [top - PAD for top in tops])
+    max_x = max([column_x + column_w + PAD] + [x + b["width"] + PAD for x, b in zip(lefts, blocks)])
+    max_y = max([PAD + sh + PAD] + [top + b["height"] + PAD for top, b in zip(tops, blocks)])
+    width, height = max_x - min_x, max_y - min_y
     bare = f"0 0 {_n(PAD + sw + PAD)} {_n(PAD + sh + PAD)}"
 
     parts = []
-    for block, block_top in zip(blocks, tops):
+    for block, block_top, text_x in zip(blocks, tops, lefts):
         ax, ay = block["anchor"]
         ty = block_top + TITLE_SIZE * LINE_HEIGHT / 2
+        points = _leader_points(ax, ay, elbow, text_x, ty, block["width"])
         if block["bracket"] is not None:
             y1, y2 = block["bracket"]
             bx = block["bracket_x"]
@@ -506,42 +532,59 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
                 f'<path class="sp-layer-bracket" data-y1="{_n(y1)}" data-y2="{_n(y2)}" data-x="{_n(tip)}" '
                 f'd="M{_n(bx)},{_n(y1)} H{_n(tip)} V{_n(y2)} H{_n(bx)} M{_n(tip)},{_n(ay)} H{_n(ax)}" '
                 f'fill="none" stroke-width="1.4" stroke-linejoin="round" style="stroke:{_TEXT_SOFT}"/>'
-                f'<polyline points="{_n(ax)},{_n(ay)} {_n(elbow)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
+                f'<polyline points="{points}" class="sp-layer-leader" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
             )
         elif block["interface"]:
             # une marque d'interface : un trait pointillé, un tiret posé sur la surface et un losange
-            points = f"{_n(ax)},{_n(ay)} {_n(elbow)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}"
             r = INTERFACE_DIAMOND
             mark = (
-                f'<polyline points="{points}" fill="none" stroke-width="1.2" stroke-dasharray="4 3" style="stroke:{_TEXT_SOFT}"/>'
+                f'<polyline points="{points}" class="sp-layer-leader" fill="none" stroke-width="1.2" stroke-dasharray="4 3" style="stroke:{_TEXT_SOFT}"/>'
                 f'<path d="M{_n(ax - INTERFACE_TICK)},{_n(ay)} H{_n(ax + INTERFACE_TICK)}" stroke-width="2" stroke-linecap="round" style="stroke:{_TEXT}"/>'
                 f'<path d="M{_n(ax)},{_n(ay - r)} L{_n(ax + r)},{_n(ay)} L{_n(ax)},{_n(ay + r)} L{_n(ax - r)},{_n(ay)} Z" stroke-width="1.4" style="fill:{_SURFACE};stroke:{_TEXT}"/>'
             )
         else:
-            points = f"{_n(ax)},{_n(ay)} {_n(elbow)},{_n(ay)} {_n(column_x - 6)},{_n(ty)}"
             mark = (
-                f'<polyline points="{points}" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
+                f'<polyline points="{points}" class="sp-layer-leader" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
                 f'<circle cx="{_n(ax)}" cy="{_n(ay)}" r="3.2" stroke-width="1.4" style="fill:{_TEXT};stroke:{_SURFACE}"/>'
             )
         texts = [
-            f'<text x="{_n(column_x)}" y="{_n(block_top + TITLE_SIZE)}" font-size="{_n(TITLE_SIZE)}" font-weight="600" style="fill:{_TEXT}">{html.escape(block["title"])}</text>'
+            f'<text x="{_n(text_x)}" y="{_n(block_top + TITLE_SIZE)}" font-size="{_n(TITLE_SIZE)}" font-weight="600" style="fill:{_TEXT}">{html.escape(block["title"])}</text>'
         ]
         for k, line in enumerate(block["lines"]):
             baseline = block_top + TITLE_SIZE * LINE_HEIGHT + (k + 1) * VALUE_SIZE * LINE_HEIGHT - VALUE_SIZE * (LINE_HEIGHT - 1)
             texts.append(
-                f'<text x="{_n(column_x)}" y="{_n(baseline)}" font-size="{_n(VALUE_SIZE)}" style="fill:{_TEXT_SOFT}">{html.escape(line)}</text>'
+                f'<text x="{_n(text_x)}" y="{_n(baseline)}" font-size="{_n(VALUE_SIZE)}" style="fill:{_TEXT_SOFT}">{html.escape(line)}</text>'
             )
         grouped = ' data-grouped="true"' if block["bracket"] is not None else ' data-interface="true"' if block["interface"] else ""
+        step = f' data-step="{block["step"]}"' if block["step"] is not None else ""
+        dx, dy = block["offset"]
+        moved = f' data-offset="{_n(dx)} {_n(dy)}"' if (dx or dy) else ""
+        # data-anchor, data-elbow, data-width : de quoi redessiner le trait pendant qu'on déplace le
+        # texte à la souris (constructeur, label-drag.js)
         parts.append(
-            f'<g class="sp-layer-label" data-top="{_n(block_top)}" data-height="{_n(block["height"])}"{grouped}>' + mark + "".join(texts) + "</g>"
+            f'<g class="sp-layer-label" data-top="{_n(block_top)}" data-height="{_n(block["height"])}"{grouped}{step}{moved} '
+            f'data-anchor="{_n(ax)} {_n(ay)}" data-elbow="{_n(elbow)}" data-width="{_n(block["width"])}">'
+            + mark
+            + f'<g class="sp-layer-label__text">{"".join(texts)}</g>'
+            + "</g>"
         )
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_n(width)} {_n(height)}" width="{_n(width)}" height="{_n(height)}" '
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{_n(min_x)} {_n(min_y)} {_n(width)} {_n(height)}" width="{_n(width)}" height="{_n(height)}" '
         f'class="sp-labelled-structure" data-bare-viewbox="{bare}">'
         f'<svg x="{_n(PAD)}" y="{_n(PAD)}" width="{_n(sw)}" height="{_n(sh)}" viewBox="{view.group(1) if view else "0 0 1 1"}">{inner}</svg>'
         f'<g class="sp-layer-labels" style="font-family:{_FONT}">{"".join(parts)}</g>'
         "</svg>"
     )
+
+
+def _leader_points(ax: float, ay: float, elbow: float, tx: float, ty: float, width: float) -> str:
+    """The points of the line from a label's anchor ``(ax, ay)`` to its text (left edge ``tx``,
+    first line at ``ty``): through the elbow when the text is past it (its automatic place), else
+    straight to the nearest side of the text - its right edge when it was moved left of the anchor."""
+    if tx - 6 >= elbow:
+        return f"{_n(ax)},{_n(ay)} {_n(elbow)},{_n(ay)} {_n(tx - 6)},{_n(ty)}"
+    end = tx + width + 6 if tx + width + 6 < ax else tx - 6
+    return f"{_n(ax)},{_n(ay)} {_n(end)},{_n(ty)}"
 
 
 def _n(value: float) -> str:

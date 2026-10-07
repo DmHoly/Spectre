@@ -1185,6 +1185,15 @@ Supprimée : `/microprojets/{slug}/graphe`.
   d'évolution montre, dans son panneau, la structure de la version choisie (agrandie dans une boîte
   au clic) ; pour une structure en images, sa première image avec ses annotations
   (`structureBoardHtml` compact, en lecture seule ; un clic l'ouvre). Les vignettes de l'écran « Variations » restent sans étiquettes (trop petites).
+  Une étiquette se place à la main : glisser son texte dans l'aperçu (`layer-label.js`, le trait
+  redessiné en direct à partir de `data-anchor`/`data-elbow`/`data-width` du `<g class="sp-layer-label"
+  data-step>`) écrit `layerLabel.offset` (`[dx, dy]`, unités du dessin, depuis la place automatique ;
+  celle d'une brique sur sa première étape étiquetée) ; double-clic ou « Remettre à sa place » l'efface.
+  Côté serveur, `LayerLabel.offset` (borné à ±`MAX_LABEL_OFFSET`, absent de l'enregistrement quand il
+  est nul) est appliqué par `rendering.labelled_svg` après l'empilement automatique, le cadre
+  (`viewBox`, qui peut alors commencer en négatif) agrandi pour le contenir ; le versionnage et les
+  différences d'étiquettes l'ignorent (un déplacement seul : version `none`), et un préset d'étape ne
+  le garde pas (`presetContentOf`).
 - **Les références, côté pages** (plugin references, TODO « Références de structure ») :
   - `experiments/static/evolution-graph.js` (global `EvolutionGraph`) : le diagramme façon git -
     colonnes, rangées, arêtes, formes des nœuds par niveau de changement, légende, liste des

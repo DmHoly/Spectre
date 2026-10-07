@@ -29,7 +29,10 @@ function attachLayerLabels(steps, labels) {
   if (!labels) return steps;
   return steps.map((step, i) => {
     const label = labels[i] || labels[String(i)];
-    return label ? { ...step, layerLabel: { text: label.text || "", values: [...(label.values || [])] } } : step;
+    if (!label) return step;
+    const layerLabel = { text: label.text || "", values: [...(label.values || [])] };
+    if (Array.isArray(label.offset)) layerLabel.offset = [...label.offset];
+    return { ...step, layerLabel };
   });
 }
 
@@ -74,7 +77,11 @@ function layerLabelSectionHtml(kind) {
             <div id="layer-label-values"></div>
           </fieldset>
         </div>
-        <div class="help" style="margin:8px 0 0;">${help}</div>
+        <div class="sb-layer-label__place" id="layer-label-place" ${label && label.offset ? "" : "hidden"}>
+          <span>Déplacée à la main sur le dessin</span>
+          <button type="button" class="btn btn-line" id="layer-label-reset-place">Remettre à sa place</button>
+        </div>
+        <div class="help" style="margin:8px 0 0;">${help} Glissez le texte de l'étiquette sur le dessin pour le placer ailleurs (double-clic : place automatique).</div>
       </div>
     </details>`;
 }
@@ -109,7 +116,9 @@ function readLayerLabelFromForm(step) {
   }
   const available = new Set(layerLabelOptions(step).map((o) => o.key));
   const values = [...document.querySelectorAll("#layer-label-values .js-layer-label-value:checked")].map((box) => box.value).filter((v) => available.has(v));
-  state.formLayerLabel = { text: document.getElementById("layer-label-text").value.trim(), values };
+  // la place choisie sur le dessin (glisser l'étiquette, plus bas) n'est pas dans le formulaire : gardée
+  const offset = state.formLayerLabel && state.formLayerLabel.offset;
+  state.formLayerLabel = { text: document.getElementById("layer-label-text").value.trim(), values, ...(offset ? { offset } : {}) };
   return state.formLayerLabel;
 }
 
@@ -130,4 +139,131 @@ document.getElementById("step-form-section").addEventListener("change", (event) 
     const size = boxes.find((box) => box.value === "thickness" || box.value === "depth");
     if (size) size.checked = true;
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Placer une étiquette à la main : glisser son texte sur le dessin. Le déplacement depuis sa place
+// automatique est gardé sur l'étiquette (layerLabel.offset, [dx, dy] en unités du dessin) et
+// enregistré avec elle ; le serveur redessine le trait jusqu'au texte (rendering.labelled_svg).
+// Double-clic sur le texte, ou « Remettre à sa place » dans l'inspecteur : retour à la place
+// automatique. L'étiquette d'une brique est gardée sur sa première étape étiquetée (data-step).
+// ---------------------------------------------------------------------------------------------
+
+let labelDrag = null; // {g, step, svg, start, base, text, leader, ax, ay, elbow, width, tx, ty, d}
+
+// Le trait d'une étiquette vers son texte - le même que rendering._leader_points côté serveur.
+function labelLeaderPoints(ax, ay, elbow, tx, ty, width) {
+  if (tx - 6 >= elbow) return `${ax},${ay} ${elbow},${ay} ${tx - 6},${ty}`;
+  const end = tx + width + 6 < ax ? tx + width + 6 : tx - 6;
+  return `${ax},${ay} ${end},${ty}`;
+}
+
+function svgPointOf(svg, event) {
+  const point = svg.createSVGPoint();
+  point.x = event.clientX;
+  point.y = event.clientY;
+  return point.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+// La section de l'inspecteur dit si l'étiquette de l'étape affichée a été déplacée.
+function refreshLayerLabelPlace() {
+  const place = document.getElementById("layer-label-place");
+  if (place) place.hidden = !(state.formLayerLabel && state.formLayerLabel.offset);
+}
+
+function setLayerLabelOffset(stepIndex, offset) {
+  const step = state.steps[stepIndex];
+  if (!step || !step.layerLabel) return;
+  const label = { ...step.layerLabel };
+  if (offset && (offset[0] || offset[1])) label.offset = offset;
+  else delete label.offset;
+  step.layerLabel = label;
+  if (stepIndex === state.selectedIndex && state.formLayerLabel) {
+    state.formLayerLabel = { ...state.formLayerLabel };
+    if (label.offset) state.formLayerLabel.offset = label.offset;
+    else delete state.formLayerLabel.offset;
+    refreshLayerLabelPlace();
+  }
+  captureHistory();
+  scheduleSimulate(0);
+}
+
+function labelTextTarget(event) {
+  const text = event.target.closest && event.target.closest(".sp-layer-label__text");
+  const g = text && text.closest(".sp-layer-label[data-step]");
+  if (!g) return null;
+  const step = state.steps[parseInt(g.dataset.step, 10)];
+  return step && step.layerLabel ? { g, text } : null;
+}
+
+document.getElementById("svg-container").addEventListener("mousedown", (event) => {
+  if (event.button !== 0) return;
+  const target = labelTextTarget(event);
+  if (!target) return;
+  event.preventDefault();
+  event.stopPropagation(); // pas de déplacement de la vue zoomée (simulation.js)
+  const { g, text } = target;
+  const svg = g.ownerSVGElement;
+  const [ax, ay] = (g.dataset.anchor || "0 0").split(" ").map(Number);
+  const firstText = text.querySelector("text");
+  labelDrag = {
+    g,
+    step: parseInt(g.dataset.step, 10),
+    svg,
+    start: svgPointOf(svg, event),
+    base: (g.dataset.offset || "0 0").split(" ").map(Number),
+    text,
+    leader: g.querySelector(".sp-layer-leader"),
+    ax,
+    ay,
+    elbow: Number(g.dataset.elbow || 0),
+    width: Number(g.dataset.width || 0),
+    tx: Number(firstText ? firstText.getAttribute("x") : 0),
+    ty: Number(g.dataset.top || 0) + 16 * 1.3 / 2, // TITLE_SIZE * LINE_HEIGHT / 2 (rendering.py)
+    d: [0, 0],
+  };
+  g.classList.add("is-dragging");
+});
+
+function dragLabelTo(event) {
+  const p = svgPointOf(labelDrag.svg, event);
+  const dx = p.x - labelDrag.start.x;
+  const dy = p.y - labelDrag.start.y;
+  labelDrag.d = [dx, dy];
+  labelDrag.text.setAttribute("transform", `translate(${dx} ${dy})`);
+  if (labelDrag.leader) {
+    const { ax, ay, elbow, tx, ty, width } = labelDrag;
+    labelDrag.leader.setAttribute("points", labelLeaderPoints(ax, ay, elbow, tx + dx, ty + dy, width));
+  }
+}
+
+window.addEventListener("mousemove", (event) => {
+  if (labelDrag) dragLabelTo(event);
+});
+
+window.addEventListener("mouseup", (event) => {
+  if (!labelDrag) return;
+  dragLabelTo(event); // là où le bouton est relâché
+  const drag = labelDrag;
+  labelDrag = null;
+  drag.g.classList.remove("is-dragging");
+  if (Math.hypot(drag.d[0], drag.d[1]) < 2) {
+    drag.text.removeAttribute("transform");
+    return;
+  }
+  suppressNextClick = true; // le clic qui suit n'est pas un clic sur une couche (simulation.js)
+  const round = (v) => Math.round(v * 10) / 10;
+  setLayerLabelOffset(drag.step, [round(drag.base[0] + drag.d[0]), round(drag.base[1] + drag.d[1])]);
+});
+
+document.getElementById("svg-container").addEventListener("dblclick", (event) => {
+  const target = labelTextTarget(event);
+  if (!target || !target.g.dataset.offset) return;
+  event.preventDefault();
+  setLayerLabelOffset(parseInt(target.g.dataset.step, 10), null);
+});
+
+document.getElementById("step-form-section").addEventListener("click", (event) => {
+  if (event.target.id !== "layer-label-reset-place") return;
+  setLayerLabelOffset(state.selectedIndex, null);
 });

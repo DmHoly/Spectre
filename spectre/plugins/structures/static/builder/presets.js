@@ -31,7 +31,9 @@ function stepFromPreset(preset) {
 // Ce qui, d'une étape, est le contenu d'un préset (pour comparer l'une à l'autre).
 function presetContentOf(step) {
   const { id, presetOrigin, brick_group_id, brick_name, brick_source, declaredParams, layerLabel, ownRecipe, ...fields } = step;
-  return { fields, declared: declaredParams || [], label: layerLabel || null, recipe: ownRecipe && ownRecipe.name === step.recipe ? ownRecipe : null };
+  // la place d'une étiquette (offset) tient au dessin d'une structure, pas à l'étape : hors du préset
+  const label = layerLabel ? { text: layerLabel.text, values: layerLabel.values } : null;
+  return { fields, declared: declaredParams || [], label, recipe: ownRecipe && ownRecipe.name === step.recipe ? ownRecipe : null };
 }
 
 // Le serveur écrit chaque champ d'une étape (un angle à 0, une liste vide, null), le formulaire
