@@ -241,3 +241,19 @@ def test_lineage_nodes_count_their_places_for_the_plate_badge(client):
     other = signup_with_microproject(client, "other@example.com", "Autre salle", name="Other")
     launch(client, other, entities=[{"sample_id": None}], fdl=["1234"])
     assert lineage(client, other)["nodes"][0]["plates"] == {"total": 1, "named": 0, "has_fdl": True}
+
+
+def test_a_concluded_reference_continued_by_a_study_with_the_same_structure_is_one_node(client):
+    # la référence conclue (une version sans changement de structure), puis une étude qui en part
+    # sans changer la structure (ses variations sont dans son plan) : la référence ne s'affiche
+    # qu'une fois - son bout conclu - et la nouvelle étude en part
+    slug = _owner_microproject(client)
+    root = launch(client, slug, title="Référence")
+    concluded = conclude(client, slug, root["id"], decision="promote")
+    study = launch(client, slug, title="Variation", from_version={"experiment_id": root["id"]})
+
+    body = lineage(client, slug)
+    nodes = {n["id"]: n for n in body["nodes"]}
+    assert set(nodes) == {concluded["version_id"], study["version_id"]}
+    assert nodes[concluded["version_id"]]["status"] == "concluded"
+    assert body["edges"] == [{"parent": concluded["version_id"], "child": study["version_id"]}]

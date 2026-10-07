@@ -241,7 +241,18 @@ def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dic
         resolved_tips = tips_by_anchor.get(exp_id, [])
         already_a_tip = exp_id in tips
         started_at = experiments[exp_id].created_at
-        if not already_a_tip and len(resolved_tips) == 1:
+        # la piste du point structurel continue sans changer la structure : son bout le remplace,
+        # même quand d'autres pistes en partent aussi (sinon la même étude s'affiche deux fois)
+        own_tip = repo.branches.get(experiments[exp_id].branch)
+        if not already_a_tip and own_tip in resolved_tips and len(resolved_tips) > 1:
+            display_id[exp_id] = own_tip
+            nodes.append(node_payload(own_tip, is_tip=True, is_merge_id=exp_id, started_at=started_at))
+            for tip_id in resolved_tips:
+                if tip_id != own_tip:
+                    nodes.append(
+                        node_payload(tip_id, is_tip=True, is_merge_id=exp_id, started_at=line_start(tip_id, exp_id))
+                    )
+        elif not already_a_tip and len(resolved_tips) == 1:
             display_id[exp_id] = resolved_tips[0]
             nodes.append(node_payload(resolved_tips[0], is_tip=True, is_merge_id=exp_id, started_at=started_at))
         else:
@@ -270,7 +281,11 @@ def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dic
         edges.extend({"parent": parent, "child": display_id[child]} for parent in parents)
     for exp_id, resolved_tips in tips_by_anchor.items():
         if len(resolved_tips) > 1:
-            edges.extend({"parent": shown_as(hung_from(tip_id, exp_id)), "child": tip_id} for tip_id in resolved_tips)
+            edges.extend(
+                {"parent": shown_as(hung_from(tip_id, exp_id)), "child": tip_id}
+                for tip_id in resolved_tips
+                if tip_id != display_id[exp_id]
+            )
 
     for attachment in attachments:
         parent, child = shown_as(attachment["parent"]), shown_as(attachment["root"])
