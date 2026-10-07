@@ -146,6 +146,13 @@
       stroke-dasharray: 1 3;
       stroke-linecap: round;
     }
+    /* une étude combinée au marché : un trait depuis chacune de ses autres études sources (des
+       briques reprises), pas une filiation */
+    .lineage-edge.is-composed {
+      stroke: var(--continue);
+      stroke-width: 1.5px;
+      stroke-dasharray: 6 3 1 3;
+    }
     .lineage-attach-mark circle {
       fill: var(--surface);
       stroke: var(--navy-500);
@@ -570,8 +577,8 @@
 
   <dialog id="new-experience-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
     <div class="card-pad" style="width:min(460px,92vw);">
-      <h2 style="font-size:16px;margin-bottom:4px;">Nouvelle expérience sans référence</h2>
-      <p class="help" style="margin-bottom:12px;">Comment voulez-vous donner la structure ? Pour continuer une expérience, utilisez le « + » de son nœud dans l'arbre. <button class="btn-link-secondary" id="back-to-reference" type="button" style="min-height:0;padding:0;font-size:12px;">Revenir aux références</button></p>
+      <h2 style="font-size:16px;margin-bottom:4px;">Autres départs</h2>
+      <p class="help" style="margin-bottom:12px;">Sans partir de la référence ni d'une étude : comment voulez-vous donner la structure ? Pour continuer une expérience, utilisez le « + » de son nœud dans l'arbre. <button class="btn-link-secondary" id="back-to-reference" type="button" style="min-height:0;padding:0;font-size:12px;">Revenir aux trois départs</button></p>
 
       <div style="display:flex;flex-direction:column;gap:16px;">
         <div class="new-exp-modes">
@@ -628,6 +635,8 @@
   <script src="/static/process_library/client.js"></script>
   <script src="/static/references/client.js"></script>
   <script src="/static/references/start-picker.js"></script>
+  <script src="/static/structures/client.js"></script>
+  <script src="/static/experiments/study-start.js"></script>
   <script src="/static/experiments/status.js"></script>
   <script src="/static/microprojects/roles.js"></script>
   <script src="/static/structures/campaign-carousel.js"></script>

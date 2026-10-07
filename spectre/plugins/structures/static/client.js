@@ -19,4 +19,9 @@ const structuresApi = {
   previewCampaign(body) {
     return api.post("/api/campaign-previews", body);
   },
+  // combiner au marché : {sources: [procédé, ...] (la principale d'abord), choices: [index de source
+  // | null, ...] | null} -> {rows: [{key, name, present, same_as, chosen, in_main}], process, warnings}
+  compose(body) {
+    return api.post("/api/compositions", body);
+  },
 };

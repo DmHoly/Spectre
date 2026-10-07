@@ -310,7 +310,10 @@
   }
 
   async function renderSplit(detail) {
-    const tracking = detail.physical_tracking && detail.physical_tracking.length ? detail.physical_tracking : [{}];
+    const witness = detail.reference_repeat;
+    const allTracking = detail.physical_tracking && detail.physical_tracking.length ? detail.physical_tracking : [{}];
+    // la plaque témoin (une répétition exacte de la référence) se lit à part, en dernière ligne
+    const tracking = witness ? allTracking.filter((_, i) => i !== witness.place) : allTracking;
     let factorLabels = [];
     let factorScales = [];
     let rows;
@@ -338,18 +341,30 @@
     } else {
       const many = tracking.length > 1;
       rows = tracking.map((entry, i) => ({
-        variant: !many ? "Référence" : detail.repeats ? (i === 0 ? "Référence" : "Répétition de la réf.") : `Réplicat ${i + 1}`,
+        // avec une plaque témoin, « la référence » est la sienne : les réplicats disent leur structure
+        variant: witness
+          ? i === 0 ? "Structure de l'étude" : detail.repeats ? "Répétition" : `Réplicat ${i + 1}`
+          : !many ? "Référence" : detail.repeats ? (i === 0 ? "Référence" : "Répétition de la réf.") : `Réplicat ${i + 1}`,
         values: [],
         entry,
       }));
     }
 
+    if (witness) {
+      rows.push({
+        variant: "Témoin",
+        values: factorLabels.length ? [`= réf. ${witness.reference} ${witness.version}`, ...factorLabels.slice(1).map(() => "")] : [],
+        entry: allTracking[witness.place] || {},
+        witness,
+      });
+    }
     const named = rows.filter((r) => r.entry.sample_id).length;
     const studyFdl = detail.fdl || [];
     document.getElementById("split-note").innerHTML = [
       `${rows.length} plaque${rows.length > 1 ? "s" : ""}`,
       named === rows.length ? "toutes associées" : `${rows.length - named} à associer`,
-      detail.is_batch ? await comparisonNote(detail) : detail.repeats && rows.length > 1 ? "répétitions exactes de la référence" : "",
+      detail.is_batch ? (witness ? "" : await comparisonNote(detail)) : detail.repeats && rows.length - (witness ? 1 : 0) > 1 ? (witness ? "répétitions exactes" : "répétitions exactes de la référence") : "",
+      witness ? `témoin : <a href="/references/${encodeURIComponent(witness.reference)}?version=${encodeURIComponent(witness.version)}" title="La plaque témoin répète exactement cette version de référence">réf. ${escapeHtml(witness.reference)} ${escapeHtml(witness.version)}</a>` : "",
     ]
       .filter(Boolean)
       .map((part, i) => (i < 2 ? escapeHtml(part) : part))
@@ -374,7 +389,7 @@
         <tbody>
           ${rows
             .map(
-              (row, i) => `<tr>
+              (row, i) => `<tr${row.witness ? ` class="is-witness"` : ""}>
                 <td class="mono split-table__idx">${i + 1}</td>
                 <td>${escapeHtml(row.variant)}</td>
                 ${row.values.map((v) => `<td class="${declared ? "" : "mono"}">${escapeHtml(v)}</td>`).join("")}

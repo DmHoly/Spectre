@@ -44,7 +44,11 @@
       : declared
         ? declared.wafers.map((w, i) => w.label || `Plaque ${i + 1}`) // comme la feuille de split
         : null;
-    const labelOf = (i) => (labels ? labels[i] || `${declared ? "Plaque" : "Variante"} ${i + 1}` : null);
+    // la plaque témoin (une répétition de la référence), toujours la dernière place
+    const witness = detail.reference_repeat;
+    const witnessLabel = witness ? `Témoin - réf. ${witness.reference} ${witness.version}` : null;
+    const labelOf = (i) =>
+      witness && i === witness.place ? witnessLabel : labels ? labels[i] || `${declared ? "Plaque" : "Variante"} ${i + 1}` : null;
     const perSlot = detail.is_batch || Boolean(declared); // une place par variante, ou par ligne
     const tracking = detail.physical_tracking || [];
     const studyFdl = detail.fdl || [];
@@ -60,8 +64,12 @@
       return;
     }
 
-    // les places telles qu'on les modifie : la carte se redessine à partir d'elles
-    let entries = (tracking.length ? tracking : [{}]).map((e) => ({ sample_id: e.sample_id || "", location: e.location || "", fdl: (e.fdl || []).slice() }));
+    // les places telles qu'on les modifie : la carte se redessine à partir d'elles (la témoin à part)
+    const editable = (e) => ({ sample_id: e.sample_id || "", location: e.location || "", fdl: (e.fdl || []).slice() });
+    let entries = (tracking.length ? tracking : [{}]).filter((_, i) => !(witness && i === witness.place)).map(editable);
+    const witnessEntry = witness ? editable(tracking[witness.place] || {}) : null;
+    if (witnessEntry) entries.push(witnessEntry);
+    const isWitness = (i) => witnessEntry !== null && i === entries.length - 1;
     let contents = [];
     let fdlFields = {};
     // une étude simple suit autant de réplicats qu'on veut ; une campagne, une plaque par variante ;
@@ -112,7 +120,8 @@
 
     // Une place, en liste : son numéro (et sa variante), sa plaque et ×, puis son emplacement et ses FDL.
     function rowHtml(entry, index, choices, removable) {
-      const label = labelOf(index);
+      const label = isWitness(index) ? witnessLabel : labelOf(index);
+      removable = removable && !isWitness(index);
       const lasermark = entry.sample_id;
       const name = label ? `${label} (place ${index + 1})` : `place ${index + 1}`;
       const pick = choices.length
@@ -148,7 +157,7 @@
 
     function paint(focusSelector) {
       const choices = fdlWaferChoices(contents);
-      const removable = canAdd && entries.length > 1;
+      const removable = canAdd && entries.length - (witnessEntry ? 1 : 0) > 1;
       list.innerHTML = entries.map((entry, i) => rowHtml(entry, i, choices, removable)).join("");
       fdlFields = {};
       list.querySelectorAll(".js-entity-fdl").forEach((el) => {
@@ -212,8 +221,10 @@
     if (addButton) {
       addButton.addEventListener("click", () => {
         collectFdls();
-        entries.push({ sample_id: "", location: "", fdl: [] });
-        paint(`#plate-lasermark-${entries.length - 1}`);
+        // avant la plaque témoin, qui reste la dernière
+        const at = witnessEntry ? entries.length - 1 : entries.length;
+        entries.splice(at, 0, { sample_id: "", location: "", fdl: [] });
+        paint(`#plate-lasermark-${at}`);
       });
     }
     document.getElementById("save-physical-tracking-btn").addEventListener("click", () => {

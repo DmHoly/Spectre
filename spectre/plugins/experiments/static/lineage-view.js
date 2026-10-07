@@ -190,7 +190,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
 
   // L'arête qui arrive sur un nœud (une filiation, ou un rattachement posé à la main).
   function incomingEdge(node) {
-    return currentEdges.find((e) => e.child === node.id && !e.planned);
+    return currentEdges.find((e) => e.child === node.id && !e.planned && !e.composed);
   }
 
   // Les nœuds sous lesquels rattacher `node` : tous les autres nœuds réels (et prévus, avec
@@ -719,7 +719,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       .selectAll("path")
       .data(allEdges)
       .join("path")
-      .attr("class", (e) => `lineage-edge${e.planned ? " is-planned" : ""}${e.attached ? " is-attached" : ""}`)
+      .attr("class", (e) => `lineage-edge${e.planned ? " is-planned" : ""}${e.attached ? " is-attached" : ""}${e.composed ? " is-composed" : ""}`)
       .attr("d", (e) => lineageEdgePath(byId.get(e.parent), byId.get(e.child)));
 
     // Un rattachement (posé à la main, pas une filiation) : un maillon au milieu du trait, qui dit

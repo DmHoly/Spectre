@@ -60,6 +60,15 @@ class CampaignPreviewRequest(ProcessInput):
     plan: VariantPlan
 
 
+class CompositionRequest(BaseModel):
+    """Combiner des études « au marché » (``POST /api/compositions``) : les procédés des sources, la
+    principale d'abord, et, une fois choisi, l'index de la source de chaque ligne (``None`` : la
+    brique n'est pas reprise ; ``choices`` absent : les choix par défaut)."""
+
+    sources: list[ProcessInput] = Field(..., min_length=2, max_length=4)
+    choices: list[int | None] | None = Field(None, max_length=200)
+
+
 class StructureImageInput(BaseModel):
     image_id: str  # the id of an attachment uploaded with purpose=structure
     kind: Literal["schema", "coupe", "autre"] = "schema"

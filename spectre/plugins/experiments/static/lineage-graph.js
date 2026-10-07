@@ -193,7 +193,7 @@ const LINEAGE_ATTACH_MARK =
 
 // Légende du code ci-dessus (une puce par issue + combinaison + pointe de piste) - affichée sous le graphe
 // d'un µprojet et au-dessus de la frise d'une thématique, pour qu'aucune couleur ne reste à deviner.
-function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = false, planned = false, attached = false } = {}) {
+function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = false, planned = false, attached = false, composed = false } = {}) {
   const icon = (node) =>
     `<svg width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true">${lineageNodeShapeHtml(node, { radius: 6.5, tipRing: false })}</svg>`;
   const items = [
@@ -221,6 +221,10 @@ function lineageLegendHtml({ merge = true, tip = true, lot = false, wafers = fal
     items.push(
       `<li><svg width="30" height="16" viewBox="0 0 30 16" aria-hidden="true"><path class="lineage-edge is-attached" d="M1,8 H29"></path><g class="lineage-attach-mark" transform="translate(15,8)">${LINEAGE_ATTACH_MARK}</g></svg>Rattachée à la main</li>`
     );
+  }
+  if (composed) {
+    // trait dessiné par lineage-view.js (style .lineage-edge.is-composed dans microproject.html)
+    items.push(`<li><svg width="30" height="16" viewBox="0 0 30 16" aria-hidden="true"><path class="lineage-edge is-composed" d="M1,8 H29"></path></svg>Briques reprises (combinaison au marché)</li>`);
   }
   if (wafers) {
     // badge dessiné par lineage-view.js (styles .lineage-wafers dans microproject.html) : le nombre

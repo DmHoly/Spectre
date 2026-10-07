@@ -24,10 +24,13 @@ class ObjectiveInput(BaseModel):
 
 class FromVersion(BaseModel):
     """The version a new line of study starts from - the tip of ``experiment_id`` when
-    ``version_id`` is left out."""
+    ``version_id`` is left out. ``place`` : la plaque de cette version dont on part (son index dans
+    ``physical_tracking`` - la variante d'une campagne), sur de nouvelles plaques : « depuis la
+    meilleure plaque » ; la structure envoyée est celle de sa variante."""
 
     experiment_id: str
     version_id: str | None = None
+    place: int | None = Field(None, ge=0, le=500)
 
 
 class MergeSource(BaseModel):
@@ -83,6 +86,52 @@ class ReferenceOrigin(BaseModel):
     version: str = Field(..., max_length=12, pattern=REFERENCE_NUMBER_PATTERN)
 
 
+class CompositionSource(BaseModel):
+    """Une source d'une combinaison « au marché » : une étude de ce µprojet (``kind="study"`` : sa
+    piste, sa version, la plaque - sa place - dont on reprend la structure) ou une version de
+    référence (``kind="reference"`` : son slug et son numéro). ``label`` : ce que la fiche en dit."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["study", "reference"]
+    label: str = Field(..., min_length=1, max_length=200)
+    experiment_id: str | None = Field(None, max_length=200)
+    version_id: str | None = Field(None, max_length=200)
+    place: int | None = Field(None, ge=0, le=500)
+    reference: str | None = Field(None, max_length=80, pattern=REFERENCE_SLUG_PATTERN)
+    version: str | None = Field(None, max_length=12, pattern=REFERENCE_NUMBER_PATTERN)
+
+    @model_validator(mode="after")
+    def _named(self) -> "CompositionSource":
+        if self.kind == "study" and not self.experiment_id:
+            raise ValueError("Une étude source nomme sa piste (experiment_id).")
+        if self.kind == "reference" and not (self.reference and self.version):
+            raise ValueError("Une référence source nomme son slug et sa version.")
+        return self
+
+
+class CompositionBrick(BaseModel):
+    """Une ligne d'une combinaison : la brique (son nom, ou « Substrat ») et la source d'où elle
+    vient (son index dans ``sources`` ; ``None`` : pas reprise)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, max_length=120)
+    source: int | None = Field(None, ge=0, le=3)
+
+
+class CompositionOrigin(BaseModel):
+    """Une étude combinée « au marché » : ses sources (la principale d'abord - la nouvelle étude en
+    descend quand c'est une étude du µprojet) et, brique par brique, d'où vient chacune. Le
+    constructeur a assemblé la structure (``POST /api/compositions``) ; ceci est ce que la fiche en
+    retient, et les autres études sources sont reliées dans l'arbre."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sources: list[CompositionSource] = Field(..., min_length=2, max_length=4)
+    bricks: list[CompositionBrick] = Field([], max_length=200)
+
+
 class _Intention(BaseModel):
     """What a launch and an evolution ask again: the intention, the objectives, the entity and the
     answers to the microproject's intention form."""
@@ -128,6 +177,13 @@ class CreateExperimentRequest(_Intention):
     reference_origin: ReferenceOrigin | None = None
     # l'expérience prévisionnelle qu'on lance (plans.py) : elle cesse de l'être une fois l'étude créée
     plan_id: int | None = None
+    # combinée « au marché » (plusieurs études et/ou une référence, brique par brique) : la structure
+    # est celle assemblée et envoyée ; ceci dit d'où vient chaque brique
+    composition: CompositionOrigin | None = None
+    # une plaque de plus, à la fin du split : une répétition exacte de cette version de référence (la
+    # dernière connue de la référence d'origine) - la plaque témoin, hors des variantes. La dernière
+    # des ``entities`` est la sienne
+    reference_repeat: ReferenceOrigin | None = None
 
     @model_validator(mode="after")
     def _structure_or_combination(self) -> "CreateExperimentRequest":
@@ -137,6 +193,10 @@ class CreateExperimentRequest(_Intention):
             raise ValueError("Une combinaison (merge_of) ne prend ni structure ni from_version : sa structure est la structure combinée.")
         if self.wafer_origin is not None and (self.from_version is not None or self.merge_of is not None):
             raise ValueError("Une étude partie de plaques (wafer_origin) ne prend ni from_version ni merge_of : elle part de l'étude de ses plaques.")
+        if self.composition is not None and (self.from_version is not None or self.merge_of is not None or self.wafer_origin is not None):
+            raise ValueError("Une étude combinée (composition) part de ses sources : ni from_version, ni merge_of, ni wafer_origin.")
+        if self.reference_repeat is not None and self.merge_of is not None:
+            raise ValueError("Une combinaison (merge_of) ne prend pas de répétition de la référence.")
         return self
 
 

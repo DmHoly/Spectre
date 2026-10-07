@@ -1801,3 +1801,273 @@ a.plate-row__lasermark {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* -- « D'où part la nouvelle étude ? » (study-start.js) ----------------------------------------- */
+
+.study-start__head {
+  margin-bottom: var(--space-3);
+}
+.study-start__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: 12px;
+}
+.study-start-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+.study-start-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.study-start-card:hover {
+  border-color: var(--navy-500);
+  box-shadow: var(--shadow);
+}
+.study-start-card:focus-visible {
+  outline: none;
+  border-color: var(--navy-500);
+  box-shadow: var(--ring);
+}
+.study-start-card__title {
+  font-weight: 600;
+  font-size: 14.5px;
+}
+.study-start-card__desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+/* l'empilement d'un cas : une couche par brique, sa couleur dit d'où elle vient */
+.study-start-card__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 64px;
+  margin-bottom: var(--space-1);
+}
+.study-start-card__layer {
+  height: 7px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+.study-start-card__layer.is-ref {
+  background: var(--gold-tint);
+  border-color: var(--gold);
+}
+.study-start-card__layer.is-a {
+  background: var(--accent-tint-strong);
+  border-color: var(--navy-500);
+}
+.study-start-card__layer.is-b {
+  background: var(--continue-tint);
+  border-color: var(--continue);
+}
+.study-start__note {
+  margin: var(--space-4) 0 0;
+  font-size: 12.5px;
+}
+.study-start__subtitle {
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+/* depuis une plaque : les études à gauche, leurs plaques à droite */
+.study-start-place {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: var(--space-4);
+  min-height: 280px;
+}
+.study-start-place .ref-start__options {
+  max-height: 320px;
+}
+.study-start-wafers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 360px;
+  overflow-y: auto;
+}
+.study-start-wafer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.study-start-wafer:has(input:checked) {
+  border-color: var(--navy-500);
+  background: var(--accent-tint);
+}
+.study-start-wafer:has(input:focus-visible) {
+  box-shadow: var(--ring);
+}
+.study-start-wafer.is-disabled {
+  cursor: not-allowed;
+  background: var(--surface-2);
+}
+.study-start-wafer__thumb {
+  flex: none;
+  width: 56px;
+}
+.study-start-wafer__thumb svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.study-start-wafer__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+.study-start-wafer__mark {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* combiner au marché : les sources, puis une ligne par brique */
+.study-compose__sources {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.study-compose__source {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(0, 1.2fr) 28px;
+  align-items: center;
+  gap: var(--space-2);
+}
+.study-compose__source .study-compose__narrow {
+  max-width: 140px;
+}
+.study-compose__more {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+.study-compose__tag {
+  display: inline-block;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.study-compose__tag.is-main {
+  color: var(--navy);
+  background: var(--accent-tint-strong);
+  border-color: var(--navy-500);
+}
+.study-compose__tag.is-s1 {
+  color: var(--continue);
+  background: var(--continue-tint);
+  border-color: var(--continue);
+}
+.study-compose__tag.is-s2 {
+  color: var(--gold-dark);
+  background: var(--gold-tint);
+  border-color: var(--gold);
+}
+.study-compose__tag.is-s3 {
+  color: var(--running);
+  background: var(--running-tint);
+  border-color: var(--running);
+}
+.study-compose__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.study-compose__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.study-compose__table th,
+.study-compose__table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+  text-align: center;
+  vertical-align: middle;
+}
+.study-compose__table thead th {
+  font-weight: 500;
+  vertical-align: bottom;
+}
+.study-compose__table th[scope="row"],
+.study-compose__table thead th:first-child {
+  text-align: left;
+  font-weight: 600;
+}
+.study-compose__table tr:last-child > * {
+  border-bottom: none;
+}
+.study-compose__source-name {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.study-compose__pick {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
+.study-compose__same {
+  margin: 0;
+  font-size: 11px;
+}
+.study-compose__absent {
+  color: var(--text-faint);
+}
+.study-compose__warnings {
+  margin: var(--space-3) 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--hold);
+}
+.study-compose__result > .help {
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 720px) {
+  .study-start-place {
+    grid-template-columns: 1fr;
+  }
+  .study-compose__source {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* la feuille de split : la plaque témoin, en dernière ligne */
+.split-table tr.is-witness td {
+  background: var(--gold-tint);
+}
+.split-table tr.is-witness td:first-child {
+  box-shadow: inset 3px 0 0 var(--gold);
+}

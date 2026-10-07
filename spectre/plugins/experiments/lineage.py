@@ -279,7 +279,10 @@ def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dic
             parents = [display_id[parent] for parent in parents]
         edges.extend({"parent": parent, "child": display_id[child]} for parent in parents)
     for exp_id, resolved_tips in tips_by_anchor.items():
-        if len(resolved_tips) > 1:
+        # chaque pointe qui n'est pas le nœud de son point structurel (plusieurs pistes en partent,
+        # ou ce point est lui-même la pointe d'une étude - une étude partie d'elle sans changer la
+        # structure) : un trait depuis le nœud dont elle part
+        if len(resolved_tips) > 1 or display_id[exp_id] == exp_id:
             edges.extend(
                 {"parent": shown_as(hung_from(tip_id, exp_id)), "child": tip_id}
                 for tip_id in resolved_tips
@@ -290,6 +293,26 @@ def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dic
         parent, child = shown_as(attachment["parent"]), shown_as(attachment["root"])
         if parent != child:
             edges.append({"parent": parent, "child": child, "attached": {"author": attachment["author"], "created_at": attachment["created_at"]}})
+
+    # une étude combinée « au marché » (service.COMPOSITION_KEY) : un trait de chacune de ses autres
+    # études sources, marqué ``composed`` - la principale est déjà son parent. Seulement depuis la
+    # première version de la piste combinée (les suivantes reportent la même métadonnée).
+    linked = {(edge["parent"], edge["child"]) for edge in edges}
+    for exp_id, exp in experiments.items():
+        sources = _composed_sources(exp)
+        first = experiments.get(exp.parents[0]) if exp.parents else None
+        if not sources or (first is not None and _composed_sources(first) == sources):
+            continue
+        child = shown_as(exp_id)
+        for index, cited in enumerate(sources):
+            if index == 0 and exp.parents:
+                continue
+            if cited.get("kind") != "study" or cited.get("version_id") not in experiments:
+                continue
+            parent = shown_as(cited["version_id"])
+            if parent != child and (parent, child) not in linked:
+                linked.add((parent, child))
+                edges.append({"parent": parent, "child": child, "composed": True})
 
     # When the work moved on from a node: its first child's start - what ends the elapsed time of a
     # draft that was never concluded but continued into a new version (« poursuivie »). And the
@@ -320,6 +343,14 @@ def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dic
     if anchors:
         return {"nodes": nodes, "edges": edges, "anchors": {vid: shown_as(vid) if vid in experiments else None for vid in anchors}}
     return {"nodes": nodes, "edges": edges}
+
+
+def _composed_sources(version: Any) -> list[dict]:
+    """Les sources d'une étude combinée au marché (``metadata["composition"]``, voir
+    ``service.COMPOSITION_KEY``), vide pour toute autre."""
+    composition = version.metadata.get("composition")
+    sources = composition.get("sources") if isinstance(composition, dict) else None
+    return [s for s in sources if isinstance(s, dict)] if isinstance(sources, list) else []
 
 
 def condensed_edges(repo: Any, tips: list[Any]) -> list[tuple[str, str]]:

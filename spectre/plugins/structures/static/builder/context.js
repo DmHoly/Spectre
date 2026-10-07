@@ -49,6 +49,28 @@ const requestedWafers =
       }
     : null;
 let waferOrigin = null;
+// ?etude=<piste>&etude-version=<id>&place=<n> : une nouvelle étude partie de la meilleure plaque d'une
+// étude du µprojet (experiments/static/study-start.js) - la structure de sa variante, sur de nouvelles
+// plaques ; l'étude lancée en descend (`from_version` avec `place`) une fois chargée (loadStartPlace)
+const requestedStart =
+  !isLibraryMode && !isBrickMode && !isPresetMode && !evolveExperienceId && queryParams.get("etude") && /^\d+$/.test(queryParams.get("place") || "")
+    ? { experimentId: queryParams.get("etude"), versionId: queryParams.get("etude-version"), place: parseInt(queryParams.get("place"), 10) }
+    : null;
+let startPlace = null; // {experiment_id, version_id, place} - chargée
+let startDetail = null; // la fiche de l'étude de départ (sa référence d'origine)
+// ?composition=<json {sources, choices}> : une nouvelle étude combinée au marché (study-start.js) - la
+// structure assemblée brique par brique (loadComposition) ; l'étude lancée retient `composition`
+let requestedComposition = null;
+if (!isLibraryMode && !isBrickMode && !isPresetMode && !evolveExperienceId && queryParams.get("composition")) {
+  try {
+    const parsed = JSON.parse(queryParams.get("composition"));
+    if (parsed && Array.isArray(parsed.sources) && parsed.sources.length >= 2) requestedComposition = parsed;
+  } catch (err) {
+    requestedComposition = null;
+  }
+}
+let compositionOrigin = null; // {sources, bricks} - chargée
+let compositionMainDetail = null; // la fiche de sa source principale, quand c'est une étude
 // ?prevision=<id> : on lance une expérience prévisionnelle (prévue depuis l'arbre du µprojet - voir
 // experiments/static/lineage-view.js) : son titre et son intention préremplissent l'écran 2, son nombre
 // de plaques prévu les lignes de l'écran 3 ; partie de la structure d'une version (?version= sur une
@@ -84,6 +106,11 @@ const state = {
   variationEntities: [], // [{sample_id, location, fdl}] - one per row of the écran 3 table (a place), positional - sample_id blank until associated
   studyFdl: null, // les FDL de l'étude (écran 3) - null tant que l'écran 3 n'a pas été ouvert : une évolution garde alors celles en place
   fdlContents: [], // ce que la base dit de chacune (wafersApi.fdl) : leurs plaques alimentent le menu déroulant de chaque place
+  // la plaque témoin (écran 3) : une place de plus, une répétition exacte de la dernière version
+  // connue de la référence d'origine - {reference, version, name, svg, from, entity} quand elle est
+  // incluse ; refRepeatOffer : ce que le bouton propose (null : aucune référence d'origine connue)
+  refRepeat: null,
+  refRepeatOffer: undefined,
   originWafers: null, // partie de plaques existantes : leurs lasermarks, fixés (le tableau de l'écran 3 n'en change que l'emplacement et les FDL)
   wizardScreen: "structure", // écran courant de l'atelier : "structure", "intention" ou "variations" (ces deux derniers : mode expérience uniquement) - voir stages.js
   // Sélection dans le process flow (step-list.js) : -1 = le substrat, 0..n-1 = une étape. Pilote à
