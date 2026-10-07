@@ -167,7 +167,6 @@ function selectStep(index, { toggle = false, range = false, fromCanvas = false }
   state.selectedIndex = index;
   if (!fromCanvas) state.frameLock = null;
   else if (state.frameLock == null) state.frameLock = frameBefore;
-  if (!fromCanvas) hideLayerProvenance();
   renderRail();
   renderInspector();
   renderFrame();
@@ -181,7 +180,6 @@ function selectBrickGroup(groupId) {
   state.selectedBrickGroup = groupId;
   state.selectedIndex = span[1];
   state.frameLock = null;
-  hideLayerProvenance();
   renderRail();
   renderInspector();
   renderFrame();
@@ -233,7 +231,6 @@ function insertSteps(at, newSteps) {
   state.selectedStepIndices.clear();
   state.selectedBrickGroup = null;
   state.selectedIndex = at + newSteps.length - 1;
-  hideLayerProvenance();
   commitStructure();
   scrollChipIntoView(state.selectedIndex);
 }
@@ -331,7 +328,6 @@ function deleteSteps(indices) {
   state.selectedBrickGroup = null;
   // on se replace sur l'étape d'avant (ou le substrat) : c'est là que la suivante s'insérerait
   state.selectedIndex = Math.min(first - 1, state.steps.length - 1);
-  hideLayerProvenance();
   commitStructure();
 }
 

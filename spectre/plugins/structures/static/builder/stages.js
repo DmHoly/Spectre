@@ -31,7 +31,6 @@ function setStage(stage) {
     btn.classList.toggle("sb-off-stage", !onThisStage);
   });
   closeKindMenu();
-  hideLayerProvenance();
   renderRail();
   renderInspector();
   renderFrame();

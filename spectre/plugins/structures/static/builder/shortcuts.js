@@ -16,8 +16,7 @@ document.addEventListener("keydown", (event) => {
       return;
     }
     if (closeKindMenu({ restoreFocus: true })) return;
-    if (!isTypingTarget(event.target) && clearMultiSelection()) return;
-    hideLayerProvenance();
+    if (!isTypingTarget(event.target)) clearMultiSelection();
     return;
   }
   if (isTypingTarget(event.target) || event.altKey) return;

@@ -129,61 +129,6 @@ document.getElementById("frame-next-btn").addEventListener("click", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Traçabilité d'une couche (carte flottante sur le dessin)
-// ---------------------------------------------------------------------------------------------
-
-// Un dérivé "null" (mesuré/donné directement) ; un dict (déclaré ou calculé depuis une formule
-// dérivée type Length) affiche ses clés ; toute autre forme retombe sur un JSON brut lisible.
-function formatDerivation(derivation) {
-  if (derivation === null || derivation === undefined) return "mesuré / donné directement";
-  if (typeof derivation === "object" && !Array.isArray(derivation)) {
-    const entries = Object.entries(derivation);
-    if (entries.length === 0) return "mesuré / donné directement";
-    return entries.map(([k, v]) => `${escapeHtml(k)}=${escapeHtml(String(v))}`).join(", ");
-  }
-  return escapeHtml(JSON.stringify(derivation));
-}
-
-function renderLayerProvenance(layer) {
-  const panel = document.getElementById("layer-provenance-panel");
-  const content = document.getElementById("layer-provenance-content");
-  if (!layer) {
-    panel.hidden = true;
-    return;
-  }
-  panel.hidden = false;
-  const provenance = layer.provenance;
-  if (!provenance) {
-    content.innerHTML = `<div class="help">Aucune traçabilité enregistrée pour cette couche (${escapeHtml(layer.material)}).</div>`;
-    return;
-  }
-  const params = Object.entries(provenance.parameters || {});
-  content.innerHTML = `
-    <div class="sb-provenance__what"><strong>${escapeHtml(layer.material)}</strong> · ${escapeHtml(provenance.step_kind)} — ${escapeHtml(provenance.step_name)}</div>
-    ${
-      params.length === 0
-        ? `<div class="help">Aucun paramètre enregistré.</div>`
-        : `<div class="sb-provenance__params">
-            ${params
-              .map(
-                ([name, traced]) => `
-              <div class="sb-provenance__param">
-                <div><strong>${escapeHtml(name)}</strong> = <span class="mono">${escapeHtml(formatParamValue(traced.value))}</span></div>
-                <div class="help">${formatDerivation(traced.derivation)}</div>
-              </div>`
-              )
-              .join("")}
-          </div>`
-    }`;
-}
-
-function hideLayerProvenance() {
-  document.getElementById("layer-provenance-panel").hidden = true;
-}
-
-document.getElementById("layer-provenance-close").addEventListener("click", hideLayerProvenance);
-
-// ---------------------------------------------------------------------------------------------
 // Interactions sur le dessin : clic sur une couche, survol, zoom molette, déplacement
 // ---------------------------------------------------------------------------------------------
 
@@ -200,7 +145,6 @@ svgContainer.addEventListener("click", (event) => {
   const path = event.target.closest("[data-layer-index]");
   if (!path || !state.frames) return;
   const frameIndex = currentFrameIndex();
-  const frame = state.frames[frameIndex];
   const layerIndex = parseInt(path.dataset.layerIndex, 10);
   const origin = layerOrigin(frameIndex, layerIndex);
   if (state.wizardScreen === "variations") {
@@ -208,7 +152,6 @@ svgContainer.addEventListener("click", (event) => {
     return;
   }
   if (origin != null && origin < state.steps.length) selectStep(origin, { fromCanvas: true });
-  renderLayerProvenance(frame && frame.layers ? frame.layers[layerIndex] || null : null);
 });
 
 // Survol d'une couche : la puce de l'étape qui l'a produite s'illumine dans le flow.
