@@ -9,7 +9,7 @@ from pydantic import TypeAdapter, ValidationError
 from structureforge.adapters.follow_adapter import ProcessStructure, to_structure
 
 from spectre.plugins.structures import kinds
-from spectre.plugins.structures.schemas import CampaignPayload, ImagesPayload, ProcessPayload, StructurePayload
+from spectre.plugins.structures.schemas import CampaignPayload, DeclaredPayload, ImagesPayload, ProcessPayload, StructurePayload
 from spectre.plugins.structures.simulation import run_simulation
 from support.structures import campaign_plan, steps, substrate
 
@@ -25,6 +25,7 @@ def test_kinds_are_found_by_their_frozen_registry_key():
         ProcessStructure.registry_key(): kinds.PROCESS,
         "spectre.core.structures.ProcessLot": kinds.CAMPAIGN,
         "spectre.core.structures.StructureImage": kinds.IMAGES,
+        "spectre.structures.DeclaredStructure": kinds.DECLARED,
     }
 
 
@@ -43,6 +44,12 @@ def test_each_kind_draws_and_counts_its_entities(data_dir):
     assert kinds.render_structure_svg(kinds.IMAGES.key, images) is None
     assert kinds.is_image_structure(kinds.IMAGES.key) and not kinds.is_image_structure(kinds.PROCESS.key)
 
+    declared = {"description": "recuit", "factors": ["Recuit"], "wafers": [{"values": ["court"]}, {"label": "réf", "values": ["long"]}]}
+    assert kinds.entity_count(kinds.DECLARED.key, declared) == 2
+    assert kinds.render_structure_svg(kinds.DECLARED.key, declared) is None
+    assert kinds.structure_kind_name(kinds.DECLARED.key) == "declared" and kinds.structure_kind_name(kinds.IMAGES.key) == "images"
+    assert kinds.structure_kind_name("ailleurs.Structure") == "process"
+
     # un type inconnu : rien à dessiner, une entité
     assert kinds.render_structure_svg("ailleurs.Structure", {}) is None
     assert kinds.entity_count("ailleurs.Structure", {}) == 1
@@ -56,6 +63,9 @@ def test_a_structure_payload_is_told_apart_by_its_kind():
     assert isinstance(images, ImagesPayload) and images.images[0].kind == "schema"
     campaign = adapter.validate_python({"kind": "campaign", "substrate": substrate(), "steps": steps(), "plan": campaign_plan([10, 20])})
     assert isinstance(campaign, CampaignPayload) and campaign.plan.factors[0].values == [10, 20]
+
+    declared = adapter.validate_python({"kind": "declared", "wafers": [{}]})
+    assert isinstance(declared, DeclaredPayload) and declared.images == [] and declared.factors == []
 
     with pytest.raises(ValidationError):
         adapter.validate_python({"kind": "sketch", "images": []})

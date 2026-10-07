@@ -114,6 +114,11 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         "is_batch": version.structure_type == kinds.ProcessLot.registry_key(),
         # a structure given as pictures: [{image_id, kind, caption, url}, ...] in reading order
         "structure_images": kinds.structure_images_payload(slug, version.structure_type, version.structure),
+        # « process », « campaign », « images » ou « declared » (sans structure : décrite seulement)
+        "structure_kind": kinds.structure_kind_name(version.structure_type),
+        # sans structure : {description, images, factors, wafers: [{label, values, name}]} - le split
+        # déclaré, une ligne par plaque (à la place de physical_tracking) ; None sinon
+        "declared_structure": kinds.declared_structure_payload(slug, version.structure_type, version.structure),
         "has_editable_process": "structureforge_process" in version.metadata,
         # le cahier de données se lit dans le plugin notebook (GET .../notebook-entries) : ici, son
         # nombre d'entrées seulement (toutes, y compris celles d'autres plaques)

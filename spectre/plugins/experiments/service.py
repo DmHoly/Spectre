@@ -29,7 +29,7 @@ from structureforge.adapters.follow_adapter import ProcessStructure
 
 from ...kernel.errors import Conflict, InvalidInput, NotFound, PreconditionFailed
 from ..structures import campaigns, kinds, simulation
-from ..structures.schemas import CampaignPayload, ImagesPayload, StructureImageInput
+from ..structures.schemas import CampaignPayload, DeclaredPayload, ImagesPayload, StructureImageInput
 from . import refs, versioning
 from .entities import (
     EntityTrackingInput,
@@ -584,6 +584,14 @@ class _PreparedStructure:
             self.steps: list = []
             self.metadata[kinds.IMAGE_REVISION_KEY] = kinds.new_image_revision()
             return
+        if isinstance(payload, DeclaredPayload):
+            # sans structure : la description et le split déclaré, une plaque par ligne - rien à simuler
+            self.structure = kinds.declared_structure_from_input(slug, payload)
+            self.steps = []
+            self.campaign_size = len(self.structure.wafers)
+            self.metadata[kinds.IMAGE_REVISION_KEY] = kinds.new_image_revision()
+            self.metadata["campaign_labels"] = kinds.declared_labels(self.structure)
+            return
         declared = simulation.declared_params_by_index(payload.declared_params)
         self.labels = simulation.layer_labels_by_index(payload.layer_labels, len(payload.steps))
         self.bricks = simulation.checked_bricks(payload.bricks, len(payload.steps))
@@ -627,7 +635,7 @@ class _PreparedStructure:
         labels, the labels and the step that created each layer of each entity, by those ids too
         (nothing without labels: a version without them keeps its former shape); with bricks, the
         steps each one groups, by those ids (nothing without bricks either). Nothing for pictures."""
-        if self.kind == "images":
+        if self.kind in ("images", "declared"):  # ni pour une expérience sans structure
             return {}
         step_ids = _settled_step_ids(self.requested_step_ids, self.metadata["structureforge_process"], parent, parent_ids)
         recorded: dict[str, Any] = {simulation.STEP_IDS_METADATA_KEY: step_ids}
@@ -703,7 +711,7 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
         builder.metadata.update(prepared.step_metadata(source, step_ids_of(repo, source) if source is not None else []))
         builder.metadata["physical_tracking"] = _launch_tracking(prepared.kind, prepared.campaign_size, entities)
         # des réplicats déclarés comme répétitions exactes de la référence (étude simple, plusieurs plaques)
-        if body.repeats and prepared.kind != "campaign" and len(builder.metadata["physical_tracking"]) > 1:
+        if body.repeats and prepared.kind not in ("campaign", "declared") and len(builder.metadata["physical_tracking"]) > 1:
             builder.metadata[REPEATS_KEY] = True
         else:
             builder.metadata.pop(REPEATS_KEY, None)
@@ -849,18 +857,16 @@ def resolve_wafer_origin(repo: follow.Repository, origin: WaferOrigin, entities:
 
 def _launch_tracking(kind: str, campaign_size: int, entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The physical tracking of a new line of study whose structure is of ``kind`` (``process``,
-    ``campaign`` of ``campaign_size`` variants, or ``images``), never the same sample twice: exactly
-    one slot per variant of a campaign (the samples given fill the first ones - a named one beyond
-    the last variant is refused), the slots of a simple study (its replicates, as many as given, at
+    ``campaign`` of ``campaign_size`` variants, ``declared`` with as many rows, or ``images``), never
+    the same sample twice: exactly one slot per variant of a campaign or row of a declared split (the
+    samples given fill the first ones - a named one beyond the last is refused), the slots of a simple study (its replicates, as many as given, at
     least one). A slot may stay blank: the wafers actually launched are associated later, from the
     FDL of the study - a study is concluded only once one of them is named (:func:`conclude`)."""
     refuse_duplicate_wafers(entities)
-    if kind == "campaign":
+    if kind in ("campaign", "declared"):
         if named_entities(entities[campaign_size:]):
-            raise InvalidInput(
-                f"{len(named_entities(entities))} plaques pour {campaign_size} variante(s) : une plaque par variante au plus.",
-                code="too_many_entities",
-            )
+            what = "variante(s) : une plaque par variante" if kind == "campaign" else "ligne(s) du split : une plaque par ligne"
+            raise InvalidInput(f"{len(named_entities(entities))} plaques pour {campaign_size} {what} au plus.", code="too_many_entities")
         padding = [blank_entity() for _ in range(max(0, campaign_size - len(entities)))]
         return (entities + padding)[:campaign_size]
     return entities or [blank_entity()]
@@ -873,8 +879,7 @@ _STRUCTURE_METADATA_KEYS = (*kinds.DRAWN_STRUCTURE_METADATA_KEYS, kinds.IMAGE_RE
 
 
 def _structure_kind(structure_type: str) -> str:
-    kind = kinds.KINDS.get(structure_type)
-    return "images" if kind is kinds.IMAGES else "campaign" if kind is kinds.CAMPAIGN else "process"
+    return kinds.structure_kind_name(structure_type)
 
 
 def combine(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.Experiment:
@@ -970,7 +975,37 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
         # parmi des variantes
         builder.metadata.pop(REFERENCE_PLACE_KEY, None)
         builder.metadata.pop(COMPARISON_KEY, None)
-        if prepared.kind == "images":
+        if prepared.kind == "declared":
+            # la même description, les mêmes images (sans leurs annotations), le même split : la même
+            # structure - sinon une nouvelle révision
+            def content(data: dict[str, Any]) -> dict[str, Any]:
+                return {**data, "images": kinds.without_annotations(data.get("images", []))}
+
+            same = (
+                kinds.is_declared_structure(parent.structure_type)
+                and bool(parent.metadata.get(kinds.IMAGE_REVISION_KEY))
+                and content(prepared.structure.model_dump()) == content(kinds.DeclaredStructure.model_validate(parent.structure).model_dump())
+            )
+            for key in kinds.DRAWN_STRUCTURE_METADATA_KEYS:
+                builder.metadata.pop(key, None)
+            builder.metadata["campaign_labels"] = prepared.metadata["campaign_labels"]
+            if not same:
+                builder.metadata[kinds.IMAGE_REVISION_KEY] = prepared.metadata[kinds.IMAGE_REVISION_KEY]
+            # une place par ligne : les plaques données, sinon celles de la version précédente à leur
+            # place (d'un split déclaré ou d'une campagne, par position ; les réplicats d'une étude
+            # simple dans l'ordre) - une ligne de moins efface la dernière, une de plus est à associer
+            given = entities if named_entities(entities) else clean_entity_entries(
+                [EntityTrackingInput(**e) for e in parent.metadata.get("physical_tracking", [])]
+            )
+            size = prepared.campaign_size
+            if named_entities(given[size:]):
+                raise InvalidInput(
+                    f"{len(named_entities(given))} plaques suivies pour {size} ligne(s) du split : retirez des plaques ou ajoutez des lignes.",
+                    code="too_many_entities",
+                )
+            builder.metadata["physical_tracking"] = (given + [blank_entity() for _ in range(max(0, size - len(given)))])[:size]
+            builder.metadata.pop(REPEATS_KEY, None)
+        elif prepared.kind == "images":
             # les mêmes images (leurs annotations n'y comptent pas) : la même structure
             same = kinds.is_image_structure(parent.structure_type) and bool(parent.metadata.get(kinds.IMAGE_REVISION_KEY)) and (
                 kinds.without_annotations(prepared.structure.model_dump()["images"])
@@ -984,7 +1019,7 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
             # associer comprises), ou la plaque de la première variante d'une campagne (des images ne
             # disent pas les variantes) - une place à associer s'il n'y en a aucune
             inherited = clean_entity_entries([EntityTrackingInput(**e) for e in parent.metadata.get("physical_tracking", [])])
-            if parent.structure_type == kinds.ProcessLot.registry_key():
+            if parent.structure_type == kinds.ProcessLot.registry_key() or kinds.is_declared_structure(parent.structure_type):
                 inherited = named_entities(inherited)[:1]
             builder.metadata["physical_tracking"] = named_entities(entities) or inherited or [blank_entity()]
         else:
@@ -996,6 +1031,14 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
             )
             # continuing an image-mode experiment in the builder: its structure is drawn from now on
             builder.metadata.pop(kinds.IMAGE_REVISION_KEY, None)
+            inherited = None
+            if kinds.is_declared_structure(parent.structure_type):
+                # partie d'une étude sans structure : ses lignes ne nomment plus de variante, et ses
+                # plaques nommées, sans split pour les distinguer, deviennent des réplicats
+                builder.metadata.pop("campaign_labels", None)
+                inherited = named_entities(
+                    clean_entity_entries([EntityTrackingInput(**e) for e in parent.metadata.get("physical_tracking", [])])
+                ) or [blank_entity()]
             builder.metadata["structureforge_process"] = process
             # les étiquettes et les briques sont celles de cette évolution (aucune : il n'y en a plus)
             builder.metadata.pop(simulation.LAYER_LABELS_METADATA_KEY, None)
@@ -1004,6 +1047,8 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
             builder.metadata.update(prepared.step_metadata(parent, parent_ids))
             if entities:
                 builder.metadata["physical_tracking"] = entities
+            elif inherited is not None:
+                builder.metadata["physical_tracking"] = inherited
             elif not builder.metadata.get("physical_tracking"):
                 builder.metadata["physical_tracking"] = [blank_entity()]
         if not same:
@@ -1103,6 +1148,13 @@ def set_entities(
             if len(tracked) != expected:
                 raise InvalidInput(
                     f"Il faut exactement {expected} entrée(s) (une par variante de cette campagne).", code="entity_count"
+                )
+        elif kinds.is_declared_structure(parent.structure_type):
+            expected = kinds.entity_count(parent.structure_type, parent.structure)
+            if len(tracked) != expected:
+                raise InvalidInput(
+                    f"Il faut exactement {expected} entrée(s) (une par ligne du split) - une plaque de plus s'ajoute au split.",
+                    code="entity_count",
                 )
         else:
             if not tracked:

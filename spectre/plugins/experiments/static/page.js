@@ -135,10 +135,10 @@ const ExperiencePage = (() => {
   }
 
   // L'éditeur de la fiche, prérempli : la page « structure en images » pour une structure donnée en
-  // images, sinon le constructeur (`stage` : l'écran où l'ouvrir, « intention »). `fork` : partir de
+  // images, la page « sans structure » pour une expérience seulement décrite, sinon le constructeur (`stage` : l'écran où l'ouvrir, « intention »). `fork` : partir de
   // la version affichée, sur une nouvelle piste (POST /experiments avec from_version).
   function evolveUrl({ stage = null, fork = false } = {}) {
-    const mode = ctx.detail.structure_images ? "evoluer-image" : "evoluer";
+    const mode = ctx.detail.structure_images ? "evoluer-image" : ctx.detail.declared_structure ? "evoluer-sans-structure" : "evoluer";
     const query = new URLSearchParams();
     if (stage && mode === "evoluer") query.set("etape", stage);
     if (fork) query.set("version", ctx.versionId);

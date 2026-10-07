@@ -1101,6 +1101,31 @@ a.plate-row__lasermark {
 .fiche-structure-carousel.has-layer-labels .atlas-carousel__stage svg {
   max-height: 620px;
 }
+/* une expérience sans structure : sa description (le texte tel qu'écrit) et son dessin facultatif */
+.fiche-declared {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.fiche-declared__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fiche-declared__empty {
+  margin: 0;
+}
+.lineage-declared {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .report-section-title {
   margin: 28px 0 14px;
   font-family: var(--font-mono);

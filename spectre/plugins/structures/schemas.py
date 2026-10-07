@@ -83,5 +83,21 @@ class ImagesPayload(StructureImagesInput):
     kind: Literal["images"]
 
 
+class DeclaredWaferInput(BaseModel):
+    label: str | None = None  # le nom de la variante, facultatif
+    values: list[str] = []  # une valeur par colonne du split, dans leur ordre
+
+
+class DeclaredPayload(BaseModel):
+    """Une expérience sans structure : une description, un dessin collé facultatif, et le split
+    déclaré - une colonne par chose qu'on change, une ligne par plaque (voir kinds.DeclaredStructure)."""
+
+    kind: Literal["declared"]
+    description: str | None = None
+    images: list[StructureImageInput] = []
+    factors: list[str] = []
+    wafers: list[DeclaredWaferInput] = []
+
+
 # The structure of an experiment, as a launch or an evolution sends it - told apart by ``kind``.
-StructurePayload = Annotated[Union[ProcessPayload, ImagesPayload, CampaignPayload], Field(discriminator="kind")]
+StructurePayload = Annotated[Union[ProcessPayload, ImagesPayload, CampaignPayload, DeclaredPayload], Field(discriminator="kind")]

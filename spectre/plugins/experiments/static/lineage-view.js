@@ -52,8 +52,19 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
 
   // Lancer une expérience prévue (?prevision=<id> : l'éditeur la préremplit et la retire une fois
   // lancée) : partie de ses plaques (mêmes plaques), de la structure de sa version de départ
-  // (nouvelles plaques), ou de rien (une racine) - dans le constructeur, ou en images.
-  function planLaunchUrl(plan, { images = false } = {}) {
+  // (nouvelles plaques), ou de rien (une racine) - dans le constructeur (`editor` "builder"), en
+  // images ("images") ou sans structure ("declared").
+  const PLAN_EDITORS = {
+    builder: { evolve: "evoluer", page: "nouvelle", label: "dans le constructeur" },
+    images: { evolve: "evoluer-image", page: "image", label: "avec une structure en images" },
+    declared: { evolve: "evoluer-sans-structure", page: "sans-structure", label: "sans structure" },
+  };
+  // L'éditeur où lancer à la suite d'une version : celui de sa structure.
+  function editorOf(detail) {
+    return detail && detail.declared_structure ? "declared" : detail && detail.structure_images ? "images" : "builder";
+  }
+  function planLaunchUrl(plan, { editor = "builder" } = {}) {
+    const chosen = PLAN_EDITORS[editor] || PLAN_EDITORS.builder;
     const base = `/microprojets/${encodeURIComponent(slug)}`;
     const query = new URLSearchParams({ prevision: String(plan.id) });
     if (plan.mode === "same_wafers") {
@@ -65,9 +76,9 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
     }
     if (plan.parent) {
       query.set("version", plan.parent.version_id);
-      return `${base}/experiences/${encodeURIComponent(plan.parent.experiment_id)}/${images ? "evoluer-image" : "evoluer"}?${query}`;
+      return `${base}/experiences/${encodeURIComponent(plan.parent.experiment_id)}/${chosen.evolve}?${query}`;
     }
-    return `${base}/structures/${images ? "image" : "nouvelle"}?${query}`;
+    return `${base}/structures/${chosen.page}?${query}`;
   }
 
   // La version de départ d'une prévision (ses plaques, sa structure) - celle d'un nœud, ou celle
@@ -90,6 +101,13 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
         } catch (err) {
           structureBlock = "";
         }
+      } else if (detail.declared_structure) {
+        // sans structure : le début de sa description, le dessin collé s'il y en a un
+        const declared = detail.declared_structure;
+        const text = declared.description.length > 220 ? `${declared.description.slice(0, 219).trimEnd()}…` : declared.description;
+        structureBlock = `${text ? `<p class="lineage-declared">${escapeHtml(text)}</p>` : ""}${
+          declared.images.length ? structureBoardHtml(declared.images, { compact: true }) : ""
+        }<p class="help" style="margin:4px 0 0;">Sans structure · ${declared.wafers.length} plaque${declared.wafers.length > 1 ? "s" : ""} au split</p>`;
       } else if (detail.structure_images) {
         structureBlock = structureBoardHtml(detail.structure_images, { compact: true });
       } else if (detail.structure_svg) {
@@ -416,7 +434,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
     form.querySelector("#plan-launch-now").addEventListener("click", async () => {
       const saved = await save();
       if (!saved) return;
-      window.location.href = planLaunchUrl(saved, { images: Boolean(detail && detail.structure_images && saved.mode === "new_wafers") });
+      window.location.href = planLaunchUrl(saved, { editor: saved.mode === "new_wafers" ? editorOf(detail) : "builder" });
     });
     form.querySelector("#plan-cancel").addEventListener("click", () => {
       if (plan) return loadPlanCard(positionedById.get(`${PLAN_PREFIX}${plan.id}`) || { plan });
@@ -444,7 +462,7 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
         ? `<div class="plan-card__wafers"><span class="plan-card__mode">Mêmes plaques</span>${plan.wafers.map((w) => `<span class="plan-wafer__mark">${escapeHtml(w)}</span>`).join("")}</div>`
         : `<div class="plan-card__wafers"><span class="plan-card__mode">Nouvelles plaques</span><strong class="plan-card__count">~${plan.wafer_count}</strong><span class="help" style="margin:0;">prévue${plan.wafer_count > 1 ? "s" : ""}</span></div>`;
     const imagesLaunch = plan.mode === "new_wafers" && !orphan;
-    const launchImages = Boolean(detail && detail.structure_images);
+    const launchEditor = editorOf(detail);
     panel.innerHTML = `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
         <div class="section-title" style="margin-bottom:0;">${escapeHtml(plan.title)}</div>
@@ -460,12 +478,15 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
       ${
         canEdit
           ? `<div style="display:flex;gap:8px;margin-top:14px;">
-              ${orphan && plan.mode === "same_wafers" ? "" : `<a class="btn btn-primary" style="flex:1;" href="${planLaunchUrl(plan, { images: launchImages })}">Lancer</a>`}
+              ${orphan && plan.mode === "same_wafers" ? "" : `<a class="btn btn-primary" style="flex:1;" href="${planLaunchUrl(plan, { editor: plan.mode === "new_wafers" ? launchEditor : "builder" })}">Lancer</a>`}
               <button class="btn btn-line" style="flex:1;" type="button" id="plan-edit">Modifier</button>
             </div>
             ${
               imagesLaunch
-                ? `<a class="btn-link-secondary" style="display:inline-block;margin-top:8px;" href="${planLaunchUrl(plan, { images: !launchImages })}">${launchImages ? "ou lancer dans le constructeur" : "ou lancer avec une structure en images"}</a>`
+                ? `<div class="plan-card__editors">ou lancer ${Object.keys(PLAN_EDITORS)
+                    .filter((editor) => editor !== launchEditor)
+                    .map((editor) => `<a class="btn-link-secondary" href="${planLaunchUrl(plan, { editor })}">${PLAN_EDITORS[editor].label}</a>`)
+                    .join(" · ")}</div>`
                 : ""
             }
             <button class="btn-link-secondary plan-card__delete" type="button" id="plan-delete">Supprimer la prévision</button>`

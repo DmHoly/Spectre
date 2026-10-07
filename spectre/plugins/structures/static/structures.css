@@ -2880,3 +2880,187 @@
   cursor: grabbing;
   opacity: 0.85;
 }
+
+/* --- Page « sans structure » (declared-structure.html) -----------------------------------------
+   La mise en page de la page « structure en image » (.si-*) : à gauche la description, le dessin
+   facultatif (replié) et le split déclaré, qui défilent dans leur carte ; à droite l'intention. */
+
+.ds-mode-badge {
+  color: var(--navy);
+  background: var(--accent-tint);
+}
+.ds-canvas {
+  overflow-y: auto;
+  gap: var(--space-4);
+}
+.ds-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ds-block + .ds-block {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+}
+.ds-block .section-title label {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.ds-description {
+  min-height: 110px;
+  resize: vertical;
+}
+.ds-optional {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-faint);
+}
+.ds-drawing__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.ds-drawing__summary::-webkit-details-marker {
+  display: none;
+}
+.ds-drawing__summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin: 0 4px 0 2px;
+  border-right: 2px solid var(--text-soft);
+  border-bottom: 2px solid var(--text-soft);
+  transform: rotate(-45deg);
+  transition: transform var(--dur) var(--ease);
+}
+.ds-drawing[open] > .ds-drawing__summary::before {
+  transform: rotate(45deg);
+}
+.ds-drawing__summary:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.ds-drawing__summary .section-title,
+.ds-drawing__summary .help {
+  margin: 0;
+}
+.ds-drawing__hint,
+.ds-split__hint {
+  margin: 0;
+}
+.ds-drop {
+  min-height: 220px;
+  margin-top: 4px;
+}
+.ds-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ds-table th {
+  padding: 8px 6px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  white-space: nowrap;
+  vertical-align: bottom;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-soft);
+}
+.ds-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+.ds-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.ds-table .ds-table__idx {
+  width: 2.5em;
+  padding-left: 10px;
+  color: var(--text-faint);
+  vertical-align: middle;
+}
+.ds-table__label {
+  min-width: 120px;
+}
+.ds-table__factor,
+.ds-table__plate {
+  min-width: 150px;
+}
+.ds-table .ds-table__actions {
+  width: 40px;
+  text-align: right;
+  vertical-align: middle;
+}
+.ds-table .field {
+  min-height: 34px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.ds-factor {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ds-table .ds-factor__input {
+  font-weight: 600;
+  color: var(--navy);
+}
+.ds-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.ds-icon-btn:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--danger-tint);
+}
+.ds-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.ds-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ds-row-fdl {
+  margin-top: 4px;
+}
+.ds-split__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1100px) {
+  .ds-canvas {
+    overflow: visible;
+  }
+}

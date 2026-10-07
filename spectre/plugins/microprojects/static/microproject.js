@@ -221,6 +221,10 @@ document.getElementById("option-image").addEventListener("click", () => {
   window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/image`;
 });
 
+document.getElementById("option-declared").addEventListener("click", () => {
+  window.location.href = `/microprojets/${encodeURIComponent(slug)}/structures/sans-structure`;
+});
+
 document.getElementById("option-template").addEventListener("click", () => {
   const source = document.getElementById("template-select").value;
   if (!source) return;

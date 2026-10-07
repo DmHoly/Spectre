@@ -71,14 +71,16 @@
   // un éditeur, leurs outils. Les enregistrer remplace la planche telle quelle, avec les annotations
   // de cette image (PUT .../structure-images) : une écriture légère, pas de nouvelle version de
   // structure.
-  function mountPictureAnnotations(container, images) {
+  // `editable` : faux pour le dessin d'une expérience sans structure (ses annotations se lisent
+  // seulement - il se modifie avec la description et le split)
+  function mountPictureAnnotations(container, images, { editable = true } = {}) {
     container.querySelectorAll(".structure-picture").forEach((figure, i) => {
       const image = images[i];
       const img = figure.querySelector("img");
       ImageAnnotations.mount(figure.querySelector(".structure-picture__annotations"), {
         img,
         annotations: image.annotations || [],
-        editable: ctx.canEdit,
+        editable: editable && ctx.canEdit,
         name: `l'image ${i + 1}`,
         onSave: (annotations) => {
           const body = {
@@ -100,7 +102,21 @@
     const hint = document.getElementById("structure-click-hint");
     variantIndex = 0;
 
-    if (detail.structure_images) {
+    if (detail.declared_structure) {
+      // sans structure : la description et, s'il y en a un, le dessin collé - le split est plus bas
+      const declared = detail.declared_structure;
+      document.getElementById("structure-title").textContent = "Description · sans structure";
+      container.className = "fiche-declared";
+      container.innerHTML = `
+        ${
+          declared.description
+            ? `<p class="fiche-declared__text">${escapeHtml(declared.description)}</p>`
+            : `<p class="help fiche-declared__empty">Pas de description - l'expérience est décrite par son split, ci-dessous.</p>`
+        }
+        ${declared.images.length ? `<div class="fiche-declared__drawing">${structureBoardHtml(declared.images)}</div>` : ""}`;
+      if (declared.images.length) mountPictureAnnotations(container.querySelector(".fiche-declared__drawing"), declared.images, { editable: false });
+      hint.style.display = "none";
+    } else if (detail.structure_images) {
       // une structure en images (schéma, coupes TEM...) : la planche
       const images = detail.structure_images;
       document.getElementById("structure-title").textContent =
@@ -298,7 +314,16 @@
     let factorLabels = [];
     let factorScales = [];
     let rows;
-    if (detail.is_batch) {
+    const declared = detail.declared_structure;
+    if (declared) {
+      // sans structure : le split déclaré, une ligne par plaque, ses colonnes telles qu'écrites
+      factorLabels = declared.factors;
+      rows = declared.wafers.map((wafer, i) => ({
+        variant: wafer.label || `Plaque ${i + 1}`,
+        values: wafer.values.map((v) => v || "-"),
+        entry: tracking[i] || {},
+      }));
+    } else if (detail.is_batch) {
       const variation = await ctx.variants().catch(() => null);
       const labels = (variation && variation.labels) || tracking.map((_, i) => `Variante ${i + 1}`);
       const hasFactors = variation && variation.factor_labels && variation.factor_labels.length > 0;
@@ -338,7 +363,7 @@
       <table class="split-table">
         <thead><tr>
           <th scope="col">#</th>
-          <th scope="col">${detail.is_batch ? "Variante" : "Rôle"}</th>
+          <th scope="col">${detail.is_batch || declared ? "Variante" : "Rôle"}</th>
           ${factorLabels
             .map((label, j) => `<th scope="col">${escapeHtml(label)}${factorScales[j] === "log" ? ` <span class="split-table__scale">log</span>` : ""}</th>`)
             .join("")}
@@ -352,7 +377,7 @@
               (row, i) => `<tr>
                 <td class="mono split-table__idx">${i + 1}</td>
                 <td>${escapeHtml(row.variant)}</td>
-                ${row.values.map((v) => `<td class="mono">${escapeHtml(v)}</td>`).join("")}
+                ${row.values.map((v) => `<td class="${declared ? "" : "mono"}">${escapeHtml(v)}</td>`).join("")}
                 <td>${plateCell(row.entry)}</td>
                 <td>${row.entry.fdl && row.entry.fdl.length ? fdlChipsHtml(row.entry.fdl, { label: false }) : `<span class="split-table__empty">-</span>`}</td>
                 <td>${row.entry.location ? escapeHtml(row.entry.location) : `<span class="split-table__empty">-</span>`}</td>
@@ -413,7 +438,8 @@
     key: "structure",
     mount(el, context) {
       ctx = context;
-      evolveLink.style.display = ctx.canEdit && ctx.process ? "" : "none";
+      evolveLink.style.display = ctx.canEdit && (ctx.process || ctx.detail.declared_structure) ? "" : "none";
+      evolveLink.textContent = ctx.detail.declared_structure ? "Modifier la description et le split" : "Modifier la structure";
       replaceBtn.style.display = ctx.canEdit && ctx.detail.structure_images ? "" : "none";
       renderProcessSteps();
       return Promise.all([renderStructure(ctx.detail), renderSplit(ctx.detail)]);

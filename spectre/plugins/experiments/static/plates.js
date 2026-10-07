@@ -37,8 +37,15 @@
   async function renderPlates(ctx) {
     const { detail, canEdit } = ctx;
     const host = document.getElementById("physical-tracking-content");
-    const labels = detail.is_batch ? ((await ctx.variants().catch(() => null)) || {}).labels || [] : null;
-    const labelOf = (i) => (labels ? labels[i] || `Variante ${i + 1}` : null);
+    // une place par variante d'une campagne, par ligne du split d'une expérience sans structure : son nom
+    const declared = detail.declared_structure;
+    const labels = detail.is_batch
+      ? ((await ctx.variants().catch(() => null)) || {}).labels || []
+      : declared
+        ? declared.wafers.map((w, i) => w.label || `Plaque ${i + 1}`) // comme la feuille de split
+        : null;
+    const labelOf = (i) => (labels ? labels[i] || `${declared ? "Plaque" : "Variante"} ${i + 1}` : null);
+    const perSlot = detail.is_batch || Boolean(declared); // une place par variante, ou par ligne
     const tracking = detail.physical_tracking || [];
     const studyFdl = detail.fdl || [];
 
@@ -49,7 +56,7 @@
       });
       host.innerHTML = `
         ${studyFdl.length ? `<div class="plates-study-fdl">${fdlChipsHtml(studyFdl)}</div>` : ""}
-        <div class="plates-list${detail.is_batch ? " plates-list--batch" : ""}">${rows.join("")}</div>`;
+        <div class="plates-list${perSlot ? " plates-list--batch" : ""}">${rows.join("")}</div>`;
       return;
     }
 
@@ -57,7 +64,9 @@
     let entries = (tracking.length ? tracking : [{}]).map((e) => ({ sample_id: e.sample_id || "", location: e.location || "", fdl: (e.fdl || []).slice() }));
     let contents = [];
     let fdlFields = {};
-    const canAdd = !detail.is_batch; // une étude simple suit autant de réplicats qu'on veut ; une campagne, une plaque par variante
+    // une étude simple suit autant de réplicats qu'on veut ; une campagne, une plaque par variante ;
+    // une expérience sans structure, une par ligne de son split (une plaque de plus s'y ajoute)
+    const canAdd = !perSlot;
 
     host.innerHTML = `
       <div class="plates-study" data-report-hide>
@@ -69,7 +78,7 @@
         <p class="help plates-summary" aria-live="polite"></p>
         <button class="btn btn-tint plates-fill" id="fill-plates-btn" type="button" hidden title="Associe les places encore vides aux plaques libres des FDL de l'étude, dans l'ordre">Remplir dans l'ordre de la FDL</button>
       </div>
-      <ol class="plates-list plates-list--edit${detail.is_batch ? " plates-list--batch" : ""}"></ol>
+      <ol class="plates-list plates-list--edit${perSlot ? " plates-list--batch" : ""}"></ol>
       <div class="plates-actions" data-report-hide>
         <button class="btn btn-line" id="save-physical-tracking-btn" type="button">Enregistrer les plaques</button>
         ${canAdd ? `<button class="btn btn-tint" id="add-plate-btn" type="button" title="Une autre plaque passée par la même structure (un réplicat)">+ Ajouter une place</button>` : ""}

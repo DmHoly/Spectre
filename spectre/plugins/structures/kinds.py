@@ -1,6 +1,7 @@
 """The kinds of structure an experiment can carry: StructureForge's own single ``ProcessStructure``,
 a DOE campaign's variants (:class:`ProcessLot`) and pictures given instead of a drawn process
-(:class:`StructureImage`). Each is a :class:`StructureKind` of :data:`KINDS`, keyed by the registry
+(:class:`StructureImage`) and an experiment launched without any structure, only described, its
+wafers declared one per row (:class:`DeclaredStructure`). Each is a :class:`StructureKind` of :data:`KINDS`, keyed by the registry
 key Follow persists in ``structure_type`` - what every view asks of a structure (its SVG, how many
 physical entities it tracks) goes through it rather than through a comparison of that key.
 """
@@ -62,6 +63,7 @@ from .simulation import (
 # chaîne écrite en dur, à ne jamais modifier.
 PROCESS_LOT_KEY = "spectre.core.structures.ProcessLot"
 STRUCTURE_IMAGE_KEY = "spectre.core.structures.StructureImage"
+DECLARED_STRUCTURE_KEY = "spectre.structures.DeclaredStructure"
 
 
 class ProcessLot(follow.Structure):
@@ -132,6 +134,56 @@ class StructureImage(follow.Structure):
         return data
 
 
+MAX_DECLARED_DESCRIPTION = 10000
+MAX_DECLARED_FACTORS = 20
+MAX_DECLARED_WAFERS = 200  # experiments.entities.MAX_TRACKED_ENTITIES : une ligne = une plaque suivie
+MAX_DECLARED_TEXT = 200
+
+
+class DeclaredWafer(BaseModel):
+    """Une ligne du split déclaratif : une plaque, son nom de variante facultatif (« réf », « recuit
+    long »...) et, pour chaque colonne de ce qu'on change, sa valeur écrite telle quelle (du texte :
+    Spectre ne la lit pas)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = None
+    values: list[str] = []
+
+
+class DeclaredStructure(follow.Structure):
+    """Pas de structure : l'expérience est seulement décrite. Une description libre, un dessin collé
+    si l'on en a un (facultatif, des images comme :class:`StructureImage`), et le split déclaré dans
+    un tableau - une colonne par chose qu'on change (``factors``), une ligne par plaque (``wafers``,
+    au moins une). Spectre n'y lit rien (ni couches, ni étapes, ni simulation) : il suit les plaques,
+    une par ligne comme les variantes d'une campagne. Les versions se distinguent par
+    :data:`IMAGE_REVISION_KEY`, comme pour des images."""
+
+    description: str = ""
+    images: list[StructureImageItem] = Field(default_factory=list, max_length=MAX_STRUCTURE_IMAGES)
+    factors: list[str] = Field(default_factory=list, max_length=MAX_DECLARED_FACTORS)
+    wafers: list[DeclaredWafer] = Field(min_length=1, max_length=MAX_DECLARED_WAFERS)
+
+    @classmethod
+    def registry_key(cls) -> str:
+        return DECLARED_STRUCTURE_KEY
+
+    @model_validator(mode="after")
+    def _one_value_per_factor(self) -> "DeclaredStructure":
+        if any(len(wafer.values) != len(self.factors) for wafer in self.wafers):
+            raise ValueError("chaque plaque a une valeur par colonne")
+        return self
+
+
+def declared_wafer_label(wafer: DeclaredWafer, factors: list[str], index: int) -> str:
+    """Comment se nomme la plaque n° ``index`` d'un split déclaratif : son nom s'il en a un, sinon ce
+    qu'on y change (« recuit = 600 °C · Mg = 2e19 »), sinon « Plaque n »."""
+    if wafer.label:
+        return wafer.label
+    parts = [f"{factor} = {value}" for factor, value in zip(factors, wafer.values) if value]
+    return " · ".join(parts) or f"Plaque {index + 1}"
+
+
 # Metadata key holding the "which structure is this" token of an image-mode experience: set anew
 # on a real launch/evolution, carried unchanged by every lightweight evolution - replacing the
 # picture included (same structure, better drawing). That token, not the image, is what
@@ -194,6 +246,18 @@ class _CampaignKind:
         return len(ProcessLot.model_validate(data).entries)
 
 
+class _DeclaredKind:
+    """Rien de dessiné : une plaque suivie par ligne du split déclaré."""
+
+    key = DECLARED_STRUCTURE_KEY
+
+    def render_svg(self, data: dict[str, Any], metadata: dict[str, Any] | None = None) -> str | None:
+        return None
+
+    def entity_count(self, data: dict[str, Any]) -> int:
+        return len(DeclaredStructure.model_validate(data).wafers)
+
+
 class _ImagesKind:
     """Pictures: nothing for StructureForge to draw, one entity."""
 
@@ -209,7 +273,52 @@ class _ImagesKind:
 PROCESS: StructureKind = _ProcessKind()
 CAMPAIGN: StructureKind = _CampaignKind()
 IMAGES: StructureKind = _ImagesKind()
-KINDS: dict[str, StructureKind] = {kind.key: kind for kind in (PROCESS, CAMPAIGN, IMAGES)}
+DECLARED: StructureKind = _DeclaredKind()
+KINDS: dict[str, StructureKind] = {kind.key: kind for kind in (PROCESS, CAMPAIGN, IMAGES, DECLARED)}
+
+
+def is_declared_structure(structure_type: str) -> bool:
+    return KINDS.get(structure_type) is DECLARED
+
+
+def structure_kind_name(structure_type: str) -> str:
+    """« process », « campaign », « images » ou « declared » : le nom court du type d'une structure,
+    tel que l'API le donne (et ce que l'éditeur ouvre pour en partir) - « process » faute de mieux."""
+    kind = KINDS.get(structure_type)
+    if kind is IMAGES:
+        return "images"
+    if kind is CAMPAIGN:
+        return "campaign"
+    if kind is DECLARED:
+        return "declared"
+    return "process"
+
+
+def declared_structure_payload(slug: str, structure_type: str, structure_data: dict[str, Any]) -> dict[str, Any] | None:
+    """Une expérience sans structure telle que l'API la renvoie : sa description, ses images (avec
+    leur ``url``, comme :func:`structure_images_payload`), les colonnes de son split et ses plaques,
+    chacune avec le nom sous lequel elle se montre (``name``) - ``None`` pour tout autre type."""
+    if not is_declared_structure(structure_type):
+        return None
+    declared = DeclaredStructure.model_validate(structure_data)
+    return {
+        "description": declared.description,
+        "images": [
+            {**image, "annotations": image.get("annotations", []), "url": content_url(slug, image["image_id"])}
+            for image in (item.model_dump() for item in declared.images)
+        ],
+        "factors": list(declared.factors),
+        "wafers": [
+            {"label": wafer.label, "values": list(wafer.values), "name": declared_wafer_label(wafer, declared.factors, i)}
+            for i, wafer in enumerate(declared.wafers)
+        ],
+    }
+
+
+def declared_labels(structure: DeclaredStructure) -> list[str]:
+    """Le nom de chaque plaque d'un split déclaratif, dans l'ordre (``campaign_labels`` d'une version :
+    ce que la liste des plaques et le cahier montrent comme sa « variante »)."""
+    return [declared_wafer_label(wafer, structure.factors, i) for i, wafer in enumerate(structure.wafers)]
 
 
 def is_image_structure(structure_type: str) -> bool:
@@ -645,6 +754,12 @@ def structure_image_from_input(slug: str, items: list[StructureImageInput]) -> S
     turned into a path from anything else) and its annotations are well formed."""
     if not items:
         raise InvalidInput("Collez ou choisissez au moins une image de la structure.")
+    return StructureImage(images=checked_images(slug, items))
+
+
+def checked_images(slug: str, items: list[StructureImageInput]) -> list[StructureImageItem]:
+    """Les images d'une requête, vérifiées (voir :func:`structure_image_from_input`) - aucune, c'est
+    permis ici."""
     if len(items) > MAX_STRUCTURE_IMAGES:
         raise InvalidInput(f"{MAX_STRUCTURE_IMAGES} images au maximum.")
     if len({item.image_id for item in items}) != len(items):
@@ -655,4 +770,31 @@ def structure_image_from_input(slug: str, items: list[StructureImageInput]) -> S
         caption = (item.caption or "").strip()[:200] or None
         annotations = clean_annotations(item.annotations)
         pictures.append(StructureImageItem(image_id=item.image_id, kind=item.kind, caption=caption, annotations=annotations))
-    return StructureImage(images=pictures)
+    return pictures
+
+
+def declared_structure_from_input(slug: str, payload: Any) -> DeclaredStructure:
+    """La :class:`DeclaredStructure` d'une requête (``kind: "declared"``) : la description et les
+    textes nettoyés, les images vérifiées (aucune, c'est permis), une valeur par colonne et par
+    plaque, au moins une plaque ; une colonne sans titre (ou deux du même) est refusée."""
+    factors = [(factor or "").strip()[:80] for factor in payload.factors]
+    if any(not factor for factor in factors):
+        raise InvalidInput("Donnez un titre à chaque colonne du split (ce qu'on change).", code="declared_factor_unnamed")
+    if len({factor.casefold() for factor in factors}) != len(factors):
+        raise InvalidInput("Deux colonnes du split portent le même titre.", code="declared_factor_duplicate")
+    if len(factors) > MAX_DECLARED_FACTORS:
+        raise InvalidInput(f"{MAX_DECLARED_FACTORS} colonnes au maximum dans le split.")
+    if not payload.wafers:
+        raise InvalidInput("Le split compte au moins une plaque (une ligne).", code="declared_no_wafer")
+    if len(payload.wafers) > MAX_DECLARED_WAFERS:
+        raise InvalidInput(f"{MAX_DECLARED_WAFERS} plaques au maximum dans le split.")
+    wafers = []
+    for row in payload.wafers:
+        values = [(value or "").strip()[:MAX_DECLARED_TEXT] for value in row.values]
+        if len(values) != len(factors):
+            raise InvalidInput("Chaque plaque du split a une valeur par colonne.", code="declared_values_mismatch")
+        wafers.append(DeclaredWafer(label=(row.label or "").strip()[:80] or None, values=values))
+    description = (payload.description or "").strip()
+    if len(description) > MAX_DECLARED_DESCRIPTION:
+        raise InvalidInput(f"La description dépasse {MAX_DECLARED_DESCRIPTION} caractères.")
+    return DeclaredStructure(description=description, images=checked_images(slug, payload.images), factors=factors, wafers=wafers)
