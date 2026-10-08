@@ -82,6 +82,8 @@ def preview_campaign(body: CampaignPreviewRequest) -> dict:
 def compose_structure(body: CompositionRequest) -> dict:
     """Combiner des études « au marché » (:mod:`.composition`) : les procédés des sources (la
     principale d'abord - celui d'une plaque d'une étude, d'une version de référence) et, une fois
-    choisi, l'index de la source de chaque ligne ; en retour, les lignes à choisir (une par brique,
-    alignées par leur nom, et le substrat) et le procédé assemblé. Rien n'est stocké."""
-    return composition.compose(body.sources, body.choices)
+    choisi, le choix de chaque ligne (sa source, l'étape qu'elle remplace) ; en retour, les lignes à
+    choisir (une par étape, alignées par leur id puis leur nom, et le substrat) et le procédé
+    assemblé. Rien n'est stocké."""
+    choices = None if body.choices is None else [c.model_dump() if hasattr(c, "model_dump") else c for c in body.choices]
+    return composition.compose(body.sources, choices)

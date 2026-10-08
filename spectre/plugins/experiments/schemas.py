@@ -120,16 +120,30 @@ class CompositionBrick(BaseModel):
     source: int | None = Field(None, ge=0, le=3)
 
 
+class CompositionStep(BaseModel):
+    """Une étape d'une combinaison : son nom, sa brique, la source d'où elle vient (son index dans
+    ``sources`` ; ``None`` : pas reprise) et, si elle en remplace une, le nom de celle-ci."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, max_length=200)
+    brick: str | None = Field(None, max_length=120)
+    source: int | None = Field(None, ge=0, le=3)
+    replaces: str | None = Field(None, max_length=200)
+
+
 class CompositionOrigin(BaseModel):
     """Une étude combinée « au marché » : ses sources (la principale d'abord - la nouvelle étude en
     descend quand c'est une étude du µprojet) et, brique par brique, d'où vient chacune. Le
     constructeur a assemblé la structure (``POST /api/compositions``) ; ceci est ce que la fiche en
-    retient, et les autres études sources sont reliées dans l'arbre."""
+    retient, et les autres études sources sont reliées dans l'arbre. ``steps`` : étape par étape
+    (``bricks`` : brique par brique, la forme d'avant)."""
 
     model_config = ConfigDict(extra="forbid")
 
     sources: list[CompositionSource] = Field(..., min_length=2, max_length=4)
     bricks: list[CompositionBrick] = Field([], max_length=200)
+    steps: list[CompositionStep] = Field([], max_length=500)
 
 
 class _Intention(BaseModel):

@@ -386,10 +386,18 @@ async function loadComposition() {
     renderSteps();
     document.getElementById("based-on-note").hidden = false;
     document.getElementById("based-on-label").textContent = "Combinaison :";
-    // la principale, puis seulement ce qui vient d'ailleurs (ou n'est pas repris)
+    // la principale, puis seulement ce qui vient d'ailleurs, est remplacé ou n'est pas repris
+    const named = new Map(result.rows.map((row) => [row.key, row.name]));
+    const replaced = new Set(result.rows.map((row) => row.replaces).filter(Boolean));
     const elsewhere = result.rows
-      .filter((row) => row.chosen !== 0 && (row.chosen !== null || row.in_main))
-      .map((row) => (row.chosen === null ? `sans ${row.name}` : `${row.name} ← ${sources[row.chosen].label}`));
+      .filter((row) => !replaced.has(row.key) && row.chosen !== 0 && (row.chosen !== null || row.in_main))
+      .map((row) =>
+        row.chosen === null
+          ? `sans ${row.name}`
+          : row.replaces
+            ? `${row.name} (${sources[row.chosen].label}) remplace ${named.get(row.replaces)}`
+            : `${row.name} ← ${sources[row.chosen].label}`
+      );
     document.getElementById("based-on-name").textContent = `${sources[0].label}${elsewhere.length ? `, avec ${elsewhere.join(" · ")}` : ""}`;
     const main = sources[0];
     const link = document.getElementById("edit-structure-link");
@@ -403,7 +411,12 @@ async function loadComposition() {
     }
     compositionOrigin = {
       sources: sources.map((s) => ({ ...s })),
-      bricks: result.rows.map((row) => ({ name: row.name, source: row.chosen })),
+      steps: result.rows.map((row) => ({
+        name: row.name,
+        brick: row.brick,
+        source: replaced.has(row.key) ? null : row.chosen,
+        replaces: row.replaces ? named.get(row.replaces) : null,
+      })),
     }; // chargée : l'étude la retiendra
     if (result.warnings.length) showError(new Error(result.warnings.join(" ")));
   } catch (err) {

@@ -149,7 +149,12 @@ def test_a_composed_study_descends_from_its_main_source_and_links_the_others(cli
             {"kind": "study", "label": "B · B1", "experiment_id": b["id"], "version_id": b["version_id"], "place": 0},
             {"kind": "reference", "label": "LED bleue 1.3", **REF},
         ],
-        "bricks": [{"name": "Substrat", "source": 0}, {"name": "Zone active", "source": 0}, {"name": "EBL", "source": 1}],
+        "steps": [
+            {"name": "Substrat", "source": 0},
+            {"name": "Zone active", "brick": "Zone active", "source": 0},
+            {"name": "EBL", "brick": "EBL", "source": 1},
+            {"name": "Recuit", "brick": "EBL", "source": 2, "replaces": "EBL"},
+        ],
     }
     composed = launch(client, slug, title="A + EBL de B", entities=[{"sample_id": "C1"}], composition=composition, **{k: v for k, v in _bricked("C", 15).items() if k != "title"})
     detail = get_experiment(client, slug, composed["id"])
@@ -157,7 +162,8 @@ def test_a_composed_study_descends_from_its_main_source_and_links_the_others(cli
     sources = detail["composition"]["sources"]
     assert sources[0]["version_id"] == a["version_id"] and sources[0]["sample_id"] == "A2"
     assert sources[1]["sample_id"] == "B1" and sources[2] == {"kind": "reference", "label": "LED bleue 1.3", **REF}
-    assert detail["composition"]["bricks"][2] == {"name": "EBL", "source": 1}
+    assert detail["composition"]["steps"][3] == {"name": "Recuit", "brick": "EBL", "source": 2, "replaces": "EBL"}
+    assert detail["composition"]["bricks"] == []
     # A n'a pas d'origine de référence : celle citée dans la combinaison
     assert detail["reference_origin"] == REF
     edges = lineage(client, slug)["edges"]
@@ -188,6 +194,8 @@ def test_composition_refusals(client):
     a = launch(client, slug)
     two = [{"kind": "study", "label": "A", "experiment_id": a["id"]}, {"kind": "reference", "label": "R", **REF}]
     response = _post(client, slug, composition={"sources": two, "bricks": [{"name": "EBL", "source": 3}]})
+    assert response.status_code == 422 and response.json()["code"] == "bad_composition"
+    response = _post(client, slug, composition={"sources": two, "steps": [{"name": "EBL", "source": 2}]})
     assert response.status_code == 422 and response.json()["code"] == "bad_composition"
     response = _post(client, slug, composition={"sources": [two[0], {"kind": "study", "label": "?", "experiment_id": "inconnue"}]})
     assert response.status_code == 404

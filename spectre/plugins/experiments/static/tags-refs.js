@@ -126,13 +126,22 @@
           : escapeHtml(source.label);
     // la principale, puis ce qui vient d'ailleurs (le détail de chaque brique en infobulle)
     const main = composition.sources[0];
-    const picks = composition.bricks
-      .filter((brick) => brick.source !== 0 && (brick.source === null || composition.sources[brick.source]))
-      .map((brick) => (brick.source === null ? `sans ${escapeHtml(brick.name)}` : `${escapeHtml(brick.name)} ← ${label(composition.sources[brick.source])}`));
-    const detail = composition.bricks
-      .map((brick) => `${brick.name} : ${brick.source === null ? "non reprise" : (composition.sources[brick.source] || {}).label || "?"}`)
+    const items = composition.steps && composition.steps.length ? composition.steps : composition.bricks;
+    const replacedNames = new Set(items.map((item) => item.replaces).filter(Boolean));
+    const picks = items
+      .filter((item) => !(item.source === null && replacedNames.has(item.name)))
+      .filter((item) => item.source !== 0 && (item.source === null || composition.sources[item.source]))
+      .map((item) =>
+        item.source === null
+          ? `sans ${escapeHtml(item.name)}`
+          : item.replaces
+            ? `${escapeHtml(item.name)} (${label(composition.sources[item.source])}) remplace ${escapeHtml(item.replaces)}`
+            : `${escapeHtml(item.name)} ← ${label(composition.sources[item.source])}`
+      );
+    const detail = items
+      .map((item) => `${item.brick ? `${item.brick} › ` : ""}${item.name} : ${item.source === null ? "non reprise" : (composition.sources[item.source] || {}).label || "?"}${item.replaces ? ` (remplace ${item.replaces})` : ""}`)
       .join("\n");
-    box.innerHTML = `<span class="ref-origin" title="${escapeHtml(`Combinée au marché - la source de chaque brique :\n${detail}`)}">Combinaison : ${label(main)}${picks.length ? `, avec ${picks.join(" · ")}` : ""}</span>`;
+    box.innerHTML = `<span class="ref-origin" title="${escapeHtml(`Combinée au marché - la source de chaque étape :\n${detail}`)}">Combinaison : ${label(main)}${picks.length ? `, avec ${picks.join(" · ")}` : ""}</span>`;
   }
 
   function renderRefs(ctx) {

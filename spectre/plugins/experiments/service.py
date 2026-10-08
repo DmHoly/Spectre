@@ -83,7 +83,8 @@ COMPARISON_KEY = "comparison_reference"
 # (son lasermark s'il était connu) et, pour une campagne, sa variante, dont la structure est reprise.
 START_WAFER_KEY = "start_wafer"
 # Une étude combinée « au marché » : ``{sources: [{kind, label, experiment_id, version_id, place,
-# sample_id, reference, version}], bricks: [{name, source}]}`` - d'où vient chaque brique. Elle
+# sample_id, reference, version}], steps: [{name, brick, source, replaces}], bricks: [{name, source}]}``
+# - d'où vient chaque étape (``bricks`` : brique par brique, les combinaisons d'avant). Elle
 # descend de la première source quand c'est une étude du µprojet ; les autres études sources sont
 # reliées dans l'arbre (lineage.py).
 COMPOSITION_KEY = "composition"
@@ -833,9 +834,13 @@ def _composition_record(repo: follow.Repository, composition: CompositionOrigin)
                 "sample_id": entry.get("sample_id") or None,
             }
         )
-    if any(brick.source is not None and brick.source >= len(sources) for brick in composition.bricks):
-        raise InvalidInput("Une brique vient d'une source qui n'est pas dans la combinaison.", code="bad_composition")
-    return {"sources": sources, "bricks": [brick.model_dump() for brick in composition.bricks]}
+    if any(item.source is not None and item.source >= len(sources) for item in (*composition.bricks, *composition.steps)):
+        raise InvalidInput("Une brique ou une étape vient d'une source qui n'est pas dans la combinaison.", code="bad_composition")
+    return {
+        "sources": sources,
+        "bricks": [brick.model_dump() for brick in composition.bricks],
+        "steps": [step.model_dump() for step in composition.steps],
+    }
 
 
 def start_wafer_of(version: follow.Experiment) -> dict[str, Any] | None:
@@ -850,7 +855,7 @@ def composition_of(version: follow.Experiment) -> dict[str, Any] | None:
     """D'où vient chaque brique d'une étude combinée (:data:`COMPOSITION_KEY`) - ``None`` sinon."""
     cited = version.metadata.get(COMPOSITION_KEY)
     if isinstance(cited, dict) and isinstance(cited.get("sources"), list):
-        return copy.deepcopy({"sources": cited["sources"], "bricks": cited.get("bricks") or []})
+        return copy.deepcopy({"sources": cited["sources"], "bricks": cited.get("bricks") or [], "steps": cited.get("steps") or []})
     return None
 
 
