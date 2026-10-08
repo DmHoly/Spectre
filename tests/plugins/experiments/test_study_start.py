@@ -175,7 +175,12 @@ def test_a_composition_from_a_reference_first_is_a_root_linked_to_its_studies(cl
     composed = launch(client, slug, title="Réf + EBL de A", composition=composition)
     detail = get_experiment(client, slug, composed["id"])
     assert detail["parents"] == [] and detail["reference_origin"] == REF
-    assert {"parent": a["version_id"], "child": composed["version_id"], "composed": True} in lineage(client, slug)["edges"]
+    graph = lineage(client, slug)
+    assert {"parent": a["version_id"], "child": composed["version_id"], "composed": True} in graph["edges"]
+    # sa source principale, une référence : sur son nœud, pour que la page la relie à l'étude publiée
+    node = next(n for n in graph["nodes"] if n["id"] == composed["version_id"])
+    assert node["composed_references"] == [{**REF, "label": "LED bleue 1.3", "main": True}]
+    assert all("composed_references" not in n for n in graph["nodes"] if n["id"] != composed["version_id"])
 
 
 def test_composition_refusals(client):

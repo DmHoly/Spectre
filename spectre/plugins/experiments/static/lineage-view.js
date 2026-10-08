@@ -891,10 +891,31 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
     });
   }
 
+  // Une étude combinée au marché dont une source est une version de référence : un trait depuis
+  // l'étude du µprojet d'où cette version a été publiée (referencesApi, en une requête) - son nœud,
+  // ou à défaut celui de sa piste. Rien quand elle a été publiée ailleurs, ou sans le plugin references.
+  async function attachReferenceSources(body) {
+    const citing = body.nodes.filter((n) => n.composed_references && n.composed_references.length);
+    if (!citing.length || typeof referencesApi === "undefined" || !pluginEnabled("references")) return;
+    const published = await referencesApi.publishedFrom(slug).catch(() => []);
+    const nodeOf = (pub) =>
+      body.nodes.find((n) => n.id === pub.version_id) || body.nodes.find((n) => n.experiment_id === pub.experiment_id && n.is_tip);
+    const linked = new Set(body.edges.map((e) => `${e.parent}>${e.child}`));
+    citing.forEach((node) => {
+      node.composed_references.forEach((cited) => {
+        const pub = published.find((p) => p.reference.slug === cited.reference && p.number === cited.version);
+        const from = pub && nodeOf(pub);
+        if (!from || from.id === node.id || linked.has(`${from.id}>${node.id}`)) return;
+        linked.add(`${from.id}>${node.id}`);
+        body.edges.push({ parent: from.id, child: node.id, composed: true, reference: cited.label });
+      });
+    });
+  }
+
   async function loadLineage() {
     try {
       const body = await experimentsApi.lineage(slug);
-      await attachLots(body.nodes);
+      await Promise.all([attachLots(body.nodes), attachReferenceSources(body)]);
       render(body.nodes, body.edges, body.plans || []);
       // une prévision tout juste enregistrée : sa carte
       if (selectedId && selectedId.startsWith(PLAN_PREFIX) && positionedById.has(selectedId)) loadPlanCard(positionedById.get(selectedId));
