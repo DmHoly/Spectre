@@ -1238,6 +1238,30 @@ Supprimée : `/microprojets/{slug}/graphe`.
   (`viewBox`, qui peut alors commencer en négatif) agrandi pour le contenir ; le versionnage et les
   différences d'étiquettes l'ignorent (un déplacement seul : version `none`), et un préset d'étape ne
   le garde pas (`presetContentOf`).
+  Son point d'accroche aussi : le glisser (le groupe `.sp-layer-anchor` - le rond, ou le tiret et le
+  losange d'une marque d'interface -, attrapé par un cercle invisible `.sp-layer-anchor__hit`,
+  `pointer-events="none"` dans le SVG et rallumé par `structures.css` dans le seul constructeur, de
+  rayon constant à l'écran : `r` divisé par `--sb-zoom`, que `applyZoom` écrit) écrit
+  `layerLabel.anchor` (`[fx, fy]`, fractions de `data-anchor-box`, le cadre de ce qu'il désigne : les
+  couches de l'étape, celles d'avant elle pour une marque d'interface). Un point visible l'emporte
+  sur la zone d'un autre (`labelAnchorAt`, par `elementsFromPoint` : dans un empilement de couches
+  fines, la zone d'une étiquette plus bas couvre les points d'au-dessus), sinon le plus proche ; un
+  clic sans déplacement sur le point sélectionne l'étape, à côté (dans la zone seule) c'est un clic sur
+  la couche dessous (`clickLayer`, simulation.js) ; un double-clic sur le point l'efface. Côté
+  serveur, `LayerLabel.anchor` (dans [0, 1]) se lit dans le cadre de ce qu'il désigne **sur la
+  structure finale**, quelle que soit l'image (`frames_payload` le passe à chaque image :
+  `LayerAnnotation.anchor_bounds`) - posé sur l'image d'une étape, il tombe au même endroit sur la
+  structure finale, celle qu'enregistre une étude ; avant un retournement, il n'est ni suivi ni
+  déplaçable (`labelled_svg(anchors=False)`, pas de `data-anchor-box`). Puis il est posé par
+  `rendering._placed_anchor` (gardé s'il est sur la couche, sinon le point d'elle le plus proche,
+  rentré du rayon du point là seulement où elle est assez épaisse - jamais vers une partie épaisse
+  lointaine) ou `_placed_interface_anchor` (le point le plus proche de la surface, sans ce qui longe
+  les côtés et le fond du dessin entier - pas le fond des couches d'avant : après un retournement,
+  l'interface est dessous) ; les textes s'empilent toujours d'après le point automatique (poser le
+  point ne déplace aucun texte), `data-anchor-placed` le signale. Une accolade de brique n'en a pas.
+  `simulation.LABEL_PLACE_KEYS` (`offset`, `anchor`) et `label_without_place` : ce que versionnage,
+  différences d'étiquettes et signatures d'étapes d'une combinaison au marché (`composition.py`) ne
+  comptent pas.
 - **Les références, côté pages** (plugin references, TODO « Références de structure ») :
   - `experiments/static/evolution-graph.js` (global `EvolutionGraph`) : le diagramme façon git -
     colonnes, rangées, arêtes, formes des nœuds par niveau de changement, légende, liste des

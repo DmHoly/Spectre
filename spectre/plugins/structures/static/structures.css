@@ -3091,7 +3091,8 @@
   }
 }
 
-/* une étiquette se place à la main : on glisse son texte sur le dessin (layer-label.js) */
+/* une étiquette se place à la main : on glisse son texte sur le dessin (layer-label.js) ; les lignes
+   de l'inspecteur disent ce qui a été déplacé (texte, point d'accroche) */
 .sb-layer-label__place {
   display: flex;
   align-items: center;
@@ -3111,6 +3112,31 @@
 .sb-canvas__svg .sp-layer-label.is-dragging .sp-layer-label__text {
   cursor: grabbing;
   opacity: 0.85;
+}
+/* et son point d'accroche (le rond sur la couche, le losange d'une marque d'interface) : un cercle
+   invisible autour pour l'attraper (inerte hors du constructeur : pointer-events="none" dans le
+   SVG), un halo doré au survol et pendant qu'on le déplace */
+.sb-canvas__svg .sp-layer-label[data-step][data-anchor-box] .sp-layer-anchor {
+  cursor: grab;
+}
+.sb-canvas__svg .sp-layer-label[data-step][data-anchor-box] .sp-layer-anchor__hit {
+  pointer-events: all;
+  /* la même taille à l'écran à tout zoom (--sb-zoom, simulation.js applyZoom), jamais moins que le
+     point lui-même (rendering.ANCHOR_HIT, ANCHOR_DOT) */
+  r: max(3.2px, calc(10px / var(--sb-zoom, 1)));
+  fill: var(--gold);
+  fill-opacity: 0;
+  transition: fill-opacity var(--dur) var(--ease);
+}
+.sb-canvas__svg .sp-layer-label[data-step][data-anchor-box] .sp-layer-anchor:hover .sp-layer-anchor__hit,
+.sb-canvas__svg .sp-layer-label.is-dragging-anchor .sp-layer-anchor__hit {
+  fill-opacity: 0.35;
+  stroke: var(--gold-dark);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.sb-canvas__svg .sp-layer-label.is-dragging-anchor .sp-layer-anchor {
+  cursor: grabbing;
 }
 
 /* --- Page « sans structure » (declared-structure.html) -----------------------------------------

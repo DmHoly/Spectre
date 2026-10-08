@@ -525,6 +525,9 @@ MAX_LABEL_VALUES = 6
 # le plus loin qu'on puisse déplacer une étiquette de sa place automatique (unités du dessin, où la
 # structure tient dans un carré de 400 : spectre.plugins.structures.rendering.STRUCTURE_BOX)
 MAX_LABEL_OFFSET = 2000.0
+# ce qui, d'une étiquette, n'est que sa place sur le dessin (texte déplacé, point d'accroche posé à
+# la main) : ni le versionnage, ni les différences d'étiquettes, ni un préset ne le comptent
+LABEL_PLACE_KEYS = ("offset", "anchor")
 # les étapes qui ne créent pas de couche (un nettoyage, une gravure, un etch back...) : leur étiquette
 # est une marque d'interface, reliée à la surface telle qu'elle était quand l'étape a eu lieu - entre
 # les couches d'avant et celles d'après (spectre.plugins.structures.rendering)
@@ -539,13 +542,20 @@ class LayerLabel(BaseModel):
     couche (:data:`INTERFACE_STEP_KINDS`), l'étiquette est une marque d'interface.
     ``offset`` : ``(dx, dy)``, de combien le texte a été déplacé à la main depuis sa place
     automatique (unités du dessin) - ``None`` (et absent de l'enregistrement) : à sa place. Le trait
-    suit le texte ; le point d'accroche sur la couche ne bouge pas."""
+    suit le texte ; le point d'accroche sur la couche ne bouge pas.
+    ``anchor`` : ``(fx, fy)``, où le point d'accroche a été posé à la main - en fractions du cadre de
+    ce que l'étiquette désigne (les couches de l'étape ; pour une marque d'interface, les couches
+    d'avant elle), de gauche à droite et de haut en bas : le point suit la couche quand elle change
+    (une épaisseur, une variante), et ramené sur elle s'il en sort - sur la surface pour une marque
+    d'interface. ``None`` (et absent de l'enregistrement) : le point automatique. L'étiquette d'une
+    brique (une accolade) n'en a pas. Ni l'un ni l'autre ne change la version (:data:`LABEL_PLACE_KEYS`)."""
 
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field("", max_length=MAX_LABEL_TEXT)
     values: list[str] = Field(default_factory=list, max_length=MAX_LABEL_VALUES)
     offset: tuple[float, float] | None = None
+    anchor: tuple[float, float] | None = None
 
     @field_validator("offset")
     @classmethod
@@ -557,12 +567,23 @@ class LayerLabel(BaseModel):
         dx, dy = (round(v, 1) for v in offset)
         return None if dx == 0 and dy == 0 else (dx, dy)
 
+    @field_validator("anchor")
+    @classmethod
+    def _anchor_in_frame(cls, anchor: tuple[float, float] | None) -> tuple[float, float] | None:
+        if anchor is None:
+            return None
+        if not all(math.isfinite(v) and 0 <= v <= 1 for v in anchor):
+            raise ValueError("point d'accroche hors de son cadre (deux fractions entre 0 et 1)")
+        fx, fy = (round(v, 3) for v in anchor)
+        return (fx, fy)
+
     @model_serializer(mode="wrap")
-    def _without_default_offset(self, handler: Any) -> dict[str, Any]:
+    def _without_default_place(self, handler: Any) -> dict[str, Any]:
         # une étiquette à sa place s'enregistre comme avant les déplacements : {text, values}
         data = handler(self)
-        if data.get("offset") is None:
-            data.pop("offset", None)
+        for key in LABEL_PLACE_KEYS:
+            if data.get(key) is None:
+                data.pop(key, None)
         return data
 
     @field_validator("text")
@@ -598,6 +619,12 @@ def layer_labels_by_index(raw: dict[str, LayerLabel] | None, step_count: int) ->
 def layer_labels_json(labels: dict[int, LayerLabel] | None) -> dict[str, dict[str, Any]]:
     """Les étiquettes rangées par position d'étape, telles qu'une bibliothèque les enregistre."""
     return {str(i): label.model_dump(mode="json") for i, label in sorted((labels or {}).items())}
+
+
+def label_without_place(label: Any) -> Any:
+    """Une étiquette enregistrée (``{text, values, ...}``) sans sa place sur le dessin
+    (:data:`LABEL_PLACE_KEYS`) : ce qui compte pour dire si elle a changé - le reste tel quel."""
+    return {k: v for k, v in label.items() if k not in LABEL_PLACE_KEYS} if isinstance(label, dict) else label
 
 
 # -- l'appartenance des étapes aux briques ----------------------------------------------------------

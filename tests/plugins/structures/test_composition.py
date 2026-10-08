@@ -151,3 +151,12 @@ def test_refusals(client):
     ):
         assert _compose(client, [A, B], choices, status=422)["code"] == "bad_choices"
     assert client.post("/api/compositions", json={"sources": [A]}).status_code == 422
+
+
+def test_a_label_only_placed_differently_keeps_the_same_step(client):
+    """La place d'une étiquette sur le dessin (texte déplacé, point d'accroche posé à la main) ne fait
+    pas d'une étape une autre étape."""
+    signup_with_microproject(client, "compose-place@example.com", "Marché")
+    placed = {**A, "layer_labels": {"3": {**layer_label("EBL", "thickness"), "anchor": [0.2, 0.8], "offset": [5, 5]}}}
+    rows = _compose(client, [A, placed])["rows"]
+    assert next(row for row in rows if row["name"] == "EBL")["same_as"] == [0, 0]

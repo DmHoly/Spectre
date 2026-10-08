@@ -46,6 +46,7 @@ from .simulation import (
     SubstrateSpec,
     bricks_from_metadata,
     declared_params_by_index,
+    label_without_place,
     material_names_in_layers,
     materials_library,
     preset_origins_by_index,
@@ -536,8 +537,8 @@ class _Record:
         raw = raw if isinstance(raw, dict) else {}
         self.order = list(ids)
         self.step_names = {sid: _step_name(step, i) for i, (sid, step) in enumerate(zip(ids, steps))}
-        # sans leur place (offset) : une étiquette seulement déplacée n'a pas changé
-        self.labels = {rename[sid]: {k: v for k, v in label.items() if k != "offset"} for sid, label in raw.items() if sid in rename and isinstance(label, dict)}
+        # sans leur place (texte déplacé, point d'accroche posé) : une étiquette seulement déplacée n'a pas changé
+        self.labels = {rename[sid]: label_without_place(label) for sid, label in raw.items() if sid in rename and isinstance(label, dict)}
         self.label_names: dict[str, str] = {}
         for sid, step in zip(ids, steps):
             if sid in self.labels:
