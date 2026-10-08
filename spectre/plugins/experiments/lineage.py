@@ -296,8 +296,11 @@ def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dic
 
     # une étude combinée « au marché » (service.COMPOSITION_KEY) : un trait de chacune de ses autres
     # études sources, marqué ``composed`` - la principale est déjà son parent. Seulement depuis la
-    # première version de la piste combinée (les suivantes reportent la même métadonnée).
+    # première version de la piste combinée (les suivantes reportent la même métadonnée). Ses sources
+    # qui sont des versions de référence vont sur son nœud (``composed_references`` : la page relie
+    # l'étude d'où chacune a été publiée - le plugin references le sait, pas celui-ci).
     linked = {(edge["parent"], edge["child"]) for edge in edges}
+    cited_references: dict[str, list[dict]] = {}
     for exp_id, exp in experiments.items():
         sources = _composed_sources(exp)
         first = experiments.get(exp.parents[0]) if exp.parents else None
@@ -305,6 +308,11 @@ def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dic
             continue
         child = shown_as(exp_id)
         for index, cited in enumerate(sources):
+            if cited.get("kind") == "reference" and isinstance(cited.get("reference"), str) and isinstance(cited.get("version"), str):
+                cited_references.setdefault(child, []).append(
+                    {"reference": cited["reference"], "version": cited["version"], "label": cited.get("label") or cited["reference"], "main": index == 0}
+                )
+                continue
             if index == 0 and exp.parents:
                 continue
             if cited.get("kind") != "study" or cited.get("version_id") not in experiments:
@@ -317,6 +325,10 @@ def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dic
     # When the work moved on from a node: its first child's start - what ends the elapsed time of a
     # draft that was never concluded but continued into a new version (« poursuivie »). And the
     # wafers it tracks - the badge beside its node.
+    for node in nodes:
+        if node["id"] in cited_references:
+            node["composed_references"] = cited_references[node["id"]]
+
     started = {node["id"]: node["started_at"] for node in nodes}
     for node in nodes:
         children = [started[edge["child"]] for edge in edges if edge["parent"] == node["id"]]
