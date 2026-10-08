@@ -10,9 +10,13 @@ so Spectre never draws a cross-section itself.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
 import secrets
+import threading
+from collections import OrderedDict
 from typing import Any, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
@@ -20,7 +24,7 @@ from structureforge.core.materials import Material, MaterialLibrary, aluminum_ga
 from structureforge.core.recipes import DepositionRecipe, EtchRecipe, RecipeLibrary, default_recipes
 from structureforge.core.traced import Traced
 from structureforge.core.units import Length
-from structureforge.geometry.engine import Geometry, LayerProvenance
+from structureforge.geometry.engine import Geometry, Layer, LayerProvenance
 from structureforge.process.simulate import Frame, SimulationError, simulate
 from structureforge.process.steps import Flip, ProcessStep
 
@@ -318,18 +322,115 @@ class SimulationResult(NamedTuple):
     layer_origins: list[list[int]]
 
 
-def _simulate_tracking(geometry: Geometry, steps: list[ProcessStep], materials: MaterialLibrary, recipes: RecipeLibrary) -> tuple[list[Frame], list[list[int]]]:
+# -- la reprise d'une simulation -------------------------------------------------------------------
+#
+# Le constructeur resimule tout le procédé à chaque retouche (une frappe dans un champ, une étiquette
+# déplacée, une brique), alors qu'une étape ne dépend que de celles d'avant. Chaque état atteint est
+# donc gardé, en mémoire du serveur (les :data:`MAX_CHECKPOINTS` derniers servis), sous une clé qui
+# résume tout ce qui l'a produit : le substrat, les bibliothèques (matériaux racine, recettes) et
+# les étapes jusque-là. Une simulation repart du plus long début déjà calculé : une étiquette ou un
+# paramètre déclaré ne relance rien, une retouche de l'étape k ne recalcule qu'elle et la suite, et
+# les variantes d'une campagne partagent les étapes d'avant leurs facteurs. Mêmes images qu'une
+# simulation complète : StructureForge ne garde rien d'autre que les couches et le plancher.
+
+MAX_CHECKPOINTS = 512
+
+
+class _Checkpoint(NamedTuple):
+    """L'état après une étape (ou le substrat seul) : les couches de la géométrie (matériau, contour,
+    provenance, position de l'étape qui l'a créée), son plancher, et l'image de l'étape avec l'origine
+    de ses couches. Jamais rendu tel quel : une reprise recrée ses propres couches et images, qu'une
+    étape suivante ou les paramètres déclarés modifient."""
+
+    layers: tuple[tuple[str, Any, LayerProvenance | None, int], ...]
+    floor_nm: float | None
+    frame: Frame
+    frame_origins: tuple[int, ...]
+
+
+_checkpoints: OrderedDict[str, _Checkpoint] = OrderedDict()
+_checkpoints_lock = threading.Lock()
+
+
+def _checkpoint_keys(substrate: SubstrateSpec, steps: list[ProcessStep], recipes: RecipeLibrary) -> list[str]:
+    """La clé de l'état de départ, puis de l'état après chaque étape : chacune résume la précédente
+    et l'étape, si bien que deux procédés partagent les clés de leur début commun."""
+    from .library_files import materials
+
+    context = {
+        "substrate": substrate.model_dump(mode="json"),
+        # le matériau d'une couche décide de sa vitesse de gravure (sa catégorie)
+        "materials": [material.model_dump(mode="json") for material in materials()],
+        "recipes": recipes.model_dump(mode="json"),
+    }
+    key = hashlib.sha256(json.dumps(context, sort_keys=True).encode()).hexdigest()
+    keys = [key]
+    for step in steps:
+        key = hashlib.sha256((key + json.dumps(step.model_dump(mode="json"), sort_keys=True)).encode()).hexdigest()
+        keys.append(key)
+    return keys
+
+
+def _copied_frame(frame: Frame) -> Frame:
+    return Frame(frame.step_index, frame.step_kind, frame.step_name, [Layer(l.material, l.polygon, l.provenance) for l in frame.layers], frame.domain_width_nm)
+
+
+def _cached_start(keys: list[str]) -> list[_Checkpoint]:
+    """Les états gardés du plus long début de ``keys`` (vide : rien de gardé, pas même le départ)."""
+    reached: list[_Checkpoint] = []
+    with _checkpoints_lock:
+        for key in keys:
+            checkpoint = _checkpoints.get(key)
+            if checkpoint is None:
+                break
+            _checkpoints.move_to_end(key)
+            reached.append(checkpoint)
+    return reached
+
+
+def _keep(key: str, geometry: Geometry, origin: dict[int, int], frame: Frame, frame_origins: list[int]) -> None:
+    checkpoint = _Checkpoint(
+        tuple((layer.material, layer.polygon, layer.provenance, origin[id(layer)]) for layer in geometry.layers),
+        geometry.floor_nm,
+        _copied_frame(frame),
+        tuple(frame_origins),
+    )
+    with _checkpoints_lock:
+        _checkpoints[key] = checkpoint
+        _checkpoints.move_to_end(key)
+        while len(_checkpoints) > MAX_CHECKPOINTS:
+            _checkpoints.popitem(last=False)
+
+
+def _simulate_tracking(
+    substrate: SubstrateSpec, steps: list[ProcessStep], materials: MaterialLibrary, recipes: RecipeLibrary
+) -> tuple[Geometry, list[Frame], list[list[int]]]:
     """``structureforge.process.simulate.simulate``, une étape à la fois - mêmes images, mêmes
     erreurs - pour savoir quelle étape a créé chaque couche. StructureForge ne le dit que pour une
     croissance (``LayerProvenance``, sans la position de l'étape) : on suit donc les couches de la
     géométrie elles-mêmes, entre deux étapes. Une couche y garde son objet tant qu'elle existe (une
     gravure change son contour, pas l'objet) ; une étape ajoute les siennes à la fin ; un
-    retournement (``Flip``) recrée toutes les couches, dans l'ordre inverse."""
-    frames = simulate(geometry, [], materials, recipes)
+    retournement (``Flip``) recrée toutes les couches, dans l'ordre inverse. Repart du plus long
+    début déjà simulé (voir plus haut), et garde chaque état atteint."""
+    keys = _checkpoint_keys(substrate, steps, recipes)
+    reached = _cached_start(keys)
+    width = substrate.domain_width.to_nm()
+    if reached:
+        last = reached[-1]
+        geometry = Geometry(width, [Layer(material, polygon, provenance) for material, polygon, provenance, _o in last.layers])
+        geometry.floor_nm = last.floor_nm
+        origin = {id(layer): kept[3] for layer, kept in zip(geometry.layers, last.layers)}
+        frames = [_copied_frame(checkpoint.frame) for checkpoint in reached]
+        origins = [list(checkpoint.frame_origins) for checkpoint in reached]
+    else:
+        geometry = Geometry.substrate(substrate.material, width, substrate.thickness.to_nm())
+        frames = simulate(geometry, [], materials, recipes)
+        origin = {id(layer): SUBSTRATE_ORIGIN for layer in geometry.layers}
+        origins = [[origin[id(layer)] for layer in geometry.frame_layers()]]
+        _keep(keys[0], geometry, origin, frames[0], origins[0])
     alive: list[Any] = list(geometry.layers)  # garde chaque couche vivante : son id() n'est jamais redonné
-    origin = {id(layer): SUBSTRATE_ORIGIN for layer in geometry.layers}
-    origins = [[origin[id(layer)] for layer in geometry.frame_layers()]]
-    for index, step in enumerate(steps):
+    for index in range(len(frames) - 1, len(steps)):
+        step = steps[index]
         before = list(geometry.layers)
         try:
             frame = simulate(geometry, [step], materials, recipes)[-1]
@@ -346,7 +447,8 @@ def _simulate_tracking(geometry: Geometry, steps: list[ProcessStep], materials: 
         alive.extend(geometry.layers)
         frames.append(Frame(index + 1, frame.step_kind, frame.step_name, frame.layers, frame.domain_width_nm))
         origins.append([origin[id(layer)] for layer in geometry.frame_layers()])
-    return frames, origins
+        _keep(keys[index + 1], geometry, origin, frames[-1], origins[-1])
+    return geometry, frames, origins
 
 
 def _apply_declared_params(
@@ -399,9 +501,8 @@ def simulate_process(
     except KeyError as exc:
         raise SimulationFailedError(str(exc)) from exc
 
-    geometry = Geometry.substrate(substrate.material, substrate.domain_width.to_nm(), substrate.thickness.to_nm())
     try:
-        frames, origins = _simulate_tracking(geometry, steps, materials, recipe_library)
+        geometry, frames, origins = _simulate_tracking(substrate, steps, materials, recipe_library)
     except SimulationError as exc:
         raise SimulationFailedError(str(exc)) from exc
     if declared_params:

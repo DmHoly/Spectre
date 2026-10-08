@@ -651,6 +651,15 @@ l'obtention au champ - ne fait qu'écrire la valeur : niveau **correctif**, conc
   une couche garde son objet tant qu'elle existe, une étape ajoute les siennes, un retournement les
   recrée dans l'ordre inverse. `layer_origins[k][j]` : la position de l'étape qui a créé la
   `j`-ième couche de l'image `k` (`-1` : le substrat). Jamais d'alignement de matériaux côté client.
+- **Reprise d'une simulation** : chaque état atteint (les couches après une étape, leur provenance,
+  l'image) est gardé en mémoire du serveur - les `simulation.MAX_CHECKPOINTS` derniers servis -
+  sous une clé qui résume substrat, bibliothèques (matériaux racine, recettes du procédé et de la
+  bibliothèque) et étapes jusque-là. Une simulation repart du plus long début déjà calculé : une
+  étiquette, une brique ou un paramètre déclaré ne relancent rien, une retouche de l'étape k ne
+  recalcule qu'elle et la suite, les variantes d'une campagne partagent les étapes d'avant leurs
+  facteurs. Mêmes images qu'une simulation complète ; rien sur disque, un redémarrage repart à vide.
+  Côté constructeur, une seule simulation à la fois : une retouche pendant qu'elle tourne en
+  relance une à son retour, avec l'état d'alors.
 - **Rendu** (`structures.rendering.labelled_svg`) : le dessin de StructureForge devient un `<svg>`
   imbriqué, ajusté dans un carré de 400 unités, les étiquettes empilées à droite sans chevauchement
   (poussées sous la précédente, remontées si la pile dépasse le dessin), le trait partant d'un point
