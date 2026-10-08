@@ -45,6 +45,7 @@ from ..structures.simulation import (
     BRICKS_METADATA_KEY,
     LAYER_LABELS_METADATA_KEY,
     MIN_GROUPED_LABELS,
+    label_without_place,
     split_declared_unit,
 )
 
@@ -89,8 +90,9 @@ def structure_signature(metadata: dict[str, Any]) -> dict[str, Any] | None:
         if not labels:
             return process
         if isinstance(labels, dict):
-            # la place d'une étiquette déplacée à la main (offset) ne change pas la version
-            labels = {sid: {k: v for k, v in label.items() if k != "offset"} if isinstance(label, dict) else label for sid, label in labels.items()}
+            # la place d'une étiquette sur le dessin (texte déplacé, point d'accroche posé à la main)
+            # ne change pas la version
+            labels = {sid: label_without_place(label) for sid, label in labels.items()}
         groups = _label_groups(metadata, labels) if isinstance(labels, dict) else []
         return {**process, "layer_labels": labels, **({"label_groups": groups} if groups else {})}
     revision = metadata.get("structure_image_revision")

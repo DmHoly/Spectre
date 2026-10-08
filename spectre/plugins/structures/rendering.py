@@ -24,11 +24,11 @@ import html
 import itertools
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from shapely.geometry import LineString, Point, Polygon
-from shapely.ops import unary_union
+from shapely.ops import nearest_points, unary_union
 from structureforge.adapters.follow_adapter import ProcessStructure
 from structureforge.core.materials import MaterialLibrary
 from structureforge.core.units import Length
@@ -107,7 +107,12 @@ class LayerAnnotation:
     created no layer - ``layers`` are then the layers made before it, ``after`` those made after
     it, and the line points at the surface between the two. ``step``: the position of the step
     whose label this is (a brick's: its first labelled step's, which keeps the brick's
-    ``offset``); ``offset``: how far its text was moved by hand from its automatic place."""
+    ``offset``); ``offset``: how far its text was moved by hand from its automatic place;
+    ``anchor``: where its point was put by hand, in fractions of the frame of what it points at
+    (:attr:`~.simulation.LayerLabel.anchor` - never for a brick, whose bracket is its point);
+    ``anchor_bounds``: that frame (``(min_x, min_y, max_x, max_y)`` in the geometry) when it is not
+    this drawing's own - the final structure's, for every frame of a simulation
+    (:func:`frames_payload`), so that a point put on one frame lands at the same place on all."""
 
     title: str
     lines: tuple[str, ...]
@@ -118,6 +123,8 @@ class LayerAnnotation:
     after: tuple[int, ...] = ()
     step: int | None = None
     offset: tuple[float, float] | None = None
+    anchor: tuple[float, float] | None = None
+    anchor_bounds: tuple[float, float, float, float] | None = None
 
 
 def length_text(nm: float) -> str:
@@ -226,13 +233,14 @@ def annotations_for(
         if not before:
             continue
         title, lines = label_text(steps[index], declared.get(index, []), marks[index])
-        ordered.append((index, LayerAnnotation(title, lines, before, interface=True, after=after, step=index, offset=marks[index].offset)))
+        mark = LayerAnnotation(title, lines, before, interface=True, after=after, step=index, offset=marks[index].offset, anchor=marks[index].anchor)
+        ordered.append((index, mark))
     for index in sorted(labelled):
         layers = layers_of({index})
         if index in in_group or not layers:
             continue
         title, lines = label_text(steps[index], declared.get(index, []), labelled[index])
-        ordered.append((index, LayerAnnotation(title, lines, layers, step=index, offset=labelled[index].offset)))
+        ordered.append((index, LayerAnnotation(title, lines, layers, step=index, offset=labelled[index].offset, anchor=labelled[index].anchor)))
     for brick, members in groups:
         present = [index for index in members if layers_of({index})]
         if not present:
@@ -267,6 +275,10 @@ BRACKET_COLUMN = BRACKET_DEPTH + 4.0
 # la marque d'une étape sans couche : un tiret de part et d'autre du point, un losange dessus
 INTERFACE_TICK = 9.0
 INTERFACE_DIAMOND = 3.8
+# le point d'une étiquette sur sa couche, et la zone où l'attraper pour le déplacer (constructeur :
+# un cercle invisible, inerte ailleurs - pointer-events="none", rallumé par la feuille de style)
+ANCHOR_DOT = 3.2
+ANCHOR_HIT = 10.0
 MAX_TITLE_CHARS = 40
 MAX_LINE_CHARS = 48
 MAX_GROUPED_LINE_CHARS = 64
@@ -331,6 +343,61 @@ def _interface_anchor(frame: Frame, before: tuple[int, ...], after: tuple[int, .
             return x, top
         bare = bare or (x, top)
     return bare
+
+
+def _at_fractions(bounds: tuple[float, float, float, float], fractions: tuple[float, float]) -> Point:
+    """Le point du cadre ``bounds`` (``(min_x, min_y, max_x, max_y)`` de la géométrie) à ``fractions``
+    - de gauche à droite et de haut en bas (le haut de la géométrie : son plus grand y)."""
+    min_x, min_y, max_x, max_y = bounds
+    fx, fy = fractions
+    return Point(min_x + fx * (max_x - min_x), max_y - fy * (max_y - min_y))
+
+
+def _placed_anchor(shape: Any, point: Point, inset: float) -> tuple[float, float]:
+    """Le point d'accroche posé à la main (:attr:`~.simulation.LayerLabel.anchor`) en ``point`` sur
+    ``shape``, les couches de l'étape : là où il a été posé s'il est sur elles ; sinon (posé à côté,
+    ou la couche a changé depuis) le point d'elles le plus proche, rentré de ``inset`` (le rayon du
+    point) là où elles sont assez épaisses pour qu'il y tienne entier - jamais vers une partie
+    épaisse lointaine : posé à côté d'un flanc fin, il reste sur ce flanc."""
+    if shape.covers(point):
+        return point.x, point.y
+    near = nearest_points(shape, point)[0]
+    inner = shape.buffer(-inset)
+    if not inner.is_empty:
+        inside = nearest_points(inner, near)[0]
+        # assez épaisse ici : à ``inset`` du bord (un peu plus dans un coin, au plus inset * √2)
+        if inside.distance(near) <= 1.5 * inset:
+            near = inside
+    return near.x, near.y
+
+
+def _frame_bounds(frame: Frame) -> tuple[float, float, float, float]:
+    """Le cadre (``(min_x, min_y, max_x, max_y)``) de toutes les couches de ``frame``."""
+    points = [point for layer in frame.layers for ring in layer.rings() for point in ring.get("exterior") or []]
+    xs, ys = [point[0] for point in points], [point[1] for point in points]
+    return (min(xs), min(ys), max(xs), max(ys)) if points else (0.0, 0.0, 0.0, 0.0)
+
+
+def _surface(below: Any, frame_bounds: tuple[float, float, float, float]) -> Any:
+    """La surface de ``below`` (les couches d'avant une étape sans couche) : son contour sans ce qui
+    longe les côtés et le fond du dessin (``frame_bounds``, le cadre de toutes ses couches) - les bords
+    du domaine simulé et le dessous de l'empilement, où aucune étape n'a lieu. Le fond du dessin, pas
+    celui de ``below`` : après un retournement, l'interface d'une étape d'avant est sous elles."""
+    min_x, min_y, max_x, max_y = frame_bounds
+    tolerance = 0.01 * max(max_x - min_x, max_y - min_y, 1e-9)
+    edges = unary_union(
+        [LineString([(min_x, min_y), (min_x, max_y)]), LineString([(max_x, min_y), (max_x, max_y)]), LineString([(min_x, min_y), (max_x, min_y)])]
+    ).buffer(tolerance)
+    surface = below.boundary.difference(edges)
+    return below.boundary if surface.is_empty else surface
+
+
+def _placed_interface_anchor(below: Any, point: Point, frame_bounds: tuple[float, float, float, float]) -> tuple[float, float]:
+    """Le point d'une marque d'interface posé à la main en ``point`` : le point de la surface de
+    ``below`` (les couches d'avant l'étape, :func:`_surface`) le plus proche - sur le dessus comme sur
+    un flanc."""
+    nearest = nearest_points(_surface(below, frame_bounds), point)[0]
+    return nearest.x, nearest.y
 
 
 # La largeur d'un texte, estimée (le serveur ne mesure pas le texte) et par excès : la chasse de
@@ -418,11 +485,16 @@ def _bracket_columns(brackets: list[tuple[float, float] | None]) -> list[int | N
     return columns
 
 
-def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: list[LayerAnnotation], *, tag_layers: bool = False) -> str:
+def labelled_svg(
+    frame: Frame, material_colors: dict[str, str], annotations: list[LayerAnnotation], *, tag_layers: bool = False, anchors: bool = True
+) -> str:
     """StructureForge's drawing of ``frame`` (:func:`frame_svg`), with ``annotations`` stacked on
     its right - unchanged when there is none. The drawing becomes a nested ``<svg>`` fitted in a
     :data:`STRUCTURE_BOX` square; the outer one carries ``data-bare-viewbox``, the view without the
-    labels (a page hides ``.sp-layer-labels`` and switches to it). Every text is escaped."""
+    labels (a page hides ``.sp-layer-labels`` and switches to it). Every text is escaped.
+    ``anchors=False``: the points put by hand are not honoured, nor can any be put (no
+    ``data-anchor-box``) - a frame before a flip, which the final structure's frame of reference
+    (:attr:`LayerAnnotation.anchor_bounds`) does not fit."""
     base = frame_svg(frame, material_colors)
     if tag_layers:
         base = _tag_layer_indices(base)
@@ -438,6 +510,10 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         # le dessin est retourné (y vers le haut) : un point (x, y) de la géométrie est en (x, -y)
         return PAD + (x - vx) * scale, PAD + (-y - vy) * scale
 
+    def svg_box(bounds: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+        min_x, min_y, max_x, max_y = bounds
+        return (*to_svg(min_x, max_y), *to_svg(max_x, min_y))
+
     bracket_x = PAD + sw + BRACKET_GAP
     blocks = []
     marks_at: list[tuple[float, float]] = []
@@ -448,14 +524,26 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         candidates = [(rings, shape) for rings, shape in candidates if shape is not None and not shape.is_empty]
         if not candidates:
             continue
+        # ce que désigne le point d'accroche (les couches de l'étape ; d'une marque d'interface, celles
+        # d'avant elle) et le cadre où il se pose à la main (LayerLabel.anchor, en fractions de ce
+        # cadre : celui de la structure finale, sinon le sien) - une accolade n'en a pas ; auto_y : la
+        # hauteur de son point automatique, d'après laquelle les textes s'empilent - poser le point ne
+        # déplace aucun texte
+        designated = None if annotation.grouped else _union(frame, annotation.layers)
+        reference = (annotation.anchor_bounds or designated.bounds) if anchors and designated is not None else None
+        placed = _at_fractions(reference, annotation.anchor) if reference is not None and annotation.anchor else None
         if annotation.interface:
             point = _interface_anchor(frame, annotation.layers, annotation.after)
-            if point is None:
+            if point is None or designated is None:
                 continue
             anchor = to_svg(*point)
-            # deux étapes sur la même interface (une gravure puis un nettoyage) : côte à côte
-            while any(abs(anchor[0] - x) < INTERFACE_TICK and abs(anchor[1] - y) < INTERFACE_TICK for x, y in marks_at):
-                anchor = (anchor[0] - 2.4 * INTERFACE_TICK, anchor[1])
+            auto_y = anchor[1]
+            if placed is not None:
+                anchor = to_svg(*_placed_interface_anchor(designated, placed, _frame_bounds(frame)))
+            else:
+                # deux étapes sur la même interface (une gravure puis un nettoyage) : côte à côte
+                while any(abs(anchor[0] - x) < INTERFACE_TICK and abs(anchor[1] - y) < INTERFACE_TICK for x, y in marks_at):
+                    anchor = (anchor[0] - 2.4 * INTERFACE_TICK, anchor[1])
             marks_at.append(anchor)
         elif annotation.grouped:
             # une accolade sur toute la hauteur des couches de la brique (jamais plus fine qu'un trait lisible)
@@ -465,11 +553,15 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
             half = max((bottom - top) / 2, BRACKET_MIN_HEIGHT / 2)
             bracket = (middle - half, middle + half)
             anchor = (bracket_x, middle)  # x : au bout de l'accolade, selon sa colonne (plus bas)
+            auto_y = middle
         else:
             point = _anchor(max(candidates, key=lambda c: c[1].area)[0])
             if point is None:
                 continue
             anchor = to_svg(*point)
+            auto_y = anchor[1]
+            if placed is not None and designated is not None:
+                anchor = to_svg(*_placed_anchor(designated, placed, ANCHOR_DOT / scale))
         title = _ellipsis(annotation.title, MAX_TITLE_CHARS)
         lines = list(annotation.lines)
         if annotation.grouped and len(annotation.line_layers) == len(lines):
@@ -489,6 +581,9 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
                 "interface": annotation.interface,
                 "step": annotation.step,
                 "offset": annotation.offset or (0.0, 0.0),
+                "auto_y": auto_y,
+                "box": svg_box(reference) if reference is not None else None,
+                "placed": annotation.anchor if placed is not None else None,
             }
         )
     if not blocks:
@@ -501,10 +596,8 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
     extra = max([c for c in columns if c is not None], default=0) * BRACKET_COLUMN
     # le coude des traits : au-delà de la dernière colonne d'accolades, qu'ils croisent à angle droit
     elbow = bracket_x + extra + BRACKET_DEPTH + BRACKET_TIP if any(c is not None for c in columns) else PAD + sw + 8
-    blocks.sort(key=lambda b: b["anchor"][1])
-    tops = _place(
-        [b["anchor"][1] - TITLE_SIZE * LINE_HEIGHT / 2 for b in blocks], [b["height"] for b in blocks], PAD, PAD + sh
-    )
+    blocks.sort(key=lambda b: b["auto_y"])
+    tops = _place([b["auto_y"] - TITLE_SIZE * LINE_HEIGHT / 2 for b in blocks], [b["height"] for b in blocks], PAD, PAD + sh)
     column_x = PAD + sw + LEADER_GAP + extra
     # la colonne est aussi large que la plus large des étiquettes (estimée par excès) : rien ne déborde
     column_w = max(90.0, max(b["width"] for b in blocks))
@@ -537,16 +630,18 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         elif block["interface"]:
             # une marque d'interface : un trait pointillé, un tiret posé sur la surface et un losange
             r = INTERFACE_DIAMOND
+            tick = f'<path d="M{_n(ax - INTERFACE_TICK)},{_n(ay)} H{_n(ax + INTERFACE_TICK)}" stroke-width="2" stroke-linecap="round" style="stroke:{_TEXT}"/>'
+            diamond = (
+                f'<path d="M{_n(ax)},{_n(ay - r)} L{_n(ax + r)},{_n(ay)} L{_n(ax)},{_n(ay + r)} L{_n(ax - r)},{_n(ay)} Z" '
+                f'stroke-width="1.4" style="fill:{_SURFACE};stroke:{_TEXT}"/>'
+            )
             mark = (
                 f'<polyline points="{points}" class="sp-layer-leader" fill="none" stroke-width="1.2" stroke-dasharray="4 3" style="stroke:{_TEXT_SOFT}"/>'
-                f'<path d="M{_n(ax - INTERFACE_TICK)},{_n(ay)} H{_n(ax + INTERFACE_TICK)}" stroke-width="2" stroke-linecap="round" style="stroke:{_TEXT}"/>'
-                f'<path d="M{_n(ax)},{_n(ay - r)} L{_n(ax + r)},{_n(ay)} L{_n(ax)},{_n(ay + r)} L{_n(ax - r)},{_n(ay)} Z" stroke-width="1.4" style="fill:{_SURFACE};stroke:{_TEXT}"/>'
+                + _anchor_mark(ax, ay, tick + diamond)
             )
         else:
-            mark = (
-                f'<polyline points="{points}" class="sp-layer-leader" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>'
-                f'<circle cx="{_n(ax)}" cy="{_n(ay)}" r="3.2" stroke-width="1.4" style="fill:{_TEXT};stroke:{_SURFACE}"/>'
-            )
+            dot = f'<circle cx="{_n(ax)}" cy="{_n(ay)}" r="{_n(ANCHOR_DOT)}" stroke-width="1.4" style="fill:{_TEXT};stroke:{_SURFACE}"/>'
+            mark = f'<polyline points="{points}" class="sp-layer-leader" fill="none" stroke-width="1.2" style="stroke:{_TEXT_SOFT}"/>' + _anchor_mark(ax, ay, dot)
         texts = [
             f'<text x="{_n(text_x)}" y="{_n(block_top + TITLE_SIZE)}" font-size="{_n(TITLE_SIZE)}" font-weight="600" style="fill:{_TEXT}">{html.escape(block["title"])}</text>'
         ]
@@ -559,8 +654,14 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         step = f' data-step="{block["step"]}"' if block["step"] is not None else ""
         dx, dy = block["offset"]
         moved = f' data-offset="{_n(dx)} {_n(dy)}"' if (dx or dy) else ""
+        # data-anchor-box : le cadre où poser le point à la main (data-anchor-placed : où il l'a été,
+        # en fractions de ce cadre) - une accolade n'en a pas
+        if block["box"] is not None:
+            moved += f' data-anchor-box="{" ".join(_n(v) for v in block["box"])}"'
+        if block["placed"]:
+            moved += f' data-anchor-placed="{" ".join(f"{v:g}" for v in block["placed"])}"'
         # data-anchor, data-elbow, data-width : de quoi redessiner le trait pendant qu'on déplace le
-        # texte à la souris (constructeur, label-drag.js)
+        # texte ou le point à la souris (constructeur, layer-label.js)
         parts.append(
             f'<g class="sp-layer-label" data-top="{_n(block_top)}" data-height="{_n(block["height"])}"{grouped}{step}{moved} '
             f'data-anchor="{_n(ax)} {_n(ay)}" data-elbow="{_n(elbow)}" data-width="{_n(block["width"])}">'
@@ -575,6 +676,14 @@ def labelled_svg(frame: Frame, material_colors: dict[str, str], annotations: lis
         f'<g class="sp-layer-labels" style="font-family:{_FONT}">{"".join(parts)}</g>'
         "</svg>"
     )
+
+
+def _anchor_mark(ax: float, ay: float, marker: str) -> str:
+    """Le point d'accroche d'une étiquette (``marker`` : un rond sur la couche, un tiret et un losange
+    sur l'interface), dans un groupe que le constructeur fait glisser - avec, dessous, la zone où
+    l'attraper (:data:`ANCHOR_HIT`), invisible et inerte hors du constructeur."""
+    hit = f'<circle class="sp-layer-anchor__hit" cx="{_n(ax)}" cy="{_n(ay)}" r="{_n(ANCHOR_HIT)}" fill="none" pointer-events="none"/>'
+    return f'<g class="sp-layer-anchor">{hit}{marker}</g>'
 
 
 def _leader_points(ax: float, ay: float, elbow: float, tx: float, ty: float, width: float) -> str:
@@ -603,18 +712,35 @@ def frames_payload(
     """Each frame as the builder shows it: its SVG (layers tagged ``data-layer-index``, the labels
     of ``labels`` drawn on the layers they name, grouped by ``bricks``), its materials and its
     layers - each with the position of the step that created it (``step_index``, ``-1`` for the
-    substrate), from the simulation's own provenance (``origins``)."""
+    substrate), from the simulation's own provenance (``origins``). A point put by hand
+    (:attr:`~.simulation.LayerLabel.anchor`) is in the final structure's frame of reference on every
+    frame (:attr:`LayerAnnotation.anchor_bounds`), and neither honoured nor movable before a flip."""
     material_colors = {m.name: m.color for m in materials}
+
+    def origins_of(k: int) -> list[int | None]:
+        return origins[k] if origins is not None else [None] * len(frames[k].layers)
+
+    # le point d'accroche posé à la main l'est dans le cadre de ce qu'il désigne sur la structure
+    # finale, quelle que soit l'image où on le pose : il tombe au même endroit sur toutes - sauf
+    # avant un retournement, où il n'est ni suivi ni déplaçable (anchors=False)
+    final: dict[int, tuple[float, float, float, float]] = {}
+    if labels and frames:
+        for annotation in annotations_for(steps or [], declared or {}, labels, origins_of(len(frames) - 1), bricks):
+            designated = None if annotation.grouped else _union(frames[-1], annotation.layers)
+            if designated is not None and annotation.step is not None:
+                final[annotation.step] = designated.bounds
     payload = []
     for k, frame in enumerate(frames):
-        frame_origins = origins[k] if origins is not None else [None] * len(frame.layers)
+        frame_origins = origins_of(k)
         annotations = annotations_for(steps or [], declared or {}, labels or {}, frame_origins, bricks) if labels else []
+        annotations = [replace(a, anchor_bounds=final.get(a.step)) if a.step is not None else a for a in annotations]
+        flipped_later = any(later.step_kind == "flip" for later in frames[k + 1 :])
         payload.append(
             {
                 "step_index": frame.step_index,
                 "step_kind": frame.step_kind,
                 "step_name": frame.step_name,
-                "svg": labelled_svg(frame, material_colors, annotations, tag_layers=True),
+                "svg": labelled_svg(frame, material_colors, annotations, tag_layers=True, anchors=not flipped_later),
                 # only the materials this particular frame actually shows - material_colors below
                 # is the whole library (40+ entries), which would make a poor legend on its own.
                 "materials": sorted({layer.material for layer in frame.layers}),

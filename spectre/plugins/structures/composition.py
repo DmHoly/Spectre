@@ -35,6 +35,7 @@ from typing import Any
 from ...kernel.errors import InvalidInput
 
 from .schemas import ProcessInput
+from .simulation import label_without_place
 
 SUBSTRATE_ROW = "substrat"  # la clé de la ligne du substrat
 MIN_SOURCES = 2
@@ -76,7 +77,8 @@ class _Source:
 
     def signature(self, position: int | None) -> str:
         """Ce qui fait l'identité d'une étape (ou du substrat, ``None``) : ses champs, ses paramètres
-        déclarés et son étiquette - deux sources de même signature ont la même étape."""
+        déclarés et son étiquette (sans sa place sur le dessin) - deux sources de même signature ont
+        la même étape."""
         if position is None:
             return json.dumps(self.process.substrate.model_dump(mode="json"), sort_keys=True)
         label = self.process.layer_labels.get(str(position))
@@ -84,7 +86,7 @@ class _Source:
             [
                 self.steps[position],
                 [p.model_dump(mode="json") for p in self.process.declared_params.get(str(position), [])],
-                label.model_dump(mode="json") if label is not None else None,
+                label_without_place(label.model_dump(mode="json")) if label is not None else None,
             ],
             sort_keys=True,
         )

@@ -137,12 +137,10 @@ const svgContainer = document.getElementById("svg-container");
 let panState = null; // {x, y, left, top, moved}
 let suppressNextClick = false;
 
-svgContainer.addEventListener("click", (event) => {
-  if (suppressNextClick) {
-    suppressNextClick = false;
-    return;
-  }
-  const path = event.target.closest("[data-layer-index]");
+// Un clic sur une couche (path : son <path data-layer-index>) sélectionne l'étape qui l'a produite ;
+// sur l'écran des variations, la fait varier. Aussi pour un clic sur la zone où attraper le point
+// d'une étiquette, posée sur la couche (layer-label.js).
+function clickLayer(path) {
   if (!path || !state.frames) return;
   const frameIndex = currentFrameIndex();
   const layerIndex = parseInt(path.dataset.layerIndex, 10);
@@ -152,6 +150,14 @@ svgContainer.addEventListener("click", (event) => {
     return;
   }
   if (origin != null && origin < state.steps.length) selectStep(origin, { fromCanvas: true });
+}
+
+svgContainer.addEventListener("click", (event) => {
+  if (suppressNextClick) {
+    suppressNextClick = false;
+    return;
+  }
+  clickLayer(event.target.closest("[data-layer-index]"));
 });
 
 // Survol d'une couche : la puce de l'étape qui l'a produite s'illumine dans le flow.
@@ -191,6 +197,8 @@ function applyZoom() {
   svgContainer.style.width = `${z * 100}%`;
   svgContainer.style.height = `${z * 100}%`;
   svgContainer.style.left = svgContainer.style.top = z < 1 ? `${(1 - z) * 50}%` : "0";
+  // la zone où attraper le point d'une étiquette garde sa taille à l'écran (structures.css)
+  svgContainer.style.setProperty("--sb-zoom", String(z));
   svgViewport.classList.toggle("is-zoomed", z > 1);
   document.getElementById("zoom-level-label").textContent = z === 1 ? "Ajusté" : `${Math.round(z * 100)} %`;
 }
