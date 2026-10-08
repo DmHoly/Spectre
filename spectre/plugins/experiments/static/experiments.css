@@ -2071,3 +2071,72 @@ a.plate-row__lasermark {
 .split-table tr.is-witness td:first-child {
   box-shadow: inset 3px 0 0 var(--gold);
 }
+
+/* combiner au marché, étape par étape : la ligne d'une brique (repliable), ses étapes en retrait */
+.study-compose__brick th,
+.study-compose__brick td {
+  background: var(--surface-2);
+}
+.study-compose__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.study-compose__toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-sm);
+}
+.study-compose__brick .help {
+  margin: 0 0 0 6px;
+  font-weight: 400;
+}
+.study-compose__table tr.is-nested th[scope="row"] {
+  padding-left: 30px;
+  font-weight: 500;
+}
+.study-compose__table tr.is-replaced .study-compose__step {
+  text-decoration: line-through;
+  color: var(--text-faint);
+}
+.study-compose__value {
+  font-size: 11.5px;
+  color: var(--text-soft);
+}
+.study-compose__diff {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--continue);
+}
+.study-compose__tag-step {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-pill);
+}
+.study-compose__tag-step.is-added {
+  color: var(--done);
+  background: var(--done-tint);
+}
+.study-compose__tag-step.is-replaced {
+  color: var(--hold);
+  background: var(--hold-tint);
+}
+.study-compose__replace {
+  display: block;
+  margin-top: 4px;
+  max-width: 240px;
+  min-height: 30px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 400;
+}

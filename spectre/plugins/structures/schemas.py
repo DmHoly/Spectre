@@ -60,13 +60,22 @@ class CampaignPreviewRequest(ProcessInput):
     plan: VariantPlan
 
 
+class StepChoice(BaseModel):
+    """Le choix d'une ligne d'une combinaison : la source de l'étape (``None`` : pas reprise) et, au
+    besoin, la clé de la ligne qu'elle remplace (elle prend sa place, l'autre n'est pas reprise)."""
+
+    source: int | None = Field(None, ge=0, le=3)
+    replaces: str | None = Field(None, max_length=300)
+
+
 class CompositionRequest(BaseModel):
     """Combiner des études « au marché » (``POST /api/compositions``) : les procédés des sources, la
-    principale d'abord, et, une fois choisi, l'index de la source de chaque ligne (``None`` : la
-    brique n'est pas reprise ; ``choices`` absent : les choix par défaut)."""
+    principale d'abord, et, une fois choisi, le choix de chaque ligne - une par étape (``{source,
+    replaces}``, ou l'index de la source seul, ``None`` : pas reprise ; ``choices`` absent : les
+    choix par défaut)."""
 
     sources: list[ProcessInput] = Field(..., min_length=2, max_length=4)
-    choices: list[int | None] | None = Field(None, max_length=200)
+    choices: list[StepChoice | int | None] | None = Field(None, max_length=500)
 
 
 class StructureImageInput(BaseModel):

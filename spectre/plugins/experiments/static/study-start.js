@@ -329,12 +329,12 @@ const StudyStart = (() => {
     composed = null;
     setView({
       title: "Combiner des études",
-      lead: "Choisissez les sources - la première donne l'ordre des couches et la filiation - puis, brique par brique, d'où vient chacune. Les briques s'alignent par leur nom (Zone active, EBL, p-GaN…).",
+      lead: "Choisissez les sources - la première donne l'ordre des couches et la filiation - puis, étape par étape (ou brique par brique, d'un clic), d'où vient chacune. Une étape d'une autre source peut s'ajouter, ou en remplacer une.",
       body: `
         <div class="study-compose__sources" id="study-compose-sources"></div>
         <div class="study-compose__more">
           <button class="btn btn-tint" type="button" data-action="add-source">+ Ajouter une source</button>
-          <button class="btn btn-line" type="button" data-action="compose">Voir les briques</button>
+          <button class="btn btn-line" type="button" data-action="compose">Voir les étapes</button>
         </div>
         <div class="study-compose__result" id="study-compose-result" aria-live="polite"></div>`,
       actions: `
@@ -438,12 +438,12 @@ const StudyStart = (() => {
       return;
     }
     showError(null);
-    host.innerHTML = `<p class="help">Lecture des briques…</p>`;
+    host.innerHTML = `<p class="help">Lecture des étapes…</p>`;
     try {
       const labelled = await Promise.all(sources.map(async (s) => ({ ...s, label: await sourceLabel(s) })));
       const result = await composeSources(options.microprojectSlug, labelled, choices);
       if (token !== composeToken) return;
-      composed = { ...result, sources: labelled, choices: result.rows.map((r) => r.chosen) };
+      composed = { ...result, sources: labelled, choices: result.rows.map((r) => ({ source: r.chosen, replaces: r.replaces })) };
       paintMarket();
     } catch (err) {
       if (token !== composeToken) return;
@@ -454,33 +454,102 @@ const StudyStart = (() => {
     dialog.querySelector('[data-action="go-compose"]').disabled = !composed;
   }
 
-  // Le tableau « au marché » : une ligne par brique, une colonne par source, un choix par ligne.
+  // Les lignes regroupées par brique (les étapes consécutives d'une même brique ; hors brique, une
+  // à une) : [{brick, rows: [index...]}].
+  function rowGroups(rows) {
+    const groups = [];
+    rows.forEach((row, r) => {
+      const last = groups[groups.length - 1];
+      if (row.brick && last && last.brick === row.brick) last.rows.push(r);
+      else groups.push({ brick: row.brick, rows: [r] });
+    });
+    return groups;
+  }
+
+  // Une brique dépliée d'office quand ses étapes ne viennent pas toutes de la même source, ou
+  // qu'une source y a une étape différente ou en plus ; sinon repliée (une ligne, un choix).
+  const expandedBricks = new Set();
+  function isExpanded(group, rows) {
+    const key = `${group.brick}@${rows[group.rows[0]].key}`;
+    if (expandedBricks.has(key)) return true;
+    if (expandedBricks.has(`-${key}`)) return false;
+    const picked = new Set(group.rows.map((r) => rows[r].chosen));
+    const differs = group.rows.some((r) => !rows[r].in_main || rows[r].same_as.some((same, i) => same !== null && same !== rows[r].same_as[0]));
+    return picked.size > 1 || differs || group.rows.some((r) => rows[r].replaces);
+  }
+
+  // Le tableau « au marché » : une ligne par étape, regroupées par brique (une ligne de brique coche
+  // toutes ses étapes d'un coup, et se déplie), une colonne par source, un choix par ligne.
   function paintMarket() {
     const host = dialog.querySelector("#study-compose-result");
     const { rows, sources: labelled, warnings } = composed;
+    const replacedBy = new Map(rows.filter((row) => row.replaces).map((row) => [row.replaces, row.name]));
     const header = labelled.map((s, i) => `<th scope="col"><span class="study-compose__tag is-${i === 0 ? "main" : `s${i}`}">${i === 0 ? "Principale" : `Source ${i + 1}`}</span><span class="study-compose__source-name">${escapeHtml(s.label)}</span></th>`).join("");
-    const body = rows
-      .map((row, r) => {
-        const cells = labelled
+
+    const stepRow = (row, r, nested) => {
+      const replaced = replacedBy.get(row.key);
+      const cells = labelled
+        .map((_, i) => {
+          if (!row.present[i]) return `<td class="study-compose__absent">-</td>`;
+          const same = i > 0 && row.same_as[i] === 0;
+          const value = same ? `<span class="help study-compose__same">= principale</span>` : row.summary[i] ? `<span class="study-compose__value mono">${escapeHtml(row.summary[i])}</span>` : "";
+          const differs = i > 0 && row.present[0] && row.same_as[i] !== 0 ? `<span class="study-compose__diff" title="Différente de celle de la principale">≠</span>` : "";
+          return `<td><label class="study-compose__pick"><input type="radio" name="compose-row-${r}" value="${i}" data-row="${r}"${row.chosen === i ? " checked" : ""}${replaced ? " disabled" : ""} aria-label="${escapeHtml(row.name)} depuis ${escapeHtml(labelled[i].label)}">${value}${differs}</label></td>`;
+        })
+        .join("");
+      const none =
+        row.key === "substrat"
+          ? `<td></td>`
+          : `<td><label class="study-compose__pick"><input type="radio" name="compose-row-${r}" value="" data-row="${r}"${row.chosen === null || replaced ? " checked" : ""}${replaced ? " disabled" : ""} aria-label="${escapeHtml(row.name)} non reprise"></label></td>`;
+      // une étape ajoutée, reprise : elle peut prendre la place d'une étape de la principale
+      const targets = rows.filter((other) => other.in_main && other.key !== "substrat" && other.key !== row.key && (!replacedBy.has(other.key) || other.key === row.replaces));
+      const replaceSelect =
+        !row.in_main && row.chosen !== null
+          ? `<select class="field study-compose__replace" data-replaces="${r}" aria-label="Étape que « ${escapeHtml(row.name)} » remplace">
+               <option value="">en plus</option>
+               ${targets.map((other) => `<option value="${escapeHtml(other.key)}"${row.replaces === other.key ? " selected" : ""}>remplace ${escapeHtml(other.name)}${other.brick ? ` (${escapeHtml(other.brick)})` : ""}</option>`).join("")}
+             </select>`
+          : "";
+      const tags = [
+        !row.in_main && row.key !== "substrat" ? `<span class="study-compose__tag-step is-added">ajoutée</span>` : "",
+        replaced ? `<span class="study-compose__tag-step is-replaced">remplacée par ${escapeHtml(replaced)}</span>` : "",
+      ].join("");
+      return `<tr class="${nested ? "is-nested" : ""}${replaced ? " is-replaced" : ""}"><th scope="row"><span class="study-compose__step">${escapeHtml(row.name)}</span>${tags}${replaceSelect}</th>${cells}${none}</tr>`;
+    };
+
+    const body = rowGroups(rows)
+      .map((group, g) => {
+        if (!group.brick) return group.rows.map((r) => stepRow(rows[r], r, false)).join("");
+        const open = isExpanded(group, rows);
+        const picks = new Set(group.rows.map((r) => rows[r].chosen));
+        const brickCells = labelled
           .map((_, i) => {
-            if (!row.present[i]) return `<td class="study-compose__absent">-</td>`;
-            const same = row.same_as[i] !== i ? `<span class="help study-compose__same">= ${row.same_as[i] === 0 ? "principale" : `source ${row.same_as[i] + 1}`}</span>` : "";
-            return `<td><label class="study-compose__pick"><input type="radio" name="compose-row-${r}" value="${i}" data-row="${r}"${row.chosen === i ? " checked" : ""} aria-label="${escapeHtml(row.name)} depuis ${escapeHtml(labelled[i].label)}">${same}</label></td>`;
+            const has = group.rows.some((r) => rows[r].present[i]);
+            if (!has) return `<td class="study-compose__absent">-</td>`;
+            const all = picks.size === 1 && picks.has(i);
+            return `<td><label class="study-compose__pick"><input type="radio" name="compose-brick-${g}" value="${i}" data-group="${g}"${all ? " checked" : ""} aria-label="Toute la brique ${escapeHtml(group.brick)} depuis ${escapeHtml(labelled[i].label)}">${picks.size > 1 && picks.has(i) ? `<span class="help study-compose__same">en partie</span>` : ""}</label></td>`;
           })
           .join("");
-        const none = row.key === "substrat" ? `<td></td>` : `<td><label class="study-compose__pick"><input type="radio" name="compose-row-${r}" value="" data-row="${r}"${row.chosen === null ? " checked" : ""} aria-label="${escapeHtml(row.name)} non reprise"></label></td>`;
-        return `<tr><th scope="row">${escapeHtml(row.name)}${row.in_main ? "" : ` <span class="help">(absente de la principale)</span>`}</th>${cells}${none}</tr>`;
+        const noneAll = picks.size === 1 && picks.has(null);
+        const head = `<tr class="study-compose__brick"><th scope="row">
+            <button class="study-compose__toggle" type="button" data-action="toggle-brick" data-group="${g}" aria-expanded="${open}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="${open ? "M6 9l6 6 6-6" : "M9 6l6 6-6 6"}"/></svg>
+              ${escapeHtml(group.brick)}
+            </button>
+            <span class="help">${group.rows.length} étape${group.rows.length > 1 ? "s" : ""}</span>
+          </th>${brickCells}<td><label class="study-compose__pick"><input type="radio" name="compose-brick-${g}" value="" data-group="${g}"${noneAll ? " checked" : ""} aria-label="Brique ${escapeHtml(group.brick)} non reprise"></label></td></tr>`;
+        return head + (open ? group.rows.map((r) => stepRow(rows[r], r, true)).join("") : "");
       })
       .join("");
     host.innerHTML = `
       <div class="study-compose__table-wrap">
         <table class="study-compose__table">
-          <thead><tr><th scope="col">Brique</th>${header}<th scope="col">Non reprise</th></tr></thead>
+          <thead><tr><th scope="col">Étape</th>${header}<th scope="col">Non reprise</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>
       ${warnings.length ? `<ul class="study-compose__warnings">${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("")}</ul>` : ""}
-      <p class="help">Les couches s'empilent dans l'ordre de la principale ; une brique qu'elle n'a pas se glisse sous celle qui la suit dans sa source. Tout reste modifiable dans le constructeur.</p>`;
+      <p class="help">Une même étape (même identifiant, ou même nom dans la même brique) est une seule ligne. Une étape « ajoutée » se place avant celle qui la suit dans sa source, ou à la place d'une étape de la principale (« remplace… »). Tout reste modifiable dans le constructeur.</p>`;
   }
 
   function goCompose() {
@@ -545,6 +614,18 @@ const StudyStart = (() => {
       case "go-compose":
         goCompose();
         break;
+      case "toggle-brick": {
+        const group = rowGroups(composed.rows)[parseInt(action.dataset.group, 10)];
+        const key = `${group.brick}@${composed.rows[group.rows[0]].key}`;
+        const open = isExpanded(group, composed.rows);
+        expandedBricks.delete(key);
+        expandedBricks.delete(`-${key}`);
+        expandedBricks.add(open ? `-${key}` : key);
+        paintMarket();
+        const again = dialog.querySelector(`[data-action="toggle-brick"][data-group="${action.dataset.group}"]`);
+        if (again) again.focus();
+        break;
+      }
       default:
         break;
     }
@@ -568,9 +649,28 @@ const StudyStart = (() => {
       return;
     }
     if (target.dataset.row !== undefined && composed) {
-      composed.choices[parseInt(target.dataset.row, 10)] = target.value === "" ? null : parseInt(target.value, 10);
+      const r = parseInt(target.dataset.row, 10);
+      const source = target.value === "" ? null : parseInt(target.value, 10);
+      composed.choices[r] = { source, replaces: source === null ? null : composed.choices[r].replaces };
       // l'aperçu se recalcule (le serveur revérifie les choix)
-      runCompose(composed.choices.slice());
+      runCompose(composed.choices.map((c) => ({ ...c })));
+      return;
+    }
+    if (target.dataset.group !== undefined && composed) {
+      // toute une brique : chacune de ses étapes depuis cette source (celles qu'elle a), ou aucune
+      const group = rowGroups(composed.rows)[parseInt(target.dataset.group, 10)];
+      const source = target.value === "" ? null : parseInt(target.value, 10);
+      group.rows.forEach((r) => {
+        if (source === null) composed.choices[r] = { source: null, replaces: null };
+        else if (composed.rows[r].present[source]) composed.choices[r] = { ...composed.choices[r], source };
+      });
+      runCompose(composed.choices.map((c) => ({ ...c })));
+      return;
+    }
+    if (target.dataset.replaces !== undefined && composed) {
+      const r = parseInt(target.dataset.replaces, 10);
+      composed.choices[r] = { ...composed.choices[r], replaces: target.value || null };
+      runCompose(composed.choices.map((c) => ({ ...c })));
       return;
     }
     if (target.dataset.source !== undefined && target.dataset.field) {
