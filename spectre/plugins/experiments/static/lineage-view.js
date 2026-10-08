@@ -110,12 +110,12 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
         const declared = detail.declared_structure;
         const text = declared.description.length > 220 ? `${declared.description.slice(0, 219).trimEnd()}…` : declared.description;
         structureBlock = `${text ? `<p class="lineage-declared">${escapeHtml(text)}</p>` : ""}${
-          declared.images.length ? structureBoardHtml(declared.images, { compact: true }) : ""
+          declared.images.length ? structureBoardHtml(declared.images, { compact: true, zoomable: true }) : ""
         }<p class="help" style="margin:4px 0 0;">Sans structure · ${declared.wafers.length} plaque${declared.wafers.length > 1 ? "s" : ""} au split</p>`;
       } else if (detail.structure_images) {
-        structureBlock = structureBoardHtml(detail.structure_images, { compact: true });
+        structureBlock = structureBoardHtml(detail.structure_images, { compact: true, zoomable: true });
       } else if (detail.structure_svg) {
-        structureBlock = `<div class="builder-canvas-svg" style="height:150px;">${detail.structure_svg}</div>`;
+        structureBlock = `<button type="button" class="builder-canvas-svg structure-zoomable js-structure-zoom" style="height:150px;" aria-label="Agrandir la structure" title="Agrandir et zoomer">${detail.structure_svg}${STRUCTURE_ZOOM_BADGE}</button>`;
       } else {
         structureBlock = "";
       }
@@ -169,7 +169,8 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
           <a class="btn btn-line" style="flex:1;" href="${pageUrl(node)}">Ouvrir la fiche</a>
           ${canEdit ? `<button class="btn btn-primary" style="flex:1;" type="button" id="lineage-plan-next">Prévoir la suite</button>` : ""}
         </div>`;
-      if (variation) renderLineageStructureCarousel(variation);
+      if (variation) renderLineageStructureCarousel(variation, detail.title);
+      bindStructureZoom(detail);
       if (canEdit) bindAttach(node);
       if (canEdit) {
         panel.querySelector("#lineage-plan-next").addEventListener("click", () => renderPlanForm({ parent: { node, detail } }));
@@ -648,8 +649,33 @@ function mountLineage(el, { microprojectSlug, canEdit = false }) {
   // Même carrousel (référence + chaque variante) que l'atlas et la fiche (voir
   // structures/static/campaign-carousel.js::mountStructureCarousel) - avant ça, une campagne cliquée ici ne montrait qu'un texte « Campagne —
   // N variantes. », sans jamais voir la structure elle-même ni pouvoir comparer les variantes.
-  function renderLineageStructureCarousel(variation) {
-    mountStructureCarousel(panel.querySelector("#lineage-structure-carousel"), variation);
+  // Un clic sur la structure l'ouvre en grand (structure-zoom.js), pour zoomer sur ses détails ; refermée,
+  // le carrousel montre la variante où l'on s'est arrêté.
+  function renderLineageStructureCarousel(variation, title) {
+    const container = panel.querySelector("#lineage-structure-carousel");
+    const carousel = mountStructureCarousel(container, variation, {
+      onEnlarge: (index) =>
+        openStructureZoom({
+          title,
+          items: variantZoomItems(variation),
+          index,
+          onClose: (at) => {
+            carousel.go(at);
+            const stage = container.querySelector("[data-enlarge]");
+            if (stage) stage.focus({ preventScroll: true });
+          },
+        }),
+    });
+  }
+
+  // Le dessin (une version) ou les images (structure en images, dessin d'une étude sans structure)
+  // de la carte, en grand. L'aperçu d'images reste un lien : Ctrl/Maj+clic l'ouvre dans un onglet.
+  function bindStructureZoom(detail) {
+    const drawing = panel.querySelector(".js-structure-zoom");
+    if (drawing) drawing.addEventListener("click", () => openStructureZoom({ title: detail.title, items: [{ html: detail.structure_svg }] }));
+    const images = detail.structure_images || (detail.declared_structure && detail.declared_structure.images) || [];
+    const thumb = panel.querySelector(".structure-thumb");
+    if (thumb) thumb.addEventListener("click", (event) => enlargeStructureImages(event, detail.title, images));
   }
 
   function highlight(id) {

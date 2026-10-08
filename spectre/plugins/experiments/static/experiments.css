@@ -1511,7 +1511,8 @@ a.plate-row__lasermark {
 .evo-panel__section > .section-title {
   margin-bottom: 8px;
 }
-/* la structure de la version choisie (étiquettes de couches comprises), et sa vue agrandie */
+/* la structure de la version choisie (étiquettes de couches comprises) ; un clic l'agrandit
+   (structure-zoom.js) */
 .evo-structure {
   display: block;
   width: 100%;
@@ -1534,38 +1535,6 @@ a.plate-row__lasermark {
   width: 100%;
   height: auto;
   max-height: 360px;
-}
-.evo-structure-dialog {
-  border: none;
-  border-radius: 14px;
-  padding: 0;
-  box-shadow: var(--shadow-lift);
-  width: min(960px, 94vw);
-}
-.evo-structure-dialog__inner {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-height: 88vh;
-}
-.evo-structure-dialog__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.evo-structure-dialog__title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-}
-.evo-structure-dialog__body {
-  overflow: auto;
-  text-align: center;
-}
-.evo-structure-dialog__body svg {
-  max-width: 100%;
-  height: auto;
 }
 .evo-panel__refs {
   display: flex;

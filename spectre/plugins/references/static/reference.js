@@ -259,7 +259,7 @@
     const detail = state.details[node.number];
     if (detail === null) return `<p class="help">La structure de cette version n'a pas pu être dessinée.</p>`;
     const body = detail
-      ? `<button type="button" class="evo-structure js-enlarge" aria-label="Agrandir la structure de la version ${escapeHtml(node.number)}" title="Agrandir">${detail.structure_svg || ""}</button>`
+      ? `<button type="button" class="evo-structure structure-zoomable js-enlarge" aria-label="Agrandir la structure de la version ${escapeHtml(node.number)}" title="Agrandir et zoomer">${detail.structure_svg || ""}${STRUCTURE_ZOOM_BADGE}</button>`
       : `<div class="skeleton" style="height:140px;"></div>`;
     return `<div class="evo-panel__section"><div class="section-title">Structure</div>${body}</div>`;
   }
@@ -418,12 +418,11 @@
       await compare(edge.parent, node.number);
       renderPanel();
     } else if (target.classList.contains("js-enlarge")) {
-      document.getElementById("structure-dialog-title").textContent = `${reference().name} ${node.number}`;
-      document.getElementById("structure-dialog-body").innerHTML = target.innerHTML;
-      document.getElementById("structure-dialog").showModal();
+      // en grand, pour zoomer sur ses détails (structure-zoom.js)
+      const detail = state.details[node.number];
+      if (detail && detail.structure_svg) openStructureZoom({ title: `${reference().name} ${node.number}`, items: [{ html: detail.structure_svg }] });
     }
   });
-  document.getElementById("structure-dialog-close").addEventListener("click", () => document.getElementById("structure-dialog").close());
 
   // -- amorce ----------------------------------------------------------------------------------
 
