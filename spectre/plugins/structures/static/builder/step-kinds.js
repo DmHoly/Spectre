@@ -250,7 +250,7 @@ const STEP_KIND_DEFS = {
       <div><label>Angle semipolaire (° depuis l'axe c)</label><input class="field" id="f-angle-sp" type="number" value="30" min="1" max="89" step="1"></div></div>
       <div class="help" id="f-tip-hint" style="margin-top:-6px;"></div>
       <div><label>Vitesse semipolaire inversée {10-1-1}</label><input class="field" id="f-rate-sp-inv" type="number" value="0" min="0" step="0.05">
-        <div class="help" style="margin-top:4px;">0 = désactivée. &gt; 0 avec plan M à 0 : la coquille déborde de la pointe et descend le long des flancs.</div>
+        <div class="help" style="margin-top:4px;">0 = désactivée ; sinon au moins 2 % de la vitesse la plus rapide (en dessous, la simulation la refuse). &gt; 0 avec plan M à 0 : la coquille déborde de la pointe et descend le long des flancs.</div>
       </div>
       <div class="help">Incorporation dépendante de la facette (optionnel) : un plan cristallin peut incorporer plus ou moins d'indium/aluminium qu'un autre (ex : plus d'indium sur le plan C que sur les flancs semipolaires) — laissé vide, une facette reprend le matériau principal ci-dessus.</div>
       ${gradedMaterialFieldHtml("f-material-c", "Matériau — plan C", null, { allowUnset: true })}
