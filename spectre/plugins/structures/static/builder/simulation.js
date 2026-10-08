@@ -271,6 +271,13 @@ function clearSimulationError() {
 // lent, frappe rapide) est ignorée plutôt que d'écraser un aperçu plus récent.
 let simulateSeq = 0;
 
+// Une seule simulation à la fois : une retouche pendant qu'elle tourne en demande une autre, partie
+// à son retour avec l'état d'alors - plutôt que d'empiler sur le serveur des calculs dont seul le
+// dernier sert (un par chiffre tapé, sur un procédé de plusieurs secondes). La réponse d'une
+// simulation déjà dépassée n'est pas affichée.
+let simulating = false;
+let simulateAgain = false;
+
 // La simulation rend l'id de chaque étape envoyée (`step_ids`) : celui qu'elle avait, ou un neuf
 // pour une nouvelle étape - c'est ainsi qu'une étape ajoutée reçoit le sien, du serveur (le
 // constructeur n'en invente jamais, voir withoutStepId). Il est posé sur l'étape envoyée si elle
@@ -289,6 +296,11 @@ function adoptStepIds(sent, ids) {
 }
 
 async function simulateNow() {
+  if (simulating) {
+    simulateAgain = true;
+    return;
+  }
+  simulating = true;
   const seq = ++simulateSeq;
   const busy = document.getElementById("sim-busy");
   const busyTimer = setTimeout(() => (busy.hidden = false), 250);
@@ -302,7 +314,7 @@ async function simulateNow() {
       recipes: processRecipesPayload(sent),
       bricks: bricksPayload(sent),
     });
-    if (seq !== simulateSeq) return;
+    if (seq !== simulateSeq || simulateAgain) return;
     adoptStepIds(sent, result.step_ids);
     const colorsChanged = JSON.stringify(result.material_colors) !== JSON.stringify(state.materialColors);
     state.frames = result.frames;
@@ -312,10 +324,17 @@ async function simulateNow() {
     renderFrame();
     if (colorsChanged) renderRail(); // pastilles de matériau des puces, aux couleurs du dessin
   } catch (err) {
-    if (seq === simulateSeq) showSimulationError(err);
+    if (seq === simulateSeq && !simulateAgain) showSimulationError(err);
   } finally {
     clearTimeout(busyTimer);
-    if (seq === simulateSeq) busy.hidden = true;
+    simulating = false;
+    if (simulateAgain) {
+      simulateAgain = false;
+      busy.hidden = false; // la suivante part tout de suite
+      simulateNow();
+    } else if (seq === simulateSeq) {
+      busy.hidden = true;
+    }
   }
 }
 
