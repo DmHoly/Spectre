@@ -25,8 +25,10 @@ function structurePictureHtml(image, { index = null } = {}) {
 }
 
 // La planche : toutes les images (numérotées dès qu'il y en a plusieurs) ; `compact` - un aperçu
-// (graphe, atlas) : la première seulement, avec « +N » s'il y en a d'autres.
-function structureBoardHtml(images, { compact = false } = {}) {
+// (graphe, atlas) : la première seulement, avec « +N » s'il y en a d'autres. `zoomable` : l'aperçu
+// porte la loupe de structure-zoom.js - la page l'ouvre en grand au clic (structureImageZoomItems),
+// le lien reste pour Ctrl+clic.
+function structureBoardHtml(images, { compact = false, zoomable = false } = {}) {
   if (!images || !images.length) return "";
   if (compact) {
     const first = images[0];
@@ -34,13 +36,35 @@ function structureBoardHtml(images, { compact = false } = {}) {
     const kind = STRUCTURE_IMAGE_KIND_LABELS[first.kind] || "Image";
     const more = images.length - 1;
     return `
-      <a class="structure-thumb" href="${url}" target="_blank" rel="noopener" title="Ouvrir l'image en grand">
+      <a class="structure-thumb${zoomable ? " structure-zoomable" : ""}" href="${url}" target="_blank" rel="noopener" title="${zoomable ? "Agrandir et zoomer" : "Ouvrir l'image en grand"}">
         <span class="annot-frame"><img src="${url}" alt="${escapeHtml(first.caption ? `${kind} : ${first.caption}` : `${kind} de la structure`)}" loading="lazy"${ImageAnnotations.attr(first.annotations)}></span>
-        ${more ? `<span class="structure-thumb__more">+${more} image${more > 1 ? "s" : ""}</span>` : ""}
+        ${more ? `<span class="structure-thumb__more">+${more} image${more > 1 ? "s" : ""}</span>` : ""}${zoomable ? STRUCTURE_ZOOM_BADGE : ""}
       </a>`;
   }
   const numbered = images.length > 1;
   return `<div class="structure-board" data-count="${Math.min(images.length, 3)}">${images
     .map((image, i) => structurePictureHtml(image, { index: numbered ? i + 1 : null }))
     .join("")}</div>`;
+}
+
+// Les images d'une structure pour la boîte agrandie (structure-zoom.js::openStructureZoom), dans
+// l'ordre où les lire, annotations comprises : chacune avec son type et sa légende.
+function structureImageZoomItems(images) {
+  return (images || []).map((image) => {
+    const kind = STRUCTURE_IMAGE_KIND_LABELS[image.kind] || "Image";
+    const alt = image.caption ? `${kind} : ${image.caption}` : `${kind} de la structure`;
+    return {
+      html: `<span class="annot-frame"><img src="${escapeHtml(image.url)}" alt="${escapeHtml(alt)}" draggable="false"${ImageAnnotations.attr(image.annotations)}></span>`,
+      caption: image.caption ? `${kind} · ${image.caption}` : kind,
+    };
+  });
+}
+
+// Un clic sur un aperçu `zoomable` : ses images en grand ; Ctrl/Maj+clic garde le lien (un nouvel
+// onglet). Vrai quand le clic est pris.
+function enlargeStructureImages(event, title, images) {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0 || !(images || []).length) return false;
+  event.preventDefault();
+  openStructureZoom({ title, items: structureImageZoomItems(images) });
+  return true;
 }

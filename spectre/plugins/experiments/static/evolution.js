@@ -327,8 +327,9 @@
   }
 
   // La structure de la version choisie, telle que la fiche la montre : le dessin (étiquettes de
-  // couches comprises, « Agrandir » l'ouvre en grand) ou, pour une structure en images, sa première
-  // image avec ses annotations (structure-images.js, un clic l'ouvre). Lue une fois par version.
+  // couches comprises) ou, pour une structure en images, sa première image avec ses annotations
+  // (structure-images.js) ; un clic l'ouvre en grand, pour zoomer (structure-zoom.js). Lue une fois
+  // par version.
   async function loadStructure(node) {
     if (node.version_id in state.structures) return;
     state.structures[node.version_id] = undefined;
@@ -350,9 +351,9 @@
     if (shown === null) return "";
     let body = `<div class="skeleton" style="height:120px;"></div>`;
     if (shown && shown.svg) {
-      body = `<button type="button" class="evo-structure js-enlarge" aria-label="Agrandir la structure de ${escapeHtml(node.label)}" title="Agrandir">${shown.svg}</button>`;
+      body = `<button type="button" class="evo-structure structure-zoomable js-enlarge" aria-label="Agrandir la structure de ${escapeHtml(node.label)}" title="Agrandir et zoomer">${shown.svg}${STRUCTURE_ZOOM_BADGE}</button>`;
     } else if (shown) {
-      body = structureBoardHtml(shown.images, { compact: true });
+      body = structureBoardHtml(shown.images, { compact: true, zoomable: true });
     }
     return `
       <div class="evo-panel__section">
@@ -360,9 +361,6 @@
         ${body}
       </div>`;
   }
-
-  const structureDialog = document.getElementById("structure-dialog");
-  document.getElementById("structure-dialog-close").addEventListener("click", () => structureDialog.close());
 
   function renderPanel() {
     const node = nodeById(state.selectedId);
@@ -511,12 +509,12 @@
   });
 
   panel.addEventListener("click", (event) => {
-    const enlarge = event.target.closest(".js-enlarge");
-    if (!enlarge) return;
     const node = nodeById(state.selectedId);
-    document.getElementById("structure-dialog-title").textContent = node ? `${node.title} · ${node.label}` : "Structure";
-    document.getElementById("structure-dialog-body").innerHTML = enlarge.innerHTML;
-    structureDialog.showModal();
+    const shown = node && state.structures[node.version_id];
+    if (!shown) return;
+    const title = `${node.title} · ${node.label}`;
+    if (shown.svg && event.target.closest(".js-enlarge")) openStructureZoom({ title, items: [{ html: shown.svg }] });
+    else if (shown.images && event.target.closest(".structure-thumb")) enlargeStructureImages(event, title, shown.images);
   });
 
   panel.addEventListener("submit", (event) => {

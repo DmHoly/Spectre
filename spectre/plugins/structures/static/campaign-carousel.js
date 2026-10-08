@@ -38,8 +38,9 @@ function variantCaption(variation, i) {
 // (`reference_index`, choisie au lancement ; null : pas de référence dans le split - absent, la
 // première, comme avant ce choix).
 // Flèches, points, et ← → au clavier une fois le carrousel focalisé. `onChange(index)` suit le
-// défilement. Partagé par la fiche d'expérience, l'atlas et la vue d'ensemble d'un µprojet.
-function mountStructureCarousel(container, variation, { onChange } = {}) {
+// défilement ; avec `onEnlarge(index)`, la structure affichée est un bouton qui l'agrandit (voir
+// variantZoomItems). Partagé par la fiche d'expérience, l'atlas et la vue d'ensemble d'un µprojet.
+function mountStructureCarousel(container, variation, { onChange, onEnlarge } = {}) {
   const svgs = (variation && variation.svgs) || [];
   if (!container || svgs.length === 0) {
     if (container) container.innerHTML = "";
@@ -52,7 +53,11 @@ function mountStructureCarousel(container, variation, { onChange } = {}) {
     container.innerHTML = `
       <div class="atlas-carousel" tabindex="0" role="group" aria-roledescription="carrousel" aria-label="Structures des ${svgs.length} variantes">
         <div class="atlas-carousel__badge">${index === referenceIndex ? `<span class="badge badge-role">RÉF</span>` : ""}<span>${escapeHtml(variantCaption(variation, index))}</span></div>
-        <div class="atlas-carousel__stage">${svgs[index]}</div>
+        ${
+          onEnlarge
+            ? `<button type="button" class="atlas-carousel__stage structure-zoomable" data-enlarge aria-label="Agrandir la structure : ${escapeHtml(variantCaption(variation, index))}" title="Agrandir et zoomer">${svgs[index]}${STRUCTURE_ZOOM_BADGE}</button>`
+            : `<div class="atlas-carousel__stage">${svgs[index]}</div>`
+        }
         <div class="atlas-carousel__nav">
           <button type="button" class="btn btn-line" data-dir="-1" aria-label="Variante précédente" ${single ? "disabled" : ""}>&larr;</button>
           <span class="atlas-carousel__dots" aria-hidden="true">${
@@ -73,7 +78,8 @@ function mountStructureCarousel(container, variation, { onChange } = {}) {
     const dir = event.target.closest("[data-dir]");
     if (dir) return go(index + parseInt(dir.dataset.dir, 10), false);
     const dot = event.target.closest("[data-go]");
-    if (dot) go(parseInt(dot.dataset.go, 10), false);
+    if (dot) return go(parseInt(dot.dataset.go, 10), false);
+    if (onEnlarge && event.target.closest("[data-enlarge]")) onEnlarge(index);
   };
   container.onkeydown = (event) => {
     if (!event.target.closest(".atlas-carousel")) return;
@@ -89,4 +95,15 @@ function mountStructureCarousel(container, variation, { onChange } = {}) {
     },
     go: (i) => go(i, false),
   };
+}
+
+// Les variantes d'une campagne pour la boîte agrandie (structure-zoom.js::openStructureZoom) : chaque
+// structure avec la valeur de ses paramètres variés, celle de référence marquée « RÉF ».
+function variantZoomItems(variation) {
+  const referenceIndex = variation.reference_index === undefined ? 0 : variation.reference_index;
+  return ((variation && variation.svgs) || []).map((svg, i) => ({
+    html: svg,
+    caption: variantCaption(variation, i),
+    badge: i === referenceIndex ? "RÉF" : null,
+  }));
 }
