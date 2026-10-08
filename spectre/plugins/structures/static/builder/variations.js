@@ -25,6 +25,7 @@ const PARAM_FIELD_LABELS = {
   rate_c: "Vitesse plan C",
   rate_m: "Vitesse plan M",
   rate_sp: "Vitesse semipolaire",
+  rate_sp_inv: "Vitesse semipolaire inversée",
   semi_polar_angle_deg: "Angle semipolaire",
   top_level: "Niveau de troncature",
   angle_deg: "Angle",
@@ -32,13 +33,14 @@ const PARAM_FIELD_LABELS = {
   material_c: "Matériau plan C",
   material_m: "Matériau plan M",
   material_sp: "Matériau semipolaire",
+  material_sp_inv: "Matériau semipolaire inversé",
   resist_material: "Résine",
   stop_material: "Matériau d'arrêt",
   recipe: "Recette",
   orientation: "Orientation",
 };
-const PARAM_UNITS = { semi_polar_angle_deg: "°", angle_deg: "°", rate_c: "× réf.", rate_m: "× réf.", rate_sp: "× réf." };
-const MATERIAL_PARAM_FIELDS = new Set(["material", "material_c", "material_m", "material_sp", "resist_material", "stop_material"]);
+const PARAM_UNITS = { semi_polar_angle_deg: "°", angle_deg: "°", rate_c: "× réf.", rate_m: "× réf.", rate_sp: "× réf.", rate_sp_inv: "× réf." };
+const MATERIAL_PARAM_FIELDS = new Set(["material", "material_c", "material_m", "material_sp", "material_sp_inv", "resist_material", "stop_material"]);
 const ORIENTATION_CHOICES = [
   ["c_plane", "Plan C [0001]"],
   ["m_plane", "Plan M {10-10}"],
