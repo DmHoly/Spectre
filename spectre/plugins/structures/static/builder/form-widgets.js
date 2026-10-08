@@ -154,25 +154,28 @@ function parseCommaList(text) {
 }
 
 // Whether the semi-polar facets or the c-plane top wins the race, so the user knows if they're
-// heading for a flat-top pencil or a sharp pyramidal tip before running the simulation.
+// heading for a flat-top pencil or a sharp pyramidal tip before running the simulation. Kinetic
+// Wulff construction, as the engine does it: the c-plane top survives (and widens) when
+// rate_sp > rate_c·cos θ - the c-plane's advance seen along the semi-polar normal - and the
+// semi-polar facets close it into a point otherwise.
+function facetedGrowthTipHint(rateC, rateSp, angleDeg) {
+  if (rateC <= 0 && rateSp <= 0) return "";
+  const cAlongSp = rateC * Math.cos((angleDeg * Math.PI) / 180);
+  if (rateSp > cAlongSp) {
+    const ratio = cAlongSp > 0 ? (rateSp / cAlongSp).toFixed(2) : "∞";
+    return `→ le plan C se maintient (SP ×${ratio} vs C·cos θ) — pointe plate attendue`;
+  }
+  const ratio = rateSp > 0 ? (cAlongSp / rateSp).toFixed(2) : "∞";
+  return `→ le semipolaire referme le sommet (C·cos θ ×${ratio} vs SP) — pointe aiguë / pyramidale attendue`;
+}
+
 function wireFacetedGrowthTipHint() {
   const hint = document.getElementById("f-tip-hint");
   const update = () => {
     const rateC = parseFloat(document.getElementById("f-rate-c").value) || 0;
     const rateSp = parseFloat(document.getElementById("f-rate-sp").value) || 0;
     const angle = parseFloat(document.getElementById("f-angle-sp").value) || 30;
-    const spVertical = rateSp * Math.cos((angle * Math.PI) / 180);
-    if (rateC <= 0 && rateSp <= 0) {
-      hint.textContent = "";
-      return;
-    }
-    if (rateC >= spVertical) {
-      const ratio = spVertical > 0 ? (rateC / spVertical).toFixed(2) : "∞";
-      hint.textContent = `→ le plan C domine (×${ratio} vs SP vertical) — pointe plate attendue`;
-    } else {
-      const ratio = rateC > 0 ? (spVertical / rateC).toFixed(2) : "∞";
-      hint.textContent = `→ le semipolaire domine (×${ratio} vs C) — pointe aiguë / pyramidale attendue`;
-    }
+    hint.textContent = facetedGrowthTipHint(rateC, rateSp, angle);
   };
   ["f-rate-c", "f-rate-sp", "f-angle-sp"].forEach((id) => document.getElementById(id).addEventListener("input", update));
   update();

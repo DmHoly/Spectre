@@ -27,6 +27,7 @@ const FIELD_LABELS = {
   rate_c: "vitesse C",
   rate_m: "vitesse M",
   rate_sp: "vitesse SP",
+  rate_sp_inv: "vitesse SP inversée",
   semi_polar_angle_deg: "angle SP",
   angle_deg: "angle",
   material: "matériau",
@@ -68,7 +69,7 @@ function stepSummary(preset) {
       return [lengthText(step.depth), recipe, targets.length && selective.default_factor === 0 ? `ne grave que ${targets.join(", ")}` : ""].filter(Boolean).join(" · ");
     }
     case "faceted_growth":
-      return `${step.material} · ${lengthText(step.thickness)} · C×${step.rate_c} M×${step.rate_m} SP×${step.rate_sp} (${step.semi_polar_angle_deg}°)`;
+      return `${step.material} · ${lengthText(step.thickness)} · C×${step.rate_c} M×${step.rate_m} SP×${step.rate_sp}${step.rate_sp_inv > 0 ? ` SP inv×${step.rate_sp_inv}` : ""} (${step.semi_polar_angle_deg}°)`;
     case "facet_envelope": {
       const planes = [step.c_plane !== false ? "C" : "", step.m_plane ? "M" : "", step.semi_polar_angle_deg != null ? `SP ${step.semi_polar_angle_deg}°` : ""].filter(Boolean);
       return [step.material, planes.join(" + "), step.top_level ? `tronqué à ${lengthText(step.top_level)}` : ""].filter(Boolean).join(" · ");

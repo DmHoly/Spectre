@@ -13,10 +13,25 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { loadStructureBuilder } = require("./helpers/load-structure-builder");
 
-const { STEP_KIND_DEFS, STEP_KINDS, CAMPAIGN_FIELD_OPTIONS, PY_STEP_CLASS, stepSummary, pyStepCode, modeSummary, parseOpenings, pyStr, pyLength, pyDict, toNm } =
+const {
+  STEP_KIND_DEFS,
+  STEP_KINDS,
+  CAMPAIGN_FIELD_OPTIONS,
+  PY_STEP_CLASS,
+  stepSummary,
+  pyStepCode,
+  modeSummary,
+  parseOpenings,
+  pyStr,
+  pyLength,
+  pyDict,
+  toNm,
+  facetedGrowthTipHint,
+} =
   loadStructureBuilder(
     ["form-widgets.js", "code-export.js", "step-kinds.js"],
     [
+      "facetedGrowthTipHint",
       "STEP_KIND_DEFS",
       "STEP_KINDS",
       "CAMPAIGN_FIELD_OPTIONS",
@@ -185,4 +200,87 @@ test("stepSummary renders a human-readable one-liner for every step kind", () =>
   assert.equal(stepSummary({ kind: "facet_envelope", material: "GaN", c_plane: true, m_plane: true, semi_polar_angle_deg: null, seed_materials: [] }), "GaN · C + M");
   assert.equal(stepSummary(SAMPLE_STEPS.epitaxial_growth), "GaN · +20 nm · semi-polaire 32°");
   assert.equal(stepSummary(SAMPLE_STEPS.flip), "face avant ↔ face arrière");
+});
+
+// Un document qui garde la valeur de chaque champ, juste ce que buildFromForm/fillFields lisent et
+// écrivent - le document factice du harnais rend un élément neuf à chaque appel, sans mémoire.
+function withFormDocument(values, fn) {
+  const elements = new Map();
+  const element = (id) => {
+    if (!elements.has(id)) elements.set(id, { value: values[id] ?? "", style: {}, textContent: "", appendChild() {} });
+    return elements.get(id);
+  };
+  const saved = global.document;
+  global.document = { getElementById: element, createElement: () => ({}) };
+  try {
+    return fn(element);
+  } finally {
+    global.document = saved;
+  }
+}
+
+// Une coquille partie de la pointe : flancs qui ne poussent pas (plan M à 0), facettes inversées
+// à 0.3 en InGaN 30 %.
+const SHELL_FORM = {
+  "f-material-select": "GaN",
+  "f-thickness": "20",
+  "f-thickness-unit": "nm",
+  "f-rate-c": "1",
+  "f-rate-m": "0",
+  "f-rate-sp": "0.5",
+  "f-rate-sp-inv": "0.3",
+  "f-angle-sp": "30",
+  "f-seed-materials": "GaN",
+  "f-material-sp-inv-select": "__in_gan__",
+  "f-material-sp-inv-fraction": "30",
+};
+
+test("faceted_growth: the inverted semi-polar rate and material go from the form to the step and back", () => {
+  const def = STEP_KIND_DEFS.faceted_growth;
+  const step = withFormDocument(SHELL_FORM, () => def.buildFromForm("Coquille"));
+  assert.equal(step.rate_sp_inv, 0.3);
+  assert.equal(step.material_sp_inv, "In0.30Ga0.70N");
+  assert.equal(step.material_sp, null);
+  assert.equal(step.rate_m, 0);
+  const again = withFormDocument({}, () => {
+    def.fillFields(step);
+    return def.buildFromForm("Coquille");
+  });
+  assert.deepEqual(again, step);
+});
+
+test("faceted_growth: a step saved before the inverted facets opens with them off and exports as before", () => {
+  const def = STEP_KIND_DEFS.faceted_growth;
+  const old = SAMPLE_STEPS.faceted_growth; // ni rate_sp_inv ni material_sp_inv
+  const step = withFormDocument({}, (element) => {
+    def.fillFields(old);
+    assert.equal(element("f-rate-sp-inv").value, 0);
+    return def.buildFromForm(old.name);
+  });
+  assert.equal(step.rate_sp_inv, 0);
+  assert.equal(step.material_sp_inv, null);
+  assert.equal(pyStepCode(step), EXPECTED_PY_CODE.faceted_growth);
+  assert.equal(stepSummary(step), stepSummary(old));
+});
+
+test("faceted_growth: summary and Python code name the inverted facets only when they are used", () => {
+  const shell = { ...SAMPLE_STEPS.faceted_growth, rate_m: 0, rate_sp_inv: 0.3, material_sp_inv: "In0.30Ga0.70N" };
+  assert.equal(stepSummary(shell), "GaN · +10 nm (C) · M×0 · SP×0.15 · SP inv×0.3 · SPinv=In0.30Ga0.70N · SAG sur GaN");
+  assert.equal(
+    pyStepCode(shell),
+    'FacetedGrowth(name="Croissance facettée", material="GaN", thickness=Length(value=10, unit="nm"), rate_c=1, rate_m=0, rate_sp=0.15, rate_sp_inv=0.3, semi_polar_angle_deg=30, material_sp_inv="In0.30Ga0.70N", seed_materials=["GaN"])'
+  );
+  const off = { ...SAMPLE_STEPS.faceted_growth, rate_sp_inv: 0, material_sp_inv: null };
+  assert.equal(stepSummary(off), stepSummary(SAMPLE_STEPS.faceted_growth));
+  assert.equal(pyStepCode(off), EXPECTED_PY_CODE.faceted_growth);
+});
+
+test("facetedGrowthTipHint: flat top when rate_sp > rate_c·cos θ, as the engine decides", () => {
+  // les deux cas vérifiés sur un fil de 60 nm : le sommet rétrécit, puis s'élargit
+  assert.match(facetedGrowthTipHint(1, 0.5, 45), /pointe aiguë/);
+  assert.match(facetedGrowthTipHint(1, 1.2, 45), /pointe plate/);
+  // plan C immobile : le semipolaire élargit le sommet ; semipolaire immobile : il le referme
+  assert.match(facetedGrowthTipHint(0, 0.5, 30), /pointe plate/);
+  assert.match(facetedGrowthTipHint(1, 0, 30), /pointe aiguë/);
+  assert.equal(facetedGrowthTipHint(0, 0, 30), "");
 });

@@ -30,6 +30,7 @@ const ExperimentVocabulary = {
     rate_c: "Vitesse relative (plan C)",
     rate_m: "Vitesse relative (plan M)",
     rate_sp: "Vitesse relative (semipolaire)",
+    rate_sp_inv: "Vitesse relative (semipolaire inversée)",
     semi_polar_angle_deg: "Angle semipolaire",
     seed_materials: "Matériaux d'amorçage (SAG)",
   },

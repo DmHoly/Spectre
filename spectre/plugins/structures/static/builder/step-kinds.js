@@ -249,10 +249,14 @@ const STEP_KIND_DEFS = {
       <div class="field-row"><div><label>Vitesse semipolaire</label><input class="field" id="f-rate-sp" type="number" value="0.5" min="0" step="0.05"></div>
       <div><label>Angle semipolaire (° depuis l'axe c)</label><input class="field" id="f-angle-sp" type="number" value="30" min="1" max="89" step="1"></div></div>
       <div class="help" id="f-tip-hint" style="margin-top:-6px;"></div>
+      <div><label>Vitesse semipolaire inversée {10-1-1}</label><input class="field" id="f-rate-sp-inv" type="number" value="0" min="0" step="0.05">
+        <div class="help" style="margin-top:4px;">0 = désactivée. &gt; 0 avec plan M à 0 : la coquille déborde de la pointe et descend le long des flancs.</div>
+      </div>
       <div class="help">Incorporation dépendante de la facette (optionnel) : un plan cristallin peut incorporer plus ou moins d'indium/aluminium qu'un autre (ex : plus d'indium sur le plan C que sur les flancs semipolaires) — laissé vide, une facette reprend le matériau principal ci-dessus.</div>
       ${gradedMaterialFieldHtml("f-material-c", "Matériau — plan C", null, { allowUnset: true })}
       ${gradedMaterialFieldHtml("f-material-m", "Matériau — plan M (flancs)", null, { allowUnset: true })}
       ${gradedMaterialFieldHtml("f-material-sp", "Matériau — semipolaire", null, { allowUnset: true })}
+      ${gradedMaterialFieldHtml("f-material-sp-inv", "Matériau — semipolaire inversée", null, { allowUnset: true })}
       <div><label>Matériaux d'amorçage — SAG (optionnel)</label><input class="field" id="f-seed-materials" placeholder="ex : GaN, InGaN">
         <div class="help" style="margin-top:4px;">Noms séparés par des virgules. Vide = croissance sur toute surface exposée, sans sélectivité. « InGaN » / « AlGaN » valent pour n'importe quelle composition (In0.20Ga0.80N…).</div>
       </div>`,
@@ -261,6 +265,7 @@ const STEP_KIND_DEFS = {
       wireGradedMaterialField("f-material-c");
       wireGradedMaterialField("f-material-m");
       wireGradedMaterialField("f-material-sp");
+      wireGradedMaterialField("f-material-sp-inv");
       wireFacetedGrowthTipHint();
     },
     buildFromForm: (name) => ({
@@ -271,11 +276,13 @@ const STEP_KIND_DEFS = {
       rate_c: parseFloat(document.getElementById("f-rate-c").value) || 0,
       rate_m: parseFloat(document.getElementById("f-rate-m").value) || 0,
       rate_sp: parseFloat(document.getElementById("f-rate-sp").value) || 0,
+      rate_sp_inv: parseFloat(document.getElementById("f-rate-sp-inv").value) || 0,
       semi_polar_angle_deg: parseFloat(document.getElementById("f-angle-sp").value) || 30,
       seed_materials: parseCommaList(document.getElementById("f-seed-materials").value),
       material_c: gradedMaterialValue("f-material-c") || null,
       material_m: gradedMaterialValue("f-material-m") || null,
       material_sp: gradedMaterialValue("f-material-sp") || null,
+      material_sp_inv: gradedMaterialValue("f-material-sp-inv") || null,
     }),
     fillFields: (step) => {
       fillGradedMaterialField("f-material", step.material);
@@ -284,10 +291,12 @@ const STEP_KIND_DEFS = {
       document.getElementById("f-rate-c").value = step.rate_c;
       document.getElementById("f-rate-m").value = step.rate_m;
       document.getElementById("f-rate-sp").value = step.rate_sp;
+      document.getElementById("f-rate-sp-inv").value = step.rate_sp_inv ?? 0; // absent des étapes d'avant
       document.getElementById("f-angle-sp").value = step.semi_polar_angle_deg;
       fillGradedMaterialField("f-material-c", step.material_c);
       fillGradedMaterialField("f-material-m", step.material_m);
       fillGradedMaterialField("f-material-sp", step.material_sp);
+      fillGradedMaterialField("f-material-sp-inv", step.material_sp_inv);
       document.getElementById("f-seed-materials").value = (step.seed_materials || []).join(", ");
     },
     summary: (step) => {
@@ -295,8 +304,10 @@ const STEP_KIND_DEFS = {
       if (step.material_c) facets.push(`C=${step.material_c}`);
       if (step.material_m) facets.push(`M=${step.material_m}`);
       if (step.material_sp) facets.push(`SP=${step.material_sp}`);
+      if (step.material_sp_inv) facets.push(`SPinv=${step.material_sp_inv}`);
       return (
         `${step.material} · +${step.thickness.value} ${step.thickness.unit} (C) · M×${step.rate_m} · SP×${step.rate_sp}` +
+        (step.rate_sp_inv > 0 ? ` · SP inv×${step.rate_sp_inv}` : "") +
         (facets.length ? ` · ${facets.join(", ")}` : "") +
         (step.seed_materials && step.seed_materials.length ? ` · SAG sur ${step.seed_materials.join("/")}` : "")
       );
@@ -309,11 +320,14 @@ const STEP_KIND_DEFS = {
         `rate_c=${step.rate_c}`,
         `rate_m=${step.rate_m}`,
         `rate_sp=${step.rate_sp}`,
-        `semi_polar_angle_deg=${step.semi_polar_angle_deg}`,
       ];
+      // écrit seulement s'il sert : un export d'avant reste identique
+      if (step.rate_sp_inv > 0) parts.push(`rate_sp_inv=${step.rate_sp_inv}`);
+      parts.push(`semi_polar_angle_deg=${step.semi_polar_angle_deg}`);
       if (step.material_c) parts.push(`material_c=${pyStr(step.material_c)}`);
       if (step.material_m) parts.push(`material_m=${pyStr(step.material_m)}`);
       if (step.material_sp) parts.push(`material_sp=${pyStr(step.material_sp)}`);
+      if (step.material_sp_inv) parts.push(`material_sp_inv=${pyStr(step.material_sp_inv)}`);
       if (step.seed_materials && step.seed_materials.length) parts.push(`seed_materials=${pyList(step.seed_materials)}`);
       return `FacetedGrowth(${parts.join(", ")})`;
     },
