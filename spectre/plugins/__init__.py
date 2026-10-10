@@ -20,6 +20,7 @@ from .links import PLUGIN as links
 from .lots import PLUGIN as lots
 from .microprojects import PLUGIN as microprojects
 from .notebook import PLUGIN as notebook
+from .planning import PLUGIN as planning
 from .process_library import PLUGIN as process_library
 from .references import PLUGIN as references
 from .search import PLUGIN as search
@@ -45,6 +46,7 @@ PLUGINS = (
     intent_forms,
     wafers,
     lots,
+    planning,
     links,
     atlas,
     characterization,
