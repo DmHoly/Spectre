@@ -27,6 +27,7 @@ import unicodedata
 from dataclasses import dataclass, replace
 from typing import Any
 
+import shapely
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import nearest_points, unary_union
 from structureforge.adapters.follow_adapter import ProcessStructure
@@ -312,9 +313,15 @@ def _anchor(rings: list[dict]) -> tuple[float, float] | None:
     return seg_max - inset, inside.y
 
 
+# la grille (en nm) sur laquelle s'unissent les couches : le moteur laisse un bruit flottant entre
+# deux couches qui se touchent (le bas d'un dépôt à 1e-18 au lieu de 0) qui, sans elle, garde leur
+# interface dans le contour de l'union - une marque d'interface s'y poserait comme sur une surface
+_UNION_GRID = 1e-6
+
+
 def _union(frame: Frame, layers: tuple[int, ...]) -> Any:
     shapes = [shape for k in layers if k < len(frame.layers) for shape in [_shape(frame.layers[k].rings())] if shape is not None and not shape.is_empty]
-    return unary_union(shapes) if shapes else None
+    return shapely.union_all(shapes, grid_size=_UNION_GRID) if shapes else None
 
 
 # où chercher la surface d'une marque d'interface, en fraction de la largeur : à droite d'abord, du
