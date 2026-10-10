@@ -35,7 +35,7 @@ from typing import Any
 from ...kernel.errors import InvalidInput
 
 from .schemas import ProcessInput
-from .simulation import label_without_place
+from .simulation import LATTICE_OPENING_KEY, label_without_place
 
 SUBSTRATE_ROW = "substrat"  # la clé de la ligne du substrat
 MIN_SOURCES = 2
@@ -256,6 +256,9 @@ def compose(processes: list[ProcessInput], choices: list[Any] | None = None) -> 
     def take(s: int, position: int, brick_key: str | None, brick_source: int, own_id: str | None) -> None:
         source = sources[s]
         step = dict(source.steps[position])
+        anchor = source.process.lattice_anchors.get(position)
+        if anchor is not None:
+            step[LATTICE_OPENING_KEY] = anchor.model_dump(mode="json")  # ancrée au réseau (simulation.LatticeOpening)
         if own_id:
             step = {"id": own_id, **step}
         at = str(len(steps))

@@ -37,6 +37,7 @@ async function saveLibraryStructure(forceNew) {
     layer_labels: layerLabelsPayload(state.steps),
     recipes: processRecipesPayload(state.steps),
     preset_origins: presetOriginsPayload(state.steps),
+    lattice_openings: latticeOpeningsPayload(state.steps),
     bricks: bricksPayload(state.steps),
     scope: document.getElementById("library-shared-checkbox").checked ? "shared" : "microproject",
     microproject: slug,

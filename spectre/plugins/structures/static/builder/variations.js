@@ -46,7 +46,7 @@ const ORIENTATION_CHOICES = [
   ["m_plane", "Plan M {10-10}"],
   ["semi_polar", "Semi-polaire"],
 ];
-const NON_VARIABLE_STEP_KEYS = new Set(["id", "kind", "name", "description", "declaredParams", "layerLabel", "ownRecipe", "presetOrigin", "brick_group_id", "brick_name", "brick_source", "parameters", "seed_materials", "openings"]);
+const NON_VARIABLE_STEP_KEYS = new Set(["id", "kind", "name", "description", "declaredParams", "layerLabel", "ownRecipe", "presetOrigin", "brick_group_id", "brick_name", "brick_source", "parameters", "seed_materials", "openings", "lattice_opening"]);
 
 // L'id par lequel un facteur désigne l'étape `stepIndex` (-1 : le substrat) - null tant que le
 // serveur ne lui en a pas donné (une étape toute neuve, avant la simulation qui suit son ajout).
@@ -116,7 +116,8 @@ function variableParams(stepIndex) {
     const substrate = substrateSpec();
     return [
       { field: "thickness", label: "Épaisseur", type: "number", unit: unitLabel(substrate.thickness.unit), current: substrate.thickness.value },
-      { field: "domain_width", label: "Largeur du domaine", type: "number", unit: unitLabel(substrate.domain_width.unit), current: substrate.domain_width.value },
+      // avec un réseau de fils, la largeur suit le pas (à faire varier sur la lithographie ancrée)
+      ...(substrate.lattice ? [] : [{ field: "domain_width", label: "Largeur du domaine", type: "number", unit: unitLabel(substrate.domain_width.unit), current: substrate.domain_width.value }]),
       { field: "material", label: "Matériau", type: "choice", choices: materialChoices(substrate.material), current: substrate.material },
     ];
   }
@@ -158,7 +159,11 @@ function variableParams(stepIndex) {
     }
   });
   if (step.kind === "lithography" && step.openings && step.openings.length) {
-    const { pitch, diameter } = openingsGeometry(step.openings);
+    const geometry = openingsGeometry(step.openings);
+    // ancrée au réseau : son pas et son diamètre sont ceux du réseau, même avec un seul fil
+    const lattice = step.lattice_opening ? substrateLattice() : null;
+    const pitch = lattice ? lattice.pitch : geometry.pitch;
+    const diameter = lattice ? step.lattice_opening.diameter : geometry.diameter;
     if (pitch != null) params.push({ field: "openings.pitch", label: "Pas du réseau", type: "number", unit: "nm", current: pitch });
     params.push({ field: "openings.diameter", label: "Diamètre d'ouverture", type: "number", unit: "nm", current: diameter });
   }

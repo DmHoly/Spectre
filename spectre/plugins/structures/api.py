@@ -68,6 +68,7 @@ def preview_campaign(body: CampaignPreviewRequest) -> dict:
         simulation.layer_labels_by_index(body.layer_labels, len(body.steps)),
         simulation.checked_bricks(body.bricks, len(body.steps)),
         body.recipes or None,
+        body.lattice_anchors,
     )
     return {
         "svgs": result.svgs,

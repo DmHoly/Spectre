@@ -144,20 +144,53 @@ const STEP_KIND_DEFS = {
       <div><label>Résine</label><select class="field" id="f-resist-material">${materialOptions("Photoresist")}</select></div>
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="500"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option></select></div></div>
-      <div class="card" style="padding:10px 12px;margin:4px 0;background:var(--bg);">
-        <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Réseau périodique (optionnel)</div>
-        <div class="field-row">
-          <div><label>Pas (pitch, nm)</label><input class="field" id="f-litho-pitch" type="number" min="0"></div>
-          <div><label>Diamètre d'ouverture (nm)</label><input class="field" id="f-litho-diameter" type="number" min="0"></div>
-        </div>
-        <div class="field-row">
-          <div><label>Nombre (optionnel)</label><input class="field" id="f-litho-count" type="number" min="1" placeholder="rempli le domaine"></div>
-          <div><label>Décalage du centre (optionnel)</label><input class="field" id="f-litho-offset" type="number" placeholder="centré"></div>
-        </div>
-        <button class="btn btn-line btn-block" id="f-litho-generate-btn" type="button" style="margin-top:6px;">Générer les ouvertures</button>
+      <div><label for="f-litho-placement">Ouvertures</label><select class="field" id="f-litho-placement">
+        <option value="lattice">Sur le réseau (un trou par fil)</option>
+        <option value="free">Libres (en nm)</option>
+      </select></div>
+      <div id="f-litho-lattice-wrap" class="sb-insp__card">
+        <div><label for="f-litho-lattice-diameter">Diamètre d'ouverture (nm)</label><input class="field" id="f-litho-lattice-diameter" type="number" min="0" value="100"></div>
+        <div class="help sb-litho-anchor" id="f-litho-lattice-status"></div>
+        <button class="btn btn-line btn-block" id="f-litho-lattice-create-btn" type="button" hidden>Créer le réseau sur le substrat</button>
       </div>
-      <div><label>Ouvertures (nm)</label><input class="field" id="f-openings" placeholder="ex : 80-140, 300-360"><div class="help">Zones où le masque est ouvert, séparées par des virgules — modifiable librement après génération.</div></div>`,
+      <div id="f-litho-free-wrap">
+        <div class="card" style="padding:10px 12px;margin:4px 0;background:var(--bg);">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Réseau périodique (optionnel)</div>
+          <div class="field-row">
+            <div><label>Pas (pitch, nm)</label><input class="field" id="f-litho-pitch" type="number" min="0"></div>
+            <div><label>Diamètre d'ouverture (nm)</label><input class="field" id="f-litho-diameter" type="number" min="0"></div>
+          </div>
+          <div class="field-row">
+            <div><label>Nombre (optionnel)</label><input class="field" id="f-litho-count" type="number" min="1" placeholder="rempli le domaine"></div>
+            <div><label>Décalage du centre (optionnel)</label><input class="field" id="f-litho-offset" type="number" placeholder="centré"></div>
+          </div>
+          <button class="btn btn-line btn-block" id="f-litho-generate-btn" type="button" style="margin-top:6px;">Générer les ouvertures</button>
+        </div>
+        <div><label>Ouvertures (nm)</label><input class="field" id="f-openings" placeholder="ex : 80-140, 300-360"><div class="help">Zones où le masque est ouvert, séparées par des virgules — modifiable librement après génération.</div></div>
+        <button class="btn btn-line btn-block" id="f-litho-anchor-btn" type="button" hidden>Ancrer ces ouvertures sur un réseau de fils</button>
+      </div>`,
     wire: () => {
+      // une nouvelle lithographie se pose sur le réseau quand le substrat en a un (fillFields reprend
+      // ensuite le placement d'une étape existante)
+      document.getElementById("f-litho-placement").value = substrateLattice() ? "lattice" : "free";
+      updateLithoPlacement();
+      document.getElementById("f-litho-placement").addEventListener("change", updateLithoPlacement);
+      document.getElementById("f-openings").addEventListener("input", updateLithoPlacement);
+      document.getElementById("f-litho-lattice-create-btn").addEventListener("click", () => {
+        const diameter = parseFloat(document.getElementById("f-litho-lattice-diameter").value) || 100;
+        setSubstrateLattice({ pitch: Math.max(400, Math.ceil((diameter * 2) / 100) * 100), wires: 1 });
+        livePreviewFromForm();
+      });
+      document.getElementById("f-litho-anchor-btn").addEventListener("click", () => {
+        const regular = regularOpenings(parseOpenings(document.getElementById("f-openings").value));
+        if (!regular) return;
+        document.getElementById("f-litho-lattice-diameter").value = regular.diameter;
+        document.getElementById("f-litho-placement").value = "lattice";
+        updateLithoPlacement();
+        livePreviewFromForm(); // l'étape ancrée d'abord : poser le réseau redessine l'inspecteur depuis elle
+        // un réseau déjà là garde son pas ; sinon, celui des ouvertures, autant de fils qu'elles
+        if (!substrateLattice()) setSubstrateLattice({ pitch: regular.pitch, wires: regular.count });
+      });
       document.getElementById("f-litho-generate-btn").addEventListener("click", () => {
         const pitch = parseFloat(document.getElementById("f-litho-pitch").value);
         const diameter = parseFloat(document.getElementById("f-litho-diameter").value);
@@ -172,23 +205,41 @@ const STEP_KIND_DEFS = {
           offsetRaw ? parseFloat(offsetRaw) : null
         );
         document.getElementById("f-openings").value = openings.map((pair) => pair.join("-")).join(", ");
+        updateLithoPlacement();
         livePreviewFromForm(); // valeur posée par script, ne déclenche ni "input" ni "change" toute seule
       });
     },
-    buildFromForm: (name) => ({
-      kind: "lithography",
-      name,
-      resist_material: document.getElementById("f-resist-material").value,
-      thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
-      openings: parseOpenings(document.getElementById("f-openings").value),
-    }),
+    buildFromForm: (name) => {
+      const step = {
+        kind: "lithography",
+        name,
+        resist_material: document.getElementById("f-resist-material").value,
+        thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
+        openings: parseOpenings(document.getElementById("f-openings").value),
+      };
+      if (document.getElementById("f-litho-placement").value === "lattice") {
+        const diameter = parseFloat(document.getElementById("f-litho-lattice-diameter").value);
+        if (diameter > 0) {
+          step.lattice_opening = { diameter };
+          const lattice = substrateLattice();
+          if (lattice) step.openings = latticeOpenings(lattice, diameter);
+        }
+      }
+      return step;
+    },
     fillFields: (step) => {
       ensureSelectValue("f-resist-material", step.resist_material);
       document.getElementById("f-thickness").value = step.thickness.value;
       ensureSelectValue("f-thickness-unit", step.thickness.unit, "");
       document.getElementById("f-openings").value = step.openings.map((pair) => pair.join("-")).join(", ");
+      document.getElementById("f-litho-placement").value = step.lattice_opening ? "lattice" : "free";
+      if (step.lattice_opening) document.getElementById("f-litho-lattice-diameter").value = step.lattice_opening.diameter;
+      updateLithoPlacement();
     },
-    summary: (step) => `${step.resist_material} · ${step.openings.length} ouverture(s)`,
+    summary: (step) =>
+      step.lattice_opening
+        ? `${step.resist_material} · réseau Ø${step.lattice_opening.diameter} nm · ${step.openings.length} trou(s)`
+        : `${step.resist_material} · ${step.openings.length} ouverture(s)`,
     pyCode: (step) => {
       const openings = step.openings.map(([a, b]) => `(${a}, ${b})`).join(", ");
       return `Lithography(name=${pyStr(step.name)}, resist_material=${pyStr(step.resist_material)}, thickness=${pyLength(step.thickness)}, openings=[${openings}])`;
@@ -520,6 +571,41 @@ function stepIconHtml(kind) {
     <div class="step-icon" style="background:${def.tint};color:${def.color};">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${def.iconPath}</svg>
     </div>`;
+}
+
+// Des ouvertures régulières (même largeur, même pas) - de quoi les ancrer sur un réseau de fils :
+// {pitch, diameter, count}, null sinon (une seule ouverture : le pas est la largeur du domaine).
+function regularOpenings(openings) {
+  const sorted = [...openings].filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+  if (!sorted.length) return null;
+  const widths = sorted.map(([a, b]) => b - a);
+  const centers = sorted.map(([a, b]) => (a + b) / 2);
+  const diameter = widths[0];
+  if (widths.some((w) => Math.abs(w - diameter) > 1e-3)) return null;
+  let pitch = toNm(substrateSpec().domain_width);
+  if (sorted.length >= 2) {
+    pitch = centers[1] - centers[0];
+    if (centers.some((c, i) => i > 0 && Math.abs(c - centers[i - 1] - pitch) > 1e-3)) return null;
+  }
+  if (!(pitch > diameter)) return null;
+  return { pitch: roundNm(pitch), diameter: roundNm(diameter), count: sorted.length };
+}
+
+// Le formulaire de lithographie selon son placement : sur le réseau (diamètre, état du réseau) ou
+// libre (plages en nm, et l'offre de les ancrer quand elles sont régulières).
+function updateLithoPlacement() {
+  const placement = document.getElementById("f-litho-placement");
+  if (!placement) return;
+  const onLattice = placement.value === "lattice";
+  document.getElementById("f-litho-lattice-wrap").hidden = !onLattice;
+  document.getElementById("f-litho-free-wrap").hidden = onLattice;
+  const lattice = substrateLattice();
+  document.getElementById("f-litho-lattice-create-btn").hidden = !onLattice || Boolean(lattice);
+  document.getElementById("f-litho-lattice-status").textContent = lattice
+    ? `Un trou par fil, centré dans sa maille : pas ${lattice.pitch} nm, ${lattice.wires} fil${lattice.wires > 1 ? "s" : ""} (réglés sur le substrat).`
+    : "Le substrat n'a pas encore de réseau de fils : les ouvertures restent celles d'avant.";
+  const regular = !onLattice && regularOpenings(parseOpenings(document.getElementById("f-openings").value));
+  document.getElementById("f-litho-anchor-btn").hidden = !regular;
 }
 
 function renderKindFields(kind) {

@@ -402,6 +402,7 @@ async function groupSelectionIntoBrick() {
       layer_labels: layerLabelsPayload(selectedSteps),
       recipes: processRecipesPayload(selectedSteps),
       preset_origins: presetOriginsPayload(selectedSteps),
+      lattice_openings: latticeOpeningsPayload(selectedSteps),
       scope: "microproject",
       microproject: slug,
     });
@@ -457,7 +458,7 @@ function substrateChipHtml() {
       </span>
       <span class="sb-chip__body">
         <span class="sb-chip__top"><span class="sb-chip__num">S</span><span class="sb-chip__name">Substrat</span></span>
-        <span class="sb-chip__sub">${escapeHtml(substrate.material)} · ${escapeHtml(lengthLabel(substrate.thickness))}</span>
+        <span class="sb-chip__sub">${escapeHtml(substrate.material)} · ${escapeHtml(lengthLabel(substrate.thickness))}${substrate.lattice ? ` · ${substrate.lattice.wires} fil${substrate.lattice.wires > 1 ? "s" : ""}` : ""}</span>
       </span>
       ${hasFactor ? `<span class="sb-chip__badge sb-chip__badge--factor" title="Paramètre varié">×${factorCount}</span>` : ""}
     </div>`;

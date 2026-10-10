@@ -47,6 +47,7 @@ from ..structures.simulation import (
     MIN_GROUPED_LABELS,
     label_without_place,
     split_declared_unit,
+    view_neutral_process,
 )
 
 ChangeLevel = Literal["initial", "major", "minor", "patch", "none"]
@@ -86,6 +87,8 @@ def structure_signature(metadata: dict[str, Any]) -> dict[str, Any] | None:
     they never change the version."""
     process = metadata.get("structureforge_process")
     if process is not None:
+        # un procédé à réseau de fils : le nombre de fils vus n'est pas la structure
+        process = view_neutral_process(process)
         labels = metadata.get(LAYER_LABELS_METADATA_KEY)
         if not labels:
             return process
@@ -166,6 +169,8 @@ def same_settings(before: dict[str, Any] | None, after: dict[str, Any]) -> bool:
     étiquettes."""
     if not isinstance(before, dict) or before == after:
         return before == after
+    # le nombre de fils vus d'un réseau n'est pas un réglage
+    before, after = view_neutral_process(before), view_neutral_process(after)
     rest_before = {key: value for key, value in before.items() if key != "declared_params"}
     rest_after = {key: value for key, value in after.items() if key != "declared_params"}
     return rest_before == rest_after and _declared_change(before.get("declared_params", {}), after.get("declared_params", {})) != "minor"

@@ -26,14 +26,52 @@ from structureforge.core.traced import Traced
 from structureforge.core.units import Length
 from structureforge.geometry.engine import Geometry, Layer, LayerProvenance
 from structureforge.process.simulate import Frame, SimulationError, simulate
-from structureforge.process.steps import Flip, ProcessStep
+from structureforge.process.steps import Flip, Lithography, ProcessStep
 
 from ...kernel.errors import InvalidInput
+
+MAX_LATTICE_WIRES = 50
+
+
+class Lattice(BaseModel):
+    """Le réseau de fils du gabarit SAG : un pas (nm) et le nombre de fils simulés. Le domaine fait
+    alors ``wires * pitch`` de large, chaque fil au centre de sa maille (``(i + 0.5) * pitch``), et
+    une lithographie ancrée au réseau (:class:`LatticeOpening`) y ouvre un trou par fil. Le nombre
+    de fils est une vue (1 fil pour régler une épi, un pixel de 5-6 fils pour un procédé) : il ne
+    change ni le pas ni les recettes, et le versionnage ne le compte pas (:func:`view_neutral_process`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pitch: float = Field(gt=0, le=1_000_000)
+    wires: int = Field(1, ge=1, le=MAX_LATTICE_WIRES)
+
+
+class LatticeOpening(BaseModel):
+    """Une lithographie ancrée au réseau du substrat (:class:`Lattice`) : un trou de ``diameter``
+    (nm) centré sur chaque fil, recalculé à chaque simulation à partir du pas et du nombre de fils.
+    Rangée sur l'étape elle-même (``"lattice_opening"``), à côté de ses ouvertures résolues."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    diameter: float = Field(gt=0, le=1_000_000)
+
+
+LATTICE_OPENING_KEY = "lattice_opening"
+
 
 class SubstrateSpec(BaseModel):
     material: str
     domain_width: Length
     thickness: Length
+    # le réseau de fils (gabarit SAG) : il fixe la largeur du domaine ; absent, la forme d'avant
+    lattice: Lattice | None = None
+
+    @model_serializer(mode="wrap")
+    def _without_empty_lattice(self, handler: Any) -> dict[str, Any]:
+        data = handler(self)
+        if data.get("lattice") is None:
+            data.pop("lattice", None)
+        return data
 
 
 class SimulationFailedError(InvalidInput):
@@ -308,6 +346,79 @@ def preset_origins_json(origins: dict[int, PresetOrigin] | None) -> dict[str, di
     return {str(i): origin.model_dump(mode="json") for i, origin in sorted((origins or {}).items())}
 
 
+# -- le réseau de fils ------------------------------------------------------------------------------
+#
+# Un gabarit SAG ancré sur un réseau (:class:`Lattice`) plutôt que sur des nm absolus : la largeur du
+# domaine et les ouvertures des lithographies ancrées (:class:`LatticeOpening`) se recalculent depuis
+# le pas et le nombre de fils. Résolu dès la lecture d'une requête (``schemas.ProcessInput``) : la
+# suite (simulation, campagne, lancement, Follow) ne voit qu'un procédé ordinaire, et un procédé
+# enregistré garde ses ouvertures résolues à côté de leur ancrage - toujours lisible tel quel.
+
+
+def lattice_openings(lattice: Lattice, opening: LatticeOpening) -> list[tuple[float, float]]:
+    """Un trou de ``opening.diameter`` centré sur chaque fil du réseau."""
+    half = opening.diameter / 2
+    centers = [(i + 0.5) * lattice.pitch for i in range(lattice.wires)]
+    return [(round(c - half, 3), round(c + half, 3)) for c in centers]
+
+
+def resolve_lattice(
+    substrate: SubstrateSpec, steps: list[ProcessStep], anchors: dict[int, LatticeOpening]
+) -> tuple[SubstrateSpec, list[ProcessStep]]:
+    """Le substrat et les étapes, le réseau appliqué : le domaine fait ``wires * pitch``, chaque
+    lithographie ancrée (``anchors``, par position d'étape) a un trou par fil. Sans réseau, rien ne
+    change (une lithographie ancrée garde ses ouvertures). :class:`SimulationFailedError` pour un
+    trou plus large que le pas."""
+    lattice = substrate.lattice
+    if lattice is None:
+        return substrate, steps
+    substrate = substrate.model_copy(update={"domain_width": Length(value=round(lattice.pitch * lattice.wires, 3), unit="nm")})
+    resolved = list(steps)
+    for index, opening in sorted(anchors.items()):
+        step = resolved[index] if 0 <= index < len(resolved) else None
+        if not isinstance(step, Lithography):
+            continue
+        if opening.diameter >= lattice.pitch:
+            raise SimulationFailedError(
+                f"Étape {index + 1} ({step.name}) : le diamètre d'ouverture ({opening.diameter:g} nm) doit être plus petit que le pas du réseau ({lattice.pitch:g} nm)."
+            )
+        resolved[index] = step.model_copy(update={"openings": lattice_openings(lattice, opening)})
+    return substrate, resolved
+
+
+def lattice_anchors_in(raw_steps: Any) -> dict[int, LatticeOpening]:
+    """L'ancrage au réseau de chaque lithographie d'une liste d'étapes en JSON (une requête, un
+    procédé enregistré) : la clé ``"lattice_opening"`` de l'étape, qu'un ``ProcessStep`` ignore. Un
+    ancrage illisible est laissé de côté (l'étape garde ses ouvertures)."""
+    anchors: dict[int, LatticeOpening] = {}
+    for index, step in enumerate(raw_steps if isinstance(raw_steps, list) else []):
+        raw = step.get(LATTICE_OPENING_KEY) if isinstance(step, dict) and step.get("kind") == "lithography" else None
+        if isinstance(raw, dict):
+            try:
+                anchors[index] = LatticeOpening.model_validate(raw)
+            except ValueError:
+                continue
+    return anchors
+
+
+def view_neutral_process(process: Any) -> Any:
+    """Ce que le versionnage compare d'un procédé à réseau : sans ce qui ne dépend que du nombre de
+    fils vus (la largeur du domaine, ``wires``, les ouvertures des lithographies ancrées) - passer
+    d'un fil à un pixel de six ne change pas la structure. Un procédé sans réseau est rendu tel quel."""
+    if not isinstance(process, dict):
+        return process
+    substrate = process.get("substrate")
+    if not isinstance(substrate, dict) or not isinstance(substrate.get("lattice"), dict):
+        return process
+    lattice = {key: value for key, value in substrate["lattice"].items() if key != "wires"}
+    neutral_substrate = {**{key: value for key, value in substrate.items() if key != "domain_width"}, "lattice": lattice}
+    steps = [
+        {key: value for key, value in step.items() if key != "openings"} if isinstance(step, dict) and isinstance(step.get(LATTICE_OPENING_KEY), dict) else step
+        for step in process.get("steps") or []
+    ]
+    return {**process, "substrate": neutral_substrate, "steps": steps}
+
+
 SUBSTRATE_ORIGIN = -1  # l'« étape » d'une couche du substrat de départ
 
 
@@ -571,6 +682,7 @@ def process_metadata(
     declared_params: dict[int, list[DeclaredParam]] | None = None,
     recipes: ProcessRecipes | None = None,
     preset_origins: dict[int, PresetOrigin] | None = None,
+    lattice_anchors: dict[int, LatticeOpening] | None = None,
 ) -> dict[str, Any]:
     """The raw, re-editable process (substrate + typed steps) as plain JSON - stashed on the
     committed ``Experiment.metadata`` under this key, since the ``Structure`` Follow stores is the
@@ -584,11 +696,16 @@ def process_metadata(
     spurious change on lineages recorded before they were kept). The process's own recipes
     (:class:`ProcessRecipes`) ride along under ``"recipes"`` the same way, only when there are some,
     and so do the presets the steps were inserted from (:class:`PresetOrigin`, ``"preset_origins"``,
-    by step index).
+    by step index). A lithography anchored to the substrate's lattice (:class:`LatticeOpening`) keeps
+    its anchor on the step itself (``"lattice_opening"``), next to its resolved openings.
     """
+    steps_json = [step.model_dump(mode="json") for step in steps]
+    for index, anchor in (lattice_anchors or {}).items():
+        if 0 <= index < len(steps_json) and steps_json[index].get("kind") == "lithography":
+            steps_json[index][LATTICE_OPENING_KEY] = anchor.model_dump(mode="json")
     process: dict[str, Any] = {
         "substrate": substrate.model_dump(mode="json"),
-        "steps": [step.model_dump(mode="json") for step in steps],
+        "steps": steps_json,
     }
     declared = declared_params_json(declared_params)
     if declared:

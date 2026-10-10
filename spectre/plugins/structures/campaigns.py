@@ -19,7 +19,18 @@ from structureforge.core.units import Length
 from structureforge.process.steps import ProcessStep
 
 from .rendering import annotations_for, format_number, labelled_svg
-from .simulation import GRADED_NITRIDE_RE, DeclaredParam, LayerLabel, ProcessBrick, ProcessRecipes, SimulationFailedError, SubstrateSpec, simulate_process
+from .simulation import (
+    GRADED_NITRIDE_RE,
+    DeclaredParam,
+    LatticeOpening,
+    LayerLabel,
+    ProcessBrick,
+    ProcessRecipes,
+    SimulationFailedError,
+    SubstrateSpec,
+    resolve_lattice,
+    simulate_process,
+)
 
 
 CAMPAIGN_FIELD_LABELS = {
@@ -66,7 +77,9 @@ class VariantFactor(BaseModel):
     - ``"<material field>.fraction"`` - the indium/aluminium rate (%) of a graded nitride
       (``In0.20Ga0.80N``...);
     - ``"openings.pitch"`` / ``"openings.diameter"`` - a lithography's periodic array (nm),
-      regenerated around the same centre;
+      regenerated around the same centre; on a lithography anchored to the substrate's lattice
+      (:class:`~spectre.plugins.structures.simulation.LatticeOpening`), the lattice's pitch (the
+      domain follows, ``wires * pitch``) or the anchor's diameter;
     - ``"declared:<name>"`` - a :class:`DeclaredParam` of the step (a doping level, say), which
       doesn't change the simulated geometry but is recorded per variant.
 
@@ -214,6 +227,8 @@ def _step_with_value(step: ProcessStep, field: str, value: Any, domain_nm: float
 
 
 def _substrate_with_value(substrate: SubstrateSpec, field: str, value: Any) -> SubstrateSpec:
+    if field == "domain_width" and substrate.lattice is not None:
+        raise SimulationFailedError("la largeur du domaine suit le réseau de fils (pas × nombre de fils) : faites varier le pas du réseau")
     if field in ("thickness", "domain_width"):
         current: Length = getattr(substrate, field)
         return substrate.model_copy(update={field: Length(value=_numeric(value, field), unit=current.unit)})
@@ -271,6 +286,27 @@ def _factor_label(factor: VariantFactor, index: int, steps: list[ProcessStep]) -
     return f"{field_label} — {target}"
 
 
+def _on_lattice(substrate: SubstrateSpec, anchors: dict[int, LatticeOpening] | None, index: int, field: str) -> bool:
+    """Si le facteur ``field`` de l'étape ``index`` règle le réseau de fils plutôt que des ouvertures
+    en nm : le pas ou le diamètre d'une lithographie ancrée, le substrat ayant un réseau."""
+    return substrate.lattice is not None and index in (anchors or {}) and field in ("openings.pitch", "openings.diameter")
+
+
+def combination_anchors(
+    substrate: SubstrateSpec, anchors: dict[int, LatticeOpening] | None, plan: VariantPlan, indexes: list[int], combo: list[Any]
+) -> dict[int, LatticeOpening]:
+    """Les ancrages au réseau d'une variante : le diamètre d'une lithographie ancrée pris dans
+    ``combo`` quand un facteur le fait varier, les autres tels quels."""
+    varied = dict(anchors or {})
+    for factor, index, value in zip(plan.factors, indexes, combo):
+        if factor.field == "openings.diameter" and _on_lattice(substrate, anchors, index, factor.field):
+            diameter = _numeric(value, factor.field)
+            if diameter <= 0:
+                raise SimulationFailedError("le diamètre d'ouverture doit être positif")
+            varied[index] = LatticeOpening(diameter=diameter)
+    return varied
+
+
 def apply_combination(
     substrate: SubstrateSpec,
     steps: list[ProcessStep],
@@ -278,9 +314,13 @@ def apply_combination(
     plan: VariantPlan,
     indexes: list[int],
     combo: list[Any],
+    anchors: dict[int, LatticeOpening] | None = None,
 ) -> tuple[SubstrateSpec, list[ProcessStep], dict[int, list[DeclaredParam]]]:
     """The substrate, steps and declared parameters of one variant: each factor of ``plan`` (on the
-    step at its position in ``indexes``) set to its value in ``combo`` - everything else as given."""
+    step at its position in ``indexes``) set to its value in ``combo`` - everything else as given.
+    With a lattice of wires on the substrate, the lithographies anchored to it (``anchors``, by
+    step position) are resolved again once every factor is set: a pitch factor on one of them is
+    the lattice's pitch, a diameter factor its anchor's (:func:`combination_anchors`)."""
     varied_substrate = substrate
     varied_steps = list(steps)
     varied_declared = declared
@@ -289,9 +329,17 @@ def apply_combination(
             varied_substrate = _substrate_with_value(varied_substrate, factor.field, value)
         elif factor.field.startswith(DECLARED_FIELD_PREFIX):
             varied_declared = _declared_with_value(varied_declared, index, factor.field[len(DECLARED_FIELD_PREFIX) :], value)
+        elif _on_lattice(substrate, anchors, index, factor.field):
+            if factor.field == "openings.pitch":
+                lattice = varied_substrate.lattice.model_copy(update={"pitch": _numeric(value, factor.field)})
+                varied_substrate = varied_substrate.model_copy(update={"lattice": lattice})
         else:
             domain_nm = varied_substrate.domain_width.to_nm()
             varied_steps[index] = _step_with_value(varied_steps[index], factor.field, value, domain_nm)
+    if varied_substrate.lattice is not None:
+        if varied_substrate.lattice.pitch <= 0:
+            raise SimulationFailedError("le pas du réseau doit être positif")
+        varied_substrate, varied_steps = resolve_lattice(varied_substrate, varied_steps, combination_anchors(substrate, anchors, plan, indexes, combo))
     return varied_substrate, varied_steps, varied_declared
 
 
@@ -304,6 +352,7 @@ def generate_campaign_variants(
     layer_labels: dict[int, LayerLabel] | None = None,
     bricks: list[ProcessBrick] | None = None,
     recipes: ProcessRecipes | None = None,
+    lattice_anchors: dict[int, LatticeOpening] | None = None,
 ) -> CampaignVariants:
     """Re-simulate ``steps`` once per combination in the full cross of every factor's values,
     varying each factor's parameter for that combination - everything else (substrate, every
@@ -315,6 +364,7 @@ def generate_campaign_variants(
     The factors name their step by id, among ``step_ids`` (the ids the steps came with, in order).
     Each variant's SVG carries the labels of ``layer_labels`` (by step position), with its own values.
     ``recipes``: the process's own (a factor on ``recipe`` may pick one of them).
+    ``lattice_anchors``: the lithographies anchored to the substrate's lattice, by step position.
     """
     if not plan.factors:
         raise SimulationFailedError("il faut au moins un paramètre à faire varier")
@@ -342,7 +392,7 @@ def generate_campaign_variants(
     factor_values: list[list[float | str]] = []
     layer_origins: list[list[int]] = []
     for combo in itertools.product(*(factor.values for factor in plan.factors)):
-        varied_substrate, varied_steps, varied_declared = apply_combination(substrate, steps, base_declared, plan, indexes, list(combo))
+        varied_substrate, varied_steps, varied_declared = apply_combination(substrate, steps, base_declared, plan, indexes, list(combo), lattice_anchors)
         result = simulate_process(varied_substrate, varied_steps, varied_declared or None, recipes)
         entries.append(to_structure(result.geometry))
         material_colors = {m.name: m.color for m in result.materials}

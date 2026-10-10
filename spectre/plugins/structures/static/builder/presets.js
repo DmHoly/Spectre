@@ -112,7 +112,7 @@ function attachStepExtras(steps, data) {
     attachRecipes(attachLayerLabels(attachDeclaredParams(steps, data.declared_params), data.layer_labels), data.recipes),
     data.preset_origins
   );
-  return attachBricks(withExtras, data.bricks);
+  return attachBricks(attachLatticeOpenings(withExtras, data.lattice_openings), data.bricks);
 }
 
 // -- palette -----------------------------------------------------------------------------------

@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from structureforge.process.steps import ProcessStep
 
 from ..accounts import service as accounts
@@ -23,6 +23,21 @@ router = APIRouter(prefix="/api", tags=["process-library"])
 WritableScope = Literal["shared", "microproject"]
 
 
+class _InlineLatticeAnchors(BaseModel):
+    """Des étapes qui peuvent porter leur ancrage au réseau (``"lattice_opening"``, la forme du
+    procédé d'une étude, que l'on publie tel quel) : il passe dans ``lattice_openings``, par position
+    d'étape - un ``ProcessStep`` l'ignorerait. Un ``lattice_openings`` envoyé l'emporte."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _anchors_from_steps(cls, data: Any) -> Any:
+        if isinstance(data, dict) and isinstance(data.get("steps"), list) and not data.get("lattice_openings"):
+            anchors = simulation.lattice_anchors_in(data["steps"])
+            if anchors:
+                data = {**data, "lattice_openings": {str(i): anchor.model_dump(mode="json") for i, anchor in anchors.items()}}
+        return data
+
+
 class _NewItem(BaseModel):
     name: str
     scope: WritableScope
@@ -35,7 +50,7 @@ class _ItemChanges(BaseModel):
     microproject: str | None = None
 
 
-class NewSavedStructure(_NewItem):
+class NewSavedStructure(_NewItem, _InlineLatticeAnchors):
     substrate: simulation.SubstrateSpec
     steps: list[ProcessStep]
     declared_params: dict[str, list[simulation.DeclaredParam]] = {}
@@ -43,10 +58,12 @@ class NewSavedStructure(_NewItem):
     bricks: list[simulation.ProcessBrick] = []
     recipes: simulation.ProcessRecipes = Field(default_factory=simulation.ProcessRecipes)
     preset_origins: dict[str, simulation.PresetOrigin] = {}
+    # the lithographies anchored to the substrate's lattice (see simulation.LatticeOpening), by step index
+    lattice_openings: dict[str, simulation.LatticeOpening] = {}
     derived_from: str | ExperimentOrigin | None = None
 
 
-class SavedStructureChanges(_ItemChanges):
+class SavedStructureChanges(_ItemChanges, _InlineLatticeAnchors):
     substrate: simulation.SubstrateSpec | None = None
     steps: list[ProcessStep] | None = None
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
@@ -54,6 +71,7 @@ class SavedStructureChanges(_ItemChanges):
     bricks: list[simulation.ProcessBrick] | None = None
     recipes: simulation.ProcessRecipes | None = None
     preset_origins: dict[str, simulation.PresetOrigin] | None = None
+    lattice_openings: dict[str, simulation.LatticeOpening] | None = None
 
 
 class NewStepPreset(_NewItem):
@@ -74,7 +92,7 @@ class StepPresetChanges(_ItemChanges):
     notes: str | None = None
 
 
-class NewTechBrick(_NewItem):
+class NewTechBrick(_NewItem, _InlineLatticeAnchors):
     # le nom que reprend la brique d'un procédé où on l'insère (ProcessBrick) : la même limite
     name: str = Field(max_length=simulation.BRICK_NAME_MAX_LENGTH)
     steps: list[ProcessStep]
@@ -83,10 +101,12 @@ class NewTechBrick(_NewItem):
     bricks: list[simulation.ProcessBrick] = []
     recipes: simulation.ProcessRecipes = Field(default_factory=simulation.ProcessRecipes)
     preset_origins: dict[str, simulation.PresetOrigin] = {}
+    # the lithographies anchored to the substrate's lattice (see simulation.LatticeOpening), by step index
+    lattice_openings: dict[str, simulation.LatticeOpening] = {}
     notes: str | None = None
 
 
-class TechBrickChanges(_ItemChanges):
+class TechBrickChanges(_ItemChanges, _InlineLatticeAnchors):
     name: str | None = Field(None, max_length=simulation.BRICK_NAME_MAX_LENGTH)
     steps: list[ProcessStep] | None = None
     declared_params: dict[str, list[simulation.DeclaredParam]] | None = None
@@ -94,6 +114,7 @@ class TechBrickChanges(_ItemChanges):
     bricks: list[simulation.ProcessBrick] | None = None
     recipes: simulation.ProcessRecipes | None = None
     preset_origins: dict[str, simulation.PresetOrigin] | None = None
+    lattice_openings: dict[str, simulation.LatticeOpening] | None = None
     notes: str | None = None
 
 

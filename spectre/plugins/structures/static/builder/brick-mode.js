@@ -32,6 +32,7 @@ async function saveTechBrick(forceNew) {
     layer_labels: layerLabelsPayload(state.steps),
     recipes: processRecipesPayload(state.steps),
     preset_origins: presetOriginsPayload(state.steps),
+    lattice_openings: latticeOpeningsPayload(state.steps),
     bricks: bricksPayload(state.steps),
     notes: document.getElementById("brick-notes").value.trim() || null,
     scope: document.getElementById("brick-shared-checkbox").checked ? "shared" : "microproject",

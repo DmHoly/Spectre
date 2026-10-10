@@ -638,6 +638,38 @@ source, step_indexes}`, champs en plus refusés ; un nom de 120 caractères au p
   champs du constructeur ont `maxlength`) ; celui d'une brique enregistrée avant la limite est
   coupé à l'envoi (`bricksPayload`), et le mode brique demande de le raccourcir pour l'enregistrer.
 
+### Réseau de fils (gabarit SAG)
+
+Le substrat peut porter un réseau de fils, `substrate.lattice = {pitch, wires}` (`simulation.Lattice` :
+un pas en nm, de 1 à `MAX_LATTICE_WIRES` = 50 fils ; absent, la forme d'avant). Le domaine fait alors
+`wires × pitch` de large, chaque fil au centre de sa maille. Une lithographie **ancrée au réseau**
+porte, sur l'étape même, `lattice_opening = {diameter}` (`simulation.LatticeOpening`, une clé qu'un
+`ProcessStep` ignore) : un trou de ce diamètre par fil (422 si le diamètre atteint le pas). C'est la
+première des macro-étapes réutilisables : un gabarit SAG ne dit plus des nm absolus. Une même épi se
+voit ainsi sur 1 fil, puis le procédé sur un pixel de N fils.
+
+- **Résolution** : dès la lecture d'une requête (`schemas.ProcessInput`, `simulation.resolve_lattice`),
+  la largeur du domaine et les ouvertures des lithographies ancrées sont recalculées. La suite
+  (simulation, campagne, lancement, Follow) ne voit qu'un procédé ordinaire. Un procédé enregistré
+  garde ses ouvertures résolues à côté de leur ancrage, et reste lisible tel quel. Sans réseau, une
+  lithographie ancrée garde ses ouvertures.
+- **Le nombre de fils est une vue** : `versioning.structure_signature` et `same_settings` comparent
+  le procédé sans `wires`, sans la largeur du domaine et sans les ouvertures des lithographies
+  ancrées (`simulation.view_neutral_process`). Passer d'un fil à six ne fait pas de version et garde
+  la conclusion ; un autre pas est majeur, un autre diamètre mineur.
+- **Campagnes** : sur une lithographie ancrée, `openings.pitch` fait varier le pas du réseau (le
+  domaine suit) et `openings.diameter` son diamètre (`campaigns.apply_combination`,
+  `combination_anchors`). La variante d'une campagne lancée garde son ancrage. `domain_width` sur le
+  substrat est refusé quand il a un réseau (422).
+- **Bibliothèques** : une structure enregistrée et une brique rangent les ancrages par position
+  d'étape (`lattice_openings`, comme `preset_origins`). Un procédé d'étude publié tel quel (ancrage
+  sur l'étape) y est converti (`process_library.api._InlineLatticeAnchors`). Une combinaison au
+  marché garde l'ancrage des étapes reprises.
+- **Constructeur** (`substrate.js`) : une case « Réseau de fils » dans le substrat (pas, fils
+  simulés ; la largeur est alors figée), un réglage « − N fils + » au-dessus du dessin. Dans la
+  lithographie, le choix « Ouvertures : sur le réseau / libres », et « Ancrer ces ouvertures sur un
+  réseau de fils » pour des ouvertures régulières (le pas, le diamètre et le nombre en sont déduits).
+
 ### Unité des paramètres déclarés
 
 Un paramètre déclaré (`simulation.DeclaredParam`) a un champ `unit` facultatif (20 caractères au

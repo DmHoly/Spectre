@@ -173,6 +173,11 @@
               </div>
               <div class="sb-canvas__tools">
                 <span class="sb-busy" id="sim-busy" hidden><span class="sb-busy__dot" aria-hidden="true"></span>Simulation…</span>
+                <div class="sb-zoom sb-wires" id="sb-wires" role="group" aria-label="Fils simulés" hidden>
+                  <button class="sb-iconbtn sb-iconbtn--sm" id="wires-less-btn" type="button" aria-label="Un fil de moins" title="Un fil de moins">&minus;</button>
+                  <button class="sb-zoom__level" id="wires-one-btn" type="button" title="Revenir à un seul fil"><span id="wires-label">1 fil</span></button>
+                  <button class="sb-iconbtn sb-iconbtn--sm" id="wires-more-btn" type="button" aria-label="Un fil de plus" title="Un fil de plus">&plus;</button>
+                </div>
                 <div class="view-toggle sb-preview-toggle" role="group" aria-label="Aperçu">
                   <button class="view-toggle__btn active" id="preview-step-btn" type="button" title="Montrer la structure après l'étape sélectionnée">À l'étape</button>
                   <button class="view-toggle__btn" id="preview-final-btn" type="button" title="Montrer la structure finale (F)">Finale</button>
@@ -231,6 +236,17 @@
               <div class="sb-len">
                 <div><label for="substrate-width">Largeur du domaine</label><input class="field" id="substrate-width" type="number" value="200" min="0"></div>
                 <div><label for="substrate-width-unit" class="sb-sr">Unité de largeur</label><select class="field" id="substrate-width-unit"><option value="nm" selected>nm</option><option value="um">µm</option></select></div>
+              </div>
+              <div class="sb-insp__card sb-lattice">
+                <label class="sb-check sb-check--block"><input type="checkbox" id="substrate-lattice-on"> Réseau de fils (gabarit SAG)</label>
+                <div id="substrate-lattice-fields" class="sb-lattice__fields" hidden>
+                  <div class="sb-len">
+                    <div><label for="substrate-lattice-pitch">Pas du réseau</label><input class="field" id="substrate-lattice-pitch" type="number" value="400" min="1"></div>
+                    <div><span class="sb-lattice__unit">nm</span></div>
+                  </div>
+                  <div><label for="substrate-lattice-wires">Fils simulés</label><input class="field" id="substrate-lattice-wires" type="number" value="1" min="1" max="50" step="1"></div>
+                  <div class="help">La largeur du domaine suit (pas × fils) et les lithographies ancrées au réseau ouvrent un trou par fil. Le nombre de fils n'est qu'une vue : 1 fil pour régler une épi, un pixel pour un procédé - il ne change pas la version de l'étude.</div>
+                </div>
               </div>
               <div class="sb-len">
                 <div><label for="substrate-thickness">Épaisseur</label><input class="field" id="substrate-thickness" type="number" value="50" min="0"></div>
