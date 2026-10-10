@@ -45,8 +45,8 @@ Le noyau ne connaît **aucune** fonctionnalité métier. Il fournit :
 
 | Module | Rôle |
 |---|---|
-| `plugin.py` | `Plugin`, `Page`, `NavEntry`, `Migration` (dataclasses figées ; `Migration.files` : les fichiers hors base qu'une migration réécrit ou supprime), et `check_dependencies(plugins)`, qui vérifie l'ordre topologique au démarrage |
-| `app.py` | `create_app(plugins=PLUGINS)` : migrations, `include_router` de chaque plugin, routes de pages, montage de `/static/<plugin>/` et `/static/kernel/`, exception handlers, middleware `Cache-Control: no-cache` |
+| `plugin.py` | `Plugin`, `Page`, `NavEntry`, `Migration` (dataclasses figées ; `Migration.files` : les fichiers hors base qu'une migration réécrit ou supprime), `RequestTrace` (ce que voit un observateur de requêtes, `Plugin.observe`) et `check_dependencies(plugins)`, qui vérifie l'ordre topologique au démarrage |
+| `app.py` | `create_app(plugins=PLUGINS)` : migrations, `include_router` de chaque plugin, routes de pages, montage de `/static/<plugin>/` et `/static/kernel/`, exception handlers, middleware `Cache-Control: no-cache`, et le middleware des observateurs de requêtes : chaque route d'un plugin marque sa requête de son plugin et de son genre (`api` ou `page`, une dépendance posée par `create_app`), et après la réponse chaque `Plugin.observe` d'un plugin actif reçoit une `RequestTrace` (plugin, genre, méthode, gabarit de la route, statut, durée, cookies) - une exception de l'observateur est journalisée, jamais renvoyée |
 | `db.py` | `data_dir()`, `connect()`, `get_conn()`, exécuteur de migrations versionnées (table `schema_migrations(plugin, migration_id, applied_at)`), `rebuild_table()` pour les changements non additifs (CHECK, NOT NULL), qui garde le compteur d'`AUTOINCREMENT` de la table (un id supprimé n'est jamais redonné). Avant la première migration en attente d'une installation existante, la base (API de sauvegarde de sqlite3) et les fichiers déclarés par les migrations (`Migration.files`, copiés juste avant chacune) sont sauvegardés dans `data_dir/backups/<horodatage>/` : une migration peut supprimer ou réécrire ce que l'ancien code lit, et l'ancien code ne lit pas une base migrée - revenir en arrière, c'est restaurer cette copie |
 | `errors.py` | `DomainError` → `Unauthorized` (401, `unauthorized` : pas de session, levée par `accounts.deps.current_user`), `NotFound` (404), `Forbidden` (403), `Conflict` (409), `PreconditionFailed` (412), `InvalidInput` (422), `UpstreamError` (502), `Unavailable` (503) ; un handler unique renvoie `{"detail": str, "code": str}`. Un plugin peut sous-classer `DomainError` pour un statut qui lui est propre (`attachments.store.TooLarge` : 413, `too_large`), le même handler s'en charge |
 | `locks.py` | `keyed_lock(namespace, key)` : un `threading.Lock` par clé (le serveur tourne en un seul processus) |
@@ -75,6 +75,7 @@ class Plugin:
     description: str = ""                  # une phrase sur ce qu'il apporte,
     icon: str = "puzzle"                   # une clé de settings/static/icons.js
     required: bool = False                 # du noyau : ne se désactive pas, ni ce dont il dépend
+    observe: Callable[[RequestTrace], None] | None = None  # appelé après chaque requête d'une route de plugin (usage)
 ```
 
 Le `page_router` d'un plugin est inclus **avant** ses pages : une redirection peut viser un gabarit
@@ -118,7 +119,8 @@ placés au-dessus de lui.
 | 21 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens), rattachées aux plaques et aux étapes ; sert les images externes d'une entrée par identifiant ; lit les vues, les preuves et les jeux d'images d'avant (`legacy.py`) | characterization, experiments, attachments, external_images | `snapshots/`, métadonnées Follow (`notebook_entries`) |
 | 22 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
 | 23 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
-| 24 | `docs` | Pages de documentation (contenu inchangé) | — | — |
+| 24 | `usage` | Mesure de l'utilisation, pour les administrateurs : son observateur de requêtes (`recorder.observe`) compte chaque requête d'un compte connecté - le compte, l'heure locale, le plugin, le genre et le gabarit de la route, rien d'autre - en mémoire, écrits en base toutes les 15 s et avant toute lecture ; ni les requêtes anonymes ni les siennes. Le rapport d'une période (`service.report`) : adoption, comptes actifs par jour ouvré, modules, pages et routes, carte de chaleur, rythme de chaque compte, comparés à la période d'avant. Page Paramètres > Utilisation (section du menu de `settings`, cachée quand `usage` est éteint) | accounts, settings, teams | `usage_counts` (un compteur par heure, compte, plugin, genre, méthode et route ; sans clé étrangère : l'histoire d'un compte supprimé reste) |
+| 25 | `docs` | Pages de documentation (contenu inchangé) | — | — |
 
 ### Activer et désactiver un plugin
 
@@ -1087,6 +1089,14 @@ Codes, pour les deux sources : type inconnu (ou que la démo ne sait pas servir)
 PRISM absente 503 ; connexion, requête ou fiche `hook.yml` invalide 502 (une fiche invalide est
 écartée du catalogue et journalisée, sans faire tomber `/categories`).
 
+### usage
+
+Toutes nouvelles, réservées aux administrateurs (403 sinon).
+
+| Route | Effet |
+|---|---|
+| `GET /api/usage?start=&end=&granularity=&team=&user_id=&plugin=&include_admins=` | le rapport d'une période (30 derniers jours par défaut, `day`, `week` ou `month`, trois ans au plus et 400 jours au plus par jour : 422 `invalid_period`, `invalid_granularity`) : `period` (et la période d'avant, de même durée), `tracking_since`, `catalog` (les plugins mesurés), `totals` et `previous` (comptes inscrits et actifs, taux d'adoption, actifs par jour ouvré, pic, pages vues, lectures - les `GET` de l'API -, écritures - les autres méthodes -, modules utilisés, erreurs), `series` et `plugin_series` (par période du graphique, vides comprises), `plugins` (tous, jamais utilisés compris : utilisateurs, part des actifs, mesures, requêtes de la période d'avant, dernière utilisation), `heatmap` (jour de la semaine x heure), `routes` (les 200 plus sollicitées, le titre de la page pour une page, temps moyen et max, erreurs), `users` (les comptes du périmètre, inactifs compris : jours actifs, mesures, rythme `daily` / `weekly` / `occasional` / `inactive`, trois modules favoris, première et dernière activité). `team` (slug, 404 inconnu) : ses membres ; `plugin` (404 inconnu) : un seul module ; `include_admins=false` : sans les administrateurs |
+
 ### Pages (URL françaises, inchangées sauf mention)
 
 | Plugin | Pages |
@@ -1104,6 +1114,8 @@ PRISM absente 503 ; connexion, requête ou fiche `hook.yml` invalide 502 (une fi
 | wafers | `/plaques/{lasermark}` |
 | lots | `/lots`, `/lots/{code}` |
 | characterization | `/donnees`, `/donnees/{key}` |
+| settings | `/parametres` (302 vers sa première section), `/parametres/plugins`, `/parametres/base-de-donnees` |
+| usage | `/parametres/utilisation` (une section des Paramètres) |
 | docs | `/docs`, `/docs/guide`, `/docs/exemples`, `/docs/architecture` |
 
 Supprimée : `/microprojets/{slug}/graphe`.

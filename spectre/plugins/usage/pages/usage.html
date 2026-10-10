@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Utilisation — Paramètres — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/settings/settings.css">
+  <link rel="stylesheet" href="/static/usage/usage.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Paramètres" -->
+
+  <div class="settings-shell">
+    <aside class="settings-side" aria-label="Sections des paramètres">
+      <div class="settings-side__head">
+        <div class="page-eyebrow">Administration</div>
+        <div class="settings-side__title">Paramètres</div>
+      </div>
+      <nav class="settings-side__nav" id="settings-nav"></nav>
+    </aside>
+
+    <main class="settings-main usage-main">
+      <header class="settings-head">
+        <div>
+          <div class="page-eyebrow">Paramètres</div>
+          <h1>Utilisation</h1>
+          <p>Qui utilise Spectre, quels modules et quelles pages, à quel rythme : de quoi voir ce qui sert et ce qu'il faut développer. Chaque requête d'un compte connecté est comptée par heure - le compte, le module et la route, rien d'autre.</p>
+          <p id="tracking-since" class="help usage-since"></p>
+        </div>
+      </header>
+
+      <div id="denied" class="settings-denied card card-pad" hidden>
+        <strong>Réservé aux administrateurs.</strong>
+        <p>Le suivi de l'utilisation n'est ouvert qu'aux comptes administrateurs.</p>
+      </div>
+
+      <div id="content">
+        <div class="usage-filters" role="group" aria-label="Filtres du rapport">
+          <div class="view-toggle" role="group" aria-label="Période">
+            <button type="button" class="view-toggle__btn" data-period="7" aria-pressed="false">7 j</button>
+            <button type="button" class="view-toggle__btn active" data-period="30" aria-pressed="true">30 j</button>
+            <button type="button" class="view-toggle__btn" data-period="90" aria-pressed="false">90 j</button>
+            <button type="button" class="view-toggle__btn" data-period="365" aria-pressed="false">12 mois</button>
+            <button type="button" class="view-toggle__btn" data-period="custom" aria-pressed="false">Dates…</button>
+          </div>
+          <div id="custom-dates" class="usage-dates" hidden>
+            <label><span class="visually-hidden">Du</span><input id="start" class="field" type="date"></label>
+            <span aria-hidden="true">→</span>
+            <label><span class="visually-hidden">Au</span><input id="end" class="field" type="date"></label>
+          </div>
+          <div class="view-toggle" role="group" aria-label="Regrouper par">
+            <button type="button" class="view-toggle__btn active" data-granularity="day" aria-pressed="true">Jour</button>
+            <button type="button" class="view-toggle__btn" data-granularity="week" aria-pressed="false">Semaine</button>
+            <button type="button" class="view-toggle__btn" data-granularity="month" aria-pressed="false">Mois</button>
+          </div>
+          <label class="usage-select">
+            <span class="visually-hidden">Équipe</span>
+            <select id="team" class="field"><option value="">Toutes les équipes</option></select>
+          </label>
+          <label class="usage-select">
+            <span class="visually-hidden">Module</span>
+            <select id="plugin" class="field"><option value="">Tous les modules</option></select>
+          </label>
+          <label class="usage-check">
+            <input id="include-admins" type="checkbox" checked>
+            <span>Administrateurs inclus</span>
+          </label>
+        </div>
+
+        <div id="error" class="error" role="alert" style="display:none;margin-bottom:16px;"></div>
+
+        <section class="usage-kpis" id="kpis" aria-label="Indicateurs de la période" aria-busy="true">
+          <div class="skeleton usage-kpi-skeleton"></div>
+          <div class="skeleton usage-kpi-skeleton"></div>
+          <div class="skeleton usage-kpi-skeleton"></div>
+          <div class="skeleton usage-kpi-skeleton"></div>
+          <div class="skeleton usage-kpi-skeleton"></div>
+          <div class="skeleton usage-kpi-skeleton"></div>
+        </section>
+
+        <div class="usage-row">
+          <section class="card usage-card" aria-labelledby="active-title">
+            <header class="usage-card__head">
+              <div>
+                <h2 id="active-title" class="usage-card__title">Utilisateurs actifs</h2>
+                <p class="usage-card__sub" id="active-sub">Comptes distincts qui ont utilisé Spectre</p>
+              </div>
+            </header>
+            <div id="active-chart" class="usage-chart"></div>
+            <details class="usage-data">
+              <summary>Voir les données</summary>
+              <div id="active-table"></div>
+            </details>
+          </section>
+
+          <section class="card usage-card" aria-labelledby="heat-title">
+            <header class="usage-card__head">
+              <div>
+                <h2 id="heat-title" class="usage-card__title">Quand ?</h2>
+                <p class="usage-card__sub">Requêtes par jour de la semaine et par heure</p>
+              </div>
+            </header>
+            <div id="heatmap" class="usage-heatmap"></div>
+          </section>
+        </div>
+
+        <section class="card usage-card" aria-labelledby="modules-chart-title">
+          <header class="usage-card__head">
+            <div>
+              <h2 id="modules-chart-title" class="usage-card__title">Activité par module</h2>
+              <p class="usage-card__sub">Les sept modules les plus utilisés de la période, les autres regroupés</p>
+            </div>
+            <div class="view-toggle" role="group" aria-label="Mesure">
+              <button type="button" class="view-toggle__btn active" data-metric="page_views" aria-pressed="true">Pages vues</button>
+              <button type="button" class="view-toggle__btn" data-metric="writes" aria-pressed="false">Écritures</button>
+              <button type="button" class="view-toggle__btn" data-metric="hits" aria-pressed="false">Toutes les requêtes</button>
+            </div>
+          </header>
+          <div id="modules-legend" class="usage-legend"></div>
+          <div id="modules-chart" class="usage-chart usage-chart--tall"></div>
+        </section>
+
+        <section class="card usage-card" aria-labelledby="modules-title">
+          <header class="usage-card__head">
+            <div>
+              <h2 id="modules-title" class="usage-card__title">Modules</h2>
+              <p class="usage-card__sub">L'adoption de chaque module : la part des utilisateurs actifs qui s'en sont servis. Cliquez un module pour filtrer tout le rapport.</p>
+            </div>
+            <button type="button" class="btn btn-line usage-btn" id="export-modules">Exporter (CSV)</button>
+          </header>
+          <div class="usage-table-wrap"><table class="usage-table" id="modules-table"></table></div>
+        </section>
+
+        <section class="card usage-card" aria-labelledby="users-title">
+          <header class="usage-card__head">
+            <div>
+              <h2 id="users-title" class="usage-card__title">Utilisateurs</h2>
+              <p class="usage-card__sub">Rythme : jours actifs par semaine de la période - assidu dès 3, régulier dès 1, occasionnel en dessous. Cliquez un compte pour le détail.</p>
+            </div>
+            <div class="usage-card__tools">
+              <label class="usage-search">
+                <span class="visually-hidden">Rechercher un compte</span>
+                <input id="user-search" class="field" type="search" placeholder="Rechercher un compte…" autocomplete="off">
+              </label>
+              <button type="button" class="btn btn-line usage-btn" id="export-users">Exporter (CSV)</button>
+            </div>
+          </header>
+          <div id="frequency-bar" class="usage-frequency"></div>
+          <div class="usage-table-wrap"><table class="usage-table" id="users-table"></table></div>
+        </section>
+
+        <section class="card usage-card" aria-labelledby="routes-title">
+          <header class="usage-card__head">
+            <div>
+              <h2 id="routes-title" class="usage-card__title">Fonctionnalités</h2>
+              <p class="usage-card__sub">Les pages et les routes de l'API les plus sollicitées, avec leur temps de réponse</p>
+            </div>
+            <div class="view-toggle" role="group" aria-label="Genre">
+              <button type="button" class="view-toggle__btn active" data-routes="page" aria-pressed="true">Pages</button>
+              <button type="button" class="view-toggle__btn" data-routes="write" aria-pressed="false">Écritures</button>
+              <button type="button" class="view-toggle__btn" data-routes="all" aria-pressed="false">Tout</button>
+            </div>
+          </header>
+          <div class="usage-table-wrap"><table class="usage-table" id="routes-table"></table></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="user-dialog" class="usage-drawer" aria-labelledby="user-title">
+    <div class="usage-drawer__body">
+      <header class="usage-drawer__head">
+        <div>
+          <div class="page-eyebrow">Utilisateur</div>
+          <h2 id="user-title" class="usage-drawer__title"></h2>
+          <p id="user-meta" class="usage-card__sub"></p>
+        </div>
+        <button type="button" class="topbar__icon-btn usage-drawer__close" id="user-close" aria-label="Fermer">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div id="user-detail"></div>
+    </div>
+  </dialog>
+
+  <div id="usage-tip" class="usage-tip" role="tooltip" hidden></div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/teams/client.js"></script>
+  <script src="/static/settings/icons.js"></script>
+  <script src="/static/settings/sections.js"></script>
+  <script src="/static/usage/client.js"></script>
+  <script src="/static/usage/charts.js"></script>
+  <script src="/static/usage/usage.js"></script>
+</body>
+</html>

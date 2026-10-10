@@ -28,14 +28,17 @@ def isolated_environment(tmp_path, monkeypatch):
 
     from spectre.plugins.experiments import repository as experiments
     from spectre.plugins.library import service as library
+    from spectre.plugins.usage import recorder as usage
     from spectre.plugins.wafers import service as plates
 
     caches = (experiments._CACHE, library._CACHE, plates._CACHE)
     for cache in caches:
         cache.clear()
+    usage.reset()  # pas de compteur d'un autre test, écrit dans la base de celui-ci
     yield
     for cache in caches:
         cache.clear()
+    usage.reset()
 
 
 @pytest.fixture()

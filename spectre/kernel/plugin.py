@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Literal, Mapping
 
 from fastapi import APIRouter
 
@@ -53,6 +53,22 @@ class Migration:
     files: Callable[[], Iterable[Path]] | None = None
 
 
+@dataclass(frozen=True)
+class RequestTrace:
+    """Une requête servie par une route d'un plugin, telle que la voit l'observateur d'un plugin
+    (``Plugin.observe``) une fois la réponse prête : sans objet HTTP, pour qu'un domaine la lise.
+    ``route`` est le gabarit de la route (``/api/lots/{lot_id}``), pas le chemin demandé ; ``kind``
+    dit si c'est une route ``/api`` ou une page (ou une redirection de page)."""
+
+    plugin: str  # le plugin qui possède la route
+    kind: Literal["api", "page"]
+    method: str
+    route: str
+    status: int
+    duration_ms: float
+    cookies: Mapping[str, str]
+
+
 def _always() -> bool:
     return True
 
@@ -74,6 +90,10 @@ class Plugin:
     icon: str = "puzzle"
     # Du noyau de l'application : ne se désactive pas, ni aucun plugin dont il dépend.
     required: bool = False
+    # Appelé après chaque requête servie par une route d'un plugin (le sien compris), tant que ce
+    # plugin est actif : la mesure de l'utilisation (plugin usage). Rapide et sans exception à
+    # laisser passer - une erreur est journalisée, jamais renvoyée à la requête.
+    observe: Callable[[RequestTrace], None] | None = None
 
 
 class PluginOrderError(ValueError):
