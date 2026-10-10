@@ -882,12 +882,16 @@ class ProcessBrick(BaseModel):
     step_indexes: list[int] = Field(min_length=1)
     # son rôle de macro-étape (gabarit SAG, épitaxie, procédé) ; absent : une brique libre, la forme d'avant
     role: BrickRole | None = None
+    # la version de la brique de bibliothèque (``source``) quand on l'a copiée : une trace, jamais un
+    # lien - le constructeur dit si elle a changé depuis ; absente, la forme d'avant
+    version: int | None = Field(None, ge=1)
 
     @model_serializer(mode="wrap")
     def _without_empty_role(self, handler: Any) -> dict[str, Any]:
         data = handler(self)
-        if data.get("role") is None:
-            data.pop("role", None)
+        for key in ("role", "version"):
+            if data.get(key) is None:
+                data.pop(key, None)
         return data
 
     @field_validator("name")
@@ -941,6 +945,7 @@ def bricks_metadata(bricks: list[ProcessBrick], step_ids: list[str]) -> list[dic
             "source": brick.source,
             "step_ids": [step_ids[i] for i in brick.step_indexes],
             **({"role": brick.role} if brick.role else {}),
+            **({"version": brick.version} if brick.version else {}),
         }
         for brick in bricks
     ]
@@ -960,7 +965,10 @@ def bricks_from_metadata(raw: Any, step_ids: list[str]) -> list[ProcessBrick]:
             continue
         try:
             role = item.get("role") if item.get("role") in BRICK_ROLES else None
-            bricks.append(ProcessBrick(group_id=item.get("group_id"), name=item.get("name"), source=item.get("source"), step_indexes=indexes, role=role))
+            version = item.get("version") if isinstance(item.get("version"), int) and item.get("version") >= 1 else None
+            bricks.append(
+                ProcessBrick(group_id=item.get("group_id"), name=item.get("name"), source=item.get("source"), step_indexes=indexes, role=role, version=version)
+            )
         except (ValueError, TypeError):
             continue
     return bricks

@@ -138,6 +138,7 @@ function livePreviewFromForm() {
   updateStepInspectorHeader();
   invalidateVariations();
   renderRail();
+  if (previous.brick_source) renderAssembly(); // une macro-étape retouchée : « modifiée » dans l'assemblage
   scheduleSimulate();
 }
 
@@ -213,6 +214,7 @@ function renderBrickGroupInspector() {
   document.getElementById("brick-group-title").textContent = state.steps[start].brick_name || "Brique";
   const role = state.steps[start].brick_role;
   document.getElementById("brick-group-eyebrow").textContent = role ? `Macro-étape · ${brickRoleLabel(role)}` : "Brique technologique";
+  renderBrickOrigin(groupId);
   const list = document.getElementById("brick-group-steps");
   const rows = [];
   for (let k = start; k <= end; k++) {

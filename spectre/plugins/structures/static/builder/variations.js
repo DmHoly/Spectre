@@ -46,7 +46,7 @@ const ORIENTATION_CHOICES = [
   ["m_plane", "Plan M {10-10}"],
   ["semi_polar", "Semi-polaire"],
 ];
-const NON_VARIABLE_STEP_KEYS = new Set(["id", "kind", "name", "description", "declaredParams", "layerLabel", "ownRecipe", "presetOrigin", "brick_group_id", "brick_name", "brick_source", "brick_role", "parameters", "seed_materials", "openings", "lattice_opening"]);
+const NON_VARIABLE_STEP_KEYS = new Set(["id", "kind", "name", "description", "declaredParams", "layerLabel", "ownRecipe", "presetOrigin", "brick_group_id", "brick_name", "brick_source", "brick_role", "brick_version", "parameters", "seed_materials", "openings", "lattice_opening"]);
 
 // L'id par lequel un facteur désigne l'étape `stepIndex` (-1 : le substrat) - null tant que le
 // serveur ne lui en a pas donné (une étape toute neuve, avant la simulation qui suit son ajout).

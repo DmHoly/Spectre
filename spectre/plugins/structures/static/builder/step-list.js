@@ -45,13 +45,13 @@ function generateBrickGroupId() {
 // n'existe que sur les copies vivantes dans une structure en cours, posée fraîche à chaque
 // groupement ou insertion.
 function stripBrickTag(step) {
-  const { brick_group_id, brick_name, brick_source, brick_role, ...rest } = step;
+  const { brick_group_id, brick_name, brick_source, brick_role, brick_version, ...rest } = step;
   return rest;
 }
 
 // L'étiquette de brique de `from` (groupe, nom, source, rôle de macro-étape) posée sur `to`.
 function copyBrickTag(from, to) {
-  ["brick_group_id", "brick_name", "brick_source", "brick_role"].forEach((key) => {
+  ["brick_group_id", "brick_name", "brick_source", "brick_role", "brick_version"].forEach((key) => {
     if (from && from[key]) to[key] = from[key];
   });
   return to;
@@ -75,7 +75,7 @@ function bricksPayload(steps) {
       last.step_indexes.push(i);
     } else {
       const name = Array.from((step.brick_name || "").trim() || "Brique").slice(0, BRICK_NAME_MAX).join("");
-      bricks.push({ group_id: step.brick_group_id, name, source: step.brick_source || null, step_indexes: [i], ...(step.brick_role ? { role: step.brick_role } : {}) });
+      bricks.push({ group_id: step.brick_group_id, name, source: step.brick_source || null, step_indexes: [i], ...(step.brick_role ? { role: step.brick_role } : {}), ...(step.brick_version ? { version: step.brick_version } : {}) });
     }
   });
   return bricks;
@@ -91,6 +91,7 @@ function attachBricks(steps, bricks) {
       tagged[i].brick_name = brick.name;
       if (brick.source) tagged[i].brick_source = brick.source;
       if (brick.role) tagged[i].brick_role = brick.role;
+      if (brick.version) tagged[i].brick_version = brick.version;
     });
   });
   return tagged;
@@ -286,7 +287,7 @@ function copiedBrickSteps(brick, groupId) {
     ...withoutStepId(stripBrickTag(s)),
     brick_group_id: groupId,
     brick_name: brick.name,
-    ...(brick.id ? { brick_source: brick.id } : {}),
+    ...(brick.id ? { brick_source: brick.id, brick_version: brick.version || 1 } : {}),
     ...(brick.role ? { brick_role: brick.role } : {}),
   }));
 }
@@ -435,7 +436,7 @@ async function groupSelectionIntoBrick() {
     state.techBricks = [...state.techBricks, created];
     const groupId = generateBrickGroupId();
     indices.forEach((idx) => {
-      state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name, brick_source: created.id, ...(role ? { brick_role: role } : {}) };
+      state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name, brick_source: created.id, brick_version: created.version || 1, ...(role ? { brick_role: role } : {}) };
     });
     renderBrickList();
     nameInput.value = "";

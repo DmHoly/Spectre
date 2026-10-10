@@ -663,6 +663,16 @@ gabarit, le même procédé sur une autre épi.
   d'avant, posées depuis l'assemblage : elles ne servent qu'à l'aperçu. À l'enregistrement, seules
   les étapes de la brique sont gardées (pas celles d'une macro-étape d'un autre rôle) : la recette
   d'épi ne contient pas le SAG. À la réouverture, les briques de `preview_on` sont reposées.
+- **Copie tracée** : une brique de bibliothèque a une `version`, qui monte quand son contenu change
+  (`tech_bricks.BRICK_CONTENT_FIELDS` : étapes, paramètres, étiquettes, recettes, ancrages, rôle,
+  substrat ; pas son nom, ses notes ni `preview_on` - `revised_brick`). Sa copie dans une structure
+  garde la version d'alors (`ProcessBrick.version`, dans `process_bricks` d'une étude ; absente, la
+  forme d'avant) : une trace, jamais un lien. L'inspecteur d'une brique dit si elle est conforme,
+  modifiée depuis, si la brique a changé (vN) ou si elle a disparu. Il propose « Réappliquer la
+  brique » (même groupe, même place ; un gabarit SAG reprend son substrat), « Mettre à jour la
+  brique » (une nouvelle version, que la copie suit) et « Détacher ». L'assemblage écrit
+  « · modifiée » ou « · vN disponible » à côté de la brique en place. Les ouvertures d'une
+  lithographie ancrée et le nombre de fils vus ne comptent pas dans la comparaison.
 
 ### Réseau de fils (gabarit SAG)
 

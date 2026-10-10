@@ -69,7 +69,7 @@ class _Source:
             key = name_key(brick.name)
             if not key:
                 continue
-            bricks.setdefault(key, {"name": brick.name.strip(), "group_id": brick.group_id, "source": brick.source, "role": brick.role})
+            bricks.setdefault(key, {"name": brick.name.strip(), "group_id": brick.group_id, "source": brick.source, "role": brick.role, "version": brick.version})
             for i in brick.step_indexes:
                 if 0 <= i < len(steps) and brick_of[i] is None:
                     brick_of[i] = key
@@ -309,6 +309,8 @@ def compose(processes: list[ProcessInput], choices: list[Any] | None = None) -> 
                 group_id = f"{group_id}-{len(bricks) + 1}"
             group_ids.add(group_id)
             assembled = {"group_id": group_id, "name": brick["name"], "source": brick["source"], "step_indexes": list(range(start, end))}
+            if brick.get("version"):
+                assembled["version"] = brick["version"]
             if brick.get("role") and brick["role"] not in roles:
                 roles.add(brick["role"])
                 assembled["role"] = brick["role"]

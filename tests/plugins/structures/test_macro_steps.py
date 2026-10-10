@@ -80,3 +80,19 @@ def test_a_combination_keeps_one_brick_per_role():
     assembled = composition.compose([first, second])["process"]
     roles = [b.get("role") for b in assembled["bricks"] if b.get("role")]
     assert len(roles) == len(set(roles))
+
+
+def test_a_brick_has_a_version_that_its_copies_keep(client):
+    slug = signup_with_microproject(client, "macro-version@example.com", "Salle blanche")
+    epi = create_item(client, "tech-bricks", tech_brick("Épi bleue", role="epi"), microproject=slug)
+    assert epi["version"] == 1
+    # son nom, ses notes : la même version ; ses étapes : une nouvelle
+    assert update_item(client, "tech-bricks", epi["id"], name="Épi bleue 2", notes="LED")["version"] == 1
+    thicker = [deposition("PGaN", "GaN", thickness_nm=80)]
+    assert update_item(client, "tech-bricks", epi["id"], steps=thicker)["version"] == 2
+
+    # la copie dans une étude garde la version d'alors, d'une version de l'étude à l'autre
+    copy = {**EPI, "source": epi["id"], "version": 1}
+    study = launch(client, slug, substrate=SAG_SUBSTRATE, steps=STACK, bricks=[SAG, copy])
+    assert process(client, slug, study["id"])["bricks"][1]["version"] == 1
+    assert "version" not in process(client, slug, study["id"])["bricks"][0]  # une brique sans version : la forme d'avant

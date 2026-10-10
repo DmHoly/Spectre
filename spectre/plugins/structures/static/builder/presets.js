@@ -30,7 +30,7 @@ function stepFromPreset(preset) {
 
 // Ce qui, d'une étape, est le contenu d'un préset (pour comparer l'une à l'autre).
 function presetContentOf(step) {
-  const { id, presetOrigin, brick_group_id, brick_name, brick_source, brick_role, declaredParams, layerLabel, ownRecipe, ...fields } = step;
+  const { id, presetOrigin, brick_group_id, brick_name, brick_source, brick_role, brick_version, declaredParams, layerLabel, ownRecipe, ...fields } = step;
   // la place d'une étiquette (texte déplacé, point d'accroche posé) tient au dessin d'une structure,
   // pas à l'étape : hors du préset
   const label = layerLabel ? { text: layerLabel.text, values: layerLabel.values } : null;

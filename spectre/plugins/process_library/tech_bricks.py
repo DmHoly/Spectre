@@ -62,6 +62,9 @@ class TechBrick(LibraryItem):
     # the lithographies anchored to the substrate's lattice (see spectre.plugins.structures.simulation.LatticeOpening), by step index
     lattice_openings: dict[str, LatticeOpening] = Field(default_factory=dict)
     notes: str | None = None
+    # goes up each time its content changes (BRICK_CONTENT_FIELDS): a structure's copy keeps the
+    # version it was taken at (ProcessBrick.version) and can tell it has been changed since
+    version: int = Field(1, ge=1)
 
     @model_serializer(mode="wrap")
     def _substrate_only_for_a_sag_template(self, handler: Any) -> dict[str, Any]:
@@ -78,6 +81,18 @@ class TechBrick(LibraryItem):
         layer_labels_by_index(self.layer_labels, len(self.steps))
         checked_bricks(self.bricks, len(self.steps))
         return self
+
+
+# the content of a brick - what a change of makes a new version (its name, notes, scope or
+# preview bricks do not)
+BRICK_CONTENT_FIELDS = ("steps", "declared_params", "layer_labels", "bricks", "recipes", "preset_origins", "lattice_openings", "role", "substrate")
+
+
+def revised_brick(old: TechBrick, new: TechBrick) -> TechBrick:
+    """``new``, one version above ``old`` when its content changed (:data:`BRICK_CONTENT_FIELDS`)."""
+    fields = set(BRICK_CONTENT_FIELDS)
+    before, after = old.model_dump(mode="json", include=fields), new.model_dump(mode="json", include=fields)
+    return new.model_copy(update={"version": old.version + 1 if before != after else old.version})
 
 
 def default_tech_bricks() -> dict[str, TechBrick]:
