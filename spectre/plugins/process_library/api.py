@@ -103,6 +103,9 @@ class NewTechBrick(_NewItem, _InlineLatticeAnchors):
     preset_origins: dict[str, simulation.PresetOrigin] = {}
     # the lithographies anchored to the substrate's lattice (see simulation.LatticeOpening), by step index
     lattice_openings: dict[str, simulation.LatticeOpening] = {}
+    role: simulation.BrickRole | None = None
+    substrate: simulation.SubstrateSpec | None = None  # a SAG template's own (see tech_bricks.TechBrick)
+    preview_on: list[str] = Field(default_factory=list, max_length=3)  # the bricks it was composed on, for its preview
     notes: str | None = None
 
 
@@ -115,6 +118,9 @@ class TechBrickChanges(_ItemChanges, _InlineLatticeAnchors):
     recipes: simulation.ProcessRecipes | None = None
     preset_origins: dict[str, simulation.PresetOrigin] | None = None
     lattice_openings: dict[str, simulation.LatticeOpening] | None = None
+    role: simulation.BrickRole | None = None
+    substrate: simulation.SubstrateSpec | None = None
+    preview_on: list[str] | None = Field(None, max_length=3)
     notes: str | None = None
 
 

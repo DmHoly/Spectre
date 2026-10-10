@@ -18,16 +18,36 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field, model_validator
+from pydantic import Field, model_serializer, model_validator
 from structureforge.process.steps import ProcessStep
 
 from ..library.service import load
-from ..structures.simulation import DeclaredParam, LayerLabel, LatticeOpening, PresetOrigin, ProcessBrick, ProcessRecipes, checked_bricks, layer_labels_by_index
+from ..structures.simulation import (
+    BrickRole,
+    DeclaredParam,
+    LatticeOpening,
+    LayerLabel,
+    PresetOrigin,
+    ProcessBrick,
+    ProcessRecipes,
+    SubstrateSpec,
+    checked_bricks,
+    layer_labels_by_index,
+)
 from .models import LibraryItem
 
 
 class TechBrick(LibraryItem):
-    steps: list[ProcessStep]  # no substrate - a brick applies on top of whatever already exists
+    steps: list[ProcessStep]  # a brick applies on top of whatever already exists
+    # its role as a macro-step (see spectre.plugins.structures.simulation.BRICK_ROLES): a SAG template,
+    # an epitaxy (growths only, no position) or a process; None, a free brick
+    role: BrickRole | None = None
+    # a SAG template's own substrate (with its lattice of wires): the start of any structure built on it.
+    # Every other brick has none - it applies on top of an existing structure
+    substrate: SubstrateSpec | None = None
+    # the bricks it was composed on, for its preview only (an epitaxy on its SAG template, a process on
+    # its SAG + epitaxy): their ids, never part of the brick itself
+    preview_on: list[str] = Field(default_factory=list, max_length=3)
     # the steps' declared parameters (see spectre.plugins.structures.simulation.DeclaredParam), by step index
     declared_params: dict[str, list[DeclaredParam]] = Field(default_factory=dict)
     # the layer labels of the chosen steps (see spectre.plugins.structures.simulation.LayerLabel), by step index
@@ -43,8 +63,18 @@ class TechBrick(LibraryItem):
     lattice_openings: dict[str, LatticeOpening] = Field(default_factory=dict)
     notes: str | None = None
 
+    @model_serializer(mode="wrap")
+    def _substrate_only_for_a_sag_template(self, handler: Any) -> dict[str, Any]:
+        # une brique ordinaire n'a rien d'un substrat dans sa forme (seul un gabarit SAG en porte un)
+        data = handler(self)
+        if data.get("substrate") is None:
+            data.pop("substrate", None)
+        return data
+
     @model_validator(mode="after")
     def _labels_on_steps(self) -> "TechBrick":
+        if self.role != "sag":
+            self.substrate = None
         layer_labels_by_index(self.layer_labels, len(self.steps))
         checked_bricks(self.bricks, len(self.steps))
         return self
@@ -59,9 +89,18 @@ def default_tech_bricks() -> dict[str, TechBrick]:
 
 
 def tech_brick_from_entry(entry: dict[str, Any]) -> TechBrick:
-    """One entry of ``briques.yml`` (``name``, ``notes``, ``steps``)."""
+    """One entry of ``briques.yml`` (``name``, ``notes``, ``steps``; ``role``, ``substrate`` and
+    ``lattice_openings`` for a macro-step)."""
     return TechBrick.model_validate(
-        {"name": entry["name"], "notes": entry.get("notes"), "steps": entry.get("steps") or [], "created_at": "preset"}
+        {
+            "name": entry["name"],
+            "notes": entry.get("notes"),
+            "steps": entry.get("steps") or [],
+            "role": entry.get("role"),
+            "substrate": entry.get("substrate"),
+            "lattice_openings": entry.get("lattice_openings") or {},
+            "created_at": "preset",
+        }
     )
 
 

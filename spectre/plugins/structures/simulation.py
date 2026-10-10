@@ -17,7 +17,7 @@ import re
 import secrets
 import threading
 from collections import OrderedDict
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 from structureforge.core.materials import Material, MaterialLibrary, aluminum_gan, default_library, indium_gan
@@ -861,6 +861,13 @@ BRICK_GROUP_ID_RE = r"^[A-Za-z0-9_.:-]{1,80}$"
 # le nom d'une brique (celle d'un procédé comme celle de la bibliothèque, dont elle reprend le nom)
 BRICK_NAME_MAX_LENGTH = 120
 
+# Le rôle d'une macro-étape : le gabarit SAG (substrat, masque, lithographie sur le réseau), l'épitaxie
+# (des croissances, sans position) et le procédé (ce qu'on fait par-dessus). Une structure en a au
+# plus une de chaque ; une brique sans rôle est une brique libre, comme avant.
+BRICK_ROLES = ("sag", "epi", "process")
+BrickRole = Literal["sag", "epi", "process"]
+BRICK_ROLE_LABELS = {"sag": "gabarit SAG", "epi": "épitaxie", "process": "procédé"}
+
 
 class ProcessBrick(BaseModel):
     """Une brique du procédé : son identifiant de groupe (celui du constructeur, gardé d'une version
@@ -873,6 +880,15 @@ class ProcessBrick(BaseModel):
     name: str = Field(min_length=1, max_length=BRICK_NAME_MAX_LENGTH)
     source: str | None = Field(None, max_length=120)
     step_indexes: list[int] = Field(min_length=1)
+    # son rôle de macro-étape (gabarit SAG, épitaxie, procédé) ; absent : une brique libre, la forme d'avant
+    role: BrickRole | None = None
+
+    @model_serializer(mode="wrap")
+    def _without_empty_role(self, handler: Any) -> dict[str, Any]:
+        data = handler(self)
+        if data.get("role") is None:
+            data.pop("role", None)
+        return data
 
     @field_validator("name")
     @classmethod
@@ -890,10 +906,16 @@ class ProcessBrick(BaseModel):
 
 def checked_bricks(bricks: list[ProcessBrick] | None, step_count: int) -> list[ProcessBrick]:
     """Les briques d'une requête, vérifiées : des étapes du procédé, consécutives et dans l'ordre,
-    aucune dans deux briques, deux briques jamais du même groupe - sinon 422 ``invalid_brick``."""
+    aucune dans deux briques, deux briques jamais du même groupe, au plus une brique par rôle de
+    macro-étape - sinon 422 ``invalid_brick``."""
     seen_steps: set[int] = set()
     seen_groups: set[str] = set()
+    seen_roles: set[str] = set()
     for brick in bricks or []:
+        if brick.role is not None:
+            if brick.role in seen_roles:
+                raise InvalidInput(f"Une structure n'a qu'une brique de {BRICK_ROLE_LABELS[brick.role]} (« {brick.name} »).", code="invalid_brick")
+            seen_roles.add(brick.role)
         indexes = brick.step_indexes
         if any(not 0 <= i < step_count for i in indexes):
             raise InvalidInput(f"La brique « {brick.name} » désigne une étape inconnue.", code="invalid_brick")
@@ -913,7 +935,13 @@ def bricks_json(bricks: list[ProcessBrick] | None) -> list[dict[str, Any]]:
 def bricks_metadata(bricks: list[ProcessBrick], step_ids: list[str]) -> list[dict[str, Any]]:
     """Les briques telles qu'une étude les enregistre : par ids d'étape."""
     return [
-        {"group_id": brick.group_id, "name": brick.name, "source": brick.source, "step_ids": [step_ids[i] for i in brick.step_indexes]}
+        {
+            "group_id": brick.group_id,
+            "name": brick.name,
+            "source": brick.source,
+            "step_ids": [step_ids[i] for i in brick.step_indexes],
+            **({"role": brick.role} if brick.role else {}),
+        }
         for brick in bricks
     ]
 
@@ -931,7 +959,8 @@ def bricks_from_metadata(raw: Any, step_ids: list[str]) -> list[ProcessBrick]:
         if not indexes:
             continue
         try:
-            bricks.append(ProcessBrick(group_id=item.get("group_id"), name=item.get("name"), source=item.get("source"), step_indexes=indexes))
+            role = item.get("role") if item.get("role") in BRICK_ROLES else None
+            bricks.append(ProcessBrick(group_id=item.get("group_id"), name=item.get("name"), source=item.get("source"), step_indexes=indexes, role=role))
         except (ValueError, TypeError):
             continue
     return bricks

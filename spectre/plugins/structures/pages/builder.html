@@ -37,6 +37,12 @@
         <div class="sb-header__fields" id="brick-header" hidden>
           <input class="sb-title-input" id="brick-name" placeholder="Nom de la brique (ex : Masque + gravure RIE)" aria-label="Nom de la brique" autocomplete="off" maxlength="120">
           <input class="field sb-notes-input" id="brick-notes" placeholder="Notes : à quoi sert cette brique, quand l'utiliser…" aria-label="Notes de la brique (optionnel)">
+          <select class="field sb-role-select" id="brick-role" aria-label="Rôle de la brique" title="Le rôle de la brique dans l'assemblage d'une structure">
+            <option value="">Brique libre</option>
+            <option value="sag">Gabarit SAG</option>
+            <option value="epi">Épitaxie</option>
+            <option value="process">Procédé</option>
+          </select>
           <label class="sb-check"><input type="checkbox" id="brick-shared-checkbox"> Partagée</label>
         </div>
 
@@ -137,6 +143,10 @@
           </div>
           <div class="sb-palette__scroll">
             <div id="palette-tools"></div>
+            <div class="sb-palette__group" id="palette-assembly">
+              <div class="sb-palette__group-title" title="Une structure = un gabarit SAG + une épitaxie + un procédé, chacun une brique réutilisable">Assemblage</div>
+              <div class="sb-assembly" id="assembly-slots"></div>
+            </div>
             <div class="sb-palette__group" id="palette-presets">
               <div class="sb-palette__group-title">Présets d'étape</div>
               <input class="field sb-palette__search" id="preset-search" type="search" placeholder="Filtrer les présets…" aria-label="Filtrer les présets d'étape">
@@ -308,6 +318,7 @@
               <div class="sb-insp__card">
                 <label for="group-brick-name">Grouper en brique technologique</label>
                 <input class="field" id="group-brick-name" placeholder="Nom de la nouvelle brique" maxlength="120">
+                <select class="field" id="group-brick-role" aria-label="Rôle de la brique"></select>
                 <div class="help" id="group-brick-help">La brique est enregistrée dans la bibliothèque du µprojet et reste réutilisable ailleurs. Les étapes doivent être consécutives.</div>
                 <button class="btn btn-primary btn-block" id="group-brick-btn" type="button">Grouper en brique</button>
               </div>
@@ -322,7 +333,7 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="8" height="6" rx="1"/><rect x="13" y="14" width="8" height="6" rx="1"/></svg>
               </span>
               <div class="sb-insp__titles">
-                <div class="sb-insp__eyebrow">Brique technologique</div>
+                <div class="sb-insp__eyebrow" id="brick-group-eyebrow">Brique technologique</div>
                 <div class="sb-insp__title" id="brick-group-title">Brique</div>
               </div>
             </div>
@@ -491,6 +502,7 @@
   <script src="/static/structures/builder/step-list.js"></script>
   <script src="/static/structures/builder/inspector.js"></script>
   <script src="/static/structures/builder/palette.js"></script>
+  <script src="/static/structures/builder/assembly.js"></script>
   <script src="/static/structures/builder/objectives.js"></script>
   <script src="/static/structures/builder/intention-copy.js"></script>
   <script src="/static/structures/builder/simulation.js"></script>

@@ -67,6 +67,7 @@ function findBrickEntry(id) {
 }
 
 function renderBrickList() {
+  renderAssembly();
   const list = document.getElementById("insert-brick-list");
   const filter = document.getElementById("brick-search").value.trim().toLowerCase();
   const bricks = allTechBricks();
@@ -86,7 +87,7 @@ function renderBrickList() {
       <button class="sb-brick-tool" type="button" draggable="true" data-id="${escapeHtml(b.id)}"
               title="${escapeHtml(b.name)}${b.notes ? ` - ${escapeHtml(b.notes)}` : ""}&#10;${b.steps.length} étape(s) · clic : insérer après la sélection · glisser : dans le flow">
         <span class="sb-brick-tool__name">${escapeHtml(b.name)}</span>
-        <span class="sb-brick-tool__meta">${b.steps.length} étape${b.steps.length > 1 ? "s" : ""} · ${BRICK_SCOPE_LABELS[b.scope] || b.scope}</span>
+        <span class="sb-brick-tool__meta">${b.role ? `${escapeHtml(brickRoleShort(b.role))} · ` : ""}${b.steps.length} étape${b.steps.length > 1 ? "s" : ""} · ${BRICK_SCOPE_LABELS[b.scope] || b.scope}</span>
       </button>`
     )
     .join("");

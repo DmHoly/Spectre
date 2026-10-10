@@ -1328,6 +1328,47 @@
   background: var(--navy);
   border-radius: 3px;
 }
+/* Les macro-étapes d'un assemblage (assembly.js) : gabarit SAG, épitaxie, procédé */
+.sb-brick__tag--sag {
+  color: var(--gold-light);
+  background: var(--navy);
+}
+.sb-brick__tag--epi {
+  color: var(--surface);
+  background: var(--viz-2);
+}
+.sb-brick__tag--process {
+  color: var(--surface);
+  background: var(--viz-3);
+}
+.sb-assembly {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 2px;
+}
+.sb-assembly__slot {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.sb-assembly__role {
+  text-align: center;
+}
+.sb-assembly__select {
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.sb-assembly__slot:not(.is-filled) .sb-assembly__select {
+  color: var(--text-faint);
+}
+.sb-role-select {
+  width: auto;
+  max-width: 150px;
+}
 .sb-brick__count {
   font-family: var(--font-mono);
   font-weight: 500;
@@ -1535,7 +1576,8 @@
   .is-palette-collapsed .sb-palette__group-title,
   .is-palette-collapsed .sb-tool__label,
   .is-palette-collapsed .sb-tool__key,
-  .is-palette-collapsed #palette-bricks {
+  .is-palette-collapsed #palette-bricks,
+  .is-palette-collapsed #palette-assembly {
     display: none;
   }
   .is-palette-collapsed .sb-palette__scroll {

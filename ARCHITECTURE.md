@@ -638,6 +638,32 @@ source, step_indexes}`, champs en plus refusés ; un nom de 120 caractères au p
   champs du constructeur ont `maxlength`) ; celui d'une brique enregistrée avant la limite est
   coupé à l'envoi (`bricksPayload`), et le mode brique demande de le raccourcir pour l'enregistrer.
 
+### Macro-étapes : gabarit SAG, épitaxie, procédé
+
+Une brique peut avoir un **rôle** de macro-étape (`simulation.BRICK_ROLES` : `sag`, `epi`, `process` ;
+absent, une brique libre comme avant). Une structure s'assemble ainsi : un gabarit SAG, une épitaxie
+par-dessus, un procédé par-dessus. Chacun est une brique réutilisable : la même épi va sur un autre
+gabarit, le même procédé sur une autre épi.
+
+- **Bibliothèque** (`TechBrick`) : `role`. Un gabarit SAG garde son `substrate` (avec son réseau de
+  fils, ci-dessous) : c'est le départ de toute structure bâtie dessus ; une autre brique n'en a pas
+  (effacé à l'enregistrement). Une épi ou un procédé garde `preview_on`, les ids (3 au plus) des
+  macro-étapes sur lesquelles on l'a composé, pour l'aperçu seulement. `briques.yml` accepte
+  `role`, `substrate` et `lattice_openings`.
+- **Dans une structure** (`ProcessBrick.role`, requêtes et `process_bricks` d'une étude) : au plus une
+  brique par rôle (422 `invalid_brick`). Le rôle suit la brique d'une version à l'autre, comme son
+  nom. Une combinaison au marché ne garde le rôle que pour la première brique de chaque rôle.
+- **Constructeur** (`assembly.js`) : le panneau « Assemblage » de la palette a un emplacement par
+  rôle (SAG, Épi, Procédé). Choisir une brique la copie à sa place (le SAG en tête, l'épi après lui,
+  le procédé après l'épi), ou remplace celle du même rôle ; « Retirer » l'enlève. Un gabarit SAG
+  apporte son substrat, le nombre de fils vus gardé. Cliquer ou glisser une brique à rôle depuis la
+  liste fait de même. « Grouper en brique » propose les rôles que la structure n'a pas encore. Le
+  flow écrit le rôle à la place de « Brique ».
+- **Mode brique** : un sélecteur de rôle. Une épi (un procédé) se compose sur les macro-étapes
+  d'avant, posées depuis l'assemblage : elles ne servent qu'à l'aperçu. À l'enregistrement, seules
+  les étapes de la brique sont gardées (pas celles d'une macro-étape d'un autre rôle) : la recette
+  d'épi ne contient pas le SAG. À la réouverture, les briques de `preview_on` sont reposées.
+
 ### Réseau de fils (gabarit SAG)
 
 Le substrat peut porter un réseau de fils, `substrate.lattice = {pitch, wires}` (`simulation.Lattice` :

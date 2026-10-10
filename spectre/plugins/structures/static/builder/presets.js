@@ -30,7 +30,7 @@ function stepFromPreset(preset) {
 
 // Ce qui, d'une étape, est le contenu d'un préset (pour comparer l'une à l'autre).
 function presetContentOf(step) {
-  const { id, presetOrigin, brick_group_id, brick_name, brick_source, declaredParams, layerLabel, ownRecipe, ...fields } = step;
+  const { id, presetOrigin, brick_group_id, brick_name, brick_source, brick_role, declaredParams, layerLabel, ownRecipe, ...fields } = step;
   // la place d'une étiquette (texte déplacé, point d'accroche posé) tient au dessin d'une structure,
   // pas à l'étape : hors du préset
   const label = layerLabel ? { text: layerLabel.text, values: layerLabel.values } : null;
@@ -79,12 +79,7 @@ function insertPresetAt(preset, at = defaultInsertIndex()) {
   if (state.wizardScreen !== "structure" || !preset) return;
   clearError();
   const [step] = reconcileOwnRecipes([stepFromPreset(preset)]);
-  const groupId = brickGroupInsideGap(at);
-  if (groupId) {
-    step.brick_group_id = groupId;
-    step.brick_name = state.steps[at].brick_name;
-    if (state.steps[at].brick_source) step.brick_source = state.steps[at].brick_source;
-  }
+  if (brickGroupInsideGap(at)) copyBrickTag(state.steps[at], step);
   insertSteps(at, [step]);
 }
 
@@ -266,9 +261,7 @@ function replaceSelectedStep(step) {
   const i = state.selectedIndex;
   const previous = state.steps[i];
   if (previous.id) step.id = previous.id;
-  ["brick_group_id", "brick_name", "brick_source"].forEach((key) => {
-    if (previous[key]) step[key] = previous[key];
-  });
+  copyBrickTag(previous, step);
   state.steps[i] = step;
   invalidateVariations();
   commitStructure();
