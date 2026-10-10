@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planning d'équipe — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/experiments/experiments.css">
+  <link rel="stylesheet" href="/static/planning/planning.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-text="/ Planning" -->
+
+  <div class="page plan-page">
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+
+    <div class="plan-head">
+      <div>
+        <div class="page-eyebrow">Pilotage</div>
+        <h1 id="plan-title">Planning d'équipe</h1>
+        <p>Les plaques de l'équipe, épi par épi, rangées par thématique et µprojet, avec leurs lots en cours et les lots prévus. Cochez des plaques pour les mettre dans un lot prévu ; cliquez une épi pour voir où elle en est.</p>
+      </div>
+      <label class="plan-team" id="plan-team-wrap" hidden>
+        <span>Équipe</span>
+        <select class="field" id="plan-team"></select>
+      </label>
+    </div>
+
+    <div class="plan-kpis" id="plan-kpis" aria-busy="true"><div class="skeleton" style="height:40px;width:100%;"></div></div>
+
+    <div class="plan-toolbar">
+      <input class="field plan-search" id="plan-search" type="search" placeholder="Filtrer : lasermark, épi, µprojet, lot…" aria-label="Filtrer le planning">
+      <div class="view-toggle" role="group" aria-label="Épis affichées" id="plan-filter">
+        <button type="button" class="view-toggle__btn active" data-filter="all" aria-pressed="true">Toutes</button>
+        <button type="button" class="view-toggle__btn" data-filter="running" aria-pressed="false">En cours</button>
+        <button type="button" class="view-toggle__btn" data-filter="ended" aria-pressed="false">Terminées</button>
+      </div>
+      <select class="field plan-area" id="plan-area" aria-label="Projet"></select>
+      <div class="plan-nav" role="group" aria-label="Fenêtre de la frise">
+        <button type="button" class="btn btn-line btn-sm" id="plan-prev" aria-label="Semaines précédentes">&#8249;</button>
+        <button type="button" class="btn btn-line btn-sm" id="plan-today">Aujourd'hui</button>
+        <button type="button" class="btn btn-line btn-sm" id="plan-next" aria-label="Semaines suivantes">&#8250;</button>
+      </div>
+    </div>
+
+    <div class="plan-legend" id="plan-legend"></div>
+
+    <div class="card plan-card">
+      <div class="plan-grid" id="plan-grid"><div class="skeleton" style="height:240px;margin:12px;"></div></div>
+    </div>
+  </div>
+
+  <div class="plan-selbar" id="plan-selbar" hidden>
+    <span id="plan-selcount"></span>
+    <button type="button" class="btn btn-line btn-sm" id="plan-selclear">Désélectionner</button>
+    <button type="button" class="btn btn-primary btn-sm" id="plan-selplan">Mettre dans un lot prévu</button>
+  </div>
+
+  <aside class="plan-drawer" id="plan-drawer" aria-labelledby="plan-drawer-title" hidden>
+    <div class="plan-drawer__head">
+      <div>
+        <div class="plan-drawer__eyebrow" id="plan-drawer-eyebrow"></div>
+        <h2 id="plan-drawer-title"></h2>
+      </div>
+      <button type="button" class="plan-drawer__close" id="plan-drawer-close" aria-label="Fermer">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="plan-drawer__body" id="plan-drawer-body"></div>
+  </aside>
+
+  <dialog id="plan-dialog" class="plan-dialog" aria-labelledby="plan-dialog-title">
+    <form class="card-pad field-group" id="plan-form">
+      <h2 id="plan-dialog-title" style="font-size:16px;">Mettre dans un lot prévu</h2>
+      <p class="plan-dialog__wafers" id="plan-dialog-wafers"></p>
+      <div class="view-toggle" role="group" aria-label="Lot prévu" id="plan-mode">
+        <button type="button" class="view-toggle__btn active" data-mode="new" aria-pressed="true">Nouveau lot prévu</button>
+        <button type="button" class="view-toggle__btn" data-mode="existing" aria-pressed="false">Lot prévu existant</button>
+      </div>
+      <div id="plan-new" class="field-group">
+        <div class="field-row">
+          <div><label for="plan-code">Code du lot</label><input class="field" id="plan-code" maxlength="40" placeholder="vide = LOT-0001…"></div>
+          <div><label for="plan-priority">Priorité</label><input class="field" id="plan-priority" maxlength="10" list="plan-priorities" placeholder="ex : P20"></div>
+        </div>
+        <div><label for="plan-lot-title">Intitulé</label><input class="field" id="plan-lot-title" maxlength="160" placeholder="ex : run contacts S44"></div>
+        <div class="field-row">
+          <div><label for="plan-start">Début prévu</label><input class="field" id="plan-start" type="date"></div>
+          <div><label for="plan-end">Fin prévisionnelle</label><input class="field" id="plan-end" type="date"></div>
+        </div>
+        <div class="help">Le lot reste « prévu » tant qu'il n'a pas démarré ; il se retrouve dans Lots, où on lui donnera son code et sa FDL.</div>
+      </div>
+      <div id="plan-existing" hidden>
+        <label for="plan-lot">Lot prévu</label>
+        <select class="field" id="plan-lot"></select>
+      </div>
+      <datalist id="plan-priorities"></datalist>
+      <div style="display:flex;gap:10px;margin-top:4px;">
+        <button type="button" class="btn btn-line btn-block" id="plan-cancel">Annuler</button>
+        <button type="submit" class="btn btn-primary btn-block" id="plan-submit">Mettre dans le lot</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/experiments/client.js"></script>
+  <script src="/static/experiments/status.js"></script>
+  <script src="/static/lots/client.js"></script>
+  <script src="/static/notebook/client.js"></script>
+  <script src="/static/planning/client.js"></script>
+  <script src="/static/planning/planning.js"></script>
+</body>
+</html>
