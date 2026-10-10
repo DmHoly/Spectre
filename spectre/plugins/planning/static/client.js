@@ -6,6 +6,7 @@ const planningApi = {
   // -> {teams, team, today, areas, groups: [{area, thematic, microprojects: [{slug, code, name, url,
   //    studies: [{id, version_id, title, status, decision, started_at, ended_at, url, wafers}], plans}]}], lots}
   board(teamSlug) {
-    return api.get(teamSlug ? `/api/team-plannings/${encodeURIComponent(teamSlug)}` : "/api/team-plannings");
+    if (!teamSlug) return api.get("/api/team-plannings");
+    return api.get(`/api/team-plannings/${encodeURIComponent(teamSlug)}`);
   },
 };
