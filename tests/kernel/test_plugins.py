@@ -158,3 +158,30 @@ def test_a_disabled_plugin_brings_neither_routes_nor_pages(data_dir):
     with TestClient(create_app([plugin])) as client:
         assert client.get("/api/vitrine").status_code == 404
         assert client.get("/vitrine").status_code == 404
+
+
+def test_a_plugin_observer_sees_each_request_of_a_plugin_route_and_never_breaks_it(data_dir):
+    """``Plugin.observe`` : le plugin et le genre de la route, son gabarit, le statut - pour les
+    routes de tous les plugins actifs, pas pour les statiques ; une exception de l'observateur est
+    journalisée, la requête répond quand même."""
+    traces = []
+
+    def observe(trace):
+        traces.append(trace)
+        if trace.route == "/api/boom/{item_id}":
+            raise RuntimeError("observateur en panne")
+
+    router = APIRouter(prefix="/api")
+
+    @router.get("/boom/{item_id}")
+    def boom(item_id: str) -> dict:
+        return {"id": item_id}
+
+    app = create_app([Plugin("demo", router=router), Plugin("watcher", observe=observe)])
+    with TestClient(app) as client:
+        assert client.get("/api/boom/42").json() == {"id": "42"}
+        assert client.get("/api/missing").status_code == 404
+        assert client.get("/static/kernel/api.js").status_code == 200
+
+    assert [(t.plugin, t.kind, t.method, t.route, t.status) for t in traces] == [("demo", "api", "GET", "/api/boom/{item_id}", 200)]
+    assert traces[0].duration_ms >= 0

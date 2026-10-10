@@ -26,6 +26,7 @@ from .search import PLUGIN as search
 from .settings import PLUGIN as settings
 from .structures import PLUGIN as structures
 from .teams import PLUGIN as teams
+from .usage import PLUGIN as usage
 from .wafers import PLUGIN as wafers
 
 PLUGINS = (
@@ -51,5 +52,6 @@ PLUGINS = (
     notebook,
     kpis,
     kpis_demo,
+    usage,
     docs,
 )

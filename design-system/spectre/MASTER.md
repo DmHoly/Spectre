@@ -70,7 +70,14 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
   visible des seuls administrateurs (`NavEntry.admin`), or quand la section est ouverte. Base de données :
   carte Sauvegarde, puis onglets « Tables SQL » (liste des tables collante à gauche, grille à en-tête
   collant et colonne d'actions collante, défilement dans la carte, NULL en mono italique, secrets
-  masqués) et « Études » ; toute suppression passe par une boîte de confirmation.
+  masqués) et « Études » ; toute suppression passe par une boîte de confirmation. Utilisation (plugin `usage`) :
+  tous les filtres sur une ligne en haut (période, regroupement, équipe, module, administrateurs ; gardés dans
+  l'adresse), six tuiles à filet or comparées à la période d'avant (flèche + texte, jamais la couleur seule),
+  graphiques SVG faits main (`usage/static/charts.js` : colonnes ≤ 24px à bout arrondi, 2px de fond entre
+  segments empilés, grille en filets, infobulle navy au survol d'une bande entière) ; les modules empilés
+  prennent la palette catégorielle validée de `usage.css` (`--usage-series-1..7`, ordre fixe, « Autres » en
+  gris, légende toujours présente) ; carte de chaleur jour x heure en une seule teinte navy ; un compte
+  s'ouvre dans un panneau latéral (`<dialog>`).
 - **Issue d'une expérience** : une seule clé (`experimentOutcome`, `experiments/static/status.js`) pour le badge, le
   nœud du graphe et la frise d'une thématique. Nœud (`lineage-graph.js`) : **creux = pas terminée**
   (brouillon anneau gris, en cours anneau bleu + point, en pause anneau ambre + ‖), **plein =
