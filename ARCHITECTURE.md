@@ -106,21 +106,22 @@ placés au-dessus de lui.
 | 8 | `attachments` | Fichiers téléversés d'un µprojet (blob + sidecar), types, tailles, service des octets | microprojects | `data/microprojects/<slug>/attachments/` |
 | 9 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
 | 10 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, combinaison de deux études (une nouvelle piste à deux parents), suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
-| 11 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library, experiments (où servent les briques) | JSON par portée |
-| 12 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), le regroupement des refs locales d'avant dont le nom est porté dans au moins deux µprojets (`local_refs.py`) | experiments, microprojects, structures | `structure_references`, `reference_versions`, `reference_import_scans`, `reference_import_rules`, `retired_reference_slugs`, `dismissed_local_refs` |
-| 13 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
-| 14 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité, plaques de chaque FDL (`fdl_source` : démo, base locale, PRISM à venir) | experiments, search | cache mémoire, `fdl_wafers` |
-| 15 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
-| 16 | `planning` | Planning d'une équipe, pour ses managers (et les admins) : les plaques de ses études par thématique ▸ µprojet ▸ épi, les lots qui les portent (en cours, sortis, prévus) et les expériences prévues de ses µprojets (`GET /api/team-plannings`, `GET /api/team-plannings/{team_slug}` ; 403 `planning_forbidden` hors managers), page `/planning` à frise par semaine. Ne stocke rien : un lot prévu est un lot `planned` du plugin lots, créé et rempli par ses routes depuis la page ; lit `experiments.plans` | teams, areas, microprojects, structures, experiments, wafers, lots | — |
-| 17 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
-| 18 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
-| 19 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
-| 20 | `external_images` | Politique des images externes référencées (TEM, scans) : racines autorisées, formats affichables, lecture bornée ; parcours des dossiers autorisés | microprojects | — |
-| 21 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens), rattachées aux plaques et aux étapes ; sert les images externes d'une entrée par identifiant ; lit les vues, les preuves et les jeux d'images d'avant (`legacy.py`) | characterization, experiments, attachments, external_images | `snapshots/`, métadonnées Follow (`notebook_entries`) |
-| 22 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
-| 23 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
-| 24 | `usage` | Mesure de l'utilisation, pour les administrateurs : son observateur de requêtes (`recorder.observe`) compte chaque requête d'un compte connecté - le compte, l'heure locale, le plugin, le genre et le gabarit de la route, rien d'autre - en mémoire, écrits en base toutes les 15 s et avant toute lecture ; ni les requêtes anonymes ni les siennes. Le rapport d'une période (`service.report`) : adoption, comptes actifs par jour ouvré, modules, pages et routes, carte de chaleur, rythme de chaque compte, comparés à la période d'avant. Page Paramètres > Utilisation (section du menu de `settings`, cachée quand `usage` est éteint) | accounts, settings, teams | `usage_counts` (un compteur par heure, compte, plugin, genre, méthode et route ; sans clé étrangère : l'histoire d'un compte supprimé reste) |
-| 25 | `docs` | Pages de documentation (contenu inchangé) | — | — |
+| 11 | `comparator` | Comparateur de structures : le tableau d'une liste de plaques, d'études et de versions de référence (`GET /api/comparisons`), une ligne par plaque ou structure, une colonne par paramètre regroupée par étape, chaque cellule comparée à la ligne de base (modifié, paramètre ajouté, couche en plus, étape déplacée, couche absente : `table.py`, pur) ; registre des sources de lignes (`register_source`) - les études ici, les plaques et les références chez leurs plugins ; page `/comparateur`, composant `Comparator` des pages qui comparent des structures. Ne stocke rien | experiments, microprojects, structures | — |
+| 12 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library, experiments (où servent les briques) | JSON par portée |
+| 13 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), la source « référence » du comparateur (`comparison_source.py`), le regroupement des refs locales d'avant dont le nom est porté dans au moins deux µprojets (`local_refs.py`) | experiments, microprojects, structures, comparator | `structure_references`, `reference_versions`, `reference_import_scans`, `reference_import_rules`, `retired_reference_slugs`, `dismissed_local_refs` |
+| 14 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
+| 15 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité, plaques de chaque FDL (`fdl_source` : démo, base locale, PRISM à venir) ; la source « plaque » du comparateur (`comparison_source.py`) | experiments, search, comparator | cache mémoire, `fdl_wafers` |
+| 16 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
+| 17 | `planning` | Planning d'une équipe, pour ses managers (et les admins) : les plaques de ses études par thématique ▸ µprojet ▸ épi, les lots qui les portent (en cours, sortis, prévus) et les expériences prévues de ses µprojets (`GET /api/team-plannings`, `GET /api/team-plannings/{team_slug}` ; 403 `planning_forbidden` hors managers), page `/planning` à frise par semaine. Ne stocke rien : un lot prévu est un lot `planned` du plugin lots, créé et rempli par ses routes depuis la page ; lit `experiments.plans` | teams, areas, microprojects, structures, experiments, wafers, lots | — |
+| 18 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
+| 19 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
+| 20 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
+| 21 | `external_images` | Politique des images externes référencées (TEM, scans) : racines autorisées, formats affichables, lecture bornée ; parcours des dossiers autorisés | microprojects | — |
+| 22 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens), rattachées aux plaques et aux étapes ; sert les images externes d'une entrée par identifiant ; lit les vues, les preuves et les jeux d'images d'avant (`legacy.py`) | characterization, experiments, attachments, external_images | `snapshots/`, métadonnées Follow (`notebook_entries`) |
+| 23 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
+| 24 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
+| 25 | `usage` | Mesure de l'utilisation, pour les administrateurs : son observateur de requêtes (`recorder.observe`) compte chaque requête d'un compte connecté - le compte, l'heure locale, le plugin, le genre et le gabarit de la route, rien d'autre - en mémoire, écrits en base toutes les 15 s et avant toute lecture ; ni les requêtes anonymes ni les siennes. Le rapport d'une période (`service.report`) : adoption, comptes actifs par jour ouvré, modules, pages et routes, carte de chaleur, rythme de chaque compte, comparés à la période d'avant. Page Paramètres > Utilisation (section du menu de `settings`, cachée quand `usage` est éteint) | accounts, settings, teams | `usage_counts` (un compteur par heure, compte, plugin, genre, méthode et route ; sans clé étrangère : l'histoire d'un compte supprimé reste) |
+| 26 | `docs` | Pages de documentation (contenu inchangé) | — | — |
 
 ### Activer et désactiver un plugin
 
@@ -128,10 +129,11 @@ Un administrateur active ou désactive un plugin depuis **Paramètres > Plugins*
 plugin `settings`), **à chaud** : rien à redémarrer. La règle est au noyau (`kernel.plugin_states`) :
 
 - **Noyau** : les plugins `required` - `accounts`, `settings`, `microprojects`, `experiments`,
-  `wafers`, `process_library` - et tout plugin dont l'un d'eux dépend (`teams`, `search`, `library`,
+  `comparator`, `wafers`, `process_library` - et tout plugin dont l'un d'eux dépend (`teams`, `search`, `library`,
   `areas`, `attachments`, `structures`) ne se désactivent pas (409 `plugin_required`). `wafers` et
   `process_library` en sont parce que le constructeur et la fiche d'étude s'en servent partout
-  (champ FDL, liens de plaque, structures enregistrées, présets).
+  (champ FDL, liens de plaque, structures enregistrées, présets) ; `comparator`, parce que toute
+  comparaison de structures passe par lui (évolution d'un µprojet, d'une référence, fiche, plaque).
 - **Actif** = disponible (`Plugin.enabled()`, lu au démarrage : un plugin indisponible n'a pas de
   routes ; 409 `plugin_unavailable` pour l'activer), activé (le choix enregistré, actif par défaut)
   et tous ses prérequis actifs. Désactiver un plugin **éteint ceux qui en dépendent** sans toucher à
@@ -235,6 +237,7 @@ spectre/plugins/<plugin>/
 | `StructureKind` (Protocol : `key`, `render_svg`, `entity_count` ; `KINDS` indexé par les clés figées). Le corps reçu est lu par l'union `structures.schemas.StructurePayload`, discriminée par `kind` | `structures/kinds.py` | process, campaign, images, declared (sans structure) |
 | `DataSource` (Protocol : `list_types`, `describe`, `query`, `chart`), choisie à un seul endroit (`characterization.service.current_source()`, `SPECTRE_DEMO_DATA`) | `characterization/source.py` | PRISM (`prism_source.py`), démo (`demo.py`) |
 | `register_provider(SearchProvider)` | `search` | microprojects, wafers (lasermark, FDL), lots |
+| `register_source(ItemSource)` : le préfixe d'un jeton de ligne (`study`, `wafer`, `reference`), `resolve` (les lignes d'un jeton, vues par le lecteur), `search` (les suggestions d'une saisie), `plugin` (éteint : ses jetons ne se lisent plus) | `comparator` | études (comparator), plaques (wafers), versions de référence (references) |
 | `register_library_file(LibraryFile)` : clé en kebab-case anglais (le nom du fichier YAML reste le nom historique), `parse` (mapping YAML → contenu, `ValueError` si invalide : sert à valider avant l'écriture et à charger) et `fallback` (contenu quand le fichier est absent ou invalide) | `library` | structures (matériaux, recettes), process_library (présets, briques), library (textes de la section intention, servis par `GET /api/ui-texts/intention`) |
 | `register(KpiDefinition)` | `kpis` | activité, wafers, démo EQE |
 | `DataViz.register(component)` | `notebook/static/dataviz/core.js` | table, carte de wafer, distribution, nuage de points, courbes… |
@@ -937,7 +940,7 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` (une par variante d'une campagne, 422 `entity_count` sinon ; au moins une pour une étude simple, ses réplicats ; 422 `duplicate_wafer`) |
 | `POST …/{ref}/combiner` | `POST /api/microprojects/{mp}/experiments` `{merge_of: [{experiment_id, version_id?}, {experiment_id, version_id?}], title, intent, hypothesis, entities, objectives?, context?, branch?}` → 201 + `Location` vers la **nouvelle piste** (§ 4 : deux parents, la structure de la première, cahier vide ; les deux études ne changent pas). Exactement deux études, sans `structure` ni `from_version` (422) ; une version inconnue → 404 `source_not_found` ; deux fois la même piste ou la même version → 422 `same_experiment` ; une version d'avant la fourche de la piste désignée → 422 `version_before_line` ; une étude d'un autre µprojet n'y existe pas (404), et un champ de plus dans `merge_of` (`microproject`...) est refusé (422). `POST …/experiments/{exp}/merges` **supprimée** |
 | `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=&variant=` (`variant` : le procédé d'une variante d'une campagne, § 4 ; chaque étape porte son `id` ; `layer_labels` : les étiquettes de couches par position d'étape, § 4 ; `bricks` : les briques du procédé par positions d'étape, § 4) |
-| `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?, label_changes, param_changes, step_changes}` (avec une cible, à part : les étiquettes de couches et leur regroupement par brique, `label_changes`, les paramètres déclarés, `param_changes`, et les étapes renommées, `step_changes` ; étapes appariées par id, par position entre deux versions sans id commun, § 4) ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
+| `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?, label_changes, param_changes, step_changes}` (avec une cible, à part : les étiquettes de couches et leur regroupement par brique, `label_changes`, les paramètres déclarés, `param_changes`, et les étapes renommées, `step_changes` ; étapes appariées par id, par position entre deux versions sans id commun, § 4) ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403). Plus appelée par le front : une page compare deux versions par le comparateur (§ comparator) |
 | `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
 | `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
 | `POST …/{ref}/ref`, `…/refs[/{ref_name}]`, `…/refs/graphe` | **supprimées** (2026-10-11) : les références (plugin `references`) sont les seules refs |
@@ -1037,7 +1040,7 @@ locales d'avant).
 | `GET /api/references/{reference_slug}/versions` | `{reference, lanes, nodes, edges}` : l'évolution de la référence. `nodes`, dans l'ordre de publication : `{number, major, minor, label, change_level, parent, parent_inferred, imported, note, published_by, published_at, source, usage_count, usages, lane}` ; une version prend la colonne (`lane`) de son parent si elle en est le premier enfant, sinon une nouvelle ; `lanes` : `{index, start, head}` ; `edges` : `{parent, child, kind: "parent" \| "branch", inferred}` |
 | `POST /api/references/{reference_slug}/versions` `{microproject, experiment_id, version_id?, note?, parent?}` | publie une version d'étude (la pointe de la piste par défaut) : rôle `editor` sur le µprojet source (403 ; µprojet inconnu → 422 `unknown_microproject`, piste ou version inconnue → 404) ; une structure dessinée seulement (des images, une campagne → 422 `reference_needs_process`) ; son parent : `parent` (« 1.1 », inconnu → 422 `unknown_parent_version`), sinon la dernière version de cette référence publiée depuis ce µprojet dont la version publiée descend (republier une étude qui a évolué continue sa suite : 1.1 puis 1.2), sinon la version dont part la piste source (`reference_origin`), sinon la dernière publiée ; identique à son parent → 409 `reference_version_identical` ; une version Follow déjà publiée dans cette référence → 409 `reference_version_already_published` ; → 201 + `Location` `.../versions/{version_number}` + la version |
 | `GET /api/references/{reference_slug}/versions/{version_number}` | une version (404 `reference_version_not_found`) : son nœud, plus `reference {slug, name}`, `structure_svg` (l'instantané dessiné par le serveur, étiquettes comprises) et `process` (son procédé éditable, la forme de `GET .../experiments/{exp}/process` : étapes avec leur id, `layer_labels` et `bricks` par positions) - ce que le constructeur charge pour lancer une étude depuis elle |
-| `GET /api/references/{reference_slug}/versions/{version_number}/structure-diff?against=` | la version comparée à `against` (une autre version de la référence), à sa version parente par défaut : `{target: {number} \| null, entries, summary?, label_changes, param_changes, step_changes}` - le diff des études (`experiments.service.compare_states`), lu dans les deux instantanés ; sans parent ni `against` : `{target: null, entries: []}` |
+| `GET /api/references/{reference_slug}/versions/{version_number}/structure-diff?against=` | la version comparée à `against` (une autre version de la référence), à sa version parente par défaut : `{target: {number} \| null, entries, summary?, label_changes, param_changes, step_changes}` - le diff des études (`experiments.service.compare_states`), lu dans les deux instantanés ; sans parent ni `against` : `{target: null, entries: []}`. Plus appelée par le front : la page d'une référence compare deux versions par le comparateur (§ comparator) |
 | `GET /api/reference-versions?microproject=` | les versions de référence publiées depuis ce µprojet (viewer : 403 sinon ; inconnu → 404) : `[{reference: {slug, name}, number, label: "R nom 1.1", experiment_id, version_id, local_tag, change_level, published_at}]`, pour les badges de sa page d'évolution |
 
 - **Numéro** (`service.next_number`) : la version est comparée à sa version parente par le
@@ -1181,6 +1184,48 @@ Codes, pour les deux sources : type inconnu (ou que la démo ne sait pas servir)
 PRISM absente 503 ; connexion, requête ou fiche `hook.yml` invalide 502 (une fiche invalide est
 écartée du catalogue et journalisée, sans faire tomber `/categories`).
 
+### comparator
+
+Toutes nouvelles (2026-10-11). Rien n'est enregistré : une comparaison se relit à chaque fois, et
+son adresse la partage (`/comparateur?item=…&item=…&base=n`). Plugin `comparator` : `table.py` (le
+tableau, pur), `service.py` (les jetons, le registre des sources, la source « étude »).
+
+| Route | Effet |
+|---|---|
+| `GET /api/comparisons?item=&item=…&baseline=` | le tableau des lignes désignées par leurs jetons, dans l'ordre (30 au plus ; 60 lignes au plus une fois les campagnes détaillées), comparées à la ligne `baseline` (0 par défaut) : `{baseline, rows, groups, summary}`. Jetons : `study:<µprojet>/<piste>[@<version>][~<place>]` (une campagne : une ligne par variante, la plaque de référence d'abord, `~n` la seule variante `n` ; un split déclaré : une ligne par plaque), `wafer:<lasermark>` (la dernière étude de vos µprojets qui suit la plaque, sa variante), `reference:<slug>[@<numéro>]` (la dernière version sans numéro). Chaque ligne rendue porte son jeton exact (`item`), `label`, `version`, `sublabel`, `context`, `url`, `wafers`, `badge` (« RÉF »), `baseline`, `cells` (une par colonne : `{text, status, title, changed?}`, `None` sans rien à comparer), `note` (une structure en images), `error` (une ligne introuvable ou interdite garde sa place : µprojet sans rôle, plaque suivie ailleurs seulement, version inconnue), `notes` (les retouches face à la base : étapes renommées, étiquettes) et `summary`. `groups` : le substrat, puis une entrée par étape (`{key, label, kind, kind_label, position, status, differs, columns: [{key, label, status, differs}]}`) ; un split déclaré a le sien. Jeton mal formé → 422 `invalid_comparison_item` ; aucun → 422 `no_comparison_items` ; trop → 422 `too_many_comparison_items` |
+| `GET /api/comparison-candidates?q=&source=` | ce qu'on peut ajouter pour une saisie, source par source (plaques, études, versions de référence ; `source` : celles-là seulement) : `[{item, source, label, sublabel}]` ; une plaque n'est proposée qu'à un membre d'un µprojet qui la suit |
+
+- **Le code couleur** (statut d'une cellule face à la base) : `changed` rouge (la valeur change, un
+  paramètre retiré compris), `added_param` violet (une colonne que l'étape de la base n'a pas : un
+  paramètre ajouté), `added_layer` vert (une étape que la base n'a pas), `moved` orange (l'étape est
+  ailleurs dans l'ordre ; `changed` dit si sa valeur change aussi), `absent` (la base a l'étape, pas
+  cette ligne), `same`, `empty` (ni l'une ni l'autre), `na` (une ligne d'une autre sorte : split
+  déclaré face à un procédé). `differs` d'une colonne ou d'une étape : la page peut ne montrer que
+  les différences.
+- **Les colonnes** : celles des champs de chaque étape (matériau, recette, épaisseur, vitesses...),
+  ses paramètres déclarés (valeur et unité), le mode et la taille d'une lithographie ancrée au réseau
+  (ses ouvertures, qui suivent le nombre de fils vus, non), les ouvertures d'une lithographie dessinée
+  (nombre et largeur), les paramètres d'une étape chimique ; le substrat : matériau, épaisseur, largeur
+  du domaine ou pas du réseau. Une colonne vide partout tombe ; une étape sans paramètre garde une
+  colonne « Présente ». Les longueurs se comparent en nm (`0.15 µm` = `150 nm`) ; une recette propre au
+  procédé se compare avec sa définition.
+- **L'appariement des étapes** (`table._align`) : par id quand deux lignes en partagent (versions
+  d'une piste, variantes, fourche, version de référence et étude publiée) ; sinon par type et
+  matériau (ou recette), dans l'ordre - plus longue sous-suite commune pondérée. Appariée par id hors
+  de cet ordre, ou restée seule avec sa jumelle (même type, même matériau) : déplacée. Restée seule :
+  ajoutée après la dernière étape appariée qui la précède. La base des étapes est la ligne `baseline`
+  si elle a un procédé, sinon la première qui en a un (de même pour un split déclaré).
+- **Le front** : `comparator/static/comparator-table.js` (global `Comparator` : `mount(el, result,
+  {tools, onBaseline, onRemove, onMove})` - la légende au-dessus, la case « Seulement les
+  différences » (préférence de ce navigateur), le tableau à en-têtes et première colonne collants,
+  défilant dans sa carte, les retouches dessous ; `summaryText`, `studyItem`, `waferItem`,
+  `referenceItem`, `pageUrl`). Il sert à la page `/comparateur` (recherche à suggestions, lignes à
+  monter, descendre, retirer ou prendre comme base, lien à copier ; bouton à icône de la barre du
+  haut), sous le diagramme des pages d'évolution d'un µprojet et d'une référence (deux versions, la
+  première choisie en base ; le panneau n'en garde que le résumé et « Voir le tableau »), et en liens
+  depuis la fiche d'une étude (« Comparer », « Comparer les plaques » d'une campagne) et la page d'une
+  plaque (« Comparer sa structure »).
+
 ### usage
 
 Toutes nouvelles, réservées aux administrateurs (403 sinon).
@@ -1200,6 +1245,7 @@ Toutes nouvelles, réservées aux administrateurs (403 sinon).
 | microprojects | `/microprojets/{slug}`, `/p/{code}` (redirection, **après** contrôle de session), `/projets/{rest:path}` (redirection héritée, 308) |
 | experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/evolution` (nouvelle : « Évolution des structures », diagramme des pistes, versions et versions de référence ; liée depuis la page µprojet et la fiche), `/microprojets/{slug}/refs` (302 vers `/evolution`) |
 | references | `/references` (la liste des références de toute l'application ; entrée « Références » de la barre du haut), `/references/{slug}` (l'évolution d'une référence, `?version=1.1` : la version choisie) |
+| comparator | `/comparateur` (nouvelle : `?item=` répété, `&base=n` ; bouton à icône de la barre du haut, à côté de la session) |
 | structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/structures/sans-structure`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image`, `/experiences/{experiment_id}/evoluer-sans-structure` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
 | process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques`, `/microprojets/{slug}/macro-etapes` |
 | intent_forms | `/microprojets/{slug}/formulaire-intention` |
@@ -1216,7 +1262,7 @@ Supprimée : `/microprojets/{slug}/graphe`.
 
 - Scripts classiques (`<script src>`), sans bundler ni framework. Un `client.js`, un registre ou
   un module partagé récent n'expose qu'un global nommé d'après son plugin (`lotsApi`,
-  `ExperiencePage`, `DataViz`, `EvolutionGraph`, `ReferencePublishDialog`, `ReferenceStartPicker`…) ; ses autres déclarations restent locales, dans une IIFE ou un
+  `ExperiencePage`, `DataViz`, `EvolutionGraph`, `ReferencePublishDialog`, `ReferenceStartPicker`, `Comparator`…) ; ses autres déclarations restent locales, dans une IIFE ou un
   objet. **Écarts, tels qu'ils sont** (les regrouper sous un objet par plugin est un chantier à
   part) :
   - les **contrôleurs de page** (un par page : `lots.js`, `area.js`, `atlas.js`…) et le
@@ -1379,7 +1425,8 @@ Supprimée : `/microprojets/{slug}/graphe`.
 - **Les références, côté pages** (plugin references, TODO « Références de structure ») :
   - `experiments/static/evolution-graph.js` (global `EvolutionGraph`) : le diagramme façon git -
     colonnes, rangées, arêtes, formes des nœuds par niveau de changement, légende, liste des
-    rangées au clavier (`bindListbox`), corps d'une comparaison (`diffBodyHtml`). Il ne connaît ni
+    rangées au clavier (`bindListbox`) ; la comparaison de deux versions est le tableau du
+    comparateur (`Comparator`, § comparator), sous le diagramme des deux pages. Il ne connaît ni
     les pistes ni les références : la page d'évolution d'un µprojet (`evolution.js`, versions
     Follow) et la page d'une référence (`references/static/reference.js`, versions 1.0, 1.1, 2.0 :
     colonnes de branches, rattachements déduits en pointillés, `evo-edge--inferred`) lui donnent

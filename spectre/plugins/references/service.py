@@ -261,7 +261,9 @@ def snapshot_of(repo: follow.Repository, version: follow.Experiment) -> dict[str
     return {"structure_type": version.structure_type, "structure": copy.deepcopy(version.structure), "metadata": metadata, "title": version.title}
 
 
-def _state(snapshot: dict[str, Any]) -> experiments.StructureState:
+def snapshot_state(snapshot: dict[str, Any]) -> experiments.StructureState:
+    """Ce que le diff (et le comparateur) lit d'un instantané : sa structure, ses métadonnées et
+    les ids de ses étapes."""
     metadata = snapshot.get("metadata") or {}
     return experiments.StructureState(snapshot["structure_type"], snapshot["structure"], metadata, list(metadata.get(STEP_IDS_METADATA_KEY) or []))
 
@@ -520,6 +522,27 @@ def version_graph(user: User, slug: str) -> dict[str, Any]:
     return {"reference": _reference_payload(viewer, reference, versions, names), "lanes": lanes, "nodes": nodes, "edges": edges}
 
 
+def read_version(slug: str, number: str | None = None) -> tuple[Reference, ReferenceVersion]:
+    """La version ``number`` de la référence ``slug``, la dernière publiée sans numéro (404
+    ``reference_not_found``, ``reference_version_not_found`` - une référence sans version aussi) :
+    ce que lit le comparateur."""
+    _ensure_imported()
+    with get_conn() as conn:
+        reference = _get(conn, slug)
+        versions = versions_of(conn, reference.id)
+    if number:
+        return reference, _version(versions, number)
+    if not versions:
+        raise NotFound("Cette référence n'a pas encore de version.", code="reference_version_not_found")
+    return reference, versions[-1]
+
+
+def version_numbers(slug: str) -> list[str]:
+    """Les numéros des versions de la référence ``slug``, dans l'ordre de leur publication."""
+    with get_conn() as conn:
+        return [version.number for version in versions_of(conn, _get(conn, slug).id)]
+
+
 def get_version(user: User, slug: str, number: str) -> dict[str, Any]:
     """Une version : ce que montre son nœud, plus sa structure dessinée par le serveur (étiquettes
     comprises, ``structure_svg``) et son procédé éditable (``process`` : ce que le constructeur
@@ -534,7 +557,7 @@ def get_version(user: User, slug: str, number: str) -> dict[str, Any]:
         names = _user_names(conn, [version.published_by])
     by_id = {v.id: v for v in versions}
     snapshot = version.snapshot
-    state = _state(snapshot)
+    state = snapshot_state(snapshot)
     return {
         **_version_payload(viewer, reference, version, by_id, names),
         "reference": {"slug": reference.slug, "name": reference.name},
@@ -559,7 +582,7 @@ def version_diff(slug: str, number: str, against: str | None) -> dict[str, Any]:
         target = next((v for v in versions if v.id == version.parent_version_id), None)
     if target is None:
         return {"target": None, "entries": []}
-    return {"target": {"number": target.number}, **experiments.compare_states(_state(target.snapshot), _state(version.snapshot))}
+    return {"target": {"number": target.number}, **experiments.compare_states(snapshot_state(target.snapshot), snapshot_state(version.snapshot))}
 
 
 def versions_published_from(microproject: Microproject) -> list[dict[str, Any]]:

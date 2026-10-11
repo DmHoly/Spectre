@@ -1,0 +1,479 @@
+/* Comparateur de structures : la légende, le tableau (comparator-table.js) et la page /comparateur.
+   Code couleur : rouge (--danger) modifié, violet (--continue) paramètre ajouté, vert (--done) couche
+   en plus, ambre (--hold) étape déplacée, hachures grises couche absente - toujours avec la légende,
+   un mot sur l'en-tête marqué et une infobulle sur la cellule. */
+
+.cmp-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* -- barre : légende et filtre ------------------------------------------------------------------- */
+
+.cmp-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.cmp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.cmp-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cmp-swatch {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  font: 600 12px/1 var(--font-mono);
+  border: 1px solid currentColor;
+}
+
+.cmp-swatch--changed { color: var(--danger); background: var(--danger-tint); }
+.cmp-swatch--added_param { color: var(--continue); background: var(--continue-tint); }
+.cmp-swatch--added_layer { color: var(--done); background: var(--done-tint); }
+.cmp-swatch--moved { color: var(--hold); background: var(--hold-tint); }
+.cmp-swatch--absent {
+  color: var(--text-faint);
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 4px, var(--border-soft) 4px 6px);
+}
+
+.cmp-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.cmp-only input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--navy);
+  cursor: pointer;
+}
+
+.cmp-summary {
+  margin: var(--space-2) 0 var(--space-3);
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.cmp-empty {
+  margin: var(--space-3) 0 0;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+/* -- le tableau ---------------------------------------------------------------------------------- */
+
+.cmp-scroll {
+  max-width: 100%;
+  max-height: min(70vh, 720px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.cmp-scroll:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.cmp-table {
+  --cmp-head-1: 44px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.cmp-table th,
+.cmp-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+/* en-têtes collants : les étapes, puis les paramètres sous elles */
+.cmp-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+}
+
+.cmp-head-columns th {
+  top: var(--cmp-head-1);
+}
+
+.cmp-corner {
+  left: 0;
+  z-index: 4 !important;
+  min-width: 270px;
+  vertical-align: bottom !important;
+  font: 500 11px/1.4 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border-right: 1px solid var(--border);
+}
+
+.cmp-group {
+  border-left: 2px solid var(--border);
+  white-space: nowrap;
+}
+
+.cmp-group__name {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cmp-group__meta {
+  display: block;
+  font: 400 11px/1.4 var(--font-mono);
+  color: var(--text-faint);
+}
+
+.cmp-group--added_layer { background: var(--done-tint) !important; box-shadow: inset 0 3px 0 var(--done); }
+.cmp-group--moved { background: var(--hold-tint) !important; box-shadow: inset 0 3px 0 var(--hold); }
+
+.cmp-col {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.cmp-col.is-first,
+.cmp-cell.is-first {
+  border-left: 2px solid var(--border);
+}
+
+.cmp-col--added_param { background: var(--continue-tint) !important; color: var(--continue); }
+
+.cmp-flag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  font: 600 10.5px/1.5 var(--font-mono);
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+.cmp-group .cmp-flag { margin: 4px 0 0; }
+.cmp-flag--added_layer { color: var(--done); background: var(--surface); border: 1px solid var(--done); }
+.cmp-flag--moved { color: var(--hold); background: var(--surface); border: 1px solid var(--hold); }
+.cmp-flag--added_param { color: var(--continue); background: var(--surface); border: 1px solid var(--continue); }
+
+/* la colonne des lignes reste à gauche quand le tableau défile */
+.cmp-row__head {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 270px;
+  max-width: 320px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  font-weight: 400;
+}
+
+.cmp-row.is-base .cmp-row__head {
+  background: var(--gold-tint);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.cmp-row:not(.is-base):hover .cmp-row__head {
+  background: var(--surface-2);
+}
+
+.cmp-row__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+}
+
+.cmp-row__label {
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+a.cmp-row__label { color: var(--link); }
+
+.cmp-row__version {
+  font: 600 12px/1.4 var(--font-mono);
+  color: var(--accent-dark);
+}
+
+.cmp-row__badge,
+.cmp-row__base {
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  font: 600 10.5px/1.6 var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.cmp-row__badge { color: var(--navy); background: var(--accent-tint-strong); }
+.cmp-row__base { color: var(--gold-dark); background: var(--surface); border: 1px solid var(--gold); }
+
+.cmp-row__sub {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+.cmp-row__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  margin-top: 4px;
+}
+
+.cmp-row__diff {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--danger);
+}
+
+.cmp-row__diff.is-same { color: var(--done); }
+
+.cmp-row__tools {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.cmp-tool {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-soft);
+  font: 500 12px/1 var(--font-ui);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.cmp-tool:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-dark); }
+.cmp-tool:focus-visible { outline: none; box-shadow: var(--ring); }
+.cmp-tool:disabled { opacity: 0.4; cursor: default; }
+.cmp-tool--remove:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+
+/* les cellules : une valeur par paramètre, en chiffres alignés ; positionnées, pour que leur texte
+   pour lecteur d'écran (.cmp-sr, absolu) reste dans le défilement du tableau, pas dans la page */
+.cmp-cell {
+  position: relative;
+  font: 400 12.5px/1.45 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cmp-cell--same { color: var(--text); }
+.cmp-cell--empty,
+.cmp-cell--na { color: var(--border); }
+.cmp-cell--changed { color: var(--danger); background: var(--danger-tint); font-weight: 600; }
+.cmp-cell--added_param { color: var(--continue); background: var(--continue-tint); font-weight: 600; }
+.cmp-cell--added_layer { color: var(--done); background: var(--done-tint); font-weight: 600; }
+.cmp-cell--moved { color: var(--hold); background: var(--hold-tint); font-weight: 600; }
+.cmp-cell--moved.is-changed { color: var(--danger); box-shadow: inset 0 -2px 0 var(--hold); }
+.cmp-cell--absent {
+  color: var(--text-faint);
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 5px, var(--border-soft) 5px 7px);
+}
+
+.cmp-cell--note,
+.cmp-cell--error {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  white-space: normal;
+  color: var(--text-faint);
+}
+
+.cmp-cell--error { color: var(--danger); }
+
+.cmp-row:last-child th,
+.cmp-row:last-child td {
+  border-bottom: 0;
+}
+
+/* -- retouches -------------------------------------------------------------------------------------- */
+
+.cmp-notes {
+  margin-top: var(--space-4);
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.cmp-notes ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.cmp-notes li + li { margin-top: 4px; }
+
+/* -- la page /comparateur --------------------------------------------------------------------------- */
+
+.cmp-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.cmp-page-head h1 { margin: 0; }
+
+.cmp-page-lead {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: var(--text-soft);
+}
+
+.cmp-picker {
+  position: relative;
+  margin-bottom: var(--space-4);
+}
+
+.cmp-picker label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.cmp-picker__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.cmp-picker__row .field {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.cmp-options {
+  position: absolute;
+  z-index: 20;
+  left: var(--space-4);
+  right: var(--space-4);
+  max-height: 340px;
+  overflow: auto;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lift);
+}
+
+.cmp-options__group {
+  padding: 8px 10px 4px;
+  font: 500 11px/1.4 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.cmp-option {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.cmp-option[aria-selected="true"],
+.cmp-option:hover {
+  background: var(--accent-tint);
+}
+
+.cmp-option__label { font-weight: 600; }
+.cmp-option__sub { font-size: 12px; color: var(--text-faint); }
+.cmp-option.is-added { opacity: 0.55; }
+
+.cmp-options__empty {
+  padding: 10px;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.cmp-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* -- le tableau sous le diagramme d'une évolution (µprojet, référence) ------------------------------ */
+
+.cmp-section {
+  margin-top: var(--space-4);
+}
+
+.cmp-section__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.cmp-section__title {
+  margin: 0;
+  font-size: 17px;
+}
+
+.cmp-section__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .cmp-row__head,
+  .cmp-corner {
+    min-width: 150px;
+    max-width: 180px;
+  }
+}

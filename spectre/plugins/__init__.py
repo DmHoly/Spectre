@@ -9,6 +9,7 @@ from .areas import PLUGIN as areas
 from .atlas import PLUGIN as atlas
 from .attachments import PLUGIN as attachments
 from .characterization import PLUGIN as characterization
+from .comparator import PLUGIN as comparator
 from .docs import PLUGIN as docs
 from .experiments import PLUGIN as experiments
 from .external_images import PLUGIN as external_images
@@ -41,6 +42,7 @@ PLUGINS = (
     attachments,
     structures,
     experiments,
+    comparator,
     process_library,
     references,
     intent_forms,

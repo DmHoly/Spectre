@@ -29,6 +29,9 @@
 .plate-hero__actions {
   grid-area: actions;
   align-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .plate-hero__facts {
   grid-area: facts;

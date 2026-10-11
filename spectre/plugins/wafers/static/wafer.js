@@ -1,7 +1,8 @@
 /* Page d'une plaque (wafer.html, /plaques/<lasermark>) : où elle est, ses FDL, ses données en base,
    et son parcours - chaque étude qui la suit (la plus récente d'abord), avec son µprojet, son
    statut, la variante qu'elle porte dans une campagne, l'emplacement et les FDL notés dans cette
-   étude. On y arrive depuis la recherche de la topbar ou un lasermark cliqué sur une fiche. */
+   étude ; « Comparer sa structure » ouvre le comparateur sur elle. On y arrive depuis la recherche
+   de la topbar ou un lasermark cliqué sur une fiche. */
 
 const { lasermark } = routeParams("/plaques/{lasermark}");
 
@@ -70,6 +71,12 @@ async function init() {
     document.getElementById("plate-trail").innerHTML = n
       ? plate.occurrences.map(trailItemHtml).join("")
       : `<li class="help">Le lasermark se renseigne dans la carte « Plaques & entités physiques » d'une fiche, ou au lancement d'une expérience.</li>`;
+    // la structure qu'elle a vue, dans le comparateur (une étude d'un de vos µprojets la suit)
+    if (plate.occurrences.some((o) => o.experiment.member)) {
+      const compare = document.getElementById("plate-compare");
+      compare.href = Comparator.pageUrl([Comparator.waferItem(plate.lasermark)]);
+      compare.hidden = false;
+    }
     if (n && pluginEnabled("characterization")) renderWaferDbLinks(document.querySelectorAll(".js-db-link"), [plate.lasermark]);
   } catch (err) {
     showError(err);

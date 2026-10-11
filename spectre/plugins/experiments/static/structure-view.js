@@ -1,8 +1,9 @@
 /* Onglet « Structure & plaques », côté structure : la structure affichée (en carrousel pour une
    campagne, en planche pour une structure en images), le détail de chaque couche (aperçu au survol,
    paramètres de l'étape au clic), la feuille de split - une ligne par plaque, avec ce qu'on en sait -,
-   les étapes du procédé avec le nombre de données du cahier de chacune (un clic filtre le cahier), et
-   la modification des images d'une structure en images et de leurs annotations. Les étiquettes de
+   les étapes du procédé avec le nombre de données du cahier de chacune (un clic filtre le cahier),
+   « Comparer » (le comparateur sur cette version), et la modification des images d'une structure en
+   images et de leurs annotations. Les étiquettes de
    couches, dessinées par le serveur à droite de la structure, se masquent et s'affichent
    (préférence de ce navigateur). */
 
@@ -446,6 +447,21 @@
 
   const evolveLink = document.getElementById("structure-evolve-link");
   const replaceBtn = document.getElementById("structure-replace-btn");
+  const compareLink = document.getElementById("structure-compare-link");
+
+  // « Comparer » : le comparateur sur cette version - une campagne ou un split déclaré y vient avec
+  // une ligne par plaque ; une structure en images n'a pas de paramètre à comparer
+  function showCompareLink() {
+    const kind = ctx.detail.structure_kind;
+    compareLink.hidden = kind === "images" || !(ctx.process || ctx.detail.declared_structure || kind === "campaign");
+    if (compareLink.hidden) return;
+    compareLink.href = Comparator.pageUrl([Comparator.studyItem(ctx.microprojectSlug, ctx.experimentId, ctx.isTip ? null : ctx.versionId)]);
+    const several = kind === "campaign" || kind === "declared";
+    compareLink.textContent = several ? "Comparer les plaques" : "Comparer";
+    compareLink.title = several
+      ? "Ouvrir le comparateur : une ligne par plaque, une colonne par paramètre, les différences avec la plaque de référence en couleur"
+      : "Ouvrir le comparateur sur cette structure, pour la comparer à d'autres plaques, études ou références";
+  }
   evolveLink.addEventListener("click", () => (window.location.href = ExperiencePage.evolveUrl()));
   replaceBtn.addEventListener("click", openReplaceDrawing);
 
@@ -456,6 +472,7 @@
       evolveLink.style.display = ctx.canEdit && (ctx.process || ctx.detail.declared_structure) ? "" : "none";
       evolveLink.textContent = ctx.detail.declared_structure ? "Modifier la description et le split" : "Modifier la structure";
       replaceBtn.style.display = ctx.canEdit && ctx.detail.structure_images ? "" : "none";
+      showCompareLink();
       renderProcessSteps();
       return Promise.all([renderStructure(ctx.detail), renderSplit(ctx.detail)]);
     },

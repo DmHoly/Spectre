@@ -30,12 +30,6 @@ const referencesApi = {
   version(referenceSlug, number) {
     return api.get(`/api/references/${encodeURIComponent(referenceSlug)}/versions/${encodeURIComponent(number)}`);
   },
-  // la version comparée à `against` (une autre version de la référence), à sa parente par défaut
-  versionDiff(referenceSlug, number, against) {
-    return api.get(
-      api.withQuery(`/api/references/${encodeURIComponent(referenceSlug)}/versions/${encodeURIComponent(number)}/structure-diff`, { against })
-    );
-  },
   // les versions de référence publiées depuis un µprojet (les badges « R nom 1.1 » de son évolution)
   publishedFrom(microprojectSlug) {
     return api.get(api.withQuery("/api/reference-versions", { microproject: microprojectSlug }));

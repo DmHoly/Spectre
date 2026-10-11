@@ -94,6 +94,16 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
   sorti = navy plein jusqu'à la fin déclarée, dépassement = rouge ; fin prévisionnelle = drapeau
   or, fin déclarée = pastille verte cochée, retard = trait rouge pointillé + « +N j ». Priorité
   (P10, P20…) = `.lot-prio`, cadre navy mono, devant le code du lot.
+- **Comparateur de structures** (`comparator/static/comparator.css`, composant `Comparator`) : une
+  ligne par plaque ou structure, une colonne par paramètre sous l'en-tête de son étape ; en-têtes et
+  première colonne collants, le tableau défile dans sa carte (jamais la page). Code couleur face à la
+  ligne de base (filet or + fond `--gold-tint`, pastille « Base ») : modifié `--danger` sur
+  `--danger-tint` (gras), paramètre ajouté `--continue` (violet), couche en plus `--done` (vert),
+  étape déplacée `--hold` (ambre), couche absente en hachures grises. Jamais la couleur seule : la
+  légende (pastilles ≠ + + ↕ −) est toujours au-dessus du tableau, un en-tête marqué porte son mot
+  (« + couche », « ↕ déplacée », « + paramètre »), chaque cellule son infobulle (« base : 100 nm ») et
+  un texte pour lecteur d'écran. Valeurs en IBM Plex Mono à chiffres tabulaires ; case « Seulement
+  les différences » (préférence du navigateur).
 - **Auth** : `.auth-shell` en deux colonnes - `.auth-hero` navy (logo, accroche, diagonale
   or/bleu de la charte) + carte formulaire ; le panneau se réduit à un bandeau sous 860px.
 
