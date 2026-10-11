@@ -6,6 +6,7 @@ l'étude garde d'une version à l'autre et qu'une combinaison reprend."""
 from __future__ import annotations
 
 from support.experiments import evolve, launch, process
+from support.accounts import login
 from support.microprojects import signup_with_microproject
 from support.process_library import create_item, get_item, tech_brick, update_item
 from support.structures import deposition, identified, length, simulate
@@ -96,3 +97,26 @@ def test_a_brick_has_a_version_that_its_copies_keep(client):
     study = launch(client, slug, substrate=SAG_SUBSTRATE, steps=STACK, bricks=[SAG, copy])
     assert process(client, slug, study["id"])["bricks"][1]["version"] == 1
     assert "version" not in process(client, slug, study["id"])["bricks"][0]  # une brique sans version : la forme d'avant
+
+
+def test_the_studies_that_use_a_brick_are_listed_with_the_version_they_copied(client):
+    slug = signup_with_microproject(client, "macro-usages@example.com", "Salle blanche")
+    sag = create_item(client, "tech-bricks", tech_brick("SAG 400", role="sag", substrate=SAG_SUBSTRATE), scope="shared")
+    epi = create_item(client, "tech-bricks", tech_brick("Épi bleue", role="epi"), microproject=slug)
+    unused = create_item(client, "tech-bricks", tech_brick("Procédé seul", role="process"), microproject=slug)
+    copies = [{**SAG, "source": sag["id"], "version": 1}, {**EPI, "source": epi["id"], "version": 1}]
+    study = launch(client, slug, title="Pixel bleu", substrate=SAG_SUBSTRATE, steps=STACK, bricks=copies)
+    update_item(client, "tech-bricks", epi["id"], steps=[deposition("PGaN", "GaN", thickness_nm=80)])  # v2
+
+    usages = client.get("/api/tech-brick-usages", params={"microproject": slug}).json()
+    assert usages[unused["id"]] == []
+    [use] = usages[epi["id"]]
+    assert use["linked"] and use["experiment_id"] == study["id"] and use["title"] == "Pixel bleu"
+    assert use["version"] == 1 and use["microproject"]["slug"] == slug
+
+    # le gabarit est partagé : un compte d'un autre µprojet le voit servir, sans voir l'étude
+    other = signup_with_microproject(client, "macro-usages-other@example.com", "Autre salle")
+    [hidden] = client.get("/api/tech-brick-usages", params={"microproject": other}).json()[sag["id"]]
+    assert hidden == {"microproject": {"name": "Salle blanche"}, "linked": False, "version": 1}
+    assert epi["id"] not in client.get("/api/tech-brick-usages", params={"microproject": other}).json()
+    login(client, "macro-usages@example.com")

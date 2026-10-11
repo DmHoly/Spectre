@@ -14,7 +14,7 @@ from ..accounts import service as accounts
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..structures import simulation
-from . import service
+from . import service, usages
 from .service import SAVED_STRUCTURES, STEP_PRESETS, TECH_BRICKS, Collection, Entry
 from .structure_library import ExperimentOrigin
 
@@ -234,6 +234,13 @@ def delete_step_preset(preset_id: str, user: User = Depends(current_user)) -> No
 
 
 # -- briques technologiques ------------------------------------------------------------------------
+
+
+@router.get("/tech-brick-usages")
+def list_tech_brick_usages(microproject: str | None = None, user: User = Depends(current_user)) -> dict[str, list[dict[str, Any]]]:
+    """Par id de brique visible, les études dont la version courante en a une copie (voir
+    :mod:`.usages`) - la page des macro-étapes s'en sert pour dire où chacune sert."""
+    return usages.tech_brick_usages(user, microproject)
 
 
 @router.get("/tech-bricks")

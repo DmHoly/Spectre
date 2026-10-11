@@ -18,6 +18,7 @@ const PREVIEW_SUBSTRATE = { material: "GaN", domain_width: { value: 400, unit: "
 
 const state = {
   bricks: [],
+  usages: {}, // id de brique -> les études qui en ont une copie (GET /api/tech-brick-usages)
   role: null, // le rôle du compte dans le µprojet (créer : editor, owner)
   chosen: { sag: "", epi: "", process: "" },
 };
@@ -102,9 +103,42 @@ function cardHtml(brick) {
         <div class="sp-macro__meta">v${brick.version || 1} · ${SCOPE_LABELS[brick.scope] || escapeHtml(brick.scope)} · ${brick.steps.length} étape${brick.steps.length > 1 ? "s" : ""}${lattice}</div>
         ${on}
         ${brick.notes ? `<p class="sp-macro__notes">${escapeHtml(brick.notes)}</p>` : ""}
+        ${usageHtml(brick)}
         <div class="sp-macro__actions">${actions.join("")}</div>
       </div>
     </article>`;
+}
+
+const STATUS_LABELS = {
+  draft: "brouillon",
+  running: "en cours",
+  hold: "en pause",
+  concluded: "conclue",
+  continued: "continuée",
+  abandoned: "abandonnée",
+};
+
+// Où sert une brique : le nombre d'études dont la version courante en a une copie, et combien
+// portent une version antérieure de la brique ; la liste s'ouvre (liens vers les études des µprojets
+// dont on est membre, le nom du µprojet seul pour les autres).
+function usageHtml(brick) {
+  const uses = state.usages[brick.id];
+  if (!uses) return "";
+  if (!uses.length) return `<div class="sp-macro__usage is-unused">Utilisée dans aucune étude</div>`;
+  const current = brick.version || 1;
+  const older = uses.filter((u) => u.version && u.version < current).length;
+  const summary = `Utilisée dans ${uses.length} étude${uses.length > 1 ? "s" : ""}${older ? ` · ${older} sur une version antérieure` : ""}`;
+  const rows = uses
+    .map((u) => {
+      const version = u.version ? `v${u.version}` : "v?";
+      const stale = u.version && u.version < current ? " is-stale" : "";
+      if (!u.linked) return `<li><span class="sp-macro__usage-v${stale}">${version}</span> une étude de « ${escapeHtml(u.microproject.name)} »</li>`;
+      const href = `/microprojets/${encodeURIComponent(u.microproject.slug)}/experiences/${encodeURIComponent(u.experiment_id)}`;
+      const where = u.microproject.slug === slug ? "" : ` <span class="sp-macro__usage-mp">${escapeHtml(u.microproject.code || u.microproject.name)}</span>`;
+      return `<li><span class="sp-macro__usage-v${stale}">${version}</span> <a href="${href}">${escapeHtml(u.title || u.experiment_id)}</a>${where} <span class="sp-macro__usage-status">${escapeHtml(STATUS_LABELS[u.status] || u.status || "")}</span></li>`;
+    })
+    .join("");
+  return `<details class="sp-macro__usage"><summary>${summary}</summary><ul>${rows}</ul></details>`;
 }
 
 function renderColumns() {
@@ -200,7 +234,13 @@ async function renderThumbnails() {
 }
 
 async function loadBricks() {
-  state.bricks = (await processLibraryApi.techBricks({ microproject: slug })).filter((b) => b.role);
+  const [bricks, usages] = await Promise.all([
+    processLibraryApi.techBricks({ microproject: slug }),
+    // les usages ne sont qu'un renseignement : la page s'affiche sans eux s'ils échouent
+    processLibraryApi.techBrickUsages({ microproject: slug }).catch(() => ({})),
+  ]);
+  state.bricks = bricks.filter((b) => b.role);
+  state.usages = usages;
   renderColumns();
   renderAssembly();
   renderThumbnails();

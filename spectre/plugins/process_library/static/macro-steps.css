@@ -142,6 +142,47 @@
   line-height: 1.45;
   color: var(--text-soft);
 }
+.sp-macro__usage {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.sp-macro__usage.is-unused {
+  color: var(--text-faint);
+}
+.sp-macro__usage summary {
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
+}
+.sp-macro__usage ul {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.sp-macro__usage li {
+  overflow-wrap: anywhere;
+}
+.sp-macro__usage-v {
+  display: inline-block;
+  min-width: 26px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.sp-macro__usage-v.is-stale {
+  color: var(--hold);
+  font-weight: 600;
+}
+.sp-macro__usage-mp,
+.sp-macro__usage-status {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
 .sp-macro__actions {
   display: flex;
   flex-wrap: wrap;

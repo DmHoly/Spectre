@@ -35,6 +35,11 @@ const processLibraryApi = {
   deleteStepPreset(presetId) {
     return api.del(`/api/step-presets/${encodeURIComponent(presetId)}`);
   },
+  // {brick_id: [{microproject, linked, version, experiment_id?, title?, status?, updated_at?}]} : les études
+  // dont la version courante a une copie de chaque brique (voir process_library/usages.py)
+  techBrickUsages(filters) {
+    return api.get(api.withQuery("/api/tech-brick-usages", filters));
+  },
   techBricks(filters) {
     return api.get(api.withQuery("/api/tech-bricks", filters));
   },

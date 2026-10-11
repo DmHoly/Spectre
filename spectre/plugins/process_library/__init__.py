@@ -8,7 +8,8 @@ from .migrations import MIGRATIONS
 
 PLUGIN = Plugin(
     name="process_library",
-    depends_on=("structures", "microprojects", "library"),
+    # experiments : où servent les briques (usages.py, les études qui en ont une copie)
+    depends_on=("structures", "microprojects", "library", "experiments"),
     router=router,
     pages=(
         Page("/bibliotheque", "library-hub.html"),

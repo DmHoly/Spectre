@@ -105,8 +105,8 @@ placés au-dessus de lui.
 | 7 | `microprojects` | µprojets (CRUD, numéro, rattachement à un projet ou une thématique, recherche), membres, rôles, invitations. Fournit la règle d'accès (`service.access`, `effective_role`, `check_role`) et `deps.require_role` | accounts, areas, search | `microprojects`, `memberships`, `invitations` |
 | 8 | `attachments` | Fichiers téléversés d'un µprojet (blob + sidecar), types, tailles, service des octets | microprojects | `data/microprojects/<slug>/attachments/` |
 | 9 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
-| 10 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library | JSON par portée |
-| 11 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, combinaison de deux études (une nouvelle piste à deux parents), suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
+| 10 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, combinaison de deux études (une nouvelle piste à deux parents), suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
+| 11 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library, experiments (où servent les briques) | JSON par portée |
 | 12 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), le regroupement des refs locales d'avant dont le nom est porté dans au moins deux µprojets (`local_refs.py`) | experiments, microprojects, structures | `structure_references`, `reference_versions`, `reference_import_scans`, `reference_import_rules`, `retired_reference_slugs`, `dismissed_local_refs` |
 | 13 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
 | 14 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité, plaques de chaque FDL (`fdl_source` : démo, base locale, PRISM à venir) | experiments, search | cache mémoire, `fdl_wafers` |
@@ -667,7 +667,14 @@ gabarit, le même procédé sur une autre épi.
 - **Page des macro-étapes** (`/microprojets/{slug}/macro-etapes`, `process_library/static/macro-steps.js`,
   carte de la Bibliothèque et lien de la page des briques) : une colonne par rôle, une carte par brique
   (aperçu simulé sur son contexte : ses `preview_on`, sinon la première brique de chaque rôle d'avant,
-  écrite en italique ; version, portée, pas du réseau ; Modifier, Dupliquer, Assembler, Supprimer).
+  écrite en italique ; version, portée, pas du réseau ; Modifier, Dupliquer, Assembler, Supprimer)
+  et **où elle sert** : « Utilisée dans N études · M sur une version antérieure », la liste s'ouvre.
+  `GET /api/tech-brick-usages?microproject=` (`process_library/usages.py`) rend, par id de brique
+  visible, les études dont la version courante (la pointe de chaque piste) a une copie de la brique
+  (`process_bricks`, `source`), avec la version copiée ; tous les µprojets sont lus (une brique
+  partagée sert partout), mais d'une étude d'un µprojet dont on n'est pas membre, seul le nom du
+  µprojet (comme les usages d'une référence). D'où la dépendance de `process_library` à
+  `experiments`, listé avant lui.
   « + Nouveau » ouvre le mode brique au rôle choisi (`?role=`), qui revient sur la page. La barre
   « Assembler une structure » ouvre une nouvelle expérience déjà assemblée
   (`/structures/nouvelle?assemblage=<id>,<id>,…`, `assembly.loadAssembly`).
