@@ -28,7 +28,6 @@ from support.experiments import (
     versions,
 )
 from support.external_images import png_files
-from support.http import assert_handler_404
 from support.microprojects import signup_with_microproject
 from support.notebook import add_entry, add_manual, delete_entry, entries, entries_by_id, entries_url, take_snapshot, update_entry, upload_notebook_file
 from support.structures import steps, upload_structure_image
@@ -333,10 +332,6 @@ def test_an_old_version_link_resolves_to_its_line(client):
     slug = signup_with_microproject(client, "legacy-link@example.com")
     launched = launch(client, slug)
     tagged = tag(client, slug, launched["id"], ["x"])
-
-    resolved = client.get(f"/api/microprojects/{slug}/experiment-versions/{launched['version_id']}")
-    assert resolved.json() == {"experiment_id": launched["id"], "version_id": launched["version_id"]}
-    assert_handler_404(client.get(f"/api/microprojects/{slug}/experiment-versions/exp_0000000000000000"))
 
     page = client.get(f"/microprojets/{slug}/experiences/{launched['version_id']}", follow_redirects=False)
     assert page.status_code == 302

@@ -173,6 +173,7 @@ def test_migrated_installation_is_readable_through_the_normal_code_path(data_dir
 
     from spectre.kernel.db import run_migrations
     from spectre.plugins import PLUGINS
+    from spectre.plugins.accounts import service as accounts
     from spectre.plugins.microprojects import service as microprojects
 
     run_migrations(PLUGINS)
@@ -180,7 +181,7 @@ def test_migrated_installation_is_readable_through_the_normal_code_path(data_dir
     microproject = microprojects.get_by_slug("nanofils-gan")
     assert microproject.name == "Nanofils GaN"
     assert microprojects.role_for(microproject.id, user_id=2) == "editor"
-    assert {p.slug: role for p, role in microprojects.list_for_user(1)} == {"nanofils-gan": "owner", "contact-ohmique": "owner"}
+    assert {p.slug: access.role for p, access in microprojects.list_mine(accounts.get_by_id(1))} == {"nanofils-gan": "owner", "contact-ohmique": "owner"}
 
 
 def test_migration_is_idempotent_and_leaves_a_current_database_alone(data_dir):
@@ -191,10 +192,11 @@ def test_migration_is_idempotent_and_leaves_a_current_database_alone(data_dir):
 
     from spectre.kernel.db import run_migrations
     from spectre.plugins import PLUGINS
+    from spectre.plugins.accounts import service as accounts
     from spectre.plugins.microprojects import service as microprojects
 
     run_migrations(PLUGINS)
     run_migrations(PLUGINS)
 
-    assert {p.slug: role for p, role in microprojects.list_for_user(1)} == {"nanofils-gan": "owner", "contact-ohmique": "owner"}
+    assert {p.slug: access.role for p, access in microprojects.list_mine(accounts.get_by_id(1))} == {"nanofils-gan": "owner", "contact-ohmique": "owner"}
     assert (data_dir / "microprojects" / "nanofils-gan" / "follow" / "experiments.json").exists()

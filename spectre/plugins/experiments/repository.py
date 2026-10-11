@@ -10,9 +10,8 @@ tip of each line of study.
   - so a write always starts from the latest tips, never from a copy read before another write -
   and invalidates the cache when it is done. The instance it yields is its own, never the cached
   one.
-- :func:`delete_line`, :func:`rename_tag` and :func:`remove_tag` are the only places that reach
-  into Follow's private state: Follow has no delete (experiments are immutable, content-addressed)
-  and no way to rename or drop a tag (meant to be a stable, citable reference).
+- :func:`delete_line` is the only place that reaches into Follow's private state: Follow has no
+  delete (experiments are immutable, content-addressed).
 - :class:`_Store` is Follow's own JSON layout, written through :func:`spectre.kernel.fs.write_text`:
   under Windows a reader holding ``refs.json`` for an instant no longer fails a commit.
 """
@@ -156,20 +155,6 @@ def delete_line(repo, experiment_id: str) -> list[str]:
         for version_id in to_delete:
             (store_path / "objects" / f"{version_id}.json").unlink(missing_ok=True)
     return to_delete
-
-
-def rename_tag(repo, old: str, new: str) -> None:
-    """Rename the tag ``old`` to ``new`` (same target), in one write of ``refs.json`` (under
-    :func:`writing`). The caller checks that ``new`` is free - tags and branches share one
-    namespace in Follow."""
-    repo._tags[new] = repo._tags.pop(old)
-    repo._store.write_refs(dict(repo._branches), dict(repo._tags))
-
-
-def remove_tag(repo, name: str) -> None:
-    """Drop the tag ``name`` (under :func:`writing`) ; the version it pointed at stays."""
-    repo._tags.pop(name)
-    repo._store.write_refs(dict(repo._branches), dict(repo._tags))
 
 
 RETIRED_LINES_FILE = "retired_lines.json"

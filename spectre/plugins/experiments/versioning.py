@@ -52,9 +52,6 @@ from ..structures.simulation import (
 
 ChangeLevel = Literal["initial", "major", "minor", "patch", "none"]
 
-VERSION_CHANGE_LEVELS: tuple[ChangeLevel, ...] = ("initial", "major", "minor", "patch", "none")
-
-
 def _step_shape(steps: list[dict]) -> list[str]:
     return [step.get("kind") for step in steps]
 

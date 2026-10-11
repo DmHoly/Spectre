@@ -120,7 +120,7 @@ def _from_row(row: sqlite3.Row) -> ManagementArea:
         created_by=row["created_by"],
         objectives_period=row["objectives_period"],
         code_prefix=row["code_prefix"],
-        team_id=row["team_id"] if "team_id" in row.keys() else None,
+        team_id=row["team_id"],
     )
 
 

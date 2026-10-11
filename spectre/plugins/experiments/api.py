@@ -307,13 +307,6 @@ def detach_experiment(experiment_id: str, microproject: Microproject = Depends(r
     return Response(status_code=204)
 
 
-@router.get("/experiment-versions/{version_id}")
-def experiment_of_version(version_id: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    """``{experiment_id, version_id}`` : la piste d'une version - pour un ancien lien vers un id de
-    version."""
-    return {"experiment_id": service.experiment_of_version(get_repository(microproject.slug), version_id), "version_id": version_id}
-
-
 # -- une piste -------------------------------------------------------------------------------------
 
 

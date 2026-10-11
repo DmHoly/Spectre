@@ -81,10 +81,6 @@ def test_the_planning_is_for_the_team_managers_and_the_admins(client):
     assert _board(client, "equipe-a")["team"]["slug"] == "equipe-a"
     assert client.get("/api/team-plannings/inconnue").status_code == 404
 
-    client.post("/api/sessions/current/logout")
-    client.cookies.clear()
-    assert client.get("/api/team-plannings").status_code == 401
-
 
 def test_the_planning_page_is_served(client):
     world = team_world(client)

@@ -199,7 +199,7 @@ un `Access(role, source, membership)` : `role` est le rôle effectif, `source` d
 dans cet ordre de priorité : owner par adhésion (`membership`), puis `team_manager`, puis `admin`,
 puis le rôle de l'adhésion. `effective_role`, `has_role`, `check_role`, `accesses` (une liste en
 deux requêtes) et `deps.require_role` en dérivent ; aucun autre plugin ne lit la table
-`memberships` pour autoriser (`role_for` et `list_for_user` restent des lecteurs bruts). « Mes
+`memberships` pour autoriser (`role_for` reste un lecteur brut). « Mes
 µprojets » (`list_mine`) : ceux dont on est membre et ceux des équipes qu'on manage, pas tous
 ceux qu'un admin peut ouvrir. Hors µprojets, trois contrôles gardent leur propre règle, qui ne
 dépend pas d'un rôle : la suppression d'un lot (créateur ou admin) et les éléments partagés de
@@ -329,8 +329,8 @@ nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ 
   hypothèse, métadonnées, réponses au formulaire, preuves, étiquettes, conclusion), puis applique
   le changement et ne commite que s'il y a une différence.
 - Les liens vers une étude (atlas, entités, pages) désignent la piste et non une version. Une URL
-  de page qui porte encore un ancien id de version est résolue par
-  `GET /api/microprojects/{microproject_slug}/experiment-versions/{version_id}`.
+  de page qui porte encore un ancien id de version est redirigée vers la page de sa piste (le
+  `page_router` d'`experiments`).
 
 **Mise en œuvre** (`experiments/repository.py`, `experiments/service.py`) :
 
@@ -343,9 +343,8 @@ nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ 
   une évolution (`POST .../versions`) le revalide. Les erreurs de Follow deviennent des
   `kernel.errors` ; un formulaire refusé est un 422 `invalid_intent_form` dont le `detail` énumère
   les réponses en défaut.
-- Les seuls accès aux internes privés de Follow sont dans `repository` : `delete_line(repo,
-  experiment_id)` (suppression d'une piste), `rename_tag` et `remove_tag` (renommer ou retirer une
-  ref ; Follow n'en offre pas le moyen). Le dépôt est ouvert sur le stockage JSON de Follow
+- Le seul accès aux internes privés de Follow est dans `repository` : `delete_line(repo,
+  experiment_id)` (suppression d'une piste ; Follow n'en offre pas le moyen). Le dépôt est ouvert sur le stockage JSON de Follow
   (même format sur disque), dont les écritures passent par `kernel.fs.write_text` : un `refs.json`
   tenu un instant par un lecteur, sous Windows, ne fait plus échouer un commit.
 - Le plugin qui écrit dans une étude sans en être le propriétaire (notebook) expose ses
@@ -949,7 +948,6 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `GET /api/microprojets/{slug}/graphe.html` | **supprimée**, ainsi que la page `/microprojets/{slug}/graphe` |
 | *(dans les listes de µprojets)* | `GET /api/experiment-stats?microproject=&area=` → `[{microproject, running, concluded, abandoned, wafers, role_source}]` |
 | *(dans la thématique)* | `GET /api/experiment-timeline?area=&thematic=` (champs masqués pour les non-membres) |
-| *(nouveau)* | `GET /api/microprojects/{mp}/experiment-versions/{version_id}` → `{experiment_id, version_id}` (résolution des anciens liens) |
 
 ### notebook · external_images
 
