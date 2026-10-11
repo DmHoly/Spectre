@@ -25,8 +25,9 @@ l'autre et dont on suit l'évolution.
   lu dans le dépôt en cache de chaque µprojet) ; une origine qui désigne une référence ou une version
   inconnue n'est comptée nulle part.
 
-Les refs locales (étiquettes Follow nommées à la main) dont le nom est porté dans au moins deux
-µprojets sont regroupées en références à la lecture : :mod:`.local_refs`.
+Les refs locales d'avant (étiquettes Follow nommées à la main) dont le nom était porté dans au moins
+deux µprojets ont été regroupées en références une fois, par la migration
+``0005_local_refs_imported_once`` : :mod:`.local_refs`.
 """
 
 from __future__ import annotations
@@ -51,7 +52,12 @@ from ..experiments.repository import branch_tips, display_status, get_repository
 from ..microprojects import service as microprojects
 from ..microprojects.service import Microproject
 from ..structures import kinds
-from ..structures.simulation import BRICKS_METADATA_KEY, LAYER_LABELS_METADATA_KEY, LAYER_STEPS_METADATA_KEY, STEP_IDS_METADATA_KEY
+from ..structures.simulation import (
+    BRICKS_METADATA_KEY,
+    LAYER_LABELS_METADATA_KEY,
+    LAYER_STEPS_METADATA_KEY,
+    STEP_IDS_METADATA_KEY,
+)
 
 LOCK_NAMESPACE = "references"
 WRITE_LOCK_KEY = "write"  # toutes les écritures des références : une à la fois (numéros uniques)
@@ -454,19 +460,12 @@ def _reference_payload(viewer: _Viewer, reference: Reference, versions: list[Ref
     }
 
 
-def _ensure_imported() -> None:
-    from .local_refs import import_local_refs
-
-    import_local_refs()
-
-
 # -- lectures --------------------------------------------------------------------------------------
 
 
 def list_references(user: User, q: str = "") -> list[dict[str, Any]]:
     """Toutes les références, de la plus récemment mise à jour (une version publiée la met à jour) à
     la plus ancienne ; ``q`` cherche dans le nom, le slug et la description (sans casse ni accents)."""
-    _ensure_imported()
     needle = _folded(q.strip())
     viewer = _Viewer(user)
     with get_conn() as conn:
@@ -480,7 +479,6 @@ def list_references(user: User, q: str = "") -> list[dict[str, Any]]:
 
 
 def get_reference(user: User, slug: str) -> dict[str, Any]:
-    _ensure_imported()
     viewer = _Viewer(user)
     with get_conn() as conn:
         reference = _get(conn, slug)
@@ -495,7 +493,6 @@ def version_graph(user: User, slug: str) -> dict[str, Any]:
     ``lane``), une arête parent → enfant (``kind`` : ``parent`` dans la même colonne, ``branch``
     pour une branche parallèle ; ``inferred`` : un rattachement déduit à l'import). Une version
     prend la colonne de son parent si elle en est le premier enfant, sinon une nouvelle colonne."""
-    _ensure_imported()
     viewer = _Viewer(user)
     with get_conn() as conn:
         reference = _get(conn, slug)
@@ -526,7 +523,6 @@ def read_version(slug: str, number: str | None = None) -> tuple[Reference, Refer
     """La version ``number`` de la référence ``slug``, la dernière publiée sans numéro (404
     ``reference_not_found``, ``reference_version_not_found`` - une référence sans version aussi) :
     ce que lit le comparateur."""
-    _ensure_imported()
     with get_conn() as conn:
         reference = _get(conn, slug)
         versions = versions_of(conn, reference.id)
@@ -548,7 +544,6 @@ def get_version(user: User, slug: str, number: str) -> dict[str, Any]:
     comprises, ``structure_svg``) et son procédé éditable (``process`` : ce que le constructeur
     charge pour lancer une étude depuis cette version - les étapes avec leur id, les étiquettes et
     les briques par positions)."""
-    _ensure_imported()
     viewer = _Viewer(user)
     with get_conn() as conn:
         reference = _get(conn, slug)
@@ -569,7 +564,6 @@ def get_version(user: User, slug: str, number: str) -> dict[str, Any]:
 def versions_published_from(microproject: Microproject) -> list[dict[str, Any]]:
     """Les versions de référence publiées depuis ``microproject`` (le droit de le lire : vérifié par
     l'appelant), les plus récentes d'abord - les badges « R nom 1.1 » de sa page d'évolution."""
-    _ensure_imported()
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT v.*, r.slug AS reference_slug, r.name AS reference_name FROM reference_versions v
@@ -602,7 +596,6 @@ def _taken(name: str) -> Conflict:
 def create_reference(user: User, *, name: str, description: str = "") -> Reference:
     """Une nouvelle référence, sans version (on y publie ensuite) : tout compte connecté. 409 pour un
     nom déjà pris (comparé par :func:`normalized_name`)."""
-    _ensure_imported()
     name = _checked_name(name)
     with keyed_lock(LOCK_NAMESPACE, WRITE_LOCK_KEY), get_conn() as conn:
         if find_by_name(conn, name) is not None:
@@ -613,7 +606,6 @@ def create_reference(user: User, *, name: str, description: str = "") -> Referen
 def update_reference(user: User, slug: str, changes: dict[str, Any]) -> Reference:
     """Renommer ou décrire une référence (``changes`` : ``name``, ``description``) - son créateur ou
     un admin (403). Le slug ne change pas. Sans effet : rien n'est écrit."""
-    _ensure_imported()
     with keyed_lock(LOCK_NAMESPACE, WRITE_LOCK_KEY), get_conn() as conn:
         reference = _get(conn, slug)
         if not can_manage(user, reference):
@@ -637,10 +629,7 @@ def delete_reference(user: User, slug: str) -> None:
     admin seulement (409 ``reference_has_versions`` pour son créateur), ses versions partent avec
     elle - les études qui en sont parties gardent leur origine, lue alors comme inconnue : son slug
     n'est plus jamais redonné (``retired_reference_slugs``). Celui d'une référence sans version
-    (aucune étude n'a pu en partir : une version ne se retire pas seule) se libère. Les étiquettes
-    importées dans ses versions (``local_tag``) ne sont plus regroupées (``dismissed_local_refs`` :
-    :mod:`.local_refs`) - le retrait reste définitif."""
-    _ensure_imported()
+    (aucune étude n'a pu en partir : une version ne se retire pas seule) se libère."""
     with keyed_lock(LOCK_NAMESPACE, WRITE_LOCK_KEY), get_conn() as conn:
         reference = _get(conn, slug)
         if not can_manage(user, reference):
@@ -653,12 +642,6 @@ def delete_reference(user: User, slug: str) -> None:
         if has_versions:
             stamp = now()
             conn.execute("INSERT OR IGNORE INTO retired_reference_slugs (slug, retired_at) VALUES (?, ?)", (reference.slug, stamp))
-            conn.execute(
-                """INSERT OR IGNORE INTO dismissed_local_refs (microproject_id, local_tag, dismissed_at)
-                   SELECT microproject_id, local_tag, ? FROM reference_versions
-                   WHERE reference_id = ? AND local_tag IS NOT NULL AND microproject_id IS NOT NULL""",
-                (stamp, reference.id),
-            )
         conn.execute("DELETE FROM structure_references WHERE id = ?", (reference.id,))
 
 
@@ -682,7 +665,6 @@ def publish_version(
     409 ``reference_version_identical`` si rien ne change, ``reference_version_already_published``
     pour une version Follow déjà publiée dans cette référence ; 422 ``reference_needs_process`` pour
     une structure qui n'est pas un procédé dessiné. Renvoie le numéro donné."""
-    _ensure_imported()
     try:
         microproject = microprojects.get_by_slug(microproject_slug)
     except microprojects.MicroprojectNotFoundError as exc:

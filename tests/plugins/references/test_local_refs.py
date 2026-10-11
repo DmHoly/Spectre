@@ -1,11 +1,13 @@
-"""Les refs locales d'avant les références (des étiquettes Follow nommées à la main) : seuls les noms
-portés dans au moins deux µprojets deviennent des références (le cas de « epitaxie-standard », posée
-dans les deux µprojets de la démo), chaque étiquette une version dans l'ordre des dates ; les autres
-refs nommées restent des repères locaux, publiables à la main ; les noms automatiques
-« ref vX.Y.Z » restent locaux ; le partage se décide sur tous les µprojets, dès qu'une ref est posée
-dans un µprojet déjà lu ; une référence retirée par un admin ne revient pas ; ce que l'ancienne règle
-avait importé d'un seul µprojet est retiré s'il n'a ni publication à la main ni usage, ni version
-d'un µprojet supprimé ; rien n'est réécrit dans les dépôts Follow."""
+"""Les refs locales d'avant les références (des étiquettes Follow nommées à la main), regroupées
+**une fois** par la migration ``0005_local_refs_imported_once`` (``references.local_refs``) : seuls
+les noms portés dans au moins deux µprojets deviennent des références (le cas de
+« epitaxie-standard », posée dans les deux µprojets de la démo), chaque étiquette une version dans
+l'ordre des dates ; les autres refs nommées restent des repères locaux, publiables à la main ; les
+noms automatiques « ref vX.Y.Z » restent locaux ; ce que l'ancienne règle avait importé d'un seul
+µprojet est retiré s'il n'a ni publication à la main ni usage, ni version d'un µprojet supprimé ;
+les étiquettes dont un admin avait retiré la référence ne reviennent pas ; rien n'est réécrit dans
+les dépôts Follow ; après la migration, plus rien n'est regroupé. La migration ayant déjà tourné sur
+la base (vide) du test, chaque test la rejoue sur ce qu'il a posé (``_migrate``)."""
 
 from __future__ import annotations
 
@@ -17,13 +19,15 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-
 from support.accounts import login
 from support.experiments import evolve, launch, launch_campaign, legacy_tag, legacy_tags
-from support.microprojects import create_microproject, delete_microproject, signup_with_microproject
+from support.microprojects import (
+    create_microproject,
+    delete_microproject,
+    signup_with_microproject,
+)
 from support.references import (
     create_reference,
-    delete_reference,
     get_version,
     origin,
     publish,
@@ -34,6 +38,7 @@ from support.references import (
 from support.structures import steps
 
 ROOT = Path(__file__).resolve().parents[3]
+TRACKING_TABLES = ("reference_import_scans", "reference_import_rules", "dismissed_local_refs")
 
 
 def _follow_files(data_dir: Path) -> dict[str, str]:
@@ -46,7 +51,7 @@ def _follow_files(data_dir: Path) -> dict[str, str]:
 
 
 def _two_microprojects(client):
-    """Comme la démo : deux µprojets, chacun avec la ref « epitaxie-standard » sur la même
+    """Comme la démo d'avant : deux µprojets, chacun avec la ref « epitaxie-standard » sur la même
     structure ; le premier a aussi deux refs d'un même nom (casse et accents mis à part) sur une
     même piste, une autre ref nommée et une ref posée sur une campagne."""
     single = signup_with_microproject(client, "seed@example.com", "Puits simple")
@@ -69,10 +74,37 @@ def _ref_names(client, slug: str) -> set[str]:
     return legacy_tags(slug)
 
 
+def _migrate() -> list[str]:
+    """Rejoue le regroupement de la migration sur la base du test."""
+    from spectre.kernel.db import get_conn
+    from spectre.plugins.references.local_refs import import_shared_local_refs
+
+    with get_conn() as conn:
+        return import_shared_local_refs(conn)
+
+
+def _tables() -> set[str]:
+    from spectre.kernel.db import get_conn
+
+    with get_conn() as conn:
+        return {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+
+
+def test_the_migration_has_run_and_dropped_the_tracking_tables(client):
+    from spectre.kernel.db import get_conn
+
+    assert not set(TRACKING_TABLES) & _tables()
+    with get_conn() as conn:
+        applied = {row["migration_id"] for row in conn.execute("SELECT migration_id FROM schema_migrations WHERE plugin = 'references'")}
+    assert "0005_local_refs_imported_once" in applied
+
+
 def test_only_names_shared_by_two_microprojects_become_references(client, data_dir):
     single, mqw, base, other = _two_microprojects(client)
     before = _follow_files(data_dir)
+    assert references(client) == []  # lire les références ne regroupe plus rien
 
+    assert sorted(set(_migrate())) == ["epitaxie-standard"]
     listed = {r["slug"]: r for r in references(client)}
     # « recette-approuvee » et « recette-approuvee-2 » ne sont que dans un µprojet : repères locaux ;
     # les refs automatiques (« ref v1.0.0 ») et celle d'une campagne restent locales aussi
@@ -109,99 +141,34 @@ def test_only_names_shared_by_two_microprojects_become_references(client, data_d
     assert [(n["number"], n["imported"], n["source"]["local_tag"]) for n in nodes] == [("1.0", False, None)]
 
 
-def test_the_import_happens_once(app, client, data_dir):
+def test_the_import_is_done_once_and_nothing_is_grouped_afterwards(client, data_dir):
     _two_microprojects(client)
+    _migrate()
     first = references(client)
-    again = references(client)
-    assert again == first
-    with TestClient(app) as restarted:
-        restarted.cookies = client.cookies
-        assert references(restarted) == first
+    assert _migrate() == []  # idempotent : rien de nouveau à importer
+    assert references(client) == first
 
-    # un µprojet créé ensuite est lu, vide ; une ref locale posée après dans ce µprojet déjà lu change
-    # l'empreinte de ses étiquettes : la lecture suivante l'importe
+    # une ref nommée posée après (un dépôt copié d'ailleurs) reste un repère local
     late = create_microproject(client, "Tardif")["slug"]
-    references(client)
     study = launch(client, late, title="Epitaxie", intent="x", steps=steps(40))
     legacy_tag(client, late, study["id"], "epitaxie-standard")
-    assert [n["number"] for n in version_graph(client, "epitaxie-standard")["nodes"]] == ["1.0", "1.1", "1.2"]
-    # une étude de plus, sans ref nommée : l'empreinte ne change pas, rien n'est relu
-    launch(client, late, title="Autre", intent="x", steps=steps(30))
-    after = references(client)
-    assert references(client) == after
-
-
-def test_a_name_shared_later_imports_the_tags_of_every_microproject(client, data_dir):
-    first = signup_with_microproject(client, "later@example.com", "Premier")
-    study = launch(client, first, title="Epitaxie", intent="x", steps=steps(20))
-    legacy_tag(client, first, study["id"], "Recette X")
-    # un seul µprojet porte le nom : repère local ; le µprojet est lu
-    assert references(client) == []
-
-    # un µprojet créé ensuite porte le même nom : le regroupement suivant importe aussi l'étiquette
-    # du premier, déjà lu
-    second = create_microproject(client, "Second")["slug"]
-    launched = launch(client, second, title="Epitaxie", intent="x", steps=steps(30))
-    legacy_tag(client, second, launched["id"], "recette-x")
-    graph = version_graph(client, "recette-x")
-    assert graph["reference"]["name"] == "Recette X"
-    assert [(n["number"], n["source"]["microproject"]["slug"], n["source"]["local_tag"], n["change_level"], n["parent_inferred"]) for n in graph["nodes"]] == [
-        ("1.0", first, "Recette X", "initial", False),
-        ("1.1", second, "recette-x", "minor", True),
-    ]
-
-    # deux µprojets déjà lus partagent un nom après coup : la lecture suivante le relit sur tous les
-    # µprojets, sans attendre l'arrivée d'un autre µprojet
-    legacy_tag(client, first, study["id"], "Base Y")
-    assert sorted(r["slug"] for r in references(client)) == ["recette-x"]
-    legacy_tag(client, second, launched["id"], "base-y")
-    before = _follow_files(data_dir)
-    assert sorted(r["slug"] for r in references(client)) == ["base-y", "recette-x"]
-    assert [n["source"]["local_tag"] for n in version_graph(client, "base-y")["nodes"]] == ["Base Y", "base-y"]
-    assert [n["number"] for n in version_graph(client, "recette-x")["nodes"]] == ["1.0", "1.1"]
-    assert _follow_files(data_dir) == before
-
-
-def test_a_reference_retired_by_an_admin_stays_retired(client):
-    single, mqw, base, other = _two_microprojects(client)  # le premier compte est admin
-    assert [(r["slug"], r["version_count"]) for r in references(client)] == [("epitaxie-standard", 2)]
-    assert delete_reference(client, "epitaxie-standard").status_code == 204
-    assert references(client) == []
-
-    # ni l'arrivée d'un µprojet, ni une ref posée dans un µprojet lu ne font revenir les étiquettes
-    # retirées (sous un slug suffixé) ; elles restent des repères locaux
-    late = create_microproject(client, "Sans rapport")["slug"]
-    assert references(client) == []
-    legacy_tag(client, single, base["id"], "Autre nom")
-    assert references(client) == []
-    assert "epitaxie-standard" in _ref_names(client, single) and "epitaxie-standard" in _ref_names(client, mqw)
-
-    # un troisième µprojet qui porte le nom seul ne le partage avec personne : il reste local ; un
-    # quatrième le partage avec lui : une nouvelle référence (l'ancien slug n'est pas redonné), sans
-    # les étiquettes retirées
-    study = launch(client, late, title="Epitaxie", intent="x", steps=steps(40))
-    legacy_tag(client, late, study["id"], "epitaxie-standard")
-    assert references(client) == []
-    fourth = create_microproject(client, "Quatrième")["slug"]
-    launched = launch(client, fourth, title="Epitaxie", intent="x", steps=steps(45))
-    legacy_tag(client, fourth, launched["id"], "epitaxie-standard")
-    assert [(r["slug"], r["version_count"]) for r in references(client)] == [("epitaxie-standard-2", 2)]
-    nodes = version_graph(client, "epitaxie-standard-2")["nodes"]
-    assert [n["source"]["microproject"]["slug"] for n in nodes] == [late, fourth]
+    assert references(client) == first
+    assert [n["number"] for n in version_graph(client, "epitaxie-standard")["nodes"]] == ["1.0", "1.1"]
+    assert "epitaxie-standard" in _ref_names(client, late)
 
 
 def test_a_local_ref_joins_an_existing_reference_of_the_same_name(client):
     slug = signup_with_microproject(client, "join@example.com", "Epi")
     study = launch(client, slug, title="Epitaxie", intent="x", steps=steps(20))
     legacy_tag(client, slug, study["id"], "Épitaxie Standard")
-    # un seul µprojet : l'étiquette reste locale, le nom est libre
-    created = create_reference(client, "epitaxie standard")
-    assert [(r["name"], r["version_count"]) for r in references(client)] == [("epitaxie standard", 0)]
-
-    # un second µprojet porte le nom : les deux étiquettes rejoignent la référence existante
+    created = create_reference(client, "epitaxie standard")  # déclarée à la main, sans version
     other = create_microproject(client, "Autre")["slug"]
     launched = launch(client, other, title="Epitaxie", intent="x", steps=steps(30))
     legacy_tag(client, other, launched["id"], "epitaxie-standard")
+
+    # le nom est porté par deux µprojets : les deux étiquettes rejoignent la référence existante
+    _migrate()
+    assert [(r["name"], r["version_count"]) for r in references(client)] == [("epitaxie standard", 2)]
     nodes = version_graph(client, created["slug"])["nodes"]
     assert [(n["number"], n["source"]["local_tag"], n["change_level"], n["parent_inferred"]) for n in nodes] == [
         ("1.0", "Épitaxie Standard", "initial", False),
@@ -209,7 +176,17 @@ def test_a_local_ref_joins_an_existing_reference_of_the_same_name(client):
     ]
 
 
-# -- une installation où l'ancienne règle a tourné ---------------------------------------------------
+# -- une installation d'avant la migration -------------------------------------------------------------
+
+
+def _tracking_tables_as_before_the_migration() -> None:
+    """Les tables que la migration supprime, telles qu'elles étaient (migrations 0001, 0003, 0004)."""
+    from spectre.kernel.db import get_conn
+    from spectre.plugins.references import migrations
+
+    with get_conn() as conn:
+        for script in (migrations.SCHEMA, migrations.IMPORT_RULES, migrations.DISMISSED_TAGS):
+            conn.executescript(script)
 
 
 def _as_under_the_old_rule(user_id: int) -> None:
@@ -221,6 +198,7 @@ def _as_under_the_old_rule(user_id: int) -> None:
     from spectre.plugins.microprojects import service as microprojects
     from spectre.plugins.references import local_refs, service
 
+    _tracking_tables_as_before_the_migration()
     everything = sorted(microprojects.list_all(), key=lambda mp: mp.id)
     candidates = sorted(
         (c for mp in everything for c in local_refs.candidates_of(mp)), key=lambda c: (c.version.created_at, c.microproject.id, c.name)
@@ -256,7 +234,16 @@ def _as_under_the_old_rule(user_id: int) -> None:
         )
 
 
-def test_the_old_rule_imports_from_a_single_microproject_are_retired(app, client, data_dir):
+def _run_the_migration() -> None:
+    from spectre.kernel.db import get_conn
+    from spectre.plugins.references.migrations import MIGRATIONS
+
+    migration = next(m for m in MIGRATIONS if m.id == "0005_local_refs_imported_once")
+    with get_conn() as conn:
+        migration.apply(conn)
+
+
+def test_the_old_rule_imports_from_a_single_microproject_are_retired(client, data_dir):
     from spectre.kernel.db import get_conn
 
     single, mqw, base, other = _two_microprojects(client)
@@ -268,6 +255,7 @@ def test_the_old_rule_imports_from_a_single_microproject_are_retired(app, client
     _as_under_the_old_rule(me["id"])
     before = _follow_files(data_dir)
 
+    _run_the_migration()
     listed = references(client)
     # retirée : « recette-approuvee » (deux versions, un seul µprojet, ni publication ni usage) ;
     # gardées : la référence partagée, celle qui a un usage, celle qui a une publication à la main et
@@ -278,19 +266,14 @@ def test_the_old_rule_imports_from_a_single_microproject_are_retired(app, client
     # son slug n'est pas réservé : aucune étude n'en était partie
     with get_conn() as conn:
         assert conn.execute("SELECT slug FROM retired_reference_slugs").fetchall() == []
-    # ses étiquettes restent des repères locaux, aucun fichier Follow n'est touché
+    # ses étiquettes restent des repères locaux, aucun fichier Follow n'est touché, les tables de
+    # suivi du regroupement sont parties
     assert {"Recette Approuvée", "recette approuvée!"} <= _ref_names(client, single)
     assert _follow_files(data_dir) == before
-
-    # idempotent : relu, redémarré, ou la règle repassée, rien ne change
+    assert not set(TRACKING_TABLES) & _tables()
+    # rejouée (ce que le démarrage ne fait jamais), rien ne change
+    _run_the_migration()
     assert references(client) == listed
-    with TestClient(app) as restarted:
-        restarted.cookies = client.cookies
-        assert references(restarted) == listed
-    with get_conn() as conn:
-        conn.execute("DELETE FROM reference_import_rules")
-    assert references(client) == listed
-    assert _follow_files(data_dir) == before
     assert create_reference(client, "Recette approuvée")["slug"] == "recette-approuvee"
 
 
@@ -307,11 +290,30 @@ def test_the_old_rule_keeps_references_whose_microprojects_were_deleted(client):
     assert delete_microproject(client, single, "Puits simple").status_code == 204
     assert delete_microproject(client, mqw, "MQW").status_code == 204
     with get_conn() as conn:
-        conn.execute("DELETE FROM reference_import_rules")
         before = sorted(row["slug"] for row in conn.execute("SELECT slug FROM structure_references"))
     assert "epitaxie-standard" in before and "recette-approuvee" in before
+    _run_the_migration()
     assert sorted(r["slug"] for r in references(client)) == before
     assert [n["number"] for n in version_graph(client, "epitaxie-standard")["nodes"]] == ["1.0", "1.1"]
+
+
+def test_tags_dismissed_by_an_admin_before_the_migration_are_not_imported(client):
+    from spectre.kernel.db import get_conn
+    from spectre.plugins.microprojects import service as microprojects
+
+    single, mqw, base, other = _two_microprojects(client)
+    _tracking_tables_as_before_the_migration()
+    # l'admin avait retiré la référence « epitaxie-standard » regroupée d'avant : ses étiquettes ne
+    # comptent plus pour le partage (dismissed_local_refs), la règle est passée
+    with get_conn() as conn:
+        conn.executemany(
+            "INSERT INTO dismissed_local_refs (microproject_id, local_tag, dismissed_at) VALUES (?, ?, ?)",
+            [(microprojects.get_by_slug(slug).id, "epitaxie-standard", "2026-10-06T00:00:00") for slug in (single, mqw)],
+        )
+        conn.execute("INSERT INTO reference_import_rules (rule, applied_at) VALUES ('shared-names-2026-10-05', '2026-10-06T00:00:00')")
+    _run_the_migration()
+    assert references(client) == []
+    assert "epitaxie-standard" in _ref_names(client, single) and "epitaxie-standard" in _ref_names(client, mqw)
 
 
 # -- la démo -------------------------------------------------------------------------------------------
