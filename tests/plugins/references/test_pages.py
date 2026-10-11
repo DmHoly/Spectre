@@ -24,7 +24,7 @@ def test_the_reference_pages_are_served_with_their_nav_entry(client):
     create_reference(client, "Epitaxie standard")
     listing = client.get("/references")
     assert listing.status_code == 200
-    assert '<a href="/references"' in listing.text and ">Références</a>" in listing.text
+    assert '<a href="/references"' in listing.text and "<span>Références</span></a>" in listing.text  # dans le menu « Structure »
     assert "/static/references/client.js" in listing.text
     page = client.get("/references/epitaxie-standard")
     assert page.status_code == 200

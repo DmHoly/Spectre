@@ -27,7 +27,9 @@ class NavEntry:
     """Une entrée de la barre du haut. ``match`` : l'expression régulière (sur le chemin de la
     page) qui la marque comme section courante ; à défaut, son ``href`` exact. ``pages`` : les
     gabarits de route (``Page.path``) des seules pages qui l'affichent - toutes si vide. ``id`` :
-    l'id du lien, pour une page qui en complète l'adresse (le lien « Atlas » d'un projet)."""
+    l'id du lien, pour une page qui en complète l'adresse (le lien « Atlas » d'un projet). ``group`` :
+    le menu de la barre où ranger l'entrée (``spectre.kernel.pages.NAV_GROUPS`` : « structure »,
+    « gestion ») - à défaut, un lien direct. ``glyph`` : le pictogramme devant le libellé."""
 
     label: str
     href: str
@@ -38,6 +40,8 @@ class NavEntry:
     admin: bool = False  # montrée aux seuls administrateurs (accounts/static/session.js la révèle)
     # Le contenu d'un SVG 24x24 à trait : l'entrée devient un bouton à icône, à côté de la session
     icon: str | None = None
+    group: str | None = None
+    glyph: str | None = None  # le contenu d'un SVG 24x24 à trait, devant le libellé dans la navigation
 
 
 @dataclass(frozen=True)

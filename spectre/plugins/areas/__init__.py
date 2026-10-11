@@ -5,6 +5,9 @@ from ...kernel.plugin import NavEntry, Page, Plugin
 from .api import router
 from .migrations import MIGRATIONS
 
+# « µ » sur une pastille : les projets et leurs µprojets
+MICRO_GLYPH = '<rect x="3" y="3" width="18" height="18" rx="5"/><text x="12" y="16.5" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor" stroke="none" font-family="DM Sans, sans-serif">µ</text>'
+
 PLUGIN = Plugin(
     name="areas",
     depends_on=("accounts", "teams"),
@@ -14,7 +17,7 @@ PLUGIN = Plugin(
         Page("/management/{slug}", "area.html"),
         Page("/management/{slug}/thematiques/{thematique_slug}", "thematic.html"),
     ),
-    nav=(NavEntry("Projets", "/", order=10, match=r"^/(management|microprojets|$)"),),
+    nav=(NavEntry("Projets", "/", order=10, match=r"^/(management|microprojets|$)", glyph=MICRO_GLYPH),),
     migrations=MIGRATIONS,
     title="Projets corporate",
     description="Les projets corporate, leurs thématiques et objectifs ; la page d'accueil.",
