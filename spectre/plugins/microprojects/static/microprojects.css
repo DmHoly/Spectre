@@ -69,14 +69,8 @@
   line-height: 1.4;
   color: var(--text-faint);
 }
-.btn-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
 @media (max-width: 520px) {
-  .new-exp-modes,
-  .btn-pair {
+  .new-exp-modes {
     grid-template-columns: 1fr;
   }
 }

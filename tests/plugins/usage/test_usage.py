@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from support.accounts import login, signup
-from support.http import assert_handler_404
+from support.http import assert_handler_404, plugins_off
 from support.teams import add_team_member, create_team
 from support.usage import at, usage_report
 
@@ -162,5 +162,5 @@ def test_the_settings_menu_links_the_usage_page_only_while_the_plugin_is_on(clie
     page = client.get("/parametres/plugins").text
     assert "/static/settings/sections.js" in page
     client.patch("/api/plugins/usage", json={"enabled": False})
-    assert 'data-plugins-off="kpis_demo usage"' in client.get("/parametres/plugins").text
+    assert plugins_off(client.get("/parametres/plugins").text) == {"kpis_demo", "usage"}
     assert client.get("/parametres/utilisation").status_code == 404

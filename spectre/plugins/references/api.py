@@ -86,13 +86,6 @@ def get_version(reference_slug: str, version_number: str, user: User = Depends(c
     return service.get_version(user, reference_slug, version_number)
 
 
-@router.get("/references/{reference_slug}/versions/{version_number}/structure-diff")
-def version_diff(reference_slug: str, version_number: str, against: str | None = None, user: User = Depends(current_user)) -> dict:
-    """La version comparée à une autre de la même référence (``against``), sa parente par défaut :
-    ``{target: {number} | null, entries, summary?, label_changes, param_changes, step_changes}``."""
-    return service.version_diff(reference_slug, version_number, against)
-
-
 @router.get("/reference-versions")
 def versions_published_from(microproject: str, user: User = Depends(current_user)) -> list[dict]:
     """Les versions de référence publiées depuis le µprojet ``microproject`` (``viewer`` : 403

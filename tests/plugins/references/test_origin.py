@@ -5,9 +5,26 @@ telle quelle, sans erreur."""
 
 from __future__ import annotations
 
-from support.experiments import combine, evolve, experiments_url, get_experiment, launch, post_launch, tag
+from support.experiments import (
+    combine,
+    evolve,
+    experiments_url,
+    get_experiment,
+    launch,
+    post_launch,
+    tag,
+)
 from support.microprojects import create_microproject, signup_with_microproject
-from support.references import create_reference, get_reference, get_version, origin, post_version, publish, references, version_graph
+from support.references import (
+    create_reference,
+    get_reference,
+    get_version,
+    origin,
+    post_version,
+    publish,
+    references,
+    version_graph,
+)
 from support.structures import layer_label, steps
 
 

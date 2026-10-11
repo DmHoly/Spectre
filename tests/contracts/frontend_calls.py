@@ -22,6 +22,7 @@ variable affectée d'une telle URL dans le même fichier (```${areaUrl}/objectif
 from __future__ import annotations
 
 import fnmatch
+import functools
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,6 +81,7 @@ class FrontendUrl:
         return f"{self.file}:{self.line} {self.path}"
 
 
+@functools.lru_cache(maxsize=None)  # le front ne change pas pendant une exécution : un scan par (racine, motifs)
 def scan(
     root: Path = SPECTRE_DIR, includes: Iterable[str] = DEFAULT_INCLUDES, excludes: Iterable[str] = DEFAULT_EXCLUDES
 ) -> list[FrontendCall]:
@@ -93,6 +95,7 @@ def scan(
     return calls
 
 
+@functools.lru_cache(maxsize=None)  # le front ne change pas pendant une exécution : un scan par (racine, motifs)
 def scan_urls(
     root: Path = SPECTRE_DIR, includes: Iterable[str] = DEFAULT_INCLUDES, excludes: Iterable[str] = DEFAULT_EXCLUDES
 ) -> list[FrontendUrl]:
@@ -104,6 +107,7 @@ def scan_urls(
     return urls
 
 
+@functools.lru_cache(maxsize=None)  # le front ne change pas pendant une exécution : un scan par (racine, motifs)
 def scan_static_urls(
     root: Path = SPECTRE_DIR, includes: Iterable[str] = DEFAULT_INCLUDES, excludes: Iterable[str] = DEFAULT_EXCLUDES
 ) -> list[FrontendUrl]:
@@ -480,6 +484,7 @@ def client_globals(path: Path) -> list[str]:
     return re.findall(r"^(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)", code, re.M)
 
 
+@functools.lru_cache(maxsize=None)
 def scan_clients(root: Path = SPECTRE_DIR) -> list[ClientFunction]:
     """Chaque fonction du client de chaque plugin, avec la méthode et le chemin de l'appel qu'elle
     fait - ou, pour une fonction qui renvoie une URL, ce chemin sans méthode."""
@@ -507,6 +512,7 @@ def scan_clients(root: Path = SPECTRE_DIR) -> list[ClientFunction]:
     return functions
 
 
+@functools.lru_cache(maxsize=None)  # le front ne change pas pendant une exécution : un scan par (racine, motifs)
 def scan_client_uses(
     root: Path = SPECTRE_DIR, includes: Iterable[str] = DEFAULT_INCLUDES, excludes: Iterable[str] = DEFAULT_EXCLUDES
 ) -> list[ClientUse]:
@@ -517,6 +523,7 @@ def scan_client_uses(
     return uses
 
 
+@functools.lru_cache(maxsize=None)  # le front ne change pas pendant une exécution : un scan par (racine, motifs)
 def scan_api_strings(
     root: Path = SPECTRE_DIR, includes: Iterable[str] = DEFAULT_INCLUDES, excludes: Iterable[str] = DEFAULT_EXCLUDES
 ) -> list[FrontendUrl]:

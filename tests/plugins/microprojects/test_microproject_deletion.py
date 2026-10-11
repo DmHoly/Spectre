@@ -28,4 +28,6 @@ def test_editor_cannot_delete_microproject(client):
     slug = signup_with_microproject(client, "del3@example.com", "Projet protege", name="D3")
 
     join_as(client, slug, "del3editor@example.com", owner="del3@example.com", role="editor", name="E3")
-    assert delete_microproject(client, slug, "Projet protege").status_code == 403
+    refused = delete_microproject(client, slug, "Projet protege")
+    assert refused.status_code == 403 and refused.json()["code"] == "forbidden"
+    assert get_microproject(client, slug)["name"] == "Projet protege"  # toujours là

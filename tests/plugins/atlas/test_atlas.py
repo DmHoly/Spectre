@@ -9,7 +9,7 @@ from __future__ import annotations
 from support.areas import create_area
 from support.atlas import atlas, atlas_microproject
 from support.experiments import combine, conclude, evolve, launch, launch_campaign, tag, track_entities
-from support.http import ROUTER_NOT_FOUND, assert_handler_404
+from support.http import assert_handler_404
 from support.links import entity, link_entities, link_microprojects
 from support.microprojects import create_microproject, move_microproject, signup_with_microproject
 from support.structures import steps
@@ -101,12 +101,6 @@ def test_a_fork_and_a_combination_condense_into_edges_between_pistes(client):
 def test_the_atlas_of_an_unknown_area_is_404(client):
     signup_with_microproject(client, "atlas-badtheme@example.com")
     assert_handler_404(client.get("/api/areas/ne-existe-pas/atlas"))
-
-
-def test_the_old_atlas_route_is_gone(client):
-    signup_with_microproject(client, "atlas-old@example.com")
-    response = client.get("/api/atlas?theme=non-classe")
-    assert response.status_code == 404 and response.json()["detail"] == ROUTER_NOT_FOUND
 
 
 def test_the_atlas_only_shows_the_microprojects_of_its_area(client):

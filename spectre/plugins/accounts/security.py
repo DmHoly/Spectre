@@ -20,6 +20,18 @@ SESSION_LIFETIME = timedelta(days=14)
 PASSWORD_RESET_LIFETIME = timedelta(hours=1)
 INVITATION_LIFETIME = timedelta(days=14)
 _PBKDF2_ITERATIONS = 200_000
+_PBKDF2_ITERATIONS_FLOOR = 1_000
+
+
+def pbkdf2_iterations() -> int:
+    """Le nombre d'itérations de PBKDF2 : ``SPECTRE_PBKDF2_ITERATIONS`` quand elle est posée (jamais
+    sous le plancher), sinon 200 000. Un réglage des tests, qui hachent des centaines de mots de
+    passe par exécution : un hachage ne mémorise pas son nombre d'itérations, le changer sur une
+    instance invalide tous les mots de passe enregistrés."""
+    raw = os.environ.get("SPECTRE_PBKDF2_ITERATIONS")
+    if not raw:
+        return _PBKDF2_ITERATIONS
+    return max(int(raw), _PBKDF2_ITERATIONS_FLOOR)
 
 
 def hash_password(password: str, *, salt: str | None = None) -> tuple[str, str]:
@@ -27,7 +39,7 @@ def hash_password(password: str, *, salt: str | None = None) -> tuple[str, str]:
     password against an existing hash instead of generating a fresh one.
     """
     salt = salt or secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), _PBKDF2_ITERATIONS)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), pbkdf2_iterations())
     return digest.hex(), salt
 
 

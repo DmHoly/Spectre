@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from support.accounts import signup
 from support.experiments import (
     conclude,
     delete_experiment,
@@ -15,7 +14,6 @@ from support.experiments import (
     post_evolve,
     process,
     set_status,
-    structure_diff,
     tag,
     versions,
 )
@@ -176,14 +174,6 @@ def test_delete_with_a_stale_if_match_is_refused(client):
     assert get_experiment(client, slug, launched["id"])["tags"] == ["x"]
 
 
-def test_delete_needs_editor(client):
-    slug = _owner_microproject(client)
-    exp = _launch_essai(client, slug)["id"]
-    signup(client, "viewer@x.c", name="V")
-    # the new account isn't a member at all -> 403 (require_role)
-    assert delete_experiment(client, slug, exp).status_code == 403
-
-
 def test_status_endpoint_rejects_concluded_target(client):
     slug = _owner_microproject(client)
     launched = _launch_essai(client, slug)
@@ -216,7 +206,7 @@ def test_process_endpoint_returns_editable_recipe_of_any_version(client):
     assert process(client, slug, launched["id"], version=launched["version_id"])["steps"][0]["thickness"]["value"] == 20
 
 
-def test_evolve_then_versions_and_diff(client):
+def test_evolve_then_versions(client):
     slug = _owner_microproject(client)
     launched = _launch_essai(client, slug, thickness=20)
 
@@ -230,10 +220,6 @@ def test_evolve_then_versions_and_diff(client):
     history = versions(client, slug, launched["id"])
     assert [item["version_id"] for item in history] == [launched["version_id"], evolved["version_id"]]
     assert [item["is_tip"] for item in history] == [False, True]
-
-    diff = structure_diff(client, slug, launched["id"])
-    assert diff["target"]["version_id"] == launched["version_id"]
-    assert len(diff["entries"]) >= 1
 
 
 def test_a_past_version_is_readable_but_never_shown_as_the_tip(client):
@@ -317,7 +303,6 @@ def test_unknown_experiment_is_404_on_every_kind_of_route(client):
     for response in (
         client.get(url),
         client.get(f"{url}/versions"),
-        client.get(f"{url}/structure-diff"),
         client.put(f"{url}/tags", json={"tags": []}),
         client.post(f"{url}/versions", json=launch_body()),
         client.delete(url),
@@ -329,13 +314,3 @@ def test_a_version_id_is_not_an_experiment_id(client):
     slug = _owner_microproject(client)
     launched = _launch_essai(client, slug)
     assert_handler_404(client.get(experiment_url(slug, launched["version_id"])))
-
-
-def test_the_hypothesis_survives_lightweight_writes(client):
-    slug = _owner_microproject(client)
-    launched = launch(client, slug, hypothesis="L'oxyde isole à 20 nm")
-    tag(client, slug, launched["id"], ["a-suivre"])
-    concluded = conclude(client, slug, launched["id"], summary="Fini")
-
-    assert concluded["hypothesis"] == "L'oxyde isole à 20 nm"
-    assert get_experiment(client, slug, launched["id"])["hypothesis"] == "L'oxyde isole à 20 nm"

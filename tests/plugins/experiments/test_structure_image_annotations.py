@@ -13,7 +13,6 @@ from support.experiments import (
     launch_image,
     post_evolve,
     replace_structure_images,
-    structure_diff,
     versions,
 )
 from support.microprojects import join_as, signup_with_microproject
@@ -47,7 +46,6 @@ def test_annotations_are_a_light_write_that_follows_each_picture(client):
     assert annotated["version_id"] != launched["version_id"]
     assert [image["annotations"] for image in annotated["structure_images"]] == [[], [ARROW, BOX]]
     assert _levels(client, slug, line) == [("1.0", "initial"), ("1.0", "none")]
-    assert structure_diff(client, slug, line, against_version=launched["version_id"])["summary"] == ["Image 2 : annotations modifiées"]
 
     # la planche réordonnée : les annotations restent sur la coupe
     reordered = replace_structure_images(client, slug, line, [{**tem, "annotations": [ARROW, BOX]}, schema])

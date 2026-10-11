@@ -1,13 +1,16 @@
 """Les tables du plugin references : les références de structure (un objet de toute l'application),
-leurs versions, les µprojets dont les refs locales ont déjà été lues (``local_refs``, avec l'empreinte
-de leurs étiquettes nommées), les règles de regroupement déjà passées, les slugs des références
-retirées (jamais redonnés) et les étiquettes dont un admin a retiré la référence (plus regroupées).
+leurs versions et les slugs des références retirées (jamais redonnés). Les refs locales d'avant
+ont été regroupées une fois par la migration 0005 (``local_refs``), qui a ensuite supprimé les
+tables qui suivaient ce regroupement (µprojets lus, règle passée, étiquettes écartées par un admin).
 
 ``structure_references`` plutôt que ``references`` : ``REFERENCES`` est un mot réservé de SQL."""
 
 from __future__ import annotations
 
+import sqlite3
+
 from ...kernel.plugin import Migration
+from .local_refs import import_shared_local_refs
 
 SCHEMA = """
 -- Une référence de structure : un point de départ réutilisé dans plusieurs µprojets. Son slug est
@@ -91,9 +94,23 @@ CREATE TABLE IF NOT EXISTS dismissed_local_refs (
 );
 """
 
+TRACKING_TABLES = ("reference_import_scans", "reference_import_rules", "dismissed_local_refs")
+
+
+def _local_refs_imported_once(conn: sqlite3.Connection) -> None:
+    """Le dernier regroupement des refs locales (:func:`local_refs.import_shared_local_refs`) : plus
+    rien ne pose d'étiquette Follow depuis les refs déclarées, le regroupement ne trouverait plus
+    jamais rien - avant, chaque lecture des références rebalayait tous les µprojets. Puis les tables
+    qui le suivaient (:data:`TRACKING_TABLES`) sont supprimées."""
+    import_shared_local_refs(conn)
+    for table in TRACKING_TABLES:
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
 MIGRATIONS = (
     Migration("0001_initial", SCHEMA),
     Migration("0002_retired_slugs", RETIRED_SLUGS),
     Migration("0003_import_rules", IMPORT_RULES),
     Migration("0004_dismissed_local_refs", DISMISSED_TAGS),
+    Migration("0005_local_refs_imported_once", _local_refs_imported_once),
 )

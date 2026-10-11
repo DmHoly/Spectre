@@ -21,7 +21,7 @@ def test_update_profile_without_fields_changes_nothing(client):
 def test_update_profile_rejects_empty_name(client):
     signup(client, "profile2@example.com", name="X")
     response = client.patch("/api/users/me", json={"name": "   "})
-    assert response.status_code == 422
+    assert response.status_code == 422 and response.json()["code"] == "invalid_input"
 
 
 def test_change_password_with_a_wrong_current_password_is_a_422_and_keeps_the_session(client):

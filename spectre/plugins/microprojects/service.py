@@ -313,17 +313,6 @@ def get_by_id(microproject_id: int) -> Microproject:
     return _microproject_from_row(row)
 
 
-def list_for_user(user_id: int) -> list[tuple[Microproject, str]]:
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT microprojects.*, memberships.role AS role FROM microprojects "
-            "JOIN memberships ON memberships.microproject_id = microprojects.id "
-            "WHERE memberships.user_id = ? ORDER BY microprojects.created_at DESC",
-            (user_id,),
-        ).fetchall()
-    return [(_microproject_from_row(row), row["role"]) for row in rows]
-
-
 def role_for(microproject_id: int, user_id: int) -> str | None:
     """The role the ``memberships`` table gives - not the policy: see :func:`access`."""
     with get_conn() as conn:

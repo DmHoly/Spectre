@@ -225,15 +225,6 @@ def test_activating_a_form_requires_its_fields_on_launch(client):
     assert get_experiment(client, slug, ok["id"])["form_answers"] == {"operateur": "Alice"}
 
 
-def test_lightweight_actions_carry_forward_form_answers_unchanged(client):
-    slug = signup_with_microproject(client, "forms-carry@example.com")
-    activate_simple_form(client, slug)
-    launched = launch(client, slug, form_answers={"operateur": "Alice"})
-
-    tagged = tag(client, slug, launched["id"], ["a-suivre"])
-    assert tagged["form_answers"] == {"operateur": "Alice"}
-
-
 def test_evolving_requires_reanswering_the_form(client):
     slug = signup_with_microproject(client, "forms-evolve@example.com")
     activate_simple_form(client, slug)

@@ -60,11 +60,6 @@ def get_version(client: Any, slug: str, number: str) -> dict:
     return assert_ok(client.get(f"{reference_url(slug)}/versions/{number}"))
 
 
-def version_diff(client: Any, slug: str, number: str, against: str | None = None) -> dict:
-    params = {"against": against} if against else {}
-    return assert_ok(client.get(f"{reference_url(slug)}/versions/{number}/structure-diff", params=params))
-
-
 def published_from(client: Any, microproject: str) -> list[dict]:
     """GET /api/reference-versions?microproject= - les versions publiées depuis ce µprojet."""
     return assert_ok(client.get("/api/reference-versions", params={"microproject": microproject}))

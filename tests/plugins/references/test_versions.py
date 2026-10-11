@@ -7,8 +7,6 @@ from __future__ import annotations
 import threading
 
 from fastapi.testclient import TestClient
-
-from spectre.plugins.references.service import next_number
 from support.experiments import evolve, launch
 from support.http import assert_handler_404
 from support.microprojects import signup_with_microproject
@@ -22,6 +20,8 @@ from support.references import (
     version_graph,
 )
 from support.structures import deposition, etch, fixed_step_id, identified, layer_label
+
+from spectre.plugins.references.service import next_number
 
 STACK = identified([deposition("Tampon AlN", "AlN", thickness_nm=20), deposition("GaN", "GaN", thickness_nm=60)])
 THICKER = identified([deposition("Tampon AlN", "AlN", thickness_nm=30), deposition("GaN", "GaN", thickness_nm=60)])

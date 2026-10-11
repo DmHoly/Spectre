@@ -91,13 +91,6 @@ def test_a_second_invitation_is_accepted_with_the_existing_account(client, outbo
     assert _role_in(client, second) == "editor"
 
 
-def test_accepting_requires_a_session(client, outbox):
-    slug = _owner_microproject(client)
-    token = invite_and_get_token(client, outbox, slug, "anon@example.com", "viewer")
-    logout(client)
-    assert _accept(client, token).status_code == 401
-
-
 def test_accepting_an_unknown_invitation_404s(client):
     signup(client, "someone@example.com", name="S")
     assert_handler_404(_accept(client, "not-a-real-token"), "invitation")

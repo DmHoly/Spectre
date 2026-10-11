@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 
 from support.accounts import signup
-from support.experiments import evolve, launch, process, structure_diff, versions
+from support.experiments import described_changes, evolve, launch, process, versions
 from support.microprojects import signup_with_microproject
 from support.structures import deposition, etch, identified, label_texts, layer_label, lithography, simulate, substrate
 
@@ -256,7 +256,7 @@ def test_the_anchor_of_a_label_is_recorded_without_changing_the_version(client):
     assert process(client, slug, study["id"])["layer_labels"]["1"] == {"text": "p", "values": ["thickness"], "anchor": [0.2, 0.75]}
     assert [v["change_level"] for v in versions(client, slug, study["id"])] == ["initial", "none"]
     # ni une différence d'étiquette
-    assert structure_diff(client, slug, study["id"], version=moved["version_id"], against_version=study["version_id"])["label_changes"] == []
+    assert described_changes(slug, study["version_id"], moved["version_id"])["label_changes"] == []
 
 
 def test_a_point_put_off_a_layer_is_drawn_back_on_it(client):

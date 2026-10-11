@@ -63,11 +63,6 @@ def line_root(repo: follow.Repository, experiment_id: str) -> follow.Experiment:
     return service.history_of(repo, experiment_id)[0]
 
 
-def is_floating(repo: follow.Repository, experiment_id: str) -> bool:
-    """La piste est partie de rien : la première version de son histoire est la sienne."""
-    return line_root(repo, experiment_id).branch == experiment_id
-
-
 def _descendants(repo: follow.Repository, root_id: str, attached: list[tuple[str, str]]) -> set[str]:
     """Les versions qui descendent de ``root_id`` (elle comprise), par la filiation du dépôt et par
     les rattachements ``attached`` (``(version parente, racine rattachée)``)."""

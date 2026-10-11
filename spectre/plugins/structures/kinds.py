@@ -28,7 +28,7 @@ from ...kernel.annotations import ImageAnnotation, clean_annotations
 from ...kernel.errors import InvalidInput
 from ..attachments.store import content_url, uploaded_image
 from . import campaigns
-from .rendering import LayerAnnotation, annotations_for, svg_for_process_structure, value_text
+from .rendering import LayerAnnotation, annotations_for, svg_for_process_structure
 from .schemas import StructureImageInput
 from .simulation import (
     BRICKS_METADATA_KEY,
@@ -53,7 +53,6 @@ from .simulation import (
     preset_origins_by_index,
     process_metadata,
     process_recipes,
-    split_declared_unit,
 )
 
 
@@ -350,55 +349,6 @@ def without_annotations(images: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{key: value for key, value in image.items() if key != "annotations"} for image in images]
 
 
-def describe_image_changes(
-    before_type: str, before_data: dict[str, Any], after_type: str, after_data: dict[str, Any]
-) -> list[str] | None:
-    """What changed between two structures when at least one of them is given as pictures, in
-    plain French - Follow's own diff compares lists position by position, so a reordering or one
-    added picture would read as "everything changed". ``None`` when neither side is pictures (the
-    generic diff applies then)."""
-    before = structure_images(before_type, before_data)
-    after = structure_images(after_type, after_data)
-    if before is None and after is None:
-        return None
-    if before is None:
-        return ["Structure donnée en images (la version précédente était dessinée dans le constructeur)"]
-    if after is None:
-        return ["Structure redessinée dans le constructeur (la version précédente était donnée en images)"]
-
-    kind_label = {"schema": "Schéma", "coupe": "Coupe TEM / MEB", "autre": "Autre"}
-    before_ids = [img["image_id"] for img in before]
-    after_ids = [img["image_id"] for img in after]
-    lines: list[str] = []
-    # la même place, une autre image : un remplacement plutôt qu'un ajout + un retrait
-    replaced = {
-        i for i, image_id in enumerate(after_ids)
-        if image_id not in before_ids and i < len(before_ids) and before_ids[i] not in after_ids
-    }
-    lines += [f"Image {i + 1} remplacée" for i in sorted(replaced)]
-    added = [i for i, image_id in enumerate(after_ids) if image_id not in before_ids and i not in replaced]
-    removed = [i for i, image_id in enumerate(before_ids) if image_id not in after_ids and i not in replaced]
-    if added:
-        lines.append(f"{len(added)} image{'s' if len(added) > 1 else ''} ajoutée{'s' if len(added) > 1 else ''}")
-    if removed:
-        lines.append(f"{len(removed)} image{'s' if len(removed) > 1 else ''} retirée{'s' if len(removed) > 1 else ''}")
-    kept = [image_id for image_id in after_ids if image_id in before_ids]
-    if kept != [image_id for image_id in before_ids if image_id in after_ids]:
-        lines.append("Ordre des images modifié")
-    previous = {img["image_id"]: img for img in before}
-    for i, img in enumerate(after):
-        old = previous.get(img["image_id"])
-        if old is None:
-            continue
-        if old["kind"] != img["kind"]:
-            lines.append(f"Image {i + 1} : {kind_label[old['kind']]} → {kind_label[img['kind']]}")
-        if old["caption"] != img["caption"]:
-            lines.append(f"Image {i + 1} : légende {'modifiée' if img['caption'] else 'retirée'}")
-        if old.get("annotations", []) != img.get("annotations", []):
-            lines.append(f"Image {i + 1} : annotations modifiées")
-    return lines
-
-
 def new_image_revision() -> str:
     return secrets.token_hex(6)
 
@@ -653,54 +603,6 @@ def describe_label_changes(
         changes.append({"group_id": now["group_id"], "subject": subject, "change": change, "line": line})
     for was in ungrouped:
         changes.append({"group_id": was["group_id"], "subject": was["name"], "change": "ungrouped", "line": f"brique {was['name']} — étiquettes séparées"})
-    return changes
-
-
-def describe_param_changes(
-    before: dict[str, Any], after: dict[str, Any], before_ids: list[str] | None = None, after_ids: list[str] | None = None
-) -> list[dict[str, Any]]:
-    """Ce qui change aux paramètres déclarés (:class:`~.simulation.DeclaredParam` : dopage,
-    précurseur...) de la version de métadonnées ``before`` à celle de ``after`` - ils ne sont pas
-    dans la géométrie que compare le diff de structure. Par étape (appariées comme pour les
-    étiquettes) et par paramètre : ``change`` ``added``, ``removed`` ou ``modified`` (avec ``value``
-    et ``unit`` ``{before, after}``, ``None`` quand ils ne changent pas, et ``obtention_changed``) -
-    une unité passée de l'obtention au champ ``unit``, la même, ne change rien. Chacun porte
-    ``step_id``, ``subject`` (le nom de l'étape), ``param`` et ``line``, la phrase qui le dit."""
-    old, new = _records(before, after, before_ids, after_ids)
-    changes: list[dict[str, Any]] = []
-    for sid in _ordered(old, new, set(old.params) | set(new.params)):
-        subject = new.step_names.get(sid) or old.step_names.get(sid) or sid
-        was_params, now_params = old.params.get(sid, {}), new.params.get(sid, {})
-        for name in [*now_params, *(n for n in was_params if n not in now_params)]:
-            was, now = was_params.get(name), now_params.get(name)
-            base = {"step_id": sid, "subject": subject, "param": name}
-            if was is None or now is None:
-                param = now if was is None else was
-                _rest, unit_text = split_declared_unit(param)
-                shown = f"{value_text(param.get('value'))}{' ' + unit_text if unit_text else ''}"
-                verb = "ajouté" if was is None else "retiré"
-                changes.append({**base, "change": "added" if was is None else "removed", "line": f"{subject} — {name} {verb} ({shown})"})
-                continue
-            (old_rest, old_unit), (new_rest, new_unit) = split_declared_unit(was), split_declared_unit(now)
-            parts = []
-            value = unit = None
-            if old_rest.get("value") != new_rest.get("value"):
-                value = {"before": old_rest.get("value"), "after": new_rest.get("value")}
-                parts.append(f"{value_text(value['before'])} → {value_text(value['after'])}")
-            if old_unit != new_unit:
-                unit = {"before": old_unit, "after": new_unit}
-                if not old_unit:
-                    parts.append(f"unité « {new_unit} » ajoutée")
-                elif not new_unit:
-                    parts.append(f"unité « {old_unit} » retirée")
-                else:
-                    parts.append(f"unité « {old_unit} » → « {new_unit} »")
-            obtention_changed = old_rest.get("obtention") != new_rest.get("obtention")
-            if obtention_changed:
-                parts.append("obtention modifiée")
-            if parts:
-                line = f"{subject} — {name} : {' ; '.join(parts)}"
-                changes.append({**base, "change": "modified", "value": value, "unit": unit, "obtention_changed": obtention_changed, "line": line})
     return changes
 
 

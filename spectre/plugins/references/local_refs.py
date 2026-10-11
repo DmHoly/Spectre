@@ -1,22 +1,22 @@
 """Les refs locales d'avant les références : des étiquettes Follow nommées à la main dans chaque
 µprojet (« epitaxie-standard »), parfois la même structure de départ dans plusieurs µprojets. Seuls
-les noms **partagés** deviennent des références (règle décidée le 2026-10-05, :data:`RULE`) - à la
-lecture des références qui suit un changement des étiquettes nommées d'un µprojet ou l'arrivée d'un
-µprojet pas encore lu (:func:`import_local_refs`, que chaque fonction de :mod:`.service` appelle
-d'abord) :
+les noms **partagés** sont devenus des références (règle décidée le 2026-10-05, :data:`RULE`), en
+une fois : la migration ``0005_local_refs_imported_once`` du plugin
+(:func:`import_shared_local_refs`). Plus rien ne pose d'étiquette Follow depuis les refs déclarées
+(2026-10-11) : avant cette migration, chaque lecture des références rebalayait les étiquettes de
+tous les µprojets pour ne plus rien trouver de nouveau.
 
-- les étiquettes de **tous** les µprojets sont relues et regroupées par nom normalisé
+Ce que la migration fait, une fois :
+
+- les étiquettes de **tous** les µprojets sont lues et regroupées par nom normalisé
   (:func:`.service.normalized_name`), sauf les noms automatiques « ref vX.Y.Z » (et leur suffixe
   « -abc123 ») et celles d'une structure qui n'est pas un procédé dessiné (des images, une
-  campagne : :func:`.service.snapshot_of`), et celles dont un admin a retiré la référence où elles
-  avaient été importées (``dismissed_local_refs``, :func:`.service.delete_reference` : le retrait
-  est définitif, elles ne comptent plus pour le partage ; un éditeur peut encore les publier à la
-  main) ;
+  campagne : :func:`.service.snapshot_of`), et celles dont un admin avait retiré la référence où elles
+  avaient été importées (``dismissed_local_refs``, lue une dernière fois : le retrait reste
+  définitif ; un éditeur peut encore les publier à la main) ;
 - un nom porté dans **au moins deux µprojets** (:data:`SHARED_BY`) devient une référence et reçoit
-  toutes ses étiquettes, de chaque µprojet - lu avant ou non : un nom qui n'était que dans A et qui
-  apparaît dans B importe les étiquettes de A et de B à la lecture qui suit ; les autres refs
-  nommées restent des repères locaux de leur µprojet (sa page d'évolution les montre), qu'un
-  éditeur peut publier à la main (« Publier comme référence ») ;
+  toutes ses étiquettes, de chaque µprojet ; les autres refs nommées restent des repères locaux de
+  leur µprojet, qu'un éditeur peut publier à la main (« Publier comme référence ») ;
 - la référence d'un nom : celle qui a déjà reçu des étiquettes de ce nom (même renommée), sinon
   celle du même nom, sinon une nouvelle (son nom : celui de la plus ancienne étiquette ; son
   créateur : celui du µprojet de sa première version) ; chaque étiquette une version, dans l'ordre
@@ -26,32 +26,30 @@ d'abord) :
   identique à son parent (la même structure étiquetée dans deux µprojets) recevant le mineur
   suivant, ``change_level`` ``none`` ; une étiquette déjà importée (même µprojet, même nom) ou dont
   la version Follow est déjà une version de la référence (publiée à la main) ne l'est pas deux fois ;
-- les étiquettes restent en place : aucun objet Follow ni ``refs.json`` n'est écrit.
+- sur une installation où l'ancienne règle (chaque ref nommée devenait une référence) a tourné
+  sans que celle du 2026-10-05 soit passée (``reference_import_rules``, lue une dernière fois), les
+  références qu'elle avait créées depuis un seul µprojet sans que personne n'y touche depuis sont
+  d'abord retirées (:func:`_retire_unshared_imports`) - leur slug n'est pas réservé, aucune étude
+  n'en est partie ;
+- les étiquettes restent en place : aucun objet Follow ni ``refs.json`` n'est écrit. Les trois
+  tables qui suivaient le regroupement (``reference_import_scans``, ``reference_import_rules``,
+  ``dismissed_local_refs``) sont ensuite supprimées par la migration.
 
-Le regroupement ne passe que si l'empreinte des étiquettes nommées d'un µprojet (:func:`_fingerprint`)
-a changé depuis sa dernière lecture ou qu'il n'a pas encore été lu (``reference_import_scans``), ou
-une fois pour la règle elle-même (``reference_import_rules``) : sur une installation où l'ancienne
-règle (chaque ref nommée devenait une référence) a tourné, il retire d'abord les références qu'elle
-avait créées depuis un seul µprojet sans que personne n'y touche depuis
-(:func:`_retire_unshared_imports`) - leur slug n'est pas réservé, aucune étude n'en est partie -,
-puis relit tous les µprojets. Idempotent : sans étiquette changée ni règle à passer, la lecture des
-``refs.json`` (dépôts en cache) et une requête, rien d'autre.
+Une ref nommée qui apparaîtrait après (un dépôt Follow copié d'une autre installation) reste un
+repère local : rien ne la regroupe plus.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import re
+import sqlite3
 from dataclasses import dataclass
 from typing import Any
 
 import follow
 
-from ...kernel.db import get_conn
 from ...kernel.errors import NotFound
-from ...kernel.locks import keyed_lock
 from ..experiments import service as experiments
 from ..experiments.repository import get_repository
 from ..microprojects import service as microprojects
@@ -60,12 +58,12 @@ from . import service
 
 logger = logging.getLogger(__name__)
 
-# Le nom par défaut d'une ref (experiments.refs : « ref vX.Y.Z », suffixé de 6 caractères de l'id
-# quand deux lignées tombent sur le même numéro).
+# Le nom par défaut d'une ref d'avant (« ref vX.Y.Z », suffixé de 6 caractères de l'id quand deux
+# lignées tombaient sur le même numéro).
 AUTOMATIC_REF_NAME_RE = re.compile(r"^ref v\d+\.\d+\.\d+(?:-[0-9a-z_]{1,6})?$")
 
-# La règle de regroupement en vigueur (reference_import_rules) : seuls les noms portés dans au moins
-# SHARED_BY µprojets deviennent des références.
+# La règle de regroupement (reference_import_rules, d'avant la migration) : seuls les noms portés
+# dans au moins SHARED_BY µprojets deviennent des références.
 RULE = "shared-names-2026-10-05"
 SHARED_BY = 2
 
@@ -80,31 +78,21 @@ class _Candidate:
     snapshot: dict[str, Any]
 
 
-def _fingerprint(repo) -> str:
-    """L'empreinte des étiquettes nommées d'un dépôt (:func:`_named_tags`) : elle change quand une
-    ref nommée y est posée, retirée ou déplacée."""
-    return hashlib.sha256(json.dumps(_named_tags(repo), ensure_ascii=False).encode("utf-8")).hexdigest()
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone() is not None
 
 
-def _fingerprints(everything: list[Microproject]) -> dict[int, str]:
-    return {microproject.id: _fingerprint(get_repository(microproject.slug)) for microproject in everything}
-
-
-def _needs_run(conn, fingerprints: dict[int, str]) -> bool:
-    """Un µprojet pas encore lu ou dont les étiquettes nommées ont changé depuis, ou la règle pas
-    encore passée."""
-    if not _rule_applied(conn):
+def _rule_applied(conn: sqlite3.Connection) -> bool:
+    """Si la règle du 2026-10-05 est déjà passée - sans la table (la migration a tourné), oui."""
+    if not _table_exists(conn, "reference_import_rules"):
         return True
-    scanned = {row["microproject_id"]: row["tags_fingerprint"] for row in conn.execute("SELECT * FROM reference_import_scans")}
-    return any(scanned.get(microproject_id) != fingerprint for microproject_id, fingerprint in fingerprints.items())
-
-
-def _rule_applied(conn) -> bool:
     return conn.execute("SELECT 1 FROM reference_import_rules WHERE rule = ?", (RULE,)).fetchone() is not None
 
 
-def _dismissed(conn) -> set[tuple[int, str]]:
+def _dismissed(conn: sqlite3.Connection) -> set[tuple[int, str]]:
     """Les étiquettes ``(id du µprojet, nom)`` dont un admin a retiré la référence (``dismissed_local_refs``)."""
+    if not _table_exists(conn, "dismissed_local_refs"):
+        return set()
     return {(row["microproject_id"], row["local_tag"]) for row in conn.execute("SELECT microproject_id, local_tag FROM dismissed_local_refs")}
 
 
@@ -182,14 +170,15 @@ def _used_slugs(everything: list[Microproject]) -> set[str]:
     return used
 
 
-def _retire_unshared_imports(conn, used: set[str]) -> list[str]:
+def _retire_unshared_imports(conn: sqlite3.Connection, used: set[str]) -> list[str]:
     """Retire ce que l'ancienne règle avait fait d'une ref locale d'un seul µprojet : une référence
     dont toutes les versions sont des imports (``local_tag``, aucune publication à la main) venus d'un
     seul µprojet, toujours là (une version dont le µprojet a été supprimé - ``microproject_id`` vide -
     garde le seul instantané de sa structure : la référence est gardée), créée par le regroupement
     (sa date : celle de sa première version) et que personne n'a touchée depuis (ni renommée, ni
-    décrite : sa date de mise à jour est celle de sa dernière version), dont aucune étude n'est partie (``used``). Son slug n'est pas réservé
-    (``retired_reference_slugs`` : aucune étude ne le cite). Renvoie les slugs retirés."""
+    décrite : sa date de mise à jour est celle de sa dernière version), dont aucune étude n'est
+    partie (``used``). Son slug n'est pas réservé (``retired_reference_slugs`` : aucune étude ne le
+    cite). Renvoie les slugs retirés."""
     retired = []
     for reference in service.all_references(conn):
         versions = service.versions_of(conn, reference.id)
@@ -213,7 +202,7 @@ def _retire_unshared_imports(conn, used: set[str]) -> list[str]:
     return retired
 
 
-def _imported_names(conn) -> dict[str, service.Reference]:
+def _imported_names(conn: sqlite3.Connection) -> dict[str, service.Reference]:
     """La référence qui a déjà reçu des étiquettes de chaque nom (normalisé) - même renommée depuis."""
     rows = conn.execute(
         """SELECT r.*, v.local_tag FROM reference_versions v JOIN structure_references r ON r.id = v.reference_id
@@ -229,46 +218,28 @@ def _all_microprojects() -> list[Microproject]:
     return sorted(microprojects.list_all(), key=lambda mp: mp.id)
 
 
-def import_local_refs() -> None:
-    """Regroupe en références les refs locales dont le nom est partagé par plusieurs µprojets (voir
-    le module), quand les étiquettes nommées d'un µprojet ont changé depuis sa dernière lecture (ou
-    qu'il n'a pas encore été lu) ou que la règle n'est pas encore passée."""
-    fingerprints = _fingerprints(_all_microprojects())
-    with get_conn() as conn:
-        if not _needs_run(conn, fingerprints):
-            return
-    with keyed_lock(service.LOCK_NAMESPACE, service.WRITE_LOCK_KEY):
-        # relues sous le verrou : l'empreinte enregistrée est celle des étiquettes regroupées (une ref
-        # posée pendant le regroupement le fera repasser à la lecture suivante)
-        everything = _all_microprojects()
-        fingerprints = _fingerprints(everything)
-        with get_conn() as conn:
-            if not _needs_run(conn, fingerprints):
-                return
-            rule_applied = _rule_applied(conn)
-            dismissed = _dismissed(conn)
-        used = set() if rule_applied else _used_slugs(everything)
-        with get_conn() as conn:
-            if not rule_applied:
-                _retire_unshared_imports(conn, used)
-        candidates = _shared_candidates(everything, dismissed)
-        with get_conn() as conn:
-            imported = _imported_names(conn)
-            for candidate in candidates:
-                import_candidate(conn, candidate, imported)
-            stamp = service.now()
-            conn.executemany(
-                """INSERT INTO reference_import_scans (microproject_id, scanned_at, tags_fingerprint)
-                   SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM microprojects WHERE id = ?)
-                   ON CONFLICT (microproject_id) DO UPDATE SET scanned_at = excluded.scanned_at, tags_fingerprint = excluded.tags_fingerprint""",
-                [(microproject.id, stamp, fingerprints[microproject.id], microproject.id) for microproject in everything],
-            )
-            conn.execute("INSERT OR IGNORE INTO reference_import_rules (rule, applied_at) VALUES (?, ?)", (RULE, stamp))
+def import_shared_local_refs(conn: sqlite3.Connection) -> list[str]:
+    """Regroupe en références, une fois, les refs locales dont le nom est partagé par plusieurs
+    µprojets (voir le module), sur la connexion de la migration. Idempotent : une étiquette déjà
+    importée ne l'est pas deux fois. Renvoie les slugs des références qui ont reçu une version."""
+    everything = _all_microprojects()
+    if not _rule_applied(conn):
+        _retire_unshared_imports(conn, _used_slugs(everything))
+    dismissed = _dismissed(conn)
+    imported = _imported_names(conn)
+    touched: list[str] = []
+    for candidate in _shared_candidates(everything, dismissed):
+        if import_candidate(conn, candidate, imported):
+            touched.append(imported[service.normalized_name(candidate.name)].slug)
+    if touched:
+        logger.info("refs locales regroupées en références : %s", ", ".join(sorted(set(touched))))
+    return touched
 
 
-def import_candidate(conn, candidate: _Candidate, imported: dict[str, service.Reference]) -> None:
+def import_candidate(conn: sqlite3.Connection, candidate: _Candidate, imported: dict[str, service.Reference]) -> bool:
     """Importe une étiquette dans la référence de son nom (``imported`` : celle qui a déjà reçu ce
-    nom, tenue à jour ; sinon celle du même nom, sinon une nouvelle)."""
+    nom, tenue à jour ; sinon celle du même nom, sinon une nouvelle). Vrai si une version a été
+    écrite (faux : déjà importée)."""
     key = service.normalized_name(candidate.name)
     published_at = candidate.version.created_at.isoformat()
     reference = imported.get(key) or service.find_by_name(conn, candidate.name)
@@ -283,7 +254,7 @@ def import_candidate(conn, candidate: _Candidate, imported: dict[str, service.Re
         v.microproject_id == candidate.microproject.id and (v.local_tag == candidate.name or v.version_id == candidate.version.id)
         for v in versions
     ):
-        return
+        return False
     same_line = service.published_on_line(versions, candidate.microproject, candidate.repo, candidate.version)
     parent, inferred = (same_line[-1], False) if same_line else ((versions[-1], True) if versions else (None, False))
     level = experiments.structure_change_level(parent.snapshot.get("metadata") if parent else None, candidate.snapshot["metadata"])
@@ -304,3 +275,4 @@ def import_candidate(conn, candidate: _Candidate, imported: dict[str, service.Re
         published_by=None,
         published_at=published_at,
     )
+    return True

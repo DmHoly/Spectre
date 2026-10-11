@@ -120,6 +120,8 @@ def _from_row(row: sqlite3.Row) -> ManagementArea:
         created_by=row["created_by"],
         objectives_period=row["objectives_period"],
         code_prefix=row["code_prefix"],
+        # absente d'une base d'avant la migration 0003_team : les tests de migration de teams créent des
+        # données avec le code courant sur l'ancien schéma avant de laisser les migrations passer
         team_id=row["team_id"] if "team_id" in row.keys() else None,
     )
 

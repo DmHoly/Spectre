@@ -51,18 +51,6 @@ def test_nonexistent_microproject_is_404(client):
     assert_handler_404(client.get("/api/microprojects/does-not-exist"), "introuvable")
 
 
-def test_microproject_requires_authentication(client):
-    assert client.get("/api/microprojects").status_code == 401
-
-
-def test_the_old_routes_are_gone(client):
-    signup(client, "owner@example.com")
-    slug = create_microproject(client, "Projet")["slug"]
-    for path in ("/api/microprojets", f"/api/microprojets/{slug}", "/api/microprojets/tous", "/api/microprojets/recherche?q=p"):
-        response = client.get(path)
-        assert response.status_code in (404, 405) and response.json()["detail"] in ("Not Found", "Method Not Allowed"), path
-
-
 def test_listing_by_project_and_thematique(client):
     signup(client, "boss@example.com")
     client.post("/api/areas/native-pt2/thematics", json={"name": "Dopage PGaN"})

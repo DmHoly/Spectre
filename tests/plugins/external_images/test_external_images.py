@@ -14,7 +14,7 @@ from spectre.plugins.external_images import service
 
 from support.accounts import login, signup
 from support.external_images import browse, png_files, preview, roots
-from support.http import PNG_1PX, ROUTER_NOT_FOUND, assert_handler_404
+from support.http import PNG_1PX, assert_handler_404
 from support.microprojects import add_member, signup_with_microproject
 
 
@@ -148,10 +148,3 @@ def test_only_editors_browse(client, root):
     # membre (propriétaire, même) d'un autre µprojet, pas de celui-ci
     signup_with_microproject(client, "other-browse@example.com", "Ailleurs")
     assert browse(client, slug, str(root)).status_code == 403
-
-
-def test_the_old_routes_are_gone(client, root, tmp_path):
-    slug = signup_with_microproject(client, "browse-old@example.com")
-    for old in (f"/api/microprojets/{slug}/data/image", f"/api/microprojets/{slug}/data/parcourir"):
-        gone = client.get(old, params={"chemin": str(tmp_path), "dossier": str(tmp_path)})
-        assert gone.status_code == 404 and gone.json()["detail"] == ROUTER_NOT_FOUND

@@ -11,6 +11,8 @@ from pydantic import BaseModel
 
 from ..accounts.deps import current_user
 from ..accounts.service import User
+from ..microprojects.deps import require_role
+from ..microprojects.service import Microproject
 from . import service as intent_forms
 from .service import ActiveForm, LibraryEntry
 
@@ -99,11 +101,18 @@ def get_active_intent_form(microproject_slug: str, user: User = Depends(current_
 
 
 @router.put("/microprojects/{microproject_slug}/active-intent-form")
-def set_active_intent_form(microproject_slug: str, body: ActivateIntentFormRequest, user: User = Depends(current_user)) -> dict:
+def set_active_intent_form(
+    microproject_slug: str,
+    body: ActivateIntentFormRequest,
+    user: User = Depends(current_user),
+    _editor: Microproject = Depends(require_role("editor")),  # le rôle avant le corps : un lecteur reçoit 403, pas 422
+) -> dict:
     return _active_payload(intent_forms.activate(user, microproject_slug, body.intent_form_id))
 
 
 @router.delete("/microprojects/{microproject_slug}/active-intent-form", status_code=204)
-def delete_active_intent_form(microproject_slug: str, user: User = Depends(current_user)) -> Response:
+def delete_active_intent_form(
+    microproject_slug: str, user: User = Depends(current_user), _editor: Microproject = Depends(require_role("editor"))
+) -> Response:
     intent_forms.deactivate(user, microproject_slug)
     return Response(status_code=204)

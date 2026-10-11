@@ -108,7 +108,7 @@ placés au-dessus de lui.
 | 10 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, combinaison de deux études (une nouvelle piste à deux parents), suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
 | 11 | `comparator` | Comparateur de structures : le tableau d'une liste de plaques, d'études et de versions de référence (`GET /api/comparisons`), une ligne par plaque ou structure, une colonne par paramètre regroupée par étape, chaque cellule comparée à la ligne de base (modifié, paramètre ajouté, couche en plus, étape déplacée, couche absente : `table.py`, pur) ; registre des sources de lignes (`register_source`) - les études ici, les plaques et les références chez leurs plugins ; page `/comparateur`, composant `Comparator` des pages qui comparent des structures. Ne stocke rien | experiments, microprojects, structures | — |
 | 12 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library, experiments (où servent les briques) | JSON par portée |
-| 13 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), la source « référence » du comparateur (`comparison_source.py`), le regroupement des refs locales d'avant dont le nom est porté dans au moins deux µprojets (`local_refs.py`) | experiments, microprojects, structures, comparator | `structure_references`, `reference_versions`, `reference_import_scans`, `reference_import_rules`, `retired_reference_slugs`, `dismissed_local_refs` |
+| 13 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), la source « référence » du comparateur (`comparison_source.py`), les refs locales d'avant regroupées une fois par migration (`local_refs.py`) | experiments, microprojects, structures, comparator | `structure_references`, `reference_versions`, `retired_reference_slugs` |
 | 14 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
 | 15 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité, plaques de chaque FDL (`fdl_source` : démo, base locale, PRISM à venir) ; la source « plaque » du comparateur (`comparison_source.py`) | experiments, search, comparator | cache mémoire, `fdl_wafers` |
 | 16 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
@@ -199,7 +199,7 @@ un `Access(role, source, membership)` : `role` est le rôle effectif, `source` d
 dans cet ordre de priorité : owner par adhésion (`membership`), puis `team_manager`, puis `admin`,
 puis le rôle de l'adhésion. `effective_role`, `has_role`, `check_role`, `accesses` (une liste en
 deux requêtes) et `deps.require_role` en dérivent ; aucun autre plugin ne lit la table
-`memberships` pour autoriser (`role_for` et `list_for_user` restent des lecteurs bruts). « Mes
+`memberships` pour autoriser (`role_for` reste un lecteur brut). « Mes
 µprojets » (`list_mine`) : ceux dont on est membre et ceux des équipes qu'on manage, pas tous
 ceux qu'un admin peut ouvrir. Hors µprojets, trois contrôles gardent leur propre règle, qui ne
 dépend pas d'un rôle : la suppression d'un lot (créateur ou admin) et les éléments partagés de
@@ -329,8 +329,8 @@ nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ 
   hypothèse, métadonnées, réponses au formulaire, preuves, étiquettes, conclusion), puis applique
   le changement et ne commite que s'il y a une différence.
 - Les liens vers une étude (atlas, entités, pages) désignent la piste et non une version. Une URL
-  de page qui porte encore un ancien id de version est résolue par
-  `GET /api/microprojects/{microproject_slug}/experiment-versions/{version_id}`.
+  de page qui porte encore un ancien id de version est redirigée vers la page de sa piste (le
+  `page_router` d'`experiments`).
 
 **Mise en œuvre** (`experiments/repository.py`, `experiments/service.py`) :
 
@@ -343,9 +343,8 @@ nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ 
   une évolution (`POST .../versions`) le revalide. Les erreurs de Follow deviennent des
   `kernel.errors` ; un formulaire refusé est un 422 `invalid_intent_form` dont le `detail` énumère
   les réponses en défaut.
-- Les seuls accès aux internes privés de Follow sont dans `repository` : `delete_line(repo,
-  experiment_id)` (suppression d'une piste), `rename_tag` et `remove_tag` (renommer ou retirer une
-  ref ; Follow n'en offre pas le moyen). Le dépôt est ouvert sur le stockage JSON de Follow
+- Le seul accès aux internes privés de Follow est dans `repository` : `delete_line(repo,
+  experiment_id)` (suppression d'une piste ; Follow n'en offre pas le moyen). Le dépôt est ouvert sur le stockage JSON de Follow
   (même format sur disque), dont les écritures passent par `kernel.fs.write_text` : un `refs.json`
   tenu un instant par un lecteur, sous Windows, ne fait plus échouer un commit.
 - Le plugin qui écrit dans une étude sans en être le propriétaire (notebook) expose ses
@@ -505,9 +504,12 @@ nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ 
   déclarées à la main. Les refs locales d'un µprojet (des étiquettes Follow : `refs.py`, la
   « ref v1.0.0 » posée au premier lancement, les routes `…/refs`) sont retirées ; les étiquettes
   déjà dans les dépôts y restent, invisibles, réservent leur nom de piste (`_new_branch_name`) et
-  ne servent plus qu'au regroupement des noms partagés (`references/local_refs.py`).
+  ont été regroupées en références une fois, à la mise à jour, quand leur nom était partagé
+  (`references/local_refs.py`, migration `0005_local_refs_imported_once`).
 - **Numéro de version `X.Y`** (`versioning.py`, 2026-10-11 : il n'y a plus de Z) : majeur (X) -
-  le substrat, ou la suite des types d'étapes (une couche ajoutée, retirée, déplacée) ; mineur (Y)
+  le substrat, ou une étape (une couche ajoutée, retirée, déplacée ou remplacée : la suite des
+  types d'étapes, et, entre deux versions qui partagent un id d'étape, `process_step_ids`, un id
+  qui change de place ou qui va et vient - `versioning.step_ids_in`) ; mineur (Y)
   - un réglage d'étape ou un paramètre déclaré (ajouté, retiré, sa valeur, son obtention, son unité
   remplacée) ; `patch` - une retouche (nom d'étape, unité écrite seule, étiquettes de couches et
   leur regroupement) : niveau gardé, pour l'historique et la conclusion, mais pas de nouveau numéro.
@@ -593,28 +595,22 @@ valeur d'un autre type → 422 ; une valeur que l'étape n'a pas n'est pas écri
   un pictogramme 1,6 em (« 🔬 » : 1,373 em) - l'ancienne règle (0,7 ou 0,8 em) en laissait
   sortir 180 unités. Un titre est coupé à 40 caractères, une ligne à 48 (64 pour la ligne d'une
   étape dans l'étiquette d'une brique).
-- **Diff** : `GET .../structure-diff` rend, à part des changements de structure, `label_changes`
-  (`kinds.describe_label_changes`) : par étape (`step_id`, `change` : `added`, `removed` ou
+- **Retouches dites à part** (`kinds.describe_label_changes` et `kinds.describe_step_changes`, ce que le
+  comparateur écrit des retouches d'une version, `comparator.table`) : `label_changes`, par étape
+  (`step_id`, `change` : `added`, `removed` ou
   `modified` avec `text {before, after}`, `values_added`, `values_removed` - les noms lisibles :
   « épaisseur », « composition », le nom du paramètre), puis par brique (`group_id`, `change` :
   `grouped`, `ungrouped`, `renamed`, `regrouped`), chacun avec `subject` et `line`, la phrase
   (« p-GaN — ajout : dopage Mg »). Les étapes s'apparient par id (`service.step_ids_of`) quand les
-  deux versions en ont en commun (une piste, une fourche), sinon **par position**, comme le diff de
-  structure (deux études lancées à part, ou reprises d'un modèle, que le constructeur copie sans
-  ids) ; une brique est son nom et ses étapes étiquetées, comme pour le versionnage, jamais son
-  `group_id` (dissocier puis regrouper les mêmes étapes ne change rien). Il rend aussi
-  `param_changes` (`kinds.describe_param_changes`) : les paramètres déclarés, que la géométrie
-  comparée ne porte pas, par étape (appariées de même) et par nom - `change` `added`, `removed` ou
-  `modified` (`value`, `unit` `{before, after}` ou `null`, `obtention_changed`), avec `step_id`,
-  `subject` (le nom de l'étape), `param` et `line` (« p-GaN — dopage Mg : unité « cm⁻³ » ajoutée ») ;
-  une unité passée de l'obtention au champ, la même, n'y est pas. Et `step_changes`
-  (`kinds.describe_step_changes`) : les étapes renommées (appariées de même ; un nom d'étape n'est
-  ni dans la géométrie ni dans les étiquettes, et c'est une retouche), `{step_id, subject, change:
-  "renamed", name: {before, after}, line}` (« étape « n-GaN » renommée « n-GaN dopé » ») - une
-  étape ajoutée ou retirée, elle, change la structure. La fiche, sa comparaison, la page
-  d'évolution et celle d'une référence les écrivent sur une ligne « Étapes : … », « Paramètres :
-  … » puis « Étiquettes : … », et la fiche ne dit plus « identique à la version précédente » quand
-  seuls des noms d'étape, des paramètres déclarés ou des étiquettes changent.
+  deux versions en ont en commun (une piste, une fourche), sinon **par position** (deux études
+  lancées à part, ou reprises d'un modèle, que le constructeur copie sans ids) ; une brique est son
+  nom et ses étapes étiquetées, comme pour le versionnage, jamais son `group_id` (dissocier puis
+  regrouper les mêmes étapes ne change rien). Et `step_changes` : les étapes renommées (appariées
+  de même ; un nom d'étape n'est ni dans la géométrie ni dans les étiquettes, et c'est une
+  retouche), `{step_id, subject, change: "renamed", name: {before, after}, line}` (« étape
+  « n-GaN » renommée « n-GaN dopé » ») - une étape ajoutée ou retirée, elle, change la structure.
+  Les paramètres déclarés, eux, sont des colonnes du comparateur. L'ancien diff géométrique
+  page ne l'appelait depuis le comparateur.
 
 ### Briques d'un procédé
 
@@ -940,7 +936,6 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` (une par variante d'une campagne, 422 `entity_count` sinon ; au moins une pour une étude simple, ses réplicats ; 422 `duplicate_wafer`) |
 | `POST …/{ref}/combiner` | `POST /api/microprojects/{mp}/experiments` `{merge_of: [{experiment_id, version_id?}, {experiment_id, version_id?}], title, intent, hypothesis, entities, objectives?, context?, branch?}` → 201 + `Location` vers la **nouvelle piste** (§ 4 : deux parents, la structure de la première, cahier vide ; les deux études ne changent pas). Exactement deux études, sans `structure` ni `from_version` (422) ; une version inconnue → 404 `source_not_found` ; deux fois la même piste ou la même version → 422 `same_experiment` ; une version d'avant la fourche de la piste désignée → 422 `version_before_line` ; une étude d'un autre µprojet n'y existe pas (404), et un champ de plus dans `merge_of` (`microproject`...) est refusé (422). `POST …/experiments/{exp}/merges` **supprimée** |
 | `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=&variant=` (`variant` : le procédé d'une variante d'une campagne, § 4 ; chaque étape porte son `id` ; `layer_labels` : les étiquettes de couches par position d'étape, § 4 ; `bricks` : les briques du procédé par positions d'étape, § 4) |
-| `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?, label_changes, param_changes, step_changes}` (avec une cible, à part : les étiquettes de couches et leur regroupement par brique, `label_changes`, les paramètres déclarés, `param_changes`, et les étapes renommées, `step_changes` ; étapes appariées par id, par position entre deux versions sans id commun, § 4) ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403). Plus appelée par le front : une page compare deux versions par le comparateur (§ comparator) |
 | `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
 | `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
 | `POST …/{ref}/ref`, `…/refs[/{ref_name}]`, `…/refs/graphe` | **supprimées** (2026-10-11) : les références (plugin `references`) sont les seules refs |
@@ -949,7 +944,6 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `GET /api/microprojets/{slug}/graphe.html` | **supprimée**, ainsi que la page `/microprojets/{slug}/graphe` |
 | *(dans les listes de µprojets)* | `GET /api/experiment-stats?microproject=&area=` → `[{microproject, running, concluded, abandoned, wafers, role_source}]` |
 | *(dans la thématique)* | `GET /api/experiment-timeline?area=&thematic=` (champs masqués pour les non-membres) |
-| *(nouveau)* | `GET /api/microprojects/{mp}/experiment-versions/{version_id}` → `{experiment_id, version_id}` (résolution des anciens liens) |
 
 ### notebook · external_images
 
@@ -1027,8 +1021,7 @@ propre (external_images ne dépend que de microprojects, placé avant notebook).
 
 Toutes nouvelles (TODO, « Références de structure »). Une **référence** est un objet de toute
 l'application ; tout compte connecté lit les références, leurs versions et leurs instantanés, et en
-crée une. Plugin `references` : `service.py` (le domaine), `local_refs.py` (le regroupement des refs
-locales d'avant).
+crée une. Plugin `references` : `service.py` (le domaine), `local_refs.py` (les refs locales d'avant, regroupées une fois par la migration `0005`).
 
 | Route | Effet |
 |---|---|
@@ -1036,11 +1029,10 @@ locales d'avant).
 | `POST /api/references` `{name, description}` | → 201 + `Location` `/api/references/{reference_slug}` + la référence, sans version ; nom vide ou sans lettre ni chiffre → 422 `invalid_reference_name`, nom déjà pris (comparé sans casse, ni accents, ni ponctuation) → 409 `reference_name_taken` |
 | `GET /api/references/{reference_slug}` | une référence (404 `reference_not_found`) |
 | `PATCH /api/references/{reference_slug}` `{name, description}` | son créateur ou un admin (403) ; le **slug ne change pas** (une étude cite sa référence par lui) ; sans effet → 200, rien d'écrit |
-| `DELETE /api/references/{reference_slug}` | → 204 ; son créateur ou un admin (403) ; une référence qui a des versions, un admin seulement (409 `reference_has_versions` pour son créateur) - ses versions partent avec elle, les études qui en étaient parties gardent une origine désormais inconnue : son slug n'est **jamais redonné** (`retired_reference_slugs` ; une nouvelle référence du même nom reçoit `-2`), celui d'une référence sans version (aucune étude n'a pu en partir) se libère ; les étiquettes importées dans ses versions ne sont plus regroupées (`dismissed_local_refs`) : le retrait est définitif |
+| `DELETE /api/references/{reference_slug}` | → 204 ; son créateur ou un admin (403) ; une référence qui a des versions, un admin seulement (409 `reference_has_versions` pour son créateur) - ses versions partent avec elle, les études qui en étaient parties gardent une origine désormais inconnue : son slug n'est **jamais redonné** (`retired_reference_slugs` ; une nouvelle référence du même nom reçoit `-2`), celui d'une référence sans version (aucune étude n'a pu en partir) se libère |
 | `GET /api/references/{reference_slug}/versions` | `{reference, lanes, nodes, edges}` : l'évolution de la référence. `nodes`, dans l'ordre de publication : `{number, major, minor, label, change_level, parent, parent_inferred, imported, note, published_by, published_at, source, usage_count, usages, lane}` ; une version prend la colonne (`lane`) de son parent si elle en est le premier enfant, sinon une nouvelle ; `lanes` : `{index, start, head}` ; `edges` : `{parent, child, kind: "parent" \| "branch", inferred}` |
 | `POST /api/references/{reference_slug}/versions` `{microproject, experiment_id, version_id?, note?, parent?}` | publie une version d'étude (la pointe de la piste par défaut) : rôle `editor` sur le µprojet source (403 ; µprojet inconnu → 422 `unknown_microproject`, piste ou version inconnue → 404) ; une structure dessinée seulement (des images, une campagne → 422 `reference_needs_process`) ; son parent : `parent` (« 1.1 », inconnu → 422 `unknown_parent_version`), sinon la dernière version de cette référence publiée depuis ce µprojet dont la version publiée descend (republier une étude qui a évolué continue sa suite : 1.1 puis 1.2), sinon la version dont part la piste source (`reference_origin`), sinon la dernière publiée ; identique à son parent → 409 `reference_version_identical` ; une version Follow déjà publiée dans cette référence → 409 `reference_version_already_published` ; → 201 + `Location` `.../versions/{version_number}` + la version |
 | `GET /api/references/{reference_slug}/versions/{version_number}` | une version (404 `reference_version_not_found`) : son nœud, plus `reference {slug, name}`, `structure_svg` (l'instantané dessiné par le serveur, étiquettes comprises) et `process` (son procédé éditable, la forme de `GET .../experiments/{exp}/process` : étapes avec leur id, `layer_labels` et `bricks` par positions) - ce que le constructeur charge pour lancer une étude depuis elle |
-| `GET /api/references/{reference_slug}/versions/{version_number}/structure-diff?against=` | la version comparée à `against` (une autre version de la référence), à sa version parente par défaut : `{target: {number} \| null, entries, summary?, label_changes, param_changes, step_changes}` - le diff des études (`experiments.service.compare_states`), lu dans les deux instantanés ; sans parent ni `against` : `{target: null, entries: []}`. Plus appelée par le front : la page d'une référence compare deux versions par le comparateur (§ comparator) |
 | `GET /api/reference-versions?microproject=` | les versions de référence publiées depuis ce µprojet (viewer : 403 sinon ; inconnu → 404) : `[{reference: {slug, name}, number, label: "R nom 1.1", experiment_id, version_id, local_tag, change_level, published_at}]`, pour les badges de sa page d'évolution |
 
 - **Numéro** (`service.next_number`) : la version est comparée à sa version parente par le
@@ -1068,43 +1060,30 @@ locales d'avant).
   désigne `(slug, numéro)`, lue dans le dépôt en cache de chaque µprojet (une lecture par µprojet et
   par réponse) ; une fourche ou une combinaison qui a gardé l'origine compte aussi. Une origine
   inconnue n'est comptée nulle part.
-- **Les refs locales d'avant** (`local_refs.import_local_refs`, appelée par chaque fonction du
-  service avant tout le reste ; règle décidée le 2026-10-05) : seuls les noms de refs portés dans
-  **au moins deux µprojets** (`SHARED_BY`) deviennent des références. Les étiquettes Follow de tous
-  les µprojets sont relues et regroupées par nom normalisé (`service.normalized_name` : sans casse,
-  ni accents, ni ponctuation), sauf les noms automatiques « ref vX.Y.Z » (suffixés ou non) et les
-  étiquettes d'une structure qui n'est pas un procédé dessiné ; un nom qui n'est porté (sur un
-  procédé dessiné) que dans un µprojet reste un repère local, montré sur sa page d'évolution, qu'un
-  éditeur publie à la main s'il le veut (« Publier comme référence »). Le partage se décide sur
-  l'ensemble des µprojets : un nom qui n'était que dans A et qui apparaît dans B importe, à la
-  lecture des références qui suit, les étiquettes de A et de B (A et B déjà lus ou non). Chaque nom partagé a sa
-  référence (celle qui a déjà reçu des étiquettes de ce nom, même renommée ; sinon une référence du
-  même nom existante ; sinon une nouvelle : le nom de sa plus ancienne étiquette, créateur : celui du
-  µprojet de la première version), chaque étiquette une version (`local_tag`, `published_by` vide,
-  `published_at` : la date de la version étiquetée), dans l'ordre des dates ; son parent est la
-  dernière version de la référence dont la version étiquetée descend dans le même dépôt, sinon la
-  précédente (`parent_inferred` : un rattachement déduit) ; une version identique à son parent (la
-  même structure étiquetée dans deux µprojets, comme « epitaxie-standard » dans la démo) reçoit le
-  mineur suivant, `change_level` `none` ; une étiquette déjà importée (même µprojet, même nom) ou
-  dont la version Follow est déjà une version de la référence (publiée à la main) ne l'est pas deux
-  fois. Les étiquettes d'une référence qu'un admin a retirée (`service.delete_reference` :
-  `dismissed_local_refs`, par µprojet et nom) ne sont plus regroupées ni comptées pour le partage :
-  le retrait est définitif (elles restent des repères locaux, publiables à la main ; un nom repris
-  par deux autres µprojets fait une nouvelle référence, slug suffixé). Les étiquettes restent en
-  place, aucun fichier Follow n'est réécrit.
-  Le regroupement passe quand l'empreinte des étiquettes nommées d'un µprojet (`_fingerprint` :
-  noms et versions, lus dans le `refs.json` du dépôt en cache) diffère de celle de sa dernière
-  lecture (`reference_import_scans.tags_fingerprint`, migration `0004_dismissed_local_refs`) ou
-  qu'il n'a pas encore été lu - une ref posée, retirée ou déplacée dans un µprojet déjà lu est donc
-  regroupée à la lecture suivante -, et une fois pour la règle (`reference_import_rules`,
-  migration `0003_import_rules`) : sur une installation où l'ancienne règle (chaque ref nommée
-  devenait une référence) a tourné, il retire d'abord les références qu'elle a créées depuis un seul
-  µprojet - toutes leurs versions importées, aucune publiée à la main, aucune dont le µprojet a
-  été supprimé (son instantané est la seule copie qui reste), aucune étude, quelle qu'en
-  soit la version, qui cite leur slug (`reference_origin`), et que personne n'a touchées (ni
-  renommées ni décrites : écart, une référence retouchée à la main est gardée) -, sans réserver
-  leur slug (aucune étude n'en est partie), puis relit tous les µprojets. Idempotent ; sans
-  étiquette changée ni règle à passer, la lecture des `refs.json` en cache et une requête.
+- **Les refs locales d'avant** (`local_refs.import_shared_local_refs`, appelée une fois par la
+  migration `0005_local_refs_imported_once`, qui supprime ensuite les tables `reference_import_scans`,
+  `reference_import_rules` et `dismissed_local_refs` qui suivaient le regroupement) : seuls les noms
+  de refs portés dans **au moins deux µprojets** (`SHARED_BY`, règle du 2026-10-05) sont devenus des
+  références. Les étiquettes Follow de tous les µprojets sont lues et regroupées par nom normalisé
+  (`service.normalized_name` : sans casse, ni accents, ni ponctuation), sauf les noms automatiques
+  « ref vX.Y.Z » (suffixés ou non), les étiquettes d'une structure qui n'est pas un procédé dessiné
+  et celles dont un admin avait retiré la référence (`dismissed_local_refs`, lue une dernière fois).
+  Chaque nom partagé a sa référence (celle qui a déjà reçu des étiquettes de ce nom, même renommée ;
+  sinon une référence du même nom existante ; sinon une nouvelle : le nom de sa plus ancienne
+  étiquette, créateur : celui du µprojet de la première version), chaque étiquette une version
+  (`local_tag`, `published_by` vide, `published_at` : la date de la version étiquetée), dans l'ordre
+  des dates ; son parent est la dernière version de la référence dont la version étiquetée descend
+  dans le même dépôt, sinon la précédente (`parent_inferred` : un rattachement déduit) ; une version
+  identique à son parent (la même structure étiquetée dans deux µprojets) reçoit le mineur suivant,
+  `change_level` `none` ; une étiquette déjà importée ou dont la version Follow est déjà une version
+  de la référence ne l'est pas deux fois. Sur une installation où l'ancienne règle (chaque ref nommée
+  devenait une référence) avait tourné sans que celle du 2026-10-05 passe, la migration retire
+  d'abord les références créées depuis un seul µprojet que personne n'a touchées (toutes leurs
+  versions importées, aucune publiée à la main, aucune d'un µprojet supprimé, aucune étude qui cite
+  leur slug), sans réserver leur slug. Les étiquettes restent en place, aucun fichier Follow n'est
+  réécrit ; un nom qui n'était porté que par un µprojet reste un repère local, qu'un éditeur publie
+  à la main. Plus rien ne pose d'étiquette Follow depuis les refs déclarées (2026-10-11) : une
+  étiquette qui apparaîtrait après (un dépôt copié d'ailleurs) n'est plus regroupée.
 
 ### intent_forms
 

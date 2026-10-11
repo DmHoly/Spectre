@@ -1097,9 +1097,6 @@
 .nb-mform__field {
   min-width: 0;
 }
-.nb-mform__field--wide {
-  grid-column: 1 / -1;
-}
 .nb-mform__label {
   display: block;
   margin-bottom: 6px;
@@ -1206,15 +1203,6 @@
   font-size: 12.5px;
   font-weight: 600;
   overflow-wrap: anywhere;
-}
-.nb-ext-item__main {
-  padding: 0 6px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--gold-dark);
-  border: 1px solid var(--gold);
-  border-radius: var(--radius-pill);
 }
 .nb-ext-item__problem {
   font-size: 11.5px;

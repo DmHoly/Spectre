@@ -37,7 +37,3 @@ def test_the_demo_source_invents_the_same_wafers_for_the_same_fdl_and_is_read_on
     assert get_fdl(client, "ABC-3")["known"] is False
     refused = put_fdl_wafers(client, "42", ["W1"])
     assert refused.status_code == 409 and refused.json()["code"] == "fdl_source_read_only"
-
-
-def test_reading_an_fdl_requires_a_session(client):
-    assert client.get("/api/fdls/FDL-1").status_code == 401

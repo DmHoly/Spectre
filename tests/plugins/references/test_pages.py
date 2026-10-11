@@ -8,7 +8,14 @@ from __future__ import annotations
 from support.accounts import signup
 from support.experiments import launch, post_evolve
 from support.microprojects import create_microproject, signup_with_microproject
-from support.references import create_reference, get_version, origin, post_version, publish, version_graph
+from support.references import (
+    create_reference,
+    get_version,
+    origin,
+    post_version,
+    publish,
+    version_graph,
+)
 from support.structures import layer_label, steps
 
 

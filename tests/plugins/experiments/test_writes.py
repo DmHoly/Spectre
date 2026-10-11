@@ -13,7 +13,6 @@ import pytest
 
 from support.experiments import (
     conclude,
-    evolve,
     evolve_image,
     experiment_url,
     get_experiment,
@@ -22,16 +21,14 @@ from support.experiments import (
     post_evolve,
     replace_structure_images,
     set_status,
-    structure_diff,
     tag,
     track_entities,
     versions,
 )
 from support.external_images import png_files
-from support.http import assert_handler_404
 from support.microprojects import signup_with_microproject
 from support.notebook import add_entry, add_manual, delete_entry, entries, entries_by_id, entries_url, take_snapshot, update_entry, upload_notebook_file
-from support.structures import steps, upload_structure_image
+from support.structures import upload_structure_image
 
 FUTURE_KEY = "champ_spectre_futur"  # un champ que Spectre rangerait demain dans les métadonnées
 
@@ -309,34 +306,10 @@ def test_reads_are_served_from_a_cache_that_every_write_invalidates(client):
     assert get_experiment(client, slug, launched["id"])["title"] == "Retouche"
 
 
-def test_the_default_diff_after_a_tag_compares_structures(client):
-    # avant : le diff comparait au parent immédiat - « identique à la version précédente » dès
-    # qu'une étiquette s'y glissait
-    slug = signup_with_microproject(client, "diff-tag@example.com")
-    launched = launch(client, slug, steps=steps(20))
-    evolve(client, slug, launched["id"], intent="Plus mince", steps=steps(10))
-    tag(client, slug, launched["id"], ["a-suivre"])
-
-    diff = structure_diff(client, slug, launched["id"])
-    assert diff["target"]["version_id"] == launched["version_id"]
-    assert diff["entries"]
-
-
-def test_the_first_structure_has_nothing_to_compare_with(client):
-    slug = signup_with_microproject(client, "diff-first@example.com")
-    launched = launch(client, slug)
-    tag(client, slug, launched["id"], ["x"])
-    assert structure_diff(client, slug, launched["id"]) == {"target": None, "entries": []}
-
-
 def test_an_old_version_link_resolves_to_its_line(client):
     slug = signup_with_microproject(client, "legacy-link@example.com")
     launched = launch(client, slug)
     tagged = tag(client, slug, launched["id"], ["x"])
-
-    resolved = client.get(f"/api/microprojects/{slug}/experiment-versions/{launched['version_id']}")
-    assert resolved.json() == {"experiment_id": launched["id"], "version_id": launched["version_id"]}
-    assert_handler_404(client.get(f"/api/microprojects/{slug}/experiment-versions/exp_0000000000000000"))
 
     page = client.get(f"/microprojets/{slug}/experiences/{launched['version_id']}", follow_redirects=False)
     assert page.status_code == 302

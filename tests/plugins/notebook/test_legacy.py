@@ -232,7 +232,7 @@ def test_old_links_are_read_under_todays_rule_so_the_entry_saves_as_read(client,
                 "https://sharepoint.example/Documents partages/rapport AFM.pptx",
                 "https://sharepoint.example/Documents%20partages/rapport%20AFM.pptx",  # le même, déjà encodé
                 "https://",
-                "\\srv-data\R&D\Mes runs",
+                r"\\srv-data\R&D\Mes runs",
             ],
             images=[{"id": image, "filename": "afm.png", "content_type": "image/png", "size": 68, "caption": None}],
             image_annotations=[{"attachment_id": image, "type": "box", "x": 1.0, "y": 2.0, "x2": 3.0, "y2": 4.0, "label": "grain"}],
@@ -241,7 +241,7 @@ def test_old_links_are_read_under_todays_rule_so_the_entry_saves_as_read(client,
     write_legacy(slug, line, old)
     [measurement] = entries_by_id(client, slug, line)["ev-liens"]["measurements"]
     assert measurement["links"] == [{"label": None, "url": "https://sharepoint.example/Documents%20partages/rapport%20AFM.pptx"}]
-    assert measurement["text"] == "Lien : https://\nChemin : \\srv-data\R&D\Mes runs"
+    assert measurement["text"] == "Lien : https://\nChemin : " + r"\\srv-data\R&D\Mes runs"
 
     # retirer l'annotation (ce qu'envoie la fiche : toute la mesure), puis changer le titre
     saved = update_entry(client, slug, line, "ev-liens", measurements=[{**as_input(measurement), "annotations": []}])

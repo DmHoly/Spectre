@@ -35,9 +35,6 @@ from .entities import compact
 from .repository import get_repository
 from .schemas import PlanRequest, PlanUpdate, WaferOrigin
 
-MODES = ("same_wafers", "new_wafers")
-
-
 @dataclass(frozen=True)
 class Plan:
     id: int
