@@ -8,8 +8,8 @@
    d'une comparaison de structures (`diffBodyHtml`).
 
    Forme d'un nœud = niveau du changement (plein : première ou majeur ; anneau : mineur ; petit
-   point : correctif ; petit cercle creux : sans changement ; losange : combinaison) ; anneau or :
-   un repère nommé (ref, version de référence) ; anneau pointillé : la tête d'une colonne. Jamais la
+   point : retouche, sans nouveau numéro ; petit cercle creux : sans changement ; losange :
+   combinaison) ; anneau or : une version de référence ; anneau pointillé : la tête d'une colonne. Jamais la
    forme seule : chaque page écrit le niveau en toutes lettres et pose la légende (`legendHtml`). */
 
 const EvolutionGraph = (() => {

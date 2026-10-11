@@ -1344,14 +1344,6 @@ a.plate-row__lasermark {
 .evo-svg .evo-edge--merge {
   stroke-dasharray: 5 3;
 }
-.evo-svg .evo-edge.is-followed {
-  stroke: var(--navy-500);
-  stroke-opacity: 1;
-  stroke-width: 2.5px;
-}
-.evo-svg .is-dimmed {
-  opacity: 0.25;
-}
 
 .evo-rows {
   list-style: none;
@@ -1380,9 +1372,6 @@ a.plate-row__lasermark {
 }
 .evo-row[aria-selected="true"] {
   background: var(--accent-tint);
-}
-.evo-row.is-dimmed {
-  opacity: 0.45;
 }
 .evo-row__label {
   flex: none;
@@ -1432,21 +1421,6 @@ a.plate-row__lasermark {
   }
 }
 
-/* une ref : un badge or lisible (texte or foncé sur teinte or, 4.9:1), le même partout sur la page */
-.evo-ref {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid var(--gold);
-  background: var(--gold-tint);
-  color: var(--gold-dark);
-  border-radius: var(--radius-pill);
-  padding: 1px 8px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-}
 .evo-compare-tag {
   flex: none;
   border-radius: var(--radius-pill);
@@ -1540,48 +1514,6 @@ a.plate-row__lasermark {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-.evo-panel__ref {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.evo-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text-soft);
-  cursor: pointer;
-  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-.evo-icon-btn:hover {
-  border-color: var(--navy-600);
-  color: var(--navy);
-}
-.evo-icon-btn--danger:hover {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-.evo-inline-form {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-top: 6px;
-}
-.evo-inline-form .field {
-  min-height: 34px;
-  padding: 6px 10px;
-}
-.evo-inline-form .btn {
-  min-height: 34px;
-  padding: 6px 12px;
-  flex: none;
 }
 .evo-actions {
   display: flex;

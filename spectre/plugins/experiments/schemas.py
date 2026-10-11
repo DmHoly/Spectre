@@ -257,16 +257,6 @@ class EntitiesRequest(BaseModel):
     fdl: list[str] | None = Field(None, max_length=MAX_FDL_PER_ENTITY)
 
 
-class RefRequest(BaseModel):
-    experiment_id: str
-    version_id: str | None = None  # the tip of experiment_id when left out
-    name: str | None = None  # a nickname ; « ref vX.Y.Z » when left blank
-
-
-class RefChanges(BaseModel):
-    name: str | None = None  # the new name ; left out, nothing changes
-
-
 
 class PlanRequest(BaseModel):
     """An experiment planned from the microproject's tree (see :mod:`.plans`): a title, an intent and

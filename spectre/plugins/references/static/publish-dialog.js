@@ -16,7 +16,7 @@
    on ne laisse pas une référence vide derrière un échec. */
 
 const ReferencePublishDialog = (() => {
-  const LEVEL_TEXT = { initial: "première version", major: "changement majeur", minor: "changement mineur", patch: "correctif", none: "sans changement" };
+  const LEVEL_TEXT = { initial: "première version", major: "changement majeur", minor: "changement mineur", patch: "retouche", none: "sans changement" };
   const NEW = "__new__";
   let dialog = null;
   let current = null; // {options, references, published, suggestion}
@@ -32,7 +32,7 @@ const ReferencePublishDialog = (() => {
     dialog.innerHTML = `
       <div class="card-pad ref-dialog__inner">
         <h2 class="ref-dialog__title" id="ref-publish-title">Publier comme référence</h2>
-        <p class="help ref-dialog__lead">La structure de cette version devient une nouvelle version de la référence, utilisable par tous les µprojets. Son numéro est calculé : un changement majeur ouvre X+1.0, un changement mineur ou un correctif donne X.Y+1.</p>
+        <p class="help ref-dialog__lead">La structure de cette version devient une nouvelle version de la référence, utilisable par tous les µprojets. Son numéro est calculé : un changement majeur ouvre X+1.0, un changement mineur ou une retouche donne X.Y+1.</p>
         <div class="error" role="alert" id="ref-publish-error" hidden></div>
         <form id="ref-publish-form" class="ref-dialog__form">
           <div class="ref-field">

@@ -27,7 +27,6 @@ class ExperimentOrigin(BaseModel):
     microproject: str
     experiment_id: str
     version_id: str
-    ref: str | None = None
 
 
 class SavedStructure(LibraryItem):

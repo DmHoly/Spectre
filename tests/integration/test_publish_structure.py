@@ -1,23 +1,22 @@
 """« Publier dans la bibliothèque » (page « Évolution des structures ») : le front lit le procédé
 d'une version (``GET .../experiments/{exp}/process?version=``) et l'enregistre en structure
-partagée (``POST /api/saved-structures``) avec son origine - la version, sa piste, sa ref. Aucune
+partagée (``POST /api/saved-structures``) avec son origine - la version et sa piste. Aucune
 dépendance entre les deux plugins côté serveur : c'est le parcours que fait la page."""
 
 from __future__ import annotations
 
-from support.experiments import create_ref, evolve, launch, process
+from support.experiments import evolve, launch, process
 from support.microprojects import create_microproject, signup_with_microproject
 from support.process_library import create_item, get_item, list_items, names
 from support.structures import steps
 
 
-def test_a_ref_published_to_the_library_keeps_its_origin(client):
+def test_a_version_published_to_the_library_keeps_its_origin(client):
     slug = signup_with_microproject(client, "publish@example.com")
     launched = launch(client, slug, title="Empilement", intent="Depart", steps=steps(20))
     evolve(client, slug, launched["id"], title="Empilement", steps=steps(35))
-    ref = create_ref(client, slug, launched["id"], "omega", version_id=launched["version_id"])
 
-    origin = {"microproject": slug, "experiment_id": launched["id"], "version_id": ref["version_id"], "ref": "omega"}
+    origin = {"microproject": slug, "experiment_id": launched["id"], "version_id": launched["version_id"]}
     body = {"name": "Empilement omega", **process(client, slug, launched["id"], version=launched["version_id"]), "derived_from": origin}
     saved = create_item(client, "saved-structures", body, scope="shared")
     assert saved["scope"] == "shared"

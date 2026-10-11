@@ -6,7 +6,6 @@ version) ; ``if_match`` envoie l'en-tête ``If-Match`` (la version affichée).""
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import quote
 
 from .http import assert_created, assert_ok
 from .structures import campaign_plan, steps, substrate
@@ -203,39 +202,21 @@ def list_experiments(client: Any, slug: str, **params: Any) -> dict:
     return assert_ok(client.get(experiments_url(slug), params=params))
 
 
-def refs(client: Any, slug: str) -> dict:
-    """GET /refs - ``{refs, edges}``."""
-    return assert_ok(client.get(f"/api/microprojects/{slug}/refs"))
+def legacy_tag(client: Any, slug: str, ref: str, name: str, *, version_id: str | None = None) -> None:
+    """Pose une étiquette Follow ``name`` sur la pointe de la piste (ou ``version_id``) : une ref
+    locale d'avant les références (retirées de l'application le 2026-10-11), comme en portent les
+    dépôts d'une ancienne installation - ce que lit encore l'import des refs locales partagées."""
+    from spectre.plugins.experiments.repository import writing
+
+    with writing(slug) as repo:
+        repo.tag(name, at=version_id or repo.branches[ref])
 
 
-def create_ref(client: Any, slug: str, ref: str, name: str | None = None, *, version_id: str | None = None) -> dict:
-    """POST /refs : marque la pointe de la piste (ou ``version_id``) comme ref (``name`` : un
-    surnom, sinon « ref vX.Y.Z »)."""
-    body = {"experiment_id": ref, **({"name": name} if name is not None else {}), **({"version_id": version_id} if version_id else {})}
-    return assert_created(client.post(f"/api/microprojects/{slug}/refs", json=body))
+def legacy_tags(slug: str) -> set[str]:
+    """Les étiquettes Follow du dépôt du µprojet ``slug``."""
+    from spectre.plugins.experiments.repository import get_repository
 
-
-def ref_url(slug: str, name: str) -> str:
-    return f"/api/microprojects/{slug}/refs/{quote(name, safe='')}"
-
-
-def get_ref(client: Any, slug: str, name: str) -> dict:
-    """GET /refs/{ref_name} - la ref (``name``) et sa version."""
-    return assert_ok(client.get(ref_url(slug, name)))
-
-
-def patch_ref(client: Any, slug: str, name: str, new_name: str | None) -> Any:
-    """PATCH /refs/{ref_name} ``{name}``, tel quel (la réponse, pour en vérifier un refus)."""
-    return client.patch(ref_url(slug, name), json={"name": new_name})
-
-
-def rename_ref(client: Any, slug: str, name: str, new_name: str) -> dict:
-    return assert_ok(patch_ref(client, slug, name, new_name))
-
-
-def delete_ref(client: Any, slug: str, name: str) -> Any:
-    """DELETE /refs/{ref_name}, tel quel (204, ou le refus)."""
-    return client.delete(ref_url(slug, name))
+    return set(get_repository(slug).tags)
 
 
 def structure_history(client: Any, slug: str, *, all_versions: bool | None = None) -> dict:

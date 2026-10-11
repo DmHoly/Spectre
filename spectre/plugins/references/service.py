@@ -206,7 +206,7 @@ def _version(versions: list[ReferenceVersion], number: str) -> ReferenceVersion:
 def next_number(existing: Iterable[tuple[int, int]], parent: tuple[int, int] | None, level: str) -> tuple[int, int]:
     """Le numéro d'une nouvelle version, ``existing`` étant ceux déjà pris : la première est 1.0 ; un
     changement majeur (ou une version sans parent) ouvre le majeur suivant **le plus grand pris**
-    (un majeur quand 2.0 existe : 3.0) ; tout autre changement - mineur, correctif (étiquettes,
+    (un majeur quand 2.0 existe : 3.0) ; tout autre changement - mineur, retouche (étiquettes,
     unité, nom d'étape seuls), ou aucun pour un import - prend le mineur suivant le plus grand pris
     sous le majeur du parent (deux dérivations de 1.0 : 1.1 puis 1.2). Les numéros sont ainsi
     uniques, même entre branches parallèles."""

@@ -28,7 +28,7 @@ from ..microprojects import service as microprojects
 from ..microprojects.deps import get_microproject, require_role
 from ..microprojects.service import Microproject
 from ..structures import campaigns, kinds
-from . import attachments, plans, refs, service, versioning
+from . import attachments, plans, service, versioning
 from .entities import study_fdl
 from .lineage import lineage_graph
 from .lineage import structure_history as lineage_structure_history
@@ -41,8 +41,6 @@ from .schemas import (
     EvolveRequest,
     PlanRequest,
     PlanUpdate,
-    RefChanges,
-    RefRequest,
     StatusRequest,
     StructureImagesRequest,
     TagsRequest,
@@ -116,7 +114,6 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         "conclusion": version.conclusion.model_dump(mode="json"),
         "references": [r.model_dump(mode="json") for r in version.references],
         "tags": list(version.tags),
-        "ref_names": refs.ref_names_for(repo, version.id),
         "structure_svg": kinds.render_structure_svg(version.structure_type, version.structure, version.metadata),
         "is_batch": version.structure_type == kinds.ProcessLot.registry_key(),
         # a structure given as pictures: [{image_id, kind, caption, url}, ...] in reading order
@@ -340,7 +337,7 @@ def delete_experiment(
 @router.get("/experiments/{experiment_id}/versions")
 def list_versions(experiment_id: str, microproject: Microproject = Depends(require_role("viewer"))) -> list[dict]:
     """La frise : chaque version de la piste, de la première à la pointe (``is_tip``), avec son
-    numéro X.Y.Z et son niveau de changement (``change_level`` : ``none`` pour une version qui ne
+    numéro X.Y et son niveau de changement (``change_level`` : ``none`` pour une version qui ne
     change pas la structure - une étiquette, une preuve...)."""
     history = service.history_of(get_repository(microproject.slug), experiment_id)
     numbers = versioning.compute_branch_versions(history)
@@ -556,51 +553,6 @@ def experiment_variants(
     return payload
 
 
-# -- les refs --------------------------------------------------------------------------------------
-
-
-@router.get("/refs")
-def list_refs(microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    """``{refs, edges}`` : chaque ref du µprojet (des points de départ nommés) et leur graphe
-    condensé, de ref en ref (:func:`spectre.plugins.experiments.refs.ref_graph`)."""
-    return refs.ref_graph(get_repository(microproject.slug))
-
-
-def _ref_url(slug: str, name: str) -> str:
-    return f"/api/microprojects/{slug}/refs/{quote(name, safe='')}"
-
-
-@router.post("/refs", status_code=201)
-def create_ref(body: RefRequest, response: Response, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    """Marque une version (la pointe de la piste par défaut) comme ref : ``name`` (un surnom), ou
-    « ref vX.Y.Z ». 422 pour un nom avec « / », 409 pour un nom déjà pris. ``Location`` : la ref."""
-    ref = service.create_ref(microproject.slug, body.experiment_id, body.version_id, body.name)
-    created(response, _ref_url(microproject.slug, ref["name"]))
-    return ref
-
-
-@router.get("/refs/{ref_name}")
-def get_ref(ref_name: str, microproject: Microproject = Depends(require_role("viewer"))) -> dict:
-    """La ref ``ref_name`` : sa version (``names`` : tous les noms posés dessus) et ``name``."""
-    return refs.get_ref(get_repository(microproject.slug), ref_name)
-
-
-@router.patch("/refs/{ref_name}")
-def rename_ref(ref_name: str, body: RefChanges, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    """Renomme la ref (sa version ne change pas) : 409 pour un nom déjà pris, 422 pour un nom vide
-    ou avec « / »."""
-    if body.name is None:
-        return refs.get_ref(get_repository(microproject.slug), ref_name)
-    return service.rename_ref(microproject.slug, ref_name, body.name)
-
-
-@router.delete("/refs/{ref_name}", status_code=204)
-def delete_ref(ref_name: str, microproject: Microproject = Depends(require_role("editor"))) -> Response:
-    """Retire la ref ; la version, elle, reste."""
-    service.delete_ref(microproject.slug, ref_name)
-    return Response(status_code=204)
-
-
 # -- l'évolution des structures --------------------------------------------------------------------
 
 
@@ -660,8 +612,8 @@ def legacy_version_page(slug: str, version_id: str, request: Request) -> Redirec
 
 @page_router.get("/microprojets/{slug}/refs")
 def legacy_refs_page(slug: str) -> RedirectResponse:
-    """L'ancienne page des refs : remplacée par « Évolution des structures », qui les montre sur
-    le diagramme des pistes."""
+    """L'ancienne page des refs locales (retirées le 2026-10-11 : les références sont les seules
+    refs) : « Évolution des structures »."""
     return RedirectResponse(f"/microprojets/{quote(slug, safe='')}/evolution", status_code=302)
 
 

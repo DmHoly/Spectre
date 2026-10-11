@@ -93,16 +93,8 @@ const experimentsApi = {
       ifMatch: versionId && `"${versionId}"`,
     });
   },
-  // renommer une ref (sa version ne change pas) : 409 si le nom est pris
-  renameRef(microprojectSlug, refName, newName) {
-    return api.patch(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/refs/${encodeURIComponent(refName)}`, { name: newName });
-  },
-  // retirer une ref ; la version reste
-  deleteRef(microprojectSlug, refName) {
-    return api.del(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/refs/${encodeURIComponent(refName)}`);
-  },
   // l'évolution des structures, piste par piste : {lanes, nodes, edges} ; allVersions : les
-  // versions légères aussi (correctifs, versions sans changement de structure) ; includeVersions :
+  // versions légères aussi (retouches, versions sans changement de structure) ; includeVersions :
   // des ids de version à montrer en plus (les versions publiées comme référence)
   structureHistory(microprojectSlug, allVersions, includeVersions) {
     return api.get(

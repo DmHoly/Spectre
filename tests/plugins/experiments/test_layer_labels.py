@@ -83,7 +83,7 @@ def test_changing_only_the_labels_is_a_patch_version_that_keeps_the_conclusion(c
         client, slug, study["id"], title="Essai", intent="Verifier", steps=STACK, declared_params=DOPING, layer_labels={"2": layer_label("p++", "thickness")}
     )
     frise = versions(client, slug, study["id"])
-    assert [(v["version"], v["change_level"]) for v in frise if v["change_level"] != "none"] == [("1.0.0", "initial"), ("1.0.1", "patch")]
+    assert [(v["version"], v["change_level"]) for v in frise if v["change_level"] != "none"] == [("1.0", "initial"), ("1.0", "patch")]
     assert relabelled["conclusion"]["summary"] == "Concluante"
     assert label_texts(relabelled["structure_svg"]) == ["p++", "150 nm"]
 

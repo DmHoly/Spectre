@@ -147,4 +147,4 @@ def test_editing_an_image_fiche_with_the_same_pictures_keeps_version_and_conclus
     conclude(client, slug, launched["id"], summary="OK")
     edited = evolve_image(client, slug, launched["id"], [image], intent="x, mieux dit", context="Contexte ajouté")
     assert edited["status"] == "concluded" and edited["intent"] == "x, mieux dit"
-    assert {v["version"] for v in versions(client, slug, launched["id"])} == {"1.0.0"}
+    assert {v["version"] for v in versions(client, slug, launched["id"])} == {"1.0"}
