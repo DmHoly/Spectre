@@ -38,7 +38,7 @@ from ..structures import simulation
 from .models import LibraryItem
 from .step_presets import StepPreset, default_step_presets, revised
 from .structure_library import SavedStructure, default_structure_presets
-from .tech_bricks import TechBrick, default_tech_bricks
+from .tech_bricks import TechBrick, default_tech_bricks, revised_brick
 
 ItemT = TypeVar("ItemT", bound=LibraryItem)
 Scope = Literal["builtin", "shared", "microproject"]
@@ -328,6 +328,7 @@ TECH_BRICKS = Collection(
     builtins=default_tech_bricks,
     duplicate="Une brique nommée {name!r} existe déjà dans cette bibliothèque.",
     missing="Brique introuvable.",
+    revise=revised_brick,
 )
 COLLECTIONS: tuple[Collection, ...] = (SAVED_STRUCTURES, STEP_PRESETS, TECH_BRICKS)
 

@@ -35,7 +35,7 @@ function brickRow(brick) {
     <div class="step-row" style="align-items:flex-start;">
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:600;">${escapeHtml(brick.name)} ${scopeSuffix(brick.scope)}</div>
-        <div style="font-size:12px;color:var(--text-faint);">${brick.steps.length} étape(s)</div>
+        <div style="font-size:12px;color:var(--text-faint);">${{ sag: "Gabarit SAG · ", epi: "Épitaxie · ", process: "Procédé · " }[brick.role] || ""}${brick.steps.length} étape(s)</div>
         ${brick.notes ? `<div style="font-size:12px;color:var(--text-soft);margin-top:3px;max-width:56ch;">${escapeHtml(brick.notes)}</div>` : ""}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">

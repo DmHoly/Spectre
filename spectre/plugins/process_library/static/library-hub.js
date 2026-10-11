@@ -4,6 +4,9 @@
    constructeur, qui vit sous un µprojet (simulation) : d'où le sélecteur "µprojet de travail",
    mémorisé en local, qui ne sert qu'à ouvrir ces éditeurs. */
 
+// le rôle d'une brique de macro-étape (voir structures/static/builder/assembly.js)
+const BRICK_ROLE_NAMES = { sag: "Gabarit SAG", epi: "Épitaxie", process: "Procédé" };
+
 // le type de l'étape d'un préset, comme dans la palette du constructeur
 const PRESET_KIND_LABELS = {
   deposition: "Dépôt",
@@ -47,7 +50,7 @@ const COLLECTIONS = [
     list: () => processLibraryApi.techBricks(),
     update: (id, changes) => processLibraryApi.updateTechBrick(id, changes),
     remove: (id) => processLibraryApi.deleteTechBrick(id),
-    summary: (item) => `${item.steps.length} étape(s)`,
+    summary: (item) => `${BRICK_ROLE_NAMES[item.role] ? `${BRICK_ROLE_NAMES[item.role]} · ` : ""}${item.steps.length} étape(s)`,
     editorHref: (s, item) => `/microprojets/${s}/briques-technologiques/bibliotheque/${encodeURIComponent(item.id)}?retour=bibliotheque`,
   },
 ];

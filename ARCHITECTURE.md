@@ -638,6 +638,83 @@ source, step_indexes}`, champs en plus refusés ; un nom de 120 caractères au p
   champs du constructeur ont `maxlength`) ; celui d'une brique enregistrée avant la limite est
   coupé à l'envoi (`bricksPayload`), et le mode brique demande de le raccourcir pour l'enregistrer.
 
+### Macro-étapes : gabarit SAG, épitaxie, procédé
+
+Une brique peut avoir un **rôle** de macro-étape (`simulation.BRICK_ROLES` : `sag`, `epi`, `process` ;
+absent, une brique libre comme avant). Une structure s'assemble ainsi : un gabarit SAG, une épitaxie
+par-dessus, un procédé par-dessus. Chacun est une brique réutilisable : la même épi va sur un autre
+gabarit, le même procédé sur une autre épi.
+
+- **Bibliothèque** (`TechBrick`) : `role`. Un gabarit SAG garde son `substrate` (avec son réseau de
+  fils, ci-dessous) : c'est le départ de toute structure bâtie dessus ; une autre brique n'en a pas
+  (effacé à l'enregistrement). Une épi ou un procédé garde `preview_on`, les ids (3 au plus) des
+  macro-étapes sur lesquelles on l'a composé, pour l'aperçu seulement. `briques.yml` accepte
+  `role`, `substrate` et `lattice_openings`.
+- **Dans une structure** (`ProcessBrick.role`, requêtes et `process_bricks` d'une étude) : au plus une
+  brique par rôle (422 `invalid_brick`). Le rôle suit la brique d'une version à l'autre, comme son
+  nom. Une combinaison au marché ne garde le rôle que pour la première brique de chaque rôle.
+- **Constructeur** (`assembly.js`) : le panneau « Assemblage » de la palette a un emplacement par
+  rôle (SAG, Épi, Procédé). Choisir une brique la copie à sa place (le SAG en tête, l'épi après lui,
+  le procédé après l'épi), ou remplace celle du même rôle ; « Retirer » l'enlève. Un gabarit SAG
+  apporte son substrat, le nombre de fils vus gardé. Cliquer ou glisser une brique à rôle depuis la
+  liste fait de même. « Grouper en brique » propose les rôles que la structure n'a pas encore. Le
+  flow écrit le rôle à la place de « Brique ».
+- **Mode brique** : un sélecteur de rôle. Une épi (un procédé) se compose sur les macro-étapes
+  d'avant, posées depuis l'assemblage : elles ne servent qu'à l'aperçu. À l'enregistrement, seules
+  les étapes de la brique sont gardées (pas celles d'une macro-étape d'un autre rôle) : la recette
+  d'épi ne contient pas le SAG. À la réouverture, les briques de `preview_on` sont reposées.
+- **Copie tracée** : une brique de bibliothèque a une `version`, qui monte quand son contenu change
+  (`tech_bricks.BRICK_CONTENT_FIELDS` : étapes, paramètres, étiquettes, recettes, ancrages, rôle,
+  substrat ; pas son nom, ses notes ni `preview_on` - `revised_brick`). Sa copie dans une structure
+  garde la version d'alors (`ProcessBrick.version`, dans `process_bricks` d'une étude ; absente, la
+  forme d'avant) : une trace, jamais un lien. L'inspecteur d'une brique dit si elle est conforme,
+  modifiée depuis, si la brique a changé (vN) ou si elle a disparu. Il propose « Réappliquer la
+  brique » (même groupe, même place ; un gabarit SAG reprend son substrat), « Mettre à jour la
+  brique » (une nouvelle version, que la copie suit) et « Détacher ». L'assemblage écrit
+  « · modifiée » ou « · vN disponible » à côté de la brique en place. Les ouvertures d'une
+  lithographie ancrée et le nombre de fils vus ne comptent pas dans la comparaison.
+
+### Réseau de fils (gabarit SAG)
+
+Le substrat peut porter un réseau de fils, `substrate.lattice = {pitch, wires}` (`simulation.Lattice` :
+un pas en nm, de 1 à `MAX_LATTICE_WIRES` = 50 fils ; absent, la forme d'avant). Le domaine fait alors
+`wires × pitch` de large, chaque fil au centre de sa maille. Une lithographie **ancrée au réseau**
+porte, sur l'étape même, `lattice_opening` (`simulation.LatticeOpening`, une clé qu'un `ProcessStep`
+ignore), d'un des modes de `LATTICE_OPENING_SIZES` :
+
+- `{diameter}` (mode `wires`, écrit sans son mode) : un trou par fil, centré dans sa maille ;
+- `{mode: "between", width}` : une ouverture entre deux fils voisins, une demi-ouverture à chaque
+  bord du domaine (le réseau se répète) ;
+- `{mode: "pixel", margin}` : une seule ouverture sur tout le pixel, moins la marge de chaque côté.
+
+Une ouverture qui ne tient pas est refusée (422) : un diamètre ou une largeur qui atteint le pas, une
+marge qui couvre le pixel. C'est la
+première des macro-étapes réutilisables : un gabarit SAG ne dit plus des nm absolus. Une même épi se
+voit ainsi sur 1 fil, puis le procédé sur un pixel de N fils.
+
+- **Résolution** : dès la lecture d'une requête (`schemas.ProcessInput`, `simulation.resolve_lattice`),
+  la largeur du domaine et les ouvertures des lithographies ancrées sont recalculées. La suite
+  (simulation, campagne, lancement, Follow) ne voit qu'un procédé ordinaire. Un procédé enregistré
+  garde ses ouvertures résolues à côté de leur ancrage, et reste lisible tel quel. Sans réseau, une
+  lithographie ancrée garde ses ouvertures.
+- **Le nombre de fils est une vue** : `versioning.structure_signature` et `same_settings` comparent
+  le procédé sans `wires`, sans la largeur du domaine et sans les ouvertures des lithographies
+  ancrées (`simulation.view_neutral_process`). Passer d'un fil à six ne fait pas de version et garde
+  la conclusion ; un autre pas est majeur, un autre diamètre mineur.
+- **Campagnes** : sur une lithographie ancrée, `openings.pitch` fait varier le pas du réseau (le
+  domaine suit), et `openings.diameter`, `openings.width` ou `openings.margin` la taille de son
+  ancrage, celle de son mode (une autre est refusée, 422) (`campaigns.apply_combination`,
+  `combination_anchors`). La variante d'une campagne lancée garde son ancrage. `domain_width` sur le
+  substrat est refusé quand il a un réseau (422).
+- **Bibliothèques** : une structure enregistrée et une brique rangent les ancrages par position
+  d'étape (`lattice_openings`, comme `preset_origins`). Un procédé d'étude publié tel quel (ancrage
+  sur l'étape) y est converti (`process_library.api._InlineLatticeAnchors`). Une combinaison au
+  marché garde l'ancrage des étapes reprises.
+- **Constructeur** (`substrate.js`) : une case « Réseau de fils » dans le substrat (pas, fils
+  simulés ; la largeur est alors figée), un réglage « − N fils + » au-dessus du dessin. Dans la
+  lithographie, le choix « Ouvertures : sur chaque fil / entre les fils / pixel entier / libres », et « Ancrer ces ouvertures sur un
+  réseau de fils » pour des ouvertures régulières (le pas, le diamètre et le nombre en sont déduits).
+
 ### Unité des paramètres déclarés
 
 Un paramètre déclaré (`simulation.DeclaredParam`) a un champ `unit` facultatif (20 caractères au

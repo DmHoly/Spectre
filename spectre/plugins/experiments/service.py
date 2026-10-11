@@ -614,14 +614,15 @@ class _PreparedStructure:
         self.requested_step_ids = payload.step_ids
         recipes = payload.recipes or None
         origins = simulation.preset_origins_by_index(payload.preset_origins, len(payload.steps))
-        self.metadata["structureforge_process"] = simulation.process_metadata(payload.substrate, payload.steps, declared, recipes, origins)
+        anchors = payload.lattice_anchors
+        self.metadata["structureforge_process"] = simulation.process_metadata(payload.substrate, payload.steps, declared, recipes, origins, anchors)
         if isinstance(payload, CampaignPayload):
             factor_ids: list[str | None] = list(payload.step_ids)
             if start is not None and not any(factor_ids):
                 reader, source = start
                 factor_ids = list(_settled_step_ids(factor_ids, self.metadata["structureforge_process"], source, step_ids_of(reader, source)))
             result = campaigns.generate_campaign_variants(
-                payload.substrate, payload.steps, payload.plan, declared, factor_ids, self.labels, self.bricks, recipes
+                payload.substrate, payload.steps, payload.plan, declared, factor_ids, self.labels, self.bricks, recipes, anchors
             )
             self.structure = kinds.ProcessLot(entries=result.entries)
             self.campaign_size = len(result.entries)

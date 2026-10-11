@@ -304,6 +304,8 @@ async function simulateNow() {
   const seq = ++simulateSeq;
   const busy = document.getElementById("sim-busy");
   const busyTimer = setTimeout(() => (busy.hidden = false), 250);
+  // les lithographies ancrées au réseau suivent ses dernières valeurs (le serveur les recalcule de même)
+  applyLatticeToSteps();
   const sent = state.steps.slice();
   try {
     const result = await structuresApi.simulate({

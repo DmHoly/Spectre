@@ -11,7 +11,7 @@ from structureforge.process.steps import ProcessStep
 from ...kernel.annotations import ImageAnnotation
 
 from .campaigns import VariantPlan
-from .simulation import DeclaredParam, LayerLabel, PresetOrigin, ProcessBrick, ProcessRecipes, SubstrateSpec
+from .simulation import DeclaredParam, LatticeOpening, LayerLabel, PresetOrigin, ProcessBrick, ProcessRecipes, SubstrateSpec, lattice_anchors_in, resolve_lattice
 
 
 class ProcessInput(BaseModel):
@@ -19,7 +19,12 @@ class ProcessInput(BaseModel):
 
     Each step may carry the ``id`` it was given (``st_<8 hex>``, see
     :func:`spectre.plugins.structures.simulation.settle_step_ids`): a ``ProcessStep`` ignores it, so
-    it is read from the request itself, before validation, into :attr:`step_ids`."""
+    it is read from the request itself, before validation, into :attr:`step_ids`. So is the anchor
+    of a lithography on the substrate's lattice (``"lattice_opening"``, see
+    :class:`~spectre.plugins.structures.simulation.LatticeOpening`), into :attr:`lattice_anchors` -
+    and the lattice is applied right away (:func:`~spectre.plugins.structures.simulation.resolve_lattice`) :
+    ``substrate`` and ``steps`` are then those of an ordinary process, the domain width and the
+    anchored openings computed from the pitch and the number of wires."""
 
     substrate: SubstrateSpec
     steps: list[ProcessStep]
@@ -37,6 +42,7 @@ class ProcessInput(BaseModel):
     # the step preset each step was inserted from, if any (see simulation.PresetOrigin) - by step index
     preset_origins: dict[str, PresetOrigin] = {}
     _step_ids: list[str | None] = PrivateAttr(default_factory=list)
+    _lattice_anchors: dict[int, LatticeOpening] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="wrap")
     @classmethod
@@ -45,12 +51,20 @@ class ProcessInput(BaseModel):
         raw = data.get("steps") if isinstance(data, dict) else None
         if isinstance(raw, list):
             model._step_ids = [step.get("id") if isinstance(step, dict) and isinstance(step.get("id"), str) else None for step in raw]
+            model._lattice_anchors = lattice_anchors_in(raw)
+        if model.substrate.lattice is not None:
+            model.substrate, model.steps = resolve_lattice(model.substrate, model.steps, model._lattice_anchors)
         return model
 
     @property
     def step_ids(self) -> list[str | None]:
         """The id each step came with, in order (``None`` for a step sent without one)."""
         return [self._step_ids[i] if i < len(self._step_ids) else None for i in range(len(self.steps))]
+
+    @property
+    def lattice_anchors(self) -> dict[int, LatticeOpening]:
+        """The lithographies anchored to the substrate's lattice, by step index."""
+        return dict(self._lattice_anchors)
 
 
 class CampaignPreviewRequest(ProcessInput):

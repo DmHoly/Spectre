@@ -47,6 +47,7 @@ from .simulation import (
     bricks_from_metadata,
     declared_params_by_index,
     label_without_place,
+    lattice_anchors_in,
     material_names_in_layers,
     materials_library,
     preset_origins_by_index,
@@ -438,7 +439,8 @@ def layer_annotations(metadata: dict[str, Any], entry_index: int) -> list[LayerA
             variant_plan = campaigns.VariantPlan.model_validate(plan)
             indexes = campaigns.factor_step_indexes(variant_plan, list(step_ids))
             substrate = SubstrateSpec.model_validate(process["substrate"])
-            _substrate, steps, declared = campaigns.apply_combination(substrate, steps, declared, variant_plan, indexes, values[entry_index])
+            anchors = lattice_anchors_in(process.get("steps"))
+            _substrate, steps, declared = campaigns.apply_combination(substrate, steps, declared, variant_plan, indexes, values[entry_index], anchors)
     except (ValidationError, InvalidInput, KeyError, TypeError, ValueError):
         return []
     position = {step_id: i for i, step_id in enumerate(step_ids)}
@@ -467,12 +469,16 @@ def variant_process(metadata: dict[str, Any], step_ids: list[str], entry_index: 
         steps = _STEP_LIST.validate_python(process.get("steps") or [])
         declared = declared_params_by_index(_DECLARED.validate_python(process.get("declared_params") or {}))
         indexes = campaigns.factor_step_indexes(variant_plan, list(step_ids))
-        substrate, steps, declared = campaigns.apply_combination(substrate, steps, declared, variant_plan, indexes, values[entry_index])
+        anchors = lattice_anchors_in(process.get("steps"))
+        combo = values[entry_index]
+        substrate_before = substrate
+        substrate, steps, declared = campaigns.apply_combination(substrate, steps, declared, variant_plan, indexes, combo, anchors)
+        anchors = campaigns.combination_anchors(substrate_before, anchors, variant_plan, indexes, combo)
         recipes = process_recipes(process.get("recipes"))
         origins = preset_origins_by_index(_ORIGINS.validate_python(process.get("preset_origins") or {}), len(steps))
     except (ValidationError, InvalidInput, KeyError, TypeError, ValueError) as exc:
         raise InvalidInput("Le procédé de cette variante ne se relit pas.", code="no_variant_process") from exc
-    return process_metadata(substrate, steps, declared, recipes, origins)
+    return process_metadata(substrate, steps, declared, recipes, origins, anchors)
 
 
 # -- ce qui change aux étiquettes et aux paramètres déclarés d'une version à l'autre ---------------

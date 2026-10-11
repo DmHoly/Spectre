@@ -130,11 +130,7 @@ function livePreviewFromForm() {
   const previous = state.steps[i];
   if (previous.id) step.id = previous.id;
   if (previous.presetOrigin) step.presetOrigin = previous.presetOrigin; // sa trace, pas un lien : l'étape garde ses modifications
-  if (previous.brick_group_id) {
-    step.brick_group_id = previous.brick_group_id;
-    step.brick_name = previous.brick_name;
-    if (previous.brick_source) step.brick_source = previous.brick_source;
-  }
+  if (previous.brick_group_id) copyBrickTag(previous, step);
   state.steps[i] = step;
   shareOwnRecipe(step, previous.ownRecipe ? previous.ownRecipe.name : null);
   refreshLayerLabelValues(step);
@@ -142,6 +138,7 @@ function livePreviewFromForm() {
   updateStepInspectorHeader();
   invalidateVariations();
   renderRail();
+  if (previous.brick_source) renderAssembly(); // une macro-étape retouchée : « modifiée » dans l'assemblage
   scheduleSimulate();
 }
 
@@ -187,6 +184,7 @@ function renderMultiInspector() {
   const indices = [...state.selectedStepIndices].sort((a, b) => a - b);
   document.getElementById("group-brick-count").textContent = `${indices.length} étapes sélectionnées`;
   const contiguous = indices.every((idx, k) => k === 0 || idx === indices[k - 1] + 1);
+  renderGroupRoleOptions();
   const alreadyGrouped = indices.some((idx) => state.steps[idx] && state.steps[idx].brick_group_id);
   const help = document.getElementById("group-brick-help");
   const btn = document.getElementById("group-brick-btn");
@@ -214,6 +212,9 @@ function renderBrickGroupInspector() {
   const groupId = state.selectedBrickGroup;
   const [start, end] = brickGroupSpan(groupId);
   document.getElementById("brick-group-title").textContent = state.steps[start].brick_name || "Brique";
+  const role = state.steps[start].brick_role;
+  document.getElementById("brick-group-eyebrow").textContent = role ? `Macro-étape · ${brickRoleLabel(role)}` : "Brique technologique";
+  renderBrickOrigin(groupId);
   const list = document.getElementById("brick-group-steps");
   const rows = [];
   for (let k = start; k <= end; k++) {

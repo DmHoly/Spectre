@@ -35,7 +35,7 @@ from typing import Any
 from ...kernel.errors import InvalidInput
 
 from .schemas import ProcessInput
-from .simulation import label_without_place
+from .simulation import LATTICE_OPENING_KEY, label_without_place
 
 SUBSTRATE_ROW = "substrat"  # la clé de la ligne du substrat
 MIN_SOURCES = 2
@@ -69,7 +69,7 @@ class _Source:
             key = name_key(brick.name)
             if not key:
                 continue
-            bricks.setdefault(key, {"name": brick.name.strip(), "group_id": brick.group_id, "source": brick.source})
+            bricks.setdefault(key, {"name": brick.name.strip(), "group_id": brick.group_id, "source": brick.source, "role": brick.role, "version": brick.version})
             for i in brick.step_indexes:
                 if 0 <= i < len(steps) and brick_of[i] is None:
                     brick_of[i] = key
@@ -256,6 +256,9 @@ def compose(processes: list[ProcessInput], choices: list[Any] | None = None) -> 
     def take(s: int, position: int, brick_key: str | None, brick_source: int, own_id: str | None) -> None:
         source = sources[s]
         step = dict(source.steps[position])
+        anchor = source.process.lattice_anchors.get(position)
+        if anchor is not None:
+            step[LATTICE_OPENING_KEY] = anchor.model_dump(mode="json")  # ancrée au réseau (simulation.LatticeOpening)
         if own_id:
             step = {"id": own_id, **step}
         at = str(len(steps))
@@ -292,6 +295,7 @@ def compose(processes: list[ProcessInput], choices: list[Any] | None = None) -> 
     # les briques : les étapes consécutives d'une même brique
     bricks: list[dict[str, Any]] = []
     group_ids: set[str] = set()
+    roles: set[str] = set()  # une macro-étape par rôle : la première venue le garde
     start = 0
     while start < len(brick_runs):
         key, s = brick_runs[start]
@@ -304,7 +308,13 @@ def compose(processes: list[ProcessInput], choices: list[Any] | None = None) -> 
             if group_id in group_ids:
                 group_id = f"{group_id}-{len(bricks) + 1}"
             group_ids.add(group_id)
-            bricks.append({"group_id": group_id, "name": brick["name"], "source": brick["source"], "step_indexes": list(range(start, end))})
+            assembled = {"group_id": group_id, "name": brick["name"], "source": brick["source"], "step_indexes": list(range(start, end))}
+            if brick.get("version"):
+                assembled["version"] = brick["version"]
+            if brick.get("role") and brick["role"] not in roles:
+                roles.add(brick["role"])
+                assembled["role"] = brick["role"]
+            bricks.append(assembled)
         start = end
 
     substrate_from = by_key[SUBSTRATE_ROW][1]["source"]
