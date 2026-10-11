@@ -169,14 +169,6 @@ def continued_at(repo: follow.Repository, version: follow.Experiment) -> datetim
     return min(starts) if starts else None
 
 
-def structural_baseline(repo: follow.Repository, version: follow.Experiment) -> follow.Experiment | None:
-    """La version de structure qui précède ``version`` : la comparaison par défaut du diff. Une
-    étiquette, une preuve ou un statut ne changent pas la structure - le diff d'une telle version
-    se fait donc avec la structure d'avant, pas avec son parent immédiat."""
-    structural = versioning.structural_versions(list(reversed(repo.log(version.id))))
-    return structural[-2] if len(structural) >= 2 else None
-
-
 def _ids(items: Any) -> list[str]:
     return [item["id"] for item in items or [] if isinstance(item, dict) and isinstance(item.get("id"), str)]
 
@@ -199,45 +191,13 @@ def notebook_entry_ids(version: follow.Experiment) -> list[str]:
 
 class StructureState(NamedTuple):
     """Ce que le diff compare d'une version : sa structure (type et données Follow), ses métadonnées
-    et les ids de ses étapes - lus dans son dépôt (:func:`state_of`), ou gardés à part (l'instantané
+    et les ids de ses étapes - lus dans son dépôt, ou gardés à part (l'instantané
     d'une version de référence, plugin references)."""
 
     structure_type: str
     structure: Any
     metadata: dict[str, Any]
     step_ids: list[str]
-
-
-def state_of(repo: follow.Repository, version: follow.Experiment) -> StructureState:
-    """Ce que le diff compare de ``version``, lue dans ``repo`` (ses ids d'étape : :func:`step_ids_of`)."""
-    return StructureState(version.structure_type, version.structure, version.metadata, step_ids_of(repo, version))
-
-
-def structure_diff(before_repo: follow.Repository, before: follow.Experiment, after_repo: follow.Repository, after: follow.Experiment) -> dict[str, Any]:
-    """Le diff de ``before`` à ``after``, chacune lue dans son dépôt (``before_repo``,
-    ``after_repo``) - voir :func:`compare_states`."""
-    return compare_states(state_of(before_repo, before), state_of(after_repo, after))
-
-
-def compare_states(before: StructureState, after: StructureState) -> dict[str, Any]:
-    """``{entries, label_changes, param_changes, step_changes}`` : Follow's leaf-by-leaf diff from
-    ``before``'s structure to ``after``'s - or, when one of them is given as pictures,
-    ``{entries: [], summary}`` in plain French (position by position, a reordering would read as
-    "everything changed") - and, apart, what changed to the layer labels and to their grouping by
-    brick (:func:`kinds.describe_label_changes`), to the declared parameters
-    (:func:`kinds.describe_param_changes`) and to the step names (:func:`kinds.describe_step_changes`),
-    which the geometry does not carry - a renamed step alone is a patch, never an empty diff. The
-    steps are matched by id, by position between two versions that share none."""
-    compared = (before.metadata, after.metadata, before.step_ids, after.step_ids)
-    apart = {
-        "label_changes": kinds.describe_label_changes(*compared),
-        "param_changes": kinds.describe_param_changes(*compared),
-        "step_changes": kinds.describe_step_changes(*compared),
-    }
-    summary = kinds.describe_image_changes(before.structure_type, before.structure, after.structure_type, after.structure)
-    if summary is not None:
-        return {"entries": [], "summary": summary, **apart}
-    return {**follow.diff_structures(before.structure, after.structure).model_dump(mode="json"), **apart}
 
 
 def structure_change_level(before_metadata: dict[str, Any] | None, after_metadata: dict[str, Any]) -> str:

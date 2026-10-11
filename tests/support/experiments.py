@@ -188,9 +188,19 @@ def step_ids(client: Any, slug: str, ref: str, version: str | None = None) -> li
     return [step["id"] for step in process(client, slug, ref, version)["steps"]]
 
 
-def structure_diff(client: Any, slug: str, ref: str, **params: Any) -> dict:
-    """GET /structure-diff - ``version``, ``against_version``, ``against_experiment``, ``against_microproject``."""
-    return assert_ok(client.get(f"{experiment_url(slug, ref)}/structure-diff", params=params))
+def described_changes(slug: str, before_version_id: str, after_version_id: str) -> dict:
+    """Ce que le comparateur dit à part de deux versions d'un dépôt (``structures.kinds.describe_*``,
+    lus dans leurs métadonnées Follow) : ``{label_changes, step_changes}`` - les étiquettes de
+    couches et leur regroupement par brique, les étapes renommées ; appariées par id, par position
+    entre deux versions sans id commun."""
+    from spectre.plugins.experiments.repository import get_repository
+    from spectre.plugins.experiments.service import step_ids_of
+    from spectre.plugins.structures import kinds
+
+    repo = get_repository(slug)
+    before, after = repo.get(before_version_id), repo.get(after_version_id)
+    args = (before.metadata, after.metadata, step_ids_of(repo, before), step_ids_of(repo, after))
+    return {"label_changes": kinds.describe_label_changes(*args), "step_changes": kinds.describe_step_changes(*args)}
 
 
 def variants(client: Any, slug: str, ref: str) -> dict:

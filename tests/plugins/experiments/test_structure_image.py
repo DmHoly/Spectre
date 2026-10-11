@@ -20,7 +20,6 @@ from support.experiments import (
     launch_campaign,
     lineage,
     replace_structure_images,
-    structure_diff,
     tag,
     versions,
 )
@@ -136,15 +135,12 @@ def test_changing_the_pictures_keeps_the_structure_version_and_the_graph_node(cl
     assert [img["image_id"] for img in detail["structure_images"]] == [schema["image_id"], tem["image_id"]]
     assert detail["hypothesis"] == "Le puits fait 3 nm" and detail["intent"] == "Documenter la structure réelle"
     assert detail["physical_tracking"] == [{"sample_id": "W7", "location": "boîte 3"}]
-    assert structure_diff(client, slug, line, against_version=launched["version_id"])["summary"] == ["1 image ajoutée"]
 
     # la coupe d'abord, légende du schéma, après une étiquette : le reste suit
-    before_reorder = tag(client, slug, line, ["tem"])
+    tag(client, slug, line, ["tem"])
     detail = replace_structure_images(client, slug, line, [tem, {**schema, "caption": "Schéma PowerPoint"}])
     assert [img["image_id"] for img in detail["structure_images"]] == [tem["image_id"], schema["image_id"]]
     assert detail["structure_images"][1]["caption"] == "Schéma PowerPoint" and detail["tags"] == ["tem"]
-    diff = structure_diff(client, slug, line, against_version=before_reorder["version_id"])
-    assert diff["summary"] == ["Ordre des images modifié", "Image 2 : légende modifiée"]
 
     # l'ancienne version garde ses images
     first = get_version(client, slug, line, launched["version_id"])
@@ -162,8 +158,6 @@ def test_changing_the_pictures_keeps_the_structure_version_and_the_graph_node(cl
     # remplacer la coupe, retirer le schéma
     better = _image(client, slug, "coupe")
     replace_structure_images(client, slug, line, [better])
-    diff = structure_diff(client, slug, line, against_version=detail["version_id"])
-    assert diff["summary"] == ["Image 1 remplacée", "1 image retirée"]
     assert client.put(f"{experiment_url(slug, line)}/structure-images", json={"images": []}).status_code == 422
 
 
@@ -196,19 +190,11 @@ def test_switch_between_a_drawn_structure_and_pictures_both_ways(client):
     pictured = evolve_image(client, slug, line, [_image(client, slug)], title="Essai", intent="La vraie coupe")
     assert pictured["structure_images"][0]["kind"] == "coupe" and pictured["has_editable_process"] is False
     assert_handler_404(client.get(f"{experiment_url(slug, line)}/process"), "procédé éditable")
-    assert structure_diff(client, slug, line)["summary"] == [
-        "Structure donnée en images (la version précédente était dessinée dans le constructeur)"
-    ]
 
     redrawn = evolve(client, slug, line, intent="Redessinée", steps=steps(40))
     assert redrawn["structure_images"] is None and redrawn["structure_svg"] and redrawn["has_editable_process"] is True
-    assert structure_diff(client, slug, line)["summary"] == [
-        "Structure redessinée dans le constructeur (la version précédente était donnée en images)"
-    ]
 
     assert _structural_versions(client, slug, line) == [("1.0", "initial"), ("2.0", "major"), ("3.0", "major")]
-    # deux structures dessinées : pas de résumé, le diff habituel s'applique
-    assert "summary" not in structure_diff(client, slug, line, against_version=drawn["version_id"])
 
 
 def test_a_campaign_continued_with_pictures_follows_one_sample(client):
@@ -228,16 +214,6 @@ def test_a_campaign_is_not_an_evolution(client):
     response = client.post(f"{experiment_url(slug, launched['id'])}/versions", json=body)
     assert response.status_code == 422
     assert response.json()["code"] == "campaign_is_a_new_line"
-
-
-def test_comparing_with_pictures_says_what_changed_in_words(client):
-    slug = _owner_microproject(client)
-    pictured = _launch_response(client, slug, [_image(client, slug)]).json()
-    drawn = launch(client, slug, title="Dessinée", intent="x")
-    response = structure_diff(client, slug, pictured["id"], against_experiment=drawn["id"], against_microproject=slug)
-    assert response["entries"] == []
-    assert response["summary"] == ["Structure donnée en images (la version précédente était dessinée dans le constructeur)"]
-    assert response["target"]["experiment_id"] == drawn["id"]
 
 
 def test_a_single_flat_picture_from_the_first_version_still_reads():

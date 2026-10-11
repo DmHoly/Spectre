@@ -592,28 +592,22 @@ valeur d'un autre type → 422 ; une valeur que l'étape n'a pas n'est pas écri
   un pictogramme 1,6 em (« 🔬 » : 1,373 em) - l'ancienne règle (0,7 ou 0,8 em) en laissait
   sortir 180 unités. Un titre est coupé à 40 caractères, une ligne à 48 (64 pour la ligne d'une
   étape dans l'étiquette d'une brique).
-- **Diff** : `GET .../structure-diff` rend, à part des changements de structure, `label_changes`
-  (`kinds.describe_label_changes`) : par étape (`step_id`, `change` : `added`, `removed` ou
+- **Retouches dites à part** (`kinds.describe_label_changes` et `kinds.describe_step_changes`, ce que le
+  comparateur écrit des retouches d'une version, `comparator.table`) : `label_changes`, par étape
+  (`step_id`, `change` : `added`, `removed` ou
   `modified` avec `text {before, after}`, `values_added`, `values_removed` - les noms lisibles :
   « épaisseur », « composition », le nom du paramètre), puis par brique (`group_id`, `change` :
   `grouped`, `ungrouped`, `renamed`, `regrouped`), chacun avec `subject` et `line`, la phrase
   (« p-GaN — ajout : dopage Mg »). Les étapes s'apparient par id (`service.step_ids_of`) quand les
-  deux versions en ont en commun (une piste, une fourche), sinon **par position**, comme le diff de
-  structure (deux études lancées à part, ou reprises d'un modèle, que le constructeur copie sans
-  ids) ; une brique est son nom et ses étapes étiquetées, comme pour le versionnage, jamais son
-  `group_id` (dissocier puis regrouper les mêmes étapes ne change rien). Il rend aussi
-  `param_changes` (`kinds.describe_param_changes`) : les paramètres déclarés, que la géométrie
-  comparée ne porte pas, par étape (appariées de même) et par nom - `change` `added`, `removed` ou
-  `modified` (`value`, `unit` `{before, after}` ou `null`, `obtention_changed`), avec `step_id`,
-  `subject` (le nom de l'étape), `param` et `line` (« p-GaN — dopage Mg : unité « cm⁻³ » ajoutée ») ;
-  une unité passée de l'obtention au champ, la même, n'y est pas. Et `step_changes`
-  (`kinds.describe_step_changes`) : les étapes renommées (appariées de même ; un nom d'étape n'est
-  ni dans la géométrie ni dans les étiquettes, et c'est une retouche), `{step_id, subject, change:
-  "renamed", name: {before, after}, line}` (« étape « n-GaN » renommée « n-GaN dopé » ») - une
-  étape ajoutée ou retirée, elle, change la structure. La fiche, sa comparaison, la page
-  d'évolution et celle d'une référence les écrivent sur une ligne « Étapes : … », « Paramètres :
-  … » puis « Étiquettes : … », et la fiche ne dit plus « identique à la version précédente » quand
-  seuls des noms d'étape, des paramètres déclarés ou des étiquettes changent.
+  deux versions en ont en commun (une piste, une fourche), sinon **par position** (deux études
+  lancées à part, ou reprises d'un modèle, que le constructeur copie sans ids) ; une brique est son
+  nom et ses étapes étiquetées, comme pour le versionnage, jamais son `group_id` (dissocier puis
+  regrouper les mêmes étapes ne change rien). Et `step_changes` : les étapes renommées (appariées
+  de même ; un nom d'étape n'est ni dans la géométrie ni dans les étiquettes, et c'est une
+  retouche), `{step_id, subject, change: "renamed", name: {before, after}, line}` (« étape
+  « n-GaN » renommée « n-GaN dopé » ») - une étape ajoutée ou retirée, elle, change la structure.
+  Les paramètres déclarés, eux, sont des colonnes du comparateur. L'ancien diff géométrique
+  page ne l'appelait depuis le comparateur.
 
 ### Briques d'un procédé
 
@@ -939,7 +933,6 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` (une par variante d'une campagne, 422 `entity_count` sinon ; au moins une pour une étude simple, ses réplicats ; 422 `duplicate_wafer`) |
 | `POST …/{ref}/combiner` | `POST /api/microprojects/{mp}/experiments` `{merge_of: [{experiment_id, version_id?}, {experiment_id, version_id?}], title, intent, hypothesis, entities, objectives?, context?, branch?}` → 201 + `Location` vers la **nouvelle piste** (§ 4 : deux parents, la structure de la première, cahier vide ; les deux études ne changent pas). Exactement deux études, sans `structure` ni `from_version` (422) ; une version inconnue → 404 `source_not_found` ; deux fois la même piste ou la même version → 422 `same_experiment` ; une version d'avant la fourche de la piste désignée → 422 `version_before_line` ; une étude d'un autre µprojet n'y existe pas (404), et un champ de plus dans `merge_of` (`microproject`...) est refusé (422). `POST …/experiments/{exp}/merges` **supprimée** |
 | `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=&variant=` (`variant` : le procédé d'une variante d'une campagne, § 4 ; chaque étape porte son `id` ; `layer_labels` : les étiquettes de couches par position d'étape, § 4 ; `bricks` : les briques du procédé par positions d'étape, § 4) |
-| `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?, label_changes, param_changes, step_changes}` (avec une cible, à part : les étiquettes de couches et leur regroupement par brique, `label_changes`, les paramètres déclarés, `param_changes`, et les étapes renommées, `step_changes` ; étapes appariées par id, par position entre deux versions sans id commun, § 4) ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403). Plus appelée par le front : une page compare deux versions par le comparateur (§ comparator) |
 | `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
 | `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
 | `POST …/{ref}/ref`, `…/refs[/{ref_name}]`, `…/refs/graphe` | **supprimées** (2026-10-11) : les références (plugin `references`) sont les seules refs |
@@ -1038,7 +1031,6 @@ locales d'avant).
 | `GET /api/references/{reference_slug}/versions` | `{reference, lanes, nodes, edges}` : l'évolution de la référence. `nodes`, dans l'ordre de publication : `{number, major, minor, label, change_level, parent, parent_inferred, imported, note, published_by, published_at, source, usage_count, usages, lane}` ; une version prend la colonne (`lane`) de son parent si elle en est le premier enfant, sinon une nouvelle ; `lanes` : `{index, start, head}` ; `edges` : `{parent, child, kind: "parent" \| "branch", inferred}` |
 | `POST /api/references/{reference_slug}/versions` `{microproject, experiment_id, version_id?, note?, parent?}` | publie une version d'étude (la pointe de la piste par défaut) : rôle `editor` sur le µprojet source (403 ; µprojet inconnu → 422 `unknown_microproject`, piste ou version inconnue → 404) ; une structure dessinée seulement (des images, une campagne → 422 `reference_needs_process`) ; son parent : `parent` (« 1.1 », inconnu → 422 `unknown_parent_version`), sinon la dernière version de cette référence publiée depuis ce µprojet dont la version publiée descend (republier une étude qui a évolué continue sa suite : 1.1 puis 1.2), sinon la version dont part la piste source (`reference_origin`), sinon la dernière publiée ; identique à son parent → 409 `reference_version_identical` ; une version Follow déjà publiée dans cette référence → 409 `reference_version_already_published` ; → 201 + `Location` `.../versions/{version_number}` + la version |
 | `GET /api/references/{reference_slug}/versions/{version_number}` | une version (404 `reference_version_not_found`) : son nœud, plus `reference {slug, name}`, `structure_svg` (l'instantané dessiné par le serveur, étiquettes comprises) et `process` (son procédé éditable, la forme de `GET .../experiments/{exp}/process` : étapes avec leur id, `layer_labels` et `bricks` par positions) - ce que le constructeur charge pour lancer une étude depuis elle |
-| `GET /api/references/{reference_slug}/versions/{version_number}/structure-diff?against=` | la version comparée à `against` (une autre version de la référence), à sa version parente par défaut : `{target: {number} \| null, entries, summary?, label_changes, param_changes, step_changes}` - le diff des études (`experiments.service.compare_states`), lu dans les deux instantanés ; sans parent ni `against` : `{target: null, entries: []}`. Plus appelée par le front : la page d'une référence compare deux versions par le comparateur (§ comparator) |
 | `GET /api/reference-versions?microproject=` | les versions de référence publiées depuis ce µprojet (viewer : 403 sinon ; inconnu → 404) : `[{reference: {slug, name}, number, label: "R nom 1.1", experiment_id, version_id, local_tag, change_level, published_at}]`, pour les badges de sa page d'évolution |
 
 - **Numéro** (`service.next_number`) : la version est comparée à sa version parente par le

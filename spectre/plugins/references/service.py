@@ -566,25 +566,6 @@ def get_version(user: User, slug: str, number: str) -> dict[str, Any]:
     }
 
 
-def version_diff(slug: str, number: str, against: str | None) -> dict[str, Any]:
-    """La structure de la version ``number`` comparée à la version ``against`` de la même référence
-    (sa version parente par défaut) - le diff des structures (:func:`experiments.compare_states`),
-    étiquettes (``label_changes``), paramètres déclarés (``param_changes``) et noms d'étape
-    (``step_changes``) compris. Sans parent ni ``against`` : ``{target: null, entries: []}``."""
-    _ensure_imported()
-    with get_conn() as conn:
-        reference = _get(conn, slug)
-        versions = versions_of(conn, reference.id)
-    version = _version(versions, number)
-    if against:
-        target = _version(versions, against)
-    else:
-        target = next((v for v in versions if v.id == version.parent_version_id), None)
-    if target is None:
-        return {"target": None, "entries": []}
-    return {"target": {"number": target.number}, **experiments.compare_states(snapshot_state(target.snapshot), snapshot_state(version.snapshot))}
-
-
 def versions_published_from(microproject: Microproject) -> list[dict[str, Any]]:
     """Les versions de référence publiées depuis ``microproject`` (le droit de le lire : vérifié par
     l'appelant), les plus récentes d'abord - les badges « R nom 1.1 » de sa page d'évolution."""

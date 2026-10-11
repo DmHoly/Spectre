@@ -473,55 +473,6 @@ def experiment_process(
     return process
 
 
-@router.get("/experiments/{experiment_id}/structure-diff")
-def structure_diff(
-    experiment_id: str,
-    version: str | None = None,
-    against_version: str | None = None,
-    against_experiment: str | None = None,
-    against_microproject: str | None = None,
-    microproject: Microproject = Depends(require_role("viewer")),
-    user: User = Depends(current_user),
-) -> dict:
-    """La structure d'une version (la pointe par défaut) comparée à une autre : une version de la
-    même piste (``against_version``), la pointe ou une version d'une autre piste
-    (``against_experiment``), d'un autre µprojet au besoin (``against_microproject``, lisible par
-    l'appelant). Sans rien : la version de structure précédente (:func:`service.structural_baseline`).
-    ``{target: {experiment_id, version_id, title, microproject} | null, entries, summary?,
-    label_changes, param_changes, step_changes}`` - avec une cible, à part : ce qui change aux
-    étiquettes de couches et à leur regroupement par brique (``label_changes``,
-    :func:`kinds.describe_label_changes`), aux paramètres déclarés (``param_changes``,
-    :func:`kinds.describe_param_changes`) et aux noms des étapes (``step_changes``,
-    :func:`kinds.describe_step_changes`)."""
-    repo = get_repository(microproject.slug)
-    base = service.version_of(repo, experiment_id, version)
-    target_repo, target_microproject = repo, None
-    if against_microproject and against_microproject != microproject.slug:
-        if not against_experiment:
-            raise InvalidInput("Choisissez l'expérience de l'autre µprojet à comparer.", code="against_experiment_required")
-        other = get_microproject(against_microproject)
-        if microprojects.effective_role(user, other) is None:
-            raise Forbidden("Vous n'avez pas accès à cet autre µprojet.")
-        target_repo, target_microproject = get_repository(other.slug), other
-    if against_experiment:
-        target = service.version_of(target_repo, against_experiment, against_version)
-    elif against_version:
-        target = service.version_of(repo, experiment_id, against_version)
-    else:
-        target = service.structural_baseline(repo, base)
-    if target is None:
-        return {"target": None, "entries": []}
-    return {
-        "target": {
-            "experiment_id": against_experiment or experiment_id,
-            "version_id": target.id,
-            "title": target.title,
-            "microproject": target_microproject.name if target_microproject else None,
-        },
-        **service.structure_diff(target_repo, target, repo, base),
-    }
-
-
 @router.get("/experiments/{experiment_id}/variants")
 def experiment_variants(
     experiment_id: str, version: str | None = None, microproject: Microproject = Depends(require_role("viewer"))

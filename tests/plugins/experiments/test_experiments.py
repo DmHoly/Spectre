@@ -14,7 +14,6 @@ from support.experiments import (
     post_evolve,
     process,
     set_status,
-    structure_diff,
     tag,
     versions,
 )
@@ -207,7 +206,7 @@ def test_process_endpoint_returns_editable_recipe_of_any_version(client):
     assert process(client, slug, launched["id"], version=launched["version_id"])["steps"][0]["thickness"]["value"] == 20
 
 
-def test_evolve_then_versions_and_diff(client):
+def test_evolve_then_versions(client):
     slug = _owner_microproject(client)
     launched = _launch_essai(client, slug, thickness=20)
 
@@ -221,10 +220,6 @@ def test_evolve_then_versions_and_diff(client):
     history = versions(client, slug, launched["id"])
     assert [item["version_id"] for item in history] == [launched["version_id"], evolved["version_id"]]
     assert [item["is_tip"] for item in history] == [False, True]
-
-    diff = structure_diff(client, slug, launched["id"])
-    assert diff["target"]["version_id"] == launched["version_id"]
-    assert len(diff["entries"]) >= 1
 
 
 def test_a_past_version_is_readable_but_never_shown_as_the_tip(client):
@@ -308,7 +303,6 @@ def test_unknown_experiment_is_404_on_every_kind_of_route(client):
     for response in (
         client.get(url),
         client.get(f"{url}/versions"),
-        client.get(f"{url}/structure-diff"),
         client.put(f"{url}/tags", json={"tags": []}),
         client.post(f"{url}/versions", json=launch_body()),
         client.delete(url),
