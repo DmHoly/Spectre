@@ -195,7 +195,8 @@ def test_a_deleted_line_never_hands_its_entity_links_to_a_new_study(client):
 def test_the_entity_index_is_checked_against_the_tip(client):
     slug_a, exp_a, slug_b, exp_b = _two_tracked_studies(client, "entity-link-tip@example.com")
     track_entities(client, slug_b, exp_b, [{"sample_id": "W-B1"}])  # la pointe ne suit plus qu'une plaque
-    assert post_entity_link(client, entity(slug_a, exp_a), entity(slug_b, exp_b, 1)).status_code == 422
+    refused = post_entity_link(client, entity(slug_a, exp_a), entity(slug_b, exp_b, 1))
+    assert refused.status_code == 422 and refused.json()["code"] == "unknown_entity"
 
 
 def test_linking_entities_needs_the_editor_role_on_both_sides(client):

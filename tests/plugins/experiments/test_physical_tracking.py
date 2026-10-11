@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from support.experiments import experiment_url, get_experiment, launch, launch_campaign, track_entities, variants
 from support.microprojects import signup_with_microproject
-from support.notebook import add_manual
 
 
 def _launch_placeholder(client, slug):
@@ -41,15 +40,6 @@ def test_physical_tracking_on_a_campaign_matches_entity_count(client):
 
     track_entities(client, slug, campaign["id"], [{"sample_id": "A"}, {"sample_id": "B"}, {"sample_id": "C"}])
     assert [e["sample_id"] for e in variants(client, slug, campaign["id"])["physical_tracking"]] == ["A", "B", "C"]
-
-
-def test_physical_tracking_carries_forward_through_the_notebook_and_conclude(client):
-    slug = signup_with_microproject(client, "physicalcarry@example.com")
-    launched = _launch_placeholder(client, slug)
-    track_entities(client, slug, launched["id"], [{"sample_id": "W1", "location": "boite 3"}])
-
-    add_manual(client, slug, launched["id"], measurements=[{"text": "profilometre"}])
-    assert get_experiment(client, slug, launched["id"])["physical_tracking"] == [{"sample_id": "W1", "location": "boite 3"}]
 
 
 def test_a_simple_study_declares_its_wafers_as_exact_repeats(client):

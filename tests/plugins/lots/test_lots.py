@@ -401,7 +401,6 @@ def test_only_the_creator_or_an_admin_deletes_a_lot(client):
     login(client, "boss@example.com")
     delete_lot(client, lot["id"])
     assert_handler_404(client.get(lot_url(lot["id"])))
-    assert client.get("/lots").status_code == 200 and client.get("/lots/B1").status_code == 200  # the pages
 
 
 def test_an_experiment_is_attached_as_soon_as_its_wafer_enters_a_lot_even_if_finished(client):

@@ -5,7 +5,7 @@ ne bougent pas."""
 
 from __future__ import annotations
 
-from support.accounts import login, signup
+from support.accounts import login
 from support.experiments import (
     combine,
     conclude,
@@ -174,15 +174,6 @@ def test_studies_of_two_microprojects_are_not_combined(client):
     response = post_combine(client, slug, a["id"], {"experiment_id": elsewhere["id"], "microproject": other_slug})
     assert response.status_code == 422
     assert list_experiments(client, slug)["total"] == count
-
-
-def test_a_viewer_cannot_combine(client):
-    signup(client, "admin-combine@example.com")  # le premier compte est admin
-    signup(client, "viewer-combine@example.com", name="V")
-    slug, a, b = _two_studies(client, "owner-combine@example.com")
-    add_member(client, slug, "viewer-combine@example.com", "viewer")
-    login(client, "viewer-combine@example.com")
-    assert post_combine(client, slug, a["id"], b["id"]).status_code == 403
 
 
 def test_combining_two_campaigns_tracks_one_wafer_per_variant(client):

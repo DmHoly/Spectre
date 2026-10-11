@@ -6,6 +6,7 @@ administrateurs."""
 from __future__ import annotations
 
 from support.accounts import login, signup
+from support.http import plugins_off
 
 
 def _admin(client) -> None:
@@ -48,14 +49,14 @@ def test_disabling_a_plugin_hides_its_routes_pages_navigation_and_assets(client)
 
     home = client.get("/").text
     assert 'href="/lots"' not in home
-    assert 'data-plugins-off="kpis_demo lots planning"' in home  # kpis_demo : indisponible sans SPECTRE_DEMO_DATA
+    assert plugins_off(home) == {"kpis_demo", "lots", "planning"}  # kpis_demo : indisponible sans SPECTRE_DEMO_DATA
     experiment_page = client.get("/microprojets/x/experiences/y").text
     assert "/static/lots/" not in experiment_page and "/static/notebook/" in experiment_page
     assert client.get("/static/lots/client.js").status_code == 200  # les statiques restent servis
 
     assert client.patch("/api/plugins/lots", json={"enabled": True}).json()["active"]
     assert client.get("/api/lots").status_code == 200
-    assert 'data-plugins-off="kpis_demo"' in client.get("/").text
+    assert plugins_off(client.get("/").text) == {"kpis_demo"}
 
 
 def test_a_disabled_plugin_turns_off_its_dependents_until_it_comes_back(client):

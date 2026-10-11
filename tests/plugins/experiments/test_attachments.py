@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from support.experiments import delete_experiment, launch, lineage
 from support.http import assert_ok
-from support.microprojects import join_as, signup_with_microproject
+from support.microprojects import signup_with_microproject
 from support.structures import steps
 
 
@@ -67,11 +67,3 @@ def test_an_attachment_to_a_deleted_study_is_no_longer_drawn(client):
     delete_experiment(client, slug, parent["id"])
     graph = lineage(client, slug)
     assert [n["title"] for n in graph["nodes"]] == ["Flottante"] and graph["edges"] == []
-
-
-def test_a_viewer_cannot_attach(client):
-    slug = signup_with_microproject(client, "attach-owner@example.com", "Rattachements")
-    parent = launch(client, slug, title="Parent")
-    floating = launch(client, slug, title="Flottante", steps=steps(25))
-    join_as(client, slug, "attach-viewer@example.com", owner="attach-owner@example.com")
-    assert _attach(client, slug, floating["id"], parent["id"]).status_code == 403

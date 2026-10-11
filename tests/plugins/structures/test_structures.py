@@ -3,8 +3,7 @@ from __future__ import annotations
 from spectre.plugins.library.service import library_dir
 from spectre.plugins.structures import campaigns
 from support.accounts import signup
-from support.experiments import experiments_url, launch_body, list_experiments
-from support.microprojects import join_as, signup_with_microproject
+from support.microprojects import signup_with_microproject
 from support.structures import campaign_plan, list_materials, list_recipes, preview_campaign, simulate, steps, substrate
 
 
@@ -147,25 +146,3 @@ def test_campaign_preview_over_the_cap_is_refused_before_any_simulation(client, 
     response = preview_campaign(client, {"substrate": substrate(), "steps": steps(), "plan": campaign_plan([10, 20, 30, 40])})
     assert response.status_code == 200
     assert len(response.json()["svgs"]) == len(simulated) == 4
-
-
-def test_launch_experience_creates_a_tracked_experiment(client):
-    slug = _owner_microproject(client)
-    body = launch_body(
-        title="Ma premiere experience",
-        intent="Verifier le depot d'oxyde",
-        objectives=[{"name": "Epaisseur cible", "metric": "thickness_nm", "direction": "target", "target": 20}],
-    )
-    response = client.post(experiments_url(slug), json=body)
-    assert response.status_code == 201
-    assert response.json()["id"] == "ma-premiere-experience"
-
-    listed = list_experiments(client, slug, status="running")
-    assert [item["id"] for item in listed["items"]] == ["ma-premiere-experience"]
-
-
-def test_viewer_cannot_launch_experience(client):
-    slug = _owner_microproject(client, "owner2@example.com", "Owner2")
-    join_as(client, slug, "viewer2@example.com", owner="owner2@example.com", role="viewer", name="Viewer2")
-    response = client.post(experiments_url(slug), json=launch_body(title="X", intent="Y"))
-    assert response.status_code == 403

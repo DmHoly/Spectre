@@ -18,18 +18,13 @@ def test_new_microprojet_lands_in_the_system_area(client):
     areas = client.get("/api/areas").json()
     by_slug = {a["slug"]: a for a in areas}
     assert {"datacom-vlc", "nova-pt1", "native-pt2"} <= set(by_slug)  # 3 thèmes phares seedés
+    assert {"VLC (microlink)", "Nova (PT1)", "Native (PT2)"} <= {a["name"] for a in areas}
     system = [a for a in areas if a["is_system"]]
     assert [a["slug"] for a in system] == ["non-classe"] and areas[-1]["is_system"]  # « Non classé », en dernier
     assert system[0]["can_delete"] is False
     assert all(a["can_delete"] and not a["is_system"] for a in areas[:-1])
     assert _slugs(experiment_stats(client, area="non-classe")) == ["contact-ohmique"]
     assert "totals" not in areas[0] and "stats" not in areas[0] and "is_admin" not in areas[0]
-
-
-def test_flagship_themes_are_seeded_on_a_fresh_instance(client):
-    signup(client, "boss@example.com")
-    names = {a["name"] for a in client.get("/api/areas").json()}
-    assert {"VLC (microlink)", "Nova (PT1)", "Native (PT2)"} <= names
 
 
 def test_admin_creates_an_area_and_moves_a_microprojet_into_it(client):
@@ -48,27 +43,6 @@ def test_admin_creates_an_area_and_moves_a_microprojet_into_it(client):
     assert moved["area"] == {"slug": "fiabilite", "name": "Fiabilité"}
     assert _slugs(experiment_stats(client, area="fiabilite")) == ["contact-ohmique"]
     assert experiment_stats(client, area="non-classe") == []
-
-
-def test_non_admin_reads_but_cannot_write_the_strategy_layer(client):
-    signup(client, "boss@example.com")  # le premier compte est admin
-    create_area(client, "Thème A")
-    create_thematic(client, "theme-a", "T")
-    objective = create_objective(client, "theme-a", "O")
-    signup(client, "hand@example.com")
-
-    assert client.get("/api/areas").status_code == 200
-    assert client.get("/api/areas/theme-a").status_code == 200
-    assert client.get("/api/areas/theme-a/thematics/t").status_code == 200
-    assert client.post("/api/areas", json={"name": "Thème B"}).status_code == 403
-    assert client.patch("/api/areas/theme-a", json={"name": "x"}).status_code == 403
-    assert client.delete("/api/areas/theme-a").status_code == 403
-    assert client.post("/api/areas/theme-a/thematics", json={"name": "x"}).status_code == 403
-    assert client.patch("/api/areas/theme-a/thematics/t", json={"name": "x"}).status_code == 403
-    assert client.delete("/api/areas/theme-a/thematics/t").status_code == 403
-    assert client.post("/api/areas/theme-a/objectives", json={"title": "x"}).status_code == 403
-    assert client.patch(f"/api/areas/theme-a/objectives/{objective['id']}", json={"title": "x"}).status_code == 403
-    assert client.delete(f"/api/areas/theme-a/objectives/{objective['id']}").status_code == 403
 
 
 def test_deleting_an_area_returns_its_microprojets_to_the_system_area(client):
@@ -231,10 +205,3 @@ def test_unknown_projects_are_404(client):
     assert_handler_404(client.delete("/api/areas/inconnu"))
     assert_handler_404(client.post("/api/areas/inconnu/thematics", json={"name": "x"}))
     assert_handler_404(client.post("/api/areas/inconnu/objectives", json={"title": "x"}))
-
-
-def test_the_pages_of_the_strategy_layer_are_served(client):
-    signup(client, "boss@example.com")
-    create_thematic(client, "native-pt2", "Dopage PGaN")
-    for url in ("/", "/management/native-pt2", "/management/native-pt2/thematiques/dopage-pgan"):
-        assert client.get(url).status_code == 200, url

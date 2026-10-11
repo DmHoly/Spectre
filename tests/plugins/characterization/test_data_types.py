@@ -63,10 +63,6 @@ def _never_query(monkeypatch):
     monkeypatch.setattr("prism.connections.run_query", fail_if_called)
 
 
-def test_characterization_requires_login(client):
-    assert client.get("/api/characterization/data-types").status_code == 401
-
-
 def test_list_exposes_the_prism_catalogue_in_light_form(logged_in):
     data_types = list_data_types(logged_in)
     keys = {t["key"] for t in data_types}

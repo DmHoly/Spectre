@@ -198,3 +198,5 @@ def test_unknown_attachment_is_404(client):
     slug = signup_with_microproject(client, "upload-404@example.com")
     assert_handler_404(client.get(f"{attachments_url(slug)}/att_{'0' * 20}"), "introuvable")
     assert_handler_404(client.get(f"{attachments_url(slug)}/att_{'0' * 20}/content"), "introuvable")
+    for suffix in ("", "/content"):  # pas un id de pièce jointe
+        assert_handler_404(client.get(f"{attachments_url(slug)}/..secret{suffix}"))

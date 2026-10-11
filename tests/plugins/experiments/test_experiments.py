@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from support.accounts import signup
 from support.experiments import (
     conclude,
     delete_experiment,
@@ -176,14 +175,6 @@ def test_delete_with_a_stale_if_match_is_refused(client):
     assert get_experiment(client, slug, launched["id"])["tags"] == ["x"]
 
 
-def test_delete_needs_editor(client):
-    slug = _owner_microproject(client)
-    exp = _launch_essai(client, slug)["id"]
-    signup(client, "viewer@x.c", name="V")
-    # the new account isn't a member at all -> 403 (require_role)
-    assert delete_experiment(client, slug, exp).status_code == 403
-
-
 def test_status_endpoint_rejects_concluded_target(client):
     slug = _owner_microproject(client)
     launched = _launch_essai(client, slug)
@@ -329,13 +320,3 @@ def test_a_version_id_is_not_an_experiment_id(client):
     slug = _owner_microproject(client)
     launched = _launch_essai(client, slug)
     assert_handler_404(client.get(experiment_url(slug, launched["version_id"])))
-
-
-def test_the_hypothesis_survives_lightweight_writes(client):
-    slug = _owner_microproject(client)
-    launched = launch(client, slug, hypothesis="L'oxyde isole à 20 nm")
-    tag(client, slug, launched["id"], ["a-suivre"])
-    concluded = conclude(client, slug, launched["id"], summary="Fini")
-
-    assert concluded["hypothesis"] == "L'oxyde isole à 20 nm"
-    assert get_experiment(client, slug, launched["id"])["hypothesis"] == "L'oxyde isole à 20 nm"

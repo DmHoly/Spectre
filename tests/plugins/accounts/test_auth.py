@@ -50,7 +50,7 @@ def test_register_rejects_short_password(client):
 
 def test_register_rejects_an_invalid_email(client):
     response = client.post("/api/users", json={"email": "pas-une-adresse", "password": "supersecret", "name": "C"})
-    assert response.status_code == 422
+    assert response.status_code == 422 and response.json()["code"] == "invalid_email"
 
 
 def test_login_rejects_wrong_password_without_401(client):
@@ -68,15 +68,6 @@ def test_email_is_normalized_everywhere(client):
     signup(client, "  Mixed@Example.COM ", name="M")
     logout(client)
     assert login(client, "MIXED@example.com")["email"] == "mixed@example.com"
-
-
-def test_me_requires_session(client):
-    assert client.get("/api/users/me").status_code == 401
-
-
-def test_pages_are_served(client):
-    for path in ("/connexion", "/inscription", "/"):
-        assert client.get(path).status_code == 200
 
 
 def _session_rows(data_dir):

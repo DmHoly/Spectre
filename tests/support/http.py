@@ -36,3 +36,12 @@ def assert_created(response: Any) -> Any:
 def assert_ok(response: Any) -> Any:
     assert response.status_code == 200, f"{response.status_code} au lieu de 200 : {response.text}"
     return response.json()
+
+
+def plugins_off(html: str) -> set[str]:
+    """Les plugins que la page dit éteints (``<html data-plugins-off="...">``, posé par
+    ``kernel.pages``) - un ensemble, pour ne pas dépendre de l'ordre ni des voisins."""
+    import re
+
+    match = re.search(r'data-plugins-off="([^"]*)"', html)
+    return set(match.group(1).split()) if match else set()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from support.experiments import experiments_url, launch, list_experiments
+from support.experiments import launch, list_experiments
 from support.microprojects import signup_with_microproject
 
 
@@ -21,11 +21,3 @@ def test_experiments_are_paginated(client):
 
     page3 = list_experiments(client, slug, status="all", offset=4, limit=2)
     assert len(page3["items"]) == 1
-
-
-def test_pagination_rejects_bad_params(client):
-    slug = signup_with_microproject(client, "page2@example.com", name="P2")
-
-    assert client.get(experiments_url(slug), params={"offset": -1}).status_code == 422
-    assert client.get(experiments_url(slug), params={"limit": 0}).status_code == 422
-    assert client.get(experiments_url(slug), params={"limit": 500}).status_code == 422

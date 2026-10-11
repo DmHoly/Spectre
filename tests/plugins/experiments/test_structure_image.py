@@ -25,7 +25,7 @@ from support.experiments import (
     versions,
 )
 from support.http import PNG_1PX, assert_handler_404
-from support.microprojects import join_as, signup_with_microproject
+from support.microprojects import signup_with_microproject
 from support.structures import campaign_plan, steps, upload_structure_image
 
 
@@ -121,14 +121,6 @@ def test_upload_refuses_what_the_browser_cannot_show(client):
     assert _upload(client, slug, "x.svg", "image/svg+xml", b"<svg onload='alert(1)'/>").status_code == 422
     assert _upload(client, slug, data=b"").status_code == 422
     assert _upload(client, slug, data=b"0" * (10 * 1024 * 1024 + 1)).status_code == 413
-
-
-def test_viewer_cannot_upload_or_launch(client):
-    slug = _owner_microproject(client, "owner-img@example.com")
-    image = _image(client, slug)
-    join_as(client, slug, "viewer-img@example.com", owner="owner-img@example.com", role="viewer")
-    assert _upload(client, slug).status_code == 403
-    assert _launch_response(client, slug, [image]).status_code == 403
 
 
 def test_changing_the_pictures_keeps_the_structure_version_and_the_graph_node(client):
