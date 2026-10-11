@@ -261,11 +261,11 @@ def test_versions_list_marks_process_changes_and_keeps_everything(client):
     by_id = {item["version_id"]: item for item in versions(client, slug, launched["id"])}
     assert list(by_id) == [launched["version_id"], tagged["version_id"], evolved["version_id"]]
     assert by_id[launched["version_id"]]["change_level"] == "initial"
-    assert by_id[launched["version_id"]]["version"] == "1.0.0"
+    assert by_id[launched["version_id"]]["version"] == "1.0"
     assert by_id[tagged["version_id"]]["change_level"] == "none"
-    assert by_id[tagged["version_id"]]["version"] == "1.0.0"  # unchanged - the tag didn't touch the process
+    assert by_id[tagged["version_id"]]["version"] == "1.0"  # unchanged - the tag didn't touch the process
     assert by_id[evolved["version_id"]]["change_level"] == "minor"  # same step, only the thickness changed
-    assert by_id[evolved["version_id"]]["version"] == "1.1.0"
+    assert by_id[evolved["version_id"]]["version"] == "1.1"
 
 
 def test_conclude_experience(client):

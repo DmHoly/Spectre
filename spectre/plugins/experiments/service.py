@@ -30,7 +30,7 @@ from structureforge.adapters.follow_adapter import ProcessStructure
 from ...kernel.errors import Conflict, InvalidInput, NotFound, PreconditionFailed
 from ..structures import campaigns, kinds, simulation
 from ..structures.schemas import CampaignPayload, DeclaredPayload, ImagesPayload, StructureImageInput
-from . import refs, versioning
+from . import versioning
 from .entities import (
     EntityTrackingInput,
     blank_entity,
@@ -518,7 +518,7 @@ def unique_branch(taken: set[str], title: str) -> str:
 
 def _new_branch_name(slug: str, repo: follow.Repository, requested: str | None, title: str) -> str:
     """Le nom de la nouvelle piste : celui demandé (un seul segment d'URL, libre), ou tiré du titre.
-    Pris : les pistes, les refs, et les pistes supprimées (:func:`~.repository.retired_lines` - un
+    Pris : les pistes, les étiquettes Follow (les refs locales d'avant les références), et les pistes supprimées (:func:`~.repository.retired_lines` - un
     lien vers l'ancienne piste ne doit pas passer à une étude sans rapport)."""
     taken = set(repo.branches) | set(repo.tags) | retired_lines(slug)
     name = (requested or "").strip()
@@ -769,10 +769,7 @@ def create(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.E
             if cited is not None:
                 builder.metadata[REFERENCE_ORIGIN_KEY] = {"reference": cited.reference, "version": cited.version}
         builder.form_answers = dict(body.form_answers)
-        experiment = _commit(builder, "Impossible de lancer cette expérience")
-        if len(repo) == 1:
-            refs.create_ref(repo, experiment.id)
-        return experiment
+        return _commit(builder, "Impossible de lancer cette expérience")
 
 
 def _tracked_place(version: follow.Experiment, place: int) -> dict[str, Any]:
@@ -1369,22 +1366,3 @@ def delete(slug: str, experiment_id: str, *, expected_version: str | None) -> li
         # le nom d'abord : une piste supprimée ne doit jamais rester sans son nom retiré
         retire_line(slug, experiment_id)
         return delete_line(repo, experiment_id)
-
-
-def create_ref(slug: str, experiment_id: str, version_id: str | None, name: str | None) -> dict[str, Any]:
-    """Marquer une version (la pointe de la piste par défaut) comme ref - voir :mod:`.refs`."""
-    with writing(slug) as repo:
-        target = version_of(repo, experiment_id, version_id)
-        return refs.create_ref(repo, target.id, name=name)
-
-
-def rename_ref(slug: str, name: str, new_name: str) -> dict[str, Any]:
-    """Renommer une ref ; sa version ne change pas."""
-    with writing(slug) as repo:
-        return refs.rename_ref(repo, name, new_name)
-
-
-def delete_ref(slug: str, name: str) -> None:
-    """Retirer une ref ; la version, elle, reste."""
-    with writing(slug) as repo:
-        refs.delete_ref(repo, name)

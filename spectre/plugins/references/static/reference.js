@@ -16,14 +16,14 @@
     initial: "première",
     major: "majeur",
     minor: "mineur",
-    patch: "correctif",
+    patch: "retouche",
     none: "identique",
   };
   const LEVEL_LONG = {
     initial: "première version",
     major: "changement majeur",
     minor: "changement mineur",
-    patch: "correctif (étiquettes, noms, unités)",
+    patch: "retouche (étiquettes, noms, unités)",
     none: "identique à sa parente (repère importé)",
   };
 
@@ -222,10 +222,10 @@
       EvolutionGraph.legendHtml([
         [{ change_level: "major" }, "Première version ou changement majeur (X.0)"],
         [{ change_level: "minor" }, "Changement mineur (X.Y)"],
-        [{ change_level: "patch" }, "Correctif : étiquettes, noms d'étape, unités (X.Y)"],
+        [{ change_level: "patch" }, "Retouche : étiquettes, noms d'étape, unités (X.Y)"],
         [{ change_level: "none" }, "Identique à sa parente (repère importé)"],
         [{ change_level: "minor", is_tip: true }, "Dernière version d'une branche"],
-      ]) + `<li><span class="ref-legend-edge" aria-hidden="true"></span>Rattachement déduit à l'import des refs locales</li>`;
+      ]) + `<li><span class="ref-legend-edge" aria-hidden="true"></span>Rattachement déduit à l'import des anciennes refs locales</li>`;
   }
 
   function renderBanner() {

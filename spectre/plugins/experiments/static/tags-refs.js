@@ -1,7 +1,6 @@
 /* Le pied du bandeau : les étiquettes de l'étude (ajouter, retirer - une écriture sur la piste),
    la référence dont elle part (« Issue de la référence X 1.1 »), l'étude d'où viennent ses plaques
-   (« Plaques reprises de Y », pour une étude partie de plaques existantes), ses refs locales (des repères du
-   µprojet sur la version affichée) et « Publier comme référence » (references/static/publish-dialog.js). */
+   (« Plaques reprises de Y », pour une étude partie de plaques existantes) et « Publier comme référence » (references/static/publish-dialog.js). */
 
 (() => {
   const chipInputStyle = "border:1px dashed var(--border-soft);border-radius:999px;padding:4px 10px;font-size:12px;background:transparent;";
@@ -152,11 +151,10 @@
       `<span id="reference-origin"></span>` +
       `<span id="wafer-origin"></span>` +
       `<span id="start-origin"></span>` +
-      ctx.detail.ref_names.map((name) => `<span class="badge badge-role" title="Ref locale du µprojet">ref ${escapeHtml(name)}</span>`).join("") +
       (canPublish
         ? `<button id="publish-reference-btn" data-report-hide type="button" class="btn btn-line" style="padding:2px 10px;font-size:11.5px;" title="Partager cette structure avec tous les µprojets, comme nouvelle version d'une référence">Publier comme référence</button>`
         : "") +
-      `<a class="btn btn-line" data-report-hide href="${evolutionUrl}" style="padding:2px 10px;font-size:11.5px;" title="Les pistes du µprojet, leurs versions, leurs refs et leurs versions de référence">Évolution des structures</a>`;
+      `<a class="btn btn-line" data-report-hide href="${evolutionUrl}" style="padding:2px 10px;font-size:11.5px;" title="Les pistes du µprojet, leurs versions et leurs versions de référence">Évolution des structures</a>`;
     renderOrigin(ctx, document.getElementById("reference-origin"));
     renderWaferOrigin(ctx, document.getElementById("wafer-origin"));
     renderStartOrigin(ctx, document.getElementById("start-origin"));

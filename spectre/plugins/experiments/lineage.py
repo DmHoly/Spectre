@@ -2,7 +2,7 @@
 one node per structurally distinct version, Follow's commit chain collapsed by
 :mod:`spectre.plugins.experiments.versioning`), the history of its structures, line by line
 (:func:`structure_history` - the « Évolution des structures » page), and the condensed edges
-between a chosen set of versions (:func:`condensed_edges` - branch tips for the atlas, refs).
+between a chosen set of versions (:func:`condensed_edges` - branch tips for the atlas).
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from .entities import compact, study_fdl
 from .repository import CONCLUDED_STATUSES, display_status, hold_of
 
 # Ce que montre l'historique des structures par défaut : les versions qui changent la structure en
-# grand (la première, un changement majeur ou mineur) ; un correctif (un nom d'étape) ou une version
+# grand (la première, un changement majeur ou mineur) ; une retouche (un nom d'étape) ou une version
 # sans changement de structure (une étiquette, une preuve...) est « légère ».
 STRUCTURAL_LEVELS = ("initial", "major", "minor")
 
@@ -34,13 +34,12 @@ def structure_history(repo: Any, *, all_versions: bool = False, include: set[str
       order - when the line started (its first version), then its name -, so a new line always
       comes last. ``is_active`` is false for a deleted line whose first versions remain (another
       line forked from them); ``tip_version_id`` / ``tip_label`` say where an active line stands.
-    - ``nodes``: by default the structural versions (:data:`STRUCTURAL_LEVELS`), the versions a ref
-      points at, the merges and the first version of each line (a fork shows even before its
+    - ``nodes``: by default the structural versions (:data:`STRUCTURAL_LEVELS`), the merges and the first version of each line (a fork shows even before its
       structure changes); ``all_versions`` adds the light ones, ``include`` only those of these ids
       (the versions published as a reference, which the page reads from the references plugin -
-      an unknown id is ignored). Each node carries its X.Y.Z
+      an unknown id is ignored). Each node carries its X.Y
       (:func:`versioning.compute_branch_versions`, along its own first-parent history), its
-      ``change_level``, its refs, its ``lane`` (index into ``lanes``) and ``experiment_id``, the
+      ``change_level``, its ``lane`` (index into ``lanes``) and ``experiment_id``, the
       line through which it can be opened (its own, or one whose history contains it).
     - ``edges``: ``{parent, child, kind}`` between shown nodes, through the hidden ones
       (:func:`versioning.collapsed_dag`) ; ``kind`` is ``parent`` (same line), ``fork`` (a line
@@ -73,10 +72,6 @@ def structure_history(repo: Any, *, all_versions: bool = False, include: set[str
     lane_starts = {
         exp_id for exp_id, exp in experiments.items() if not exp.parents or experiments[exp.parents[0]].branch != exp.branch
     }
-    ref_names: dict[str, list[str]] = {}
-    for name, target in repo.tags.items():
-        ref_names.setdefault(target, []).append(name)
-
     if all_versions:
         keep = set(experiments)
     else:
@@ -84,7 +79,6 @@ def structure_history(repo: Any, *, all_versions: bool = False, include: set[str
             exp_id
             for exp_id in experiments
             if numbers[exp_id]["level"] in STRUCTURAL_LEVELS
-            or exp_id in ref_names
             or len(dag[exp_id]) != 1
             or exp_id in lane_starts
             or exp_id in (include or ())
@@ -124,7 +118,6 @@ def structure_history(repo: Any, *, all_versions: bool = False, include: set[str
             "author": exp.author,
             "is_tip": exp.id in tip_ids,
             "is_merge": len(dag[exp.id]) > 1,
-            "refs": sorted(ref_names.get(exp.id, [])),
             "structure_kind": _structure_kind(exp.structure_type),
             "has_process": "structureforge_process" in exp.metadata,
         }

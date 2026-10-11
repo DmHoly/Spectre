@@ -76,7 +76,7 @@ def test_launch_without_structure_tracks_one_wafer_per_row(client):
     assert [e["sample_id"] for e in detail["physical_tracking"]] == ["W1", None, "W3"]
     assert detail["physical_tracking"][2]["fdl"] == ["FDL-12"]
     assert_handler_404(client.get(f"{experiment_url(slug, detail['id'])}/process"), "procédé éditable")
-    assert _structural(client, slug, detail["id"]) == [("1.0.0", "initial")]
+    assert _structural(client, slug, detail["id"]) == [("1.0", "initial")]
 
     # les plaques nommées se retrouvent dans la liste des plaques, sous le nom de leur ligne
     passport = get_wafer(client, "W3")
@@ -134,7 +134,7 @@ def test_editing_the_split_is_a_new_structure_version_and_keeps_wafers_in_place(
     assert grown["conclusion"]["summary"] in (None, "")
     assert [e["sample_id"] for e in grown["physical_tracking"]] == ["W1", "W2", None]
     assert [w["name"] for w in grown["declared_structure"]["wafers"]] == ["réf", "Recuit = long", "Recuit = très long"]
-    assert _structural(client, slug, ref) == [("1.0.0", "initial"), ("2.0.0", "major")]
+    assert _structural(client, slug, ref) == [("1.0", "initial"), ("2.0", "major")]
 
     # une ligne de moins alors que ses deux plaques sont nommées : refusé
     shrink = post_evolve(client, slug, ref, kind="declared", title="t", intent="i", wafers=[{}])
@@ -156,7 +156,7 @@ def test_the_lineage_tells_a_declared_study_apart(client):
     nodes = structure_history(client, slug)["nodes"]
     assert [n["structure_kind"] for n in nodes] == ["declared"]
     assert lineage(client, slug)["nodes"]
-    assert get_experiment(client, slug, ref)["ref_names"]
+    assert "ref_names" not in get_experiment(client, slug, ref)
 
 
 def test_the_plates_card_keeps_one_place_per_row(client):

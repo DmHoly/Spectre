@@ -12,8 +12,8 @@ recette de gâteau) :
   mais avec plusieurs puits quantiques, une comparaison avec/sans couche bloqueuse d'électrons
   (EBL), puis un réglage fin du dopage P en aval.
 
-Les deux profitent des refs (:mod:`spectre.plugins.experiments.refs`) pour marquer les points de départ vraiment
-réutilisés plusieurs fois (l'épitaxie standard, la référence à puits simple, la référence
+Les deux publient des références (plugin references, les seules refs) pour marquer les points de
+départ vraiment réutilisés plusieurs fois (l'épitaxie standard, la référence à puits simple, la référence
 MQW+EBL...) plutôt que de laisser cette notion complètement absente de la démo.
 
 Tout passe par les vraies routes HTTP (via ``fastapi.testclient.TestClient``, comme les tests) -
@@ -257,12 +257,21 @@ class Microproject:
         record(result["version_id"], days_ago)
         return {"id": result["id"], "version_id": result["version_id"]}
 
-    def make_ref(self, session: Session, exp: dict, *, name: str | None = None) -> str:
-        """Mark ``exp``'s version as a ref (:mod:`spectre.plugins.experiments.refs`) - unlike every
-        other beat here, this doesn't create a new version (a ref is just a name on a version that
-        already exists), so there's nothing to schedule for backdating."""
-        result = session.post(f"/api/microprojects/{self.slug}/refs", json={"experiment_id": exp["id"], "version_id": exp["version_id"], "name": name})
-        return result["names"][0] if name is None else name
+    def publish_reference(self, session: Session, exp: dict, *, name: str) -> None:
+        """Publish ``exp``'s version as a new version of the reference ``name`` (plugin references,
+        created on first use) - the only refs there are. Like a tag, this doesn't create a new
+        version of the study, so there's nothing to schedule for backdating. A structure identical
+        to the reference's latest version (the same epitaxy in a second microproject) is left
+        unpublished, as the server answers (409)."""
+        slug = next((r["slug"] for r in session.get("/api/references") if r["name"] == name), None)
+        if slug is None:
+            slug = session.post("/api/references", json={"name": name})["slug"]
+        r = session.client.post(
+            f"/api/references/{slug}/versions",
+            json={"microproject": self.slug, "experiment_id": exp["id"], "version_id": exp["version_id"]},
+        )
+        if r.status_code not in (201, 409):
+            raise RuntimeError(f"publishing {name} -> {r.status_code}: {r.text}")
 
     def save_structure(self, session: Session, *, name, substrate, steps, partagee=False, derived_from=None):
         session.post(
@@ -391,7 +400,7 @@ def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> 
         days_ago=312,
     )
     b2 = proj.tag(demo, b2, ["epitaxie", "recette-approuvee"], days_ago=312)
-    proj.make_ref(demo, b2, name="epitaxie-standard")
+    proj.publish_reference(demo, b2, name="epitaxie-standard")
 
     # 3. Fork substrat SiC - changement de base wafer, comparé à l'épitaxie standard sur saphir.
     b5 = proj.evolve(
@@ -494,7 +503,7 @@ def build_single_qw_microproject(demo: Session, lea: Session, marc: Session) -> 
         days_ago=196,
     )
     b7 = proj.tag(lea, b7, ["contact", "wafer-lot-B", "recette-approuvee"], days_ago=196)
-    proj.make_ref(demo, b7, name="puits-simple-reference")
+    proj.publish_reference(demo, b7, name="puits-simple-reference")
 
     # 8. Déclinaison verte (~27% d'indium visé) - le "green gap" reste difficile à atteindre
     # pile, réaliste pour ce type de matériau.
@@ -664,7 +673,7 @@ def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=271,
     )
     c2 = proj.tag(demo, c2, ["epitaxie", "recette-approuvee"], days_ago=271)
-    proj.make_ref(demo, c2, name="epitaxie-standard")
+    proj.publish_reference(demo, c2, name="epitaxie-standard")
 
     # 3. Piliers par lithographie + gravure
     c3 = proj.evolve(
@@ -753,7 +762,7 @@ def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
     )
     c6 = proj.tag(lea, c6, ["mqw", "avec-ebl", "recette-approuvee"], days_ago=166)
     c6 = proj.track(demo, c6, sample_id="M-B1", location="Boîte à wafers, salle blanche, tiroir 6", days_ago=166)
-    proj.make_ref(demo, c6, name="mqw-ebl-reference")
+    proj.publish_reference(demo, c6, name="mqw-ebl-reference")
 
     # 7. Dopage P modéré - seul le libellé de la couche p change (correctif/patch pour
     # spectre.plugins.experiments.versioning : même géométrie simulée).
@@ -820,7 +829,7 @@ def build_mqw_microproject(demo: Session, lea: Session, marc: Session) -> str:
         days_ago=76,
     )
     c9 = proj.tag(marc, c9, ["dopage-p", "recette-approuvee", "version-finale"], days_ago=76)
-    proj.make_ref(demo, c9, name="mqw-dopage-optimise")
+    proj.publish_reference(demo, c9, name="mqw-dopage-optimise")
     proj.track(demo, c9, sample_id="M-B1", location="Boîte à wafers, salle blanche, tiroir 6", days_ago=76)
 
     proj.save_structure(demo, name="Nanofil LED MQW + EBL - référence dopage optimisé", substrate=epi_substrate(), steps=epi_stack(15) + LITHO_ETCH + GROWTH_TAPER + mqw_active_region(3) + [ebl_layer, p_gan_cap("Mg ~7e18 cm-3, optimisé")])

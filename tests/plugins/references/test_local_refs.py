@@ -18,8 +18,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from support.accounts import login
-from support.experiments import create_ref, evolve, launch, launch_campaign, refs
-from support.experiments import get_version as get_version_of_study
+from support.experiments import evolve, launch, launch_campaign, legacy_tag, legacy_tags
 from support.microprojects import create_microproject, delete_microproject, signup_with_microproject
 from support.references import (
     create_reference,
@@ -51,22 +50,22 @@ def _two_microprojects(client):
     même piste, une autre ref nommée et une ref posée sur une campagne."""
     single = signup_with_microproject(client, "seed@example.com", "Puits simple")
     base = launch(client, single, title="Epitaxie", intent="Depart", steps=steps(20))
-    create_ref(client, single, base["id"], "epitaxie-standard")
+    legacy_tag(client, single, base["id"], "epitaxie-standard")
     evolved = evolve(client, single, base["id"], title="Epitaxie", intent="Suite", steps=steps(25))
-    create_ref(client, single, base["id"], "Recette Approuvée", version_id=base["version_id"])
-    create_ref(client, single, base["id"], "recette-approuvee-2", version_id=evolved["version_id"])
-    create_ref(client, single, base["id"], "recette approuvée!", version_id=evolved["version_id"])  # même nom normalisé que la première
+    legacy_tag(client, single, base["id"], "Recette Approuvée", version_id=base["version_id"])
+    legacy_tag(client, single, base["id"], "recette-approuvee-2", version_id=evolved["version_id"])
+    legacy_tag(client, single, base["id"], "recette approuvée!", version_id=evolved["version_id"])  # même nom normalisé que la première
     campaign = launch_campaign(client, single)
-    create_ref(client, single, campaign["id"], "campagne-de-reference")
+    legacy_tag(client, single, campaign["id"], "campagne-de-reference")
 
     mqw = create_microproject(client, "MQW")["slug"]
     other = launch(client, mqw, title="Epitaxie MQW", intent="Depart", steps=steps(20))
-    create_ref(client, mqw, other["id"], "epitaxie-standard")
+    legacy_tag(client, mqw, other["id"], "epitaxie-standard")
     return single, mqw, base, other
 
 
 def _ref_names(client, slug: str) -> set[str]:
-    return {name for ref in refs(client, slug)["refs"] for name in ref["names"]}
+    return legacy_tags(slug)
 
 
 def test_only_names_shared_by_two_microprojects_become_references(client, data_dir):
@@ -96,7 +95,7 @@ def test_only_names_shared_by_two_microprojects_become_references(client, data_d
 
     # les étiquettes restent en place, aucun objet Follow n'est réécrit
     assert _follow_files(data_dir) == before
-    assert "epitaxie-standard" in get_version_of_study(client, single, base["id"], base["version_id"])["ref_names"]
+    assert "epitaxie-standard" in _ref_names(client, single)
     assert {"Recette Approuvée", "recette-approuvee-2", "recette approuvée!", "campagne-de-reference"} <= _ref_names(client, single)
     assert [p["number"] for p in published_from(client, mqw)] == ["1.1"]
     assert [p["number"] for p in published_from(client, single)] == ["1.0"]
@@ -123,7 +122,7 @@ def test_the_import_happens_once(app, client, data_dir):
     late = create_microproject(client, "Tardif")["slug"]
     references(client)
     study = launch(client, late, title="Epitaxie", intent="x", steps=steps(40))
-    create_ref(client, late, study["id"], "epitaxie-standard")
+    legacy_tag(client, late, study["id"], "epitaxie-standard")
     assert [n["number"] for n in version_graph(client, "epitaxie-standard")["nodes"]] == ["1.0", "1.1", "1.2"]
     # une étude de plus, sans ref nommée : l'empreinte ne change pas, rien n'est relu
     launch(client, late, title="Autre", intent="x", steps=steps(30))
@@ -134,7 +133,7 @@ def test_the_import_happens_once(app, client, data_dir):
 def test_a_name_shared_later_imports_the_tags_of_every_microproject(client, data_dir):
     first = signup_with_microproject(client, "later@example.com", "Premier")
     study = launch(client, first, title="Epitaxie", intent="x", steps=steps(20))
-    create_ref(client, first, study["id"], "Recette X")
+    legacy_tag(client, first, study["id"], "Recette X")
     # un seul µprojet porte le nom : repère local ; le µprojet est lu
     assert references(client) == []
 
@@ -142,7 +141,7 @@ def test_a_name_shared_later_imports_the_tags_of_every_microproject(client, data
     # du premier, déjà lu
     second = create_microproject(client, "Second")["slug"]
     launched = launch(client, second, title="Epitaxie", intent="x", steps=steps(30))
-    create_ref(client, second, launched["id"], "recette-x")
+    legacy_tag(client, second, launched["id"], "recette-x")
     graph = version_graph(client, "recette-x")
     assert graph["reference"]["name"] == "Recette X"
     assert [(n["number"], n["source"]["microproject"]["slug"], n["source"]["local_tag"], n["change_level"], n["parent_inferred"]) for n in graph["nodes"]] == [
@@ -152,9 +151,9 @@ def test_a_name_shared_later_imports_the_tags_of_every_microproject(client, data
 
     # deux µprojets déjà lus partagent un nom après coup : la lecture suivante le relit sur tous les
     # µprojets, sans attendre l'arrivée d'un autre µprojet
-    create_ref(client, first, study["id"], "Base Y")
+    legacy_tag(client, first, study["id"], "Base Y")
     assert sorted(r["slug"] for r in references(client)) == ["recette-x"]
-    create_ref(client, second, launched["id"], "base-y")
+    legacy_tag(client, second, launched["id"], "base-y")
     before = _follow_files(data_dir)
     assert sorted(r["slug"] for r in references(client)) == ["base-y", "recette-x"]
     assert [n["source"]["local_tag"] for n in version_graph(client, "base-y")["nodes"]] == ["Base Y", "base-y"]
@@ -172,7 +171,7 @@ def test_a_reference_retired_by_an_admin_stays_retired(client):
     # retirées (sous un slug suffixé) ; elles restent des repères locaux
     late = create_microproject(client, "Sans rapport")["slug"]
     assert references(client) == []
-    create_ref(client, single, base["id"], "Autre nom")
+    legacy_tag(client, single, base["id"], "Autre nom")
     assert references(client) == []
     assert "epitaxie-standard" in _ref_names(client, single) and "epitaxie-standard" in _ref_names(client, mqw)
 
@@ -180,11 +179,11 @@ def test_a_reference_retired_by_an_admin_stays_retired(client):
     # quatrième le partage avec lui : une nouvelle référence (l'ancien slug n'est pas redonné), sans
     # les étiquettes retirées
     study = launch(client, late, title="Epitaxie", intent="x", steps=steps(40))
-    create_ref(client, late, study["id"], "epitaxie-standard")
+    legacy_tag(client, late, study["id"], "epitaxie-standard")
     assert references(client) == []
     fourth = create_microproject(client, "Quatrième")["slug"]
     launched = launch(client, fourth, title="Epitaxie", intent="x", steps=steps(45))
-    create_ref(client, fourth, launched["id"], "epitaxie-standard")
+    legacy_tag(client, fourth, launched["id"], "epitaxie-standard")
     assert [(r["slug"], r["version_count"]) for r in references(client)] == [("epitaxie-standard-2", 2)]
     nodes = version_graph(client, "epitaxie-standard-2")["nodes"]
     assert [n["source"]["microproject"]["slug"] for n in nodes] == [late, fourth]
@@ -193,7 +192,7 @@ def test_a_reference_retired_by_an_admin_stays_retired(client):
 def test_a_local_ref_joins_an_existing_reference_of_the_same_name(client):
     slug = signup_with_microproject(client, "join@example.com", "Epi")
     study = launch(client, slug, title="Epitaxie", intent="x", steps=steps(20))
-    create_ref(client, slug, study["id"], "Épitaxie Standard")
+    legacy_tag(client, slug, study["id"], "Épitaxie Standard")
     # un seul µprojet : l'étiquette reste locale, le nom est libre
     created = create_reference(client, "epitaxie standard")
     assert [(r["name"], r["version_count"]) for r in references(client)] == [("epitaxie standard", 0)]
@@ -201,7 +200,7 @@ def test_a_local_ref_joins_an_existing_reference_of_the_same_name(client):
     # un second µprojet porte le nom : les deux étiquettes rejoignent la référence existante
     other = create_microproject(client, "Autre")["slug"]
     launched = launch(client, other, title="Epitaxie", intent="x", steps=steps(30))
-    create_ref(client, other, launched["id"], "epitaxie-standard")
+    legacy_tag(client, other, launched["id"], "epitaxie-standard")
     nodes = version_graph(client, created["slug"])["nodes"]
     assert [(n["number"], n["source"]["local_tag"], n["change_level"], n["parent_inferred"]) for n in nodes] == [
         ("1.0", "Épitaxie Standard", "initial", False),
@@ -260,8 +259,8 @@ def test_the_old_rule_imports_from_a_single_microproject_are_retired(app, client
     from spectre.kernel.db import get_conn
 
     single, mqw, base, other = _two_microprojects(client)
-    create_ref(client, single, base["id"], "puits-simple-reference")
-    create_ref(client, single, base["id"], "a-renommer")
+    legacy_tag(client, single, base["id"], "puits-simple-reference")
+    legacy_tag(client, single, base["id"], "a-renommer")
     me = client.get("/api/users/me").json()
     # une étude du MQW est partie de « recette-approuvee-2 » 1.0 (un usage)
     launch(client, mqw, title="Depuis la recette", intent="x", steps=steps(25), reference_origin=origin("recette-approuvee-2", "1.0"))
@@ -298,8 +297,8 @@ def test_the_old_rule_keeps_references_whose_microprojects_were_deleted(client):
     from spectre.kernel.db import get_conn
 
     single, mqw, base, other = _two_microprojects(client)
-    create_ref(client, single, base["id"], "puits-simple-reference")
-    create_ref(client, single, base["id"], "a-renommer")
+    legacy_tag(client, single, base["id"], "puits-simple-reference")
+    legacy_tag(client, single, base["id"], "a-renommer")
     me = client.get("/api/users/me").json()
     _as_under_the_old_rule(me["id"])
     # les deux µprojets sont supprimés avant que la règle passe : les versions de leurs références
@@ -317,7 +316,7 @@ def test_the_old_rule_keeps_references_whose_microprojects_were_deleted(client):
 # -- la démo -------------------------------------------------------------------------------------------
 
 
-def test_the_demo_shares_only_epitaxie_standard(data_dir):
+def test_the_demo_publishes_its_references_without_local_refs(data_dir):
     env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), os.environ.get("PYTHONPATH", "")]), "PYTHONIOENCODING": "utf-8"}
     subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "seed_demo.py"), "--data-dir", str(data_dir)], check=True, cwd=ROOT, env=env, capture_output=True
@@ -329,15 +328,10 @@ def test_the_demo_shares_only_epitaxie_standard(data_dir):
     with TestClient(create_app()) as client:
         login(client, "demo@spectre.local", "demo1234")
         single, mqw = "nanofils-gan-puits-quantique-simple", "nanofils-gan-puits-quantiques-multiples-mqw"
-        assert [r["slug"] for r in references(client)] == ["epitaxie-standard"]
-        nodes = version_graph(client, "epitaxie-standard")["nodes"]
-        assert [(n["number"], n["source"]["microproject"]["slug"], n["parent_inferred"]) for n in nodes] == [
-            ("1.0", single, False),
-            ("1.1", mqw, True),
-        ]
-        # les refs d'un seul µprojet restent des repères locaux
-        assert {"epitaxie-standard", "puits-simple-reference"} <= _ref_names(client, single)
-        assert {"epitaxie-standard", "mqw-ebl-reference", "mqw-dopage-optimise"} <= _ref_names(client, mqw)
-        assert [p["reference"]["slug"] for p in published_from(client, single)] == ["epitaxie-standard"]
-        assert [p["reference"]["slug"] for p in published_from(client, mqw)] == ["epitaxie-standard"]
+        # les points de départ de la démo sont des références publiées, aucune ref locale n'est posée
+        assert {r["slug"] for r in references(client)} == {"epitaxie-standard", "puits-simple-reference", "mqw-ebl-reference", "mqw-dopage-optimise"}
+        assert _ref_names(client, single) == _ref_names(client, mqw) == set()
+        assert all(not n["imported"] for n in version_graph(client, "epitaxie-standard")["nodes"])
+        assert {p["reference"]["slug"] for p in published_from(client, single)} == {"epitaxie-standard", "puits-simple-reference"}
+        assert {"mqw-ebl-reference", "mqw-dopage-optimise"} <= {p["reference"]["slug"] for p in published_from(client, mqw)}
     assert _follow_files(data_dir) == before

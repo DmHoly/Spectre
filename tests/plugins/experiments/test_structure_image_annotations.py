@@ -46,7 +46,7 @@ def test_annotations_are_a_light_write_that_follows_each_picture(client):
     )
     assert annotated["version_id"] != launched["version_id"]
     assert [image["annotations"] for image in annotated["structure_images"]] == [[], [ARROW, BOX]]
-    assert _levels(client, slug, line) == [("1.0.0", "initial"), ("1.0.0", "none")]
+    assert _levels(client, slug, line) == [("1.0", "initial"), ("1.0", "none")]
     assert structure_diff(client, slug, line, against_version=launched["version_id"])["summary"] == ["Image 2 : annotations modifiées"]
 
     # la planche réordonnée : les annotations restent sur la coupe
@@ -72,7 +72,7 @@ def test_an_evolution_that_only_changes_annotations_is_not_a_new_structure(clien
     response = post_evolve(client, slug, line, kind="images", if_match=launched["version_id"], **body)
     assert response.status_code == 201, response.text
     assert response.json()["structure_images"][1]["annotations"] == [BOX]
-    assert _levels(client, slug, line) == [("1.0.0", "initial"), ("1.0.0", "none")]
+    assert _levels(client, slug, line) == [("1.0", "initial"), ("1.0", "none")]
 
 
 def test_annotations_are_checked_and_written_by_an_editor_only(client):

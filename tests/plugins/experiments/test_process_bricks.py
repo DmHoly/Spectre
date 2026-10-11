@@ -123,7 +123,7 @@ def test_bricks_alone_never_change_the_structure(client):
     # les mêmes briques renvoyées : rien de nouveau
     assert post_evolve(client, slug, study["id"], steps=STACK, bricks=[BRICK], title="Essai", intent="Suite").status_code == 200
 
-    # avec deux étapes étiquetées dans la brique, la regrouper change le dessin : un correctif, au plus
+    # avec deux étapes étiquetées dans la brique, la regrouper change le dessin : une retouche, au plus
     labelled = evolve(client, slug, study["id"], steps=STACK, layer_labels=LABELS)
     regrouped = evolve(client, slug, study["id"], steps=STACK, layer_labels=LABELS, bricks=[BRICK])
     assert _levels(client, slug, study["id"])[-2:] == ["patch", "patch"]
@@ -133,7 +133,7 @@ def test_bricks_alone_never_change_the_structure(client):
     evolve(client, slug, study["id"], steps=STACK, layer_labels=single, bricks=[BRICK])
     evolve(client, slug, study["id"], steps=STACK, layer_labels=single, bricks=[{**BRICK, "name": "Autre nom"}])
     assert _levels(client, slug, study["id"])[-1] == "none"
-    assert [v["version"] for v in versions(client, slug, study["id"])][-1].startswith("1.0.")
+    assert [v["version"] for v in versions(client, slug, study["id"])][-1] == "1.0"  # une retouche garde le numéro
 
 
 def test_a_unit_written_down_alone_is_a_patch_that_keeps_the_conclusion(client):

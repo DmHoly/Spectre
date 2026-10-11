@@ -82,7 +82,7 @@ Le `page_router` d'un plugin est inclus **avant** ses pages : une redirection pe
 plus étroit qu'une page du même plugin. Deux cas, tous deux dans `experiments` : un ancien id de
 version sous la page d'une étude (`/microprojets/{slug}/experiences/{version_id:experiment_version}`,
 convertisseur d'URL Starlette `exp_<16 hex>` déclaré par `experiments.api`, forme qu'aucun nom de
-piste ne peut prendre), et l'ancienne page des refs (`/microprojets/{slug}/refs`, 302 vers
+piste ne peut prendre), et l'ancienne page des refs locales (`/microprojets/{slug}/refs`, 302 vers
 `/microprojets/{slug}/evolution`).
 
 Les plugins sont listés **dans l'ordre topologique** dans `spectre/plugins/__init__.py`
@@ -498,11 +498,16 @@ nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ 
   à deux parents) restent lisibles telles quelles. Les pages disent « combinaison » des deux : le
   losange du graphe de filiation et de l'évolution des structures, « issue de vX (piste n) et vY
   (piste m) » sur l'évolution, « Combinaison de » pour les deux liens de la fiche.
-- Le nom d'une ref (`refs.py`) : non vide, sans `/`, ni `.`/`..`, ni la forme d'un id de version
-  (`repository.VERSION_ID_RE`, repris par `service.VERSION_ID_RE` ; Follow cherche un nom avant un
-  id, une telle ref masquerait la version) - sinon 422 `invalid_ref_name` -, libre parmi les refs et
-  les pistes (409 `ref_name_taken`). Une ref est propre au µprojet ; la renommer ou la retirer ne
-  touche pas la version.
+- **Une seule sorte de ref** (2026-10-11) : les références de structure (plugin `references`),
+  déclarées à la main. Les refs locales d'un µprojet (des étiquettes Follow : `refs.py`, la
+  « ref v1.0.0 » posée au premier lancement, les routes `…/refs`) sont retirées ; les étiquettes
+  déjà dans les dépôts y restent, invisibles, réservent leur nom de piste (`_new_branch_name`) et
+  ne servent plus qu'au regroupement des noms partagés (`references/local_refs.py`).
+- **Numéro de version `X.Y`** (`versioning.py`, 2026-10-11 : il n'y a plus de Z) : majeur (X) -
+  le substrat, ou la suite des types d'étapes (une couche ajoutée, retirée, déplacée) ; mineur (Y)
+  - un réglage d'étape ou un paramètre déclaré (ajouté, retiré, sa valeur, son obtention, son unité
+  remplacée) ; `patch` - une retouche (nom d'étape, unité écrite seule, étiquettes de couches et
+  leur regroupement) : niveau gardé, pour l'historique et la conclusion, mais pas de nouveau numéro.
 - `scripts/repair_hypotheses.py` (à blanc par défaut, `--apply` pour écrire) reporte sur la pointe de
   chaque piste qui l'a perdue la dernière hypothèse non vide de son historique (bug B1).
 
@@ -562,7 +567,7 @@ valeur d'un autre type → 422 ; une valeur que l'étape n'a pas n'est pas écri
   sa première étude ; une structure en images les retire (`kinds.DRAWN_STRUCTURE_METADATA_KEYS`).
 - **Versionnage** : `versioning.structure_signature` les ajoute au procédé comparé, avec leur
   regroupement par brique (`label_groups`, ci-dessous) ; ne changer qu'elles est une version de
-  niveau **correctif** (`patch`), comme renommer une étape, et garde la conclusion (elles ne
+  niveau **retouche** (`patch`, sans nouveau numéro), comme renommer une étape, et garde la conclusion (elles ne
   changent pas la structure).
 - **Regroupées par brique** : quand au moins deux étapes étiquetées (`MIN_GROUPED_LABELS`)
   appartiennent à une même brique (ci-dessous), le dessin n'a qu'une étiquette pour elles : le nom
@@ -601,7 +606,7 @@ valeur d'un autre type → 422 ; une valeur que l'étape n'a pas n'est pas écri
   `subject` (le nom de l'étape), `param` et `line` (« p-GaN — dopage Mg : unité « cm⁻³ » ajoutée ») ;
   une unité passée de l'obtention au champ, la même, n'y est pas. Et `step_changes`
   (`kinds.describe_step_changes`) : les étapes renommées (appariées de même ; un nom d'étape n'est
-  ni dans la géométrie ni dans les étiquettes, et c'est un correctif), `{step_id, subject, change:
+  ni dans la géométrie ni dans les étiquettes, et c'est une retouche), `{step_id, subject, change:
   "renamed", name: {before, after}, line}` (« étape « n-GaN » renommée « n-GaN dopé » ») - une
   étape ajoutée ou retirée, elle, change la structure. La fiche, sa comparaison, la page
   d'évolution et celle d'une référence les écrivent sur une ligne « Étapes : … », « Paramètres :
@@ -630,7 +635,7 @@ source, step_indexes}`, champs en plus refusés ; un nom de 120 caractères au p
   en images les retire (`kinds.DRAWN_STRUCTURE_METADATA_KEYS`).
 - **Versionnage** : seules, elles ne changent pas la version (`none`) ; elles ne comptent que par
   les étiquettes qu'elles regroupent (`label_groups` : le nom de la brique et ses étapes
-  étiquetées) - au plus un correctif.
+  étiquetées) - au plus une retouche.
 - **Bibliothèques** : une structure enregistrée et une brique les gardent par positions
   (`bricks`) ; une brique insérée dans un procédé y devient un seul groupe (les briques ne
   s'imbriquent pas), de `source` l'id de la brique insérée. Le nom d'une brique de bibliothèque,
@@ -722,7 +727,7 @@ plus), que le constructeur propose (« cm⁻³ », « % », « °C », « nm »,
 que l'étiquette écrit ; sans unité, il s'enregistre sans la clé (la forme d'avant). L'ancienne
 astuce, `unit=` dans l'obtention, reste lue. Les paramètres déclarés font partie de la structure
 (un réglage : niveau mineur), mais **une unité ajoutée ou retirée seule** - ou passée de
-l'obtention au champ - ne fait qu'écrire la valeur : niveau **correctif**, conclusion gardée
+l'obtention au champ - ne fait qu'écrire la valeur : niveau **retouche** (même numéro), conclusion gardée
 (`versioning.same_settings`) ; une unité remplacée par une autre change la valeur : niveau
 **mineur**.
 - **Provenance des couches** : toujours celle du serveur. `simulation.simulate_process` simule une
@@ -921,12 +926,8 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `GET …/{ref}/diff`, `GET …/{ref}/diff-externe` | `GET …/experiments/{exp}/structure-diff?version=&against_version=&against_experiment=&against_microproject=` → `{target: {experiment_id, version_id, title, microproject} \| null, entries, summary?, label_changes, param_changes, step_changes}` (avec une cible, à part : les étiquettes de couches et leur regroupement par brique, `label_changes`, les paramètres déclarés, `param_changes`, et les étapes renommées, `step_changes` ; étapes appariées par id, par position entre deux versions sans id commun, § 4) ; sans cible, la **version de structure précédente** (pas le parent immédiat : une étiquette ne rend pas le diff « identique ») ; `against_microproject` exige `against_experiment` et un accès à l'autre µprojet (403) |
 | `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
 | `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
-| `POST …/{ref}/ref` | `POST /api/microprojects/{mp}/refs` `{experiment_id, version_id?, name?}` → 201 + `Location` `.../refs/{ref_name}` (encodé : `ref%20v1.1.0`) et la ref telle que la liste la montre, plus `name` (`name` vide : « ref vX.Y.Z » ; nom invalide → 422, nom pris → 409 ; § 4) |
-| *(nouveau)* | `GET /api/microprojects/{mp}/refs/{ref_name}` (viewer) → l'entrée de la liste plus `name` ; inconnue → 404 `ref_not_found` |
-| *(nouveau)* | `PATCH …/refs/{ref_name}` `{name}` (editor) → renomme, la version reste ; 409 `ref_name_taken`, 422 nom vide ou invalide ; même nom ou `name` absent → 200 sans effet |
-| *(nouveau)* | `DELETE …/refs/{ref_name}` (editor) → 204, la version reste |
-| *(nouveau)* | `GET /api/microprojects/{mp}/structure-history?all_versions=&include_versions=` (viewer ; `include_versions`, répété : des ids de version à montrer en plus - les versions publiées comme référence, que la page lit dans `GET /api/reference-versions` ; un id inconnu est ignoré) → `{lanes, nodes, edges}` pour la page d'évolution (`experiments.lineage.structure_history`) : pistes dans l'ordre de leur début puis du nom (une nouvelle piste vient en dernier) ; nœuds `{version_id, experiment_id, lane, version, label, change_level, title, created_at, author, is_tip, is_merge, refs, structure_kind, has_process}` (`label` : « vX.Y.Z ») - par défaut les versions structurelles, celles qui portent une ref, les fusions (combinaisons comprises) et le début de chaque piste, toutes avec `all_versions=true` ; arêtes `{parent, child, kind}` (`parent`, `fork` ou `merge` : vers une combinaison, depuis chacun de ses deux parents ; vers une fusion d'avant, depuis son second parent), à travers les versions masquées |
-| `GET …/refs`, `GET …/refs/graphe` | `GET /api/microprojects/{mp}/refs` → `{refs: [{version_id, experiment_id, names, title, status, decision, version, created_at}], edges: [{from, to}]}` (ids de version) |
+| `POST …/{ref}/ref`, `…/refs[/{ref_name}]`, `…/refs/graphe` | **supprimées** (2026-10-11) : les références (plugin `references`) sont les seules refs |
+| *(nouveau)* | `GET /api/microprojects/{mp}/structure-history?all_versions=&include_versions=` (viewer ; `include_versions`, répété : des ids de version à montrer en plus - les versions publiées comme référence, que la page lit dans `GET /api/reference-versions` ; un id inconnu est ignoré) → `{lanes, nodes, edges}` pour la page d'évolution (`experiments.lineage.structure_history`) : pistes dans l'ordre de leur début puis du nom (une nouvelle piste vient en dernier) ; nœuds `{version_id, experiment_id, lane, version, label, change_level, title, created_at, author, is_tip, is_merge, structure_kind, has_process}` (`label` : « vX.Y ») - par défaut les versions structurelles, les fusions (combinaisons comprises) et le début de chaque piste, toutes avec `all_versions=true` ; arêtes `{parent, child, kind}` (`parent`, `fork` ou `merge` : vers une combinaison, depuis chacun de ses deux parents ; vers une fusion d'avant, depuis son second parent), à travers les versions masquées |
 | `GET /api/microprojets/{slug}/filiation` | `GET /api/microprojects/{mp}/lineage` (les nœuds portent `version_id` et `experiment_id` - et `id`, égal à `version_id`, que citent les `edges` ; plus de badge de lot : le front le compose avec `GET /api/lots?wafer=`). Vers une version à deux parents (une combinaison), une arête depuis le nœud de chacune des deux études : une pointe est toujours un nœud, et deux pistes parties d'un même point sans changer sa structure n'y sont pas confondues avec ce point |
 | `GET /api/microprojets/{slug}/graphe.html` | **supprimée**, ainsi que la page `/microprojets/{slug}/graphe` |
 | *(dans les listes de µprojets)* | `GET /api/experiment-stats?microproject=&area=` → `[{microproject, running, concluded, abandoned, wafers, role_source}]` |
@@ -1028,7 +1029,7 @@ locales d'avant).
 - **Numéro** (`service.next_number`) : la version est comparée à sa version parente par le
   versionnage des études (`experiments.service.structure_change_level`). La première est 1.0 ; un
   changement **majeur** (substrat, suite d'étapes) ouvre le majeur suivant **le plus grand pris** (un
-  majeur quand 2.0 existe : 3.0) ; un **mineur** ou un **correctif** (étiquettes, nom d'étape, unité
+  majeur quand 2.0 existe : 3.0) ; un **mineur** ou une **retouche** (étiquettes, nom d'étape, unité
   ajoutée seule) prend le mineur suivant le plus grand pris sous le majeur du parent (deux dérivations
   de 1.0 : 1.1 puis 1.2) ; aucun changement → 409. Les écritures des références passent une à une
   (`keyed_lock("references", "write")`), et `(reference_id, number_major, number_minor)` est unique :
@@ -1183,7 +1184,7 @@ Toutes nouvelles, réservées aux administrateurs (403 sinon).
 | areas | `/`, `/management/{slug}`, `/management/{slug}/thematiques/{thematique_slug}` |
 | atlas | `/management/{slug}/atlas` |
 | microprojects | `/microprojets/{slug}`, `/p/{code}` (redirection, **après** contrôle de session), `/projets/{rest:path}` (redirection héritée, 308) |
-| experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/evolution` (nouvelle : « Évolution des structures », diagramme des pistes, versions, refs locales et versions de référence ; liée depuis la page µprojet et la fiche), `/microprojets/{slug}/refs` (302 vers `/evolution`) |
+| experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/evolution` (nouvelle : « Évolution des structures », diagramme des pistes, versions et versions de référence ; liée depuis la page µprojet et la fiche), `/microprojets/{slug}/refs` (302 vers `/evolution`) |
 | references | `/references` (la liste des références de toute l'application ; entrée « Références » de la barre du haut), `/references/{slug}` (l'évolution d'une référence, `?version=1.1` : la version choisie) |
 | structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/structures/sans-structure`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image`, `/experiences/{experiment_id}/evoluer-sans-structure` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
 | process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
@@ -1415,9 +1416,7 @@ Supprimée : `/microprojets/{slug}/graphe`.
   - La fiche affiche « Issue de la référence X 1.1 » (lien vers sa page ; « référence inconnue »
     si `GET .../versions` répond 404 ou n'a pas ce numéro). La page d'évolution d'un µprojet lit
     `GET /api/reference-versions` puis `structure-history` avec ces versions en `include_versions`
-    (badges « R nom 1.1 », anneau or comme une ref) ; les refs locales restent montrées en
-    repères, renommer et retirer gardés, mais ne se posent plus (`experimentsApi.createRef` retiré
-    du client ; la route reste).
+    (badges « R nom 1.1 », anneau or) ; les refs locales n'y sont plus (2026-10-11).
   - `/bibliotheque` a une carte « Références de structure » qui renvoie vers `/references`.
 - Le vocabulaire d'une étude (types d'étape et leurs paramètres, décisions, résultats d'un objectif)
   est dans `experiments/static/vocabulary.js` (global `ExperimentVocabulary`), chargé par la fiche

@@ -82,10 +82,10 @@ def test_launch_an_experiment_with_several_pictures(client):
     assert client.get(detail["structure_images"][1]["url"]).status_code == 200
     assert detail["structure_svg"] is None and detail["is_batch"] is False and detail["has_editable_process"] is False
     assert detail["physical_tracking"] == [{"sample_id": "W7", "location": "boîte 3"}]
-    assert detail["ref_names"]  # la toute première expérience du µprojet devient sa première ref
+    assert "ref_names" not in detail  # les références sont les seules refs : plus de « ref v1.0 » posée au lancement
     # pas de procédé éditable : la fiche n'a rien à rouvrir dans le constructeur
     assert_handler_404(client.get(f"{experiment_url(slug, detail['id'])}/process"), "procédé éditable")
-    assert _structural_versions(client, slug, detail["id"]) == [("1.0.0", "initial")]
+    assert _structural_versions(client, slug, detail["id"]) == [("1.0", "initial")]
 
 
 def test_launch_requires_uploaded_images_and_an_intention(client):
@@ -160,8 +160,8 @@ def test_changing_the_pictures_keeps_the_structure_version_and_the_graph_node(cl
     assert first["structure_images"][0]["url"] == f"/api/microprojects/{slug}/attachments/{schema['image_id']}/content"
 
     history = versions(client, slug, line)
-    assert _structural_versions(client, slug, line) == [("1.0.0", "initial")]  # même structure, autres images
-    assert history[-1]["version"] == "1.0.0" and history[-1]["change_level"] == "none"
+    assert _structural_versions(client, slug, line) == [("1.0", "initial")]  # même structure, autres images
+    assert history[-1]["version"] == "1.0" and history[-1]["change_level"] == "none"
     assert [n["id"] for n in lineage(client, slug)["nodes"]] == [detail["version_id"]]
 
     # remettre les mêmes images : rien à enregistrer
@@ -190,7 +190,7 @@ def test_continue_with_new_pictures_is_a_new_structure_version(client):
     evolved = evolve_image(client, slug, launched["id"], pictures, title="Coupe TEM", intent="Puits plus épais")
     assert evolved["parents"] == [launched["version_id"]] and len(evolved["structure_images"]) == 2
     assert evolved["physical_tracking"] == [{"sample_id": "W7", "location": "boîte 3"}]  # repris de la version précédente
-    assert _structural_versions(client, slug, launched["id"]) == [("1.0.0", "initial"), ("2.0.0", "major")]
+    assert _structural_versions(client, slug, launched["id"]) == [("1.0", "initial"), ("2.0", "major")]
     graph = lineage(client, slug)
     assert {n["id"] for n in graph["nodes"]} == {launched["version_id"], evolved["version_id"]}
     assert graph["edges"] == [{"parent": launched["version_id"], "child": evolved["version_id"]}]
@@ -214,7 +214,7 @@ def test_switch_between_a_drawn_structure_and_pictures_both_ways(client):
         "Structure redessinée dans le constructeur (la version précédente était donnée en images)"
     ]
 
-    assert _structural_versions(client, slug, line) == [("1.0.0", "initial"), ("2.0.0", "major"), ("3.0.0", "major")]
+    assert _structural_versions(client, slug, line) == [("1.0", "initial"), ("2.0", "major"), ("3.0", "major")]
     # deux structures dessinées : pas de résumé, le diff habituel s'applique
     assert "summary" not in structure_diff(client, slug, line, against_version=drawn["version_id"])
 

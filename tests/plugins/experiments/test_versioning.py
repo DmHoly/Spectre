@@ -81,21 +81,21 @@ def _exp(id_, process=None):
 
 def test_branch_versions_progress_through_every_level():
     history = [
-        _exp("a", _process([deposition("Oxyde")])),  # initial -> 1.0.0
-        _exp("b", _process([deposition("Oxyde"), etch("Gravure")])),  # major -> 2.0.0
-        _exp("c", _process([deposition("Oxyde", thickness_nm=99), etch("Gravure")])),  # minor -> 2.1.0
-        _exp("d", _process([deposition("Oxyde renomme", thickness_nm=99), etch("Gravure")])),  # patch -> 2.1.1
-        _exp("e", _process([deposition("Oxyde renomme", thickness_nm=99), etch("Gravure")])),  # none -> 2.1.1
+        _exp("a", _process([deposition("Oxyde")])),  # initial -> 1.0
+        _exp("b", _process([deposition("Oxyde"), etch("Gravure")])),  # major -> 2.0
+        _exp("c", _process([deposition("Oxyde", thickness_nm=99), etch("Gravure")])),  # minor -> 2.1
+        _exp("d", _process([deposition("Oxyde renomme", thickness_nm=99), etch("Gravure")])),  # patch -> 2.1
+        _exp("e", _process([deposition("Oxyde renomme", thickness_nm=99), etch("Gravure")])),  # none -> 2.1
     ]
     versions = compute_branch_versions(history)
-    assert [versions[e.id]["version"] for e in history] == ["1.0.0", "2.0.0", "2.1.0", "2.1.1", "2.1.1"]
+    assert [versions[e.id]["version"] for e in history] == ["1.0", "2.0", "2.1", "2.1", "2.1"]
     assert [versions[e.id]["level"] for e in history] == ["initial", "major", "minor", "patch", "none"]
 
 
 def test_a_commit_with_no_process_metadata_never_bumps():
     history = [_exp("a", _process([deposition("Oxyde")])), _exp("b", None)]
     versions = compute_branch_versions(history)
-    assert versions["b"]["version"] == "1.0.0"
+    assert versions["b"]["version"] == "1.0"
     assert versions["b"]["level"] == "none"
 
 
@@ -109,7 +109,7 @@ def test_a_gap_with_no_process_does_not_reset_the_next_real_comparison():
     ]
     versions = compute_branch_versions(history)
     assert versions["c"]["level"] == "major"
-    assert versions["c"]["version"] == "2.0.0"
+    assert versions["c"]["version"] == "2.0"
 
 
 def test_a_pictured_structure_is_versioned_by_its_revision_not_its_image():
@@ -123,9 +123,9 @@ def test_a_pictured_structure_is_versioned_by_its_revision_not_its_image():
     ]
     versions = compute_branch_versions(history)
     assert [(versions[e.id]["version"], versions[e.id]["level"]) for e in history] == [
-        ("1.0.0", "initial"),
-        ("1.0.0", "none"),
-        ("2.0.0", "major"),
+        ("1.0", "initial"),
+        ("1.0", "none"),
+        ("2.0", "major"),
     ]
 
 
@@ -184,3 +184,24 @@ def test_changing_a_declared_parameter_is_minor():
     after = {**_process([deposition("PGaN")]), "declared_params": {"0": [{"name": "dopage", "value": 1e19, "obtention": {}}]}}
     assert classify_process_change(before, after) == "minor"
     assert classify_process_change(after, after) == "none"
+
+
+def test_two_levels_only_a_layer_is_major_a_setting_minor_a_retouche_keeps_the_number():
+    """X.Y (2026-10-11) : une étape ajoutée est un majeur, un paramètre déclaré ajouté puis réglé
+    sont des mineurs, un renommage (une retouche) garde le numéro - il n'y a plus de Z."""
+    declared = {"0": [{"name": "dopage", "value": 1e19, "obtention": {}}]}
+    history = [
+        _exp("a", _process([deposition("PGaN")])),
+        _exp("b", {**_process([deposition("PGaN")]), "declared_params": declared}),
+        _exp("c", {**_process([deposition("PGaN")]), "declared_params": {"0": [{**declared["0"][0], "value": 5e19}]}}),
+        _exp("d", {**_process([deposition("PGaN dopé")]), "declared_params": {"0": [{**declared["0"][0], "value": 5e19}]}}),
+        _exp("e", {**_process([deposition("PGaN dopé"), etch("Gravure")]), "declared_params": {"0": [{**declared["0"][0], "value": 5e19}]}}),
+    ]
+    versions = compute_branch_versions(history)
+    assert [(versions[e.id]["version"], versions[e.id]["level"]) for e in history] == [
+        ("1.0", "initial"),
+        ("1.1", "minor"),
+        ("1.2", "minor"),
+        ("1.2", "patch"),
+        ("2.0", "major"),
+    ]

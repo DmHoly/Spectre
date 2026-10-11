@@ -1,27 +1,27 @@
-"""A process/structure version number (X.Y.Z), computed on top of Follow's generic commit chain
+"""A process/structure version number (X.Y), computed on top of Follow's generic commit chain
 - not a new storage concept, purely derived from ``Experiment.metadata["structureforge_process"]``
 (see :mod:`spectre.plugins.structures.simulation`) at read time. This is deliberately Spectre-side, not
 ``follow``'s: Follow's own versioning (a commit per mutation, `evolution légère`) already treats
 every field the same way on purpose, since it has no notion of what "structural" even means for
-an arbitrary domain. What counts as a major/minor/patch change here is specific to a StructureForge
+an arbitrary domain. What counts as a major/minor change here is specific to a StructureForge
 process (a substrate + an ordered list of ``structureforge.process.steps.ProcessStep``), so it
 lives here instead.
 
-Rules, from the coarsest to the finest-grained:
+Rules, from the coarsest to the finest-grained (décidées le 2026-10-11 : deux niveaux, X.Y) :
 
-- **major (X)** - the substrate changed, or the step list's *shape* changed (a step was added,
-  removed, or reordered - detected as the sequence of step ``kind``s no longer matching).
-- **minor (Y)** - the step list has the same shape, but at least one field other than a step's
-  ``name`` differs (a material, a recipe, a thickness, an orientation...) - anything that can
-  actually change the simulated geometry.
-- **patch (Z)** - the only difference is a step's ``name`` - a label with zero effect on the
-  simulation (see ``structureforge.process.simulate._apply``, which never reads ``name``) -, the
-  unit of a declared parameter written down or removed (not replaced by another one: that changes
-  the value, a minor change), or the layer labels drawn beside the structure
-  (``process_layer_labels``, see :class:`spectre.plugins.structures.simulation.LayerLabel`) and
-  their grouping by brick (``process_bricks``, only as far as it groups labels), which never touch
-  the process. The bricks of a process alone change nothing: a version that only regroups
-  unlabelled steps is ``none``.
+- **major (X)** - the substrate changed, or the step list's *shape* changed (a step - a layer -
+  was added, removed, or reordered - detected as the sequence of step ``kind``s no longer matching).
+- **minor (Y)** - the step list has the same shape, but at least one setting differs: a field of a
+  step other than its ``name`` (a material, a recipe, a thickness, an orientation...) or a declared
+  parameter (one added or removed, a value, how it is obtained, a unit replaced by another).
+- **patch** - a retouche, which takes no number of its own (the version keeps its X.Y): the only
+  difference is a step's ``name`` - a label with zero effect on the simulation (see
+  ``structureforge.process.simulate._apply``, which never reads ``name``) -, the unit of a declared
+  parameter written down or removed (not replaced by another one: that changes the value, a minor
+  change), or the layer labels drawn beside the structure (``process_layer_labels``, see
+  :class:`spectre.plugins.structures.simulation.LayerLabel`) and their grouping by brick
+  (``process_bricks``, only as far as it groups labels), which never touch the process. The bricks
+  of a process alone change nothing: a version that only regroups unlabelled steps is ``none``.
 - **none** - the process is byte-identical; whatever changed on this commit (a tag, a title, a
   piece of evidence...) isn't a process/structure change at all.
 
@@ -190,33 +190,33 @@ def structural_versions(history: list[Any]) -> list[Any]:
     return [exp for exp in history if levels[exp.id]["level"] != "none"]
 
 
-def _bump(version: tuple[int, int, int], level: ChangeLevel) -> tuple[int, int, int]:
-    x, y, z = version
-    if level in ("initial", "major"):
-        return (x + 1, 0, 0) if level == "major" else (1, 0, 0)
+def _bump(version: tuple[int, int], level: ChangeLevel) -> tuple[int, int]:
+    x, y = version
+    if level == "initial":
+        return (1, 0)
+    if level == "major":
+        return (x + 1, 0)
     if level == "minor":
-        return (x, y + 1, 0)
-    if level == "patch":
-        return (x, y, z + 1)
-    return version  # "none"
+        return (x, y + 1)
+    return version  # "patch" (une retouche) ou "none"
 
 
 def compute_branch_versions(history: list[Any]) -> dict[str, dict[str, Any]]:
     """Assign a version to every experiment in ``history`` (oldest first - e.g.
     ``reversed(repo.log(ref))``), one linear lineage at a time. Returns
-    ``{experiment_id: {"version": "X.Y.Z", "level": ChangeLevel}}`` for *every* entry, including
-    the ones that didn't bump anything (``level="none"``) - those simply keep the version their
-    predecessor already had, which is exactly what lets a caller show "this evidence was added
-    while at v1.2.0" in the full history without it being its own version.
+    ``{experiment_id: {"version": "X.Y", "level": ChangeLevel}}`` for *every* entry, including
+    the ones that didn't bump anything (``level`` ``patch`` or ``none``) - those simply keep the
+    version their predecessor already had, which is exactly what lets a caller show "this evidence
+    was added while at v1.2" in the full history without it being its own version.
     """
     out: dict[str, dict[str, Any]] = {}
-    version = (0, 0, 0)
+    version = (0, 0)
     previous_process: dict[str, Any] | None = None
     for exp in history:
         process = structure_signature(exp.metadata)
         level = classify_process_change(previous_process, process) if process is not None else "none"
         version = _bump(version, level)
-        out[exp.id] = {"version": "{}.{}.{}".format(*version), "level": level}
+        out[exp.id] = {"version": "{}.{}".format(*version), "level": level}
         if process is not None:
             previous_process = process
     return out

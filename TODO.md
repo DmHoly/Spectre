@@ -13,6 +13,20 @@ nouvelle étude) sont livrés, serveur et interface, ainsi que tout le 3 ter (an
 image, étiquettes de couches) : voir
 « Fait ».
 
+### Une seule sorte de ref, version X.Y (2026-10-11)
+
+Demandé le 2026-10-11 : le double affichage « ref v1.0.0 » (or) et « R Ref. mocvd 1.0 » prêtait à
+confusion ; un seul système de ref, celui qu'on déclare, et l'évolution de la structure qui n'est
+pas une ref ; plus de Z.
+
+- [x] **Refs locales retirées** : plus de « ref v1.0.0 » posée au premier lancement, plus de routes
+      `…/refs`, ni de badges, ni de « Suivre cette ref » sur l'évolution ; les étiquettes déjà dans
+      les dépôts restent sur disque (regroupement des noms partagés, `local_refs.py`). La démo
+      publie ses points de départ comme références.
+- [x] **Numéro X.Y** : majeur si une étape (une couche) est ajoutée, retirée, déplacée, ou le
+      substrat change ; mineur si un paramètre change, déclaré ou non, un paramètre déclaré ajouté
+      compris ; un nom d'étape, une unité écrite seule, une étiquette : retouche, même numéro.
+
 ### 3 ter. Images et structure
 
 Demandé le 2026-10-04 : « toute image devrait avoir ses annotations possibles » ; et, le même
