@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from support.accounts import login
@@ -316,6 +317,7 @@ def test_the_old_rule_keeps_references_whose_microprojects_were_deleted(client):
 # -- la démo -------------------------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_the_demo_publishes_its_references_without_local_refs(data_dir):
     env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), os.environ.get("PYTHONPATH", "")]), "PYTHONIOENCODING": "utf-8"}
     subprocess.run(

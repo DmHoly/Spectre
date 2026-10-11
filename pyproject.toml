@@ -41,6 +41,7 @@ packages = ["spectre"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: un test de plus de dix secondes (la démo, lancée en sous-processus) - `pytest -m 'not slow'` pour une passe rapide"]
 
 [tool.coverage.run]
 source = ["spectre"]

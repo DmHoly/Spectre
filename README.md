@@ -410,6 +410,7 @@ documentation de l'application. Le schéma brut reste servi par FastAPI sur `/op
 ```bash
 pip install -e ".[dev]"
 pytest                                   # ou : pytest -q -p no:warnings
+pytest -m 'not slow'                     # sans le test de la démo (sous-processus, ~30 s)
 pytest --cov --cov-report=term-missing   # couverture (pytest-cov)
 ```
 
