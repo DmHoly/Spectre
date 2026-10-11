@@ -283,3 +283,18 @@ function brickStatusMark(groupId) {
   if (status.state === "outdated") return ` · v${status.brick.version} disponible`;
   return "";
 }
+
+// ?assemblage=<id>,<id>,... : une nouvelle expérience ouverte depuis la page des macro-étapes, ses
+// briques posées dans l'ordre de l'assemblage (une inconnue, ou sans rôle, est ignorée).
+async function loadAssembly() {
+  const raw = queryParams.get("assemblage");
+  if (!raw || isLibraryMode || isBrickMode || isPresetMode || evolveExperienceId) return;
+  const bricks = raw
+    .split(",")
+    .map((id) => findBrickEntry(id.trim()))
+    .filter((b) => b && BRICK_ROLE_ORDER.includes(b.role))
+    .sort((a, b) => BRICK_ROLE_ORDER.indexOf(a.role) - BRICK_ROLE_ORDER.indexOf(b.role));
+  bricks.forEach((brick) => assembleBrick(brick.role, brick));
+  state.selectedBrickGroup = null;
+  state.selectedIndex = state.steps.length - 1;
+}

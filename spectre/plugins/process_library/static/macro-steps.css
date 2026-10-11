@@ -1,0 +1,167 @@
+/* Page des macro-étapes (macro-steps.js) : la barre d'assemblage, puis une colonne par rôle
+   (gabarit SAG, épitaxie, procédé), une carte par brique avec son aperçu simulé. Les pastilles de
+   rôle (.sb-brick__tag--sag/epi/process) viennent de structures.css. */
+
+.sp-macro__intro {
+  max-width: 78ch;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+
+.sp-macro__assemble {
+  margin-bottom: 22px;
+}
+.sp-macro__assemble-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin-bottom: 12px;
+}
+.sp-macro__assemble-head .section-title {
+  margin: 0;
+}
+.sp-macro__assemble-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: center;
+  gap: 10px;
+}
+.sp-macro__slot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.sp-macro__open {
+  white-space: nowrap;
+}
+
+.sp-macro__cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.sp-macro__col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.sp-macro__col-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--gold);
+}
+.sp-macro__col-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--navy);
+}
+.sp-macro__count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.sp-macro__new {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.sp-macro__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sp-macro__empty {
+  margin: 4px 0 0;
+}
+
+.sp-macro__card {
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+}
+.sp-macro__art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  padding: 8px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-soft);
+}
+.sp-macro__art > svg {
+  width: 100%;
+  height: 100%;
+}
+.sp-macro__art.is-failed {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.sp-macro__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px 12px;
+}
+.sp-macro__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.sp-macro__meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.sp-macro__on {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.sp-macro__on span {
+  font-weight: 600;
+}
+.sp-macro__on em {
+  color: var(--text-faint);
+}
+.sp-macro__notes {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+.sp-macro__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.sp-macro__actions .btn {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.sp-macro__remove {
+  color: var(--danger);
+}
+
+@media (max-width: 960px) {
+  .sp-macro__assemble-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sp-macro__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

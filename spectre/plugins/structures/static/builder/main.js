@@ -66,6 +66,7 @@ async function init() {
     await loadStartPlace();
     await loadComposition();
     await loadChosenStructureForExperience();
+    await loadAssembly();
     await loadPlan();
   }
   // Tout ce qui est chargé programmatiquement (structure existante, modèle, brique...) constitue le

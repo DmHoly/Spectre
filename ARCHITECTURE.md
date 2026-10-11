@@ -664,6 +664,13 @@ gabarit, le même procédé sur une autre épi.
   apporte son substrat, le nombre de fils vus gardé. Cliquer ou glisser une brique à rôle depuis la
   liste fait de même. « Grouper en brique » propose les rôles que la structure n'a pas encore. Le
   flow écrit le rôle à la place de « Brique ».
+- **Page des macro-étapes** (`/microprojets/{slug}/macro-etapes`, `process_library/static/macro-steps.js`,
+  carte de la Bibliothèque et lien de la page des briques) : une colonne par rôle, une carte par brique
+  (aperçu simulé sur son contexte : ses `preview_on`, sinon la première brique de chaque rôle d'avant,
+  écrite en italique ; version, portée, pas du réseau ; Modifier, Dupliquer, Assembler, Supprimer).
+  « + Nouveau » ouvre le mode brique au rôle choisi (`?role=`), qui revient sur la page. La barre
+  « Assembler une structure » ouvre une nouvelle expérience déjà assemblée
+  (`/structures/nouvelle?assemblage=<id>,<id>,…`, `assembly.loadAssembly`).
 - **Mode brique** : un sélecteur de rôle. Une épi (un procédé) se compose sur les macro-étapes
   d'avant, posées depuis l'assemblage : elles ne servent qu'à l'aperçu. À l'enregistrement, seules
   les étapes de la brique sont gardées (pas celles d'une macro-étape d'un autre rôle) : la recette
@@ -1187,7 +1194,7 @@ Toutes nouvelles, réservées aux administrateurs (403 sinon).
 | experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/evolution` (nouvelle : « Évolution des structures », diagramme des pistes, versions et versions de référence ; liée depuis la page µprojet et la fiche), `/microprojets/{slug}/refs` (302 vers `/evolution`) |
 | references | `/references` (la liste des références de toute l'application ; entrée « Références » de la barre du haut), `/references/{slug}` (l'évolution d'une référence, `?version=1.1` : la version choisie) |
 | structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/structures/sans-structure`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image`, `/experiences/{experiment_id}/evoluer-sans-structure` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
-| process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
+| process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques`, `/microprojets/{slug}/macro-etapes` |
 | intent_forms | `/microprojets/{slug}/formulaire-intention` |
 | wafers | `/plaques/{lasermark}` |
 | lots | `/lots`, `/lots/{code}` |

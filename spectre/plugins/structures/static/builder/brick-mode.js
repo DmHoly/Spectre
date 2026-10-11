@@ -80,7 +80,8 @@ async function saveTechBrick(forceNew) {
     } else {
       await processLibraryApi.createTechBrick(payload);
     }
-    window.location.href = returnTo === "bibliotheque" ? "/bibliotheque" : `/microprojets/${slug}/briques-technologiques`;
+    window.location.href =
+      returnTo === "bibliotheque" ? "/bibliotheque" : returnTo === "macro-etapes" || role ? `/microprojets/${slug}/macro-etapes` : `/microprojets/${slug}/briques-technologiques`;
   } catch (err) {
     showError(err);
   }
@@ -95,6 +96,15 @@ async function initBrickMode() {
   if (queryParams.get("partagee") === "1") document.getElementById("brick-shared-checkbox").checked = true;
 
   if (!brickId) {
+    // ?role=sag|epi|process : une nouvelle macro-étape (page des macro-étapes, « + Nouveau »)
+    const role = queryParams.get("role");
+    if (BRICK_ROLE_ORDER.includes(role)) {
+      document.getElementById("brick-role").value = role;
+      syncBrickRoleNote();
+      setPageTitle(`Nouvelle macro-étape · ${brickRoleLabel(role)}`);
+      document.getElementById("brick-name").focus();
+      return;
+    }
     setPageTitle("Nouvelle brique technologique");
     document.getElementById("brick-name").focus();
     return;

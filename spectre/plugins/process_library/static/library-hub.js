@@ -158,6 +158,8 @@ function applyMicroproject(microproject) {
   set("new-structure-link", `/microprojets/${s}/structures/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
   set("presets-link", `/microprojets/${s}/presets-etapes?partagee=1`);
   set("new-brick-link", `/microprojets/${s}/briques-technologiques/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
+  set("bricks-link", `/microprojets/${s}/briques-technologiques`);
+  set("macro-steps-link", `/microprojets/${s}/macro-etapes`);
 }
 
 async function initWorkMicroproject() {

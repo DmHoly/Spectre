@@ -86,6 +86,7 @@ async function init() {
     state.currentRole = microproject.role;
     document.getElementById("crumb").textContent = "/ " + microproject.name;
     document.getElementById("back-link").href = "/bibliotheque";
+    document.getElementById("macro-steps-link").href = `/microprojets/${encodeURIComponent(slug)}/macro-etapes`;
     document.getElementById("new-brick-link").href = `/microprojets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/nouvelle`;
     if (!(state.currentRole === "editor" || state.currentRole === "owner")) {
       document.getElementById("new-brick-link").style.display = "none";

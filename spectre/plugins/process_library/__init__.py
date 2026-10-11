@@ -14,6 +14,7 @@ PLUGIN = Plugin(
         Page("/bibliotheque", "library-hub.html"),
         Page("/microprojets/{slug}/presets-etapes", "step-presets.html"),
         Page("/microprojets/{slug}/briques-technologiques", "tech-bricks.html"),
+        Page("/microprojets/{slug}/macro-etapes", "macro-steps.html"),
     ),
     nav=(NavEntry("Bibliothèque", "/bibliotheque", order=20, match=r"^/bibliotheque"),),
     migrations=MIGRATIONS,
