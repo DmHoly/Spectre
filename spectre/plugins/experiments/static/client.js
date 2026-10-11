@@ -41,16 +41,6 @@ const experimentsApi = {
       })
     );
   },
-  // params : {version, against_version, against_experiment, against_microproject} - sans cible, la
-  // version de structure précédente
-  structureDiff(microprojectSlug, experimentId, params) {
-    return api.get(
-      api.withQuery(
-        `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/structure-diff`,
-        params
-      )
-    );
-  },
   // les variantes d'une campagne (structures en SVG, libellés, facteurs)
   variants(microprojectSlug, experimentId, version) {
     return api.get(

@@ -4,7 +4,8 @@
    d'un µprojet), le µprojet source et les usages de chaque version, les rattachements déduits à
    l'import des refs locales (trait pointillé) ; le panneau d'une version : sa structure étiquetée
    (le SVG du serveur), son auteur, sa date, sa note, sa source (un lien pour un membre du µprojet
-   source), ses usages repliables, la comparer à une autre version, « Partir de cette version »
+   source), ses usages repliables, la comparer à une autre version (le tableau du comparateur, sous
+   le diagramme), « Partir de cette version »
    (start-picker.js : le µprojet où lancer l'étude) ; renommer, décrire, retirer pour son créateur ou
    un admin (can_edit, calculé par le serveur). ?version=1.1 choisit une version. */
 
@@ -305,15 +306,37 @@
       </div>`;
   }
 
+  // La comparaison de deux versions : son tableau (plugin comparator) sous le diagramme, son résumé
+  // dans le panneau.
   function diffHtml() {
     const diff = state.diff;
     if (!diff || diff.to !== state.selected) return "";
+    const summary = Comparator.summaryText(diff.result.summary);
     return `
       <div class="evo-panel__section">
         <div class="section-title">Comparaison ${escapeHtml(diff.from)} → ${escapeHtml(diff.to)}</div>
-        <div class="evo-diff">${EvolutionGraph.diffBodyHtml(diff.result)}</div>
+        <p class="evo-diff__summary">${escapeHtml(summary || "Aucune différence de paramètre.")}</p>
+        <button class="btn btn-line js-show-comparison" type="button">Voir le tableau</button>
       </div>`;
   }
+
+  const comparisonSection = document.getElementById("comparison-section");
+  let comparisonTable = null;
+
+  function renderComparison() {
+    const diff = state.diff;
+    comparisonSection.hidden = !diff;
+    if (!diff) return;
+    document.getElementById("comparison-title").textContent = `Comparaison ${diff.from} → ${diff.to}`;
+    document.getElementById("comparison-open").href = Comparator.pageUrl(diff.items);
+    if (comparisonTable) comparisonTable.update(diff.result);
+    else comparisonTable = Comparator.mount(document.getElementById("comparison"), diff.result);
+  }
+
+  document.getElementById("comparison-close").addEventListener("click", () => {
+    state.diff = null;
+    render();
+  });
 
   function renderPanel() {
     const node = nodeOf(state.selected);
@@ -348,6 +371,7 @@
     renderGraph();
     renderBanner();
     renderPanel();
+    renderComparison();
   }
 
   // -- actions -------------------------------------------------------------------------------
@@ -362,8 +386,10 @@
 
   async function compare(from, to) {
     try {
-      const result = await referencesApi.versionDiff(slug, to, from);
-      state.diff = { from, to, result };
+      // la version de départ est la base (la première ligne)
+      const items = [Comparator.referenceItem(slug, from), Comparator.referenceItem(slug, to)];
+      const result = await comparatorApi.compare(items, 0);
+      state.diff = { from, to, items, result };
     } catch (err) {
       state.panelError = err.message || String(err);
     }
@@ -416,7 +442,10 @@
       const edge = state.graph.edges.find((e) => e.child === node.number);
       if (!edge) return;
       await compare(edge.parent, node.number);
-      renderPanel();
+      render();
+    } else if (target.classList.contains("js-show-comparison")) {
+      comparisonSection.scrollIntoView({ block: "start", behavior: "smooth" });
+      document.getElementById("comparison-title").focus({ preventScroll: true });
     } else if (target.classList.contains("js-enlarge")) {
       // en grand, pour zoomer sur ses détails (structure-zoom.js)
       const detail = state.details[node.number];

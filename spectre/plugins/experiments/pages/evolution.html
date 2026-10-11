@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/static/experiments/experiments.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="stylesheet" href="/static/references/references.css">
+  <link rel="stylesheet" href="/static/comparator/comparator.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -77,6 +78,17 @@
         <p class="help">Choisissez une version dans le diagramme (clic, ou flèches puis Entrée) pour voir son détail, la comparer, la publier comme référence ou partir d'elle.</p>
       </aside>
     </div>
+
+    <section class="card card-pad cmp-section" id="comparison-section" aria-labelledby="comparison-title" hidden>
+      <div class="cmp-section__head">
+        <h2 class="cmp-section__title" id="comparison-title" tabindex="-1">Comparaison</h2>
+        <div class="cmp-section__actions">
+          <a class="btn btn-line" id="comparison-open" href="/comparateur">Ouvrir dans le comparateur</a>
+          <button class="btn btn-line" type="button" id="comparison-close">Fermer</button>
+        </div>
+      </div>
+      <div id="comparison"></div>
+    </section>
   </div>
 
   <script src="/static/kernel/api.js"></script>
@@ -90,6 +102,8 @@
   <script src="/static/microprojects/client.js"></script>
   <script src="/static/experiments/client.js"></script>
   <script src="/static/references/client.js"></script>
+  <script src="/static/comparator/client.js"></script>
+  <script src="/static/comparator/comparator-table.js"></script>
   <script src="/static/structures/structure-images.js"></script>
   <script src="/static/structures/structure-zoom.js"></script>
   <script src="/static/references/publish-dialog.js"></script>

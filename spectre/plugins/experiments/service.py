@@ -138,6 +138,12 @@ def version_of(repo: follow.Repository, experiment_id: str, version_id: str | No
     raise NotFound(f"Version « {version_id} » introuvable sur cette piste.", code="version_not_found")
 
 
+def version_number(repo: follow.Repository, version: follow.Experiment) -> str:
+    """Le numéro X.Y de ``version``, le long de son histoire de premiers parents
+    (:func:`versioning.compute_branch_versions`) - celui de la frise et de l'évolution."""
+    return versioning.compute_branch_versions(list(reversed(repo.log(version.id))))[version.id]["version"]
+
+
 def experiment_of_version(repo: follow.Repository, version_id: str) -> str:
     """La piste d'une version (un ancien lien vers un id de version) : celle sur laquelle elle a été
     enregistrée, ou à défaut une piste dont l'histoire la contient."""

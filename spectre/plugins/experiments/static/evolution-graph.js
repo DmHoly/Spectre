@@ -4,8 +4,8 @@
    (references/static/reference.js : versions de référence 1.0, 1.1, 2.0...). Il ne connaît ni l'une
    ni l'autre : il reçoit des nœuds déjà rangés (`lane`, l'ordre des rangées), des arêtes déjà
    résolues, et dessine ; chaque page écrit ses rangées (le texte) et son panneau. Il porte aussi
-   ce que les deux pages font pareil : la liste des rangées au clavier (`bindListbox`) et le corps
-   d'une comparaison de structures (`diffBodyHtml`).
+   ce que les deux pages font pareil : la liste des rangées au clavier (`bindListbox`). Une
+   comparaison de deux versions est le tableau du comparateur (comparator/static/comparator-table.js).
 
    Forme d'un nœud = niveau du changement (plein : première ou majeur ; anneau : mineur ; petit
    point : retouche, sans nouveau numéro ; petit cercle creux : sans changement ; losange :
@@ -129,27 +129,5 @@ const EvolutionGraph = (() => {
     });
   }
 
-  // Le corps d'une comparaison de structures (la réponse d'un structure-diff : `summary` ou
-  // `entries`, puis à part les étapes renommées, les paramètres déclarés et les étiquettes de couches).
-  function diffBodyHtml(result) {
-    let body;
-    if (result.summary) body = result.summary.map((line) => `<div>${escapeHtml(line)}</div>`).join("") || "<div>Aucune différence de structure.</div>";
-    else if (!result.entries.length) body = "<div>Aucune différence de structure.</div>";
-    else {
-      const n = result.entries.length;
-      body =
-        `<div style="font-family:var(--font-ui);font-weight:600;color:var(--abandoned);">${n} paramètre${n > 1 ? "s" : ""} modifié${n > 1 ? "s" : ""}</div>` +
-        result.entries.map((e) => `<div>${escapeHtml(e.path)} : ${escapeHtml(JSON.stringify(e.before))} → ${escapeHtml(JSON.stringify(e.after))}</div>`).join("");
-    }
-    [
-      ["Étapes", result.step_changes || []],
-      ["Paramètres", result.param_changes || []],
-      ["Étiquettes", result.label_changes || []],
-    ].forEach(([key, changes]) => {
-      if (changes.length) body += `<div class="evo-diff__labels"><strong>${key} :</strong> ${changes.map((c) => escapeHtml(c.line)).join(" ; ")}</div>`;
-    });
-    return body;
-  }
-
-  return { ROW, laneX, width, nodeShape, draw, laneTagsHtml, legendHtml, bindListbox, diffBodyHtml };
+  return { ROW, laneX, width, nodeShape, draw, laneTagsHtml, legendHtml, bindListbox };
 })();

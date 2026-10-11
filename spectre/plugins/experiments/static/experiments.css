@@ -1523,33 +1523,11 @@ a.plate-row__lasermark {
 .evo-actions .btn {
   justify-content: flex-start;
 }
-.evo-diff {
-  max-height: 260px;
-  overflow-y: auto;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+/* le résumé d'une comparaison dans le panneau ; son tableau est sous le diagramme (comparator) */
+.evo-diff__summary {
+  margin: 0 0 8px;
+  font-size: 13px;
   color: var(--text-soft);
-}
-.evo-diff div {
-  padding: 2px 0;
-  overflow-wrap: anywhere;
-}
-/* les étiquettes de couches (structure-diff : label_changes), à part de la structure */
-.evo-diff .evo-diff__labels {
-  margin-top: 4px;
-  font-family: var(--font-ui);
-  font-size: 12.5px;
-}
-.evo-diff__labels strong,
-.fiche-diff-labels__key {
-  font-weight: 600;
-  color: var(--text);
-}
-.fiche-diff-labels {
-  padding: 2px 0;
-  font-size: 12.5px;
-  color: var(--text-soft);
-  overflow-wrap: anywhere;
 }
 
 /* La conclusion cite des entrées du cahier (conclusion.js) : leurs titres sous un verdict, des cases

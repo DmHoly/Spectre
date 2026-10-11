@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comparateur — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/comparator/comparator.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Comparateur" -->
+
+  <div class="page">
+    <header class="cmp-page-head">
+      <div>
+        <div class="page-eyebrow">Toute l'application</div>
+        <h1>Comparer des structures</h1>
+        <p class="cmp-page-lead">
+          Une ligne par plaque ou par structure, une colonne par paramètre, étape par étape. La ligne de base (la
+          première, ou celle que vous choisissez) sert de repère : chaque différence avec elle est en couleur. Une
+          plaque montre la structure de la dernière étude qui la suit ; une campagne ajoute une ligne par variante.
+        </p>
+      </div>
+      <div class="cmp-page-actions">
+        <button class="btn btn-line" type="button" id="copy-link" hidden>Copier le lien</button>
+        <button class="btn btn-line" type="button" id="clear" hidden>Tout retirer</button>
+      </div>
+    </header>
+
+    <section class="card card-pad cmp-picker" aria-labelledby="picker-label">
+      <label id="picker-label" for="picker-input">Ajouter une plaque, une étude ou une référence</label>
+      <div class="cmp-picker__row">
+        <input class="field" id="picker-input" type="search" autocomplete="off" spellcheck="false" maxlength="80"
+               placeholder="Lasermark, titre d'étude ou nom de référence"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="picker-options">
+      </div>
+      <ul class="cmp-options" id="picker-options" role="listbox" aria-label="Suggestions" hidden></ul>
+      <p class="help" style="margin:8px 0 0;">Flèches pour parcourir les suggestions, Entrée pour ajouter. Une étude ajoutée est sa dernière version.</p>
+    </section>
+
+    <div id="error" class="error" role="alert" hidden style="margin-bottom:16px;"></div>
+
+    <section class="card card-pad" aria-labelledby="table-title">
+      <h2 id="table-title" class="cmp-sr">Tableau de comparaison</h2>
+      <div id="comparison"></div>
+    </section>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/comparator/client.js"></script>
+  <script src="/static/comparator/comparator-table.js"></script>
+  <script src="/static/comparator/comparator.js"></script>
+</body>
+</html>

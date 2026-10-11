@@ -3,12 +3,13 @@ par FDL, politique de visibilité ; les plaques que contient une FDL (:mod:`.fdl
 
 from ...kernel.plugin import Page, Plugin
 from . import search_provider  # noqa: F401 - déclare les plaques et les FDL à la recherche
+from . import comparison_source  # noqa: F401 - déclare les plaques au comparateur
 from .api import router
 from .migrations import MIGRATIONS
 
 PLUGIN = Plugin(
     name="wafers",
-    depends_on=("experiments", "search"),
+    depends_on=("experiments", "search", "comparator"),
     router=router,
     migrations=MIGRATIONS,
     pages=(Page("/plaques/{lasermark}", "wafer.html"),),

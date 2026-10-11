@@ -4,7 +4,7 @@
    fusion d'avant, sur la piste de son premier parent) -, et le panneau d'une version : les
    versions de référence publiées depuis elle (badges « R nom 1.1 », referencesApi.publishedFrom ; une version publiée qui serait masquée
    est demandée en plus, include_versions), « Publier comme référence »
-   (references/static/publish-dialog.js), la comparer à une autre (structure-diff), partir d'elle
+   (references/static/publish-dialog.js), la comparer à une autre (le tableau du comparateur, sous le diagramme), partir d'elle
    (l'éditeur sur ?version=, une nouvelle piste), voir sa structure (étiquettes de couches comprises, agrandie au clic ; une structure en images : sa
    première image, annotations comprises). Le dessin est celui d'evolution-graph.js, partagé avec la
    page d'une référence. Le serveur donne tout ce qui est dessiné : numéros, niveaux, pistes, arêtes ;
@@ -215,19 +215,43 @@
 
   // -- le panneau ----------------------------------------------------------------------------
 
+  // La comparaison de deux versions : son tableau (plugin comparator) sous le diagramme - une colonne
+  // par paramètre ne tient pas dans le panneau, qui n'en dit que le résumé.
+  function diffTitle(diff) {
+    const from = nodeById(diff.fromId);
+    const to = nodeById(diff.toId);
+    return `${from ? from.label : "?"} → ${to ? to.label : "?"}`;
+  }
+
   function diffHtml() {
     const diff = state.diff;
     if (!diff || diff.toId !== state.selectedId) return "";
-    const from = nodeById(diff.fromId);
-    const to = nodeById(diff.toId);
-    const title = `${escapeHtml(from ? from.label : "?")} → ${escapeHtml(to ? to.label : "?")}`;
-    const body = EvolutionGraph.diffBodyHtml(diff.result);
+    const summary = Comparator.summaryText(diff.result.summary);
     return `
       <div class="evo-panel__section">
-        <div class="section-title">Comparaison ${title}</div>
-        <div class="evo-diff">${body}</div>
+        <div class="section-title">Comparaison ${escapeHtml(diffTitle(diff))}</div>
+        <p class="evo-diff__summary">${escapeHtml(summary || "Aucune différence de paramètre.")}</p>
+        <button class="btn btn-line js-show-comparison" type="button">Voir le tableau</button>
       </div>`;
   }
+
+  const comparisonSection = document.getElementById("comparison-section");
+  let comparisonTable = null;
+
+  function renderComparison() {
+    const diff = state.diff;
+    comparisonSection.hidden = !diff;
+    if (!diff) return;
+    document.getElementById("comparison-title").textContent = `Comparaison ${diffTitle(diff)}`;
+    document.getElementById("comparison-open").href = Comparator.pageUrl(diff.items);
+    if (comparisonTable) comparisonTable.update(diff.result);
+    else comparisonTable = Comparator.mount(document.getElementById("comparison"), diff.result);
+  }
+
+  document.getElementById("comparison-close").addEventListener("click", () => {
+    state.diff = null;
+    render();
+  });
 
   // Les versions de référence publiées depuis cette version, et « Publier comme référence » (une
   // structure dessinée seulement : ni des images, ni une campagne).
@@ -315,6 +339,7 @@
     renderGraph();
     renderBanner();
     renderPanel();
+    renderComparison();
   }
 
   // -- actions -------------------------------------------------------------------------------
@@ -340,12 +365,10 @@
       state.compareFrom = null;
       state.selectedId = id;
       try {
-        const result = await experimentsApi.structureDiff(slug, node.experiment_id, {
-          version: node.version_id,
-          against_experiment: from.experiment_id,
-          against_version: from.version_id,
-        });
-        state.diff = { fromId: from.version_id, toId: id, result };
+        // la version de départ est la base (la première ligne)
+        const items = [Comparator.studyItem(slug, from.experiment_id, from.version_id), Comparator.studyItem(slug, node.experiment_id, node.version_id)];
+        const result = await comparatorApi.compare(items, 0);
+        state.diff = { fromId: from.version_id, toId: id, items, result };
       } catch (err) {
         state.panelError = err.message || String(err);
       }
@@ -385,6 +408,9 @@
       document.getElementById(`row-${node.version_id}`)?.focus();
     } else if (target.classList.contains("js-publish")) {
       openPublish(node);
+    } else if (target.classList.contains("js-show-comparison")) {
+      comparisonSection.scrollIntoView({ block: "start", behavior: "smooth" });
+      document.getElementById("comparison-title").focus({ preventScroll: true });
     }
   });
 
