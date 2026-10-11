@@ -9,8 +9,11 @@ lives here instead.
 
 Rules, from the coarsest to the finest-grained (décidées le 2026-10-11 : deux niveaux, X.Y) :
 
-- **major (X)** - the substrate changed, or the step list's *shape* changed (a step - a layer -
-  was added, removed, or reordered - detected as the sequence of step ``kind``s no longer matching).
+- **major (X)** - the substrate changed, or a step - a layer - was added, removed, moved or
+  replaced: the sequence of step ``kind``s no longer matches, or, between two versions that share
+  at least one step id (``process_step_ids``, :func:`step_ids_in`), a shared id changed place or
+  an id came or went while the shape stayed (two depositions swapped, a layer replaced by another
+  of the same kind). Without a shared id (two studies launched apart), the shape alone decides.
 - **minor (Y)** - the step list has the same shape, but at least one setting differs: a field of a
   step other than its ``name`` (a material, a recipe, a thickness, an orientation...) or a declared
   parameter (one added or removed, a value, how it is obtained, a unit replaced by another).
@@ -45,6 +48,7 @@ from ..structures.simulation import (
     BRICKS_METADATA_KEY,
     LAYER_LABELS_METADATA_KEY,
     MIN_GROUPED_LABELS,
+    STEP_IDS_METADATA_KEY,
     label_without_place,
     split_declared_unit,
     view_neutral_process,
@@ -54,6 +58,29 @@ ChangeLevel = Literal["initial", "major", "minor", "patch", "none"]
 
 def _step_shape(steps: list[dict]) -> list[str]:
     return [step.get("kind") for step in steps]
+
+
+def step_ids_in(metadata: dict[str, Any]) -> list[str] | None:
+    """Les ids d'étape qu'une version a enregistrés (``process_step_ids``), ``None`` pour une version
+    d'avant les ids - le versionnage ne les dérive pas (:func:`spectre.plugins.experiments.service.step_ids_of`
+    le fait pour la lecture) : sans ids des deux côtés, les étapes se comparent par leur suite de
+    types."""
+    ids = metadata.get(STEP_IDS_METADATA_KEY)
+    return [str(step_id) for step_id in ids] if isinstance(ids, list) and ids else None
+
+
+def _steps_moved_or_replaced(before_ids: list[str] | None, after_ids: list[str] | None) -> bool:
+    """Entre deux versions qui partagent au moins un id d'étape : une étape a changé de place (l'ordre
+    des ids communs diffère) ou a été remplacée (un id parti, un id venu, la suite des types étant la
+    même). Sans id commun - deux études lancées à part -, rien à dire : la forme décide."""
+    if not before_ids or not after_ids:
+        return False
+    common = set(before_ids) & set(after_ids)
+    if not common:
+        return False
+    if set(before_ids) != set(after_ids):
+        return True
+    return [step_id for step_id in before_ids if step_id in common] != [step_id for step_id in after_ids if step_id in common]
 
 
 def _step_without_name(step: dict) -> dict:
@@ -101,12 +128,20 @@ def structure_signature(metadata: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def classify_process_change(before: dict[str, Any] | None, after: dict[str, Any]) -> ChangeLevel:
+def classify_process_change(
+    before: dict[str, Any] | None,
+    after: dict[str, Any],
+    *,
+    before_step_ids: list[str] | None = None,
+    after_step_ids: list[str] | None = None,
+) -> ChangeLevel:
     """Classify the process/structure change from ``before`` to ``after`` (both the
     ``{"substrate": ..., "steps": [...]}`` shape :func:`spectre.plugins.structures.simulation.process_metadata`
     produces). ``before=None`` means there is nothing to compare against (a lineage's very first
     commit) - reported as ``"initial"``, never ``"major"``, so a caller can tell "this is where
-    the process started" apart from "something structural changed".
+    the process started" apart from "something structural changed". ``before_step_ids`` and
+    ``after_step_ids`` (:func:`step_ids_in`) tell a step moved or replaced apart from a step re-set
+    (:func:`_steps_moved_or_replaced`) ; without them, the shape alone decides.
     """
     if before is None:
         return "initial"
@@ -123,6 +158,8 @@ def classify_process_change(before: dict[str, Any] | None, after: dict[str, Any]
     before_steps: list[dict] = before.get("steps", [])
     after_steps: list[dict] = after.get("steps", [])
     if _step_shape(before_steps) != _step_shape(after_steps):
+        return "major"
+    if _steps_moved_or_replaced(before_step_ids, after_step_ids):
         return "major"
 
     if any(_step_without_name(b) != _step_without_name(a) for b, a in zip(before_steps, after_steps)):
@@ -177,7 +214,12 @@ def changes_structure(before: dict[str, Any], after: dict[str, Any]) -> bool:
     """Whether a commit whose metadata is ``after``, derived from one whose metadata is ``before``,
     moved the process/structure forward (any level but ``"none"``)."""
     after_signature = structure_signature(after)
-    return after_signature is not None and classify_process_change(structure_signature(before), after_signature) != "none"
+    if after_signature is None:
+        return False
+    level = classify_process_change(
+        structure_signature(before), after_signature, before_step_ids=step_ids_in(before), after_step_ids=step_ids_in(after)
+    )
+    return level != "none"
 
 
 def structural_versions(history: list[Any]) -> list[Any]:
@@ -209,13 +251,19 @@ def compute_branch_versions(history: list[Any]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     version = (0, 0)
     previous_process: dict[str, Any] | None = None
+    previous_ids: list[str] | None = None
     for exp in history:
         process = structure_signature(exp.metadata)
-        level = classify_process_change(previous_process, process) if process is not None else "none"
+        ids = step_ids_in(exp.metadata)
+        level = (
+            classify_process_change(previous_process, process, before_step_ids=previous_ids, after_step_ids=ids)
+            if process is not None
+            else "none"
+        )
         version = _bump(version, level)
         out[exp.id] = {"version": "{}.{}".format(*version), "level": level}
         if process is not None:
-            previous_process = process
+            previous_process, previous_ids = process, ids
     return out
 
 
@@ -243,21 +291,27 @@ def _topological_order(dag: dict[str, list[str]]) -> list[str]:
     return order
 
 
-def determine_keep_ids(dag: dict[str, list[str]], processes: dict[str, dict | None], tips: set[str]) -> set[str]:
+def determine_keep_ids(
+    dag: dict[str, list[str]], processes: dict[str, dict | None], tips: set[str], step_ids: dict[str, list[str] | None] | None = None
+) -> set[str]:
     """Which experiments stay visible in a collapsed microproject graph: every root, every merge (a
     join between two lines of work is structurally significant on its own, whatever it did or
     didn't change), every branch tip (so "where things stand" is never hidden), and every commit
     that actually bumped the process/structure version. Everything else - a tag, an evidence, a
     title edit riding on an otherwise-unchanged process - gets collapsed out.
 
-    ``processes`` maps experiment id to its :func:`structure_signature` (or ``None``).
+    ``processes`` maps experiment id to its :func:`structure_signature` (or ``None``), ``step_ids``
+    to its :func:`step_ids_in` (a step moved or replaced bumps the version too).
     """
     keep: set[str] = set()
     for node, parents in dag.items():
         if len(parents) != 1 or node in tips:
             keep.add(node)
             continue
-        level = classify_process_change(processes.get(parents[0]), processes.get(node))
+        ids = step_ids or {}
+        level = classify_process_change(
+            processes.get(parents[0]), processes.get(node), before_step_ids=ids.get(parents[0]), after_step_ids=ids.get(node)
+        )
         if level != "none":
             keep.add(node)
     return keep

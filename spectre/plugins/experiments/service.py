@@ -208,7 +208,12 @@ def structure_change_level(before_metadata: dict[str, Any] | None, after_metadat
     if after is None:
         return "none"
     before = versioning.structure_signature(before_metadata) if before_metadata is not None else None
-    return versioning.classify_process_change(before, after)
+    return versioning.classify_process_change(
+        before,
+        after,
+        before_step_ids=versioning.step_ids_in(before_metadata) if before_metadata is not None else None,
+        after_step_ids=versioning.step_ids_in(after_metadata),
+    )
 
 
 # -- l'identité des étapes -------------------------------------------------------------------------

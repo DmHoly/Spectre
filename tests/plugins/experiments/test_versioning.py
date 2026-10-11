@@ -48,6 +48,40 @@ def test_reordering_steps_of_different_kinds_is_major():
     assert classify_process_change(before, after) == "major"
 
 
+def test_removing_a_step_is_major():
+    before = _process([deposition("Oxyde"), etch("Gravure")])
+    assert classify_process_change(before, _process([deposition("Oxyde")])) == "major"
+
+
+def test_swapping_two_steps_of_the_same_kind_is_major_when_their_ids_say_so():
+    """Deux dépôts échangés gardent la même suite de types : sans ids, un réglage à chaque
+    position (mineur) ; avec les ids des étapes, la même étape a changé de place (majeur)."""
+    before = _process([deposition("Oxyde"), deposition("Nitrure", "Si3N4")])
+    after = _process([deposition("Nitrure", "Si3N4"), deposition("Oxyde")])
+    assert classify_process_change(before, after) == "minor"
+    assert classify_process_change(before, after, before_step_ids=["st_a", "st_b"], after_step_ids=["st_b", "st_a"]) == "major"
+    # le même procédé, les mêmes ids dans le même ordre : rien
+    assert classify_process_change(before, before, before_step_ids=["st_a", "st_b"], after_step_ids=["st_a", "st_b"]) == "none"
+
+
+def test_a_step_replaced_by_another_of_the_same_kind_is_major():
+    before = _process([deposition("Oxyde"), deposition("Nitrure", "Si3N4")])
+    after = _process([deposition("Oxyde"), deposition("Alumine", "Al2O3")])
+    # réglée en place (le même id) : un matériau, un paramètre - mineur ; retirée puis une autre
+    # ajoutée à sa place (un autre id) : une couche retirée et une ajoutée - majeur
+    assert classify_process_change(before, after, before_step_ids=["st_a", "st_b"], after_step_ids=["st_a", "st_b"]) == "minor"
+    assert classify_process_change(before, after, before_step_ids=["st_a", "st_b"], after_step_ids=["st_a", "st_c"]) == "major"
+
+
+def test_two_processes_without_a_common_step_id_compare_by_shape():
+    """Deux études lancées à part (ou une étude publiée dans la référence d'une autre) n'ont aucun
+    id commun : leurs ids ne disent rien, la suite des types et les réglages décident."""
+    p = _process([deposition("Oxyde"), deposition("Nitrure", "Si3N4")])
+    assert classify_process_change(p, p, before_step_ids=["st_a", "st_b"], after_step_ids=["st_x", "st_y"]) == "none"
+    thicker = _process([deposition("Oxyde"), deposition("Nitrure", "Si3N4", thickness_nm=80)])
+    assert classify_process_change(p, thicker, before_step_ids=["st_a", "st_b"], after_step_ids=["st_x", "st_y"]) == "minor"
+
+
 def test_changing_a_real_field_is_minor():
     before = _process([deposition("Oxyde", thickness_nm=20)])
     after = _process([deposition("Oxyde", thickness_nm=40)])
@@ -75,8 +109,11 @@ def test_rename_plus_value_change_is_still_minor_not_patch():
 # -- compute_branch_versions ----------------------------------------------------------------------
 
 
-def _exp(id_, process=None):
-    return SimpleNamespace(id=id_, metadata={} if process is None else {"structureforge_process": process})
+def _exp(id_, process=None, step_ids=None):
+    metadata = {} if process is None else {"structureforge_process": process}
+    if step_ids is not None:
+        metadata["process_step_ids"] = step_ids
+    return SimpleNamespace(id=id_, metadata=metadata)
 
 
 def test_branch_versions_progress_through_every_level():
@@ -205,3 +242,23 @@ def test_two_levels_only_a_layer_is_major_a_setting_minor_a_retouche_keeps_the_n
         ("1.2", "patch"),
         ("2.0", "major"),
     ]
+
+
+def test_a_history_where_a_layer_moves_bumps_the_major():
+    """Le long d'une piste, les ids d'étape suivent chaque étape : la déplacer est un majeur, même
+    entre deux étapes du même type."""
+    oxide_first = _process([deposition("Oxyde"), deposition("Nitrure", "Si3N4")])
+    nitride_first = _process([deposition("Nitrure", "Si3N4"), deposition("Oxyde")])
+    history = [
+        _exp("a", oxide_first, ["st_a", "st_b"]),
+        _exp("b", nitride_first, ["st_b", "st_a"]),  # les mêmes étapes, échangées
+        _exp("c", nitride_first, ["st_b", "st_a"]),  # une étiquette : rien
+    ]
+    versions = compute_branch_versions(history)
+    assert [(versions[e.id]["version"], versions[e.id]["level"]) for e in history] == [("1.0", "initial"), ("2.0", "major"), ("2.0", "none")]
+    # le graphe réduit garde la version déplacée
+    dag = {"a": [], "b": ["a"], "c": ["b"]}
+    processes = {e.id: structure_signature(e.metadata) for e in history}
+    step_ids = {e.id: e.metadata.get("process_step_ids") for e in history}
+    assert determine_keep_ids(dag, processes, tips=set(), step_ids=step_ids) == {"a", "b"}
+

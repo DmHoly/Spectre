@@ -161,8 +161,9 @@ def lineage_graph(repo: Any, *, anchors: Any = (), attachments: Any = ()) -> dic
 
     dag = {exp_id: exp.parents for exp_id, exp in experiments.items()}
     processes = {exp_id: versioning.structure_signature(exp.metadata) for exp_id, exp in experiments.items()}
+    step_ids = {exp_id: versioning.step_ids_in(exp.metadata) for exp_id, exp in experiments.items()}
     tips = set(repo.branches.values())
-    structural_ids = versioning.determine_keep_ids(dag, processes, tips=set())
+    structural_ids = versioning.determine_keep_ids(dag, processes, tips=set(), step_ids=step_ids)
     collapsed = versioning.collapsed_dag(dag, structural_ids)
 
     def nearest_structural_ancestor(exp_id: str) -> str:

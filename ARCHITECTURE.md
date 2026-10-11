@@ -507,7 +507,9 @@ nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ 
   ont été regroupées en références une fois, à la mise à jour, quand leur nom était partagé
   (`references/local_refs.py`, migration `0005_local_refs_imported_once`).
 - **Numéro de version `X.Y`** (`versioning.py`, 2026-10-11 : il n'y a plus de Z) : majeur (X) -
-  le substrat, ou la suite des types d'étapes (une couche ajoutée, retirée, déplacée) ; mineur (Y)
+  le substrat, ou une étape (une couche ajoutée, retirée, déplacée ou remplacée : la suite des
+  types d'étapes, et, entre deux versions qui partagent un id d'étape, `process_step_ids`, un id
+  qui change de place ou qui va et vient - `versioning.step_ids_in`) ; mineur (Y)
   - un réglage d'étape ou un paramètre déclaré (ajouté, retiré, sa valeur, son obtention, son unité
   remplacée) ; `patch` - une retouche (nom d'étape, unité écrite seule, étiquettes de couches et
   leur regroupement) : niveau gardé, pour l'historique et la conclusion, mais pas de nouveau numéro.
