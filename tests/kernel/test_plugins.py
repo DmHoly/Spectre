@@ -115,6 +115,22 @@ def test_a_nav_entry_reserved_to_some_pages_only_shows_there():
     assert "Atlas" not in pages.render_nav(pages.nav_entries_for(entries, "/lots"))
 
 
+def test_nav_entries_of_a_group_share_one_menu_in_place_of_the_first():
+    entries = [
+        NavEntry("Lots", "/lots", order=30, match=r"^/lots", group="gestion"),
+        NavEntry("Projets", "/", order=10, glyph='<path d="M1 1"/>'),
+        NavEntry("Équipes", "/equipes", order=45, group="gestion"),
+        NavEntry("Data", "/donnees", order=40),
+    ]
+    nav = pages.render_nav(entries)
+    assert re.findall(r'href="([^"]+)"', nav) == ["/", "/lots", "/equipes", "/donnees"]  # le menu à la place de « Lots »
+    menu = re.search(r'<div class="topbar__group">.*?</div>\s*</div>', nav, re.DOTALL).group(0)
+    assert 'aria-controls="nav-menu-gestion"' in menu and "<span>Gestion</span>" in menu
+    assert '<a href="/lots" class="topbar__menu-link" data-match="^/lots">Lots</a>' in menu
+    assert "Data" not in menu and "/equipes" in menu
+    assert '<path d="M1 1"/></svg><span>Projets</span>' in nav  # le pictogramme devant le libellé
+
+
 def test_a_page_without_the_marker_is_served_as_is(showcase):
     response = showcase.get("/vitrine/brute")
     assert response.text == "<html><body>sans barre commune</body></html>"

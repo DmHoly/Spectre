@@ -215,7 +215,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 14px;
-  min-width: 0;
+  min-width: auto; /* jamais sous la marque : seul le fil d'Ariane rétrécit */
   flex: 0 1 auto;
 }
 
@@ -306,6 +306,115 @@ svg {
   height: 2px;
   background: var(--gold-light);
   z-index: 1;
+}
+/* pictogramme devant le libellé (NavEntry.glyph, menus) */
+.topbar__link {
+  gap: 7px;
+}
+.topbar__glyph {
+  flex: none;
+  opacity: 0.85;
+}
+.topbar__link:hover .topbar__glyph,
+.topbar__link[aria-current="page"] .topbar__glyph,
+.topbar__group-btn.is-current .topbar__glyph {
+  opacity: 1;
+}
+
+/* menus de la navigation (NavEntry.group, kernel/static/shell.js) : un bouton, un panneau blanc
+   sous le bandeau, placé en position fixe (la nav défile horizontalement sous 900px) */
+.topbar__group {
+  position: relative;
+  display: flex;
+}
+.topbar__group[hidden] {
+  display: none;
+}
+.topbar__group-btn {
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.topbar__chevron {
+  margin-left: -2px;
+  opacity: 0.7;
+  transition: transform var(--dur) var(--ease);
+}
+.topbar__group-btn[aria-expanded="true"] {
+  color: #fff;
+}
+.topbar__group-btn[aria-expanded="true"] .topbar__chevron {
+  transform: rotate(180deg);
+}
+.topbar__group-btn.is-current {
+  color: #fff;
+  font-weight: 600;
+}
+.topbar__group-btn.is-current::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 2px;
+  background: var(--gold-light);
+  z-index: 1;
+}
+.topbar__menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 200px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--gold);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  box-shadow: var(--shadow-lift);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.topbar__menu[hidden] {
+  display: none;
+}
+.topbar__menu-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+.topbar__menu-link[hidden] {
+  display: none;
+}
+.topbar__menu-link .topbar__glyph {
+  color: var(--text-faint);
+}
+.topbar__menu-link:hover,
+.topbar__menu-link:focus-visible {
+  background: var(--accent-tint);
+  color: var(--navy);
+}
+.topbar__menu-link:hover .topbar__glyph {
+  color: var(--navy);
+}
+.topbar__menu-link[aria-current="page"] {
+  color: var(--navy);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--gold);
+}
+.topbar__menu-link[aria-current="page"] .topbar__glyph {
+  color: var(--gold-dark);
+}
+.topbar .topbar__menu :focus-visible {
+  outline-color: var(--accent);
 }
 .topbar :focus-visible {
   outline-color: var(--gold-light);

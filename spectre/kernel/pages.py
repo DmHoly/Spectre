@@ -108,16 +108,77 @@ def render_topbar_parts(entries: Iterable[NavEntry]) -> TopbarParts:
     return TopbarParts(render_nav([e for e in entries if not e.icon]), render_tools([e for e in entries if e.icon]))
 
 
+class NavGroup(NamedTuple):
+    """Un menu de la barre du haut : les entrées qui le nomment (``NavEntry.group``) y sont rangées,
+    sous son libellé et son pictogramme ; il prend la place de la première d'entre elles (``order``)."""
+
+    label: str
+    glyph: str
+
+
+# Les menus de la navigation principale : ce qui décrit les structures (bibliothèque de procédés,
+# références), et ce qui organise le travail, plutôt pour les managers (lots, planning, équipes).
+NAV_GROUPS = {
+    "structure": NavGroup("Structure", '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12.5 9 5 9-5"/><path d="m3 17 9 5 9-5"/>'),
+    "gestion": NavGroup("Gestion", '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 7v8"/><path d="M12 7v11"/><path d="M16 7v4"/>'),
+}
+
+_CHEVRON = (
+    '<svg class="topbar__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+)
+
+
+def _glyph(content: str | None) -> str:
+    if not content:
+        return ""
+    return (
+        '<svg class="topbar__glyph" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        f'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{content}</svg>'
+    )
+
+
+def _nav_link(entry: NavEntry, css_class: str) -> str:
+    element_id = f' id="{escape(entry.id)}"' if entry.id else ""
+    match = f' data-match="{escape(entry.match)}"' if entry.match else ""
+    admin = " data-admin-only hidden" if entry.admin else ""
+    label = escape(entry.label)
+    if entry.glyph:
+        label = f"{_glyph(entry.glyph)}<span>{label}</span>"
+    return f'<a href="{escape(entry.href)}" class="{css_class}"{element_id}{match}{admin}>{label}</a>'
+
+
+def _nav_group(key: str, entries: list[NavEntry]) -> str:
+    """Un menu déroulant (``kernel/static/shell.js`` l'ouvre et le ferme) : un bouton, puis ses liens."""
+    group = NAV_GROUPS.get(key) or NavGroup(key.capitalize(), "")
+    menu_id = f"nav-menu-{escape(key)}"
+    admin = " data-admin-only hidden" if all(entry.admin for entry in entries) else ""
+    links = "\n".join(f"          {_nav_link(entry, 'topbar__menu-link')}" for entry in entries)
+    return (
+        f'      <div class="topbar__group"{admin}>\n'
+        f'        <button type="button" class="topbar__link topbar__group-btn" aria-expanded="false" aria-controls="{menu_id}">'
+        f"{_glyph(group.glyph)}<span>{escape(group.label)}</span>{_CHEVRON}</button>\n"
+        f'        <div class="topbar__menu" id="{menu_id}" hidden>\n{links}\n        </div>\n'
+        "      </div>"
+    )
+
+
 def render_nav(entries: Iterable[NavEntry]) -> str:
-    """La navigation principale, dans l'ordre des entrées (``order``). ``data-match`` porte
+    """La navigation principale, dans l'ordre des entrées (``order``) : un lien par entrée, et un
+    menu par groupe (``NavEntry.group``), à la place de sa première entrée. ``data-match`` porte
     l'expression régulière de la section, lue par ``kernel/static/shell.js``."""
-    links = []
+    items: list[str] = []
+    groups: dict[str, list[NavEntry]] = {}
     for entry in sorted(entries, key=lambda e: (e.order, e.label)):
-        element_id = f' id="{escape(entry.id)}"' if entry.id else ""
-        match = f' data-match="{escape(entry.match)}"' if entry.match else ""
-        admin = " data-admin-only hidden" if entry.admin else ""
-        links.append(f'      <a href="{escape(entry.href)}" class="topbar__link"{element_id}{match}{admin}>{escape(entry.label)}</a>')
-    return '<nav class="topbar__nav" aria-label="Navigation principale">\n' + "\n".join(links) + "\n    </nav>"
+        if entry.group is None:
+            items.append(f"      {_nav_link(entry, 'topbar__link')}")
+        elif entry.group in groups:
+            groups[entry.group].append(entry)
+        else:
+            groups[entry.group] = [entry]
+            items.append(entry.group)  # remplacé par le menu une fois toutes ses entrées connues
+    rendered = [_nav_group(item, groups[item]) if item in groups else item for item in items]
+    return '<nav class="topbar__nav" aria-label="Navigation principale">\n' + "\n".join(rendered) + "\n    </nav>"
 
 
 def render_topbar(nav: str | TopbarParts, crumb_id: str | None = None, crumb_text: str | None = None) -> str:

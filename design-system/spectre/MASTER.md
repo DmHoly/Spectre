@@ -50,11 +50,16 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 ## Composants clés (kernel.css, sauf mention)
 
 - **Topbar** commune (`.topbar`, sticky 60px) : logo Aledia (`/static/kernel/img/aledia-logo.svg`) |
-  SPECTRE | fil d'Ariane · nav principale identique sur toutes les pages (Projets, Bibliothèque, Références,
-  Lots, Data, Documentation - plus Atlas sur un projet), rendue par le noyau (`kernel/pages.py`, marqueur
-  `<!-- spectre:topbar -->`) à partir des `NavEntry` des plugins ; état actif `aria-current="page"` posé
-  par `kernel/static/shell.js` (`data-match` de chaque lien) ·
-  utilisateur + déconnexion (icône avec `aria-label`). Filet or dégradé sous le bandeau.
+  SPECTRE | fil d'Ariane · nav principale identique sur toutes les pages, chaque entrée précédée de son
+  pictogramme (`NavEntry.glyph`, 16px) : Projets (« µ » sur pastille), menu **Structure** (Bibliothèque,
+  Références), menu **Gestion** (Lots, Planning, Équipes - le pilotage, plutôt pour les managers), Data ;
+  plus Atlas sur un projet. Un menu (`NavEntry.group`, `NAV_GROUPS` de `kernel/pages.py`) = bouton à
+  chevron + panneau blanc à filet or, en position fixe sous le bandeau (échappe au défilement de la nav
+  sous 900px) ; clic, flèche bas, Échap, clic dehors (`kernel/static/shell.js`) ; le bouton est souligné
+  or quand la page courante est dans son menu, le lien courant porte un filet or à gauche. Rendue par le
+  noyau (`kernel/pages.py`, marqueur `<!-- spectre:topbar -->`) à partir des `NavEntry` des plugins ; état
+  actif `aria-current="page"` posé par `kernel/static/shell.js` (`data-match` de chaque lien) · boutons à
+  icône (Documentation, Comparateur, Paramètres) · utilisateur + déconnexion (icône avec `aria-label`). Filet or dégradé sous le bandeau.
 - **Boutons** : `.btn-primary` navy (survol : filet or interne), `.btn-line`, `.btn-tint`,
   `.btn-danger` ; hauteur min 36px.
 - **Cartes** : `.card` (rayon 10, bordure + ombre légère) ; `a.card` gagne du relief au survol.
