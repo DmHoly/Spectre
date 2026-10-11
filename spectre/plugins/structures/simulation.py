@@ -46,14 +46,49 @@ class Lattice(BaseModel):
     wires: int = Field(1, ge=1, le=MAX_LATTICE_WIRES)
 
 
+# Comment une lithographie s'ancre au réseau, et la taille qui la règle (nm) :
+# - ``wires`` : un trou de ``diameter`` centré sur chaque fil (le gabarit SAG, un contact sur le fil) ;
+# - ``between`` : une ouverture de ``width`` centrée entre deux fils voisins - aux bords du domaine, une
+#   demi-ouverture (le réseau est périodique) ;
+# - ``pixel`` : une seule ouverture sur tout le pixel, moins ``margin`` de chaque côté.
+LATTICE_OPENING_SIZES = {"wires": "diameter", "between": "width", "pixel": "margin"}
+
+
 class LatticeOpening(BaseModel):
-    """Une lithographie ancrée au réseau du substrat (:class:`Lattice`) : un trou de ``diameter``
-    (nm) centré sur chaque fil, recalculé à chaque simulation à partir du pas et du nombre de fils.
-    Rangée sur l'étape elle-même (``"lattice_opening"``), à côté de ses ouvertures résolues."""
+    """Une lithographie ancrée au réseau du substrat (:class:`Lattice`) : ses ouvertures suivent le
+    pas et le nombre de fils (:data:`LATTICE_OPENING_SIZES`), recalculées à chaque simulation.
+    Rangée sur l'étape elle-même (``"lattice_opening"``), à côté de ses ouvertures résolues ; un
+    trou par fil (``mode`` ``wires``) s'écrit sans son mode, la forme d'avant."""
 
     model_config = ConfigDict(extra="forbid")
 
-    diameter: float = Field(gt=0, le=1_000_000)
+    mode: Literal["wires", "between", "pixel"] = "wires"
+    diameter: float | None = Field(None, gt=0, le=1_000_000)
+    width: float | None = Field(None, gt=0, le=1_000_000)
+    margin: float | None = Field(None, ge=0, le=1_000_000)
+
+    @model_validator(mode="after")
+    def _sized_for_its_mode(self) -> "LatticeOpening":
+        size = LATTICE_OPENING_SIZES[self.mode]
+        if getattr(self, size) is None:
+            raise ValueError(f"une lithographie ancrée « {self.mode} » se règle par {size}")
+        for other in set(LATTICE_OPENING_SIZES.values()) - {size}:
+            setattr(self, other, None)
+        return self
+
+    @model_serializer(mode="wrap")
+    def _compact(self, handler: Any) -> dict[str, Any]:
+        data = {key: value for key, value in handler(self).items() if value is not None}
+        if data.get("mode") == "wires":
+            data.pop("mode")
+        return data
+
+    @property
+    def size(self) -> float:
+        return getattr(self, LATTICE_OPENING_SIZES[self.mode])
+
+    def with_size(self, value: float) -> "LatticeOpening":
+        return LatticeOpening(mode=self.mode, **{LATTICE_OPENING_SIZES[self.mode]: value})
 
 
 LATTICE_OPENING_KEY = "lattice_opening"
@@ -356,10 +391,24 @@ def preset_origins_json(origins: dict[int, PresetOrigin] | None) -> dict[str, di
 
 
 def lattice_openings(lattice: Lattice, opening: LatticeOpening) -> list[tuple[float, float]]:
-    """Un trou de ``opening.diameter`` centré sur chaque fil du réseau."""
-    half = opening.diameter / 2
-    centers = [(i + 0.5) * lattice.pitch for i in range(lattice.wires)]
-    return [(round(c - half, 3), round(c + half, 3)) for c in centers]
+    """Les ouvertures d'une lithographie ancrée au réseau (voir :data:`LATTICE_OPENING_SIZES`), dans
+    le domaine ``[0, wires * pitch]``. :class:`ValueError` pour une ouverture qui ne tient pas : un
+    trou ou un passage aussi large que le pas, une marge qui mange tout le pixel."""
+    width = lattice.pitch * lattice.wires
+    if opening.mode == "pixel":
+        if 2 * opening.margin >= width:
+            raise ValueError(f"la marge ({opening.margin:g} nm de chaque côté) couvre tout le pixel ({width:g} nm)")
+        return [(round(opening.margin, 3), round(width - opening.margin, 3))]
+    if opening.size >= lattice.pitch:
+        what = "le diamètre d'ouverture" if opening.mode == "wires" else "la largeur entre les fils"
+        raise ValueError(f"{what} ({opening.size:g} nm) doit être plus petit que le pas du réseau ({lattice.pitch:g} nm)")
+    half = opening.size / 2
+    if opening.mode == "wires":
+        centers = [(i + 0.5) * lattice.pitch for i in range(lattice.wires)]
+    else:
+        centers = [i * lattice.pitch for i in range(lattice.wires + 1)]
+    pieces = [(max(0.0, c - half), min(width, c + half)) for c in centers]
+    return [(round(a, 3), round(b, 3)) for a, b in pieces if b > a]
 
 
 def resolve_lattice(
@@ -378,11 +427,11 @@ def resolve_lattice(
         step = resolved[index] if 0 <= index < len(resolved) else None
         if not isinstance(step, Lithography):
             continue
-        if opening.diameter >= lattice.pitch:
-            raise SimulationFailedError(
-                f"Étape {index + 1} ({step.name}) : le diamètre d'ouverture ({opening.diameter:g} nm) doit être plus petit que le pas du réseau ({lattice.pitch:g} nm)."
-            )
-        resolved[index] = step.model_copy(update={"openings": lattice_openings(lattice, opening)})
+        try:
+            openings = lattice_openings(lattice, opening)
+        except ValueError as exc:
+            raise SimulationFailedError(f"Étape {index + 1} ({step.name}) : {exc}.") from exc
+        resolved[index] = step.model_copy(update={"openings": openings})
     return substrate, resolved
 
 

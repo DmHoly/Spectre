@@ -679,8 +679,16 @@ gabarit, le même procédé sur une autre épi.
 Le substrat peut porter un réseau de fils, `substrate.lattice = {pitch, wires}` (`simulation.Lattice` :
 un pas en nm, de 1 à `MAX_LATTICE_WIRES` = 50 fils ; absent, la forme d'avant). Le domaine fait alors
 `wires × pitch` de large, chaque fil au centre de sa maille. Une lithographie **ancrée au réseau**
-porte, sur l'étape même, `lattice_opening = {diameter}` (`simulation.LatticeOpening`, une clé qu'un
-`ProcessStep` ignore) : un trou de ce diamètre par fil (422 si le diamètre atteint le pas). C'est la
+porte, sur l'étape même, `lattice_opening` (`simulation.LatticeOpening`, une clé qu'un `ProcessStep`
+ignore), d'un des modes de `LATTICE_OPENING_SIZES` :
+
+- `{diameter}` (mode `wires`, écrit sans son mode) : un trou par fil, centré dans sa maille ;
+- `{mode: "between", width}` : une ouverture entre deux fils voisins, une demi-ouverture à chaque
+  bord du domaine (le réseau se répète) ;
+- `{mode: "pixel", margin}` : une seule ouverture sur tout le pixel, moins la marge de chaque côté.
+
+Une ouverture qui ne tient pas est refusée (422) : un diamètre ou une largeur qui atteint le pas, une
+marge qui couvre le pixel. C'est la
 première des macro-étapes réutilisables : un gabarit SAG ne dit plus des nm absolus. Une même épi se
 voit ainsi sur 1 fil, puis le procédé sur un pixel de N fils.
 
@@ -694,7 +702,8 @@ voit ainsi sur 1 fil, puis le procédé sur un pixel de N fils.
   ancrées (`simulation.view_neutral_process`). Passer d'un fil à six ne fait pas de version et garde
   la conclusion ; un autre pas est majeur, un autre diamètre mineur.
 - **Campagnes** : sur une lithographie ancrée, `openings.pitch` fait varier le pas du réseau (le
-  domaine suit) et `openings.diameter` son diamètre (`campaigns.apply_combination`,
+  domaine suit), et `openings.diameter`, `openings.width` ou `openings.margin` la taille de son
+  ancrage, celle de son mode (une autre est refusée, 422) (`campaigns.apply_combination`,
   `combination_anchors`). La variante d'une campagne lancée garde son ancrage. `domain_width` sur le
   substrat est refusé quand il a un réseau (422).
 - **Bibliothèques** : une structure enregistrée et une brique rangent les ancrages par position
@@ -703,7 +712,7 @@ voit ainsi sur 1 fil, puis le procédé sur un pixel de N fils.
   marché garde l'ancrage des étapes reprises.
 - **Constructeur** (`substrate.js`) : une case « Réseau de fils » dans le substrat (pas, fils
   simulés ; la largeur est alors figée), un réglage « − N fils + » au-dessus du dessin. Dans la
-  lithographie, le choix « Ouvertures : sur le réseau / libres », et « Ancrer ces ouvertures sur un
+  lithographie, le choix « Ouvertures : sur chaque fil / entre les fils / pixel entier / libres », et « Ancrer ces ouvertures sur un
   réseau de fils » pour des ouvertures régulières (le pas, le diamètre et le nombre en sont déduits).
 
 ### Unité des paramètres déclarés

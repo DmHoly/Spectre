@@ -159,13 +159,17 @@ function variableParams(stepIndex) {
     }
   });
   if (step.kind === "lithography" && step.openings && step.openings.length) {
-    const geometry = openingsGeometry(step.openings);
-    // ancrée au réseau : son pas et son diamètre sont ceux du réseau, même avec un seul fil
+    // ancrée au réseau : le pas du réseau (même avec un seul fil) et la taille de son ancrage
     const lattice = step.lattice_opening ? substrateLattice() : null;
-    const pitch = lattice ? lattice.pitch : geometry.pitch;
-    const diameter = lattice ? step.lattice_opening.diameter : geometry.diameter;
-    if (pitch != null) params.push({ field: "openings.pitch", label: "Pas du réseau", type: "number", unit: "nm", current: pitch });
-    params.push({ field: "openings.diameter", label: "Diamètre d'ouverture", type: "number", unit: "nm", current: diameter });
+    if (lattice) {
+      const mode = LATTICE_OPENING_MODES[latticeOpeningMode(step.lattice_opening)];
+      params.push({ field: "openings.pitch", label: "Pas du réseau", type: "number", unit: "nm", current: lattice.pitch });
+      params.push({ field: mode.field, label: mode.fieldLabel, type: "number", unit: "nm", current: latticeOpeningSize(step.lattice_opening) });
+    } else {
+      const { pitch, diameter } = openingsGeometry(step.openings);
+      if (pitch != null) params.push({ field: "openings.pitch", label: "Pas du réseau", type: "number", unit: "nm", current: pitch });
+      params.push({ field: "openings.diameter", label: "Diamètre d'ouverture", type: "number", unit: "nm", current: diameter });
+    }
   }
   (step.declaredParams || []).forEach((p) => {
     if (!p.name) return;

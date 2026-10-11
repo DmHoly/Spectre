@@ -21,6 +21,7 @@ from structureforge.process.steps import ProcessStep
 from .rendering import annotations_for, format_number, labelled_svg
 from .simulation import (
     GRADED_NITRIDE_RE,
+    LATTICE_OPENING_SIZES,
     DeclaredParam,
     LatticeOpening,
     LayerLabel,
@@ -55,6 +56,8 @@ CAMPAIGN_FIELD_LABELS = {
     "angle_deg": "Angle",
     "openings.pitch": "Pas du réseau",
     "openings.diameter": "Diamètre d'ouverture",
+    "openings.width": "Largeur entre les fils",
+    "openings.margin": "Marge du pixel",
 }
 
 # Plafond d'entités d'une campagne : chaque variante est re-simulée (près d'une seconde chacune) à
@@ -286,10 +289,14 @@ def _factor_label(factor: VariantFactor, index: int, steps: list[ProcessStep]) -
     return f"{field_label} — {target}"
 
 
+# la taille d'une lithographie ancrée, par facteur (voir simulation.LATTICE_OPENING_SIZES)
+ANCHOR_SIZE_FIELDS = {"openings.diameter": "diameter", "openings.width": "width", "openings.margin": "margin"}
+
+
 def _on_lattice(substrate: SubstrateSpec, anchors: dict[int, LatticeOpening] | None, index: int, field: str) -> bool:
     """Si le facteur ``field`` de l'étape ``index`` règle le réseau de fils plutôt que des ouvertures
-    en nm : le pas ou le diamètre d'une lithographie ancrée, le substrat ayant un réseau."""
-    return substrate.lattice is not None and index in (anchors or {}) and field in ("openings.pitch", "openings.diameter")
+    en nm : le pas ou la taille d'une lithographie ancrée, le substrat ayant un réseau."""
+    return substrate.lattice is not None and index in (anchors or {}) and (field == "openings.pitch" or field in ANCHOR_SIZE_FIELDS)
 
 
 def combination_anchors(
@@ -299,11 +306,14 @@ def combination_anchors(
     ``combo`` quand un facteur le fait varier, les autres tels quels."""
     varied = dict(anchors or {})
     for factor, index, value in zip(plan.factors, indexes, combo):
-        if factor.field == "openings.diameter" and _on_lattice(substrate, anchors, index, factor.field):
-            diameter = _numeric(value, factor.field)
-            if diameter <= 0:
-                raise SimulationFailedError("le diamètre d'ouverture doit être positif")
-            varied[index] = LatticeOpening(diameter=diameter)
+        if factor.field in ANCHOR_SIZE_FIELDS and _on_lattice(substrate, anchors, index, factor.field):
+            anchor = varied[index]
+            if ANCHOR_SIZE_FIELDS[factor.field] != LATTICE_OPENING_SIZES[anchor.mode]:
+                raise SimulationFailedError(f"{CAMPAIGN_FIELD_LABELS[factor.field]!r} ne règle pas cette lithographie (ancrée « {anchor.mode} »)")
+            size = _numeric(value, factor.field)
+            if size < 0 or (size == 0 and anchor.mode != "pixel"):
+                raise SimulationFailedError(f"{CAMPAIGN_FIELD_LABELS[factor.field]} doit être positif")
+            varied[index] = anchor.with_size(size)
     return varied
 
 

@@ -129,3 +129,51 @@ def test_the_library_keeps_the_anchors_of_a_published_study(client):
     saved = get_item(client, "saved-structures", published["id"])
     assert saved["substrate"]["lattice"] == {"pitch": 400, "wires": 3}
     assert saved["lattice_openings"] == {"1": {"diameter": 100}}
+
+
+def anchored(mode: str, **size: float) -> list[dict]:
+    """Le gabarit de sag_steps, la lithographie ancrée « mode » (``between``, ``pixel``...)."""
+    steps = sag_steps()
+    steps[1] = {**steps[1], "lattice_opening": {"mode": mode, **size}}
+    return steps
+
+
+def test_an_opening_between_the_wires_and_one_over_the_whole_pixel():
+    between = ProcessInput.model_validate({"substrate": lattice_substrate(400, 2), "steps": anchored("between", width=100)})
+    # entre deux fils voisins, et une demi-ouverture à chaque bord (le réseau se répète)
+    assert between.steps[1].openings == [(0, 50), (350, 450), (750, 800)]
+    pixel = ProcessInput.model_validate({"substrate": lattice_substrate(400, 3), "steps": anchored("pixel", margin=100)})
+    assert pixel.steps[1].openings == [(100, 1100)]
+
+    # chaque mode a sa taille ; un trou par fil s'écrit comme avant, sans son mode
+    assert simulation.LatticeOpening(diameter=80).model_dump(mode="json") == {"diameter": 80}
+    assert simulation.LatticeOpening(mode="pixel", margin=0, diameter=3).model_dump(mode="json") == {"mode": "pixel", "margin": 0}
+    assert simulation.lattice_anchors_in(anchored("between", diameter=100)) == {}  # pas de largeur : ignorée
+
+
+def test_an_anchored_opening_that_does_not_fit_is_refused(client):
+    signup_with_microproject(client, "lattice-fit@example.com", "Salle blanche")
+    margin = simulate(client, {"substrate": lattice_substrate(400, 1), "steps": anchored("pixel", margin=200)})
+    assert margin.status_code == 422 and "marge" in margin.json()["detail"]
+    width = simulate(client, {"substrate": lattice_substrate(400, 2), "steps": anchored("between", width=400)})
+    assert width.status_code == 422 and "entre les fils" in width.json()["detail"]
+
+
+def test_a_campaign_varies_the_size_of_its_own_anchor(client):
+    signup_with_microproject(client, "lattice-modes@example.com", "Salle blanche")
+    litho = fixed_step_id(2)
+    body = {"substrate": lattice_substrate(400, 2), "steps": anchored("between", width=100)}
+    plan = {"factors": [{"step_id": litho, "field": "openings.width", "values": [100, 200]}]}
+    assert preview_campaign(client, {**body, "plan": plan}).status_code == 200
+
+    from spectre.plugins.structures import campaigns
+
+    request = ProcessInput.model_validate(body)
+    variant = campaigns.VariantPlan.model_validate(plan)
+    indexes = campaigns.factor_step_indexes(variant, request.step_ids)
+    _substrate, steps, _declared = campaigns.apply_combination(request.substrate, request.steps, {}, variant, indexes, [200], request.lattice_anchors)
+    assert steps[1].openings == [(0, 100), (300, 500), (700, 800)]
+
+    # un diamètre ne règle pas une ouverture entre les fils
+    wrong = {"factors": [{"step_id": litho, "field": "openings.diameter", "values": [100, 200]}]}
+    assert preview_campaign(client, {**body, "plan": wrong}).status_code == 422

@@ -145,11 +145,13 @@ const STEP_KIND_DEFS = {
       <div class="field-row"><div><label>Épaisseur</label><input class="field" id="f-thickness" type="number" value="500"></div>
       <div><label>Unité</label><select class="field" id="f-thickness-unit"><option value="nm" selected>nm</option></select></div></div>
       <div><label for="f-litho-placement">Ouvertures</label><select class="field" id="f-litho-placement">
-        <option value="lattice">Sur le réseau (un trou par fil)</option>
+        <option value="wires">Sur chaque fil (un trou par fil)</option>
+        <option value="between">Entre les fils</option>
+        <option value="pixel">Pixel entier (avec marge)</option>
         <option value="free">Libres (en nm)</option>
       </select></div>
       <div id="f-litho-lattice-wrap" class="sb-insp__card">
-        <div><label for="f-litho-lattice-diameter">Diamètre d'ouverture (nm)</label><input class="field" id="f-litho-lattice-diameter" type="number" min="0" value="100"></div>
+        <div><label for="f-litho-lattice-size" id="f-litho-lattice-size-label">Diamètre d'ouverture (nm)</label><input class="field" id="f-litho-lattice-size" type="number" min="0" value="100"></div>
         <div class="help sb-litho-anchor" id="f-litho-lattice-status"></div>
         <button class="btn btn-line btn-block" id="f-litho-lattice-create-btn" type="button" hidden>Créer le réseau sur le substrat</button>
       </div>
@@ -172,20 +174,20 @@ const STEP_KIND_DEFS = {
     wire: () => {
       // une nouvelle lithographie se pose sur le réseau quand le substrat en a un (fillFields reprend
       // ensuite le placement d'une étape existante)
-      document.getElementById("f-litho-placement").value = substrateLattice() ? "lattice" : "free";
+      document.getElementById("f-litho-placement").value = substrateLattice() ? "wires" : "free";
       updateLithoPlacement();
       document.getElementById("f-litho-placement").addEventListener("change", updateLithoPlacement);
       document.getElementById("f-openings").addEventListener("input", updateLithoPlacement);
       document.getElementById("f-litho-lattice-create-btn").addEventListener("click", () => {
-        const diameter = parseFloat(document.getElementById("f-litho-lattice-diameter").value) || 100;
-        setSubstrateLattice({ pitch: Math.max(400, Math.ceil((diameter * 2) / 100) * 100), wires: 1 });
+        const size = parseFloat(document.getElementById("f-litho-lattice-size").value) || 100;
+        setSubstrateLattice({ pitch: Math.max(400, Math.ceil((size * 2) / 100) * 100), wires: 1 });
         livePreviewFromForm();
       });
       document.getElementById("f-litho-anchor-btn").addEventListener("click", () => {
         const regular = regularOpenings(parseOpenings(document.getElementById("f-openings").value));
         if (!regular) return;
-        document.getElementById("f-litho-lattice-diameter").value = regular.diameter;
-        document.getElementById("f-litho-placement").value = "lattice";
+        document.getElementById("f-litho-lattice-size").value = regular.diameter;
+        document.getElementById("f-litho-placement").value = "wires";
         updateLithoPlacement();
         livePreviewFromForm(); // l'étape ancrée d'abord : poser le réseau redessine l'inspecteur depuis elle
         // un réseau déjà là garde son pas ; sinon, celui des ouvertures, autant de fils qu'elles
@@ -217,12 +219,14 @@ const STEP_KIND_DEFS = {
         thickness: { value: parseFloat(document.getElementById("f-thickness").value) || 0, unit: document.getElementById("f-thickness-unit").value },
         openings: parseOpenings(document.getElementById("f-openings").value),
       };
-      if (document.getElementById("f-litho-placement").value === "lattice") {
-        const diameter = parseFloat(document.getElementById("f-litho-lattice-diameter").value);
-        if (diameter > 0) {
-          step.lattice_opening = { diameter };
+      const mode = document.getElementById("f-litho-placement").value;
+      if (LATTICE_OPENING_MODES[mode]) {
+        const size = parseFloat(document.getElementById("f-litho-lattice-size").value);
+        if (size > 0 || (mode === "pixel" && size === 0)) {
+          // un trou par fil s'écrit sans son mode (la forme d'avant)
+          step.lattice_opening = { ...(mode === "wires" ? {} : { mode }), [LATTICE_OPENING_MODES[mode].size]: size };
           const lattice = substrateLattice();
-          if (lattice) step.openings = latticeOpenings(lattice, diameter);
+          if (lattice) step.openings = latticeOpenings(lattice, step.lattice_opening);
         }
       }
       return step;
@@ -232,13 +236,13 @@ const STEP_KIND_DEFS = {
       document.getElementById("f-thickness").value = step.thickness.value;
       ensureSelectValue("f-thickness-unit", step.thickness.unit, "");
       document.getElementById("f-openings").value = step.openings.map((pair) => pair.join("-")).join(", ");
-      document.getElementById("f-litho-placement").value = step.lattice_opening ? "lattice" : "free";
-      if (step.lattice_opening) document.getElementById("f-litho-lattice-diameter").value = step.lattice_opening.diameter;
+      document.getElementById("f-litho-placement").value = step.lattice_opening ? latticeOpeningMode(step.lattice_opening) : "free";
+      if (step.lattice_opening) document.getElementById("f-litho-lattice-size").value = latticeOpeningSize(step.lattice_opening);
       updateLithoPlacement();
     },
     summary: (step) =>
       step.lattice_opening
-        ? `${step.resist_material} · réseau Ø${step.lattice_opening.diameter} nm · ${step.openings.length} trou(s)`
+        ? `${step.resist_material} · ${latticeOpeningSummary(step.lattice_opening)} · ${step.openings.length} ouverture(s)`
         : `${step.resist_material} · ${step.openings.length} ouverture(s)`,
     pyCode: (step) => {
       const openings = step.openings.map(([a, b]) => `(${a}, ${b})`).join(", ");
@@ -591,18 +595,33 @@ function regularOpenings(openings) {
   return { pitch: roundNm(pitch), diameter: roundNm(diameter), count: sorted.length };
 }
 
+const LATTICE_PLACEMENT_HELP = {
+  wires: "Un trou par fil, centré dans sa maille.",
+  between: "Une ouverture entre chaque paire de fils voisins (une demi-ouverture aux bords : le réseau se répète).",
+  pixel: "Une seule ouverture sur tout le pixel, moins la marge de chaque côté.",
+};
+
+function latticeOpeningSummary(opening) {
+  const mode = latticeOpeningMode(opening);
+  const size = latticeOpeningSize(opening);
+  if (mode === "between") return `entre les fils, ${size} nm`;
+  if (mode === "pixel") return `pixel, marge ${size} nm`;
+  return `réseau Ø${size} nm`;
+}
+
 // Le formulaire de lithographie selon son placement : sur le réseau (diamètre, état du réseau) ou
 // libre (plages en nm, et l'offre de les ancrer quand elles sont régulières).
 function updateLithoPlacement() {
   const placement = document.getElementById("f-litho-placement");
   if (!placement) return;
-  const onLattice = placement.value === "lattice";
+  const onLattice = Boolean(LATTICE_OPENING_MODES[placement.value]);
+  if (onLattice) document.getElementById("f-litho-lattice-size-label").textContent = LATTICE_OPENING_MODES[placement.value].sizeLabel;
   document.getElementById("f-litho-lattice-wrap").hidden = !onLattice;
   document.getElementById("f-litho-free-wrap").hidden = onLattice;
   const lattice = substrateLattice();
   document.getElementById("f-litho-lattice-create-btn").hidden = !onLattice || Boolean(lattice);
   document.getElementById("f-litho-lattice-status").textContent = lattice
-    ? `Un trou par fil, centré dans sa maille : pas ${lattice.pitch} nm, ${lattice.wires} fil${lattice.wires > 1 ? "s" : ""} (réglés sur le substrat).`
+    ? `${LATTICE_PLACEMENT_HELP[placement.value] || ""} Pas ${lattice.pitch} nm, ${lattice.wires} fil${lattice.wires > 1 ? "s" : ""} (réglés sur le substrat).`
     : "Le substrat n'a pas encore de réseau de fils : les ouvertures restent celles d'avant.";
   const regular = !onLattice && regularOpenings(parseOpenings(document.getElementById("f-openings").value));
   document.getElementById("f-litho-anchor-btn").hidden = !regular;

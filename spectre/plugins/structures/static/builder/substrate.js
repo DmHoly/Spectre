@@ -48,15 +48,41 @@ function roundNm(value) {
   return Math.round(value * 1000) / 1000;
 }
 
-// Un trou de `diameter` nm centré sur chaque fil du réseau (même calcul que le serveur).
-function latticeOpenings(lattice, diameter) {
-  const half = diameter / 2;
-  const openings = [];
-  for (let i = 0; i < lattice.wires; i++) {
-    const center = (i + 0.5) * lattice.pitch;
-    openings.push([roundNm(center - half), roundNm(center + half)]);
-  }
-  return openings;
+// Comment une lithographie s'ancre au réseau, et la taille qui la règle (nm) - comme
+// spectre.plugins.structures.simulation.LATTICE_OPENING_SIZES : un trou par fil (`diameter`), une
+// ouverture entre deux fils voisins (`width` ; une demi-ouverture aux bords du domaine, périodique),
+// le pixel entier moins une marge de chaque côté (`margin`).
+const LATTICE_OPENING_MODES = {
+  wires: { size: "diameter", label: "Sur chaque fil (un trou par fil)", sizeLabel: "Diamètre d'ouverture (nm)", field: "openings.diameter", fieldLabel: "Diamètre d'ouverture" },
+  between: { size: "width", label: "Entre les fils", sizeLabel: "Largeur de l'ouverture (nm)", field: "openings.width", fieldLabel: "Largeur entre les fils" },
+  pixel: { size: "margin", label: "Pixel entier (avec marge)", sizeLabel: "Marge de chaque côté (nm)", field: "openings.margin", fieldLabel: "Marge du pixel" },
+};
+
+function latticeOpeningMode(opening) {
+  return LATTICE_OPENING_MODES[opening && opening.mode] ? opening.mode : "wires";
+}
+
+function latticeOpeningSize(opening) {
+  return opening ? opening[LATTICE_OPENING_MODES[latticeOpeningMode(opening)].size] : null;
+}
+
+// Les ouvertures d'une lithographie ancrée (même calcul que le serveur) ; [] si elles ne tiennent
+// pas (le serveur le dit, la simulation affiche son refus).
+function latticeOpenings(lattice, opening) {
+  const mode = latticeOpeningMode(opening);
+  const size = latticeOpeningSize(opening);
+  const width = lattice.pitch * lattice.wires;
+  if (!(size >= 0)) return [];
+  if (mode === "pixel") return 2 * size < width ? [[roundNm(size), roundNm(width - size)]] : [];
+  if (!(size > 0) || size >= lattice.pitch) return [];
+  const half = size / 2;
+  const centers = [];
+  if (mode === "wires") for (let i = 0; i < lattice.wires; i++) centers.push((i + 0.5) * lattice.pitch);
+  else for (let i = 0; i <= lattice.wires; i++) centers.push(i * lattice.pitch);
+  return centers
+    .map((c) => [Math.max(0, c - half), Math.min(width, c + half)])
+    .filter(([a, b]) => b > a)
+    .map(([a, b]) => [roundNm(a), roundNm(b)]);
 }
 
 // Recalcule les ouvertures des lithographies ancrées au réseau (sans réseau : elles gardent les
@@ -66,8 +92,8 @@ function applyLatticeToSteps(steps = state.steps) {
   if (!lattice) return false;
   let changed = false;
   steps.forEach((step) => {
-    if (step.kind !== "lithography" || !step.lattice_opening || !(step.lattice_opening.diameter > 0)) return;
-    const openings = latticeOpenings(lattice, step.lattice_opening.diameter);
+    if (step.kind !== "lithography" || !step.lattice_opening || !(latticeOpeningSize(step.lattice_opening) >= 0)) return;
+    const openings = latticeOpenings(lattice, step.lattice_opening);
     if (JSON.stringify(openings) !== JSON.stringify(step.openings)) {
       step.openings = openings;
       changed = true;
