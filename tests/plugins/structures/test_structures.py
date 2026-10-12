@@ -116,8 +116,9 @@ def test_a_material_named_with_html_is_escaped_in_the_svg(client):
     # insère par innerHTML
     hostile = '<img src=x onerror="alert(1)">'
     library = library_dir() / "materiaux.yml"  # le dossier du test, initialisé depuis les fichiers livrés
-    with library.open("a", encoding="utf-8") as out:
-        out.write(f"\n  - name: '{hostile}'\n    category: other\n    color: \"#123456\"\n")
+    entry = f"  - name: '{hostile}'\n    category: other\n    color: \"#123456\"\n"
+    # au bout de la liste, avant les dégradés
+    library.write_text(library.read_text(encoding="utf-8").replace("\ngradients:", f"{entry}\ngradients:", 1), encoding="utf-8")
     _owner_microproject(client)
     assert any(m["name"] == hostile for m in list_materials(client))
 
