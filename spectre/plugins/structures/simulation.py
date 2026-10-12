@@ -194,12 +194,12 @@ def materials_library(*extra_names: str) -> MaterialLibrary:
     still fails simulation the same way it always has - only names matching the graded-composition
     pattern are synthesized.
     """
-    from .library_files import materials
+    from .library_files import GRADIENT_FAMILIES, gradient, materials
 
     base = default_library()
-    if "AlGaN" in base:  # l'AlGaN générique, au même rose que les compositions
-        base = base.with_materials(base.get("AlGaN").model_copy(update={"color": aluminum_gan_color(0.3)}))
-    library = base.with_materials(*materials())
+    # le nom nu (« InGaN », « AlGaN ») prend la couleur de son dégradé, au taux que le fichier lui donne
+    generic = [base.get(family).model_copy(update={"color": gradient(family).generic_color}) for family in GRADIENT_FAMILIES if family in base]
+    library = base.with_materials(*generic, *materials())
     graded = [_graded_nitride_material(name) for name in extra_names if name not in library]
     resolved = [material for material in graded if material is not None]
     return library.with_materials(*resolved) if resolved else library
@@ -217,26 +217,15 @@ def _graded_nitride_material(name: str) -> Material | None:
     match = GRADED_NITRIDE_RE.match(name)
     if not match:
         return None
+    from .library_files import gradient
+
     symbol, fraction_str = match.group(1), match.group(2)
     factory = indium_gan if symbol == "In" else aluminum_gan
     material = factory(float(fraction_str))
     if material.name != name:
         return None
-    if symbol == "Al":
-        material = material.model_copy(update={"color": aluminum_gan_color(float(fraction_str))})
-    return material
-
-
-# AlGaN en rose/magenta : StructureForge le fond entre le violet-gris du GaN et le violet pâle de
-# l'AlN, impossible à distinguer du GaN à 10-20 % d'Al. Le magenta est la seule teinte que ni le
-# GaN ni l'arc-en-ciel de l'InGaN (violet → rouge) n'utilisent ; plus d'Al = plus pâle.
-_ALGAN_LOW_AL = (0xD0, 0x1C, 0x8B)  # peu d'aluminium : magenta franc
-_ALGAN_HIGH_AL = (0xF6, 0xC8, 0xE0)  # beaucoup d'aluminium : rose pâle
-
-
-def aluminum_gan_color(fraction: float) -> str:
-    t = min(max(fraction, 0.0), 1.0)
-    return "#" + "".join(f"{round(a + (b - a) * t):02x}" for a, b in zip(_ALGAN_LOW_AL, _ALGAN_HIGH_AL))
+    # la couleur suit le dégradé de la bibliothèque (materiaux.yml, « gradients »), pas celui de StructureForge
+    return material.model_copy(update={"color": gradient(f"{symbol}GaN").color_at(float(fraction_str))})
 
 
 def _material_names_in_steps(steps: list[ProcessStep]) -> set[str]:

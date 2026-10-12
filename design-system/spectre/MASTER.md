@@ -52,7 +52,7 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
 - **Topbar** commune (`.topbar`, sticky 60px) : logo Aledia (`/static/kernel/img/aledia-logo.svg`) |
   SPECTRE | fil d'Ariane · nav principale identique sur toutes les pages, chaque entrée précédée de son
   pictogramme (`NavEntry.glyph`, 16px) : Projets (« µ » sur pastille), menu **Structure** (Bibliothèque,
-  Références), menu **Gestion** (Lots, Planning, Équipes - le pilotage, plutôt pour les managers), Data ;
+  Matériaux, Références), menu **Gestion** (Lots, Planning, Équipes - le pilotage, plutôt pour les managers), Data ;
   plus Atlas sur un projet. Un menu (`NavEntry.group`, `NAV_GROUPS` de `kernel/pages.py`) = bouton à
   chevron + panneau blanc à filet or, en position fixe sous le bandeau (échappe au défilement de la nav
   sous 900px) ; clic, flèche bas, Échap, clic dehors (`kernel/static/shell.js`) ; le bouton est souligné
@@ -83,6 +83,13 @@ typographique nette, ombres légères, **un seul accent décoratif : l'or**.
   prennent la palette catégorielle validée de `usage.css` (`--usage-series-1..7`, ordre fixe, « Autres » en
   gris, légende toujours présente) ; carte de chaleur jour x heure en une seule teinte navy ; un compte
   s'ouvre dans un panneau latéral (`<dialog>`).
+- **Matériaux** (`materials/static/materials.css`, page `/materiaux`) : une carte à filet or par famille de
+  nitrure (InGaN, AlGaN) - barre de dégradé de 40px avec un repère rond par point, pastilles de compositions
+  (0 à 100 %), un point = taux + sélecteur natif `input[type=color]` + champ hexadécimal mono - puis le tableau
+  des matériaux du sélecteur (une ligne = couleur, nom, catégorie, description, densité, indice, monter /
+  descendre / retirer). Les couleurs de matériaux sont des données (style en ligne), pas des tokens. Rien
+  n'est écrit avant « Enregistrer » : barre collée en bas (filet or, état « enregistré » vert), garde de
+  sortie `beforeunload`, lecture seule pour un non-administrateur.
 - **Issue d'une expérience** : une seule clé (`experimentOutcome`, `experiments/static/status.js`) pour le badge, le
   nœud du graphe et la frise d'une thématique. Nœud (`lineage-graph.js`) : **creux = pas terminée**
   (brouillon anneau gris, en cours anneau bleu + point, en pause anneau ambre + ‖), **plein =

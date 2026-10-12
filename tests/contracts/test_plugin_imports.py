@@ -40,7 +40,7 @@ PUBLIC_MODULES = {"service", "store", "models", "deps", "schemas"}
 PUBLIC_EXTRA: dict[str, set[str]] = {
     "accounts": {"security"},
     "experiments": {"repository", "lineage", "entities", "insights", "plans"},
-    "structures": {"kinds", "campaigns", "simulation", "rendering"},
+    "structures": {"kinds", "campaigns", "simulation", "rendering", "library_files"},
 }
 
 # (module qui importe, module importé) -> ce qui supprimera l'import.

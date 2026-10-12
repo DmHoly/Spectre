@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Matériaux — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/materials/materials.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" -->
+
+  <main class="page mat-page">
+    <header class="mat-head">
+      <div class="page-eyebrow">Bibliothèque racine</div>
+      <h1>Matériaux</h1>
+      <p>
+        Le vocabulaire de matériaux de cette installation, commun à tous les µprojets : ce que propose le
+        sélecteur du constructeur de structure, avec sa couleur dans les rendus, et la couleur des nitrures à
+        composition (InGaN, AlGaN) selon leur taux. Ce que vous enregistrez ici s'écrit dans
+        <code>materiaux.yml</code> de la bibliothèque et vaut tout de suite, sans redémarrage.
+      </p>
+    </header>
+
+    <div id="error" class="error" role="alert" hidden></div>
+    <div id="problem" class="mat-notice mat-notice--warn" role="status" hidden></div>
+    <div id="readonly" class="mat-notice" role="status" hidden>
+      Lecture seule : seuls les administrateurs modifient la bibliothèque de matériaux, qui vaut pour tous les µprojets.
+    </div>
+
+    <section class="mat-section" aria-labelledby="gradients-title">
+      <div class="mat-section__head">
+        <div>
+          <div class="section-title" id="gradients-title">Nitrures à composition</div>
+          <p class="help">
+            Un InGaN ou un AlGaN se choisit avec un taux (In<sub>x</sub>Ga<sub>1-x</sub>N) : sa couleur est
+            celle du dégradé à ce taux, mélangée linéairement entre les deux points qui l'encadrent. Un point =
+            un taux et une couleur ; le taux 0 est le GaN pur.
+          </p>
+        </div>
+      </div>
+      <div id="gradients" class="mat-gradients" aria-busy="true">
+        <div class="skeleton mat-skeleton"></div>
+        <div class="skeleton mat-skeleton"></div>
+      </div>
+    </section>
+
+    <section class="mat-section" aria-labelledby="materials-title">
+      <div class="mat-section__head">
+        <div>
+          <div class="section-title" id="materials-title">Matériaux du sélecteur</div>
+          <p class="help">
+            L'ordre de la liste est celui du menu déroulant du constructeur (regroupé par catégorie). La
+            simulation résout toujours n'importe quel matériau connu de StructureForge : retirer une ligne
+            n'empêche pas une structure existante de se simuler.
+          </p>
+        </div>
+        <div class="mat-toolbar" id="materials-toolbar" hidden>
+          <label class="mat-search"><span class="visually-hidden">Filtrer les matériaux</span>
+            <input id="filter" class="field" type="search" placeholder="Filtrer…" autocomplete="off">
+          </label>
+          <label class="mat-search mat-search--wide"><span class="visually-hidden">Ajouter un matériau de StructureForge</span>
+            <select id="add-known" class="field"><option value="">Ajouter depuis StructureForge…</option></select>
+          </label>
+          <button type="button" class="btn btn-line" id="add-material">+ Nouveau matériau</button>
+        </div>
+      </div>
+      <div class="card mat-table-wrap">
+        <table class="mat-table" id="materials-table">
+          <thead>
+            <tr>
+              <th scope="col">Couleur</th>
+              <th scope="col">Nom</th>
+              <th scope="col">Catégorie</th>
+              <th scope="col">Description</th>
+              <th scope="col" class="mat-num">Densité <span class="mat-unit">g/cm³</span></th>
+              <th scope="col" class="mat-num">Indice <span class="mat-unit">n</span></th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody id="materials-body">
+            <tr><td colspan="7"><div class="skeleton mat-skeleton"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div class="mat-savebar" id="savebar" hidden>
+    <div class="mat-savebar__inner">
+      <span id="savebar-text" class="mat-savebar__text" aria-live="polite"></span>
+      <button type="button" class="btn btn-line" id="discard">Annuler les modifications</button>
+      <button type="button" class="btn btn-primary" id="save">Enregistrer</button>
+    </div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/materials/client.js"></script>
+  <script src="/static/materials/materials.js"></script>
+</body>
+</html>

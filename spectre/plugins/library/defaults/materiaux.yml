@@ -16,9 +16,22 @@
 #   notes             optionnel, infobulle
 #
 # NB : les compositions AlGaN / InGaN à taux précis se choisissent via le champ « préciser le
-# taux » du formulaire d'étape — garder GaN (et, si utile, AlGaN / InGaN génériques) suffit ici.
+# taux » du formulaire d'étape - leur couleur vient de la section `gradients` en bas de ce fichier.
 # La simulation résout de toute façon n'importe quel nom connu de StructureForge, même absent de
-# cette liste — retirer un matériau du sélecteur ne casse pas une structure existante.
+# cette liste - retirer un matériau du sélecteur ne casse pas une structure existante.
+#
+# Ce fichier se modifie aussi depuis la page /materiaux (réservée aux administrateurs) : elle
+# réécrit les listes ci-dessous (les commentaires de la liste ne sont pas conservés, ceux de cet
+# en-tête le sont).
+#
+# Section `gradients` : la couleur d'un nitrure à composition (In0.20Ga0.80N, Al0.15Ga0.85N...) selon
+# son taux x (0 = GaN pur, 1 = InN / AlN).
+#   InGaN / AlGaN     les deux familles (les deux sont facultatives : absente, la famille garde
+#                     son dégradé intégré)
+#   stops             au moins deux points { x: taux de 0 à 1, color: "#rrggbb" } ; la couleur d'un
+#                     taux est le mélange linéaire des deux points qui l'encadrent, la première ou la
+#                     dernière couleur au-delà
+#   generic_x         le taux dont la couleur est celle du nom nu (« InGaN » sans taux)
 
 materials:
   # -- substrats (croissance GaN) ----------------------------------------
@@ -92,3 +105,25 @@ materials:
     category: resist
     color: "#f4a261"
     notes: Résine photosensible standard (masque de lithographie, lift-off).
+
+gradients:
+  InGaN:
+    generic_x: 0.15
+    # le spectre visible : de plus en plus d'indium décale le gap du violet (GaN pur) au rouge
+    # (x ~ 0,35), puis noir au-delà (proche infrarouge, hors du visible)
+    stops:
+      - { x: 0.0, color: "#4b0082" }
+      - { x: 0.05, color: "#0033cc" }
+      - { x: 0.1, color: "#00b4d8" }
+      - { x: 0.16, color: "#2ecc71" }
+      - { x: 0.22, color: "#f1c40f" }
+      - { x: 0.28, color: "#e67e22" }
+      - { x: 0.35, color: "#e63946" }
+      - { x: 0.5, color: "#2a0a0a" }
+      - { x: 1.0, color: "#000000" }
+  AlGaN:
+    generic_x: 0.3
+    # magenta franc (peu d'aluminium) vers rose pâle : jamais confondu avec le GaN ni avec l'InGaN
+    stops:
+      - { x: 0.0, color: "#d01c8b" }
+      - { x: 1.0, color: "#f6c8e0" }

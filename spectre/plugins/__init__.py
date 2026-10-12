@@ -19,6 +19,7 @@ from .kpis_demo import PLUGIN as kpis_demo
 from .library import PLUGIN as library
 from .links import PLUGIN as links
 from .lots import PLUGIN as lots
+from .materials import PLUGIN as materials
 from .microprojects import PLUGIN as microprojects
 from .notebook import PLUGIN as notebook
 from .planning import PLUGIN as planning
@@ -59,5 +60,6 @@ PLUGINS = (
     kpis,
     kpis_demo,
     usage,
+    materials,
     docs,
 )

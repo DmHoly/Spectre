@@ -6,7 +6,7 @@ copiés dans le dossier de la bibliothèque de l'instance, qui est ensuite le se
 
 | Fichier | Clé (`/api/library/files/{clé}`) | Alimente | Déclaré par |
 |---|---|---|---|
-| `materiaux.yml` | `materials` | le sélecteur de matériaux du constructeur de structure (+ couleurs du rendu) | `spectre/plugins/structures/library_files.py` |
+| `materiaux.yml` | `materials` | le sélecteur de matériaux du constructeur de structure (+ couleurs du rendu) et les dégradés de couleur de l'InGaN / l'AlGaN selon leur taux | `spectre/plugins/structures/library_files.py` |
 | `recettes.yml` | `recipes` | des recettes de dépôt / gravure en plus de celles de StructureForge (fusion par nom) | `spectre/plugins/structures/library_files.py` |
 | `presets.yml` | `step-presets` | les présets d'étape intégrés (portée `builtin`) | `spectre/plugins/process_library/library_files.py` |
 | `briques.yml` | `tech-bricks` | les briques technologiques intégrées (portée `builtin`) | `spectre/plugins/process_library/library_files.py` |
@@ -27,7 +27,9 @@ qui en interprète le contenu et son jeu intégré de repli.
 
 ## Faire évoluer
 
-1. Éditez le fichier : depuis la page `/bibliotheque` (réservé aux administrateurs ; le contenu est
+1. Éditez le fichier : pour les matériaux, depuis la page `/materiaux` (couleurs, catégories,
+   descriptions, dégradés InGaN / AlGaN, sans toucher au YAML - elle réécrit le fichier en gardant
+   son en-tête de commentaires) ; pour tous, depuis la page `/bibliotheque` (réservé aux administrateurs ; le contenu est
    validé avant d'être écrit, un fichier invalide est refusé avec le message de l'erreur), ou à la
    main dans le dossier de l'instance.
 2. Rafraîchissez la page — **pas besoin de redémarrer le serveur** (rechargement à chaud quand le
@@ -50,6 +52,11 @@ qui en interprète le contenu et son jeu intégré de repli.
   n'importe quel matériau connu de StructureForge (~46) — retirer une entrée n'empêche pas une
   structure existante de se simuler. Une entrée peut *ajouter* un matériau absent de StructureForge
   (GZO, AlCu) ou en *redéfinir* la couleur.
+- **Dégradés** (`gradients:` de `materiaux.yml`) : la couleur d'un nitrure à composition
+  (In0.20Ga0.80N, Al0.15Ga0.85N...) selon son taux `x` - des points `{ x, color }` (au moins deux),
+  mélange linéaire entre les deux qui encadrent le taux ; `generic_x` : le taux dont la couleur est celle
+  du nom nu (« InGaN » sans taux). Une famille absente garde son dégradé intégré (un fichier d'avant les
+  dégradés reste valide).
 - **Recettes** de dépôt/gravure : StructureForge en fournit un jeu de base ; `recettes.yml` en
   ajoute (ou en redéfinit). Une **gravure sélective** (« ne grave que l'Al2O3 ») est une recette,
   pas un préset — la sélectivité (`selectivity_by_material` / `_by_category` / `default_factor`)
