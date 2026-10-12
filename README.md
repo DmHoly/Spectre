@@ -70,8 +70,10 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   (`references/local_refs.py`, migration `0005`).
 - **Références de structure.** Une référence (« epitaxie-standard ») est un objet de toute
   l'application, pas d'un µprojet : ses versions, numérotées `MAJEUR.MINEUR` par le serveur, sont
-  publiées depuis les études de n'importe quel µprojet (« Publier comme référence » : tout editor du
-  µprojet source), chacune comparée à la version de référence dont elle dérive - un changement
+  promues depuis les études de n'importe quel µprojet - une étude, la variante d'un split - par un
+  formulaire dédié, `/promotion` (« Promouvoir comme référence », sur chaque fiche, conclusion et
+  page d'évolution ; tout editor du µprojet source ; ses règles disent avant de promouvoir ce qui
+  manque), chacune comparée à la version de référence dont elle dérive - un changement
   majeur donne le majeur suivant, un réglage, une étiquette ou une unité seule le mineur suivant,
   une structure identique est refusée ; deux dérivations d'une même version reçoivent 1.1 et 1.2,
   et republier une étude qui a évolué continue sa suite (1.1 puis 1.2, pas une nouvelle branche).
@@ -102,7 +104,7 @@ Projet corporate          Native (PT2), VLC (microlink), Nova (PT1)... et ses ob
   structures » de la page µprojet et de la fiche) dessine les pistes en colonnes, façon git : un
   nœud `vX.Y` par version structurelle (majeure, mineure), les fourches, les combinaisons, les
   versions publiées comme référence en badges « R nom 1.1 », avec une bascule « Toutes les
-  versions ». Sur un nœud : publier comme référence, comparer à une autre version, partir de cette
+  versions ». Sur un nœud : promouvoir comme référence, comparer à une autre version, partir de cette
   version. L'ancienne adresse `/microprojets/{slug}/refs` y redirige.
 - **Étapes.** Chaque étape d'un procédé a un identifiant stable, conservé quand on insère, déplace
   ou supprime d'autres étapes à une évolution : une campagne DOE désigne ses étapes par cet

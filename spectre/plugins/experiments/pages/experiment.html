@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="/static/lots/lots.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="stylesheet" href="/static/references/references.css">
+  <link rel="stylesheet" href="/static/promotion/promotion.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -74,6 +75,7 @@
           <span id="status-actions" class="fiche-hero__status-actions" data-report-hide></span>
         </div>
         <div class="fiche-head__actions" data-report-hide>
+          <span id="promotion-action" data-panel="promotion-action"></span>
           <button class="btn btn-line" id="export-report-btn" type="button" data-panel="report">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
             Télécharger le rapport
@@ -111,6 +113,7 @@
 
         <aside class="fiche-hero__side" aria-label="Verdict et plaques">
           <div id="hero-verdict"></div>
+          <div id="hero-reference" data-panel="promotion" data-report-hide hidden></div>
           <div id="hero-conclusion" class="fiche-hero__conclusion" style="display:none;"></div>
           <div class="fiche-hero__plates">
             <div class="fiche-hero__label">Plaques suivies</div>
@@ -153,6 +156,7 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
                 <span id="structure-labels-btn-text">Étiquettes : masquer</span>
               </button>
+              <span id="structure-promote" data-report-hide></span>
               <a class="btn btn-line" id="structure-compare-link" href="/comparateur" data-report-hide hidden style="min-height:32px;padding:5px 12px;font-size:12.5px;">Comparer</a>
               <button type="button" class="btn btn-line" id="structure-evolve-link" data-report-hide style="display:none;min-height:32px;padding:5px 12px;font-size:12.5px;">Modifier la structure</button>
               <button type="button" class="btn btn-line" id="structure-replace-btn" data-report-hide style="display:none;min-height:32px;padding:5px 12px;font-size:12.5px;">
@@ -456,7 +460,7 @@
   <script src="/static/wafers/fdl.js"></script>
   <script src="/static/characterization/wafer-data-links.js"></script>
   <script src="/static/attachments/image-drop.js"></script>
-  <script src="/static/references/publish-dialog.js"></script>
+  <script src="/static/promotion/link.js"></script>
   <!-- La fiche : l'amorce et le registre des panneaux, puis ses panneaux, dans l'ordre où ils se
        montent ; ensuite ceux des autres plugins (lots, cahier), qui s'y enregistrent. -->
   <script src="/static/experiments/page.js"></script>
@@ -469,6 +473,7 @@
   <script src="/static/experiments/advanced.js"></script>
   <script src="/static/experiments/report.js"></script>
   <script src="/static/lots/lot-picker.js"></script>
+  <script src="/static/promotion/fiche.js"></script>
   <!-- Visualisation de données : le registre, puis un fichier par composant, puis les préréglages
        par type de données (un composant de plus = un fichier de plus ici). -->
   <script src="/static/notebook/dataviz/core.js"></script>

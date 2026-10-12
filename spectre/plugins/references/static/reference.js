@@ -88,8 +88,13 @@
     ];
     if (latest) parts.push(`dernière mise à jour : ${latest.number} le ${formatDate(latest.published_at)}`);
     document.getElementById("reference-meta").textContent = parts.join(" · ");
+    const promote =
+      typeof PromotionLink !== "undefined" && pluginEnabled("promotion")
+        ? PromotionLink.html({ reference: ref.slug }, { label: "Promouvoir une nouvelle version", title: "Choisir une structure comme nouvelle version de cette référence : le formulaire de la promotion" })
+        : "";
     document.getElementById("head-actions").innerHTML = `
-      ${latest ? `<button class="btn btn-primary js-start" type="button" data-number="${escapeHtml(latest.number)}">Partir de la dernière version (${escapeHtml(latest.number)})</button>` : ""}
+      ${promote}
+      ${latest ? `<button class="btn btn-line js-start" type="button" data-number="${escapeHtml(latest.number)}">Partir de la dernière version (${escapeHtml(latest.number)})</button>` : ""}
       ${ref.can_edit ? `<button class="btn btn-line" type="button" id="edit-btn">Renommer / décrire</button><button class="btn btn-danger" type="button" id="remove-btn">Retirer</button>` : ""}`;
   }
 

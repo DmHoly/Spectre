@@ -109,19 +109,20 @@ placés au-dessus de lui.
 | 11 | `comparator` | Comparateur de structures : le tableau d'une liste de plaques, d'études et de versions de référence (`GET /api/comparisons`), une ligne par plaque ou structure, une colonne par paramètre regroupée par étape, chaque cellule comparée à la ligne de base (modifié, paramètre ajouté, couche en plus, étape déplacée, couche absente : `table.py`, pur) ; registre des sources de lignes (`register_source`) - les études ici, les plaques et les références chez leurs plugins ; page `/comparateur`, composant `Comparator` des pages qui comparent des structures. Ne stocke rien | experiments, microprojects, structures | — |
 | 12 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library, experiments (où servent les briques) | JSON par portée |
 | 13 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), la source « référence » du comparateur (`comparison_source.py`), les refs locales d'avant regroupées une fois par migration (`local_refs.py`) | experiments, microprojects, structures, comparator | `structure_references`, `reference_versions`, `retired_reference_slugs` |
-| 14 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
-| 15 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité, plaques de chaque FDL (`fdl_source` : démo, base locale, PRISM à venir) ; la source « plaque » du comparateur (`comparison_source.py`) | experiments, search, comparator | cache mémoire, `fdl_wafers` |
-| 16 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
-| 17 | `planning` | Planning d'une équipe, pour ses managers (et les admins) : les plaques de ses études par thématique ▸ µprojet ▸ épi, les lots qui les portent (en cours, sortis, prévus) et les expériences prévues de ses µprojets (`GET /api/team-plannings`, `GET /api/team-plannings/{team_slug}` ; 403 `planning_forbidden` hors managers), page `/planning` à frise par semaine. Ne stocke rien : un lot prévu est un lot `planned` du plugin lots, créé et rempli par ses routes depuis la page ; lit `experiments.plans` | teams, areas, microprojects, structures, experiments, wafers, lots | — |
-| 18 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
-| 19 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
-| 20 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
-| 21 | `external_images` | Politique des images externes référencées (TEM, scans) : racines autorisées, formats affichables, lecture bornée ; parcours des dossiers autorisés | microprojects | — |
-| 22 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens), rattachées aux plaques et aux étapes ; sert les images externes d'une entrée par identifiant ; lit les vues, les preuves et les jeux d'images d'avant (`legacy.py`) | characterization, experiments, attachments, external_images | `snapshots/`, métadonnées Follow (`notebook_entries`) |
-| 23 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
-| 24 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
-| 25 | `usage` | Mesure de l'utilisation, pour les administrateurs : son observateur de requêtes (`recorder.observe`) compte chaque requête d'un compte connecté - le compte, l'heure locale, le plugin, le genre et le gabarit de la route, rien d'autre - en mémoire, écrits en base toutes les 15 s et avant toute lecture ; ni les requêtes anonymes ni les siennes. Le rapport d'une période (`service.report`) : adoption, comptes actifs par jour ouvré, modules, pages et routes, carte de chaleur, rythme de chaque compte, comparés à la période d'avant. Page Paramètres > Utilisation (section du menu de `settings`, cachée quand `usage` est éteint) | accounts, settings, teams | `usage_counts` (un compteur par heure, compte, plugin, genre, méthode et route ; sans clé étrangère : l'histoire d'un compte supprimé reste) |
-| 26 | `docs` | Pages de documentation (contenu inchangé) | — | — |
+| 14 | `promotion` | Promouvoir une structure comme référence : le seul chemin pour choisir une nouvelle référence ou une nouvelle version (une étude, la variante d'un split, une version passée). Page `/promotion` (formulaire, vérifications, journal) ouverte par le bouton « Promouvoir comme référence » de chaque fiche, variante, conclusion « Retenir comme référence », page d'évolution et page de référence (`static/link.js`, `PromotionLink`). **Registre de règles** (`rules.py`, `register_rule`) : chaque règle rend `ok` / `warn` / `block` ; une règle de plus ne change ni le formulaire, ni l'API. Écrit les versions par `references.service.plan_publication` / `record_publication` | experiments, microprojects, structures, references | `promotions` (le journal : source, référence, numéro, pourquoi, verdicts des règles du jour) |
+| 15 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
+| 16 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité, plaques de chaque FDL (`fdl_source` : démo, base locale, PRISM à venir) ; la source « plaque » du comparateur (`comparison_source.py`) | experiments, search, comparator | cache mémoire, `fdl_wafers` |
+| 17 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
+| 18 | `planning` | Planning d'une équipe, pour ses managers (et les admins) : les plaques de ses études par thématique ▸ µprojet ▸ épi, les lots qui les portent (en cours, sortis, prévus) et les expériences prévues de ses µprojets (`GET /api/team-plannings`, `GET /api/team-plannings/{team_slug}` ; 403 `planning_forbidden` hors managers), page `/planning` à frise par semaine. Ne stocke rien : un lot prévu est un lot `planned` du plugin lots, créé et rempli par ses routes depuis la page ; lit `experiments.plans` | teams, areas, microprojects, structures, experiments, wafers, lots | — |
+| 19 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
+| 20 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
+| 21 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
+| 22 | `external_images` | Politique des images externes référencées (TEM, scans) : racines autorisées, formats affichables, lecture bornée ; parcours des dossiers autorisés | microprojects | — |
+| 23 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens), rattachées aux plaques et aux étapes ; sert les images externes d'une entrée par identifiant ; lit les vues, les preuves et les jeux d'images d'avant (`legacy.py`) | characterization, experiments, attachments, external_images | `snapshots/`, métadonnées Follow (`notebook_entries`) |
+| 24 | `kpis` | Registre de KPI (`register`) et séries mensuelles d'un projet corporate | areas, experiments | — |
+| 25 | `kpis_demo` | Séries et fiche d'étude fictives. **Actif seulement si `SPECTRE_DEMO_DATA=1`** | kpis, structures | — |
+| 26 | `usage` | Mesure de l'utilisation, pour les administrateurs : son observateur de requêtes (`recorder.observe`) compte chaque requête d'un compte connecté - le compte, l'heure locale, le plugin, le genre et le gabarit de la route, rien d'autre - en mémoire, écrits en base toutes les 15 s et avant toute lecture ; ni les requêtes anonymes ni les siennes. Le rapport d'une période (`service.report`) : adoption, comptes actifs par jour ouvré, modules, pages et routes, carte de chaleur, rythme de chaque compte, comparés à la période d'avant. Page Paramètres > Utilisation (section du menu de `settings`, cachée quand `usage` est éteint) | accounts, settings, teams | `usage_counts` (un compteur par heure, compte, plugin, genre, méthode et route ; sans clé étrangère : l'histoire d'un compte supprimé reste) |
+| 27 | `docs` | Pages de documentation (contenu inchangé) | — | — |
 
 ### Activer et désactiver un plugin
 
@@ -147,8 +148,8 @@ plugin `settings`), **à chaud** : rien à redémarrer. La règle est au noyau (
   ne se montent plus), et la recherche n'interroge plus ses fournisseurs (`SearchProvider.plugin`).
 - **Le front d'un plugin du noyau** qui se sert d'un plugin optionnel le vérifie avec
   `pluginEnabled(name)` (`kernel/static/ui.js`) avant d'en appeler les globaux, et cache ce qui le
-  concerne : bloc KPI d'un projet (`kpis`), lien Atlas (`atlas`), départ depuis une référence,
-  « Publier comme référence » et versions publiées (`references`), badges et affectation de lots
+  concerne : bloc KPI d'un projet (`kpis`), lien Atlas (`atlas`), départ depuis une référence et
+  versions publiées (`references`), « Promouvoir comme référence » (`promotion`), badges et affectation de lots
   (`lots`), « Données en base » (`characterization`), onglet Données et citations de la conclusion
   (`notebook`), formulaire d'intention du constructeur (`intent_forms`). Côté serveur, sans
   `intent_forms` le formulaire d'un µprojet n'est pas exigé (`experiments.repository.writing`) : ses
@@ -1031,9 +1032,9 @@ crée une. Plugin `references` : `service.py` (le domaine), `local_refs.py` (les
 | `PATCH /api/references/{reference_slug}` `{name, description}` | son créateur ou un admin (403) ; le **slug ne change pas** (une étude cite sa référence par lui) ; sans effet → 200, rien d'écrit |
 | `DELETE /api/references/{reference_slug}` | → 204 ; son créateur ou un admin (403) ; une référence qui a des versions, un admin seulement (409 `reference_has_versions` pour son créateur) - ses versions partent avec elle, les études qui en étaient parties gardent une origine désormais inconnue : son slug n'est **jamais redonné** (`retired_reference_slugs` ; une nouvelle référence du même nom reçoit `-2`), celui d'une référence sans version (aucune étude n'a pu en partir) se libère |
 | `GET /api/references/{reference_slug}/versions` | `{reference, lanes, nodes, edges}` : l'évolution de la référence. `nodes`, dans l'ordre de publication : `{number, major, minor, label, change_level, parent, parent_inferred, imported, note, published_by, published_at, source, usage_count, usages, lane}` ; une version prend la colonne (`lane`) de son parent si elle en est le premier enfant, sinon une nouvelle ; `lanes` : `{index, start, head}` ; `edges` : `{parent, child, kind: "parent" \| "branch", inferred}` |
-| `POST /api/references/{reference_slug}/versions` `{microproject, experiment_id, version_id?, note?, parent?}` | publie une version d'étude (la pointe de la piste par défaut) : rôle `editor` sur le µprojet source (403 ; µprojet inconnu → 422 `unknown_microproject`, piste ou version inconnue → 404) ; une structure dessinée seulement (des images, une campagne → 422 `reference_needs_process`) ; son parent : `parent` (« 1.1 », inconnu → 422 `unknown_parent_version`), sinon la dernière version de cette référence publiée depuis ce µprojet dont la version publiée descend (republier une étude qui a évolué continue sa suite : 1.1 puis 1.2), sinon la version dont part la piste source (`reference_origin`), sinon la dernière publiée ; identique à son parent → 409 `reference_version_identical` ; une version Follow déjà publiée dans cette référence → 409 `reference_version_already_published` ; → 201 + `Location` `.../versions/{version_number}` + la version |
+| ~~`POST /api/references/{reference_slug}/versions`~~ | **supprimée** (2026-10-11) : publier une version passe par le plugin promotion (`POST /api/promotions`), seul chemin pour choisir une référence, avec ses règles |
 | `GET /api/references/{reference_slug}/versions/{version_number}` | une version (404 `reference_version_not_found`) : son nœud, plus `reference {slug, name}`, `structure_svg` (l'instantané dessiné par le serveur, étiquettes comprises) et `process` (son procédé éditable, la forme de `GET .../experiments/{exp}/process` : étapes avec leur id, `layer_labels` et `bricks` par positions) - ce que le constructeur charge pour lancer une étude depuis elle |
-| `GET /api/reference-versions?microproject=` | les versions de référence publiées depuis ce µprojet (viewer : 403 sinon ; inconnu → 404) : `[{reference: {slug, name}, number, label: "R nom 1.1", experiment_id, version_id, local_tag, change_level, published_at}]`, pour les badges de sa page d'évolution |
+| `GET /api/reference-versions?microproject=` | les versions de référence publiées depuis ce µprojet (viewer : 403 sinon ; inconnu → 404) : `[{reference: {slug, name}, number, label: "R nom 1.1", experiment_id, version_id, variant, local_tag, change_level, published_at}]`, pour les badges de sa page d'évolution et le bloc « Référence » de la fiche |
 
 - **Numéro** (`service.next_number`) : la version est comparée à sa version parente par le
   versionnage des études (`experiments.service.structure_change_level`). La première est 1.0 ; un
@@ -1047,11 +1048,14 @@ crée une. Plugin `references` : `service.py` (le domaine), `local_refs.py` (les
 - **Instantané** (`service.snapshot_of`, colonne `snapshot`) : la structure dessinée
   (`structure_type`, `structure` de Follow), les métadonnées qui la décrivent (`structureforge_process`
   - substrat, étapes, paramètres déclarés avec leur unité -, `process_step_ids` tels qu'on les lit,
-  `process_layer_labels`, `process_layer_steps`, `process_bricks`) et le titre de l'étude. Une version
+  `process_layer_labels`, `process_layer_steps`, `process_bricks`) et le titre de l'étude. Pour une
+  campagne (un split), celui de la variante promue (colonne `variant`, migration `0006`) : sa structure
+  simulée et son procédé, les valeurs de ses facteurs appliquées (`kinds.variant_process`) - une étude
+  simple, d'où l'on peut lancer une étude. Une version
   se dessine, se reprend et se compare sans son étude : elle reste utilisable si l'étude change de
   droits ou disparaît. Aucun objet Follow n'est écrit.
 - **Source et masquage** : `source` = `{microproject: {slug, code, name}, experiment_id, version_id,
-  title, local_tag, linked: true}` pour un membre du µprojet source (un admin l'est de tous),
+  title, variant, local_tag, linked: true}` pour un membre du µprojet source (un admin l'est de tous),
   `{microproject: {name}, linked: false}` pour les autres, `{microproject: {name, deleted: true},
   linked: false}` si le µprojet a été supprimé (son nom à la publication). Les usages suivent la même
   règle : `{microproject, experiment_id, title, status, updated_at, linked: true}` ou
@@ -1084,6 +1088,48 @@ crée une. Plugin `references` : `service.py` (le domaine), `local_refs.py` (les
   réécrit ; un nom qui n'était porté que par un µprojet reste un repère local, qu'un éditeur publie
   à la main. Plus rien ne pose d'étiquette Follow depuis les refs déclarées (2026-10-11) : une
   étiquette qui apparaîtrait après (un dépôt copié d'ailleurs) n'est plus regroupée.
+
+### promotion
+
+Nouvelles (2026-10-11). **Choisir une référence** - une nouvelle référence, ou une nouvelle version
+d'une référence - passe par un seul formulaire, la page `/promotion`, que chaque endroit où l'on
+voit une structure ouvre déjà rempli (`PromotionLink.url` : `?microprojet=&etude=&version=&variante=
+&reference=&retour=`) : en tête de la fiche d'une étude, au-dessus de sa structure (la variante que
+montre le carrousel d'un split), dans la conclusion (décider « Retenir comme référence » ouvre le
+formulaire une fois la conclusion enregistrée ; tant que rien n'est promu, l'en-tête de la fiche le
+rappelle), sur la page d'évolution d'un µprojet, la liste des références (« Promouvoir une
+structure ») et la page d'une référence (« Promouvoir une nouvelle version »), plus l'entrée
+« Promouvoir une réf. » de la barre du haut. Le bouton est **toujours montré** : ce que la structure
+permet ou non, ce sont les règles du formulaire qui le disent. Une référence ne se crée plus vide :
+elle naît avec sa première version.
+
+| Route | Effet |
+|---|---|
+| `POST /api/promotions/preview` `{microproject, experiment_id, version_id?, variant?, reference? \| new_reference? {name, description}, parent?, note}` | ce que donnerait la promotion, rien n'est écrit : `{source: {microproject, experiment_id, version_id, title, status, decision, structure_kind, variants: [{index, label}], variant, structure_svg}, suggestion: {reference, name, parent, why} \| null, target: {reference \| null, new_name}, parents, base, level, level_text, number, rules: [{rule, label, level, message, code}], can_promote}` ; sans `reference` ni `new_reference`, la référence proposée (celle dont part l'étude, à la suite de la dernière version publiée depuis la piste ; sinon la dernière où a été publiée une version dont elle descend) ; lecteur du µprojet (403 sinon) |
+| `POST /api/promotions` (même corps) | → 201 + `Location` `/api/references/{slug}/versions/{number}` + la version (`GET` d'une version) ; refusée avec le statut et le code de la **première règle qui bloque** ; sinon, dans une transaction sous le verrou des références : la nouvelle référence (si `new_reference`), la version (`references.service.record_publication`), l'entrée du journal ; µprojet inconnu → 422 `unknown_microproject`, piste, version ou référence inconnue → 404, `parent` inconnu → 422 `unknown_parent_version` |
+| `GET /api/promotions?microproject=&experiment_id=&limit=` | le journal, les plus récentes d'abord : `{reference: {slug, name, exists}, number, created_reference, source, note, warnings, promoted_by, promoted_at}` ; `source` masquée comme celle d'une version de référence |
+| `GET /api/promotion-sources` | les µprojets où l'on peut promouvoir (éditeur) : `[{slug, name}]` |
+
+- **Les règles** (`rules.py`) : un registre, comme les sources du comparateur. Une règle
+  (`Rule(id, label, check, order)`) reçoit le `Candidate` (qui promeut, la publication planifiée par
+  `references.service.plan_publication` : source, instantané, référence visée, version parente,
+  numéro, version déjà publiée depuis la même source ; le nom d'une nouvelle référence ; le pourquoi)
+  et rend `ok`, `warn` (on peut promouvoir, en le sachant), `block` (statut et code de l'erreur) ou
+  `None` (sans objet). Celles de base : droit de promouvoir (`editor`, 403), variante du split
+  (`variant_required`), structure utilisable comme point de départ (`reference_needs_process`,
+  `unknown_variant`, `no_variant_process`), référence visée (`invalid_reference_name`,
+  `reference_name_taken`), différente de sa version parente (`reference_version_identical`), pas déjà
+  promue (`reference_version_already_published`), étude conclue (avertissement : pas conclue, ou la
+  conclusion n'a pas retenu cette structure), justification (avertissement). **Choisir une référence
+  suivra un jour d'autres règles** : une règle de plus est une fonction de plus, enregistrée ici ou par
+  un autre plugin (`from ..promotion.rules import Rule, register_rule`) - le formulaire la montre,
+  l'API l'applique, le journal la garde.
+- **Une variante de split** est promue comme une étude simple : son instantané est sa structure
+  simulée et son procédé (`references.service.snapshot_of(..., variant)`), la version garde son index
+  (`reference_versions.variant`) ; chaque variante d'une même version Follow peut devenir une version
+  de référence.
+- **Le journal** (`promotions`) garde les noms du jour (référence, µprojet, titre de l'étude), le
+  pourquoi et les verdicts des règles passées, pour relire sous quelles règles on a choisi.
 
 ### intent_forms
 
@@ -1224,6 +1270,7 @@ Toutes nouvelles, réservées aux administrateurs (403 sinon).
 | microprojects | `/microprojets/{slug}`, `/p/{code}` (redirection, **après** contrôle de session), `/projets/{rest:path}` (redirection héritée, 308) |
 | experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/evolution` (nouvelle : « Évolution des structures », diagramme des pistes, versions et versions de référence ; liée depuis la page µprojet et la fiche), `/microprojets/{slug}/refs` (302 vers `/evolution`) |
 | references | `/references` (la liste des références de toute l'application ; entrée « Références » de la barre du haut), `/references/{slug}` (l'évolution d'une référence, `?version=1.1` : la version choisie) |
+| promotion | `/promotion` (nouvelle : promouvoir une structure comme référence, `?microprojet=&etude=&version=&variante=&reference=&retour=` ; entrée « Promouvoir une réf. » de la barre du haut) |
 | comparator | `/comparateur` (nouvelle : `?item=` répété, `&base=n` ; bouton à icône de la barre du haut, à côté de la session) |
 | structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/structures/sans-structure`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image`, `/experiences/{experiment_id}/evoluer-sans-structure` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
 | process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques`, `/microprojets/{slug}/macro-etapes` |
@@ -1411,15 +1458,11 @@ Supprimée : `/microprojets/{slug}/graphe`.
     colonnes de branches, rattachements déduits en pointillés, `evo-edge--inferred`) lui donnent
     leurs nœuds rangés et écrivent leurs rangées et leur panneau. Il reste dans experiments, d'où
     il vient et que references charge déjà (le navigateur compose).
-  - `references/static/publish-dialog.js` (global `ReferencePublishDialog`) : « Publier comme
-    référence », ouvert par la fiche (`tags-refs.js`, à la place de « + ref », sur une structure
-    dessinée seulement) et la page d'évolution (à la place de « Promouvoir en ref » et de « Publier
-    dans la bibliothèque »). La référence proposée : l'origine de l'étude (`reference_origin`),
-    sinon la dernière référence où a été publiée une version dont elle descend (la page
-    d'évolution donne ces ancêtres, lus dans ses arêtes ; la fiche, sur la pointe, prend la même
-    piste) ; le parent proposé : la dernière version de cette référence publiée depuis la piste,
-    sinon la version d'origine (la règle du serveur). Une référence créée dans la boîte puis
-    refusée (409 identique, droits) est retirée aussitôt. Le numéro calculé s'affiche après la publication.
+  - `promotion/static/link.js` (global `PromotionLink`) : le bouton « Promouvoir comme référence »,
+    le même partout (fiche, variante d'un split, conclusion, page d'évolution, liste et page d'une
+    référence), un lien vers le formulaire `/promotion` déjà rempli (§ promotion). Il a remplacé la
+    boîte « Publier comme référence » (`references/static/publish-dialog.js`, retirée le
+    2026-10-11), que la fiche ne montrait que sur une structure dessinée - jamais sur un split.
   - `references/static/start-picker.js` (global `ReferenceStartPicker`) : « Partir d'une
     référence », le premier choix de « Nouvelle expérience » (page µprojet, accueil ; et la page
     d'un µprojet ouverte avec `?premiere-experience=1`, ce que font les pages d'un projet et d'une

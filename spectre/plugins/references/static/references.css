@@ -1,7 +1,7 @@
 /* Références de structure : la liste (pages/references.html), la page d'une référence
    (pages/reference.html, qui reprend le diagramme et le panneau de l'évolution des structures :
-   experiments.css, chargée avant), et les deux boîtes partagées - « Publier comme référence »
-   (publish-dialog.js) et « Partir d'une référence » (start-picker.js). Tokens du noyau seulement. */
+   experiments.css, chargée avant), et la boîte partagée « Partir d'une référence »
+   (start-picker.js). Tokens du noyau seulement. */
 
 .ref-visually-hidden {
   position: absolute;

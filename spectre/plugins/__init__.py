@@ -23,6 +23,7 @@ from .microprojects import PLUGIN as microprojects
 from .notebook import PLUGIN as notebook
 from .planning import PLUGIN as planning
 from .process_library import PLUGIN as process_library
+from .promotion import PLUGIN as promotion
 from .references import PLUGIN as references
 from .search import PLUGIN as search
 from .settings import PLUGIN as settings
@@ -45,6 +46,7 @@ PLUGINS = (
     comparator,
     process_library,
     references,
+    promotion,
     intent_forms,
     wafers,
     lots,

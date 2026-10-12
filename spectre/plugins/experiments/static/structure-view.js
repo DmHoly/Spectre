@@ -98,10 +98,25 @@
     });
   }
 
+  // « Promouvoir comme référence » (plugin promotion) au-dessus de la structure : pour un split, celle
+  // de la variante que montre le carrousel
+  function renderPromote(variant) {
+    const box = document.getElementById("structure-promote");
+    if (!box) return;
+    if (typeof PromotionLink === "undefined" || !pluginEnabled("promotion")) {
+      box.innerHTML = "";
+      return;
+    }
+    const target = { microproject: ctx.microprojectSlug, experimentId: ctx.experimentId, versionId: ctx.isTip ? null : ctx.versionId, variant };
+    const label = variant === undefined ? "Promouvoir comme référence" : `Promouvoir la variante ${variant + 1}`;
+    box.innerHTML = PromotionLink.html(target, { compact: true, label });
+  }
+
   async function renderStructure(detail) {
     const container = document.getElementById("structure-svg");
     const hint = document.getElementById("structure-click-hint");
     variantIndex = 0;
+    renderPromote(detail.is_batch ? 0 : undefined);
 
     if (detail.declared_structure) {
       // sans structure : la description et, s'il y en a un, le dessin collé - le split est plus bas
@@ -134,6 +149,7 @@
         mountStructureCarousel(container, await ctx.variants(), {
           onChange: (index) => {
             variantIndex = index;
+            renderPromote(index);
             hideTooltip();
             hint.style.display = ctx.process && index === 0 ? "" : "none";
             applyLabelsEverywhere();

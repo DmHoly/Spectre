@@ -5,7 +5,11 @@
    Le verdict d'un objectif cite des entrées du cahier (`evidence_ids`, le champ de Follow, qui
    désignait les anciennes preuves : une preuve convertie garde son id). Leurs titres viennent du
    panneau du cahier, qui les déclare à la fiche après coup (ctx.notebook, ExperiencePage.onNotebook) :
-   les citations se complètent alors sans toucher à la saisie en cours. */
+   les citations se complètent alors sans toucher à la saisie en cours.
+
+   Décider « Retenir comme référence » n'est pas qu'une déclaration : la conclusion enregistrée, le
+   formulaire de la promotion (plugin promotion, PromotionLink) s'ouvre sur cette étude pour choisir
+   la référence. */
 
 (() => {
   const { decisions, objectiveStatuses } = ExperimentVocabulary;
@@ -134,6 +138,7 @@
         <div class="field-row">
           <div><label for="conclude-decision">Décision</label>
             <select class="field" id="conclude-decision"><option value="">—</option>${optionsHtml(decisions)}</select>
+            <p class="help" id="conclude-promote-note" hidden style="margin:6px 0 0;">Enregistrée, la conclusion ouvre le formulaire de la promotion : vous y choisissez la référence (ou en créez une)${detail.is_batch ? " et la variante du split qui la devient" : ""}.</p>
           </div>
           <div><label for="conclude-status">Statut final</label>
             <select class="field" id="conclude-status">
@@ -158,6 +163,10 @@
       else ids.delete(box.value);
     });
     refreshCites();
+    const promoteNote = () => {
+      field("conclude-promote-note").hidden = !(field("conclude-decision").value === "promote" && typeof PromotionLink !== "undefined" && pluginEnabled("promotion"));
+    };
+    field("conclude-decision").addEventListener("change", promoteNote);
 
     if (prefill) {
       field("conclude-summary").value = prefill.summary || "";
@@ -171,6 +180,7 @@
         field(`obj-reasoning-${i}`).value = r.reasoning || "";
       });
     }
+    promoteNote();
 
     el.querySelector("form").addEventListener("submit", (event) => {
       event.preventDefault();
@@ -190,7 +200,10 @@
           evidence_ids: [...cited[i]].filter((id) => !known || known.has(id)),
         })),
       };
-      ctx.write(() => experimentsApi.conclude(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, body));
+      const promote = !field("conclude-promote-note").hidden;
+      ctx.write(() => experimentsApi.conclude(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, body)).then((done) => {
+        if (done && promote) window.location.href = PromotionLink.url({ microproject: ctx.microprojectSlug, experimentId: ctx.experimentId });
+      });
     });
   }
 

@@ -1,5 +1,5 @@
-"""Références de structure (plugin references) : en créer une, y publier une version, lire son
-évolution. Chaque aide encapsule une route et vérifie son code de succès ; les ``post_*`` renvoient
+"""Références de structure (plugin references) : en créer une, y promouvoir une version (plugin
+promotion), lire son évolution. Chaque aide encapsule une route et vérifie son code de succès ; les ``post_*`` renvoient
 la réponse telle quelle (pour en vérifier un refus)."""
 
 from __future__ import annotations
@@ -41,13 +41,28 @@ def delete_reference(client: Any, slug: str) -> Any:
     return client.delete(reference_url(slug))
 
 
+PROMOTIONS = "/api/promotions"
+
+
+def post_promotion(client: Any, microproject: str, experiment_id: str, **fields: Any) -> Any:
+    """POST /api/promotions - ``fields`` : ``reference``, ``new_reference``, ``version_id``,
+    ``variant``, ``note``, ``parent``."""
+    return client.post(PROMOTIONS, json={"microproject": microproject, "experiment_id": experiment_id, **fields})
+
+
+def preview_promotion(client: Any, microproject: str, experiment_id: str, **fields: Any) -> dict:
+    """POST /api/promotions/preview - ce que donnerait la promotion (les règles, le numéro)."""
+    return assert_ok(client.post(f"{PROMOTIONS}/preview", json={"microproject": microproject, "experiment_id": experiment_id, **fields}))
+
+
 def post_version(client: Any, slug: str, microproject: str, experiment_id: str, **fields: Any) -> Any:
-    """POST /api/references/{slug}/versions - ``fields`` : ``version_id``, ``note``, ``parent``."""
-    return client.post(f"{reference_url(slug)}/versions", json={"microproject": microproject, "experiment_id": experiment_id, **fields})
+    """Promouvoir dans la référence ``slug`` (POST /api/promotions) - ``fields`` : ``version_id``,
+    ``variant``, ``note``, ``parent``."""
+    return post_promotion(client, microproject, experiment_id, reference=slug, **fields)
 
 
 def publish(client: Any, slug: str, microproject: str, experiment_id: str, **fields: Any) -> dict:
-    """Publie la pointe de la piste (ou ``version_id``) - renvoie la version créée (``number``)."""
+    """Promeut la pointe de la piste (ou ``version_id``) dans ``slug`` - renvoie la version créée (``number``)."""
     return assert_created(post_version(client, slug, microproject, experiment_id, **fields))
 
 

@@ -15,8 +15,9 @@ l'autre et dont on suit l'évolution.
   avec leur unité -, les ids d'étape, les étiquettes de couches et les briques). L'instantané rend
   la version utilisable (rendu, procédé à reprendre, diff) même si l'étude source change de droits
   ou disparaît ; aucun objet Follow n'est écrit.
-- **Droits** : tout compte connecté lit les références et en crée une ; publier une version demande
-  le rôle ``editor`` sur le µprojet source ; renommer, décrire ou retirer une référence revient à
+- **Droits** : tout compte connecté lit les références et en crée une ; publier une version (ce que
+  fait le plugin promotion, seul chemin pour choisir une nouvelle référence : :func:`plan_publication`
+  puis :func:`record_publication`) demande le rôle ``editor`` sur le µprojet source ; renommer, décrire ou retirer une référence revient à
   son créateur ou à un admin - retirer une référence qui a des versions, à un admin seulement.
 - **Masquage** : la source d'une version et les études qui en sont parties ne nomment que leur
   µprojet pour qui n'en est pas membre (la piste, son titre, sa version et le lien restent aux
@@ -114,6 +115,7 @@ class ReferenceVersion:
     note: str
     published_by: int | None
     published_at: str
+    variant: int | None = None  # la variante promue d'une campagne (son index), None sinon
 
     @property
     def number(self) -> str:
@@ -129,8 +131,10 @@ def reference_from_row(row: sqlite3.Row) -> Reference:
 
 
 def _version_from_row(row: sqlite3.Row) -> ReferenceVersion:
-    values = {name: row[name] for name in ReferenceVersion.__dataclass_fields__ if name not in ("snapshot", "parent_inferred")}
-    return ReferenceVersion(**values, parent_inferred=bool(row["parent_inferred"]), snapshot=json.loads(row["snapshot"]))
+    values = {name: row[name] for name in ReferenceVersion.__dataclass_fields__ if name not in ("snapshot", "parent_inferred", "variant")}
+    # variant : absente pendant la migration 0005 (avant 0006_version_variant)
+    variant = row["variant"] if "variant" in row.keys() else None
+    return ReferenceVersion(**values, parent_inferred=bool(row["parent_inferred"]), snapshot=json.loads(row["snapshot"]), variant=variant)
 
 
 def normalized_name(name: str) -> str:
@@ -144,7 +148,7 @@ def _folded(text: str) -> str:
     return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii").casefold()
 
 
-def _checked_name(name: str) -> str:
+def checked_name(name: str) -> str:
     name = (name or "").strip()
     if not name or not normalized_name(name):
         raise InvalidInput("Donnez un nom à la référence (des lettres ou des chiffres).", code="invalid_reference_name")
@@ -253,18 +257,54 @@ def published_on_line(versions: list[ReferenceVersion], microproject: Microproje
 # -- instantané ------------------------------------------------------------------------------------
 
 
-def snapshot_of(repo: follow.Repository, version: follow.Experiment) -> dict[str, Any] | None:
+def variant_labels(version: follow.Experiment) -> list[str]:
+    """Le nom de chaque variante d'une campagne (``[]`` hors campagne) : la plaque qui la suit
+    (``physical_tracking``), sinon « Variante n », et les valeurs de ses facteurs."""
+    if kinds.KINDS.get(version.structure_type) is not kinds.CAMPAIGN:
+        return []
+    metadata = version.metadata
+    labels = metadata.get("campaign_labels") or []
+    entries = (version.structure or {}).get("entries") or []
+    count = max(len(metadata.get("campaign_factor_values") or []), len(labels), len(entries))
+    tracked = [entry.get("sample_id") if isinstance(entry, dict) else None for entry in metadata.get("physical_tracking") or []]
+    names = []
+    for i in range(count):
+        sample = tracked[i] if i < len(tracked) else None
+        detail = labels[i] if i < len(labels) else ""
+        names.append(" · ".join(part for part in (sample or f"Variante {i + 1}", detail) if part))
+    return names
+
+
+def snapshot_of(repo: follow.Repository, version: follow.Experiment, variant: int | None = None) -> dict[str, Any] | None:
     """L'instantané de la structure de ``version`` (lue dans ``repo``) : la structure dessinée
     (``structure_type``, ``structure``), les métadonnées qui la décrivent
     (:data:`SNAPSHOT_METADATA_KEYS`, les ids d'étape écrits tels qu'on les lit :
-    :func:`experiments.step_ids_of`) et le titre de l'étude. ``None`` pour une structure qui n'est pas
-    un procédé dessiné (des images, une campagne) : une référence est un point de départ du
-    constructeur."""
-    if kinds.KINDS.get(version.structure_type) is not kinds.PROCESS or not isinstance(version.metadata.get("structureforge_process"), dict):
+    :func:`experiments.step_ids_of`) et le titre de l'étude. Pour une campagne (un split), celui de
+    sa variante ``variant`` : sa structure simulée et son procédé (:func:`kinds.variant_process`, les
+    valeurs de ses facteurs appliquées) - :class:`InvalidInput` pour une variante qu'elle n'a pas ou
+    n'a pas enregistrée. ``None`` pour une structure qui n'est pas un procédé dessiné (des images, une
+    étude sans structure, une campagne sans variante choisie) : une référence est un point de départ
+    du constructeur."""
+    kind = kinds.KINDS.get(version.structure_type)
+    if not isinstance(version.metadata.get("structureforge_process"), dict):
+        return None
+    if kind is kinds.PROCESS and variant is None:
+        structure_type, structure, title = version.structure_type, version.structure, version.title
+        process = version.metadata["structureforge_process"]
+    elif kind is kinds.CAMPAIGN and variant is not None:
+        entries = (version.structure or {}).get("entries") or []
+        if not 0 <= variant < len(entries):
+            raise InvalidInput(f"Cette campagne n'a pas de variante n° {variant + 1}.", code="unknown_variant")
+        process = kinds.variant_process(version.metadata, experiments.step_ids_of(repo, version), variant)
+        labels = variant_labels(version)
+        structure_type, structure = kinds.PROCESS.key, entries[variant]
+        title = f"{version.title} · {labels[variant]}" if variant < len(labels) else version.title
+    else:
         return None
     metadata = {key: copy.deepcopy(version.metadata[key]) for key in SNAPSHOT_METADATA_KEYS if key in version.metadata}
+    metadata["structureforge_process"] = copy.deepcopy(process)
     metadata[STEP_IDS_METADATA_KEY] = experiments.step_ids_of(repo, version)
-    return {"structure_type": version.structure_type, "structure": copy.deepcopy(version.structure), "metadata": metadata, "title": version.title}
+    return {"structure_type": structure_type, "structure": copy.deepcopy(structure), "metadata": metadata, "title": title}
 
 
 def snapshot_state(snapshot: dict[str, Any]) -> experiments.StructureState:
@@ -290,9 +330,11 @@ def insert_version(
     note: str,
     published_by: int | None,
     published_at: str,
+    variant: int | None = None,
 ) -> ReferenceVersion:
     """Enregistre une version de ``reference`` (son numéro déjà calculé) et avance la date de
-    mise à jour de la référence."""
+    mise à jour de la référence. ``variant`` : la variante promue d'une campagne (sa colonne n'existe
+    qu'après la migration 0006 : la 0005 importe sans elle)."""
     cursor = conn.execute(
         """INSERT INTO reference_versions (reference_id, number_major, number_minor, parent_version_id, parent_inferred,
                microproject_id, microproject_name, experiment_id, version_id, local_tag, snapshot, change_level, note,
@@ -316,6 +358,8 @@ def insert_version(
             published_at,
         ),
     )
+    if variant is not None:
+        conn.execute("UPDATE reference_versions SET variant = ? WHERE id = ?", (variant, cursor.lastrowid))
     conn.execute(
         "UPDATE structure_references SET updated_at = MAX(updated_at, ?) WHERE id = ?",
         (published_at, reference.id),
@@ -409,6 +453,7 @@ def _source(viewer: _Viewer, version: ReferenceVersion) -> dict[str, Any]:
         "experiment_id": version.experiment_id,
         "version_id": version.version_id,
         "title": version.snapshot.get("title"),
+        "variant": version.variant,
         "local_tag": version.local_tag,
         "linked": True,
     }
@@ -578,6 +623,7 @@ def versions_published_from(microproject: Microproject) -> list[dict[str, Any]]:
             "label": f"R {row['reference_name']} {row['number_major']}.{row['number_minor']}",
             "experiment_id": row["experiment_id"],
             "version_id": row["version_id"],
+            "variant": row["variant"],
             "local_tag": row["local_tag"],
             "change_level": row["change_level"],
             "published_at": row["published_at"],
@@ -589,17 +635,17 @@ def versions_published_from(microproject: Microproject) -> list[dict[str, Any]]:
 # -- écritures -------------------------------------------------------------------------------------
 
 
-def _taken(name: str) -> Conflict:
+def taken(name: str) -> Conflict:
     return Conflict(f"Une référence porte déjà le nom « {name} ».", code="reference_name_taken")
 
 
 def create_reference(user: User, *, name: str, description: str = "") -> Reference:
     """Une nouvelle référence, sans version (on y publie ensuite) : tout compte connecté. 409 pour un
     nom déjà pris (comparé par :func:`normalized_name`)."""
-    name = _checked_name(name)
+    name = checked_name(name)
     with keyed_lock(LOCK_NAMESPACE, WRITE_LOCK_KEY), get_conn() as conn:
         if find_by_name(conn, name) is not None:
-            raise _taken(name)
+            raise taken(name)
         return insert_reference(conn, name=name, description=(description or "").strip(), created_by=user.id, created_at=now())
 
 
@@ -610,13 +656,13 @@ def update_reference(user: User, slug: str, changes: dict[str, Any]) -> Referenc
         reference = _get(conn, slug)
         if not can_manage(user, reference):
             raise Forbidden("Seuls le créateur de la référence et un administrateur peuvent la modifier.")
-        name = reference.name if changes.get("name") is None else _checked_name(changes["name"])
+        name = reference.name if changes.get("name") is None else checked_name(changes["name"])
         description = reference.description if changes.get("description") is None else changes["description"].strip()
         if (name, description) == (reference.name, reference.description):
             return reference
         other = find_by_name(conn, name)
         if other is not None and other.id != reference.id:
-            raise _taken(name)
+            raise taken(name)
         conn.execute(
             "UPDATE structure_references SET name = ?, description = ?, updated_by = ?, updated_at = ? WHERE id = ?",
             (name, description, user.id, now(), reference.id),
@@ -645,80 +691,156 @@ def delete_reference(user: User, slug: str) -> None:
         conn.execute("DELETE FROM structure_references WHERE id = ?", (reference.id,))
 
 
-def publish_version(
-    user: User,
-    slug: str,
-    *,
-    microproject_slug: str,
-    experiment_id: str,
-    version_id: str | None,
-    note: str = "",
-    parent: str | None = None,
-) -> str:
-    """Publier une version Follow (la pointe de la piste par défaut) comme nouvelle version de la
-    référence ``slug`` - le rôle ``editor`` sur son µprojet. Son parent : ``parent`` (un numéro de
-    cette référence) s'il est donné ; sinon la dernière version de cette référence publiée depuis ce
-    µprojet dont la version publiée descend (:func:`published_on_line` : republier une étude après
-    l'avoir fait évoluer continue sa suite) ; sinon la version dont part la piste source
-    (``reference_origin``) ; sinon sa dernière version publiée. Son numéro : :func:`next_number`
-    selon le changement de structure depuis le parent (:func:`experiments.structure_change_level`).
-    409 ``reference_version_identical`` si rien ne change, ``reference_version_already_published``
-    pour une version Follow déjà publiée dans cette référence ; 422 ``reference_needs_process`` pour
-    une structure qui n'est pas un procédé dessiné. Renvoie le numéro donné."""
+# -- publier : ce que le plugin promotion planifie, vérifie puis enregistre -----------------------
+
+
+@dataclass(frozen=True)
+class PublicationSource:
+    """Ce qu'on publie : une version d'étude (lue dans le dépôt de son µprojet) et, pour une
+    campagne, la variante choisie."""
+
+    microproject: Microproject
+    repo: follow.Repository
+    experiment_id: str  # la piste
+    version: follow.Experiment
+    variant: int | None
+
+    @property
+    def is_campaign(self) -> bool:
+        return kinds.KINDS.get(self.version.structure_type) is kinds.CAMPAIGN
+
+
+def read_source(user: User, *, microproject_slug: str, experiment_id: str, version_id: str | None, variant: int | None) -> PublicationSource:
+    """La source d'une publication, que ``user`` peut lire (rôle ``viewer`` : 403 sinon ; publier
+    demande ``editor``, ce que vérifie une règle de la promotion) - 422 ``unknown_microproject``,
+    404 pour une étude ou une version inconnue."""
     try:
         microproject = microprojects.get_by_slug(microproject_slug)
     except microprojects.MicroprojectNotFoundError as exc:
         raise InvalidInput(f"µprojet « {microproject_slug} » introuvable.", code="unknown_microproject") from exc
-    microprojects.check_role(user, microproject, "editor")
+    microprojects.check_role(user, microproject, "viewer")
     repo = get_repository(microproject.slug)
-    version = experiments.version_of(repo, experiment_id, version_id)
-    snapshot = snapshot_of(repo, version)
-    if snapshot is None:
-        raise InvalidInput(
-            "Seule une structure dessinée dans le constructeur (ni des images, ni une campagne) peut être publiée comme référence.",
-            code="reference_needs_process",
-        )
-    origin = experiments.reference_origin_of(version)
-    with keyed_lock(LOCK_NAMESPACE, WRITE_LOCK_KEY), get_conn() as conn:
-        reference = _get(conn, slug)
-        versions = versions_of(conn, reference.id)
-        if parent:
-            if not NUMBER_RE.fullmatch(parent) or not any(v.number == parent for v in versions):
-                raise InvalidInput(f"Version parente « {parent} » introuvable pour cette référence.", code="unknown_parent_version")
-            base = _version(versions, parent)
-        else:
-            on_line = published_on_line(versions, microproject, repo, version)
-            from_origin = None
-            if origin is not None and origin["reference"] == reference.slug:
-                from_origin = next((v for v in versions if v.number == origin["version"]), None)
-            base = (on_line[-1] if on_line else None) or from_origin or (versions[-1] if versions else None)
+    return PublicationSource(microproject, repo, experiment_id, experiments.version_of(repo, experiment_id, version_id), variant)
+
+
+@dataclass(frozen=True)
+class Publication:
+    """Une publication planifiée (rien n'est écrit) : l'instantané de la source (``None`` : pas un
+    procédé dessiné, ``snapshot_error`` dit pourquoi quand c'est une variante illisible), la
+    référence visée (``None`` : une nouvelle référence), ses versions, la version dont la nouvelle
+    dériverait (``base``), le changement de structure depuis elle (``level``), le numéro qu'elle
+    prendrait et la version de cette référence déjà publiée depuis la même source (``already``)."""
+
+    source: PublicationSource
+    snapshot: dict[str, Any] | None
+    snapshot_error: InvalidInput | None
+    reference: Reference | None
+    versions: list[ReferenceVersion]
+    base: ReferenceVersion | None
+    level: str | None
+    number: str | None
+    already: ReferenceVersion | None
+
+
+def _published_from(conn: sqlite3.Connection, microproject: Microproject) -> list[tuple[str, ReferenceVersion]]:
+    rows = conn.execute(
+        """SELECT v.*, r.slug AS reference_slug FROM reference_versions v JOIN structure_references r ON r.id = v.reference_id
+           WHERE v.microproject_id = ? ORDER BY v.published_at DESC, v.id DESC""",
+        (microproject.id,),
+    ).fetchall()
+    return [(row["reference_slug"], _version_from_row(row)) for row in rows]
+
+
+def suggested_target(conn: sqlite3.Connection, source: PublicationSource) -> dict[str, Any] | None:
+    """La référence où publier d'office ``source`` : celle dont part l'étude (``reference_origin``),
+    à la suite de la dernière version qui y a été publiée depuis la piste (republier une étude
+    partie d'une référence continue sa suite : 1.1 puis 1.2), sinon depuis la version d'origine ;
+    sans origine, la dernière référence où a été publiée une version dont elle descend - ``None``
+    sinon. ``{reference, parent, why}``."""
+    origin = experiments.reference_origin_of(source.version)
+    on_line = [
+        (slug, v) for slug, v in _published_from(conn, source.microproject) if descends(source.repo, source.version, v.version_id)
+    ]
+    if origin is not None and find_slug(conn, origin["reference"]) is not None:
+        same = next((v for slug, v in on_line if slug == origin["reference"]), None)
+        if same is not None:
+            return {"reference": origin["reference"], "parent": same.number, "why": f"l'étude en est partie ({origin['version']}) et y a été publiée ({same.number})"}
+        return {"reference": origin["reference"], "parent": origin["version"], "why": "l'étude en est partie"}
+    if on_line:
+        slug, same = on_line[0]
+        return {"reference": slug, "parent": same.number, "why": f"une version dont elle descend y a été publiée ({same.number})"}
+    return None
+
+
+def find_slug(conn: sqlite3.Connection, slug: str) -> Reference | None:
+    row = conn.execute("SELECT * FROM structure_references WHERE slug = ?", (slug,)).fetchone()
+    return reference_from_row(row) if row else None
+
+
+def plan_publication(conn: sqlite3.Connection, source: PublicationSource, reference: Reference | None, parent: str | None = None) -> Publication:
+    """La publication de ``source`` dans ``reference`` (``None`` : une nouvelle référence, dont elle
+    serait la 1.0), sans rien écrire. La version dont elle dérive : ``parent`` (un numéro de cette
+    référence : 422 ``unknown_parent_version`` sinon) s'il est donné ; sinon la dernière version de
+    cette référence publiée depuis ce µprojet dont la source descend (:func:`published_on_line`) ;
+    sinon la version dont part la piste (``reference_origin``) ; sinon sa dernière version. Son
+    numéro : :func:`next_number` selon le changement de structure depuis elle
+    (:func:`experiments.structure_change_level`)."""
+    snapshot, error = None, None
+    try:
+        snapshot = snapshot_of(source.repo, source.version, source.variant)
+    except InvalidInput as exc:
+        error = exc
+    versions = versions_of(conn, reference.id) if reference is not None else []
+    base = None
+    if parent:
+        if not NUMBER_RE.fullmatch(parent) or not any(v.number == parent for v in versions):
+            raise InvalidInput(f"Version parente « {parent} » introuvable pour cette référence.", code="unknown_parent_version")
+        base = _version(versions, parent)
+    elif versions:
+        on_line = published_on_line(versions, source.microproject, source.repo, source.version)
+        origin = experiments.reference_origin_of(source.version)
+        from_origin = None
+        if origin is not None and reference is not None and origin["reference"] == reference.slug:
+            from_origin = next((v for v in versions if v.number == origin["version"]), None)
+        base = (on_line[-1] if on_line else None) or from_origin or versions[-1]
+    level = number = None
+    if snapshot is not None:
         level = experiments.structure_change_level(base.snapshot.get("metadata") if base else None, snapshot["metadata"])
-        if level == "none" and base is not None:
-            raise Conflict(
-                f"Cette structure est identique à la version {base.number} de la référence : rien à publier.",
-                code="reference_version_identical",
-            )
-        already = next((v for v in versions if v.microproject_id == microproject.id and v.version_id == version.id), None)
-        if already is not None:
-            raise Conflict(
-                f"Cette version de l'étude est déjà la version {already.number} de la référence.",
-                code="reference_version_already_published",
-            )
-        number = next_number((v.key for v in versions), base.key if base else None, level)
-        insert_version(
-            conn,
-            reference,
-            number=number,
-            parent=base,
-            parent_inferred=False,
-            microproject=microproject,
-            experiment_id=experiment_id,
-            version_id=version.id,
-            local_tag=None,
-            snapshot=snapshot,
-            change_level=level,
-            note=(note or "").strip(),
-            published_by=user.id,
-            published_at=now(),
-        )
-        return f"{number[0]}.{number[1]}"
+        if level != "none" or base is None:
+            major, minor = next_number((v.key for v in versions), base.key if base else None, level)
+            number = f"{major}.{minor}"
+    already = next(
+        (
+            v
+            for v in versions
+            if v.microproject_id == source.microproject.id and v.version_id == source.version.id and v.variant == source.variant
+        ),
+        None,
+    )
+    return Publication(source, snapshot, error, reference, versions, base, level, number, already)
+
+
+def record_publication(conn: sqlite3.Connection, user: User, plan: Publication, reference: Reference, note: str = "") -> ReferenceVersion:
+    """Enregistre ``plan`` (planifiée par :func:`plan_publication`, vérifiée par l'appelant : sous
+    :data:`WRITE_LOCK_KEY`, dans la même connexion) comme nouvelle version de ``reference`` - la
+    référence planifiée, ou celle que l'appelant vient de créer pour une nouvelle référence."""
+    assert plan.snapshot is not None and plan.level is not None
+    major, minor = next_number((v.key for v in plan.versions), plan.base.key if plan.base else None, plan.level)
+    source = plan.source
+    return insert_version(
+        conn,
+        reference,
+        number=(major, minor),
+        parent=plan.base,
+        parent_inferred=False,
+        microproject=source.microproject,
+        experiment_id=source.experiment_id,
+        version_id=source.version.id,
+        local_tag=None,
+        snapshot=plan.snapshot,
+        change_level=plan.level,
+        note=(note or "").strip(),
+        published_by=user.id,
+        published_at=now(),
+        variant=source.variant,
+    )
