@@ -1,6 +1,8 @@
 """Les routes des références de structure, sous ``/api/references`` (un objet de toute
 l'application : tout compte connecté les lit) et ``/api/reference-versions`` (les versions publiées
-depuis un µprojet, pour sa page d'évolution). Le domaine est dans :mod:`.service`."""
+depuis un µprojet, pour sa page d'évolution). Le domaine est dans :mod:`.service`. Publier une
+version ne se fait pas ici : c'est le plugin promotion (``/api/promotions``), seul chemin pour
+choisir une nouvelle référence, avec ses règles."""
 
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..microprojects import service as microprojects
 from . import service
-from .schemas import ReferenceChanges, ReferenceCreate, VersionPublish
+from .schemas import ReferenceChanges, ReferenceCreate
 
 router = APIRouter(prefix="/api", tags=["references"])
 
@@ -60,23 +62,6 @@ def delete_reference(reference_slug: str, user: User = Depends(current_user)) ->
 def version_graph(reference_slug: str, user: User = Depends(current_user)) -> dict:
     """``{reference, lanes, nodes, edges}`` : l'évolution de la référence (:func:`service.version_graph`)."""
     return service.version_graph(user, reference_slug)
-
-
-@router.post("/references/{reference_slug}/versions", status_code=201)
-def publish_version(reference_slug: str, body: VersionPublish, response: Response, user: User = Depends(current_user)) -> dict:
-    """Publier une version d'étude comme nouvelle version de la référence (``editor`` du µprojet
-    source) - 201 + ``Location`` vers la version ; 409 si elle est identique à sa version parente."""
-    number = service.publish_version(
-        user,
-        reference_slug,
-        microproject_slug=body.microproject,
-        experiment_id=body.experiment_id,
-        version_id=body.version_id,
-        note=body.note,
-        parent=body.parent,
-    )
-    created(response, f"{_reference_url(reference_slug)}/versions/{number}")
-    return service.get_version(user, reference_slug, number)
 
 
 @router.get("/references/{reference_slug}/versions/{version_number}")

@@ -172,15 +172,27 @@ def test_a_version_shows_its_structure_and_its_process(client):
     assert_handler_404(client.get("/api/references/inconnue"))
 
 
-def test_only_a_drawn_process_can_be_published(client):
+def test_a_split_promotes_one_of_its_variants(client):
     slug = signup_with_microproject(client, "ref-campaign@example.com", "Epi")
     from support.experiments import launch_campaign
 
     campaign = launch_campaign(client, slug)
     create_reference(client, "Campagne")
+    # le split entier n'est pas une structure : il faut en choisir la variante
     response = post_version(client, "campagne", slug, campaign["id"])
-    assert response.status_code == 422 and response.json()["code"] == "reference_needs_process"
+    assert response.status_code == 422 and response.json()["code"] == "variant_required"
     assert get_reference(client, "campagne")["version_count"] == 0
+
+    first = publish(client, "campagne", slug, campaign["id"], variant=0)
+    assert first["number"] == "1.0" and first["source"]["variant"] == 0
+    # sa structure est celle d'une étude simple : on peut lancer une étude depuis elle
+    assert first["process"]["steps"] and first["structure_svg"]
+    # une autre variante (une autre épaisseur) : une nouvelle version ; la même, refusée
+    assert publish(client, "campagne", slug, campaign["id"], variant=1)["number"] in ("1.1", "2.0")
+    again = post_version(client, "campagne", slug, campaign["id"], variant=1, parent="1.0")
+    assert again.status_code == 409 and again.json()["code"] == "reference_version_already_published"
+    unknown = post_version(client, "campagne", slug, campaign["id"], variant=99)
+    assert unknown.status_code == 422 and unknown.json()["code"] == "unknown_variant"
 
 
 def test_publishing_from_an_unknown_microproject_or_study(client):

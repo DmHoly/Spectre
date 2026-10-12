@@ -3,8 +3,8 @@
    combinaisons (une version à deux parents : une nouvelle piste issue de deux études, ou une
    fusion d'avant, sur la piste de son premier parent) -, et le panneau d'une version : les
    versions de référence publiées depuis elle (badges « R nom 1.1 », referencesApi.publishedFrom ; une version publiée qui serait masquée
-   est demandée en plus, include_versions), « Publier comme référence »
-   (references/static/publish-dialog.js), la comparer à une autre (le tableau du comparateur, sous le diagramme), partir d'elle
+   est demandée en plus, include_versions), « Promouvoir comme référence »
+   (le formulaire du plugin promotion, PromotionLink), la comparer à une autre (le tableau du comparateur, sous le diagramme), partir d'elle
    (l'éditeur sur ?version=, une nouvelle piste), voir sa structure (étiquettes de couches comprises, agrandie au clic ; une structure en images : sa
    première image, annotations comprises). Le dessin est celui d'evolution-graph.js, partagé avec la
    page d'une référence. Le serveur donne tout ce qui est dessiné : numéros, niveaux, pistes, arêtes ;
@@ -253,8 +253,9 @@
     render();
   });
 
-  // Les versions de référence publiées depuis cette version, et « Publier comme référence » (une
-  // structure dessinée seulement : ni des images, ni une campagne).
+  // Les versions de référence publiées depuis cette version, et « Promouvoir comme référence » - pour
+  // toute version : ce que la structure permet (une variante à choisir pour un split...), le
+  // formulaire de la promotion le dit.
   function referencesHtml(node) {
     const published = publishedOf(node)
       .map(
@@ -262,13 +263,14 @@
           `<a class="ref-badge" href="/references/${encodeURIComponent(entry.reference.slug)}?version=${encodeURIComponent(entry.number)}" title="Voir l'évolution de la référence">${escapeHtml(entry.label)}</a>`
       )
       .join(" ");
-    const canPublish = state.canEdit && node.structure_kind === "process" && node.has_process && pluginEnabled("references");
-    if (!published && !canPublish) return "";
+    const canPromote = typeof PromotionLink !== "undefined" && pluginEnabled("promotion");
+    if (!published && !canPromote) return "";
+    const promote = canPromote ? PromotionLink.html({ microproject: slug, experimentId: node.experiment_id, versionId: node.version_id }, { compact: true }) : "";
     return `
       <div class="evo-panel__section">
         <div class="section-title">Références</div>
-        ${published ? `<div class="evo-panel__refs">${published}</div>` : `<p class="help" style="margin:0 0 8px;">Pas encore publiée comme référence.</p>`}
-        ${canPublish ? `<button class="btn btn-tint js-publish" type="button" style="margin-top:8px;">Publier comme référence</button>` : ""}
+        ${published ? `<div class="evo-panel__refs">${published}</div>` : `<p class="help" style="margin:0 0 8px;">Pas encore promue comme référence.</p>`}
+        ${promote ? `<div style="margin-top:8px;">${promote}</div>` : ""}
       </div>`;
   }
 
@@ -406,8 +408,6 @@
       state.compareFrom = node;
       render();
       document.getElementById(`row-${node.version_id}`)?.focus();
-    } else if (target.classList.contains("js-publish")) {
-      openPublish(node);
     } else if (target.classList.contains("js-show-comparison")) {
       comparisonSection.scrollIntoView({ block: "start", behavior: "smooth" });
       document.getElementById("comparison-title").focus({ preventScroll: true });
@@ -422,39 +422,6 @@
     if (shown.svg && event.target.closest(".js-enlarge")) openStructureZoom({ title, items: [{ html: shown.svg }] });
     else if (shown.images && event.target.closest(".structure-thumb")) enlargeStructureImages(event, title, shown.images);
   });
-
-  // « Publier comme référence » : la référence proposée est celle dont vient l'étude (son origine,
-  // lue avec la structure de la version) ; publiée, la page se relit (badges « R nom 1.1 »)
-  async function openPublish(node) {
-    if (!(node.version_id in state.origins)) {
-      try {
-        const detail = await experimentsApi.getVersion(slug, node.experiment_id, node.version_id);
-        state.origins[node.version_id] = detail.reference_origin;
-      } catch (err) {
-        state.origins[node.version_id] = null;
-      }
-    }
-    // les versions dont elle descend (à travers les versions masquées, comme les arêtes)
-    const ancestors = new Set();
-    const queue = [node.version_id];
-    while (queue.length) {
-      const id = queue.shift();
-      state.history.edges.forEach((edge) => {
-        if (edge.child === id && !ancestors.has(edge.parent)) {
-          ancestors.add(edge.parent);
-          queue.push(edge.parent);
-        }
-      });
-    }
-    ReferencePublishDialog.open({
-      microprojectSlug: slug,
-      experimentId: node.experiment_id,
-      versionId: node.version_id,
-      origin: state.origins[node.version_id],
-      ancestors,
-      onPublished: () => load().catch(showError),
-    });
-  }
 
   function setAllVersions(value) {
     state.allVersions = value;

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/kernel/kernel.css">
   <link rel="stylesheet" href="/static/search/search.css">
   <link rel="stylesheet" href="/static/references/references.css">
+  <link rel="stylesheet" href="/static/promotion/promotion.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -23,10 +24,7 @@
       </div>
       <div class="ref-head__actions">
         <button class="btn btn-line" type="button" id="start-btn">Nouvelle expérience depuis une référence</button>
-        <button class="btn btn-primary" type="button" id="new-reference-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-          Nouvelle référence
-        </button>
+        <span id="promote-slot"></span>
       </div>
     </header>
 
@@ -50,31 +48,12 @@
       </div>
       <div id="empty" class="empty-state" hidden>
         <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M6 8.5v7M8.2 7.2 15.8 11"/></svg>
-        <p id="empty-text">Aucune référence pour l'instant. Publiez une étude comme référence depuis sa fiche ou la page d'évolution de son µprojet.</p>
+        <p id="empty-text">Aucune référence pour l'instant. Promouvez une structure (« Promouvoir une structure ») : depuis ici, la fiche d'une étude, sa conclusion ou la page d'évolution de son µprojet.</p>
       </div>
       <ul class="ref-list" id="list"></ul>
     </section>
   </div>
 
-  <dialog id="new-reference-dialog" class="ref-dialog" aria-labelledby="new-reference-title">
-    <form class="card-pad ref-dialog__inner" id="new-reference-form">
-      <h2 class="ref-dialog__title" id="new-reference-title">Nouvelle référence</h2>
-      <p class="help ref-dialog__lead">Une référence sans version : on y publie ensuite une étude, depuis sa fiche ou la page d'évolution de son µprojet (« Publier comme référence »).</p>
-      <div class="error" role="alert" id="new-reference-error" hidden></div>
-      <div class="ref-field">
-        <label for="new-reference-name">Nom</label>
-        <input class="field" id="new-reference-name" maxlength="120" required autocomplete="off">
-      </div>
-      <div class="ref-field">
-        <label for="new-reference-description">Description <span class="ref-dialog__optional">(facultative)</span></label>
-        <textarea class="field" id="new-reference-description" rows="3" maxlength="2000"></textarea>
-      </div>
-      <div class="ref-dialog__actions">
-        <button class="btn btn-line" type="button" id="new-reference-cancel">Annuler</button>
-        <button class="btn btn-primary" type="submit">Créer</button>
-      </div>
-    </form>
-  </dialog>
 
   <script src="/static/kernel/api.js"></script>
   <script src="/static/kernel/ui.js"></script>
@@ -85,6 +64,7 @@
   <script src="/static/microprojects/client.js"></script>
   <script src="/static/references/client.js"></script>
   <script src="/static/references/start-picker.js"></script>
+  <script src="/static/promotion/link.js"></script>
   <script src="/static/references/references.js"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 /* Le pied du bandeau : les étiquettes de l'étude (ajouter, retirer - une écriture sur la piste),
    la référence dont elle part (« Issue de la référence X 1.1 »), l'étude d'où viennent ses plaques
-   (« Plaques reprises de Y », pour une étude partie de plaques existantes) et « Publier comme référence » (references/static/publish-dialog.js). */
+   (« Plaques reprises de Y », pour une étude partie de plaques existantes). « Promouvoir comme référence » est en tête
+   de fiche (plugin promotion). */
 
 (() => {
   const chipInputStyle = "border:1px dashed var(--border-soft);border-radius:999px;padding:4px 10px;font-size:12px;background:transparent;";
@@ -45,7 +46,6 @@
 
   // Une structure dessinée dans le constructeur (ni des images, ni une campagne) : la seule qui se
   // publie comme référence.
-  const isDrawnProcess = (detail) => detail.has_editable_process && !detail.is_batch && !(detail.structure_images || []).length;
 
   // L'origine de l'étude, « Issue de la référence X 1.1 » (un lien vers la page de la référence) :
   // le nom se lit dans referencesApi.versions ; une référence retirée, ou une version qu'elle n'a
@@ -146,28 +146,15 @@
   function renderRefs(ctx) {
     const row = document.getElementById("refs-row");
     const evolutionUrl = `/microprojets/${encodeURIComponent(ctx.microprojectSlug)}/evolution`;
-    const canPublish = ctx.canEdit && isDrawnProcess(ctx.detail) && pluginEnabled("references");
+    // « Promouvoir comme référence » est en tête de fiche (plugin promotion : promotion/static/fiche.js)
     row.innerHTML =
       `<span id="reference-origin"></span>` +
       `<span id="wafer-origin"></span>` +
       `<span id="start-origin"></span>` +
-      (canPublish
-        ? `<button id="publish-reference-btn" data-report-hide type="button" class="btn btn-line" style="padding:2px 10px;font-size:11.5px;" title="Partager cette structure avec tous les µprojets, comme nouvelle version d'une référence">Publier comme référence</button>`
-        : "") +
       `<a class="btn btn-line" data-report-hide href="${evolutionUrl}" style="padding:2px 10px;font-size:11.5px;" title="Les pistes du µprojet, leurs versions et leurs versions de référence">Évolution des structures</a>`;
     renderOrigin(ctx, document.getElementById("reference-origin"));
     renderWaferOrigin(ctx, document.getElementById("wafer-origin"));
     renderStartOrigin(ctx, document.getElementById("start-origin"));
-    const publish = document.getElementById("publish-reference-btn");
-    if (!publish) return;
-    publish.addEventListener("click", () =>
-      ReferencePublishDialog.open({
-        microprojectSlug: ctx.microprojectSlug,
-        experimentId: ctx.experimentId,
-        versionId: ctx.versionId,
-        origin: ctx.detail.reference_origin,
-      })
-    );
   }
 
   ExperiencePage.registerPanel({

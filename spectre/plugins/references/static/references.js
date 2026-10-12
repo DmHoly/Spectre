@@ -1,7 +1,7 @@
 /* La liste des références de toute l'application (pages/references.html) : nom, dernière version,
    date de sa dernière mise à jour, µprojet source, nombre d'usages, la plus récemment mise à jour
-   d'abord (l'ordre du serveur) ; la recherche (?q= du serveur : sans casse ni accents) ; « Nouvelle
-   référence » ; « Nouvelle expérience depuis une référence » (start-picker.js, le µprojet à choisir). */
+   d'abord (l'ordre du serveur) ; la recherche (?q= du serveur : sans casse ni accents) ; « Promouvoir
+   une structure » (le formulaire du plugin promotion, qui crée une référence avec sa première version) ; « Nouvelle expérience depuis une référence » (start-picker.js, le µprojet à choisir). */
 
 (() => {
   const errorBox = document.getElementById("error");
@@ -49,7 +49,7 @@
       document.getElementById("empty").hidden = references.length > 0;
       document.getElementById("empty-text").textContent = q
         ? `Aucune référence ne correspond à « ${q} ».`
-        : "Aucune référence pour l'instant. Publiez une étude comme référence depuis sa fiche ou la page d'évolution de son µprojet.";
+        : "Aucune référence pour l'instant. Promouvez une structure (« Promouvoir une structure ») : depuis ici, la fiche d'une étude, sa conclusion ou la page d'évolution de son µprojet.";
       document.getElementById("count").textContent = `${references.length} référence${references.length > 1 ? "s" : ""}`;
       list.innerHTML = references.map(rowHtml).join("");
       showError(null);
@@ -70,30 +70,12 @@
     }, 200);
   });
 
-  // -- nouvelle référence --------------------------------------------------------------------
+  // -- choisir une nouvelle référence : le formulaire de la promotion (plugin promotion) ----------
+  // une référence se crée avec sa première version, depuis une structure - jamais vide
 
-  const dialog = document.getElementById("new-reference-dialog");
-  const dialogError = document.getElementById("new-reference-error");
-  document.getElementById("new-reference-btn").addEventListener("click", () => {
-    document.getElementById("new-reference-form").reset();
-    dialogError.hidden = true;
-    dialog.showModal();
-    document.getElementById("new-reference-name").focus();
-  });
-  document.getElementById("new-reference-cancel").addEventListener("click", () => dialog.close());
-  document.getElementById("new-reference-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    try {
-      const created = await referencesApi.create({
-        name: document.getElementById("new-reference-name").value.trim(),
-        description: document.getElementById("new-reference-description").value.trim(),
-      });
-      window.location.href = referenceUrl(created);
-    } catch (err) {
-      dialogError.textContent = err.message || String(err);
-      dialogError.hidden = false;
-    }
-  });
+  if (typeof PromotionLink !== "undefined" && pluginEnabled("promotion")) {
+    document.getElementById("promote-slot").innerHTML = PromotionLink.html({}, { label: "Promouvoir une structure" });
+  }
 
   document.getElementById("start-btn").addEventListener("click", () => ReferenceStartPicker.open());
 

@@ -258,17 +258,16 @@ class Microproject:
         return {"id": result["id"], "version_id": result["version_id"]}
 
     def publish_reference(self, session: Session, exp: dict, *, name: str) -> None:
-        """Publish ``exp``'s version as a new version of the reference ``name`` (plugin references,
-        created on first use) - the only refs there are. Like a tag, this doesn't create a new
-        version of the study, so there's nothing to schedule for backdating. A structure identical
-        to the reference's latest version (the same epitaxy in a second microproject) is left
-        unpublished, as the server answers (409)."""
+        """Promote ``exp``'s version as a new version of the reference ``name`` (plugin promotion,
+        the reference created on first use) - the only refs there are. Like a tag, this doesn't
+        create a new version of the study, so there's nothing to schedule for backdating. A
+        structure identical to the reference's latest version (the same epitaxy in a second
+        microproject) is left unpublished, as the server answers (409)."""
         slug = next((r["slug"] for r in session.get("/api/references") if r["name"] == name), None)
-        if slug is None:
-            slug = session.post("/api/references", json={"name": name})["slug"]
+        target = {"reference": slug} if slug else {"new_reference": {"name": name}}
         r = session.client.post(
-            f"/api/references/{slug}/versions",
-            json={"microproject": self.slug, "experiment_id": exp["id"], "version_id": exp["version_id"]},
+            "/api/promotions",
+            json={"microproject": self.slug, "experiment_id": exp["id"], "version_id": exp["version_id"], **target},
         )
         if r.status_code not in (201, 409):
             raise RuntimeError(f"publishing {name} -> {r.status_code}: {r.text}")

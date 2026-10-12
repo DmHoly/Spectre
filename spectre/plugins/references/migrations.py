@@ -94,6 +94,13 @@ CREATE TABLE IF NOT EXISTS dismissed_local_refs (
 );
 """
 
+VERSION_VARIANT = """
+-- La variante d'une campagne (split) dont une version a été promue (son index) : NULL pour une étude
+-- à une seule structure. Une même version Follow peut ainsi donner une version de référence par
+-- variante.
+ALTER TABLE reference_versions ADD COLUMN variant INTEGER;
+"""
+
 TRACKING_TABLES = ("reference_import_scans", "reference_import_rules", "dismissed_local_refs")
 
 
@@ -113,4 +120,5 @@ MIGRATIONS = (
     Migration("0003_import_rules", IMPORT_RULES),
     Migration("0004_dismissed_local_refs", DISMISSED_TAGS),
     Migration("0005_local_refs_imported_once", _local_refs_imported_once),
+    Migration("0006_version_variant", VERSION_VARIANT),
 )
