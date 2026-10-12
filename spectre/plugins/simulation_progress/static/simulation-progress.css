@@ -1,0 +1,84 @@
+/* La barre de chargement du constructeur (plugin simulation_progress) : un filet au bord haut de la
+   zone de dessin et une pastille sous la barre d'outils - par-dessus le dessin, donc sans rien
+   décaler quand elle apparaît. */
+
+.sbp {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.sbp[hidden] {
+  display: none;
+}
+
+.sbp__track {
+  height: 3px;
+  background: var(--accent-tint-strong);
+  overflow: hidden;
+}
+.sbp__fill {
+  position: relative;
+  width: 0;
+  height: 100%;
+  background: var(--gold);
+  transition: width 0.25s linear;
+}
+/* un reflet qui passe : la barre ne paraît jamais figée sur une longue étape */
+.sbp__fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  transform: translateX(-100%);
+  animation: sbp-sheen 1.4s var(--ease) infinite;
+}
+@keyframes sbp-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.sbp__pill {
+  position: absolute;
+  top: 50px;
+  left: 12px;
+  max-width: calc(100% - 24px);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-dark);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow);
+}
+.sbp__step {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sbp__time {
+  flex: none;
+  color: var(--text-faint);
+}
+
+/* la pastille dit déjà que ça calcule */
+.sb-canvas.has-progress .sb-busy {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sbp__fill {
+    transition: none;
+  }
+  .sbp__fill::after {
+    animation: none;
+  }
+}

@@ -6,7 +6,7 @@ from a structure is the experiments plugin's.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from ..accounts.deps import current_user
 from . import campaigns, composition, rendering, simulation
@@ -34,16 +34,21 @@ def list_recipes() -> dict:
 
 
 @router.post("/simulations")
-def simulate(body: ProcessInput) -> dict:
+def simulate(
+    body: ProcessInput,
+    run: str | None = Query(None, pattern=simulation.RUN_ID_RE.pattern, description="l'identifiant de cette simulation, pour en suivre l'avancement"),
+) -> dict:
     """One frame (SVG, materials, layers) per step of the process, plus the colours of the
     materials - a 422 if StructureForge can't simulate it - and ``step_ids``, the id of each step:
     the one it came with, or a new one for a new step (the builder adopts it, it never makes one
     up - see :func:`simulation.settle_step_ids`). Each layer names the step that created it
-    (``step_index``), and the SVGs carry the labels of ``layer_labels``, grouped by ``bricks``."""
+    (``step_index``), and the SVGs carry the labels of ``layer_labels``, grouped by ``bricks``.
+    ``run`` names the simulation so that its progress can be followed while it runs
+    (:func:`simulation.run_progress`)."""
     declared_params = simulation.declared_params_by_index(body.declared_params)
     labels = simulation.layer_labels_by_index(body.layer_labels, len(body.steps))
     bricks = simulation.checked_bricks(body.bricks, len(body.steps))
-    result = simulation.simulate_process(body.substrate, body.steps, declared_params or None, body.recipes or None)
+    result = simulation.simulate_process(body.substrate, body.steps, declared_params or None, body.recipes or None, run)
     return {
         **rendering.frames_payload(result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels, bricks),
         "step_ids": simulation.settle_step_ids(body.step_ids),

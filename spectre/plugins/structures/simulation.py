@@ -16,6 +16,7 @@ import math
 import re
 import secrets
 import threading
+import time
 from collections import OrderedDict
 from typing import Any, Literal, NamedTuple
 
@@ -551,8 +552,73 @@ def _keep(key: str, geometry: Geometry, origin: dict[int, int], frame: Frame, fr
             _checkpoints.popitem(last=False)
 
 
+# -- le suivi d'une simulation ----------------------------------------------------------------------
+#
+# Une simulation de plusieurs secondes se suit : la requête annonce un identifiant (``run``, choisi par
+# la page), et chaque étape terminée est notée sous lui, en mémoire - les :data:`MAX_TRACKED_RUNS`
+# dernières simulations. Une étape reprise d'un état gardé (voir plus haut) compte comme faite d'emblée
+# (``resumed``). Le plugin ``simulation_progress`` en fait une barre de chargement ; rien de ce qui est
+# calculé n'en dépend, et sans identifiant rien n'est noté.
+
+MAX_TRACKED_RUNS = 64
+RUN_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+class RunProgress(NamedTuple):
+    """Où en est une simulation : ``done`` étapes faites sur ``total`` (dont ``resumed`` reprises sans
+    calcul), l'étape en cours (sa position à partir de 0, son nom ; ``None`` avant la première et après
+    la dernière), et l'heure de départ et de fin (``time.monotonic``)."""
+
+    state: Literal["running", "done", "failed"]
+    total: int
+    done: int
+    resumed: int
+    step_index: int | None
+    step_name: str | None
+    started: float
+    ended: float | None
+
+    @property
+    def elapsed(self) -> float:
+        """Les secondes écoulées depuis le départ, jusqu'à la fin si elle a eu lieu."""
+        return (self.ended if self.ended is not None else time.monotonic()) - self.started
+
+
+_runs: OrderedDict[str, RunProgress] = OrderedDict()
+_runs_lock = threading.Lock()
+
+
+def run_progress(run_id: str) -> RunProgress | None:
+    """L'avancement de la simulation ``run_id`` - ``None`` : inconnue, pas encore partie ou déjà oubliée."""
+    with _runs_lock:
+        return _runs.get(run_id)
+
+
+def _start_run(run_id: str | None, total: int) -> None:
+    if run_id is None:
+        return
+    with _runs_lock:
+        _runs[run_id] = RunProgress("running", total, 0, 0, None, None, time.monotonic(), None)
+        _runs.move_to_end(run_id)
+        while len(_runs) > MAX_TRACKED_RUNS:
+            _runs.popitem(last=False)
+
+
+def _note_run(run_id: str | None, **changes: Any) -> None:
+    if run_id is None:
+        return
+    with _runs_lock:
+        current = _runs.get(run_id)
+        if current is not None:
+            _runs[run_id] = current._replace(**changes)
+
+
 def _simulate_tracking(
-    substrate: SubstrateSpec, steps: list[ProcessStep], materials: MaterialLibrary, recipes: RecipeLibrary
+    substrate: SubstrateSpec,
+    steps: list[ProcessStep],
+    materials: MaterialLibrary,
+    recipes: RecipeLibrary,
+    run_id: str | None = None,
 ) -> tuple[Geometry, list[Frame], list[list[int]]]:
     """``structureforge.process.simulate.simulate``, une étape à la fois - mêmes images, mêmes
     erreurs - pour savoir quelle étape a créé chaque couche. StructureForge ne le dit que pour une
@@ -578,9 +644,11 @@ def _simulate_tracking(
         origins = [[origin[id(layer)] for layer in geometry.frame_layers()]]
         _keep(keys[0], geometry, origin, frames[0], origins[0])
     alive: list[Any] = list(geometry.layers)  # garde chaque couche vivante : son id() n'est jamais redonné
+    _note_run(run_id, done=len(frames) - 1, resumed=len(frames) - 1)
     for index in range(len(frames) - 1, len(steps)):
         step = steps[index]
         before = list(geometry.layers)
+        _note_run(run_id, step_index=index, step_name=step.name)
         try:
             frame = simulate(geometry, [step], materials, recipes)[-1]
         except SimulationError as exc:
@@ -597,6 +665,7 @@ def _simulate_tracking(
         frames.append(Frame(index + 1, frame.step_kind, frame.step_name, frame.layers, frame.domain_width_nm))
         origins.append([origin[id(layer)] for layer in geometry.frame_layers()])
         _keep(keys[index + 1], geometry, origin, frames[-1], origins[-1])
+        _note_run(run_id, done=index + 1)
     return geometry, frames, origins
 
 
@@ -630,6 +699,7 @@ def simulate_process(
     steps: list[ProcessStep],
     declared_params: dict[int, list[DeclaredParam]] | None = None,
     recipes: ProcessRecipes | None = None,
+    run_id: str | None = None,
 ) -> SimulationResult:
     """Build the starting geometry and apply ``steps`` to it, the same way
     ``structureforge.api.app`` does for its own ``/api/simulate`` - returns the live objects
@@ -640,7 +710,8 @@ def simulate_process(
     ``declared_params`` (step_index -> extra parameters the user attached in the builder, see
     :class:`DeclaredParam`) is Spectre-only bookkeeping never seen by ``structureforge`` itself -
     it's merged onto the resulting layers' ``provenance`` after simulation succeeds. ``recipes``:
-    the process's own (:class:`ProcessRecipes`), on top of the library's.
+    the process's own (:class:`ProcessRecipes`), on top of the library's. ``run_id``: the simulation's
+    identifier when someone follows it (:func:`run_progress`).
     """
     steps = _expand_seed_material_aliases(steps, substrate.material)
     materials = materials_library(substrate.material, *_material_names_in_steps(steps))
@@ -650,10 +721,15 @@ def simulate_process(
     except KeyError as exc:
         raise SimulationFailedError(str(exc)) from exc
 
+    _start_run(run_id, len(steps))
+    state = "failed"
     try:
-        geometry, frames, origins = _simulate_tracking(substrate, steps, materials, recipe_library)
+        geometry, frames, origins = _simulate_tracking(substrate, steps, materials, recipe_library, run_id)
+        state = "done"
     except SimulationError as exc:
         raise SimulationFailedError(str(exc)) from exc
+    finally:
+        _note_run(run_id, state=state, step_index=None, step_name=None, ended=time.monotonic())
     if declared_params:
         _apply_declared_params(frames, origins, declared_params, steps)
     return SimulationResult(geometry, frames, materials, origins)

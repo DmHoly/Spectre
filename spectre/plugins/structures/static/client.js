@@ -10,9 +10,11 @@ const structuresApi = {
     return api.get("/api/recipes");
   },
   // body : {substrate, steps, declared_params} ; chaque étape peut porter son id - la réponse
-  // ({frames, material_colors, step_ids}) donne celui de chaque étape (un neuf pour une nouvelle)
-  simulate(body) {
-    return api.post("/api/simulations", body);
+  // ({frames, material_colors, step_ids}) donne celui de chaque étape (un neuf pour une nouvelle) ;
+  // run : l'identifiant de cette simulation (8 à 64 caractères, lettres, chiffres, - et _), pour
+  // en suivre l'avancement pendant qu'elle tourne (plugin simulation_progress)
+  simulate(body, run) {
+    return api.post(api.withQuery("/api/simulations", { run }), body);
   },
   // body : {substrate, steps, declared_params, plan} ; un facteur du plan désigne son étape par
   // step_id (l'id de l'étape, "substrate" pour le substrat)

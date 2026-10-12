@@ -304,18 +304,23 @@ async function simulateNow() {
   const seq = ++simulateSeq;
   const busy = document.getElementById("sim-busy");
   const busyTimer = setTimeout(() => (busy.hidden = false), 250);
+  // la barre de chargement (plugin simulation_progress), si elle est là : elle suit la simulation sous son id
+  const progress = typeof SimulationProgress !== "undefined" && pluginEnabled("simulation_progress") ? SimulationProgress.start() : null;
   // les lithographies ancrées au réseau suivent ses dernières valeurs (le serveur les recalcule de même)
   applyLatticeToSteps();
   const sent = state.steps.slice();
   try {
-    const result = await structuresApi.simulate({
-      substrate: substrateSpec(),
-      steps: sent,
-      declared_params: declaredParamsPayload(sent),
-      layer_labels: layerLabelsPayload(sent),
-      recipes: processRecipesPayload(sent),
-      bricks: bricksPayload(sent),
-    });
+    const result = await structuresApi.simulate(
+      {
+        substrate: substrateSpec(),
+        steps: sent,
+        declared_params: declaredParamsPayload(sent),
+        layer_labels: layerLabelsPayload(sent),
+        recipes: processRecipesPayload(sent),
+        bricks: bricksPayload(sent),
+      },
+      progress ? progress.id : undefined
+    );
     if (seq !== simulateSeq || simulateAgain) return;
     adoptStepIds(sent, result.step_ids);
     const colorsChanged = JSON.stringify(result.material_colors) !== JSON.stringify(state.materialColors);
@@ -329,6 +334,7 @@ async function simulateNow() {
     if (seq === simulateSeq && !simulateAgain) showSimulationError(err);
   } finally {
     clearTimeout(busyTimer);
+    if (progress) progress.stop();
     simulating = false;
     if (simulateAgain) {
       simulateAgain = false;
