@@ -25,6 +25,11 @@ def isolated_environment(tmp_path, monkeypatch):
     monkeypatch.delenv("SPECTRE_BASE_URL", raising=False)
 
     monkeypatch.setenv("SPECTRE_LIBRARY_DIR", str(tmp_path / "library"))
+    # le dossier de données aussi (la fixture data_dir le pose au même endroit) : une simulation
+    # garde ses états sur disque, jamais dans le data/ du dépôt depuis un test - sauf quand un
+    # montage de module l'a déjà posé (tests de contrat : une application pour tout le module)
+    if "SPECTRE_DATA_DIR" not in os.environ:
+        monkeypatch.setenv("SPECTRE_DATA_DIR", str(tmp_path / "data"))
     # des centaines de comptes créés par exécution : le hachage des mots de passe au plancher
     # (accounts.security.pbkdf2_iterations) ; un sous-processus lancé par un test en hérite
     monkeypatch.setenv("SPECTRE_PBKDF2_ITERATIONS", "1000")

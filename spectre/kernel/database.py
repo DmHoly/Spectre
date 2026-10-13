@@ -47,13 +47,14 @@ def backup_filename(now: datetime | None = None) -> str:
 
 
 def _data_files(root: Path) -> list[Path]:
-    """Les fichiers de ``root`` à archiver : tous, sauf ``backups/`` et la base elle-même (copiée à
-    part, avec ses fichiers ``-wal`` / ``-journal``)."""
+    """Les fichiers de ``root`` à archiver : tous, sauf ``backups/``, ``cache/`` (les états de
+    simulation gardés par ``structures.simulation`` : tout s'y recalcule) et la base elle-même
+    (copiée à part, avec ses fichiers ``-wal`` / ``-journal``)."""
     database = db_path().name
-    skipped_dir = backups_dir().resolve()
+    skipped_dirs = (backups_dir().resolve(), (root / "cache").resolve())
     found = []
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.resolve().is_relative_to(skipped_dir):
+        if not path.is_file() or any(path.resolve().is_relative_to(skipped) for skipped in skipped_dirs):
             continue
         if path.parent == root and path.name.startswith(database):
             continue

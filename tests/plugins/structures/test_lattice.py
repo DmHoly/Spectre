@@ -5,10 +5,15 @@ n'est qu'une vue : il ne fait pas de nouvelle version."""
 
 from __future__ import annotations
 
+from collections import OrderedDict
+
+import pytest
+import shapely
+from shapely.affinity import translate
 from support.experiments import conclude, evolve, launch, process, versions
 from support.microprojects import signup_with_microproject
 from support.process_library import create_item, get_item
-from support.structures import deposition, fixed_step_id, identified, length, lithography, preview_campaign, simulate
+from support.structures import deposition, etch, fixed_step_id, identified, length, lithography, preview_campaign, simulate
 
 from spectre.plugins.experiments import versioning
 from spectre.plugins.structures import simulation
@@ -177,3 +182,107 @@ def test_a_campaign_varies_the_size_of_its_own_anchor(client):
     # un diamètre ne règle pas une ouverture entre les fils
     wrong = {"factors": [{"step_id": litho, "field": "openings.diameter", "values": [100, 200]}]}
     assert preview_campaign(client, {**body, "plan": wrong}).status_code == 422
+
+
+# -- le pixel de N fils, par sa maille ---------------------------------------------------------------
+
+
+@pytest.fixture
+def simulated(monkeypatch) -> list[list[str]]:
+    """Les étapes que StructureForge simule vraiment, appel par appel - sur un cache vide."""
+    monkeypatch.setattr(simulation, "_checkpoints", OrderedDict())
+    calls: list[list[str]] = []
+    real = simulation.simulate
+
+    def counting(geometry, steps, materials, recipes):
+        calls.append([step.name for step in steps])
+        return real(geometry, steps, materials, recipes)
+
+    monkeypatch.setattr(simulation, "simulate", counting)
+    return calls
+
+
+def _pixel(wires: int, steps: list[dict] | None = None, run_id: str | None = None) -> simulation.SimulationResult:
+    body = ProcessInput.model_validate({"substrate": lattice_substrate(400, wires), "steps": steps or sag_steps(100)})
+    return simulation.simulate_process(body.substrate, body.steps, lattice_anchors=body.lattice_anchors, run_id=run_id)
+
+
+def _tiled(polygon, pitch: float, wires: int):
+    return shapely.union_all([translate(polygon, xoff=i * pitch) for i in range(wires)], grid_size=1e-6)
+
+
+def test_a_pixel_of_several_wires_is_its_cell_repeated(simulated):
+    one = _pixel(1)
+    simulated.clear()
+    three = _pixel(3)
+    assert simulated == []  # la maille est celle de la vue « 1 fil », déjà connue : rien à simuler
+    assert [frame.domain_width_nm for frame in three.frames] == [1200] * 4
+    assert three.layer_origins == one.layer_origins
+    for frame_one, frame_three in zip(one.frames, three.frames):
+        assert [l.material for l in frame_three.layers] == [l.material for l in frame_one.layers]
+        for layer_one, layer_three in zip(frame_one.layers, frame_three.layers):
+            assert layer_three.polygon.symmetric_difference(_tiled(layer_one.polygon, 400, 3)).area < 1e-6
+            assert layer_three.provenance == layer_one.provenance
+    # le masque ouvert sur chaque fil : la résine en quatre morceaux
+    resist = next(l for l in three.frames[2].layers if l.material == "Photoresist")
+    assert len(resist.polygon.geoms) == 4
+
+    # la maille d'un pixel inconnu se simule une fois ; le pixel, jamais
+    simulation.clear_checkpoints()
+    simulated.clear()
+    five = _pixel(5)
+    assert simulated == [[], ["Masque"], ["Litho SAG"], ["Couche"]]
+    assert five.frames[-1].domain_width_nm == 2000 and five.frames[-1].layers[0].polygon.bounds[2] == 2000
+
+
+def test_the_steps_that_see_the_whole_pixel_are_simulated_on_it(simulated):
+    whole = {**lithography("Litho pixel", thickness_nm=50, openings=[[0, 1]]), "lattice_opening": {"mode": "pixel", "margin": 100}}
+    steps = identified([*sag_steps(100), whole, etch("Gravure", depth_nm=5)])
+    result = _pixel(3, steps)
+    # la maille jusqu'à la couche, puis le pixel d'un bloc : l'ouverture sur tout le pixel et la gravure
+    assert simulated == [[], ["Masque"], ["Litho SAG"], ["Couche"], ["Litho pixel"], ["Gravure"]]
+    resists = [l for l in result.frames[4].layers if l.material == "Photoresist"]
+    assert resists[-1].polygon.bounds[0] == 0 and resists[-1].polygon.bounds[2] == 1200
+    assert len(resists[-1].polygon.geoms) == 2  # la marge de chaque côté du pixel
+    simulated.clear()
+    _pixel(3, steps)
+    assert simulated == []  # les états répétés sont gardés comme les autres
+
+
+def test_what_ends_the_cell():
+    recipes = simulation.recipes_library()
+    tilted_etch = next(name for name, recipe in recipes.etch.items() if recipe.angle_deg)
+    tilted_deposition = next(name for name, recipe in recipes.deposition.items() if recipe.angle_deg)
+    vertical_etch = next(name for name, recipe in recipes.etch.items() if recipe.mode.value == "directional" and not recipe.angle_deg)
+
+    def prefix(steps: list[dict], wires: int = 3) -> int:
+        body = ProcessInput.model_validate({"substrate": lattice_substrate(400, wires), "steps": steps})
+        return simulation.periodic_prefix(body.substrate, body.steps, recipes, body.lattice_anchors)
+
+    sag = sag_steps(100)
+    assert prefix(sag) == 3
+    assert prefix(sag, wires=1) == 0  # un fil : rien à répéter
+    assert prefix([*sag, etch("RIE", recipe=vertical_etch, depth_nm=5), etch("Inclinée", recipe=tilted_etch, depth_nm=5)]) == 4
+    assert prefix([*sag, deposition("Oblique", "SiO2", recipe=tilted_deposition, thickness_nm=5)]) == 3
+    assert prefix([*sag, lithography("Absolue", thickness_nm=50, openings=[[10, 20]])]) == 3
+    assert prefix(anchored("pixel", margin=100)) == 0  # avant l'ouverture sur tout le pixel, pas de motif
+    assert prefix(anchored("between", width=100)) == 3
+    semi_polar = {"kind": "epitaxial_growth", "name": "Semi-polaire", "material": "GaN", "thickness": length(10), "orientation": "semi_polar", "angle_deg": 30}
+    assert prefix([*sag, semi_polar, deposition("Après", thickness_nm=5)]) == 3
+    assert prefix([deposition("Seule", thickness_nm=5), lithography("Absolue", thickness_nm=50, openings=[[10, 20]])]) == 0  # pas de motif
+
+
+def test_a_followed_pixel_counts_its_cell_steps_as_done_then_as_resumed(simulated):
+    _pixel(3, run_id="run-pixel-0001")
+    run = simulation.run_progress("run-pixel-0001")
+    assert (run.state, run.total, run.done, run.resumed) == ("done", 3, 3, 0)
+    _pixel(3, run_id="run-pixel-0002")
+    run = simulation.run_progress("run-pixel-0002")
+    assert (run.state, run.total, run.done, run.resumed) == ("done", 3, 3, 3)
+
+
+def test_the_pixel_is_simulated_as_one_block_without_its_anchors(simulated):
+    body = ProcessInput.model_validate({"substrate": lattice_substrate(400, 3), "steps": sag_steps(100)})
+    result = simulation.simulate_process(body.substrate, body.steps)
+    assert simulated == [[], ["Masque"], ["Litho SAG"], ["Couche"]]
+    assert result.frames[-1].domain_width_nm == 1200

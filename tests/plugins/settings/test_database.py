@@ -32,6 +32,9 @@ def test_the_backup_is_a_zip_of_the_database_and_the_data_files(client, data_dir
     attachment.write_text("un fichier du µprojet")
     (data_dir / "backups").mkdir(exist_ok=True)
     (data_dir / "backups" / "old.db").write_text("ancienne copie")
+    kept_state = data_dir / "cache" / "simulations" / "etat.pickle"
+    kept_state.parent.mkdir(parents=True, exist_ok=True)
+    kept_state.write_bytes(b"un etat de simulation, qui se recalcule")
 
     summary = client.get("/api/database").json()
     assert summary["database_bytes"] > 0 and summary["files"] >= 1
@@ -43,7 +46,7 @@ def test_the_backup_is_a_zip_of_the_database_and_the_data_files(client, data_dir
     archive = zipfile.ZipFile(io.BytesIO(response.content))
     names = archive.namelist()
     assert "spectre.db" in names and "manifest.json" in names
-    assert not any(name.startswith("backups/") for name in names)
+    assert not any(name.startswith("backups/") or name.startswith("cache/") for name in names)
     assert any(name.startswith("microprojects/") for name in names)
     manifest = json.loads(archive.read("manifest.json"))
     assert manifest["files"] == len(names) - 1

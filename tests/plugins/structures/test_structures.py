@@ -134,7 +134,7 @@ def test_campaign_preview_over_the_cap_is_refused_before_any_simulation(client, 
     _owner_microproject(client)
     simulated = []
     real = campaigns.simulate_process
-    monkeypatch.setattr(campaigns, "simulate_process", lambda *args: simulated.append(args) or real(*args))
+    monkeypatch.setattr(campaigns, "simulate_process", lambda *args, **kwargs: simulated.append(args) or real(*args, **kwargs))
     monkeypatch.setattr(campaigns, "MAX_CAMPAIGN_ENTITIES", 4)
     # deux facteurs croisés : 3 x 2 = 6 variantes, au-delà du plafond
     plan = campaign_plan([10, 20, 30])

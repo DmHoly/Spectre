@@ -403,7 +403,8 @@ def generate_campaign_variants(
     layer_origins: list[list[int]] = []
     for combo in itertools.product(*(factor.values for factor in plan.factors)):
         varied_substrate, varied_steps, varied_declared = apply_combination(substrate, steps, base_declared, plan, indexes, list(combo), lattice_anchors)
-        result = simulate_process(varied_substrate, varied_steps, varied_declared or None, recipes)
+        varied_anchors = combination_anchors(substrate, lattice_anchors, plan, indexes, list(combo))
+        result = simulate_process(varied_substrate, varied_steps, varied_declared or None, recipes, lattice_anchors=varied_anchors)
         entries.append(to_structure(result.geometry))
         material_colors = {m.name: m.color for m in result.materials}
         # chaque variante écrit ses propres valeurs sur ses étiquettes

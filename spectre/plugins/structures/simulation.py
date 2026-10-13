@@ -13,22 +13,29 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import pickle
 import re
 import secrets
 import threading
 import time
 from collections import OrderedDict
+from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
+import shapely
+import structureforge
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
+from shapely.affinity import translate
 from structureforge.core.materials import Material, MaterialLibrary, aluminum_gan, default_library, indium_gan
-from structureforge.core.recipes import DepositionRecipe, EtchRecipe, RecipeLibrary, default_recipes
+from structureforge.core.recipes import DepositionMode, DepositionRecipe, EtchMode, EtchRecipe, RecipeLibrary, default_recipes
 from structureforge.core.traced import Traced
 from structureforge.core.units import Length
 from structureforge.geometry.engine import Geometry, Layer, LayerProvenance
 from structureforge.process.simulate import Frame, SimulationError, simulate
-from structureforge.process.steps import Flip, Lithography, ProcessStep
+from structureforge.process.steps import Deposition, EpitaxialGrowth, Etch, Flip, GrowthOrientation, Lithography, ProcessStep
 
+from ...kernel.db import data_dir
 from ...kernel.errors import InvalidInput
 
 MAX_LATTICE_WIRES = 50
@@ -476,14 +483,20 @@ class SimulationResult(NamedTuple):
 #
 # Le constructeur resimule tout le procédé à chaque retouche (une frappe dans un champ, une étiquette
 # déplacée, une brique), alors qu'une étape ne dépend que de celles d'avant. Chaque état atteint est
-# donc gardé, en mémoire du serveur (les :data:`MAX_CHECKPOINTS` derniers servis), sous une clé qui
-# résume tout ce qui l'a produit : le substrat, les bibliothèques (matériaux racine, recettes) et
-# les étapes jusque-là. Une simulation repart du plus long début déjà calculé : une étiquette ou un
+# donc gardé, en mémoire du serveur (les :data:`MAX_CHECKPOINTS` derniers servis) et sur disque
+# (``cache/simulations/`` du dossier de données, :data:`DISK_CHECKPOINTS_MAX_BYTES` au plus, les
+# moins récemment servis effacés d'abord : un redémarrage ne perd rien, une structure enregistrée se
+# rouvre sans calcul), sous une clé qui résume tout ce qui l'a produit : le moteur (les sources de
+# StructureForge installées), le substrat, les bibliothèques (matériaux racine, recettes) et les
+# étapes jusque-là. Une simulation repart du plus long début déjà calculé : une étiquette ou un
 # paramètre déclaré ne relance rien, une retouche de l'étape k ne recalcule qu'elle et la suite, et
 # les variantes d'une campagne partagent les étapes d'avant leurs facteurs. Mêmes images qu'une
-# simulation complète : StructureForge ne garde rien d'autre que les couches et le plancher.
+# simulation complète : StructureForge ne garde rien d'autre que les couches et le plancher. Le
+# disque est un à-côté : illisible ou plein, il n'empêche rien, on simule.
 
 MAX_CHECKPOINTS = 512
+DISK_CHECKPOINTS_MAX_BYTES = 1 << 30  # 1 Gio sur disque ; 0 : rien sur disque (mémoire seule)
+_DISK_PRUNE_EVERY = 32  # écritures entre deux tours de ménage du dossier
 
 
 class _Checkpoint(NamedTuple):
@@ -502,12 +515,30 @@ _checkpoints: OrderedDict[str, _Checkpoint] = OrderedDict()
 _checkpoints_lock = threading.Lock()
 
 
+_engine_signature: str | None = None
+
+
+def engine_signature() -> str:
+    """Un résumé des sources de StructureForge en service : un état gardé ne vaut que pour le moteur
+    qui l'a calculé (un moteur réinstallé, ou un clone mis sur ``PYTHONPATH``, repart à vide)."""
+    global _engine_signature
+    if _engine_signature is None:
+        root = Path(structureforge.__file__).resolve().parent
+        digest = hashlib.sha256()
+        for path in sorted(root.rglob("*.py")):
+            digest.update(path.relative_to(root).as_posix().encode())
+            digest.update(path.read_bytes())
+        _engine_signature = digest.hexdigest()
+    return _engine_signature
+
+
 def _checkpoint_keys(substrate: SubstrateSpec, steps: list[ProcessStep], recipes: RecipeLibrary) -> list[str]:
     """La clé de l'état de départ, puis de l'état après chaque étape : chacune résume la précédente
     et l'étape, si bien que deux procédés partagent les clés de leur début commun."""
     from .library_files import materials
 
     context = {
+        "engine": engine_signature(),
         "substrate": substrate.model_dump(mode="json"),
         # le matériau d'une couche décide de sa vitesse de gravure (sa catégorie)
         "materials": [material.model_dump(mode="json") for material in materials()],
@@ -525,31 +556,269 @@ def _copied_frame(frame: Frame) -> Frame:
     return Frame(frame.step_index, frame.step_kind, frame.step_name, [Layer(l.material, l.polygon, l.provenance) for l in frame.layers], frame.domain_width_nm)
 
 
+def _trim_memory() -> None:
+    while len(_checkpoints) > MAX_CHECKPOINTS:
+        _checkpoints.popitem(last=False)
+
+
+def _recall(key: str) -> _Checkpoint | None:
+    """L'état gardé sous ``key`` : en mémoire, sinon relu du disque (et remis en mémoire) ; ``None`` sinon."""
+    with _checkpoints_lock:
+        checkpoint = _checkpoints.get(key)
+        if checkpoint is not None:
+            _checkpoints.move_to_end(key)
+            return checkpoint
+    checkpoint = _disk_load(key)
+    if checkpoint is not None:
+        with _checkpoints_lock:
+            _checkpoints[key] = checkpoint
+            _checkpoints.move_to_end(key)
+            _trim_memory()
+    return checkpoint
+
+
 def _cached_start(keys: list[str]) -> list[_Checkpoint]:
     """Les états gardés du plus long début de ``keys`` (vide : rien de gardé, pas même le départ)."""
     reached: list[_Checkpoint] = []
-    with _checkpoints_lock:
-        for key in keys:
-            checkpoint = _checkpoints.get(key)
-            if checkpoint is None:
-                break
-            _checkpoints.move_to_end(key)
-            reached.append(checkpoint)
+    for key in keys:
+        checkpoint = _recall(key)
+        if checkpoint is None:
+            break
+        reached.append(checkpoint)
     return reached
 
 
-def _keep(key: str, geometry: Geometry, origin: dict[int, int], frame: Frame, frame_origins: list[int]) -> None:
-    checkpoint = _Checkpoint(
-        tuple((layer.material, layer.polygon, layer.provenance, origin[id(layer)]) for layer in geometry.layers),
-        geometry.floor_nm,
-        _copied_frame(frame),
-        tuple(frame_origins),
-    )
+def _store(key: str, checkpoint: _Checkpoint) -> None:
     with _checkpoints_lock:
         _checkpoints[key] = checkpoint
         _checkpoints.move_to_end(key)
-        while len(_checkpoints) > MAX_CHECKPOINTS:
-            _checkpoints.popitem(last=False)
+        _trim_memory()
+    _disk_save(key, checkpoint)
+
+
+def _keep(key: str, geometry: Geometry, origin: dict[int, int], frame: Frame, frame_origins: list[int]) -> None:
+    _store(
+        key,
+        _Checkpoint(
+            tuple((layer.material, layer.polygon, layer.provenance, origin[id(layer)]) for layer in geometry.layers),
+            geometry.floor_nm,
+            _copied_frame(frame),
+            tuple(frame_origins),
+        ),
+    )
+
+
+def clear_checkpoints() -> None:
+    """Oublie tous les états gardés, en mémoire et sur disque (les tests, un ménage)."""
+    with _checkpoints_lock:
+        _checkpoints.clear()
+    with _disk_lock:
+        for path in _disk_files():
+            _remove_quietly(path)
+
+
+# Sur disque : un fichier par état (``<clé>.pickle``), écrit entier puis mis en place (jamais relu à
+# moitié), retrouvé par sa clé ; un fichier illisible (un autre format, un disque abîmé) est effacé
+# et compte pour rien. Sa date est rafraîchie à chaque lecture : le ménage efface les plus anciennes.
+
+_disk_lock = threading.Lock()
+_stores_since_prune = 0
+_LOAD_ERRORS = (OSError, pickle.UnpicklingError, EOFError, AttributeError, ImportError, IndexError, TypeError, ValueError)
+
+
+def checkpoints_dir() -> Path:
+    """Le dossier des états gardés sur disque, dans le dossier de données - jamais sauvegardé avec lui
+    (:mod:`spectre.kernel.database` le laisse de côté) : tout s'y recalcule."""
+    return data_dir() / "cache" / "simulations"
+
+
+def _disk_files() -> list[Path]:
+    try:
+        return [path for path in checkpoints_dir().iterdir() if path.is_file()]
+    except OSError:
+        return []
+
+
+def _remove_quietly(path: Path) -> None:
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _disk_load(key: str) -> _Checkpoint | None:
+    if DISK_CHECKPOINTS_MAX_BYTES <= 0:
+        return None
+    path = checkpoints_dir() / f"{key}.pickle"
+    try:
+        with path.open("rb") as file:
+            checkpoint = pickle.load(file)
+        if not isinstance(checkpoint, _Checkpoint):
+            raise ValueError("pas un état de simulation")
+    except FileNotFoundError:
+        return None
+    except _LOAD_ERRORS:
+        _remove_quietly(path)
+        return None
+    try:
+        os.utime(path)  # servi : parmi les derniers à effacer
+    except OSError:
+        pass
+    return checkpoint
+
+
+def _disk_save(key: str, checkpoint: _Checkpoint) -> None:
+    global _stores_since_prune
+    if DISK_CHECKPOINTS_MAX_BYTES <= 0:
+        return
+    path = checkpoints_dir() / f"{key}.pickle"
+    staging = path.with_name(f"{path.name}.{secrets.token_hex(4)}.tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with staging.open("wb") as file:
+            pickle.dump(checkpoint, file, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(staging, path)
+    except (OSError, pickle.PicklingError):
+        _remove_quietly(staging)
+        return
+    with _disk_lock:
+        _stores_since_prune += 1
+        if _stores_since_prune < _DISK_PRUNE_EVERY:
+            return
+        _stores_since_prune = 0
+    prune_checkpoints()
+
+
+def prune_checkpoints() -> None:
+    """Ramène le dossier sous :data:`DISK_CHECKPOINTS_MAX_BYTES`, les états les moins récemment servis
+    effacés d'abord - jusqu'à 80 % de la limite, pour ne pas y revenir à chaque écriture."""
+    with _disk_lock:
+        entries: list[tuple[float, int, Path]] = []
+        for path in _disk_files():
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            entries.append((stat.st_mtime, stat.st_size, path))
+        total = sum(size for _mtime, size, _path in entries)
+        if total <= DISK_CHECKPOINTS_MAX_BYTES:
+            return
+        for _mtime, size, path in sorted(entries):
+            if total <= DISK_CHECKPOINTS_MAX_BYTES * 0.8:
+                break
+            try:
+                path.unlink()
+            except OSError:
+                continue  # relu par une autre requête à l'instant même : au prochain tour
+            total -= size
+
+
+# -- le pixel de N fils, par sa maille ---------------------------------------------------------------
+#
+# Les bords du domaine sont des miroirs pour StructureForge (``Geometry`` : « domain edges are
+# symmetry boundaries ») : une maille d'un fil, le fil au centre, est déjà le réseau infini - et un
+# pixel de N fils simulé d'un bloc est le même réseau, N fois plus large et bien plus long à
+# calculer (8 fils : 9 à 10 fois le temps d'un fil, mesuré). Tant que le procédé ne voit le réseau
+# que par ses mailles - des lithographies ancrées au réseau (un trou par fil, un passage entre les
+# fils), des dépôts, gravures et croissances symétriques - on simule donc la maille (ce que la vue
+# « 1 fil » calcule déjà : même cache) et on la répète N fois, état par état. La première étape qui
+# voit le pixel entier (une ouverture sur tout le pixel, des ouvertures en nm absolus, un faisceau
+# incliné, une croissance semi-polaire) et la suite se simulent sur le pixel, d'un bloc, depuis
+# l'état répété. Les états répétés sont gardés comme ceux d'un bloc : la vue à N fils ne refait rien
+# tant que sa maille est connue.
+
+_TILE_GRID = 1e-6  # nm - la grille qui soude les copies d'une maille (leurs bords communs à 1 ulp près)
+
+
+def periodic_prefix(
+    substrate: SubstrateSpec, steps: list[ProcessStep], recipes: RecipeLibrary, anchors: dict[int, LatticeOpening] | None
+) -> int:
+    """Le nombre d'étapes du début de ``steps`` qui ne voient le réseau que par ses mailles (voir
+    plus haut) - 0 sans réseau, pour un seul fil, ou quand ce début ne contient aucune lithographie
+    ancrée (rien à gagner à répéter une maille sans motif)."""
+    lattice = substrate.lattice
+    if lattice is None or lattice.wires < 2:
+        return 0
+    anchors = anchors or {}
+    count = 0
+    for index, step in enumerate(steps):
+        if not _periodic_step(step, index, anchors, recipes):
+            break
+        count += 1
+    if not any(index < count for index in anchors):
+        return 0
+    return count
+
+
+def _periodic_step(step: ProcessStep, index: int, anchors: dict[int, LatticeOpening], recipes: RecipeLibrary) -> bool:
+    if isinstance(step, Lithography):
+        anchor = anchors.get(index)
+        return anchor is not None and anchor.mode in ("wires", "between")
+    if isinstance(step, Deposition):
+        recipe = recipes.deposition.get(step.recipe)
+        return recipe is not None and (recipe.mode is DepositionMode.conformal or recipe.angle_deg == 0)
+    if isinstance(step, Etch):
+        recipe = recipes.etch.get(step.recipe)
+        return recipe is not None and (recipe.mode is EtchMode.isotropic or recipe.angle_deg == 0)
+    if isinstance(step, EpitaxialGrowth):
+        return step.orientation is not GrowthOrientation.semi_polar
+    return True  # croissance facettée, enveloppe de facettes, planarisation, chimie, retrait de résine, retournement
+
+
+class _Tiler:
+    """Répète un polygone de la maille sur les ``wires`` mailles du pixel - une fois par polygone
+    (une couche qu'une étape ne touche pas garde son polygone d'un état à l'autre)."""
+
+    def __init__(self, pitch: float, wires: int):
+        self.offsets = [round(i * pitch, 6) for i in range(wires)]
+        self.done: dict[int, Any] = {}
+        self.pinned: list[Any] = []  # garde chaque polygone vu vivant : son id() n'est jamais redonné
+
+    def __call__(self, polygon: Any) -> Any:
+        tiled = self.done.get(id(polygon))
+        if tiled is None:
+            if polygon.is_empty:
+                tiled = polygon
+            else:
+                tiled = shapely.union_all([translate(polygon, xoff=offset) for offset in self.offsets], grid_size=_TILE_GRID)
+            self.done[id(polygon)] = tiled
+            self.pinned.append(polygon)
+        return tiled
+
+
+def _tile_prefix(
+    substrate: SubstrateSpec,
+    steps: list[ProcessStep],
+    prefix: int,
+    anchors: dict[int, LatticeOpening],
+    materials: MaterialLibrary,
+    recipes: RecipeLibrary,
+    run_id: str | None,
+    keys: list[str],
+) -> None:
+    """Simule la maille des ``prefix`` premières étapes (ou la reprend), et garde chaque état répété
+    sur le pixel sous ``keys`` (les clés du pixel, départ compris). Ne garde rien si un état de la
+    maille a été évincé entre-temps : la suite simule alors le pixel d'un bloc."""
+    lattice = substrate.lattice
+    cell = substrate.model_copy(update={"lattice": lattice.model_copy(update={"wires": 1})})
+    cell, cell_steps = resolve_lattice(cell, list(steps[:prefix]), {index: anchor for index, anchor in anchors.items() if index < prefix})
+    _simulate_tracking(cell, cell_steps, materials, recipes, run_id)
+    states = _cached_start(_checkpoint_keys(cell, cell_steps, recipes))
+    if len(states) != prefix + 1:
+        return
+    width = substrate.domain_width.to_nm()
+    tile = _Tiler(lattice.pitch, lattice.wires)
+    for key, state in zip(keys, states):
+        frame = state.frame
+        _store(
+            key,
+            _Checkpoint(
+                tuple((material, tile(polygon), provenance, origin) for material, polygon, provenance, origin in state.layers),
+                state.floor_nm,
+                Frame(frame.step_index, frame.step_kind, frame.step_name, [Layer(l.material, tile(l.polygon), l.provenance) for l in frame.layers], width),
+                state.frame_origins,
+            ),
+        )
 
 
 # -- le suivi d'une simulation ----------------------------------------------------------------------
@@ -619,6 +888,7 @@ def _simulate_tracking(
     materials: MaterialLibrary,
     recipes: RecipeLibrary,
     run_id: str | None = None,
+    anchors: dict[int, LatticeOpening] | None = None,
 ) -> tuple[Geometry, list[Frame], list[list[int]]]:
     """``structureforge.process.simulate.simulate``, une étape à la fois - mêmes images, mêmes
     erreurs - pour savoir quelle étape a créé chaque couche. StructureForge ne le dit que pour une
@@ -626,9 +896,16 @@ def _simulate_tracking(
     géométrie elles-mêmes, entre deux étapes. Une couche y garde son objet tant qu'elle existe (une
     gravure change son contour, pas l'objet) ; une étape ajoute les siennes à la fin ; un
     retournement (``Flip``) recrée toutes les couches, dans l'ordre inverse. Repart du plus long
-    début déjà simulé (voir plus haut), et garde chaque état atteint."""
+    début déjà simulé (voir plus haut), et garde chaque état atteint. Un pixel de plusieurs fils
+    dont le début ne voit le réseau que par ses mailles (``anchors`` : les lithographies ancrées,
+    :func:`periodic_prefix`) part de sa maille répétée plutôt que de le simuler d'un bloc."""
     keys = _checkpoint_keys(substrate, steps, recipes)
     reached = _cached_start(keys)
+    prefix = periodic_prefix(substrate, steps, recipes, anchors)
+    tiled = bool(prefix) and prefix >= len(reached)  # le début gardé du pixel ne couvre pas ce que sa maille donne
+    if tiled:
+        _tile_prefix(substrate, steps, prefix, anchors or {}, materials, recipes, run_id, keys[: prefix + 1])
+        reached = _cached_start(keys)
     width = substrate.domain_width.to_nm()
     if reached:
         last = reached[-1]
@@ -644,7 +921,8 @@ def _simulate_tracking(
         origins = [[origin[id(layer)] for layer in geometry.frame_layers()]]
         _keep(keys[0], geometry, origin, frames[0], origins[0])
     alive: list[Any] = list(geometry.layers)  # garde chaque couche vivante : son id() n'est jamais redonné
-    _note_run(run_id, done=len(frames) - 1, resumed=len(frames) - 1)
+    # les états d'une maille qui vient d'être simulée sont faits, pas repris : sa simulation l'a noté
+    _note_run(run_id, done=len(frames) - 1, **({} if tiled else {"resumed": len(frames) - 1}))
     for index in range(len(frames) - 1, len(steps)):
         step = steps[index]
         before = list(geometry.layers)
@@ -700,6 +978,7 @@ def simulate_process(
     declared_params: dict[int, list[DeclaredParam]] | None = None,
     recipes: ProcessRecipes | None = None,
     run_id: str | None = None,
+    lattice_anchors: dict[int, LatticeOpening] | None = None,
 ) -> SimulationResult:
     """Build the starting geometry and apply ``steps`` to it, the same way
     ``structureforge.api.app`` does for its own ``/api/simulate`` - returns the live objects
@@ -711,7 +990,10 @@ def simulate_process(
     :class:`DeclaredParam`) is Spectre-only bookkeeping never seen by ``structureforge`` itself -
     it's merged onto the resulting layers' ``provenance`` after simulation succeeds. ``recipes``:
     the process's own (:class:`ProcessRecipes`), on top of the library's. ``run_id``: the simulation's
-    identifier when someone follows it (:func:`run_progress`).
+    identifier when someone follows it (:func:`run_progress`). ``lattice_anchors``: the lithographies
+    anchored to the substrate's lattice, by step position - with them, a pixel of several wires is
+    simulated by its cell, repeated, as far as the process only sees the lattice through its cells
+    (:func:`periodic_prefix`); without them, a pixel is simulated as one block.
     """
     steps = _expand_seed_material_aliases(steps, substrate.material)
     materials = materials_library(substrate.material, *_material_names_in_steps(steps))
@@ -724,7 +1006,7 @@ def simulate_process(
     _start_run(run_id, len(steps))
     state = "failed"
     try:
-        geometry, frames, origins = _simulate_tracking(substrate, steps, materials, recipe_library, run_id)
+        geometry, frames, origins = _simulate_tracking(substrate, steps, materials, recipe_library, run_id, lattice_anchors)
         state = "done"
     except SimulationError as exc:
         raise SimulationFailedError(str(exc)) from exc
