@@ -610,7 +610,7 @@ class _PreparedStructure:
                 }
             )
             return
-        simulated = simulation.simulate_process(payload.substrate, payload.steps, recipes=recipes)
+        simulated = simulation.simulate_process(payload.substrate, payload.steps, recipes=recipes, lattice_anchors=anchors)
         self.structure = follow_adapter.to_structure(simulated.geometry)
         self.layer_origins = [simulated.layer_origins[-1]]
 

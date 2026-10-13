@@ -753,14 +753,27 @@ l'obtention au champ - ne fait qu'écrire la valeur : niveau **retouche** (même
   recrée dans l'ordre inverse. `layer_origins[k][j]` : la position de l'étape qui a créé la
   `j`-ième couche de l'image `k` (`-1` : le substrat). Jamais d'alignement de matériaux côté client.
 - **Reprise d'une simulation** : chaque état atteint (les couches après une étape, leur provenance,
-  l'image) est gardé en mémoire du serveur - les `simulation.MAX_CHECKPOINTS` derniers servis -
-  sous une clé qui résume substrat, bibliothèques (matériaux racine, recettes du procédé et de la
-  bibliothèque) et étapes jusque-là. Une simulation repart du plus long début déjà calculé : une
-  étiquette, une brique ou un paramètre déclaré ne relancent rien, une retouche de l'étape k ne
-  recalcule qu'elle et la suite, les variantes d'une campagne partagent les étapes d'avant leurs
-  facteurs. Mêmes images qu'une simulation complète ; rien sur disque, un redémarrage repart à vide.
-  Côté constructeur, une seule simulation à la fois : une retouche pendant qu'elle tourne en
-  relance une à son retour, avec l'état d'alors.
+  l'image) est gardé en mémoire du serveur - les `simulation.MAX_CHECKPOINTS` derniers servis - et
+  sur disque (`cache/simulations/` du dossier de données, `simulation.DISK_CHECKPOINTS_MAX_BYTES`
+  au plus, les moins récemment servis effacés d'abord ; jamais dans la sauvegarde de la base, tout
+  s'y recalcule), sous une clé qui résume le moteur (les sources de StructureForge en service),
+  substrat, bibliothèques (matériaux racine, recettes du procédé et de la bibliothèque) et étapes
+  jusque-là. Une simulation repart du plus long début déjà calculé : une étiquette, une brique ou
+  un paramètre déclaré ne relancent rien, une retouche de l'étape k ne recalcule qu'elle et la
+  suite, les variantes d'une campagne partagent les étapes d'avant leurs facteurs, une structure
+  enregistrée se rouvre sans calcul même après un redémarrage. Mêmes images qu'une simulation
+  complète. Côté constructeur, une seule simulation à la fois : une retouche pendant qu'elle tourne
+  en relance une à son retour, avec l'état d'alors.
+- **Pixel de N fils par sa maille** (`simulation.periodic_prefix`) : les bords du domaine sont des
+  miroirs pour StructureForge, donc la maille d'un fil est déjà le réseau infini, et un pixel de N
+  fils simulé d'un bloc coûte bien plus que N fois un fil (8 fils : 9 à 10 fois, mesuré). Tant que
+  le procédé ne voit le réseau que par ses mailles (lithographies ancrées en mode fils ou
+  entre-fils, dépôts conformes ou verticaux, gravures isotropes ou verticales, croissances non
+  semi-polaires, planarisation, retournement...), la maille est simulée (le cache de la vue « 1
+  fil ») puis répétée N fois, état par état ; la première étape qui voit le pixel entier (ouverture
+  sur tout le pixel, ouvertures en nm absolus, faisceau incliné, croissance semi-polaire) et la
+  suite se simulent sur le pixel, d'un bloc, depuis l'état répété. Les appelants passent les
+  ancrages (`lattice_anchors`) ; sans eux, le pixel se simule d'un bloc, comme avant.
 - **Rendu** (`structures.rendering.labelled_svg`) : le dessin de StructureForge devient un `<svg>`
   imbriqué, ajusté dans un carré de 400 unités, les étiquettes empilées à droite sans chevauchement
   (poussées sous la précédente, remontées si la pile dépasse le dessin), le trait partant d'un point
