@@ -130,6 +130,7 @@ function livePreviewFromForm() {
   // faire perdre son identité (son id, voir withoutStepId dans step-list.js).
   const previous = state.steps[i];
   if (previous.id) step.id = previous.id;
+  if (previous.comment) step.comment = previous.comment; // son commentaire (plugin step_report), pas un champ du formulaire
   if (previous.presetOrigin) step.presetOrigin = previous.presetOrigin; // sa trace, pas un lien : l'étape garde ses modifications
   if (previous.brick_group_id) copyBrickTag(previous, step);
   state.steps[i] = step;
