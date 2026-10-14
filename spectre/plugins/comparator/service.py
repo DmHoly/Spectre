@@ -107,7 +107,23 @@ def rows_for(user: User, items: list[str]) -> list[Compared]:
 def compare(user: User, items: list[str], baseline: int = 0) -> dict[str, Any]:
     """Le tableau de la comparaison des jetons ``items``, à la ligne ``baseline`` (la première par
     défaut) - :func:`table.build`."""
-    return table.build(rows_for(user, items), baseline)
+    return compare_rows(rows_for(user, items), baseline)
+
+
+def compare_rows(rows: list[Compared], baseline: int = 0) -> dict[str, Any]:
+    """Le tableau de lignes déjà lues (:func:`rows_for`, :func:`study_rows`) - pour qui compare
+    beaucoup de structures sans les relire."""
+    return table.build(rows, baseline)
+
+
+def comparable(first: Compared, second: Compared) -> bool:
+    """Si deux lignes ont des colonnes en commun (:func:`table.comparable`)."""
+    return table.comparable(first, second)
+
+
+def differences(result: dict[str, Any], row: int) -> list[dict[str, Any]]:
+    """Ce qui distingue la ligne ``row`` d'un tableau de sa base (:func:`table.differences`)."""
+    return table.differences(result, row)
 
 
 def _folded(text: str) -> str:

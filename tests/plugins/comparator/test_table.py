@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import copy
 
-from spectre.plugins.comparator.table import Compared, build
+from spectre.plugins.comparator.table import Compared, build, comparable, differences
 from support.comparator import cell, group
 from support.structures import deposition, etch, fixed_step_id, length, substrate
 
@@ -181,3 +181,41 @@ def test_the_baseline_can_be_any_row():
     assert table["baseline"] == 1 and table["rows"][1]["baseline"]
     assert cell(table, 0, "Masque", "Épaisseur")["status"] == "changed"
     assert cell(table, 1, "Masque", "Épaisseur")["status"] == "same"
+
+
+def test_the_differences_of_a_row_are_listed_and_counted_like_its_summary():
+    thicker = copy.deepcopy(BASE_STEPS)
+    thicker[0]["thickness"] = length(120)
+    capped = [*thicker[:3], faceted("Barrière", "GaN", 10), thicker[3]]
+    capped_ids = [*IDS[:3], fixed_step_id(9), IDS[3]]
+    declared = {"2": [{"name": "Dopage", "value": 3e18, "unit": "cm⁻³", "obtention": {}}]}
+    table = build([row("A", BASE_STEPS, IDS), row("B", capped, capped_ids, declared_params=declared), row("C", [BASE_STEPS[0], *BASE_STEPS[2:]], [IDS[0], *IDS[2:]])])
+
+    assert differences(table, 0) == []  # la base n'a pas de différence avec elle-même
+    listed = differences(table, 1)
+    assert {"kind": "changed", "step": "Masque", "parameter": "Épaisseur", "from": "100 nm", "to": "120 nm"} in listed
+    assert {"kind": "added_param", "step": "GaN", "parameter": "Dopage", "from": None, "to": "3e18 cm⁻³"} in listed
+    assert {"kind": "added_layer", "step": "Barrière", "parameter": None, "from": None, "to": None} in listed
+    assert {"kind": "absent", "step": "Ouverture", "parameter": None, "from": None, "to": None} in differences(table, 2)
+    for i in (1, 2):
+        assert len(differences(table, i)) == sum(table["rows"][i]["summary"].values())
+
+
+def test_a_moved_and_modified_layer_counts_twice_like_the_summary():
+    swapped = [BASE_STEPS[0], BASE_STEPS[1], BASE_STEPS[3], {**BASE_STEPS[2], "thickness": length(900)}]
+    table = build([row("A", BASE_STEPS, IDS), row("B", swapped, [IDS[0], IDS[1], IDS[3], IDS[2]])])
+    listed = differences(table, 1)
+    assert sorted(d["kind"] for d in listed) == ["changed", "moved"]
+    assert len(listed) == sum(table["rows"][1]["summary"].values())
+
+
+def test_only_rows_with_the_same_kind_of_columns_are_comparable():
+    process_row = row("A", BASE_STEPS, IDS)
+    other = row("B", BASE_STEPS, IDS)
+    split = Compared("d", "study", "W1", structure_kind="declared", declared=(["Recuit"], ["600 °C"]))
+    split_too = Compared("e", "study", "W2", structure_kind="declared", declared=(["Recuit"], ["650 °C"]))
+    images = Compared("img", "study", "Coupe", structure_kind="images", note="Structure donnée en images.")
+    broken = Compared("bad", "study", "Disparue", error="Version introuvable.")
+    assert comparable(process_row, other) and comparable(split, split_too)
+    assert not comparable(process_row, split) and not comparable(split, process_row)
+    assert not comparable(process_row, images) and not comparable(process_row, broken)

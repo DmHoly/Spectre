@@ -31,6 +31,7 @@ from .settings import PLUGIN as settings
 from .simulation_progress import PLUGIN as simulation_progress
 from .structures import PLUGIN as structures
 from .teams import PLUGIN as teams
+from .twins import PLUGIN as twins
 from .usage import PLUGIN as usage
 from .wafers import PLUGIN as wafers
 
@@ -51,6 +52,7 @@ PLUGINS = (
     promotion,
     intent_forms,
     wafers,
+    twins,
     lots,
     planning,
     links,

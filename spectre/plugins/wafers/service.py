@@ -219,6 +219,15 @@ def _latest_first(found: Iterable[Occurrence]) -> list[Occurrence]:
     return sorted(found, key=lambda o: o.updated_at, reverse=True)
 
 
+def latest_members(found: Iterable[Occurrence]) -> dict[str, Occurrence]:
+    """Par clé de plaque, l'étude la plus récente dont le lecteur est membre - celle dont une plaque
+    montre la structure ; une plaque suivie seulement par des études qu'il ne lit pas n'y est pas."""
+    latest: dict[str, Occurrence] = {}
+    for occurrence in _latest_first(o for o in found if o.member and o.key):
+        latest.setdefault(occurrence.key, occurrence)
+    return latest
+
+
 def _wafer_payload(key: str, found: list[Occurrence]) -> dict[str, Any]:
     members = [o for o in found if o.member]
     return {
