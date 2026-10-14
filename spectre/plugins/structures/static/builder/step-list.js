@@ -630,6 +630,13 @@ function renderRail() {
     if (focusTarget) focusTarget.focus({ preventScroll: true });
   }
   highlightSelectedLayer();
+  syncStepReport();
+}
+
+// Le plugin step_report (commentaires d'étape, rapport pas à pas), s'il est là : à prévenir quand le flow,
+// la sélection ou les ids d'étape changent.
+function syncStepReport() {
+  if (typeof StepReport !== "undefined" && pluginEnabled("step_report")) StepReport.sync();
 }
 
 function updateFlowHint() {

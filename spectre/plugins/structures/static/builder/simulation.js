@@ -329,6 +329,7 @@ async function simulateNow() {
     state.layerOrigins = layerOriginsOf(state.frames);
     clearSimulationError();
     renderFrame();
+    syncStepReport(); // les étapes neuves viennent de recevoir leur id
     if (colorsChanged) renderRail(); // pastilles de matériau des puces, aux couleurs du dessin
   } catch (err) {
     if (seq === simulateSeq && !simulateAgain) showSimulationError(err);

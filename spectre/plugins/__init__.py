@@ -29,6 +29,7 @@ from .references import PLUGIN as references
 from .search import PLUGIN as search
 from .settings import PLUGIN as settings
 from .simulation_progress import PLUGIN as simulation_progress
+from .step_report import PLUGIN as step_report
 from .structures import PLUGIN as structures
 from .teams import PLUGIN as teams
 from .usage import PLUGIN as usage
@@ -62,6 +63,7 @@ PLUGINS = (
     kpis_demo,
     usage,
     simulation_progress,
+    step_report,
     materials,
     docs,
 )
