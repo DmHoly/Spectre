@@ -89,6 +89,7 @@ function renderStepInspector() {
   fillKindFields(state.steps[state.selectedIndex]);
   updateStepInspectorHeader();
   renderPresetPanel();
+  syncStepReport();
 }
 
 function updateStepInspectorHeader() {
