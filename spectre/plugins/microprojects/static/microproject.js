@@ -337,6 +337,16 @@ async function init() {
     window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
     if (canEdit) openStudyStart(`µprojet « ${currentMicroprojectName} » créé. Lancez sa première expérience - depuis la structure de référence, le plus souvent.`);
   }
+  // depuis la page d'une plaque sans structure (?nouvelle-experience=1&plaque=<lasermark>, wafers/static/wafer.js) :
+  // « D'où part-elle ? » s'ouvre tout de suite, en rappelant la plaque à suivre
+  if (params.has("nouvelle-experience")) {
+    const plaque = params.get("plaque");
+    params.delete("nouvelle-experience");
+    params.delete("plaque");
+    const rest = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+    if (canEdit) openStudyStart(plaque ? `Pour donner une structure à la plaque « ${plaque} » : suivez-la dans la nouvelle expérience (carte « Plaques & entités physiques »).` : undefined);
+  }
 }
 
 init();

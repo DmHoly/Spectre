@@ -273,8 +273,11 @@ def test_demo_answers_like_prism(logged_in, demo_data, monkeypatch):
     assert logged_in.get(detail["charts"][0]["url"]).headers["content-type"] == "image/png"
 
 
-def test_a_single_adapter_imports_prism():
+def test_only_the_prism_adapters_import_prism():
+    """Trois adaptateurs, un par usage : les données de caractérisation ici, la vie d'une plaque en
+    ligne et les plaques d'une FDL chez wafers (tracking_source, fdl_source) - tout autre module
+    passe par l'un d'eux."""
     root = Path(__file__).resolve().parents[3] / "spectre"
     pattern = re.compile(r"^\s*(import prism\b|from prism\b)", re.MULTILINE)
     importing = sorted(path.relative_to(root).as_posix() for path in root.rglob("*.py") if pattern.search(path.read_text(encoding="utf-8")))
-    assert importing == ["plugins/characterization/prism_source.py"]
+    assert importing == ["plugins/characterization/prism_source.py", "plugins/wafers/fdl_source.py", "plugins/wafers/tracking_source.py"]

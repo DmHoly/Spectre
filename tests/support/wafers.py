@@ -1,4 +1,4 @@
-"""Plaques (plugin wafers) : la collection et le passeport d'une plaque."""
+"""Plaques (plugin wafers) : la collection, le passeport d'une plaque et sa vie en ligne."""
 
 from __future__ import annotations
 
@@ -25,3 +25,13 @@ def get_fdl(client: Any, fdl: str) -> dict:
 def put_fdl_wafers(client: Any, fdl: str, lasermarks: list[str]) -> Any:
     """PUT /api/fdls/{fdl}/wafers, tel quel (la réponse, pour en vérifier un refus)."""
     return client.put(f"/api/fdls/{fdl}/wafers", json={"lasermarks": lasermarks})
+
+
+def get_tracking(client: Any, wafer_key: str) -> Any:
+    """GET /api/wafers/{wafer_key}/tracking, tel quel (la réponse, pour en vérifier un refus)."""
+    return client.get(f"/api/wafers/{wafer_key}/tracking")
+
+
+def refresh_tracking(client: Any, wafer_key: str) -> Any:
+    """POST /api/wafers/{wafer_key}/tracking/refresh : relit les bases quoi qu'il arrive."""
+    return client.post(f"/api/wafers/{wafer_key}/tracking/refresh")

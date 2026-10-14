@@ -4,8 +4,13 @@ fiche) - et le passeport d'une plaque, toutes les études qui la suivent, d'un �
 Tout vient de l'index :mod:`.service`, vu selon sa règle de visibilité. Les lots qui contiennent
 une plaque se lisent chez eux : ``GET /api/lots?wafer=``.
 
+La vie d'une plaque en ligne (``/api/wafers/{wafer_key}/tracking``) : MES, épitaxie et fiche Gozer,
+FDL et tests, lus par PRISM (ou la démo) et gardés (:mod:`.tracking`) - relus d'eux-mêmes au plus
+toutes les 24 h, plus jamais pour une plaque immobile depuis 30 jours ; ``POST .../tracking/refresh``
+relit quoi qu'il arrive.
+
 Les plaques d'une FDL (``/api/fdls/{fdl}``) : celles qu'elle contient réellement, lues dans la source
-de :mod:`.fdl_source` (la démo, la base locale saisie à la main, PRISM plus tard) - c'est parmi elles
+de :mod:`.fdl_source` (PRISM, la base locale saisie à la main en repli, la démo) - c'est parmi elles
 qu'on associe chaque place d'une étude à une vraie plaque.
 """
 
@@ -17,7 +22,7 @@ from pydantic import BaseModel, Field
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..experiments.entities import MAX_TRACKED_ENTITIES
-from . import fdl_source, service
+from . import fdl_source, service, tracking
 
 router = APIRouter(prefix="/api", tags=["wafers"])
 
@@ -41,6 +46,22 @@ def get_wafer(wafer_key: str, user: User = Depends(current_user)) -> dict:
     """Le passeport d'une plaque (``wafer_key``, ou son lasermark tel qu'écrit : il est comparé
     sans casse ni séparateurs) - vide (aucune étude) plutôt qu'une 404, la page l'explique."""
     return service.passport(wafer_key, service.occurrences(user, keys=[wafer_key]))
+
+
+@router.get("/wafers/{wafer_key}/tracking")
+def get_wafer_tracking(wafer_key: str, user: User = Depends(current_user)) -> dict:
+    """La vie de la plaque en ligne (statut MES et étape courante, étapes, épitaxie, FDL et leur
+    avancement, tests, fiche Gozer) et ``meta`` : sa fraîcheur (``fetched_at``, ``freshness``,
+    ``dormant``, ``auto_refresh``, ``error``). Lue des bases si jamais lue ou plus vieille que 24 h -
+    sauf plaque immobile depuis 30 jours - sinon rendue telle que gardée."""
+    return tracking.read(wafer_key)
+
+
+@router.post("/wafers/{wafer_key}/tracking/refresh")
+def refresh_wafer_tracking(wafer_key: str, user: User = Depends(current_user)) -> dict:
+    """Relit les bases quoi qu'il arrive (le bouton de la page) - même fiche que ``GET``. Une
+    relecture en échec garde la fiche précédente et le dit dans ``meta.error``."""
+    return tracking.read(wafer_key, refresh=True)
 
 
 class FdlWafersRequest(BaseModel):
