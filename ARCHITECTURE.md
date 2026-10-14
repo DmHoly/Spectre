@@ -98,10 +98,10 @@ placés au-dessus de lui.
 |---|---|---|---|---|
 | 1 | `accounts` | Comptes, sessions, mot de passe, profil, rôle admin global. Fournit `deps.current_user` et `deps.require_admin` | — | `users`, `sessions`, `password_resets` |
 | 2 | `settings` | Paramètres de l'application, réservés aux administrateurs : page `/parametres` à menu latéral, une section par couche réglable, ouverte par une roue crantée dans la barre du haut. Les plugins (`GET /api/plugins`, `PATCH /api/plugins/{plugin_name}` `{enabled}`), dont la règle est au noyau (`kernel.plugin_states`) ; la base de données (`GET /api/database`, `GET /api/database/backup` : le ZIP, `GET /api/database/tables`, `GET .../tables/{table_name}/rows`, `PATCH` et `DELETE .../rows/{row_id}`, routeur annexe `database_api.py`), dont la mécanique est au noyau (`kernel.database`) | accounts | — (au noyau) |
-| 3 | `teams` | Équipes et leurs membres (`manager` ou `member`), page Équipes. Fournit `service.managed_team_ids(user_id)`. Ce qu'une équipe possède est dit par `areas` | accounts | `teams`, `team_members` |
+| 3 | `teams` | Équipes - nom, badge (couleur `#rrggbb`, libellé court) - et leurs membres (`manager` ou `member`), page Équipes. Fournit `service.managed_team_ids(user_id)`, `roles_of(user_id)` et `Team.ref()` (le badge tel que l'API le sert). Ce qu'une équipe possède est dit par `areas` et `microprojects` | accounts | `teams` (dont `color`, `badge`), `team_members` |
 | 4 | `search` | `GET /api/search`, qui agrège les fournisseurs déclarés par les autres plugins (`register_provider`) | accounts | — |
 | 5 | `library` | Bibliothèque racine YAML de l'instance (matériaux, recettes, présets, briques, textes d'UI), chargeur générique avec cache mtime, registre `LibraryFile` alimenté par les plugins propriétaires, édition réservée à l'admin | accounts | `data_dir/library/*.yml` (copiés depuis `library/defaults/` au premier démarrage, et les `*.yml` d'un `<dépôt>/library` d'avant par-dessus) |
-| 6 | `areas` | Projets corporate (*management areas*), leur équipe, thématiques, objectifs. Pages accueil, projet et thématique. Fournit `service.can_manage(user, area)`, `managed_area_ids(user)` et `can_place_microproject(user, area)` | accounts, teams | `management_areas` (dont `team_id`, `ON DELETE SET NULL`), `thematics`, `area_objectives` |
+| 6 | `areas` | Projets corporate (*management areas*), les équipes qui y travaillent, leurs thématiques (chacune à une équipe, avec les équipes invitées) et objectifs. Pages accueil, projet et thématique. Fournit `service.can_manage(user, area)`, `managed_area_ids(user)`, `can_place_microproject(user, area)`, `can_manage_thematic`, `visible_thematic_ids(user)` et `thematic_ids_of_teams` | accounts, teams | `management_areas`, `area_teams`, `thematics` (dont `team_id`, `ON DELETE SET NULL`), `thematic_teams`, `area_objectives` |
 | 7 | `microprojects` | µprojets (CRUD, numéro, rattachement à un projet ou une thématique, recherche), membres, rôles, invitations. Fournit la règle d'accès (`service.access`, `effective_role`, `check_role`) et `deps.require_role` | accounts, areas, search | `microprojects`, `memberships`, `invitations` |
 | 8 | `attachments` | Fichiers téléversés d'un µprojet (blob + sidecar), types, tailles, service des octets | microprojects | `data/microprojects/<slug>/attachments/` |
 | 9 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
@@ -114,7 +114,7 @@ placés au-dessus de lui.
 | 16 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité, plaques de chaque FDL (`fdl_source` : démo, base locale, PRISM à venir) ; la source « plaque » du comparateur (`comparison_source.py`) | experiments, search, comparator | cache mémoire, `fdl_wafers` |
 | 17 | `twins` | Plaques jumelles : parmi toutes les plaques suivies que le lecteur peut lire, celles dont la structure est celle d'une ligne du comparateur - exactement, ou à 1 à 5 variations près (`GET /api/wafer-twins?item=&max_variations=`). Une variation est une différence que le tableau colorerait (paramètre modifié ou ajouté, couche en plus ou absente, étape déplacée : `comparator.table.differences`, même décompte que le résumé du comparateur). Chaque plaque est lue par la structure de sa dernière étude (`wafers.service.latest_members`), une structure partagée n'est lue et comparée qu'une fois ; une structure sans les colonnes de la base est écartée. Panneau `Twins` monté par la page `/comparateur` (le comparateur n'en dépend pas : il vérifie `pluginEnabled("twins")`). Ne stocke rien | experiments, comparator, wafers | — |
 | 18 | `lots` | Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt ; ce qu'une lecture compose (expériences, thématiques, retard) dans `views.py` | wafers, areas, experiments, search | `lots`, `lot_wafers`, `lot_thematics` |
-| 19 | `planning` | Planning d'une équipe, pour ses managers (et les admins) : les plaques de ses études par thématique ▸ µprojet ▸ épi, les lots qui les portent (en cours, sortis, prévus) et les expériences prévues de ses µprojets (`GET /api/team-plannings`, `GET /api/team-plannings/{team_slug}` ; 403 `planning_forbidden` hors managers), page `/planning` à frise par semaine. Ne stocke rien : un lot prévu est un lot `planned` du plugin lots, créé et rempli par ses routes depuis la page ; lit `experiments.plans` | teams, areas, microprojects, structures, experiments, wafers, lots | — |
+| 19 | `planning` | Planning d'une équipe, pour ses managers (et les admins) : les plaques de ses études par thématique ▸ µprojet ▸ épi, les lots qui les portent (en cours, sortis, prévus) et les expériences prévues de ses µprojets (`GET /api/team-plannings`, `GET /api/team-plannings/{team_slug}` ; 403 `planning_forbidden` hors managers ; les sujets d'une équipe sont ses µprojets, `microprojects.team_id`), page `/planning` à frise par semaine. Ne stocke rien : un lot prévu est un lot `planned` du plugin lots, créé et rempli par ses routes depuis la page ; lit `experiments.plans` | teams, areas, microprojects, structures, experiments, wafers, lots | — |
 | 20 | `links` | Liens entre µprojets et entre entités physiques | microprojects, experiments | `microproject_links`, `entity_links` ; mis de côté par les migrations, plus lus : `entity_links_unresolved`, `microproject_links_duplicates` |
 | 21 | `atlas` | Vue graphe d'un projet corporate | areas, microprojects, experiments, links | — |
 | 22 | `characterization` | Types de données de caractérisation (PRISM, ou démo via le Protocol `DataSource`) : catalogue, requêtes, graphiques documentaires. Seul module qui importe `prism` | accounts | cache PRISM sous `data_dir/prism` (`PRISM_DATA_DIR`, fixé par `service.current_source()` s'il ne l'est pas) |
@@ -174,44 +174,66 @@ supprime un projet (vers « Non classé », sans thématique) ou une thématique
 
 Trois niveaux de droits, et une seule fonction qui les combine par ressource :
 
-- **admin** (`users.is_admin`) : tout. Il est `owner` de tout µprojet, même sans en être membre ;
-- **manager d'une équipe** (`team_members.role = manager`) : gère les projets corporate rattachés à
-  son équipe (`management_areas.team_id`), leurs thématiques et leurs objectifs, peut créer un
-  projet dans l'une de ses équipes, et il est `owner` des µprojets de ces projets (un µprojet hérite
-  de l'équipe de son projet ; « Non classé » n'a pas d'équipe) ;
+- **admin** (`users.is_admin`) : tout. Il est `owner` de tout µprojet, même sans en être membre, et voit
+  toutes les thématiques ;
+- **manager d'une équipe** (`team_members.role = manager`) : gère les projets corporate où son
+  équipe travaille (`area_teams`) et leurs objectifs, les thématiques de son équipe, peut créer un
+  projet dans l'une de ses équipes, et il est `owner` des µprojets de son équipe
+  (`microprojects.team_id`) ;
 - **membre** : le rôle de son adhésion au µprojet (`viewer` < `editor` < `owner`).
 
 Un compte peut appartenir à plusieurs équipes et n'être manager que dans certaines.
 
-Côté projet, `areas.service.can_manage(user, area)` (admin, ou manager de l'équipe du projet) est
-la règle de toute écriture d'un projet, d'une thématique ou d'un objectif. Rattacher un projet à
-une équipe reste à l'admin (renvoyer l'équipe déjà en place est sans effet), comme rattacher un
-µprojet existant depuis la page d'un projet (il s'appuie sur `?scope=all`). **Placer un µprojet**
-dans un projet - le créer (`POST /api/microprojects`) ou l'y déplacer (`PATCH
-/api/microprojects/{mp}` `{area}`, réservé par ailleurs à l'`owner`) - suit
-`areas.service.can_place_microproject(user, area)` : dans le projet d'une équipe, ses membres (tout
-rôle, managers compris, donc qui le gère) et un admin ; un projet sans équipe et « Non classé »
-restent ouverts à tous. Le refus est un 403 `placement_forbidden`, levé à un seul endroit,
-`microprojects.service.check_placement` ; la règle vit dans `areas`, sous `microprojects`, parce
-que chaque projet l'expose (`can_place_microproject`) et qu'`areas` ne peut pas importer
-`microprojects`. Changer de thématique dans le même projet n'est pas un placement ; sortir un
-µprojet du projet d'une équipe reste permis à son `owner`. Les pages projet et thématique
-n'offrent « + Nouveau µprojet » que si `can_place_microproject` est vrai, comme « Rattacher un
-µprojet existant » (page projet, admin seulement).
+**Plusieurs équipes travaillent dans un même projet corporate** (`area_teams`, rattachées par un
+admin ou par le manager de l'équipe, retirées de même - 409 `team_has_content` tant qu'elles y possèdent
+quelque chose). Chaque **thématique** appartient à une équipe (`thematics.team_id`) et chaque **µprojet**
+aussi (`microprojects.team_id`) : celle de sa thématique, sinon l'une des équipes du projet
+(`microprojects.service.resolve_team`, 422 `team_required` quand plusieurs conviennent, `team_mismatch`
+si l'équipe demandée n'est pas celle de la thématique). Sans équipe (`NULL` : les données d'avant, « Non
+classé », une équipe supprimée), une thématique est **ouverte** : tout le monde la voit, et le
+manager du projet l'écrit.
+
+**Visibilité.** Le projet corporate (nom, objectifs) reste visible de tous. Une thématique ne l'est que de
+son équipe, des équipes **invitées** dedans (`thematic_teams` : toute l'équipe, en lecture seule) et des
+comptes membres d'un de ses µprojets (`areas.service.visible_thematic_ids`) ; pour les autres elle n'existe
+pas (404, absente des listes, 422 si on la nomme pour y placer un µprojet). Les µprojets d'une thématique
+suivent : `microprojects.service.visible` (les recherches, `experiment-stats`, `experiment-timeline`) ne
+nomme que ceux où l'on a un rôle et les µprojets ouverts (sans équipe, hors thématique cachée).
+
+Côté projet, `areas.service.can_manage(user, area)` (admin, ou manager d'une équipe du projet) est
+la règle d'écriture du projet et de ses objectifs ; pour une thématique, `can_manage_thematic` (admin,
+ou manager de l'équipe qui la possède - une thématique ouverte retombe sur `can_manage`) : modifier,
+supprimer, inviter une équipe (`POST /api/areas/{area}/thematics/{thematic}/teams`). Créer une
+thématique : `thematic_owner` choisit l'équipe (celle qu'on manage dans le projet ; `team` si plusieurs).
+**Placer un µprojet** dans un projet - le créer (`POST /api/microprojects`) ou l'y déplacer (`PATCH
+/api/microprojects/{mp}` `{area, thematic, team}`, réservé par ailleurs à l'`owner`) - suit
+`resolve_team` : dans une thématique d'équipe, ses membres et un admin ; hors thématique, un membre d'une
+équipe du projet ; un projet sans équipe et « Non classé » restent ouverts à tous. Le refus est un 403
+`placement_forbidden`. `areas.service.can_place_microproject` (projet) et `can_place_in_thematic` en sont
+les formes que chaque ressource expose (`can_place_microproject`) : `areas` ne peut pas importer
+`microprojects`. Un µprojet garde son équipe quand il change de projet ; il en prend une autre en entrant
+dans la thématique d'une autre équipe. Les pages projet et thématique n'offrent « + Nouveau µprojet »
+que si `can_place_microproject` est vrai, comme « Rattacher un µprojet existant » (page projet, admin
+seulement).
 
 Côté µprojet, `microprojects.service.access(user, microproject)` rend
 un `Access(role, source, membership)` : `role` est le rôle effectif, `source` dit d'où il vient,
-dans cet ordre de priorité : owner par adhésion (`membership`), puis `team_manager`, puis `admin`,
-puis le rôle de l'adhésion. `effective_role`, `has_role`, `check_role`, `accesses` (une liste en
-deux requêtes) et `deps.require_role` en dérivent ; aucun autre plugin ne lit la table
-`memberships` pour autoriser (`role_for` reste un lecteur brut). « Mes
-µprojets » (`list_mine`) : ceux dont on est membre et ceux des équipes qu'on manage, pas tous
-ceux qu'un admin peut ouvrir. Hors µprojets, trois contrôles gardent leur propre règle, qui ne
+dans cet ordre de priorité : owner par adhésion (`membership`), puis `team_manager` (manager de l'équipe du
+µprojet), puis `admin`, puis le rôle de l'adhésion, puis **la lecture que donne la thématique** - `viewer`
+pour un membre de l'équipe du µprojet (`team`), d'une équipe invitée dans sa thématique (`thematic_team`) ou
+d'un autre µprojet de la thématique (`thematic_guest` : ajouté à un µprojet, on voit la thématique et on
+lit les autres, on n'écrit que dans le sien). `effective_role`, `has_role`, `check_role`, `accesses` (une
+liste en quelques requêtes) et `deps.require_role` en dérivent ; aucun autre plugin ne lit la table
+`memberships` pour autoriser (`role_for` reste un lecteur brut). « Mes µprojets » (`list_mine`) : ceux dont
+on est membre et ceux de ses équipes ; `?scope=readable` : tous ceux où l'on a un rôle ; pas tous ceux qu'un
+admin peut ouvrir. Hors µprojets, trois contrôles gardent leur propre règle, qui ne
 dépend pas d'un rôle : la suppression d'un lot (créateur ou admin) et les éléments partagés de
 `process_library` et d'`intent_forms` (auteur ou admin).
 
-À la migration (`teams/0001_initial`, `areas/0003_team`), rien n'est rattaché : les droits d'une
-base existante ne changent qu'une fois les équipes créées et les projets rattachés par un admin.
+À la migration (`teams/0002_badge`, `areas/0004_teams_per_area`, `microprojects/0005_team`), l'équipe unique
+d'un projet devient sa première équipe (`area_teams`), elle possède ses thématiques et ses µprojets ;
+un projet sans équipe garde des thématiques ouvertes. Une base d'avant les équipes n'est rattachée
+à rien : ses droits ne changent qu'une fois les équipes créées et rattachées aux projets.
 
 Une **page** appartient au plugin de sa ressource principale. Son script peut utiliser les
 `client.js` d'autres plugins : le navigateur est la racine de composition. Une agrégation qui
@@ -815,11 +837,11 @@ l'équipe.
 
 | Route | Effet |
 |---|---|
-| `GET /api/teams` | les équipes ; chacune porte `member_count`, `managers`, `my_role`, `can_edit` (renommer, supprimer : admin) et `can_manage` (gérer les membres) |
-| `POST /api/teams` `{name}` (admin) | → 201 + `Location` |
+| `GET /api/teams` | les équipes ; chacune porte son badge (`color`, `badge`, `short`), `member_count`, `managers`, `my_role`, `can_edit` (supprimer : admin) et `can_manage` (renommer, badge, membres : admin ou manager) |
+| `POST /api/teams` `{name, color, badge}` (admin) | → 201 + `Location` ; couleur `#rrggbb` (422 `invalid_color`), badge de 4 caractères au plus (422 `invalid_badge`) |
 | `GET /api/teams/{team_slug}` | une équipe |
-| `PATCH /api/teams/{team_slug}` (admin) | renommer |
-| `DELETE /api/teams/{team_slug}` (admin) | → 204 ; ses projets restent, sans équipe |
+| `PATCH /api/teams/{team_slug}` `{name, color, badge}` (admin ou manager de l'équipe) | nom et badge |
+| `DELETE /api/teams/{team_slug}` (admin) | → 204 ; ses thématiques et µprojets restent, sans équipe (ouverts) |
 | `GET /api/teams/{team_slug}/members[/{user_id}]` | les membres, ou un membre |
 | `POST /api/teams/{team_slug}/members` `{email, role}` | → 201 + `Location` ; 404 `no_account`, 409 `already_member` |
 | `PATCH` / `DELETE /api/teams/{team_slug}/members/{user_id}` | `{role}` / → 204 ; 409 `last_manager` si l'équipe resterait sans manager |
@@ -834,10 +856,10 @@ l'équipe.
 
 | Avant | Après |
 |---|---|
-| `GET /api/management` | `GET /api/areas?team=` (équipe inconnue → 404 ; chaque projet expose `is_system`, `team {slug, name}`, `can_manage`, `can_delete` (= `can_manage` et pas système), `can_place_microproject` (y créer ou y déplacer un µprojet, § 3), `horizon_months` calculé par le serveur) |
-| `POST /api/management` | `POST /api/areas` `{…, team}` → 201 (admin, avec ou sans équipe, ou manager pour l'une de ses équipes ; équipe inconnue → 422 `unknown_team`) |
+| `GET /api/management` | `GET /api/areas?team=` (équipe inconnue → 404 ; chaque projet expose `is_system`, `teams [{slug, name, color, short}]`, `attachable_teams`, `manageable_teams`, `placement_teams`, `can_manage`, `can_delete` (= `can_manage` et pas système), `can_place_microproject` (y créer ou y déplacer un µprojet, § 3), `horizon_months` calculé par le serveur) |
+| `POST /api/management` | `POST /api/areas` `{…, team}` (l'équipe qui y travaille d'abord) → 201 (admin, avec ou sans équipe, ou manager pour l'une de ses équipes ; équipe inconnue → 422 `unknown_team`) |
 | `GET /api/management/{slug}` | `GET /api/areas/{area_slug}` (projet, thématiques, objectifs) |
-| `PUT /api/management/{slug}` | `PATCH /api/areas/{area_slug}` (`can_manage` ; `{team}` : admin seulement, sans effet si c'est l'équipe déjà en place, 409 sur « Non classé ») |
+| `PUT /api/management/{slug}` | `PATCH /api/areas/{area_slug}` (`can_manage`) ; `POST /api/areas/{area_slug}/teams` `{team}` et `DELETE …/teams/{team_slug}` (admin ou manager de l'équipe ; 409 sur « Non classé », 409 `team_has_content` au retrait) ; `POST …/thematics/{thematic}/teams` `{team}` et `DELETE …/teams/{team_slug}` (inviter une équipe, en lecture seule ; 409 `owner_team`) |
 | `DELETE /api/management/{slug}` | `DELETE /api/areas/{area_slug}` → 204 (409 pour un projet système) |
 | `POST /api/management/{slug}/microprojets` | `PATCH /api/microprojects/{mp}` `{area, thematic}` |
 | `POST /api/management/{slug}/thematiques` | `POST /api/areas/{area_slug}/thematics` → 201 |
@@ -859,13 +881,13 @@ l'équipe.
 
 | Avant | Après |
 |---|---|
-| `GET /api/microprojets` | `GET /api/microprojects` (les miens : membre, ou manager de l'équipe du µprojet) ; `?scope=all` (admin, sinon 403) ; `?area=&thematic=` (inconnu → 404, `thematic` sans `area` → 422). Le payload d'un µprojet nomme son rattachement `area` / `thematic`, comme le `PATCH`, et ne porte plus de compteurs : le front les lit dans `GET /api/experiment-stats` |
+| `GET /api/microprojets` | `GET /api/microprojects` (les miens : membre, ou de mon équipe) ; `?scope=readable` (tous ceux où j'ai un rôle) ; `?scope=all` (admin, sinon 403) ; `?area=&thematic=` (inconnu → 404, `thematic` sans `area` → 422). Le payload d'un µprojet nomme son rattachement `area` / `thematic`, comme le `PATCH`, et ne porte plus de compteurs : le front les lit dans `GET /api/experiment-stats` |
 | `GET /api/microprojets/recherche?q=` | `GET /api/microprojects?q=&limit=` (toute la société, champs réduits `{slug, code, name, area}` ; `?q=` et `?code=` ne se combinent avec aucun autre filtre → 422) |
 | `GET /api/microprojets/tous` | `GET /api/microprojects?scope=all` |
 | `GET /api/microprojets/code/{code}` | `GET /api/microprojects?code=` → `[]` ou un élément, mêmes champs réduits |
-| `POST /api/microprojets` | `POST /api/microprojects` `{name, description, area, thematic}` → 201 + `Location` (projet ou thématique inconnus → 422, comme le `PATCH` ; projet d'une équipe dont on n'est ni membre ni admin → 403 `placement_forbidden`, comme le `PATCH` `{area}` ; un nom qui donnerait le slug « new » ou « nouvelle » reçoit un suffixe) |
-| `GET /api/microprojets/{slug}` | `GET /api/microprojects/{mp}` ; tout µprojet renvoyé porte `role` (effectif), `role_source` (`membership`, `team_manager` ou `admin`), `can_edit` et `can_manage` (§ 3, règle d'autorisation) |
-| *(nouveau)* | `PATCH /api/microprojects/{mp}` `{name, description, area, thematic}` (`owner` ; changer de projet vers celui d'une équipe dont on n'est ni membre ni admin → 403 `placement_forbidden`, § 3 ; renommer ou changer de thématique dans le même projet n'est pas vérifié) |
+| `POST /api/microprojets` | `POST /api/microprojects` `{name, description, area, thematic, team}` → 201 + `Location` (projet ou thématique inconnus → 422, comme le `PATCH` ; projet d'une équipe dont on n'est ni membre ni admin → 403 `placement_forbidden`, comme le `PATCH` `{area}` ; un nom qui donnerait le slug « new » ou « nouvelle » reçoit un suffixe) |
+| `GET /api/microprojets/{slug}` | `GET /api/microprojects/{mp}` ; tout µprojet renvoyé porte `role` (effectif), `role_source` (`membership`, `team_manager`, `admin`, `team`, `thematic_team` ou `thematic_guest`), `team` (son badge), `can_edit` et `can_manage` (§ 3, règle d'autorisation) |
+| *(nouveau)* | `PATCH /api/microprojects/{mp}` `{name, description, area, thematic, team}` (`owner` ; changer de projet vers celui d'une équipe dont on n'est ni membre ni admin → 403 `placement_forbidden`, § 3 ; renommer ou changer de thématique dans le même projet n'est pas vérifié) |
 | `DELETE /api/microprojets/{slug}` | `DELETE /api/microprojects/{mp}?confirm_name=` → 204 (garde côté serveur : mauvais nom → 422 `confirm_name_mismatch`) |
 | `GET …/members` | `GET /api/microprojects/{mp}/members` |
 | `POST …/members` (upsert + invitation) | `POST /api/microprojects/{mp}/members` `{email, role}` → 201 + `Location` `/api/microprojects/{mp}/members/{user_id}` (409 déjà membre ; 404 `no_account`) |

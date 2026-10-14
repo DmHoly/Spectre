@@ -10,7 +10,6 @@
   <link rel="stylesheet" href="/static/kpis/kpis.css">
   <link rel="stylesheet" href="/static/areas/areas.css">
   <link rel="stylesheet" href="/static/microprojects/microprojects.css">
-  <link rel="stylesheet" href="/static/teams/teams.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -95,6 +94,16 @@
     .thematic__actions { display:flex; gap:8px; flex:none; }
     .mp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
     .btn-sm { min-height:30px; padding:4px 10px; font-size:12.5px; }
+    .area-teams { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    .area-teams__label { font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); }
+    .area-teams__list { display:inline-flex; flex-wrap:wrap; gap:6px; }
+    .area-teams__none { font-size:12.5px; color:var(--text-faint); }
+    .thematic__badges { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px; }
+    .thematic__guests { font-size:11.5px; color:var(--text-faint); }
+    .area-team-list { list-style:none; padding:0; display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+    .area-team-list li { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .area-team-add { display:flex; gap:8px; }
+    .area-team-add select { flex:1; }
   </style>
 </head>
 <body>
@@ -113,7 +122,11 @@
           <div class="page-eyebrow">Projet corporate</div>
           <h1 id="area-name"></h1>
           <p id="area-description"></p>
-          <div id="area-team" style="margin-top:8px;"></div>
+          <div class="area-teams" style="margin-top:8px;">
+            <span class="area-teams__label">Équipes</span>
+            <span id="area-teams" class="area-teams__list"></span>
+            <button id="area-teams-btn" type="button" class="btn btn-line btn-sm" style="display:none;">Gérer les équipes</button>
+          </div>
         </div>
       </div>
       <div style="display:flex;gap:10px;flex:none;">
@@ -161,12 +174,26 @@
       <form id="microprojet-form" class="field-group">
         <div><label for="mp-name">Nom du µprojet</label><input class="field" id="mp-name" required></div>
         <div><label for="mp-thematic">Thématique</label><select class="field" id="mp-thematic"></select></div>
+        <div id="mp-team-wrap" style="display:none;"><label for="mp-team">Équipe</label><select class="field" id="mp-team"></select><div class="help" id="mp-team-help"></div></div>
         <div><label for="mp-description">Description (optionnelle)</label><textarea class="field" id="mp-description" rows="2"></textarea></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" id="mp-cancel" class="btn btn-line btn-block">Annuler</button>
           <button type="submit" class="btn btn-primary btn-block">Créer</button>
         </div>
       </form>
+    </div>
+  </dialog>
+
+  <dialog id="area-teams-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
+    <div class="card-pad" style="width:min(440px,92vw);">
+      <h2 style="font-size:16px;margin-bottom:6px;">Équipes du projet</h2>
+      <p class="help" style="margin-bottom:12px;">Plusieurs équipes travaillent dans un projet. Chacune y possède ses thématiques et ses µprojets, que les autres ne voient que sur invitation.</p>
+      <ul id="area-teams-list" class="area-team-list"></ul>
+      <form id="area-teams-form" class="area-team-add" style="display:none;">
+        <select class="field" id="area-teams-select" aria-label="Équipe à rattacher au projet"></select>
+        <button type="submit" class="btn btn-primary">Rattacher</button>
+      </form>
+      <div style="display:flex;margin-top:14px;"><button type="button" id="area-teams-close" class="btn btn-line btn-block">Fermer</button></div>
     </div>
   </dialog>
 
@@ -177,7 +204,6 @@
         <div><label for="ea-name">Nom</label><input class="field" id="ea-name" required></div>
         <div><label for="ea-description">Description</label><textarea class="field" id="ea-description" rows="2"></textarea></div>
         <div><label for="ea-period">Horizon des objectifs</label><input class="field" id="ea-period" placeholder="6 prochains mois"><div class="help">Affiché en tête : « Pour les … ».</div></div>
-        <div id="ea-team-wrap" style="display:none;"><label for="ea-team">Équipe</label><select class="field" id="ea-team"></select><div class="help">Les managers de l'équipe ont tous les droits sur ce projet, ses thématiques, ses objectifs et ses µprojets. Réservé à un administrateur.</div></div>
         <div id="ea-prefix-wrap"><label for="ea-prefix">Préfixe des numéros de µprojet</label><input class="field" id="ea-prefix" placeholder="ex : Nat" maxlength="5"><div class="help">2 à 5 lettres : ses µprojets sont numérotés Nat_0001, Nat_0002… Un nouveau préfixe ne vaut que pour les µprojets numérotés ensuite.</div></div>
         <div><label for="ea-strategy">Note stratégique (optionnelle)</label><textarea class="field" id="ea-strategy" rows="2"></textarea></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
@@ -216,6 +242,7 @@
       <h2 id="th-dialog-title" style="font-size:16px;margin-bottom:14px;">Nouvelle thématique</h2>
       <form id="thematic-form" class="field-group">
         <div><label for="th-name">Nom</label><input class="field" id="th-name" required placeholder="ex : Dopage PGaN"></div>
+        <div id="th-team-wrap" style="display:none;"><label for="th-team">Équipe</label><select class="field" id="th-team"></select><div class="help">L'équipe possède la thématique : elle seule la voit, avec les équipes qu'elle y invite.</div></div>
         <div><label for="th-description">Description (optionnelle)</label><textarea class="field" id="th-description" rows="2"></textarea></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" id="th-cancel" class="btn btn-line btn-block">Annuler</button>
@@ -233,6 +260,7 @@
       <div class="field-group">
         <div><label for="attach-select">µprojet</label><select class="field" id="attach-select"></select></div>
         <div><label for="attach-thematic">Thématique</label><select class="field" id="attach-thematic"></select></div>
+        <div id="attach-team-wrap" style="display:none;"><label for="attach-team">Équipe du µprojet</label><select class="field" id="attach-team"></select></div>
       </div>
       <div style="display:flex;gap:10px;margin-top:14px;">
         <button type="button" id="attach-cancel" class="btn btn-line btn-block">Annuler</button>
@@ -249,7 +277,6 @@
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/accounts/client.js"></script>
   <script src="/static/microprojects/client.js"></script>
-  <script src="/static/teams/client.js"></script>
   <script src="/static/areas/client.js"></script>
   <script src="/static/kpis/client.js"></script>
   <script src="/static/experiments/client.js"></script>

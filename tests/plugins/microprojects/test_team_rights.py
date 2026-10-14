@@ -1,7 +1,7 @@
 """Les droits dans un µprojet (``microprojects.service.access``) : un administrateur et un manager de
-l'équipe de son thème ont le rôle owner, même sans en être membres ; les autres ont le rôle de leur
-adhésion. L'équipe d'un µprojet est celle de son thème, calculée : un µprojet « Non classé » n'en a
-pas."""
+l'équipe du µprojet ont le rôle owner, même sans en être membres ; les autres ont le rôle de leur
+adhésion, et à défaut les membres de son équipe le lisent (viewer). L'équipe d'un µprojet est celle de sa
+thématique, ou l'une de celles de son projet ; un µprojet « Non classé » n'en a pas."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ EXPECTED = {
     "admin": {"recuit": ("owner", "admin"), "orphelin": ("owner", "admin"), "ailleurs": ("owner", "admin")},
     "manager_a": {"recuit": ("owner", "team_manager"), "orphelin": None, "ailleurs": None},
     "manager_b": {"recuit": None, "orphelin": None, "ailleurs": None},
-    "member_a": {"recuit": None, "orphelin": None, "ailleurs": None},
+    "member_a": {"recuit": ("viewer", "team"), "orphelin": None, "ailleurs": None},  # il lit les µprojets de son équipe
     "researcher": {"recuit": ("owner", "membership"), "orphelin": ("owner", "membership"), "ailleurs": ("owner", "membership")},
     "viewer": {"recuit": ("viewer", "membership"), "orphelin": None, "ailleurs": None},
     "stranger": {"recuit": None, "orphelin": None, "ailleurs": None},
@@ -69,11 +69,13 @@ def test_the_others_do_not_administer_it(client, who):
     assert client.delete("/api/microprojects/recuit", params={"confirm_name": "Recuit"}).status_code == 403
 
 
-def test_my_microprojects_include_those_of_the_teams_i_manage(client):
+def test_my_microprojets_include_those_of_my_teams(client):
     world = team_world(client)
     login(client, world.manager_a)
     mine = {p["slug"]: (p["role"], p["role_source"]) for p in list_microprojects(client)}
     assert mine == {"recuit": ("owner", "team_manager")}
+    login(client, world.member_a)
+    assert {p["slug"]: (p["role"], p["role_source"]) for p in list_microprojects(client)} == {"recuit": ("viewer", "team")}
     login(client, world.manager_b)
     assert list_microprojects(client) == []
     login(client, world.admin)  # l'admin voit tout, mais « ses » µprojets restent les siens
@@ -84,14 +86,15 @@ def test_my_microprojects_include_those_of_the_teams_i_manage(client):
     assert {p["slug"] for p in list_microprojects(client)} == {"recuit", "orphelin", "ailleurs"}
 
 
-def test_a_microproject_follows_the_team_of_its_area(client):
-    """L'équipe d'un µprojet n'est jamais stockée : déplacé dans un autre thème, il en prend l'équipe."""
+def test_a_microproject_keeps_its_team_when_it_moves_to_a_project_without_team(client):
+    """Un µprojet appartient à son équipe où qu'il soit : sorti du thème A vers un projet sans équipe,
+    il reste à l'équipe A (ses managers le gèrent toujours)."""
     world = team_world(client)
     login(client, world.researcher)
     move_microproject(client, "native-pt2", "recuit")
     login(client, world.manager_a)
-    assert client.get("/api/microprojects/recuit").status_code == 403
-    assert list_microprojects(client) == []
+    body = get_microproject(client, "recuit")
+    assert (body["team"]["slug"], body["role_source"]) == ("equipe-a", "team_manager")
 
     # un µprojet « Non classé » rejoint un thème d'équipe (rangé par l'admin : son propriétaire n'est
     # pas de l'équipe A, test_placement.py)
@@ -105,7 +108,8 @@ def test_a_microproject_follows_the_team_of_its_area(client):
     assert set_team_member_role(client, "equipe-a", world.ids[world.member_a], "manager").status_code == 200  # l'équipe garde un manager
     assert set_team_member_role(client, "equipe-a", world.ids[world.manager_a], "member").status_code == 200
     login(client, world.manager_a)
-    assert client.get("/api/microprojects/orphelin").status_code == 403
+    body = get_microproject(client, "orphelin")
+    assert (body["role"], body["role_source"]) == ("viewer", "team")  # il lit, comme tout membre de l'équipe
 
 
 def test_a_member_owner_stays_one_and_a_manager_member_is_shown_as_member_owner(client):

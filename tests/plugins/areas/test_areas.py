@@ -111,7 +111,7 @@ def test_thematics_are_listed_flat_for_every_project(client):
     every = client.get("/api/thematics").json()
     assert {(t["name"], t["area"]["slug"]) for t in every} == {("Dopage PGaN", "native-pt2"), ("Pilote", "nova-pt1")}
     assert client.get("/api/thematics?area=native-pt2").json() == [
-        {"id": dopage["id"], "slug": "dopage-pgan", "name": "Dopage PGaN", "area": {"slug": "native-pt2", "name": "Native (PT2)"}}
+        {"id": dopage["id"], "slug": "dopage-pgan", "name": "Dopage PGaN", "area": {"slug": "native-pt2", "name": "Native (PT2)"}, "team": None}
     ]
     assert_handler_404(client.get("/api/thematics?area=inconnu"))
 

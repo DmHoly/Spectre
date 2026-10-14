@@ -17,6 +17,7 @@ from ..accounts.service import User
 from ..areas import service as areas
 from ..microprojects import service as microprojects
 from ..microprojects.service import Microproject
+from ..teams import service as teams
 from .entities import compact
 from .lineage import lineage_graph
 from .repository import RUNNING_STATUSES, branch_tips, get_repository
@@ -76,6 +77,7 @@ class _Summaries:
     def __init__(self, user: User, selected: list[Microproject]) -> None:
         self._areas = {area.id: area for area in areas.list_all()}
         self._thematics = {thematic.id: thematic for thematic in areas.list_thematics()}
+        self._teams = {team.id: team for team in teams.list_all()}
         self._access = microprojects.accesses(user, selected)
         self._owners = microprojects.owners_by_microproject([m.id for m in selected])
 
@@ -90,33 +92,39 @@ class _Summaries:
             "created_at": _utc_iso(microproject.created_at),
             "area": {"slug": area.slug, "name": area.name} if area else None,
             "thematic": {"slug": thematic.slug, "name": thematic.name} if thematic else None,
+            "team": self._teams[microproject.team_id].ref() if microproject.team_id in self._teams else None,
             "role": self._access[microproject.id].role,
             "role_source": self._access[microproject.id].source,
             "owners": self._owners[microproject.id],
         }
 
 
-def _select(*, microproject_slug: str | None = None, area_slug: str | None = None, thematic_slug: str | None = None) -> list[Microproject]:
-    """The µprojets the filters designate - a filter naming nothing that exists is a 404."""
+def _select(
+    user: User, *, microproject_slug: str | None = None, area_slug: str | None = None, thematic_slug: str | None = None
+) -> list[Microproject]:
+    """The µprojets the filters designate that ``user`` may know exist (:func:`microprojects.visible`:
+    another team's are left out) - a filter naming nothing that exists, or nothing they see, is a 404."""
     selected = microprojects.list_all()
     if microproject_slug:
         try:
             selected = [microprojects.get_by_slug(microproject_slug)]
         except microprojects.MicroprojectNotFoundError as exc:
             raise NotFound(f"µprojet {microproject_slug!r} introuvable") from exc
+        if not microprojects.visible(user, selected):
+            raise NotFound(f"µprojet {microproject_slug!r} introuvable")
     if area_slug:
         area = areas.get_by_slug(area_slug)
-        thematic = areas.get_thematic(area.id, thematic_slug) if thematic_slug else None
+        thematic = areas.get_visible_thematic(user, area.id, thematic_slug) if thematic_slug else None
         selected = [
             m for m in selected if m.management_area_id == area.id and (thematic is None or m.thematic_id == thematic.id)
         ]
-    return selected
+    return microprojects.visible(user, selected)
 
 
 def stats(user: User, *, microproject_slug: str | None = None, area_slug: str | None = None) -> list[dict]:
     """``[{microproject, running, concluded, abandoned, wafers}]`` for every µprojet (of one project
     with ``area_slug``, or just one with ``microproject_slug``)."""
-    selected = _select(microproject_slug=microproject_slug, area_slug=area_slug)
+    selected = _select(user, microproject_slug=microproject_slug, area_slug=area_slug)
     summary = _Summaries(user, selected)
     return [{"microproject": summary(m), **experiment_counts(get_repository(m.slug))} for m in selected]
 
@@ -125,7 +133,7 @@ def timeline(user: User, *, area_slug: str, thematic_slug: str | None = None) ->
     """``[{microproject, nodes}]``: each µprojet of the project (or of one of its thématiques), oldest
     first, with its experiments laid out in time - the nodes of its lineage graph, redacted for
     whoever isn't a member (:func:`redact_for_viewer`), by start date."""
-    selected = sorted(_select(area_slug=area_slug, thematic_slug=thematic_slug), key=lambda m: m.created_at or "")
+    selected = sorted(_select(user, area_slug=area_slug, thematic_slug=thematic_slug), key=lambda m: m.created_at or "")
     summary = _Summaries(user, selected)
     rows = []
     for microproject in selected:

@@ -60,7 +60,7 @@ class Context:
             by_area = {area.id: area for area in areas.list_all()}
             self._thematics = {
                 t.id: {"id": t.id, "slug": t.slug, "name": t.name, "area": {"slug": by_area[t.management_area_id].slug, "name": by_area[t.management_area_id].name}}
-                for t in areas.list_thematics()
+                for t in areas.list_thematics(visible_to=self.user)
                 if t.management_area_id in by_area
             }
         return self._thematics.get(thematic_id) if thematic_id is not None else None

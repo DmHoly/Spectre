@@ -1,11 +1,11 @@
 """Teams over HTTP: ``/api/teams`` and ``/api/teams/{team_slug}/members``. Every signed-in user
 reads them (who manages what is a company-wide fact, like the corporate projects); an admin
-creates, renames and deletes a team (:func:`spectre.plugins.accounts.deps.require_admin`); an admin
-or a manager of the team manages its members (:func:`service.require_manage`).
+creates and deletes a team (:func:`spectre.plugins.accounts.deps.require_admin`); an admin or a
+manager of the team renames it, picks its badge and manages its members (:func:`service.require_manage`).
 
 Each team says what the caller may do with it - ``my_role`` (``manager``, ``member`` or ``null``),
-``can_edit`` (rename, delete: an admin) and ``can_manage`` (its members) - so the page computes
-nothing. The corporate projects a team owns are read from the areas plugin
+``can_edit`` (delete: an admin) and ``can_manage`` (rename, badge, members) - and carries its badge
+(``color``, ``badge``, ``short``: what the badge says) so the page computes nothing. The corporate projects a team works in are read from the areas plugin
 (``GET /api/areas?team=``): this plugin, listed below it, knows nothing of them.
 """
 
@@ -35,6 +35,9 @@ def _payloads(found: list[Team], user: User) -> list[dict]:
             "id": team.id,
             "slug": team.slug,
             "name": team.name,
+            "color": team.color,
+            "badge": team.badge,
+            "short": team.short,
             "created_at": team.created_at,
             **summaries[team.id],
             "my_role": roles.get(team.id),
@@ -66,7 +69,7 @@ def list_teams(user: User = Depends(current_user)) -> list[dict]:
 
 @router.post("/teams", status_code=201)
 def create_team(body: TeamCreate, response: Response, user: User = Depends(require_admin)) -> dict:
-    team = teams.create(body.name)
+    team = teams.create(body.name, body.color, body.badge)
     created(response, _url(team))
     return _payload(team, user)
 
@@ -77,16 +80,15 @@ def get_team(team_slug: str, user: User = Depends(current_user)) -> dict:
 
 
 @router.patch("/teams/{team_slug}")
-def update_team(team_slug: str, body: TeamPatch, user: User = Depends(require_admin)) -> dict:
-    team = teams.get_by_slug(team_slug)
-    if body.name is not None:
-        team = teams.rename(team, body.name)
+def update_team(team_slug: str, body: TeamPatch, user: User = Depends(current_user)) -> dict:
+    """Its name and its badge: an admin or a manager of the team."""
+    team = teams.update(_managed(team_slug, user), **body.model_dump(exclude_unset=True))
     return _payload(team, user)
 
 
 @router.delete("/teams/{team_slug}", status_code=204)
 def delete_team(team_slug: str, user: User = Depends(require_admin)) -> Response:
-    """Its members go with it; its corporate projects stay, without a team."""
+    """Its members go with it; its thématiques and µprojets stay, without a team."""
     teams.delete(teams.get_by_slug(team_slug))
     return Response(status_code=204)
 

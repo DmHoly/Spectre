@@ -14,7 +14,7 @@ def test_an_invitation_sent_before_the_migration_still_opens(data_dir):
     from spectre.plugins.microprojects import service as microprojects
 
     before = tuple(
-        dataclasses.replace(plugin, migrations=plugin.migrations[:-1]) if plugin.name == "microprojects" else plugin for plugin in PLUGINS
+        dataclasses.replace(plugin, migrations=plugin.migrations[:3]) if plugin.name == "microprojects" else plugin for plugin in PLUGINS
     )
     run_migrations(before)
     conn = connect()

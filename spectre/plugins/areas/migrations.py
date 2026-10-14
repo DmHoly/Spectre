@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from ...kernel.db import column_names, execute_script
+from ...kernel.db import column_names, execute_script, rebuild_table
 from ...kernel.plugin import Migration
 from .service import UNCLASSIFIED_AREA_SLUG, derive_code_prefix
 
@@ -125,8 +125,63 @@ def _team(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_management_areas_team ON management_areas(team_id)")
 
 
+_AREAS_WITHOUT_TEAM = """
+CREATE TABLE management_areas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    strategy TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by INTEGER REFERENCES users(id),
+    objectives_period TEXT NOT NULL DEFAULT '6 prochains mois',
+    code_prefix TEXT NOT NULL DEFAULT ''
+)
+"""
+
+
+def _teams_per_area(conn: sqlite3.Connection) -> None:
+    """Several teams work in one corporate project, and a thématique belongs to one of them.
+
+    - ``area_teams``: the teams that work in a project (replaces the single ``management_areas.team_id``,
+      whose value becomes the first row);
+    - ``thematics.team_id``: the team that owns a thématique - the one its project had until now.
+      No team (``NULL``): an open thématique, seen by everyone and written by the project's managers;
+    - ``thematic_teams``: the teams invited into a thématique - they read it and its µprojets.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS area_teams ("
+        "management_area_id INTEGER NOT NULL REFERENCES management_areas(id) ON DELETE CASCADE, "
+        "team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE, "
+        "PRIMARY KEY (management_area_id, team_id))"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_area_teams_team ON area_teams(team_id)")
+    if "team_id" not in column_names(conn, "thematics"):
+        conn.execute("ALTER TABLE thematics ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_thematics_team ON thematics(team_id)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS thematic_teams ("
+        "thematic_id INTEGER NOT NULL REFERENCES thematics(id) ON DELETE CASCADE, "
+        "team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE, "
+        "PRIMARY KEY (thematic_id, team_id))"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_thematic_teams_team ON thematic_teams(team_id)")
+    if "team_id" in column_names(conn, "management_areas"):
+        conn.execute(
+            "INSERT OR IGNORE INTO area_teams (management_area_id, team_id) "
+            "SELECT id, team_id FROM management_areas WHERE team_id IS NOT NULL"
+        )
+        conn.execute(
+            "UPDATE thematics SET team_id = (SELECT team_id FROM management_areas WHERE id = thematics.management_area_id) "
+            "WHERE team_id IS NULL"
+        )
+        conn.execute("DROP INDEX IF EXISTS idx_management_areas_team")
+        rebuild_table(conn, "management_areas", _AREAS_WITHOUT_TEAM)  # DROP COLUMN refuses a column with a foreign key
+
+
 MIGRATIONS = (
     Migration("0001_initial", _initial),
     Migration("0002_seed", _seed),
     Migration("0003_team", _team),
+    Migration("0004_teams_per_area", _teams_per_area),
 )

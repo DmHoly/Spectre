@@ -300,7 +300,7 @@ async function init() {
     const roleBadge = microproject.role
       ? `<span class="badge badge-role" title="Votre rôle dans ce µprojet">${escapeHtml(roleLabel(microproject.role, microproject.role_source))}</span>`
       : "";
-    document.getElementById("microproject-owner").innerHTML = ownerChipHtml(microproject.owners) + roleBadge;
+    document.getElementById("microproject-owner").innerHTML = teamBadge(microproject.team, { link: true }) + ownerChipHtml(microproject.owners) + roleBadge;
     document.getElementById("crumb").textContent =
       "/ " + [area && area.name, thematic && thematic.name, microproject.code || microproject.name].filter(Boolean).join(" / ");
 

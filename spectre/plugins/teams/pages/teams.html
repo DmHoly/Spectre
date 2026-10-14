@@ -20,7 +20,7 @@
         <div>
           <div class="page-eyebrow">Organisation</div>
           <h1>Équipes</h1>
-          <p>Une équipe possède des projets corporate. Ses managers ont tous les droits sur ces projets, leurs thématiques, leurs objectifs et leurs µprojets ; ses membres gardent les rôles de chaque µprojet.</p>
+          <p>Plusieurs équipes travaillent dans un même projet corporate. Chacune possède ses thématiques et ses µprojets, que les autres équipes ne voient que si elle les y invite. Ses managers ont tous les droits sur ce qu'elle possède ; ses membres le lisent et gardent leur rôle dans chaque µprojet.</p>
         </div>
         <div class="teams-head__actions">
           <button id="new-team-btn" class="btn btn-primary" type="button" style="display:none;">+ Nouvelle équipe</button>
@@ -42,7 +42,8 @@
       <h2 id="new-team-title" style="font-size:16px;margin-bottom:14px;">Nouvelle équipe</h2>
       <form id="new-team-form" class="field-group">
         <div><label for="team-name">Nom de l'équipe</label><input class="field" id="team-name" required placeholder="ex : Épitaxie"></div>
-        <p class="help">Ajoutez ensuite ses managers et ses membres, puis rattachez-lui des projets corporate depuis leur page.</p>
+        <div id="team-badge-fields"></div>
+        <p class="help">Ajoutez ensuite ses managers et ses membres, puis rattachez l'équipe aux projets corporate où elle travaille, depuis leur page.</p>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" id="cancel-team" class="btn btn-line btn-block">Annuler</button>
           <button type="submit" class="btn btn-primary btn-block">Créer</button>
@@ -59,6 +60,7 @@
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/accounts/client.js"></script>
   <script src="/static/teams/client.js"></script>
+  <script src="/static/teams/team-fields.js"></script>
   <script src="/static/teams/teams.js"></script>
 </body>
 </html>

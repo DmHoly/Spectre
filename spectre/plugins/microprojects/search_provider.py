@@ -1,7 +1,7 @@
 """Les µprojets dans la recherche de la barre du haut (:mod:`spectre.plugins.search`) : par numéro
 tel qu'on le dit (« Nat 4 », « Nat_0004 », « nat4 ») ou par un bout de son nom, pour tout compte
-connecté - la même visibilité, à l'échelle de la société, que les pages des projets corporate (la
-page d'un µprojet garde ses propres règles d'accès)."""
+connecté, parmi ceux qu'il peut connaître (:func:`service.visible` : ceux où il a un rôle et les µprojets
+ouverts - les autres sont ceux d'une autre équipe ; la page d'un µprojet garde ses propres règles d'accès)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from . import service
 
 
 def _microprojects(query: str, user: User) -> list[SearchHit]:
-    found = service.search(query)
+    found = service.visible(user, service.search(query, limit=50))[:8]
     if not found:
         return []
     area_names = {area.id: area.name for area in areas.list_all()}

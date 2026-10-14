@@ -2,9 +2,10 @@
 router sits behind :func:`spectre.plugins.microprojects.deps.require_role` for a microproject
 resolved here. The invitation a signup link carries: :mod:`.invitations_api`.
 
-Each µprojet says what the caller may do in it - ``role`` (the effective one), ``role_source``
-(``membership``, ``team_manager`` or ``admin``), ``can_edit`` and ``can_manage`` - so the front
-computes nothing (:func:`service.access`).
+Each µprojet says which team it belongs to (``team``, with its badge) and what the caller may do in
+it - ``role`` (the effective one), ``role_source`` (``membership``, ``team_manager``, ``admin``, or
+the reading its thématique gives: ``team``, ``thematic_team``, ``thematic_guest``), ``can_edit`` and
+``can_manage`` - so the front computes nothing (:func:`service.access`).
 
 The experiment counts of a list of µprojets are not computed here: the front composes them from
 ``GET /api/experiment-stats`` (plugin experiments).
@@ -25,6 +26,7 @@ from ...kernel.http import created
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..areas import service as areas
+from ..teams import service as teams
 from . import service as microprojects
 from .deps import require_role
 from .invitations_api import router as invitations_router
@@ -42,6 +44,7 @@ class CreateMicroprojectRequest(BaseModel):
     description: str = ""
     area: str | None = None  # slug du projet corporate (par défaut : « Non classé »)
     thematic: str | None = None  # slug d'une thématique de ce projet
+    team: str | None = None  # slug de l'équipe du µprojet ; déduit de la thématique, ou de la seule équipe qui convient
 
 
 class MicroprojectPatch(BaseModel):
@@ -49,6 +52,7 @@ class MicroprojectPatch(BaseModel):
     description: str | None = None
     area: str | None = None  # slug du projet corporate
     thematic: str | None = None  # slug d'une thématique de ce projet ; null : sans thématique
+    team: str | None = None  # slug de l'équipe du µprojet
 
 
 class MemberRequest(BaseModel):
@@ -66,6 +70,7 @@ class _Places:
     def __init__(self) -> None:
         self._areas = {area.id: area for area in areas.list_all()}
         self._thematics = {thematic.id: thematic for thematic in areas.list_thematics()}
+        self._teams = {team.id: team for team in teams.list_all()}
 
     @staticmethod
     def _ref(item) -> dict | None:
@@ -76,6 +81,10 @@ class _Places:
 
     def thematic(self, microproject: Microproject) -> dict | None:
         return self._ref(self._thematics.get(microproject.thematic_id))
+
+    def team(self, microproject: Microproject) -> dict | None:
+        team = self._teams.get(microproject.team_id)
+        return team.ref() if team else None
 
 
 def _payloads(rows: list[tuple[Microproject, Access]]) -> list[dict]:
@@ -95,6 +104,7 @@ def _payloads(rows: list[tuple[Microproject, Access]]) -> list[dict]:
             "can_manage": access.at_least("owner"),
             "area": places.area(microproject),
             "thematic": places.thematic(microproject),
+            "team": places.team(microproject),
             "owners": owners[microproject.id],
         }
         for microproject, access in rows
@@ -105,11 +115,11 @@ def _payload(microproject: Microproject, user: User) -> dict:
     return _payloads([(microproject, microprojects.access(user, microproject))])[0]
 
 
-def _summaries(found: list[Microproject]) -> list[dict]:
-    """The reduced fields a company-wide lookup shows (search, number): any signed-in user sees
-    them, each µprojet's page keeps its own access rules."""
+def _summaries(user: User, found: list[Microproject]) -> list[dict]:
+    """The reduced fields a company-wide lookup shows (search, number): for the µprojets the caller
+    may know exist (:func:`service.visible`), each µprojet's page keeping its own access rules."""
     places = _Places()
-    return [{"slug": m.slug, "code": m.code, "name": m.name, "area": places.area(m)} for m in found]
+    return [{"slug": m.slug, "code": m.code, "name": m.name, "area": places.area(m), "team": places.team(m)} for m in found]
 
 
 def _url(microproject: Microproject) -> str:
@@ -142,15 +152,16 @@ def _send_invitation(microproject: Microproject, invitation: Invitation, token: 
 @router.get("/microprojects")
 def list_microprojects(
     user: User = Depends(current_user),
-    scope: Literal["mine", "all"] = "mine",
+    scope: Literal["mine", "readable", "all"] = "mine",
     area: str | None = None,
     thematic: str | None = None,
     q: str | None = Query(None, max_length=80),
     limit: int = Query(8, ge=1, le=50),
     code: str | None = Query(None, max_length=40),
 ) -> list[dict]:
-    """The caller's µprojets - those they are a member of, and those of the teams they manage -
-    (``scope=all``: every µprojet, admins only), of one project and one of its thématiques with
+    """The caller's µprojets - those they are a member of, and those of their teams -
+    (``scope=readable``: every µprojet they have a role in, a thématique's guests included;
+    ``scope=all``: every µprojet, admins only), of one project and one of its thématiques with
     ``area`` / ``thematic``. ``q`` (by number or name, best first, at most
     ``limit``) and ``code`` (a number however it's typed) look across the whole company and return
     reduced fields - they combine with no other filter."""
@@ -159,10 +170,10 @@ def list_microprojects(
             raise InvalidInput("?q= et ?code= ne se combinent pas avec ?scope=, ?area= ni ?thematic=")
         if code is not None:
             try:
-                return _summaries([microprojects.get_by_code(code)])
+                return _summaries(user, microprojects.visible(user, [microprojects.get_by_code(code)]))
             except microprojects.MicroprojectNotFoundError:
                 return []
-        return _summaries(microprojects.search(q, limit=limit))
+        return _summaries(user, microprojects.visible(user, microprojects.search(q, limit=limit)))
 
     if scope == "all":
         if not user.is_admin:
@@ -170,13 +181,15 @@ def list_microprojects(
         everything = microprojects.list_all()
         found = microprojects.accesses(user, everything)
         rows = [(microproject, found[microproject.id]) for microproject in everything]
+    elif scope == "readable":
+        rows = microprojects.list_readable(user)
     else:
         rows = microprojects.list_mine(user)
     if thematic and not area:
         raise InvalidInput("?thematic= se lit dans un projet : précisez ?area=")
     if area:
         area_id = areas.get_by_slug(area).id
-        thematic_id = areas.get_thematic(area_id, thematic).id if thematic else None
+        thematic_id = areas.get_visible_thematic(user, area_id, thematic).id if thematic else None
         rows = [
             (m, role) for m, role in rows if m.management_area_id == area_id and (thematic_id is None or m.thematic_id == thematic_id)
         ]
@@ -185,8 +198,10 @@ def list_microprojects(
 
 @router.post("/microprojects", status_code=201)
 def create_microproject(body: CreateMicroprojectRequest, response: Response, user: User = Depends(current_user)) -> dict:
-    """In a team's project, its members and the admins only (403 ``placement_forbidden``)."""
-    microproject = microprojects.create(body.name, body.description, owner=user, area=body.area, thematic=body.thematic)
+    """In a team's thématique, its members and the admins only; in a project, a member of one of its
+    teams (403 ``placement_forbidden``). ``team``: whose it is - left out when only one fits (422
+    ``team_required``)."""
+    microproject = microprojects.create(body.name, body.description, owner=user, area=body.area, thematic=body.thematic, team=body.team)
     created(response, _url(microproject))
     return _payload(microproject, user)
 

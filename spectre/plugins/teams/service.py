@@ -4,8 +4,9 @@ corporate projects, hence their µprojets - is said by the plugins above this on
 (``management_areas.team_id``, :func:`spectre.plugins.areas.service.can_manage`): this module only
 knows the teams and their members.
 
-Who may change a team: an admin (``users.is_admin``) creates, renames and deletes teams; an admin
-or one of its managers manages its members (:func:`can_manage`). A team that has managers keeps at
+Who may change a team: an admin (``users.is_admin``) creates and deletes teams; an admin or one of
+its managers renames it, picks its badge (colour, short label) and manages its members
+(:func:`can_manage`). A team that has managers keeps at
 least one (:func:`change_member_role`, :func:`remove_member`: 409 ``last_manager``).
 """
 
@@ -21,8 +22,11 @@ from ...kernel.errors import Conflict, Forbidden, InvalidInput, NotFound
 from ...kernel.locks import keyed_lock
 from ..accounts import service as accounts
 from ..accounts.service import User
+from .migrations import PALETTE
 
 TEAM_ROLES = ("manager", "member")
+BADGE_MAX_LENGTH = 4
+_COLOR_RE = re.compile(r"#[0-9a-fA-F]{6}")
 
 
 class TeamNotFoundError(NotFound):
@@ -35,10 +39,28 @@ class Team:
     slug: str
     name: str
     created_at: str
+    color: str = PALETTE[0]  # the badge's colour, #rrggbb
+    badge: str = ""  # the badge's short label; '' : the initials of the name
+
+    @property
+    def short(self) -> str:
+        """What the badge says: its label, the initials of the name without one."""
+        return self.badge or initials(self.name)
+
+    def ref(self) -> dict:
+        """What a page needs to draw the team's badge: who it is, its colour, what it says."""
+        return {"slug": self.slug, "name": self.name, "color": self.color, "short": self.short}
+
+
+def initials(name: str) -> str:
+    """Up to three capitals from the words of ``name`` (« Équipe Épitaxie » -> « ÉÉ »)."""
+    words = re.findall(r"[^\W_]+", name, flags=re.UNICODE)
+    letters = "".join(word[0] for word in words[:BADGE_MAX_LENGTH - 1]) or name[:1]
+    return letters.upper()
 
 
 def _team_from_row(row: sqlite3.Row) -> Team:
-    return Team(row["id"], row["slug"], row["name"], row["created_at"])
+    return Team(row["id"], row["slug"], row["name"], row["created_at"], row["color"], row["badge"])
 
 
 def _slug_base(name: str) -> str:
@@ -51,6 +73,24 @@ def _required_name(name: str | None) -> str:
     if not name:
         raise InvalidInput("le nom de l'équipe est obligatoire")
     return name
+
+
+def _checked_color(color: str | None) -> str | None:
+    if color is None:
+        return None
+    color = color.strip()
+    if not _COLOR_RE.fullmatch(color):
+        raise InvalidInput("la couleur d'une équipe s'écrit #rrggbb", code="invalid_color")
+    return color.lower()
+
+
+def _checked_badge(badge: str | None) -> str | None:
+    if badge is None:
+        return None
+    badge = badge.strip()
+    if len(badge) > BADGE_MAX_LENGTH:
+        raise InvalidInput(f"le badge d'une équipe fait {BADGE_MAX_LENGTH} caractères au plus", code="invalid_badge")
+    return badge
 
 
 # -- équipes ----------------------------------------------------------------------------------------
@@ -78,30 +118,43 @@ def get_by_id(team_id: int) -> Team:
     return _team_from_row(row)
 
 
-def create(name: str) -> Team:
-    """A new team, without members: its slug comes from its name (« -2 »... if taken)."""
+def create(name: str, color: str | None = None, badge: str | None = None) -> Team:
+    """A new team, without members: its slug comes from its name (« -2 »... if taken), its colour
+    is the next one of the palette unless given."""
     name = _required_name(name)
     base = _slug_base(name)
+    color, badge = _checked_color(color), _checked_badge(badge) or ""
     with get_conn() as conn:
+        if color is None:
+            color = PALETTE[conn.execute("SELECT COUNT(*) FROM teams").fetchone()[0] % len(PALETTE)]
         slug, suffix = base, 2
         while conn.execute("SELECT 1 FROM teams WHERE slug = ?", (slug,)).fetchone():
             slug = f"{base}-{suffix}"
             suffix += 1
-        cursor = conn.execute("INSERT INTO teams (slug, name) VALUES (?, ?)", (slug, name))
+        cursor = conn.execute("INSERT INTO teams (slug, name, color, badge) VALUES (?, ?, ?, ?)", (slug, name, color, badge))
         team_id = cursor.lastrowid
     return get_by_id(team_id)
 
 
-def rename(team: Team, name: str) -> Team:
-    """The slug stays: links to the team keep working."""
-    name = _required_name(name)
-    with get_conn() as conn:
-        conn.execute("UPDATE teams SET name = ? WHERE id = ?", (name, team.id))
+def update(team: Team, *, name: str | None = None, color: str | None = None, badge: str | None = None) -> Team:
+    """Only the fields given change. The slug stays: links to the team keep working."""
+    columns: dict[str, str] = {}
+    if name is not None:
+        columns["name"] = _required_name(name)
+    if color is not None:
+        columns["color"] = _checked_color(color)
+    if badge is not None:
+        columns["badge"] = _checked_badge(badge)
+    if columns:
+        assignments = ", ".join(f"{column} = ?" for column in columns)
+        with get_conn() as conn:
+            conn.execute(f"UPDATE teams SET {assignments} WHERE id = ?", (*columns.values(), team.id))
     return get_by_id(team.id)
 
 
 def delete(team: Team) -> None:
-    """Its members go with it; the projects it owned stay, without a team (``ON DELETE SET NULL``)."""
+    """Its members go with it. What it owned stays, without a team (``ON DELETE SET NULL``) - its
+    thématiques and µprojets are then open again, like those that never had one."""
     with get_conn() as conn:
         conn.execute("DELETE FROM teams WHERE id = ?", (team.id,))
 

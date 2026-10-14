@@ -28,7 +28,18 @@ def create_objective(client: Any, area_slug: str, title: str, **fields: Any) -> 
     return assert_created(client.post(f"/api/areas/{area_slug}/objectives", json={"title": title, **fields}))
 
 
-def set_area_team(client: Any, area_slug: str, team_slug: str | None) -> dict:
-    """Rattache le projet à l'équipe ``team_slug`` (``None`` : à aucune) - réservé à
-    l'administrateur : PATCH /api/areas/{area_slug} {team}. Renvoie le projet."""
-    return assert_ok(client.patch(f"/api/areas/{area_slug}", json={"team": team_slug}))
+def attach_team(client: Any, area_slug: str, team_slug: str) -> dict:
+    """L'équipe travaille dans le projet - un admin, ou le manager de cette équipe :
+    POST /api/areas/{area_slug}/teams {team}. Renvoie le projet."""
+    return assert_created(client.post(f"/api/areas/{area_slug}/teams", json={"team": team_slug}))
+
+
+def detach_team(client: Any, area_slug: str, team_slug: str) -> Any:
+    """DELETE /api/areas/{area_slug}/teams/{team_slug} - renvoie la réponse."""
+    return client.delete(f"/api/areas/{area_slug}/teams/{team_slug}")
+
+
+def invite_team(client: Any, area_slug: str, thematic_slug: str, team_slug: str) -> Any:
+    """Invite une équipe dans la thématique (elle la lit, sans plus) :
+    POST .../thematics/{thematic_slug}/teams {team} - renvoie la réponse."""
+    return client.post(f"/api/areas/{area_slug}/thematics/{thematic_slug}/teams", json={"team": team_slug})

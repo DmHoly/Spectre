@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from .accounts import login, signup
-from .areas import create_area, create_objective, create_thematic, set_area_team
+from .areas import attach_team, create_area, create_objective, create_thematic
 from .http import assert_created, assert_ok
 from .microprojects import add_member as add_microproject_member
 from .microprojects import create_microproject, move_microproject
@@ -16,9 +16,9 @@ def _url(team_slug: str) -> str:
     return f"/api/teams/{team_slug}"
 
 
-def create_team(client: Any, name: str) -> dict:
-    """POST /api/teams (admin) - renvoie l'équipe."""
-    return assert_created(client.post("/api/teams", json={"name": name}))
+def create_team(client: Any, name: str, **fields: Any) -> dict:
+    """POST /api/teams {name, color, badge} (admin) - renvoie l'équipe."""
+    return assert_created(client.post("/api/teams", json={"name": name, **fields}))
 
 
 def list_teams(client: Any) -> list[dict]:
@@ -80,7 +80,7 @@ def team_world(client: Any) -> TeamWorld:
     assert_created(add_team_member(client, "equipe-a", member_a, "member"))
     assert_created(add_team_member(client, "equipe-b", manager_b, "manager"))
     create_area(client, "Thème A")
-    set_area_team(client, "theme-a", "equipe-a")
+    attach_team(client, "theme-a", "equipe-a")
     create_thematic(client, "theme-a", "T")
     objective = create_objective(client, "theme-a", "O")
 

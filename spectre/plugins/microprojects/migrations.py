@@ -160,9 +160,30 @@ def _invitation_ids_and_hashed_tokens(conn: sqlite3.Connection) -> None:
     rebuild_table(conn, "invitations", _INVITATIONS_WITH_ID)
 
 
+def _team(conn: sqlite3.Connection) -> None:
+    """The team a µprojet belongs to (plugin teams). A µprojet that already exists takes the team of its
+    thématique, else the only team that works in its corporate project - none when it has several
+    (or none): such a µprojet stays open, like those of « Non classé »."""
+    if "team_id" not in column_names(conn, "microprojects"):
+        conn.execute("ALTER TABLE microprojects ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_microprojects_team ON microprojects(team_id)")
+    conn.execute(
+        "UPDATE microprojects SET team_id = ("
+        "  SELECT thematics.team_id FROM thematics WHERE thematics.id = microprojects.thematic_id) "
+        "WHERE team_id IS NULL AND thematic_id IS NOT NULL"
+    )
+    conn.execute(
+        "UPDATE microprojects SET team_id = ("
+        "  SELECT MIN(team_id) FROM area_teams WHERE area_teams.management_area_id = microprojects.management_area_id "
+        "  HAVING COUNT(*) = 1) "
+        "WHERE team_id IS NULL"
+    )
+
+
 MIGRATIONS = (
     Migration("0001_legacy_project_rename", _rename_legacy_project_tables),
     Migration("0002_initial", _initial),
     Migration("0003_backfill_areas_and_codes", _backfill_areas_and_codes),
     Migration("0004_invitation_ids_and_hashed_tokens", _invitation_ids_and_hashed_tokens),
+    Migration("0005_team", _team),
 )
