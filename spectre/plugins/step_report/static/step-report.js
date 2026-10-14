@@ -96,8 +96,10 @@ const StepReport = (() => {
       '<label for="sbr-comment-text">Commentaire de l\'étape</label>' +
       `<textarea class="field" id="sbr-comment-text" rows="3" maxlength="${MAX_LENGTH}" placeholder="${HINT}"></textarea>` +
       '<div class="sbr-comment__foot"><span class="help">Repris dans le rapport étape par étape.</span><span class="sbr-comment__status" role="status" aria-live="polite"></span></div>';
-    body.appendChild(root);
-    panel = { root, text: root.querySelector("textarea"), status: root.querySelector(".sbr-comment__status") };
+    // en tête de l'inspecteur, sous le préset : au bas d'un formulaire long, il passait inaperçu
+    const anchor = document.getElementById("step-preset-panel");
+    body.insertBefore(root, anchor ? anchor.nextSibling : body.firstChild);
+    panel = { root, text: root.querySelector("textarea"), status: root.querySelector(".sbr-comment__status"), foot: root.querySelector(".sbr-comment__foot"), label: root.querySelector("label") };
     panel.text.addEventListener("input", () => {
       if (!boundId) return;
       cache.set(boundId, panel.text.value);
@@ -124,8 +126,14 @@ const StepReport = (() => {
     const p = ensurePanel();
     if (!p) return;
     const step = selectedStep();
-    p.root.hidden = !commentsAvailable() || !step;
+    p.root.hidden = !step;
     if (p.root.hidden) return;
+    // hors d'une expérience, le champ n'a pas de sens (les ids d'étape n'y survivent pas) : on le dit
+    p.text.hidden = !commentsAvailable();
+    p.foot.querySelector(".help").textContent = commentsAvailable()
+      ? "Repris dans le rapport étape par étape."
+      : "Les commentaires se saisissent dans une expérience : une structure de bibliothèque, une brique ou un préset ne gardent pas l'identité de leurs étapes.";
+    if (!commentsAvailable()) return;
     const id = step.id || null;
     if (id !== boundId) {
       flush();
@@ -151,9 +159,10 @@ const StepReport = (() => {
 
   // À appeler quand le flow, la sélection ou les ids d'étape ont changé.
   function sync() {
-    if (!commentsAvailable()) return;
-    load(state.steps.map((s) => s.id).filter(Boolean));
-    decorateChips();
+    if (commentsAvailable()) {
+      load(state.steps.map((s) => s.id).filter(Boolean));
+      decorateChips();
+    }
     renderPanel();
   }
 
