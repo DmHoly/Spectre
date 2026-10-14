@@ -2,7 +2,9 @@
    dans le tableau du plugin (comparator-table.js). Les lignes vivent dans l'adresse
    (?item=…&item=…&base=n) : un lien partage la comparaison. Le serveur détaille chaque jeton (une
    campagne devient une ligne par variante) : la page reprend alors les jetons des lignes rendues,
-   pour qu'on puisse en retirer, déplacer ou choisir comme base chacune. */
+   pour qu'on puisse en retirer, déplacer ou choisir comme base chacune. Le panneau des plaques
+   jumelles (plugin twins, s'il est actif) cherche les plaques de la structure de la base et en ajoute
+   au tableau. */
 
 (() => {
   const state = { items: [], baseline: 0, result: null, options: [], active: -1, loading: 0 };
@@ -13,6 +15,8 @@
   const clearBtn = document.getElementById("clear");
   const EMPTY = { baseline: 0, rows: [], groups: [], summary: {} };
 
+  // comparator.service.MAX_ITEMS : une comparaison ne porte pas plus de lignes
+  const MAX_ITEMS = 30;
   const SOURCE_TITLES = { wafer: "Plaques", study: "Études", reference: "Références" };
 
   function readUrl() {
@@ -57,12 +61,25 @@
     },
   });
 
+  const twins =
+    pluginEnabled("twins") && typeof Twins !== "undefined"
+      ? Twins.mount(document.getElementById("twins"), {
+          getBase: () => {
+            const item = state.items[state.baseline];
+            return item ? { item, label: state.result?.rows?.[state.baseline]?.label || item } : null;
+          },
+          has: (item) => state.items.includes(item),
+          onAdd: addMany,
+        })
+      : null;
+
   async function refresh() {
     syncUrl();
     showError("");
     if (!state.items.length) {
       state.result = EMPTY;
       table.update(EMPTY);
+      twins?.update();
       return;
     }
     const ticket = ++state.loading;
@@ -75,9 +92,19 @@
       state.result = result;
       syncUrl();
       table.update(result);
+      twins?.update();
     } catch (err) {
       if (ticket === state.loading) showError(err.message || String(err));
     }
+  }
+
+  // plusieurs lignes d'un coup (les plaques jumelles) : celles que le tableau n'a pas, dans la limite de ses lignes
+  function addMany(items) {
+    const fresh = items.filter((item) => !state.items.includes(item));
+    const room = Math.max(MAX_ITEMS - state.items.length, 0);
+    state.items.push(...fresh.slice(0, room));
+    refresh();
+    if (fresh.length > room) showError(`Une comparaison porte ${MAX_ITEMS} lignes au plus : ${room ? `${room} plaques ajoutées sur ${fresh.length}` : "retirez des lignes pour en ajouter"}.`);
   }
 
   function add(item) {

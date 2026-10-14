@@ -17,10 +17,9 @@ def _resolve(user: User, lasermark: str) -> list[Compared]:
     found = service.occurrences(user, keys=[lasermark])
     if not found:
         raise NotFound(f"Aucune étude ne suit la plaque « {lasermark} ».", code="wafer_not_tracked")
-    members = sorted((o for o in found if o.member), key=lambda o: o.updated_at, reverse=True)
-    if not members:
+    latest = service.latest_members(found).get(service.wafer_key(lasermark))
+    if latest is None:
         raise Forbidden("Les études qui suivent cette plaque sont dans des µprojets dont vous n'êtes pas membre.")
-    latest = members[0]
     entry = latest.entry
     rows = study_rows(user, latest.microproject.slug, latest.experiment_id, entry["experiment"]["version_id"], entry["entity_index"])
     sample = entry.get("sample_id") or lasermark

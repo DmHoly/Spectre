@@ -562,6 +562,42 @@ def _counts(cells: list[dict[str, Any]], groups: list[_Group], row: int) -> dict
     return counts
 
 
+def comparable(first: Compared, second: Compared) -> bool:
+    """Deux lignes se comparent paramètre par paramètre quand les deux sont lues et que toutes deux
+    ont un procédé, ou toutes deux un split déclaré : un procédé face à un split n'a aucune colonne
+    en commun (ses cellules sont ``na``, jamais une différence)."""
+    if first.error or second.error:
+        return False
+    return (_has_process(first) and _has_process(second)) or (first.declared is not None and second.declared is not None)
+
+
+def differences(result: dict[str, Any], row: int) -> list[dict[str, Any]]:
+    """Ce qui distingue la ligne ``row`` d'un tableau (:func:`build`) de sa base, une entrée par
+    différence - ``{kind, step, parameter, from, to}`` : un paramètre modifié (``changed``) ou
+    ajouté (``added_param``), une couche en plus, une étape déplacée ou une couche absente (une
+    seule entrée par étape, sans ``parameter``). Compté comme :func:`_counts` : il y en a autant que
+    la somme du ``summary`` de la ligne."""
+    base = result["baseline"]
+    cells = result["rows"][row]["cells"]
+    base_cells = result["rows"][base]["cells"] if base is not None else None
+    if cells is None or base_cells is None or row == base:
+        return []
+    found: list[dict[str, Any]] = []
+    start = 0
+    for group in result["groups"]:
+        width = len(group["columns"])
+        mine = cells[start : start + width]
+        for column, cell, base_cell in zip(group["columns"], mine, base_cells[start : start + width]):
+            if cell["status"] == CHANGED or cell.get("changed"):
+                found.append({"kind": CHANGED, "step": group["label"], "parameter": column["label"], "from": base_cell["text"], "to": cell["text"]})
+            elif cell["status"] == ADDED_PARAM:
+                found.append({"kind": ADDED_PARAM, "step": group["label"], "parameter": column["label"], "from": None, "to": cell["text"]})
+        statuses = {cell["status"] for cell in mine}
+        found.extend({"kind": kind, "step": group["label"], "parameter": None, "from": None, "to": None} for kind in (ADDED_LAYER, MOVED, ABSENT) if kind in statuses)
+        start += width
+    return found
+
+
 def _retouches(base: Compared, row: Compared) -> list[str]:
     """Ce qui change sans toucher aux paramètres : les étapes renommées et les étiquettes de couches
     (et leur regroupement par brique) - une retouche, sans nouveau numéro de version."""

@@ -1,0 +1,183 @@
+/* Panneau des plaques jumelles de la page /comparateur (twins.js). Tokens de kernel.css ; les marques
+   de variation reprennent les pastilles de la légende du tableau (comparator.css). */
+
+.twins {
+  margin-bottom: var(--space-4);
+}
+
+.twins__head {
+  margin-bottom: var(--space-3);
+}
+
+.twins__title {
+  margin: 0;
+  font-size: 17px;
+}
+
+.twins__lead {
+  max-width: 760px;
+  margin: 4px 0 0;
+  color: var(--text-soft);
+}
+
+.twins__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+}
+
+.twins__range {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.twins__option {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.twins__option + .twins__option {
+  border-left: 1px solid var(--border);
+}
+
+.twins__option input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  cursor: pointer;
+}
+
+.twins__option span {
+  padding: 8px 14px;
+  font-weight: 500;
+  background: var(--surface);
+  color: var(--text-soft);
+}
+
+.twins__option input:checked + span {
+  background: var(--navy);
+  color: var(--surface);
+}
+
+.twins__option input:focus-visible + span {
+  outline: 2px solid var(--gold);
+  outline-offset: -3px;
+}
+
+.twins__status {
+  margin: var(--space-3) 0 0;
+  color: var(--text-soft);
+}
+
+.twins__status.is-error {
+  color: var(--danger);
+}
+
+.twins__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.twin {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.twin.is-added {
+  opacity: 0.6;
+}
+
+.twin__check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.twin__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.twin__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.twin__name {
+  font: 600 14px/1.3 var(--font-mono);
+}
+
+.twin__badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-tint);
+}
+
+.twin__badge.is-same {
+  color: var(--done);
+  background: var(--done-tint);
+}
+
+.twin__note {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.twin__sub {
+  font-size: 12px;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+a.twin__sub {
+  color: var(--link);
+}
+
+.twin__diffs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.twin__diffs li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.twin__diffs .cmp-swatch {
+  flex: none;
+  margin-top: 1px;
+}
+
+.twins__actions {
+  margin-top: var(--space-3);
+}
