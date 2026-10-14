@@ -1,7 +1,7 @@
 /* Page d'une équipe (/equipes/{slug}) : ses membres et leur rôle (manager ou membre), et les
-   projets corporate qu'elle possède (areasApi.list({team})). L'équipe dit ce que l'appelant peut
-   faire : can_edit (renommer, supprimer : un administrateur), can_manage (gérer ses membres : un
-   administrateur ou un de ses managers). */
+   projets corporate où elle travaille (areasApi.list({team})). L'équipe dit ce que l'appelant peut
+   faire : can_edit (supprimer : un administrateur), can_manage (la modifier - nom, badge - et gérer
+   ses membres : un administrateur ou un de ses managers). */
 
 const { slug } = routeParams("/equipes/{slug}");
 const TEAM_ROLE_LABELS = { manager: "Manager", member: "Membre" };
@@ -53,11 +53,12 @@ function renderTeam() {
   document.getElementById("team-crumb").textContent = team.name;
   document.getElementById("crumb").textContent = `/ Équipes / ${team.name}`;
   document.getElementById("team-name").textContent = team.name;
+  document.getElementById("team-badge").innerHTML = teamBadge(team);
   const managers = team.managers.map((m) => m.name).join(", ");
   document.getElementById("team-summary").textContent = managers
     ? `Manager${team.managers.length > 1 ? "s" : ""} : ${managers}.`
     : "Cette équipe n'a pas encore de manager.";
-  document.getElementById("rename-team-btn").style.display = team.can_edit ? "" : "none";
+  document.getElementById("rename-team-btn").style.display = team.can_manage ? "" : "none";
   document.getElementById("delete-team-btn").style.display = team.can_edit ? "" : "none";
   document.getElementById("add-member-form").style.display = team.can_manage ? "" : "none";
   document.getElementById("members-help").textContent = team.can_manage
@@ -87,7 +88,7 @@ async function loadAreas() {
             }</a></li>`
         )
         .join("")
-    : `<li class="teams-empty">Aucun projet corporate rattaché à cette équipe.</li>`;
+    : `<li class="teams-empty">Cette équipe ne travaille encore dans aucun projet corporate.</li>`;
   list.removeAttribute("aria-busy");
 }
 
@@ -139,18 +140,19 @@ document.getElementById("add-member-form").addEventListener("submit", (event) =>
 });
 
 const renameDialog = document.getElementById("rename-team-dialog");
+const fields = TeamFields.mount(document.getElementById("rename-badge-fields"), document.getElementById("rename-team-name"));
 document.getElementById("rename-team-btn").addEventListener("click", () => {
-  document.getElementById("rename-team-name").value = team.name;
+  fields.set(team);
   renameDialog.showModal();
 });
 document.getElementById("rename-team-cancel").addEventListener("click", () => renameDialog.close());
 document.getElementById("rename-team-form").addEventListener("submit", (event) => {
   event.preventDefault();
   renameDialog.close();
-  write(() => teamsApi.update(slug, { name: document.getElementById("rename-team-name").value }), "Équipe renommée.");
+  write(() => teamsApi.update(slug, { name: document.getElementById("rename-team-name").value, ...fields.value() }), "Équipe mise à jour.");
 });
 document.getElementById("delete-team-btn").addEventListener("click", async () => {
-  if (!window.confirm(`Supprimer l'équipe « ${team.name} » ? Ses projets corporate restent, sans équipe : seul un administrateur les gère alors.`)) return;
+  if (!window.confirm(`Supprimer l'équipe « ${team.name} » ? Ses thématiques et ses µprojets restent, sans équipe : tout le monde les voit alors, et seul un administrateur les gère.`)) return;
   try {
     await teamsApi.remove(slug);
     window.location.href = "/equipes";

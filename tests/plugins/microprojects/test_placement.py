@@ -62,7 +62,9 @@ def test_creating_a_microproject_in_a_team_project(client, who):
         created = assert_created(response)
         assert (created["area"]["slug"], created["thematic"]["slug"]) == ("theme-a", "t")
     else:
-        _refused(response)
+        # la thématique « t » est celle de l'équipe A : les autres ne la voient pas (422), et sans elle on les refuse (403)
+        assert response.status_code == 422, response.text
+        _refused(client.post("/api/microprojects", json={"name": "Gravure", "area": "theme-a"}))
         login(client, accounts["admin"])
         assert [p["slug"] for p in assert_ok(client.get("/api/microprojects", params={"scope": "all"})) if p["name"] == "Gravure"] == []
 
@@ -94,7 +96,8 @@ def test_moving_a_microproject_into_a_team_project(client, who):
         assert (moved["area"]["slug"], moved["thematic"]["slug"]) == ("theme-a", "t")
         assert moved["code"]  # numéroté en arrivant dans un projet qui numérote
     else:
-        _refused(response)
+        assert response.status_code == 422, response.text  # la thématique de l'équipe A leur est invisible
+        _refused(client.patch(f"/api/microprojects/{slug}", json={"area": "theme-a"}))
         unchanged = get_microproject(client, slug)
         assert (unchanged["area"]["slug"], unchanged["thematic"], unchanged["code"]) == ("non-classe", None, None)
 
@@ -110,12 +113,12 @@ def test_moving_a_microproject_to_a_project_without_team_is_open_to_all(client, 
 
 def test_an_owner_outside_the_team_keeps_his_microproject_already_in_the_team_project(client):
     """« recuit » est dans le Thème A, son propriétaire n'est pas de l'équipe : il le modifie, le
-    change de thématique dans ce projet (pas de nouveau placement), et l'en sort - sans pouvoir l'y
-    remettre."""
+    ne le range pas dans la thématique de l'équipe (il ne la voit pas), et l'en sort - sans pouvoir
+    l'y remettre."""
     world, _ = _world(client)
     login(client, world.researcher)
     assert assert_ok(client.patch("/api/microprojects/recuit", json={"name": "Recuit rapide", "area": "theme-a"}))["name"] == "Recuit rapide"
-    assert move_microproject(client, "theme-a", "recuit", "t")["thematic"]["slug"] == "t"
+    assert client.patch("/api/microprojects/recuit", json={"thematic": "t"}).status_code == 422
     assert move_microproject(client, "native-pt2", "recuit")["area"]["slug"] == "native-pt2"
     _refused(client.patch("/api/microprojects/recuit", json={"area": "theme-a"}))
 

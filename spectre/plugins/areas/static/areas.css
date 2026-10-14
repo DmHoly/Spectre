@@ -125,3 +125,11 @@
   font-size: 8px;
   fill: var(--gold-light);
 }
+
+/* les équipes qui travaillent dans un projet, sur sa carte d'accueil */
+.theme-card__teams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}

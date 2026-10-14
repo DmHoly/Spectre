@@ -6,7 +6,10 @@
    bas, le bloc « Perspectives » - un aperçu (placeholder) de la future feuille de route.
    La thématique et son projet viennent de areasApi, la frise et les compteurs de experimentsApi
    (timeline, stats - champs réservés aux membres d'un µprojet). « + Nouveau µprojet » n'est offert
-   qu'à qui peut placer un µprojet dans le projet (can_place_microproject, renvoyé par l'API). */
+   qu'à qui peut y placer un µprojet (can_place_microproject, renvoyé par l'API : un membre de
+   l'équipe qui possède la thématique). La thématique appartient à une équipe (badge) et en invite
+   d'autres (t.invited_teams : elles la lisent, sans plus) ; qui la gère (can_manage : un manager de
+   l'équipe, un admin) les invite ou les retire. */
 
 const { slug: areaSlug, thematique_slug: thematicSlug } = routeParams("/management/{slug}/thematiques/{thematique_slug}");
 const areaPath = `/management/${encodeURIComponent(areaSlug)}`;
@@ -53,6 +56,18 @@ function renderHead(t) {
   document.getElementById("th-name").textContent = t.name;
   document.getElementById("th-description").textContent = t.description || "";
   document.getElementById("mp-dialog-where").textContent = `Dans ${t.area.name} › ${t.name}.`;
+  renderTeams(t);
+}
+
+// L'équipe qui possède la thématique, celles qu'elle y a invitées, et de quoi en inviter d'autres.
+function renderTeams(t) {
+  const guests = t.invited_teams.length
+    ? `<span class="th-teams__label">invitée${t.invited_teams.length > 1 ? "s" : ""} :</span>${t.invited_teams.map((team) => teamBadge(team, { link: true })).join("")}`
+    : "";
+  document.getElementById("th-teams").innerHTML = t.team
+    ? `${teamBadge(t.team, { link: true })}${guests}`
+    : `<span class="th-teams__label">thématique ouverte : sans équipe, visible de tous</span>`;
+  document.getElementById("invite-team-btn").style.display = t.can_manage ? "" : "none";
 }
 
 function thematicHref(slug) {
@@ -369,7 +384,7 @@ function microprojetCard(p) {
     </div>
     <div style="font-size:15px;font-weight:700;line-height:1.3;overflow-wrap:anywhere;">${escapeHtml(p.name)}</div>
     <div style="font-size:13px;color:var(--text-soft);min-height:16px;">${escapeHtml(p.description || "")}</div>
-    ${ownerChipHtml(p.owners)}
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">${teamBadge(p.team)}${ownerChipHtml(p.owners)}</div>
     <div class="mp-card__stats">
       <span>${plural(p.running + p.concluded + p.abandoned, "expérience", "expériences")}</span><span>${p.running} en cours</span><span>${p.concluded + p.abandoned} terminées</span><span>${p.wafers} wafers</span>
       ${last ? `<span style="flex-basis:100%;">Dernière activité ${escapeHtml(timeAgo(last))}</span>` : ""}
@@ -421,7 +436,17 @@ function renderFuture(t) {
 // --- nouveau µprojet dans cette thématique ----------------------------------------------------
 
 const mpDialog = document.getElementById("microprojet-dialog");
-document.getElementById("new-microprojet-btn").addEventListener("click", () => mpDialog.showModal());
+// L'équipe d'un µprojet de cette thématique est la sienne ; une thématique ouverte (sans équipe) laisse
+// choisir parmi mes équipes du projet quand il y en a plusieurs.
+function mpTeamChoices() {
+  return current.team ? [] : current.placement_teams.length > 1 ? current.placement_teams : [];
+}
+document.getElementById("new-microprojet-btn").addEventListener("click", () => {
+  const choices = mpTeamChoices();
+  document.getElementById("mp-team-wrap").style.display = choices.length ? "" : "none";
+  document.getElementById("mp-team").innerHTML = choices.map((t) => `<option value="${escapeHtml(t.slug)}">${escapeHtml(t.name)}</option>`).join("");
+  mpDialog.showModal();
+});
 document.getElementById("mp-cancel").addEventListener("click", () => mpDialog.close());
 document.getElementById("microprojet-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -431,6 +456,7 @@ document.getElementById("microprojet-form").addEventListener("submit", async (ev
       description: document.getElementById("mp-description").value,
       area: areaSlug,
       thematic: thematicSlug,
+      team: mpTeamChoices().length ? document.getElementById("mp-team").value : null,
     });
     // sa page propose de lancer la première expérience depuis une référence
     window.location.href = `${microprojetUrl(p)}?premiere-experience=1`;
@@ -438,6 +464,49 @@ document.getElementById("microprojet-form").addEventListener("submit", async (ev
     mpDialog.close();
     showError(err);
   }
+});
+
+// --- équipes invitées ---------------------------------------------------------------------------
+
+const inviteDialog = document.getElementById("invite-team-dialog");
+
+function renderInvited() {
+  const t = current;
+  document.getElementById("invited-teams").innerHTML = t.invited_teams.length
+    ? t.invited_teams
+        .map((team) => `<li>${teamBadge(team, { link: true })}<button type="button" class="btn btn-line btn-sm" data-uninvite="${escapeHtml(team.slug)}">Retirer</button></li>`)
+        .join("")
+    : `<li class="th-teams__label">Aucune équipe invitée pour l'instant.</li>`;
+  document.getElementById("invite-team-form").style.display = t.invitable_teams.length ? "" : "none";
+  document.getElementById("invite-team-select").innerHTML = t.invitable_teams
+    .map((team) => `<option value="${escapeHtml(team.slug)}">${escapeHtml(team.name)}</option>`)
+    .join("");
+}
+
+// Une écriture sur les invitations renvoie la thématique : on la remplace, le dialogue reste ouvert.
+async function saveInvitations(request) {
+  try {
+    const thematic = await request();
+    current = { ...current, ...thematic, area: current.area };
+    renderTeams(current);
+    renderInvited();
+  } catch (err) {
+    inviteDialog.close();
+    showError(err);
+  }
+}
+document.getElementById("invite-team-btn").addEventListener("click", () => {
+  renderInvited();
+  inviteDialog.showModal();
+});
+document.getElementById("invite-team-close").addEventListener("click", () => inviteDialog.close());
+document.getElementById("invite-team-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveInvitations(() => areasApi.inviteTeam(areaSlug, thematicSlug, document.getElementById("invite-team-select").value));
+});
+document.getElementById("invited-teams").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-uninvite]");
+  if (button) saveInvitations(() => areasApi.uninviteTeam(areaSlug, thematicSlug, button.dataset.uninvite));
 });
 
 // --- chargement -------------------------------------------------------------------------------
@@ -457,8 +526,9 @@ function pageData(thematic, area, timeline, stats) {
     area: { ...thematic.area, objectives_period: area.objectives_period, horizon_months: area.horizon_months },
     thematics: area.thematics.map((t) => ({ slug: t.slug, name: t.name, microproject_count: countIn(t) })),
     microprojects,
-    // créer un µprojet ici : ouvert à tous dans un projet sans équipe, sinon à ses membres et à l'admin
-    can_place_microproject: area.can_place_microproject,
+    // créer un µprojet ici : un membre de l'équipe qui possède la thématique (ou l'admin) ; l'API le dit
+    can_place_microproject: thematic.can_place_microproject,
+    placement_teams: area.placement_teams,
   };
 }
 

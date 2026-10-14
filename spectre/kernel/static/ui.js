@@ -1,5 +1,5 @@
 /* Utilitaires d'affichage du noyau, sans rien de métier : échappement HTML, dates et durées en
-   français, initiales, et paramètres de chemin d'une page (routeParams). Chargé par toutes les
+   français, initiales, badge d'équipe et paramètres de chemin d'une page (routeParams). Chargé par toutes les
    pages après api.js. */
 
 function escapeHtml(value) {
@@ -19,6 +19,19 @@ function initials(name) {
   const parts = name.trim().split(/\s+/);
   const letters = parts.length > 1 ? parts[0][0] + parts[1][0] : parts[0].slice(0, 2);
   return letters.toUpperCase();
+}
+
+// Le badge d'une équipe ({slug, name, color, short}, tel que l'API le donne) : sa couleur et son
+// libellé court devant son nom ; ``link`` en fait un lien vers la page de l'équipe, ``compact``
+// n'en garde que la pastille.
+function teamBadge(team, { link = false, compact = false } = {}) {
+  if (!team) return "";
+  const color = /^#[0-9a-f]{6}$/i.test(team.color || "") ? team.color : "#1a2f6a";
+  const attrs = `class="team-badge${compact ? " team-badge--compact" : ""}" style="--team:${color}" title="Équipe ${escapeHtml(team.name)}"`;
+  const inner = `<span class="team-badge__mark" aria-hidden="true">${escapeHtml(team.short)}</span>${
+    compact ? `<span class="visually-hidden">${escapeHtml(team.name)}</span>` : `<span class="team-badge__name">${escapeHtml(team.name)}</span>`
+  }`;
+  return link ? `<a ${attrs} href="/equipes/${encodeURIComponent(team.slug)}">${inner}</a>` : `<span ${attrs}>${inner}</span>`;
 }
 
 function formatDate(iso) {

@@ -4,7 +4,7 @@ administrateur ou un manager de l'équipe en gère les membres ; une équipe gar
 from __future__ import annotations
 
 from support.accounts import login, signup
-from support.areas import create_area, get_area, set_area_team
+from support.areas import attach_team, create_area, create_thematic, get_area
 from support.http import assert_created, assert_handler_404, assert_ok
 from support.teams import (
     add_team_member,
@@ -44,15 +44,20 @@ def test_an_admin_creates_renames_and_deletes_a_team(client):
     assert [t["slug"] for t in list_teams(client)] == ["epitaxie-2"]
 
 
-def test_only_an_admin_creates_renames_or_deletes_a_team(client):
+def test_only_an_admin_creates_or_deletes_a_team_and_its_manager_renames_it(client):
     ids = _accounts(client)
     create_team(client, "Épitaxie")
     assert_created(add_team_member(client, "epitaxie", "chef@example.com", "manager"))
+    assert_created(add_team_member(client, "epitaxie", "equipier@example.com", "member"))
 
     login(client, "chef@example.com")
     assert client.post("/api/teams", json={"name": "Autre"}).status_code == 403
-    assert client.patch("/api/teams/epitaxie", json={"name": "x"}).status_code == 403
     assert client.delete("/api/teams/epitaxie").status_code == 403
+    renamed = assert_ok(client.patch("/api/teams/epitaxie", json={"name": "Épitaxie MOCVD", "badge": "mo", "color": "#8250DF"}))
+    assert (renamed["name"], renamed["slug"], renamed["badge"], renamed["short"], renamed["color"]) == ("Épitaxie MOCVD", "epitaxie", "mo", "mo", "#8250df")
+    login(client, "equipier@example.com")  # un simple membre n'y touche pas
+    assert client.patch("/api/teams/epitaxie", json={"name": "x"}).status_code == 403
+    login(client, "chef@example.com")
     team = get_team(client, "epitaxie")
     assert (team["my_role"], team["can_edit"], team["can_manage"]) == ("manager", False, True)
     assert team["managers"] == [{"id": ids["chef"], "name": "Chef"}]
@@ -137,17 +142,31 @@ def test_a_team_keeps_at_least_one_manager(client):
     assert_handler_404(remove_team_member(client, "epitaxie", ids["chef"]))
 
 
-def test_deleting_a_team_detaches_its_projects(client):
+def test_a_team_has_a_badge_by_default_and_a_chosen_one(client):
+    _accounts(client)
+    first = create_team(client, "Épitaxie MOCVD")
+    second = create_team(client, "Process", color="#D4571A", badge="PR")
+    assert (first["short"], first["badge"]) == ("ÉM", "")  # les initiales du nom
+    assert first["color"] != second["color"]  # chacune la sienne, dans la palette
+    assert (second["color"], second["badge"], second["short"]) == ("#d4571a", "PR", "PR")
+    for body in ({"color": "rouge"}, {"color": "#12345"}, {"badge": "trop long"}):
+        refused = client.patch("/api/teams/epitaxie-mocvd", json=body)
+        assert refused.status_code == 422 and refused.json()["code"] in ("invalid_color", "invalid_badge"), body
+    assert client.post("/api/teams", json={"name": "X", "color": "nope"}).status_code == 422
+
+
+def test_deleting_a_team_leaves_its_area_and_what_it_owned_without_team(client):
     _accounts(client)
     create_team(client, "Épitaxie")
     assert_created(add_team_member(client, "epitaxie", "chef@example.com", "manager"))
     create_area(client, "Thème A")
-    assert set_area_team(client, "theme-a", "epitaxie")["team"] == {"slug": "epitaxie", "name": "Épitaxie"}
+    assert [t["slug"] for t in attach_team(client, "theme-a", "epitaxie")["teams"]] == ["epitaxie"]
     assert [a["slug"] for a in assert_ok(client.get("/api/areas", params={"team": "epitaxie"}))] == ["theme-a"]
+    assert create_thematic(client, "theme-a", "T")["team"]["slug"] == "epitaxie"
 
     assert client.delete("/api/teams/epitaxie").status_code == 204
-    area = get_area(client, "theme-a")
-    assert area["team"] is None
+    assert get_area(client, "theme-a")["teams"] == []
+    assert get_area(client, "theme-a")["thematics"][0]["team"] is None  # ouverte : visible de tous
     login(client, "chef@example.com")
     assert get_area(client, "theme-a")["can_manage"] is False
     assert client.patch("/api/areas/theme-a", json={"name": "x"}).status_code == 403

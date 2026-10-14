@@ -3,12 +3,16 @@
    d'expériences). En tête, dans un bloc repliable, les objectifs corporate de la période : chacun
    porte un pourcentage (un chiffre de 0 à 100 % servant au calcul du bonus, simplement noté - les
    objectifs sont classés par lui), et peut être marqué atteint, avec le µprojet qui l'a validé.
-   Qui gère le projet (un admin, ou un manager de son équipe : can_manage, renvoyé par l'API) en
-   édite les objectifs et les thématiques ; seul un admin le rattache à une équipe ou y rattache un
-   µprojet existant ; y créer un µprojet est ouvert à tous dans un projet sans équipe (et « Non
-   classé »), aux membres de son équipe et à l'admin sinon (can_place_microproject).
+   Plusieurs équipes y travaillent (area.teams, des badges) : un admin ou le manager d'une équipe la
+   rattache au projet ou l'en retire (« Gérer les équipes »). Chaque thématique appartient à l'une
+   d'elles (t.team), avec les équipes qu'elle y a invitées (t.invited_teams) : les autres équipes ne la
+   voient pas, l'API ne la renvoie pas. Qui gère le projet (un admin, ou un manager de l'une de ses
+   équipes : can_manage, renvoyé par l'API) en édite les objectifs et crée des thématiques pour l'une
+   de ses équipes (manageable_teams) ; seul un admin y rattache un µprojet existant ; y créer un
+   µprojet est ouvert à tous dans un projet sans équipe (et « Non classé »), aux membres de ses
+   équipes et à l'admin sinon (can_place_microproject, placement_teams).
    Chaque µprojet porte son numéro (Nat_0004) : la recherche de la topbar y mène directement.
-   Le projet vient de areasApi (avec can_manage, can_delete et son équipe), les µprojets et leurs
+   Le projet vient de areasApi (avec can_manage, can_delete et ses équipes), les µprojets et leurs
    compteurs de experimentsApi.stats, le rôle d'admin de accountsApi.me (is_admin). */
 
 const { slug } = routeParams("/management/{slug}");
@@ -76,8 +80,7 @@ function flash(msg) {
 
 let current = null; // le projet (areasApi.get)
 let rows = []; // ses µprojets et leurs compteurs (experimentsApi.stats)
-let admin = false; // rattacher une équipe ou un µprojet existant (accountsApi.me)
-let teams = []; // les équipes proposées au rattachement (admin seulement)
+let admin = false; // rattacher un µprojet existant (accountsApi.me)
 
 const ICON_EDIT = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 const ICON_CHECK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`;
@@ -177,6 +180,12 @@ document.getElementById("objectives-toggle").addEventListener("click", () => {
 
 // --- thématiques & µprojets -------------------------------------------------------------------
 
+// Le badge de l'équipe d'un µprojet - sauf quand il redit celui de sa thématique, juste au-dessus.
+function ownTeamBadge(p) {
+  const thematic = p.thematic && current.thematics.find((t) => t.slug === p.thematic.slug);
+  return thematic && thematic.team && p.team && thematic.team.slug === p.team.slug ? "" : teamBadge(p.team, { link: true });
+}
+
 function microprojetCard(row) {
   const p = row.microproject;
   const roleBadge = p.role ? `<span class="badge badge-role">${escapeHtml(roleLabel(p.role, p.role_source))}</span>` : "";
@@ -187,13 +196,22 @@ function microprojetCard(row) {
     </div>
     <div style="font-size:15px;font-weight:700;line-height:1.3;overflow-wrap:anywhere;">${escapeHtml(p.name)}</div>
     <div style="font-size:13px;color:var(--text-soft);min-height:16px;">${escapeHtml(p.description || "")}</div>
-    ${ownerChipHtml(p.owners)}
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">${ownTeamBadge(p)}${ownerChipHtml(p.owners)}</div>
     <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--text-faint);padding-top:8px;border-top:1px solid var(--border-soft);">
       <span>${row.running + row.concluded + row.abandoned} expériences</span><span>${row.running} en cours</span><span>${row.concluded + row.abandoned} terminées</span><span>${row.wafers} wafers</span>
     </div>`;
   return p.role
     ? `<a href="/microprojets/${encodeURIComponent(p.slug)}" class="card card-pad" style="display:flex;flex-direction:column;gap:8px;color:inherit;">${inner}</a>`
     : `<div class="card card-pad" style="display:flex;flex-direction:column;gap:8px;opacity:.75;">${inner}</div>`;
+}
+
+// L'équipe qui possède la thématique, et celles qu'elle y a invitées (elles la lisent, sans plus).
+function thematicTeamsHtml(t) {
+  if (!t.team && !t.invited_teams.length) return "";
+  const guests = t.invited_teams.length
+    ? `<span class="thematic__guests">invitée${t.invited_teams.length > 1 ? "s" : ""} :</span>${t.invited_teams.map((team) => teamBadge(team, { link: true })).join("")}`
+    : "";
+  return `<div class="thematic__badges">${teamBadge(t.team, { link: true })}${guests}</div>`;
 }
 
 function thematicSection(t, items) {
@@ -208,8 +226,8 @@ function thematicSection(t, items) {
     ? ""
     : `<div class="thematic__actions">
         <a class="btn btn-tint btn-sm" href="${thematicUrl}">Explorer la thématique ${ICON_ARROW}</a>
-        ${current.can_place_microproject ? `<button type="button" class="btn btn-line btn-sm" data-new-mp="${escapeHtml(t.slug)}" aria-label="Nouveau µprojet dans ${escapeHtml(t.name)}">+ µprojet</button>` : ""}
-        ${current.can_manage ? `<button type="button" class="btn btn-line btn-sm" data-edit-thematic="${escapeHtml(t.slug)}" aria-label="Modifier la thématique ${escapeHtml(t.name)}">${ICON_EDIT} Modifier</button>` : ""}
+        ${t.can_place_microproject ? `<button type="button" class="btn btn-line btn-sm" data-new-mp="${escapeHtml(t.slug)}" aria-label="Nouveau µprojet dans ${escapeHtml(t.name)}">+ µprojet</button>` : ""}
+        ${t.can_manage ? `<button type="button" class="btn btn-line btn-sm" data-edit-thematic="${escapeHtml(t.slug)}" aria-label="Modifier la thématique ${escapeHtml(t.name)}">${ICON_EDIT} Modifier</button>` : ""}
       </div>`;
   const grid = items.length
     ? `<div class="mp-grid">${items.map(microprojetCard).join("")}</div>`
@@ -220,6 +238,7 @@ function thematicSection(t, items) {
         <div>
           <h3 class="thematic__name">${none ? escapeHtml(name) : `<a href="${thematicUrl}">${escapeHtml(name)}</a>`}</h3>
           ${!none && t.description ? `<div class="thematic__desc">${escapeHtml(t.description)}</div>` : ""}
+          ${none ? "" : thematicTeamsHtml(t)}
           <div class="thematic__meta">${meta}</div>
         </div>
         ${actions}
@@ -269,9 +288,9 @@ function render() {
   } else {
     strategyEl.style.display = "none";
   }
-  document.getElementById("area-team").innerHTML = area.team
-    ? `<a class="team-chip" href="/equipes/${encodeURIComponent(area.team.slug)}">Équipe <strong>${escapeHtml(area.team.name)}</strong></a>`
-    : "";
+  document.getElementById("area-teams").innerHTML = area.teams.length
+    ? area.teams.map((team) => teamBadge(team, { link: true })).join("")
+    : `<span class="area-teams__none">${area.is_system ? "aucune : ses µprojets n'ont que leurs membres" : "aucune équipe pour l'instant"}</span>`;
   renderObjectives(area);
 
   const s = experimentTotals(rows);
@@ -289,10 +308,12 @@ function render() {
   const shown = {
     "edit-area-btn": area.can_manage,
     // créer ou ranger un µprojet ici : can_place_microproject (tous dans un projet sans équipe, sinon
-    // ses membres et l'admin) ; rattacher un µprojet existant reste à l'admin
+    // les membres de ses équipes et l'admin) ; rattacher un µprojet existant reste à l'admin
     "new-microprojet-btn": area.can_place_microproject,
     "attach-microprojet-btn": admin && area.can_place_microproject,
-    "new-thematic-btn": area.can_manage && !area.is_system,
+    "new-thematic-btn": area.manageable_teams.length > 0 && !area.is_system,
+    // les équipes : celles que je peux rattacher, ou retirer (je manage l'équipe, ou je suis admin)
+    "area-teams-btn": !area.is_system && (area.attachable_teams.length > 0 || area.teams.length > 0) && (admin || area.can_manage),
     "new-objective-btn": area.can_manage && !area.is_system,
   };
   for (const [id, visible] of Object.entries(shown)) document.getElementById(id).style.display = visible ? "" : "none";
@@ -303,7 +324,6 @@ async function load() {
   try {
     const [me, area, stats] = await Promise.all([accountsApi.me(), areasApi.get(slug), experimentsApi.stats({ area: slug })]);
     admin = me.is_admin;
-    if (admin) teams = await teamsApi.list();
     current = area;
     rows = stats;
     render();
@@ -394,6 +414,10 @@ function openThematicDialog(thematic) {
   document.getElementById("th-name").value = thematic ? thematic.name : "";
   document.getElementById("th-description").value = thematic ? thematic.description : "";
   document.getElementById("th-delete").style.display = thematic ? "" : "none";
+  // l'équipe se choisit à la création, parmi celles du projet que je manage (une seule : sans choix)
+  const choices = current.manageable_teams;
+  document.getElementById("th-team-wrap").style.display = !thematic && choices.length > 1 ? "" : "none";
+  document.getElementById("th-team").innerHTML = choices.map((t) => `<option value="${escapeHtml(t.slug)}">${escapeHtml(t.name)}</option>`).join("");
   thDialog.showModal();
 }
 document.getElementById("new-thematic-btn").addEventListener("click", () => openThematicDialog(null));
@@ -402,6 +426,7 @@ document.getElementById("thematic-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const body = { name: document.getElementById("th-name").value, description: document.getElementById("th-description").value };
   const t = editingThematic;
+  if (!t && current.manageable_teams.length > 1) body.team = document.getElementById("th-team").value;
   save(
     thDialog,
     () => (t ? areasApi.updateThematic(slug, t.slug, body) : areasApi.createThematic(slug, body)),
@@ -426,8 +451,31 @@ document.getElementById("thematics").addEventListener("click", (event) => {
 const mpDialog = document.getElementById("microprojet-dialog");
 function openMicroprojetDialog(thematicSlug) {
   document.getElementById("mp-thematic").innerHTML = thematicOptions(thematicSlug || "");
+  updateMicroprojetTeam();
   mpDialog.showModal();
 }
+
+// L'équipe du µprojet : celle de sa thématique, sinon l'une de mes équipes du projet (le choix ne
+// se montre que s'il y en a plusieurs).
+function updateMicroprojetTeam() {
+  const thematic = current.thematics.find((t) => t.slug === document.getElementById("mp-thematic").value);
+  const choices = current.placement_teams;
+  const wrap = document.getElementById("mp-team-wrap");
+  const select = document.getElementById("mp-team");
+  const help = document.getElementById("mp-team-help");
+  if (thematic && thematic.team) {
+    wrap.style.display = "";
+    select.innerHTML = `<option value="${escapeHtml(thematic.team.slug)}">${escapeHtml(thematic.team.name)}</option>`;
+    select.disabled = true;
+    help.textContent = "Un µprojet d'une thématique appartient à l'équipe de la thématique.";
+  } else {
+    select.disabled = false;
+    select.innerHTML = choices.map((t) => `<option value="${escapeHtml(t.slug)}">${escapeHtml(t.name)}</option>`).join("");
+    wrap.style.display = choices.length > 1 ? "" : "none";
+    help.textContent = "";
+  }
+}
+document.getElementById("mp-thematic").addEventListener("change", updateMicroprojetTeam);
 document.getElementById("new-microprojet-btn").addEventListener("click", () => openMicroprojetDialog(""));
 document.getElementById("mp-cancel").addEventListener("click", () => mpDialog.close());
 document.getElementById("microprojet-form").addEventListener("submit", async (event) => {
@@ -438,6 +486,7 @@ document.getElementById("microprojet-form").addEventListener("submit", async (ev
       description: document.getElementById("mp-description").value,
       area: slug,
       thematic: document.getElementById("mp-thematic").value || null,
+      team: document.getElementById("mp-team-wrap").style.display === "none" ? null : document.getElementById("mp-team").value || null,
     });
     // sa page propose de lancer la première expérience depuis une référence
     window.location.href = `/microprojets/${encodeURIComponent(p.slug)}?premiere-experience=1`;
@@ -457,15 +506,6 @@ document.getElementById("edit-area-btn").addEventListener("click", () => {
   document.getElementById("ea-strategy").value = current.strategy || "";
   document.getElementById("ea-prefix").value = current.code_prefix || "";
   document.getElementById("ea-prefix-wrap").style.display = current.is_system ? "none" : ""; // il ne numérote pas ses µprojets
-  // l'équipe : un admin seulement, et jamais pour le projet système (ses µprojets n'ont que leurs membres)
-  const teamEditable = admin && !current.is_system;
-  document.getElementById("ea-team-wrap").style.display = teamEditable ? "" : "none";
-  if (teamEditable) {
-    const selected = current.team ? current.team.slug : "";
-    document.getElementById("ea-team").innerHTML = [`<option value="">— Aucune équipe —</option>`]
-      .concat(teams.map((t) => `<option value="${escapeHtml(t.slug)}"${t.slug === selected ? " selected" : ""}>${escapeHtml(t.name)}</option>`))
-      .join("");
-  }
   eaDialog.showModal();
 });
 document.getElementById("ea-cancel").addEventListener("click", () => eaDialog.close());
@@ -480,7 +520,6 @@ document.getElementById("edit-area-form").addEventListener("submit", (event) => 
         strategy: document.getElementById("ea-strategy").value,
         objectives_period: document.getElementById("ea-period").value,
         ...(current.is_system ? {} : { code_prefix: document.getElementById("ea-prefix").value }),
-        ...(admin && !current.is_system ? { team: document.getElementById("ea-team").value || null } : {}),
       }),
     "Projet mis à jour."
   );
@@ -495,6 +534,58 @@ document.getElementById("ea-delete").addEventListener("click", async () => {
     showError(err);
   }
 });
+
+// --- équipes du projet --------------------------------------------------------------------------
+
+const teamsDialog = document.getElementById("area-teams-dialog");
+
+function renderAreaTeams() {
+  // une équipe se retire si je la manage (ou si je suis admin) : celles du projet que je manage sont manageable_teams
+  const removable = new Set(admin ? current.teams.map((t) => t.slug) : current.manageable_teams.map((t) => t.slug));
+  document.getElementById("area-teams-list").innerHTML = current.teams.length
+    ? current.teams
+        .map(
+          (team) => `<li>${teamBadge(team, { link: true })}${
+            removable.has(team.slug) ? `<button type="button" class="btn btn-line btn-sm" data-detach-team="${escapeHtml(team.slug)}">Retirer</button>` : ""
+          }</li>`
+        )
+        .join("")
+    : `<li class="area-teams__none">Aucune équipe ne travaille encore dans ce projet.</li>`;
+  const form = document.getElementById("area-teams-form");
+  form.style.display = current.attachable_teams.length ? "" : "none";
+  document.getElementById("area-teams-select").innerHTML = current.attachable_teams
+    .map((t) => `<option value="${escapeHtml(t.slug)}">${escapeHtml(t.name)}</option>`)
+    .join("");
+}
+document.getElementById("area-teams-btn").addEventListener("click", () => {
+  renderAreaTeams();
+  teamsDialog.showModal();
+});
+document.getElementById("area-teams-close").addEventListener("click", () => teamsDialog.close());
+document.getElementById("area-teams-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveTeams(() => areasApi.attachTeam(slug, document.getElementById("area-teams-select").value), "Équipe rattachée.");
+});
+document.getElementById("area-teams-list").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-detach-team]");
+  if (!button || !window.confirm("Retirer cette équipe du projet ?")) return;
+  await saveTeams(() => areasApi.detachTeam(slug, button.dataset.detachTeam), "Équipe retirée.");
+});
+
+// Une écriture sur les équipes : le dialogue reste ouvert (on en rattache souvent plusieurs), un refus
+// (409 : l'équipe possède encore des thématiques ou des µprojets ici) s'y lit.
+async function saveTeams(request, msg) {
+  try {
+    await request();
+    current = await areasApi.get(slug);
+    render();
+    renderAreaTeams();
+    flash(msg);
+  } catch (err) {
+    teamsDialog.close();
+    showError(err);
+  }
+}
 
 // --- rattacher un µprojet existant (ou le changer de thématique) ------------------------------
 
@@ -512,11 +603,20 @@ document.getElementById("attach-microprojet-btn").addEventListener("click", asyn
           .join("")
       : `<option value="">Aucun µprojet</option>`;
     document.getElementById("attach-thematic").innerHTML = thematicOptions("");
+    updateAttachTeam();
     attachDialog.showModal();
   } catch (err) {
     showError(err);
   }
 });
+// L'équipe du µprojet rattaché : celle de la thématique choisie ; sans elle, l'une des équipes du projet.
+function updateAttachTeam() {
+  const thematic = current.thematics.find((t) => t.slug === document.getElementById("attach-thematic").value);
+  const wrap = document.getElementById("attach-team-wrap");
+  wrap.style.display = !(thematic && thematic.team) && current.teams.length > 1 ? "" : "none";
+  document.getElementById("attach-team").innerHTML = current.teams.map((t) => `<option value="${escapeHtml(t.slug)}">${escapeHtml(t.name)}</option>`).join("");
+}
+document.getElementById("attach-thematic").addEventListener("change", updateAttachTeam);
 document.getElementById("attach-cancel").addEventListener("click", () => attachDialog.close());
 document.getElementById("attach-confirm").addEventListener("click", () => {
   const microprojectSlug = document.getElementById("attach-select").value;
@@ -527,6 +627,7 @@ document.getElementById("attach-confirm").addEventListener("click", () => {
       microprojectsApi.update(microprojectSlug, {
         area: slug,
         thematic: document.getElementById("attach-thematic").value || null,
+        ...(document.getElementById("attach-team-wrap").style.display === "none" ? {} : { team: document.getElementById("attach-team").value }),
       }),
     "µprojet rattaché.",
     { withStats: true }

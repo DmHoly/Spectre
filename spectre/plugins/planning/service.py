@@ -9,8 +9,9 @@ créé et rempli par ses routes ; une expérience prévue est celle de l'arbre d
 (ARCHITECTURE.md § 3 : une agrégation vit dans le plugin le plus haut qui en possède les données).
 
 **Qui le lit** : un manager de l'équipe (owner de ses µprojets, il voit tout) ou un administrateur.
-Une équipe est celle des projets corporate qui lui sont rattachés (``management_areas.team_id``),
-leurs µprojets en sont les sujets ; les thématiques les rangent (« Sans thématique » sinon).
+Les sujets d'une équipe sont ses µprojets (``microprojects.team_id``), dans les projets corporate où
+elle travaille ; les thématiques les rangent (« Sans thématique » sinon) - celles d'une autre équipe
+aussi, quand le µprojet de l'équipe s'y trouve.
 """
 
 from __future__ import annotations
@@ -163,23 +164,19 @@ def board(user: User, *, team_slug: str | None = None) -> dict:
     if team is None:
         return payload
 
-    team_areas = areas.list_all(team_id=team.id)
-    payload["areas"] = [{"slug": a.slug, "name": a.name} for a in team_areas]
-    area_ids = {a.id for a in team_areas}
-    selected = sorted(
-        (m for m in microprojects.list_all() if m.management_area_id in area_ids), key=lambda m: (m.code or "", m.name.casefold())
-    )
+    all_areas = areas.list_all()
+    payload["areas"] = [{"slug": a.slug, "name": a.name} for a in areas.list_all(team_id=team.id)]
+    selected = sorted((m for m in microprojects.list_all() if m.team_id == team.id), key=lambda m: (m.code or "", m.name.casefold()))
 
+    # un groupe par (projet, thématique), dans l'ordre des projets puis des thématiques ; sans thématique en dernier
     groups: list[dict] = []
     by_thematic: dict[tuple[int, int | None], dict] = {}
-    for area in team_areas:
-        for thematic in areas.list_thematics(area.id):
-            group = {"area": {"slug": area.slug, "name": area.name}, "thematic": {"id": thematic.id, "slug": thematic.slug, "name": thematic.name}, "microprojects": []}
-            by_thematic[(area.id, thematic.id)] = group
+    for area in all_areas:
+        places = [(thematic.id, {"id": thematic.id, "slug": thematic.slug, "name": thematic.name}) for thematic in areas.list_thematics(area.id)]
+        for thematic_id, thematic in [*places, (None, None)]:
+            group = {"area": {"slug": area.slug, "name": area.name}, "thematic": thematic, "microprojects": []}
+            by_thematic[(area.id, thematic_id)] = group
             groups.append(group)
-        loose = {"area": {"slug": area.slug, "name": area.name}, "thematic": None, "microprojects": []}
-        by_thematic[(area.id, None)] = loose
-        groups.append(loose)
 
     keys: set[str] = set()
     for mp in selected:

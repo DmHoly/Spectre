@@ -23,6 +23,7 @@ def test_create_microproject_makes_creator_owner(client):
         "can_manage": True,
         "area": {"slug": "non-classe", "name": "Non classé"},
         "thematic": None,
+        "team": None,
         "owners": [{"id": owner["id"], "name": "Owner"}],
     }
     assert get_microproject(client, "couches-minces") == body

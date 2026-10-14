@@ -1,19 +1,20 @@
-/* Client de l'API du plugin teams : les équipes et leurs membres. Chaque équipe dit ce que
-   l'appelant peut en faire : my_role (manager, member ou null), can_edit (renommer, supprimer :
-   un admin) et can_manage (ses membres : un admin ou un de ses managers). */
+/* Client de l'API du plugin teams : les équipes et leurs membres. Chaque équipe porte son badge
+   (color, badge, short : ce que dit le badge) et dit ce que l'appelant peut en faire : my_role
+   (manager, member ou null), can_edit (supprimer : un admin) et can_manage (la renommer, choisir son
+   badge, gérer ses membres : un admin ou un de ses managers). */
 
 const teamsApi = {
   list() {
     return api.get("/api/teams");
   },
-  // {name} (admin)
+  // {name, color, badge} (admin)
   create(body) {
     return api.post("/api/teams", body);
   },
   get(teamSlug) {
     return api.get(`/api/teams/${encodeURIComponent(teamSlug)}`);
   },
-  // {name} (admin)
+  // {name, color, badge} (un admin ou un manager de l'équipe)
   update(teamSlug, body) {
     return api.patch(`/api/teams/${encodeURIComponent(teamSlug)}`, body);
   },

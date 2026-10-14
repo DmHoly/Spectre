@@ -34,6 +34,9 @@ def test_a_team_manager_works_on_the_evolution_page_and_keeps_step_ids(client):
     login(client, world.viewer)  # lecteur par adhésion : lit, n'écrit pas
     assert len(structure_history(client, "recuit")["nodes"]) == 2
 
-    for outsider in (world.manager_b, world.member_a):  # manager d'une autre équipe, simple membre de l'équipe
-        login(client, outsider)
-        assert client.get("/api/microprojects/recuit/structure-history").status_code == 403
+    login(client, world.manager_b)  # manager d'une autre équipe : rien
+    assert client.get("/api/microprojects/recuit/structure-history").status_code == 403
+
+    login(client, world.member_a)  # simple membre de l'équipe : il lit, n'écrit pas
+    assert len(structure_history(client, "recuit")["nodes"]) == 2
+    assert get_microproject(client, "recuit")["can_edit"] is False

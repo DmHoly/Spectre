@@ -6,10 +6,15 @@ const ROLE_LABELS = {
   viewer: "Lecture seule",
 };
 
-// D'où vient un rôle effectif, quand ce n'est pas l'adhésion (role_source d'un µprojet).
+// D'où vient un rôle effectif, quand ce n'est pas l'adhésion (role_source d'un µprojet) : manager de
+// l'équipe du µprojet, administrateur, ou la lecture que donne la thématique - membre de l'équipe du
+// µprojet, d'une équipe invitée dans la thématique, ou invité dans un autre µprojet de la thématique.
 const ROLE_SOURCE_LABELS = {
   team_manager: "manager",
   admin: "admin",
+  team: "équipe",
+  thematic_team: "équipe invitée",
+  thematic_guest: "invité dans la thématique",
 };
 
 // « Propriétaire », ou « Propriétaire (manager) » avec role_source : le rôle effectif tel que le

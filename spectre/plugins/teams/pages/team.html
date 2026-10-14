@@ -21,10 +21,11 @@
         <div>
           <div class="page-eyebrow">Équipe</div>
           <h1 id="team-name"><span class="skeleton" style="display:inline-block;width:220px;height:30px;"></span></h1>
+          <p id="team-badge" style="margin-top:8px;"></p>
           <p id="team-summary"></p>
         </div>
         <div class="teams-head__actions">
-          <button id="rename-team-btn" class="btn btn-line" type="button" style="display:none;">Renommer</button>
+          <button id="rename-team-btn" class="btn btn-line" type="button" style="display:none;">Modifier</button>
           <button id="delete-team-btn" class="btn btn-danger" type="button" style="display:none;">Supprimer l'équipe</button>
         </div>
       </div>
@@ -54,12 +55,12 @@
 
         <section class="card card-pad" aria-labelledby="areas-title">
           <div class="team-section__head">
-            <h2 id="areas-title">Projets corporate</h2>
+            <h2 id="areas-title">Projets corporate où elle travaille</h2>
           </div>
           <ul id="team-areas" class="team-areas" aria-busy="true">
             <li><div class="skeleton" style="height:40px;width:100%;"></div></li>
           </ul>
-          <p class="help" style="margin-top:12px;">Un administrateur rattache un projet à une équipe depuis la page du projet (« Modifier le projet »). Les µprojets d'un projet appartiennent à son équipe.</p>
+          <p class="help" style="margin-top:12px;">Un administrateur, ou un manager de l'équipe, la rattache à un projet depuis la page du projet (« Équipes »). Ses thématiques et ses µprojets restent les siens : les autres équipes du projet ne les voient que si elle les y invite.</p>
         </section>
       </div>
     </div>
@@ -67,9 +68,10 @@
 
   <dialog id="rename-team-dialog" class="team-dialog" aria-labelledby="rename-team-title">
     <div class="card-pad team-dialog__body">
-      <h2 id="rename-team-title" style="font-size:16px;margin-bottom:14px;">Renommer l'équipe</h2>
+      <h2 id="rename-team-title" style="font-size:16px;margin-bottom:14px;">Modifier l'équipe</h2>
       <form id="rename-team-form" class="field-group">
         <div><label for="rename-team-name">Nom</label><input class="field" id="rename-team-name" required></div>
+        <div id="rename-badge-fields"></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" id="rename-team-cancel" class="btn btn-line btn-block">Annuler</button>
           <button type="submit" class="btn btn-primary btn-block">Enregistrer</button>
@@ -86,6 +88,7 @@
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/teams/client.js"></script>
   <script src="/static/areas/client.js"></script>
+  <script src="/static/teams/team-fields.js"></script>
   <script src="/static/teams/team.js"></script>
 </body>
 </html>

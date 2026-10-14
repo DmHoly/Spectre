@@ -19,7 +19,7 @@ function teamCard(team) {
   return `
     <a class="team-card" href="/equipes/${encodeURIComponent(team.slug)}">
       <div class="team-card__head">
-        <div class="team-card__name">${escapeHtml(team.name)}</div>
+        <div class="team-card__name">${teamBadge(team)}</div>
         ${mine}
       </div>
       <div class="team-card__managers">${managers}</div>
@@ -37,6 +37,7 @@ async function load() {
           me.is_admin ? "Créez la première avec « + Nouvelle équipe »." : "Un administrateur crée les équipes."
         }</div></div>`;
     grid.removeAttribute("aria-busy");
+    teamCount = teams.length;
     if (me.is_admin) document.getElementById("new-team-btn").style.display = "";
   } catch (err) {
     grid.innerHTML = "";
@@ -44,16 +45,18 @@ async function load() {
   }
 }
 
+let teamCount = 0; // la couleur proposée à une nouvelle équipe : la suivante de la palette
 const dialog = document.getElementById("new-team-dialog");
+const fields = TeamFields.mount(document.getElementById("team-badge-fields"), document.getElementById("team-name"));
 document.getElementById("new-team-btn").addEventListener("click", () => {
-  document.getElementById("team-name").value = "";
+  fields.set({ name: "", color: TeamFields.PALETTE[teamCount % TeamFields.PALETTE.length], badge: "" });
   dialog.showModal();
 });
 document.getElementById("cancel-team").addEventListener("click", () => dialog.close());
 document.getElementById("new-team-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    const team = await teamsApi.create({ name: document.getElementById("team-name").value });
+    const team = await teamsApi.create({ name: document.getElementById("team-name").value, ...fields.value() });
     window.location.href = `/equipes/${encodeURIComponent(team.slug)}`;
   } catch (err) {
     dialog.close();

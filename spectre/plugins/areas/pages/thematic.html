@@ -102,6 +102,13 @@
     .th-future__note { font-size:12.5px; color:var(--text-soft); margin-top:12px; max-width:80ch; }
     @media (max-width:860px) { .th-future__grid { grid-template-columns:1fr; } }
     @media (max-width:560px) { .th-head h1 { font-size:22px; } .th-step { max-width:150px; } }
+    .th-teams { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:8px; }
+    .th-teams__list { display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px; }
+    .th-teams__label { font-size:11.5px; color:var(--text-faint); }
+    .th-invited { list-style:none; padding:0; display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+    .th-invited li { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .th-invite-add { display:flex; gap:8px; }
+    .th-invite-add select { flex:1; }
   </style>
 </head>
 <body>
@@ -117,6 +124,10 @@
         <div class="page-eyebrow" id="th-eyebrow">Thématique</div>
         <h1 id="th-name"><span class="skeleton" style="display:inline-block;width:240px;height:30px;"></span></h1>
         <p id="th-description"></p>
+        <div class="th-teams">
+          <span id="th-teams" class="th-teams__list"></span>
+          <button type="button" class="btn btn-line btn-sm" id="invite-team-btn" style="display:none;">Inviter une équipe</button>
+        </div>
       </div>
       <div class="th-head__actions">
         <a class="btn btn-line btn-sm th-step" id="th-prev" href="#" aria-disabled="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></svg><span>Précédente</span></a>
@@ -161,12 +172,26 @@
 
   <div class="frise-tooltip" id="frise-tooltip" role="tooltip" hidden></div>
 
+  <dialog id="invite-team-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
+    <div class="card-pad" style="width:min(440px,92vw);">
+      <h2 style="font-size:16px;margin-bottom:6px;">Équipes invitées</h2>
+      <p class="help" style="margin-bottom:12px;">Une équipe invitée voit la thématique et lit tous ses µprojets, sans les modifier : pour écrire dans un µprojet, invitez des personnes depuis sa page. Les autres équipes ne voient pas la thématique.</p>
+      <ul id="invited-teams" class="th-invited"></ul>
+      <form id="invite-team-form" class="th-invite-add" style="display:none;">
+        <select class="field" id="invite-team-select" aria-label="Équipe à inviter"></select>
+        <button type="submit" class="btn btn-primary">Inviter</button>
+      </form>
+      <div style="display:flex;margin-top:14px;"><button type="button" id="invite-team-close" class="btn btn-line btn-block">Fermer</button></div>
+    </div>
+  </dialog>
+
   <dialog id="microprojet-dialog" style="border:none;border-radius:14px;padding:0;box-shadow:var(--shadow);">
     <div class="card-pad" style="width:min(400px,92vw);">
       <h2 style="font-size:16px;margin-bottom:4px;">Nouveau µprojet</h2>
       <p class="help" style="margin-bottom:14px;" id="mp-dialog-where"></p>
       <form id="microprojet-form" class="field-group">
         <div><label for="mp-name">Nom du µprojet</label><input class="field" id="mp-name" required></div>
+        <div id="mp-team-wrap" style="display:none;"><label for="mp-team">Équipe</label><select class="field" id="mp-team"></select></div>
         <div><label for="mp-description">Description (optionnelle)</label><textarea class="field" id="mp-description" rows="2"></textarea></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
           <button type="button" id="mp-cancel" class="btn btn-line btn-block">Annuler</button>

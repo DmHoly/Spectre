@@ -8,7 +8,7 @@ from .migrations import MIGRATIONS
 
 PLUGIN = Plugin(
     name="experiments",
-    depends_on=("microprojects", "structures", "attachments"),
+    depends_on=("microprojects", "teams", "structures", "attachments"),
     router=router,
     # un ancien lien vers un id de version -> la page de sa piste ; l'ancienne page des refs -> l'évolution
     page_router=page_router,

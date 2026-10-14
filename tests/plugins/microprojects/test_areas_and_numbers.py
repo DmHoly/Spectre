@@ -102,7 +102,7 @@ def test_microprojets_get_an_auto_incremented_number_from_their_corporate_projec
 
     for typed in ("Nat_0002", "nat 2", "NAT2", "Nat-02"):
         assert list_microprojects(client, code=typed) == [
-            {"slug": nat2["slug"], "code": "Nat_0002", "name": "Dopage B", "area": {"slug": "native-pt2", "name": "Native (PT2)"}}
+            {"slug": nat2["slug"], "code": "Nat_0002", "name": "Dopage B", "area": {"slug": "native-pt2", "name": "Native (PT2)"}, "team": None}
         ], typed
     assert list_microprojects(client, code="Nat_0099") == []
     assert list_microprojects(client, code="n'importe quoi") == []
@@ -151,7 +151,7 @@ def test_topbar_search_finds_microprojets_by_number_or_name(client):
     assert names("ebl double") == ["Double EBL"]  # tous les mots, dans le désordre
     assert names("") == [] and names("introuvable") == []
     [hit] = list_microprojects(client, q="Nat_0003")
-    assert hit == {"slug": "double-ebl", "code": "Nat_0003", "name": "Double EBL", "area": {"slug": "native-pt2", "name": "Native (PT2)"}}
+    assert hit == {"slug": "double-ebl", "code": "Nat_0003", "name": "Double EBL", "area": {"slug": "native-pt2", "name": "Native (PT2)"}, "team": None}
     assert client.get("/api/microprojects", params={"q": "nat", "limit": 0}).status_code == 422
 
 

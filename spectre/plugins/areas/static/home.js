@@ -21,6 +21,7 @@ function themeCard(area, thematicCount, totals) {
         <svg class="theme-card__go" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
       </div>
       <div class="theme-card__desc">${escapeHtml(area.description || area.strategy || "")}</div>
+      ${area.teams.length ? `<div class="theme-card__teams">${area.teams.map((team) => teamBadge(team)).join("")}</div>` : ""}
       <div class="theme-card__stats">
         ${stat(thematicCount, "thématiques")}
         ${stat(totals.microprojects, "µprojets")}
@@ -42,7 +43,7 @@ function microprojectCard(microproject, counts) {
       </div>
       <div style="font-size:14px;font-weight:700;line-height:1.3;overflow-wrap:anywhere;">${escapeHtml(microproject.name)}</div>
       ${where ? `<div style="font-size:11.5px;color:var(--text-faint);font-family:var(--font-mono);">${escapeHtml(where)}</div>` : ""}
-      ${ownerChipHtml(microproject.owners)}
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">${teamBadge(microproject.team)}${ownerChipHtml(microproject.owners)}</div>
       <div style="font-size:12px;color:var(--text-faint);padding-top:6px;border-top:1px solid var(--border-soft);">
         ${counts.running} en cours &middot; ${counts.concluded + counts.abandoned} terminées
       </div>
