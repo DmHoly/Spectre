@@ -11,12 +11,24 @@ from, similar in spirit to :mod:`spectre.plugins.process_library.step_presets`.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from structureforge.core.units import Length
 from structureforge.process.steps import Deposition, Etch, FacetedGrowth, Lithography, ProcessStep, ResistStrip
 
 from ..structures.simulation import DeclaredParam, LayerLabel, LatticeOpening, PresetOrigin, ProcessBrick, ProcessRecipes, SubstrateSpec, checked_bricks, layer_labels_by_index
 from .models import LibraryItem
+
+
+STEP_COMMENT_MAX = 4000
+
+
+def clean_step_comments(comments: dict[str, str]) -> dict[str, str]:
+    """The comments of a structure's steps without the empty ones (a comment written empty is no
+    comment) - ``ValueError`` for one over :data:`STEP_COMMENT_MAX` characters."""
+    cleaned = {key: text.strip() for key, text in comments.items() if text.strip()}
+    if any(len(text) > STEP_COMMENT_MAX for text in cleaned.values()):
+        raise ValueError(f"a step comment is at most {STEP_COMMENT_MAX} characters")
+    return cleaned
 
 
 class ExperimentOrigin(BaseModel):
@@ -47,9 +59,19 @@ class SavedStructure(LibraryItem):
     # the lithographies anchored to the substrate's lattice (see spectre.plugins.structures.simulation.LatticeOpening), by step index
     lattice_openings: dict[str, LatticeOpening] = Field(default_factory=dict)
 
+    # the comment written on a step (plugin step_report), by step index - a free text, kept with the structure
+    step_comments: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("step_comments")
+    @classmethod
+    def _clean_comments(cls, comments: dict[str, str]) -> dict[str, str]:
+        return clean_step_comments(comments)
+
     @model_validator(mode="after")
     def _labels_on_steps(self) -> "SavedStructure":
         layer_labels_by_index(self.layer_labels, len(self.steps))
+        if any(not key.isdigit() or int(key) >= len(self.steps) for key in self.step_comments):
+            raise ValueError("a step comment names a step the structure doesn't have")
         checked_bricks(self.bricks, len(self.steps))
         return self
 

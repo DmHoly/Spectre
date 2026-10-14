@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from support.microprojects import create_microproject, join_as, signup_with_microproject
 from support.process_library import PGAN_STEPS, by_name, create_item, delete_item, list_items, names, saved_structure, update_item
-from support.structures import substrate
+from support.structures import deposition, substrate
 
 
 def test_create_a_microproject_scoped_structure(client):
@@ -94,3 +94,22 @@ def test_a_saved_structure_keeps_its_declared_parameters(client):
     declared = {"0": [{"name": "dopage", "value": 1e19, "obtention": {"precurseur": "Cp2Mg"}}]}
     saved = create_item(client, "saved-structures", saved_structure("PGaN dope", declared_params=declared), microproject=slug)
     assert saved["declared_params"] == declared
+
+
+def test_a_saved_structure_keeps_the_comments_of_its_steps(client):
+    """Le commentaire d'une étape (plugin step_report), par rang d'étape : gardé avec la structure,
+    sans les vides ; une modification qui ne les cite pas les laisse."""
+    slug = signup_with_microproject(client, "libComments@example.com")
+    two = [*PGAN_STEPS, deposition("Contact", "Al", thickness_nm=30)]
+    saved = create_item(client, "saved-structures", saved_structure("PGaN commente", steps=two, step_comments={"0": "  Dopage à re-mesurer  ", "1": "   "}), microproject=slug)
+    assert saved["step_comments"] == {"0": "Dopage à re-mesurer"}
+    assert update_item(client, "saved-structures", saved["id"], name="Renommée")["step_comments"] == {"0": "Dopage à re-mesurer"}
+    assert update_item(client, "saved-structures", saved["id"], step_comments={})["step_comments"] == {}
+    assert create_item(client, "saved-structures", saved_structure("Nue"), microproject=slug)["step_comments"] == {}
+
+
+def test_a_step_comment_outside_the_steps_or_too_long_is_refused(client):
+    slug = signup_with_microproject(client, "libCommentsBad@example.com")
+    for comments in ({"1": "x"}, {"pas-un-rang": "x"}, {"0": "x" * 4001}):
+        refused = client.post("/api/saved-structures", json={**saved_structure("Mauvaise", step_comments=comments), "scope": "microproject", "microproject": slug})
+        assert refused.status_code == 422, comments

@@ -39,6 +39,7 @@ async function saveLibraryStructure(forceNew) {
     preset_origins: presetOriginsPayload(state.steps),
     lattice_openings: latticeOpeningsPayload(state.steps),
     bricks: bricksPayload(state.steps),
+    ...(typeof StepReport !== "undefined" && pluginEnabled("step_report") ? { step_comments: StepReport.commentsPayload(state.steps) } : {}),
     scope: document.getElementById("library-shared-checkbox").checked ? "shared" : "microproject",
     microproject: slug,
   };

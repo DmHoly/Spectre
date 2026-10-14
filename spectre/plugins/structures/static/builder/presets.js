@@ -107,7 +107,9 @@ function attachStepExtras(steps, data) {
     attachRecipes(attachLayerLabels(attachDeclaredParams(steps, data.declared_params), data.layer_labels), data.recipes),
     data.preset_origins
   );
-  return attachBricks(attachLatticeOpenings(withExtras, data.lattice_openings), data.bricks);
+  const withBricks = attachBricks(attachLatticeOpenings(withExtras, data.lattice_openings), data.bricks);
+  // les commentaires d'étape d'une structure de la bibliothèque (plugin step_report), s'il est là
+  return typeof StepReport !== "undefined" && pluginEnabled("step_report") ? StepReport.attach(withBricks, data.step_comments) : withBricks;
 }
 
 // -- palette -----------------------------------------------------------------------------------
@@ -261,6 +263,7 @@ function replaceSelectedStep(step) {
   const i = state.selectedIndex;
   const previous = state.steps[i];
   if (previous.id) step.id = previous.id;
+  if (previous.comment) step.comment = previous.comment;
   copyBrickTag(previous, step);
   state.steps[i] = step;
   invalidateVariations();

@@ -60,6 +60,7 @@ class NewSavedStructure(_NewItem, _InlineLatticeAnchors):
     preset_origins: dict[str, simulation.PresetOrigin] = {}
     # the lithographies anchored to the substrate's lattice (see simulation.LatticeOpening), by step index
     lattice_openings: dict[str, simulation.LatticeOpening] = {}
+    step_comments: dict[str, str] = {}  # the comment of each step (plugin step_report), by step index
     derived_from: str | ExperimentOrigin | None = None
 
 
@@ -72,6 +73,7 @@ class SavedStructureChanges(_ItemChanges, _InlineLatticeAnchors):
     recipes: simulation.ProcessRecipes | None = None
     preset_origins: dict[str, simulation.PresetOrigin] | None = None
     lattice_openings: dict[str, simulation.LatticeOpening] | None = None
+    step_comments: dict[str, str] | None = None
 
 
 class NewStepPreset(_NewItem):
