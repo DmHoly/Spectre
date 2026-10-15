@@ -15,13 +15,17 @@ Rules, from the coarsest to the finest-grained (décidées le 2026-10-11 : deux 
   an id came or went while the shape stayed (two depositions swapped, a layer replaced by another
   of the same kind). Without a shared id (two studies launched apart), the shape alone decides.
 - **minor (Y)** - the step list has the same shape, but at least one setting differs: a field of a
-  step other than its ``name`` (a material, a recipe, a thickness, an orientation...) or a declared
-  parameter (one added or removed, a value, how it is obtained, a unit replaced by another).
+  step other than its ``name`` (a material, a recipe, a thickness, an orientation...), a declared
+  parameter (one added or removed, a value, how it is obtained, a unit replaced by another), or -
+  for a campaign - its plan (``campaign_plan`` : a factor, its step, its parameter or its values ;
+  not its label or scale).
 - **patch** - a retouche, which takes no number of its own (the version keeps its X.Y): the only
   difference is a step's ``name`` - a label with zero effect on the simulation (see
   ``structureforge.process.simulate._apply``, which never reads ``name``) -, the unit of a declared
   parameter written down or removed (not replaced by another one: that changes the value, a minor
-  change), or the layer labels drawn beside the structure (``process_layer_labels``, see
+  change), a variant of a split corrected by hand or put back to its computed drawing
+  (``campaign_variant_overrides``, see :data:`spectre.plugins.structures.kinds.VARIANT_OVERRIDES_KEY` :
+  the common process and the plan are the same, one wafer's drawing was fixed), or the layer labels drawn beside the structure (``process_layer_labels``, see
   :class:`spectre.plugins.structures.simulation.LayerLabel`) and their grouping by brick
   (``process_bricks``, only as far as it groups labels), which never touch the process. The bricks
   of a process alone change nothing: a version that only regroups unlabelled steps is ``none``.
@@ -55,6 +59,9 @@ from ..structures.simulation import (
 )
 
 ChangeLevel = Literal["initial", "major", "minor", "patch", "none"]
+
+# kinds.VARIANT_OVERRIDES_KEY - la chaîne, pour ne pas importer kinds ici (il dépend de ce module)
+VARIANT_OVERRIDES_KEY = "campaign_variant_overrides"
 
 def _step_shape(steps: list[dict]) -> list[str]:
     return [step.get("kind") for step in steps]
@@ -102,6 +109,17 @@ def _label_groups(metadata: dict[str, Any], labels: dict[str, Any]) -> list[dict
     return groups
 
 
+def _plan_settings(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    """Ce qui, dans le plan d'une campagne, règle ses variantes : l'étape, le paramètre et les
+    valeurs de chaque facteur - ni son libellé ni la répartition choisie (log, linéaire), qui ne
+    changent aucune variante."""
+    return [
+        {key: factor.get(key) for key in ("step_id", "step_index", "field", "values") if key in factor}
+        for factor in plan["factors"]
+        if isinstance(factor, dict)
+    ]
+
+
 def structure_signature(metadata: dict[str, Any]) -> dict[str, Any] | None:
     """What versioning compares for one commit: its StructureForge process (with its layer labels
     under ``"layer_labels"``, when it has some - a version without any compares as before them -
@@ -113,6 +131,15 @@ def structure_signature(metadata: dict[str, Any]) -> dict[str, Any] | None:
     if process is not None:
         # un procédé à réseau de fils : le nombre de fils vus n'est pas la structure
         process = view_neutral_process(process)
+        # le plan d'une campagne : ses facteurs et leurs valeurs sont des réglages (un split dont
+        # les valeurs changent est un changement mineur, comme une épaisseur)
+        plan = metadata.get("campaign_plan")
+        if isinstance(plan, dict) and isinstance(plan.get("factors"), list):
+            process = {**process, "campaign_plan": _plan_settings(plan)}
+        # une variante retouchée à la main : une retouche (le procédé commun ne change pas)
+        overrides = metadata.get(VARIANT_OVERRIDES_KEY)
+        if isinstance(overrides, dict) and overrides:
+            process = {**process, "variant_overrides": overrides}
         labels = metadata.get(LAYER_LABELS_METADATA_KEY)
         if not labels:
             return process
@@ -163,6 +190,10 @@ def classify_process_change(
         return "major"
 
     if any(_step_without_name(b) != _step_without_name(a) for b, a in zip(before_steps, after_steps)):
+        return "minor"
+
+    # le plan d'une campagne (un facteur, son étape, son paramètre, ses valeurs) est un réglage
+    if before.get("campaign_plan") != after.get("campaign_plan"):
         return "minor"
 
     # un paramètre déclaré (dopage, précurseur... - voir structures.process_metadata) est un réglage

@@ -489,8 +489,8 @@ nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ 
   (`comparison_reference: {experiment_id, version_id?, sample_id?}`, `COMPARISON_KEY`, seulement
   citée, rien n'est vérifié). Une requête sans `reference_place` laisse la clé absente : la première
   variante, comme pour les campagnes d'avant ce choix (`service.reference_place_of`). Rien hors d'une
-  campagne (une évolution, jamais une campagne, retire les deux clés) ; une combinaison reprend celles
-  de sa première étude. Le détail rend `reference_place` (`null` hors campagne) et
+  campagne (une évolution vers une autre structure retire les deux clés ; une évolution d'une campagne
+  qui n'en dit rien garde les siennes) ; une combinaison reprend celles de sa première étude. Le détail rend `reference_place` (`null` hors campagne) et
   `comparison_reference`, `GET .../variants` `reference_index` (le « RÉF » du carrousel). Le
   constructeur coche d'office la variante qui garde les valeurs de la structure de départ.
 - **Partir de plaques existantes** (`POST .../experiments` avec `wafer_origin: {microproject,
@@ -538,9 +538,12 @@ nommées comme réplicats. Page : `structures/pages/declared-structure.html` (+ 
   le substrat, ou une étape (une couche ajoutée, retirée, déplacée ou remplacée : la suite des
   types d'étapes, et, entre deux versions qui partagent un id d'étape, `process_step_ids`, un id
   qui change de place ou qui va et vient - `versioning.step_ids_in`) ; mineur (Y)
-  - un réglage d'étape ou un paramètre déclaré (ajouté, retiré, sa valeur, son obtention, son unité
-  remplacée) ; `patch` - une retouche (nom d'étape, unité écrite seule, étiquettes de couches et
-  leur regroupement) : niveau gardé, pour l'historique et la conclusion, mais pas de nouveau numéro.
+  - un réglage d'étape, un paramètre déclaré (ajouté, retiré, sa valeur, son obtention, son unité
+  remplacée) ou, pour une campagne, son plan (`campaign_plan` : un facteur, son étape, son
+  paramètre, ses valeurs - pas son libellé ni son échelle) ; `patch` - une retouche (nom d'étape,
+  unité écrite seule, étiquettes de couches et leur regroupement, une variante d'un split corrigée
+  à la main ou remise au calcul - `campaign_variant_overrides`) : niveau gardé, pour l'historique et
+  la conclusion, mais pas de nouveau numéro.
 - `scripts/repair_hypotheses.py` (à blanc par défaut, `--apply` pour écrire) reporte sur la pointe de
   chaque piste qui l'a perdue la dernière hypothèse non vide de son historique (bug B1).
 
@@ -967,7 +970,8 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `GET …/experiences/{ref}/timeline` | `GET …/experiments/{exp}/versions` → tableau, de la première version à la pointe : `{version_id, experiment_id, title, intent, created_at, author, is_tip, version, change_level}` (la frise des structures : `change_level != "none"`) |
 | *(nouveau)* | `GET …/experiments/{exp}/versions/{version_id}` (une version de l'histoire de la piste, `ETag`) |
 | *(nouveau)* | `GET /api/microprojects/{mp}/experiment-plans` → `{items}` ; `POST` `{title, intent, parent?: {experiment_id, version_id?}, mode: same_wafers\|new_wafers, wafers?, wafer_count?}` → 201 + `Location` (editor ; 422 `title_required`, `parent_required`, `entity_required`, `wafer_count_required`, `wafer_not_in_origin`, `wafers_different_structures` ; 404 `source_not_found`) ; `GET`/`PATCH` `{title?, intent?, mode?, wafers?, wafer_count?}`/`DELETE …/experiment-plans/{id}` (404 `plan_not_found`) - les expériences prévisionnelles (§ 4) ; `POST …/experiments` accepte `plan_id` |
-| `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 + `Location` vers la version ; **200 sans `Location`** si rien n'a changé (§ 4) ; une campagne y est refusée (422 `campaign_is_a_new_line`) : elle se lance avec `from_version` |
+| `POST …/{ref}/evoluer` | `POST …/experiments/{exp}/versions` `{structure: {kind: "process", …}, …}` + `If-Match` → 201 + `Location` vers la version ; **200 sans `Location`** si rien n'a changé (§ 4). Avec `structure: {kind: "campaign", plan, …}` et `reference_place?`, `comparison_reference?` : un **split modifié sur sa piste** (2026-10-15) - le lot recalculé comme au lancement, numéroté X.Y (un plan qui change : mineur), les plaques reportées par place (celles données, sinon celles en place, une place de plus à associer, une de moins effacée ; 422 `too_many_entities`), la plaque témoin toujours dernière, la plaque de référence telle que donnée (sinon gardée), FDL et cahier reportés ; les retouches de variantes tombent. Une campagne ne devient pas une étude simple par cette voie (422 `campaign_needs_split`) : une nouvelle piste, avec `from_version` |
+| *(nouveau)* | `PUT …/experiments/{exp}/variant-overrides/{n}` `{substrate, steps, declared_params?, …}` (le procédé du constructeur) + `If-Match` → la piste à jour : **une variante corrigée à la main** (`campaign_variant_overrides[n] = {process, step_ids}`, sa structure simulée remplacée dans le lot, niveau `patch`) - `kinds.variant_process` rend la retouche, donc le carrousel (`GET …/variants` `overridden: [n…]`), `GET …/process?variant=`, la promotion, le comparateur et les jumelles lisent la variante corrigée ; `DELETE …/variant-overrides/{n}` la recalcule depuis le procédé commun et le plan (la pointe telle quelle sans retouche) ; 422 `not_a_campaign`, `unknown_variant` |
 | `POST …/{ref}/evoluer-image` | idem, avec `structure: {kind: "images", …}` |
 | *(nouveau)* | idem, avec `structure: {kind: "declared", description, images, factors, wafers: [{label, values}]}` (sans structure) - le lancement aussi (`POST …/experiments`) ; 422 `declared_no_wafer`, `declared_factor_unnamed`, `declared_factor_duplicate`, `declared_values_mismatch`, `too_many_entities` |
 | `POST …/{ref}/dessin` | `PUT …/experiments/{exp}/structure-images` (toute la planche, dans l'ordre : `{image_id, kind, caption, annotations}` ; écriture légère, même révision de structure - c'est aussi par elle que se posent les annotations d'une image) |
@@ -977,7 +981,7 @@ de leurs étapes aux briques (`bricks`, § 4 ; 422 `invalid_brick`).
 | `POST …/{ref}/entites` | `PUT …/experiments/{exp}/entities` `{entities}` (une par variante d'une campagne, 422 `entity_count` sinon ; au moins une pour une étude simple, ses réplicats ; 422 `duplicate_wafer`) |
 | `POST …/{ref}/combiner` | `POST /api/microprojects/{mp}/experiments` `{merge_of: [{experiment_id, version_id?}, {experiment_id, version_id?}], title, intent, hypothesis, entities, objectives?, context?, branch?}` → 201 + `Location` vers la **nouvelle piste** (§ 4 : deux parents, la structure de la première, cahier vide ; les deux études ne changent pas). Exactement deux études, sans `structure` ni `from_version` (422) ; une version inconnue → 404 `source_not_found` ; deux fois la même piste ou la même version → 422 `same_experiment` ; une version d'avant la fourche de la piste désignée → 422 `version_before_line` ; une étude d'un autre µprojet n'y existe pas (404), et un champ de plus dans `merge_of` (`microproject`...) est refusé (422). `POST …/experiments/{exp}/merges` **supprimée** |
 | `GET …/{ref}/process` | `GET …/experiments/{exp}/process?version=&variant=` (`variant` : le procédé d'une variante d'une campagne, § 4 ; chaque étape porte son `id` ; `layer_labels` : les étiquettes de couches par position d'étape, § 4 ; `bricks` : les briques du procédé par positions d'étape, § 4) |
-| `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` |
+| `GET …/{ref}/matrice` | `GET …/experiments/{exp}/variants?version=` (`overridden` : les variantes retouchées) ; le détail d'une campagne porte `campaign_plan` (`{factors: [{step_id, field, values, scale, label}]}`, ce que le constructeur rouvre en mode évolution) et `variant_overrides` (les index retouchés) |
 | `DELETE …/experiences/{ref}` | `DELETE …/experiments/{exp}` (+ `If-Match`) → 204 (supprime la piste jusqu'au point de fourche ; 409 `has_descendants` si une autre piste part de l'une de ses versions - la piste n'est jamais seulement raccourcie) |
 | `POST …/{ref}/ref`, `…/refs[/{ref_name}]`, `…/refs/graphe` | **supprimées** (2026-10-11) : les références (plugin `references`) sont les seules refs |
 | *(nouveau)* | `GET /api/microprojects/{mp}/structure-history?all_versions=&include_versions=` (viewer ; `include_versions`, répété : des ids de version à montrer en plus - les versions publiées comme référence, que la page lit dans `GET /api/reference-versions` ; un id inconnu est ignoré) → `{lanes, nodes, edges}` pour la page d'évolution (`experiments.lineage.structure_history`) : pistes dans l'ordre de leur début puis du nom (une nouvelle piste vient en dernier) ; nœuds `{version_id, experiment_id, lane, version, label, change_level, title, created_at, author, is_tip, is_merge, structure_kind, has_process}` (`label` : « vX.Y ») - par défaut les versions structurelles, les fusions (combinaisons comprises) et le début de chaque piste, toutes avec `all_versions=true` ; arêtes `{parent, child, kind}` (`parent`, `fork` ou `merge` : vers une combinaison, depuis chacun de ses deux parents ; vers une fusion d'avant, depuis son second parent), à travers les versions masquées |
@@ -1377,7 +1381,13 @@ Supprimée : `/microprojets/{slug}/graphe`.
   formulaire d'intention), `tags-refs.js`, `structure-view.js` (structure, couches, feuille de split - une
   ligne par plaque -, étapes du procédé, images de la structure ; le bouton « Étiquettes : masquer / afficher » des
   étiquettes de couches, préférence de ce navigateur, affichées par défaut : il passe chaque
-  `svg.sp-labelled-structure` à sa `data-bare-viewbox`), `plates.js` (plaques suivies), `conclusion.js`,
+  `svg.sp-labelled-structure` à sa `data-bare-viewbox` ; sur un split, le carrousel
+  `structures/static/campaign-carousel.js` porte « Corriger cette variante » - le constructeur sur
+  `…/evoluer?variante=n`, écran structure seul, « Enregistrer la correction » → `PUT …/variant-overrides/{n}` -,
+  marque une variante « retouchée » et propose « Revenir à la variante calculée » ; « Modifier la
+  structure » sur un split rouvre le constructeur avec le procédé de base et le plan reconstitué
+  (`campaign_plan` → `state.variationFactors`, case « Réf. », plaques à leur place), qui s'enregistre
+  depuis l'écran 3 sur la même piste), `plates.js` (plaques suivies), `conclusion.js`,
   `advanced.js` (la boîte « Combiner deux études » : l'autre étude, cherchée parmi celles du
   µprojet, le titre proposé « A + B », l'intention, l'hypothèse et la nouvelle plaque - lasermark,
   emplacement, FDL, comme au lancement -, puis la fiche de la nouvelle étude ; suppression), `report.js`. Ceux des autres plugins suivent :

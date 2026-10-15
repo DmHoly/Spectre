@@ -55,6 +55,22 @@ const experimentsApi = {
       ifMatch: versionId && `"${versionId}"`,
     });
   },
+  // corriger une variante d'une campagne : body = le procédé du constructeur ({substrate, steps,
+  // declared_params, ...}) qui remplace celui que le plan calcule pour elle - une retouche
+  setVariantOverride(microprojectSlug, experimentId, versionId, variant, body) {
+    return api.put(
+      `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/variant-overrides/${encodeURIComponent(variant)}`,
+      body,
+      { ifMatch: versionId && `"${versionId}"` }
+    );
+  },
+  // revenir à la variante calculée depuis le procédé commun et le plan
+  clearVariantOverride(microprojectSlug, experimentId, versionId, variant) {
+    return api.del(
+      `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/variant-overrides/${encodeURIComponent(variant)}`,
+      { ifMatch: versionId && `"${versionId}"` }
+    );
+  },
   replaceStructureImages(microprojectSlug, experimentId, versionId, body) {
     return api.put(
       `/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/structure-images`,

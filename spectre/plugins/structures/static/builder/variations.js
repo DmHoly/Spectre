@@ -554,6 +554,20 @@ function autoReferencePlace(rows) {
   return index === -1 ? null : index;
 }
 
+// Le plan d'une campagne qu'on modifie sur sa piste, tel qu'elle l'a enregistré : ses facteurs
+// ([{step_id, field, field_label, values, scale}]), sa plaque de référence (un choix qui tient,
+// comme celui de l'utilisateur) et, sans elle, sa plaque de comparaison.
+function adoptVariationPlan(factors, referencePlace, comparison) {
+  state.variationFactors = factors.map((f) => ({ ...f, values: f.values.slice() }));
+  referencePlanKey = JSON.stringify(
+    state.variationFactors.map(({ step_id, field, values, scale, field_label }) => ({ step_id, field, values, scale: scale || "linear", label: field_label }))
+  );
+  state.referencePlace = referencePlace === undefined ? null : referencePlace;
+  state.referenceTouched = true;
+  state.comparison = comparison ? { experiment_id: comparison.experiment_id, version_id: comparison.version_id || null, sample_id: comparison.sample_id || null } : null;
+  comparisonDefaulted = true;
+}
+
 // Un nouveau plan : la plaque de référence redevient automatique ; sinon le choix fait tient.
 function settleReferencePlace(plan, rows) {
   const key = JSON.stringify(plan.factors);
@@ -1076,6 +1090,9 @@ function updateLaunchVariationsLabel() {
     btn.textContent = "Variation ou répétitions à préciser";
   } else if (state.variationOverflow) {
     btn.textContent = "Trop de plaques pour ces variantes";
+  } else if (state.campaignPlan && typeof evolvingCampaign === "function" && evolvingCampaign()) {
+    const n = state.variationEntities.length || 1;
+    btn.textContent = `Enregistrer les modifications (${n} variante${n > 1 ? "s" : ""}${toAssociateLabel()})`;
   } else if (state.campaignPlan) {
     const n = (state.variationEntities.length || 1) + (state.refRepeat ? 1 : 0);
     btn.textContent = `Lancer la campagne (${n} échantillon${n > 1 ? "s" : ""}${toAssociateLabel()})`;
@@ -1173,14 +1190,16 @@ function variationTableEntities() {
   }));
 }
 
-// Invalidé chaque fois que la structure change (voir renderSteps() dans step-list.js) : une
-// étape variée a pu disparaître ou changer de nature, donc on repart d'un plan vide plutôt que de
-// garder un facteur sur un paramètre qui n'existe plus.
+// Invalidé chaque fois que la structure change (voir renderSteps() dans step-list.js) : les
+// facteurs posés sur une étape qui existe encore (par son id) restent - corriger une étape ne
+// défait pas le split -, ceux d'une étape disparue tombent ; le tableau se recalcule à l'écran 3.
 function invalidateVariations() {
   const hadPlan = state.variationFactors.length > 0 || variationEditingStepIndex !== null;
-  state.variationFactors = [];
-  // des plaques reprises restent les plaques de l'étude, quelle que soit la structure
-  state.variationEntities = state.originWafers ? state.variationEntities.filter((e) => e.sample_id) : [];
+  state.variationFactors = state.variationFactors.filter((f) => factorStepIndex(f) !== -2);
+  // des plaques reprises restent les plaques de l'étude, quelle que soit la structure ; celles d'un
+  // split modifié sur sa piste gardent leur place
+  const inPlaceSplit = typeof evolvingCampaign === "function" && evolvingCampaign();
+  state.variationEntities = inPlaceSplit ? state.variationEntities : state.originWafers ? state.variationEntities.filter((e) => e.sample_id) : [];
   state.campaignPlan = null;
   variationEditingStepIndex = null;
   if (hadPlan && state.wizardScreen === "variations") {

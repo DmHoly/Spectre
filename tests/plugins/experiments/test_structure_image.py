@@ -207,13 +207,17 @@ def test_a_campaign_continued_with_pictures_follows_one_sample(client):
     assert pictured["physical_tracking"] == [{"sample_id": "W1", "location": None}]
 
 
-def test_a_campaign_is_not_an_evolution(client):
+def test_a_simple_study_evolved_with_a_plan_becomes_a_split_on_its_line(client):
+    # le constructeur lance une campagne depuis une étude simple sur une nouvelle piste ; la piste
+    # elle-même accepte le split (sa plaque suivie prend la première variante)
     slug = _owner_microproject(client)
     launched = launch(client, slug)
-    body = launch_body(kind="campaign", plan=campaign_plan([10, 30]))
+    body = launch_body(kind="campaign", plan=campaign_plan([10, 30]), entities=[])
     response = client.post(f"{experiment_url(slug, launched['id'])}/versions", json=body)
-    assert response.status_code == 422
-    assert response.json()["code"] == "campaign_is_a_new_line"
+    assert response.status_code == 201
+    detail = response.json()
+    assert detail["is_batch"] is True
+    assert detail["physical_tracking"] == [{"sample_id": "W1", "location": None}, {"sample_id": None, "location": None}]
 
 
 def test_a_single_flat_picture_from_the_first_version_still_reads():

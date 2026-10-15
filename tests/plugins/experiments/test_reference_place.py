@@ -3,7 +3,7 @@ proche citée pour comparaison (``comparison_reference``)."""
 
 from __future__ import annotations
 
-from support.experiments import combine, evolve, get_experiment, launch, launch_campaign, post_launch, variants
+from support.experiments import combine, evolve, get_experiment, launch, launch_campaign, post_evolve, post_launch, variants
 from support.microprojects import signup_with_microproject
 from support.structures import campaign_plan
 
@@ -76,12 +76,25 @@ def test_fork_of_a_campaign_into_a_simple_study_drops_its_reference(client):
     assert forked["comparison_reference"] is None
 
 
-def test_evolving_a_campaign_into_a_process_drops_its_reference_keys(client):
+def test_a_campaign_does_not_become_a_simple_study_on_its_line(client):
+    # un split modifié sur sa piste reste un split : une étude simple est une nouvelle piste
     slug = _slug(client)
     campaign = launch_campaign(client, slug, reference_place=1)
-    evolved = evolve(client, slug, campaign["id"], if_match=campaign["version_id"])
-    assert evolved["is_batch"] is False
-    assert evolved["reference_place"] is None
+    response = post_evolve(client, slug, campaign["id"], title="Essai", intent="Suite", if_match=campaign["version_id"])
+    assert response.status_code == 422
+    assert response.json()["code"] == "campaign_needs_split"
+
+
+def test_evolving_a_campaign_keeps_or_resets_its_reference(client):
+    slug = _slug(client)
+    campaign = launch_campaign(client, slug, reference_place=1)
+    # rien dit de la référence : celle de la campagne reste
+    kept = evolve(client, slug, campaign["id"], kind="campaign", plan=campaign_plan([10, 20, 40]), if_match=campaign["version_id"])
+    assert kept["is_batch"] is True and kept["reference_place"] == 1
+    # la référence choisie à nouveau : celle de la requête (aucune, avec une plaque de comparaison)
+    cited = {"experiment_id": "ailleurs", "version_id": None, "sample_id": "W9"}
+    reset = evolve(client, slug, campaign["id"], kind="campaign", plan=campaign_plan([10, 20, 40]), reference_place=None, comparison_reference=cited)
+    assert reset["reference_place"] is None and reset["comparison_reference"] == cited
 
 
 def test_combining_two_campaigns_keeps_the_reference_of_the_first(client):

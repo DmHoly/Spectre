@@ -146,6 +146,9 @@
       document.getElementById("structure-title").textContent = "Structures des variantes";
       container.className = "layer-clickable fiche-structure-carousel";
       try {
+        // corriger une variante : l'éditeur sur son procédé (une retouche de cette seule variante) ;
+        // revenir à la variante calculée : sa correction retirée
+        const fixable = ctx.canEdit && ctx.process;
         mountStructureCarousel(container, await ctx.variants(), {
           onChange: (index) => {
             variantIndex = index;
@@ -154,6 +157,13 @@
             hint.style.display = ctx.process && index === 0 ? "" : "none";
             applyLabelsEverywhere();
           },
+          onFix: fixable ? (index) => (window.location.href = ExperiencePage.evolveUrl({ variant: index })) : undefined,
+          onReset: fixable
+            ? (index) => {
+                if (!window.confirm(`Revenir à la variante ${index + 1} calculée depuis le plan ? Sa correction sera retirée.`)) return;
+                ctx.write(() => experimentsApi.clearVariantOverride(ctx.microprojectSlug, ctx.experimentId, ctx.versionId, index));
+              }
+            : undefined,
         });
       } catch (err) {
         container.innerHTML = detail.structure_svg || "";

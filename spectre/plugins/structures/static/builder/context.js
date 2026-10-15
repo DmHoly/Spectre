@@ -24,6 +24,9 @@ const libraryDuplicateMode = queryParams.get("dupliquer") === "1";
 const evolveExperienceId = evolveRoute ? evolveRoute.experiment_id : null;
 // ?version= : partir d'une version passée de la piste (qui ne se continue que sur une nouvelle piste)
 const evolveVersionId = evolveExperienceId ? queryParams.get("version") : null;
+// ?variante=<n> : corriger une seule variante d'une campagne - l'éditeur sur son procédé, enregistré
+// comme retouche de cette variante (experience-launch.js::commitVariantOverride), rien d'autre
+const evolveVariant = evolveExperienceId && /^\d+$/.test(queryParams.get("variante") || "") ? parseInt(queryParams.get("variante"), 10) : null;
 const templateExperienceId = !isLibraryMode && !isBrickMode && !isPresetMode && !evolveExperienceId ? queryParams.get("depuis") : null;
 const chosenStructureId = !isLibraryMode && !isBrickMode && !isPresetMode && !evolveExperienceId ? queryParams.get("structure") : null;
 // ?reference=<slug>&version=<1.1> : une nouvelle expérience partie d'une version de référence

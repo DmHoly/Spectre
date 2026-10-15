@@ -8,6 +8,7 @@ physical entities it tracks) goes through it rather than through a comparison of
 
 from __future__ import annotations
 
+import copy
 import secrets
 from typing import Any, Literal, Protocol
 
@@ -53,6 +54,8 @@ from .simulation import (
     preset_origins_by_index,
     process_metadata,
     process_recipes,
+    resolve_lattice,
+    simulate_process,
 )
 
 
@@ -191,6 +194,15 @@ def declared_wafer_label(wafer: DeclaredWafer, factors: list[str], index: int) -
 # :mod:`spectre.plugins.experiments.versioning` compares, since two pictures say nothing about what changed.
 IMAGE_REVISION_KEY = "structure_image_revision"
 
+# Les variantes retouchées d'une campagne : par index de variante (en texte, une clé JSON), le
+# procédé de remplacement de cette variante (``{"process": <structureforge_process>, "step_ids":
+# [...]}`` - ses étapes et leurs ids, qui peuvent différer du procédé commun) : ce que la plaque de
+# cette variante a réellement vu, quand le dessin automatique tiré du plan était faux. Une retouche
+# (pas de nouveau numéro de version) ; la structure simulée de la variante (son entrée du
+# ``ProcessLot``) est remplacée avec. Une évolution de la structure les efface : elles valaient pour
+# l'ancien procédé.
+VARIANT_OVERRIDES_KEY = "campaign_variant_overrides"
+
 # What a drawn structure leaves in Experiment.metadata that no longer describes an image-mode
 # experience evolved from it (the StructureForge process, a campaign's split) - dropped when
 # continuing with an image, the same way the builder's evolution drops IMAGE_REVISION_KEY.
@@ -205,6 +217,7 @@ DRAWN_STRUCTURE_METADATA_KEYS = (
     "campaign_factor_values",
     "campaign_factor_scales",
     "campaign_plan",
+    VARIANT_OVERRIDES_KEY,
 )
 
 
@@ -379,13 +392,17 @@ def layer_annotations(metadata: dict[str, Any], entry_index: int) -> list[LayerA
         return []
     if not 0 <= entry_index < len(layer_steps) or not isinstance(layer_steps[entry_index], list):
         return []
+    override = variant_override(metadata, entry_index)
+    if override is not None:
+        # une variante retouchée : son propre procédé, ses propres ids d'étape
+        process, step_ids = override
     try:
         labels = _LABELS.validate_python(raw_labels)
         steps = _STEP_LIST.validate_python(process.get("steps") or [])
         declared = declared_params_by_index(_DECLARED.validate_python(process.get("declared_params") or {}))
         plan = metadata.get("campaign_plan")
         values = metadata.get("campaign_factor_values") or []
-        if isinstance(plan, dict) and entry_index < len(values):
+        if override is None and isinstance(plan, dict) and entry_index < len(values):
             variant_plan = campaigns.VariantPlan.model_validate(plan)
             indexes = campaigns.factor_step_indexes(variant_plan, list(step_ids))
             substrate = SubstrateSpec.model_validate(process["substrate"])
@@ -400,17 +417,53 @@ def layer_annotations(metadata: dict[str, Any], entry_index: int) -> list[LayerA
     return annotations_for(steps, declared, by_index, origins, bricks)
 
 
+def variant_override(metadata: dict[str, Any], entry_index: int) -> tuple[dict[str, Any], list[str]] | None:
+    """La retouche de la variante ``entry_index`` (:data:`VARIANT_OVERRIDES_KEY`) : son procédé de
+    remplacement et les ids de ses étapes - ``None`` sans retouche, ou pour une retouche illisible."""
+    overrides = metadata.get(VARIANT_OVERRIDES_KEY)
+    if not isinstance(overrides, dict):
+        return None
+    override = overrides.get(str(entry_index))
+    if not (isinstance(override, dict) and isinstance(override.get("process"), dict) and isinstance(override.get("step_ids"), list)):
+        return None
+    steps = override["process"].get("steps") or []
+    ids = [step_id for step_id in override["step_ids"] if isinstance(step_id, str)]
+    if len(ids) != len(steps):
+        return None
+    return override["process"], ids
+
+
+def overridden_variants(metadata: dict[str, Any]) -> list[int]:
+    """Les index des variantes retouchées d'une campagne, dans l'ordre (``[]`` sans retouche)."""
+    overrides = metadata.get(VARIANT_OVERRIDES_KEY)
+    if not isinstance(overrides, dict):
+        return []
+    return sorted(int(key) for key in overrides if isinstance(key, str) and key.isdigit() and variant_override(metadata, int(key)) is not None)
+
+
+def variant_step_ids(metadata: dict[str, Any], step_ids: list[str], entry_index: int) -> list[str]:
+    """L'id de chaque étape du procédé de la variante ``entry_index`` : ceux de sa retouche quand
+    elle en a une, sinon ``step_ids`` (ceux du procédé commun, que toute variante calculée partage)."""
+    override = variant_override(metadata, entry_index)
+    return list(override[1]) if override is not None else list(step_ids)
+
+
 def variant_process(metadata: dict[str, Any], step_ids: list[str], entry_index: int) -> dict[str, Any]:
     """The re-editable process (``structureforge_process``) of variant ``entry_index`` of a
-    committed campaign, from what its version's ``metadata`` records: the process every variant
-    shares, each factor of the plan (naming its step among ``step_ids``) set to this variant's
-    value - what the wafer of that variant went through. :class:`InvalidInput` for a variant the
-    campaign does not have, or a campaign recorded without its plan (before plans were kept)."""
+    committed campaign, from what its version's ``metadata`` records: its own replacement process
+    when the variant was corrected by hand (:func:`variant_override`), else the process every
+    variant shares, each factor of the plan (naming its step among ``step_ids``) set to this
+    variant's value - what the wafer of that variant went through. :class:`InvalidInput` for a
+    variant the campaign does not have, or a campaign recorded without its plan (before plans were
+    kept)."""
     process = metadata.get("structureforge_process")
     plan = metadata.get("campaign_plan")
     values = metadata.get("campaign_factor_values") or []
     if not 0 <= entry_index < len(values):
         raise InvalidInput(f"Cette campagne n'a pas de variante n° {entry_index + 1}.", code="unknown_variant")
+    override = variant_override(metadata, entry_index)
+    if override is not None:
+        return copy.deepcopy(override[0])
     if not (isinstance(process, dict) and isinstance(plan, dict)):
         raise InvalidInput("Le procédé de cette variante n'a pas été enregistré (campagne d'avant les plans).", code="no_variant_process")
     try:
@@ -429,6 +482,27 @@ def variant_process(metadata: dict[str, Any], step_ids: list[str], entry_index: 
     except (ValidationError, InvalidInput, KeyError, TypeError, ValueError) as exc:
         raise InvalidInput("Le procédé de cette variante ne se relit pas.", code="no_variant_process") from exc
     return process_metadata(substrate, steps, declared, recipes, origins, anchors)
+
+
+def simulate_recorded_process(process: dict[str, Any]) -> tuple[ProcessStructure, list[int]]:
+    """Simulate again a recorded process (the ``structureforge_process`` shape, a variant's
+    included): its flattened structure and the position of the step that created each of its
+    layers (:data:`~spectre.plugins.structures.simulation.SUBSTRATE_ORIGIN` for the substrate) -
+    what a campaign commits per variant. :class:`InvalidInput` for a process that does not read."""
+    try:
+        substrate = SubstrateSpec.model_validate(process["substrate"])
+        steps = _STEP_LIST.validate_python(process.get("steps") or [])
+        declared = declared_params_by_index(_DECLARED.validate_python(process.get("declared_params") or {}))
+        anchors = lattice_anchors_in(process.get("steps"))
+        recipes = process_recipes(process.get("recipes"))
+        if substrate.lattice is not None:
+            substrate, steps = resolve_lattice(substrate, steps, anchors)
+    except (ValidationError, KeyError, TypeError, ValueError) as exc:
+        raise InvalidInput("Ce procédé ne se relit pas.", code="no_variant_process") from exc
+    from structureforge.adapters.follow_adapter import to_structure
+
+    result = simulate_process(substrate, steps, declared or None, recipes, lattice_anchors=anchors)
+    return to_structure(result.geometry), list(result.layer_origins[-1])
 
 
 # -- ce qui change aux étiquettes et aux paramètres déclarés d'une version à l'autre ---------------

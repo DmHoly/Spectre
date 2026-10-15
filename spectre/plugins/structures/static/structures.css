@@ -168,6 +168,23 @@
   margin-top: 8px;
 }
 
+.atlas-carousel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-soft);
+}
+
+/* une variante corrigée à la main (carrousel, boîte agrandie) */
+.badge-retouched {
+  background: var(--warning-soft, rgba(217, 119, 6, 0.12));
+  color: var(--warning, #b45309);
+  border: 1px solid currentColor;
+}
+
 .atlas-carousel:focus-visible {
   outline: none;
   box-shadow: var(--ring);

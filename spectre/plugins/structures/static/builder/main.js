@@ -36,6 +36,15 @@ function setupExperienceMode() {
     continueBtn.title = "Faire varier un paramètre : lance une campagne rattachée à cette version";
     continueBtn.classList.replace("btn-primary", "btn-line");
   }
+  if (evolveVariant !== null) {
+    // la correction d'une seule variante : l'écran structure seulement, « Enregistrer la correction »
+    document.querySelectorAll(".sb-stage").forEach((btn) => {
+      if (btn.dataset.stage !== "structure") btn.hidden = true;
+    });
+    document.getElementById("to-intention-btn").hidden = true;
+    document.getElementById("launch-btn").textContent = "Enregistrer la correction";
+    document.getElementById("launch-btn").title = "La structure corrigée remplace le dessin automatique de cette variante (une retouche : pas de nouveau numéro de version)";
+  }
 }
 
 async function init() {
