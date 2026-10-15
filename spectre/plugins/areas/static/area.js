@@ -181,9 +181,11 @@ document.getElementById("objectives-toggle").addEventListener("click", () => {
 // --- thématiques & µprojets -------------------------------------------------------------------
 
 // Le badge de l'équipe d'un µprojet - sauf quand il redit celui de sa thématique, juste au-dessus.
+// Sans lien : il vit dans une carte qui est elle-même un <a>, et un <a> dans un <a> fait éclater la
+// carte (le navigateur referme le premier).
 function ownTeamBadge(p) {
   const thematic = p.thematic && current.thematics.find((t) => t.slug === p.thematic.slug);
-  return thematic && thematic.team && p.team && thematic.team.slug === p.team.slug ? "" : teamBadge(p.team, { link: true });
+  return thematic && thematic.team && p.team && thematic.team.slug === p.team.slug ? "" : teamBadge(p.team);
 }
 
 function microprojetCard(row) {
