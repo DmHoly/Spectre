@@ -8,7 +8,7 @@ from typing import Any, Literal
 import follow
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..structures.schemas import StructureImageInput, StructurePayload
+from ..structures.schemas import ProcessInput, StructureImageInput, StructurePayload
 from .entities import MAX_FDL_PER_ENTITY, MAX_TRACKED_ENTITIES, EntityTrackingInput
 
 
@@ -215,7 +215,21 @@ class CreateExperimentRequest(_Intention):
 
 
 class EvolveRequest(_Intention):
-    structure: StructurePayload  # process or images: a campaign is launched as a new line of study
+    """A new version of the line: its structure (``process``, ``images``, ``declared`` - or
+    ``campaign``, when the line is a split evolved in place: the split recomputed, one place per
+    variant) and the intention asked again. For a campaign, the reference wafer (``reference_place``,
+    the variant's index, ``None`` : no reference in the split) and, without one, the wafer compared
+    with (``comparison_reference``) - as at launch."""
+
+    structure: StructurePayload
+    reference_place: int | None = None
+    comparison_reference: ComparisonReference | None = None
+
+
+class VariantOverrideRequest(ProcessInput):
+    """The replacement process of one variant of a campaign (``PUT .../variant-overrides/{n}``) :
+    the builder's process, as a ``process`` structure payload - what that variant's wafer really
+    went through, when the automatic drawing from the plan got it wrong."""
 
 
 class StructureImagesRequest(BaseModel):

@@ -44,6 +44,7 @@ from .schemas import (
     StatusRequest,
     StructureImagesRequest,
     TagsRequest,
+    VariantOverrideRequest,
 )
 
 router = APIRouter(prefix="/api/microprojects/{microproject_slug}", tags=["experiments"])
@@ -137,6 +138,11 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         # plaque d'une étude proche à laquelle on se compare ({experiment_id, version_id, sample_id})
         "reference_place": service.reference_place_of(version),
         "comparison_reference": service.comparison_reference_of(version),
+        # une campagne : son plan, tel que le constructeur le rouvre ({factors: [{step_id, field,
+        # values, scale, label}]}) - None hors campagne ; et les index de ses variantes retouchées
+        # (corrigées à la main, voir PUT .../variant-overrides/{n})
+        "campaign_plan": service.campaign_plan_of(repo, version),
+        "variant_overrides": kinds.overridden_variants(version.metadata),
         "form_answers": dict(version.form_answers),
     }
 
@@ -359,8 +365,9 @@ def evolve_experiment(
     microproject: Microproject = Depends(require_role("editor")),
     user: User = Depends(current_user),
 ) -> dict:
-    """Une nouvelle version de la piste (structure ``process`` ou ``images``, intention reposée) -
-    201 et ``Location`` vers la version, ou 200 si rien n'a changé."""
+    """Une nouvelle version de la piste (structure ``process``, ``images``, ``declared`` - ou
+    ``campaign`` pour un split modifié sur sa piste -, intention reposée) - 201 et ``Location``
+    vers la version, ou 200 si rien n'a changé."""
     before = service.tip_of(get_repository(microproject.slug), experiment_id).id
     expected = if_match_version(if_match)
     after = service.evolve(microproject.slug, experiment_id, body, author=user.name, expected_version=expected)
@@ -494,7 +501,47 @@ def experiment_variants(
     payload["physical_tracking"] = experiment.metadata.get("physical_tracking", [])
     # la variante de la plaque de référence (« RÉF » du carrousel), None sans référence dans le split
     payload["reference_index"] = service.reference_place_of(experiment)
+    # les variantes retouchées (corrigées à la main) : leurs index
+    payload["overridden"] = kinds.overridden_variants(experiment.metadata)
     return payload
+
+
+@router.put("/experiments/{experiment_id}/variant-overrides/{variant}")
+def set_variant_override(
+    experiment_id: str,
+    variant: int,
+    body: VariantOverrideRequest,
+    response: Response,
+    if_match: str | None = Header(None),
+    microproject: Microproject = Depends(require_role("editor")),
+    user: User = Depends(current_user),
+) -> dict:
+    """Corriger la variante ``variant`` d'une campagne : le procédé envoyé (celui du constructeur)
+    remplace celui que le plan calcule pour elle - une retouche de la pointe, sans nouveau numéro
+    de version (422 hors d'une campagne, ou pour une variante qu'elle n'a pas)."""
+    if variant < 0:
+        raise InvalidInput("L'index d'une variante est positif.", code="unknown_variant")
+    after = service.set_variant_override(
+        microproject.slug, experiment_id, variant, body, author=user.name, expected_version=if_match_version(if_match)
+    )
+    return _written(response, microproject.slug, experiment_id, None, after)
+
+
+@router.delete("/experiments/{experiment_id}/variant-overrides/{variant}")
+def clear_variant_override(
+    experiment_id: str,
+    variant: int,
+    response: Response,
+    if_match: str | None = Header(None),
+    microproject: Microproject = Depends(require_role("editor")),
+    user: User = Depends(current_user),
+) -> dict:
+    """Revenir à la variante calculée : sa retouche retirée, sa structure recalculée depuis le
+    procédé commun et le plan - la piste à jour (telle quelle sans retouche)."""
+    if variant < 0:
+        raise InvalidInput("L'index d'une variante est positif.", code="unknown_variant")
+    after = service.clear_variant_override(microproject.slug, experiment_id, variant, author=user.name, expected_version=if_match_version(if_match))
+    return _written(response, microproject.slug, experiment_id, None, after)
 
 
 # -- l'évolution des structures --------------------------------------------------------------------

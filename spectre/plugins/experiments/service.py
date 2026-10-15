@@ -52,7 +52,7 @@ from .repository import (
     retired_lines,
     writing,
 )
-from .schemas import CompositionOrigin, ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput, WaferOrigin
+from .schemas import CompositionOrigin, ConclusionRequest, CreateExperimentRequest, EvolveRequest, FromVersion, ObjectiveInput, VariantOverrideRequest, WaferOrigin
 
 CONTEXT_METADATA_KEY = "context"
 
@@ -320,7 +320,7 @@ def editable_process(repo: follow.Repository, version: follow.Experiment, *, var
     if version.structure_type != kinds.ProcessLot.registry_key():
         raise InvalidInput("Cette expérience n'est pas une campagne à plusieurs variantes.", code="not_a_campaign")
     metadata = {**version.metadata, "structureforge_process": kinds.variant_process(version.metadata, ids, variant)}
-    return editable_process_from(metadata, ids)
+    return editable_process_from(metadata, kinds.variant_step_ids(version.metadata, ids, variant))
 
 
 def editable_process_from(metadata: dict[str, Any], ids: list[str]) -> dict[str, Any] | None:
@@ -848,7 +848,7 @@ def _settle_reference_repeat(metadata: dict[str, Any], kind: str) -> None:
     if not isinstance(cited, dict):
         return
     places = len(metadata.get("physical_tracking", []))
-    if kind == "process" and places >= 2:
+    if kind in ("process", "campaign") and places >= 2:
         metadata[REFERENCE_REPEAT_KEY] = {**cited, "place": places - 1}
     else:
         metadata.pop(REFERENCE_REPEAT_KEY, None)
@@ -888,6 +888,40 @@ def reference_place_of(version: follow.Experiment) -> int | None:
         return 0
     place = version.metadata[REFERENCE_PLACE_KEY]
     return place if isinstance(place, int) and not isinstance(place, bool) else None
+
+
+def campaign_plan_of(repo: follow.Repository, version: follow.Experiment) -> dict[str, Any] | None:
+    """Le plan d'une campagne tel que le constructeur le rouvre (``{factors: [{step_id, field,
+    values, scale, label}]}``) : celui enregistré (``campaign_plan``), chaque facteur nommant son
+    étape par son id - celui que lit :func:`step_id_at` pour un plan d'avant les ids d'étape
+    (``step_index``). ``None`` hors d'une campagne, ou pour une campagne enregistrée sans son plan."""
+    if version.structure_type != kinds.ProcessLot.registry_key():
+        return None
+    plan = version.metadata.get("campaign_plan")
+    if not (isinstance(plan, dict) and isinstance(plan.get("factors"), list)):
+        return None
+    factors = []
+    for factor in plan["factors"]:
+        if not isinstance(factor, dict):
+            return None
+        step_id = factor.get("step_id")
+        if not isinstance(step_id, str):
+            index = factor.get("step_index")
+            if not isinstance(index, int):
+                return None
+            step_id = campaigns.SUBSTRATE_STEP_ID if index == campaigns.SUBSTRATE_STEP_INDEX else step_id_at(repo, version, index)
+            if step_id is None:
+                return None
+        factors.append(
+            {
+                "step_id": step_id,
+                "field": factor.get("field"),
+                "values": list(factor.get("values") or []),
+                "scale": factor.get("scale") or "linear",
+                "label": factor.get("label"),
+            }
+        )
+    return {"factors": factors}
 
 
 def comparison_reference_of(version: follow.Experiment) -> dict[str, Any] | None:
@@ -1073,16 +1107,23 @@ def combine(slug: str, body: CreateExperimentRequest, *, author: str) -> follow.
 
 def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, expected_version: str | None) -> follow.Experiment:
     """Une nouvelle version de la piste, sur sa pointe : une nouvelle structure (procédé du
-    constructeur ou images) et l'intention reposée (titre, intention, hypothèse, objectifs,
-    réponses au formulaire - revalidées). Le reste est reporté, l'entité suivie comprise. Éditer la
-    fiche sans toucher à la structure garde le statut et la conclusion ; une structure qui change
-    ouvre une nouvelle itération, non conclue."""
-    if isinstance(body.structure, CampaignPayload):
-        raise InvalidInput(
-            "Une campagne se lance comme une nouvelle piste, à partir de cette version.", code="campaign_is_a_new_line"
-        )
+    constructeur, images, split déclaré, ou - pour une campagne - son procédé de base et son plan,
+    le lot recalculé comme au lancement) et l'intention reposée (titre, intention, hypothèse,
+    objectifs, réponses au formulaire - revalidées). Le reste est reporté, l'entité suivie comprise
+    (pour une campagne : ses plaques, par place, celles données ou celles en place, la plaque témoin
+    à la fin ; sa plaque de référence et de comparaison, telles que la requête les donne ; les FDL ;
+    le cahier). Éditer la fiche sans toucher à la structure garde le statut et la conclusion ; une
+    structure qui change ouvre une nouvelle itération, non conclue. Une campagne ne devient pas une
+    étude simple par cette voie (``campaign_needs_split`` : une nouvelle piste, ou garder une
+    variation) ; les retouches de ses variantes tombent avec la nouvelle structure."""
     _require_title_and_intent(body)
-    prepared = _PreparedStructure(slug, body.structure)
+    start = None
+    if isinstance(body.structure, CampaignPayload) and not any(body.structure.step_ids):
+        # ses facteurs nomment leurs étapes par les ids que celles-ci garderont de la pointe
+        reader = get_repository(slug)
+        start = (reader, tip_of(reader, experiment_id))
+    prepared = _PreparedStructure(slug, body.structure, start)
+    _check_reference_place(body, prepared)
     entities = clean_entity_entries(body.entities)
     refuse_duplicate_wafers(entities)
 
@@ -1102,11 +1143,61 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
         builder.form_answers = dict(body.form_answers)
         builder.structure = prepared.structure
         builder.steps = prepared.steps
-        # une évolution n'est jamais une campagne (refusée plus haut) : plus de plaque de référence
-        # parmi des variantes
-        builder.metadata.pop(REFERENCE_PLACE_KEY, None)
-        builder.metadata.pop(COMPARISON_KEY, None)
-        if prepared.kind == "declared":
+        # la plaque de référence (et de comparaison) n'a de sens que parmi des variantes : celle que
+        # la requête d'une campagne donne, rien sinon
+        _set_reference_place(builder.metadata, body, prepared)
+        # les retouches de variantes valaient pour l'ancienne structure
+        builder.metadata.pop(kinds.VARIANT_OVERRIDES_KEY, None)
+        was_campaign = parent.structure_type == kinds.ProcessLot.registry_key()
+        if was_campaign and prepared.kind == "campaign" and "reference_place" not in body.model_fields_set:
+            # une requête qui ne dit rien de la plaque de référence garde celle de la campagne
+            builder.metadata.update({key: copy.deepcopy(parent.metadata[key]) for key in (REFERENCE_PLACE_KEY, COMPARISON_KEY) if key in parent.metadata})
+        if was_campaign and prepared.kind == "process":
+            raise InvalidInput(
+                "Cette étude est un split : gardez au moins une variation pour la modifier sur sa piste, "
+                "ou lancez une nouvelle piste à partir de cette version pour une étude simple.",
+                code="campaign_needs_split",
+            )
+        if prepared.kind == "campaign":
+            process = prepared.metadata["structureforge_process"]
+            builder.metadata.pop(kinds.IMAGE_REVISION_KEY, None)
+            builder.metadata.pop("campaign_labels", None)
+            builder.metadata["structureforge_process"] = process
+            builder.metadata.pop(simulation.LAYER_LABELS_METADATA_KEY, None)
+            builder.metadata.pop(simulation.LAYER_STEPS_METADATA_KEY, None)
+            builder.metadata.pop(simulation.BRICKS_METADATA_KEY, None)
+            builder.metadata.update(prepared.metadata)
+            builder.metadata.update(prepared.step_metadata(parent, parent_ids))
+            # le même procédé, le même plan, les mêmes valeurs : la même campagne (la conclusion reste)
+            same = (
+                was_campaign
+                and versioning.same_settings(parent.metadata.get("structureforge_process"), process)
+                and parent.metadata.get("campaign_plan") == builder.metadata.get("campaign_plan")
+                and parent.metadata.get("campaign_factor_values") == builder.metadata.get("campaign_factor_values")
+            )
+            # une place par variante : les plaques données, sinon celles de la version précédente à
+            # leur place (par position) ; la plaque témoin, hors des variantes, reste la dernière
+            witness = reference_repeat_of(parent)
+            inherited = clean_entity_entries([EntityTrackingInput(**e) for e in parent.metadata.get("physical_tracking", [])])
+            witness_entity = None
+            if witness is not None:
+                witness_entity = inherited.pop(witness["place"])
+                if entities:
+                    witness_entity = entities.pop()
+            by_place = was_campaign or kinds.is_declared_structure(parent.structure_type)
+            given = entities if named_entities(entities) else (inherited if by_place else named_entities(inherited))
+            if named_entities(given[prepared.campaign_size :]):
+                raise InvalidInput(
+                    f"{len(named_entities(given))} plaques suivies pour {prepared.campaign_size} variante(s) : retirez des plaques ou ajoutez des valeurs.",
+                    code="too_many_entities",
+                )
+            tracking = _launch_tracking("campaign", prepared.campaign_size, given)
+            if witness_entity is not None:
+                tracking.append(witness_entity)
+            refuse_duplicate_wafers(tracking)
+            builder.metadata["physical_tracking"] = tracking
+            builder.metadata.pop(REPEATS_KEY, None)
+        elif prepared.kind == "declared":
             # la même description, les mêmes images (sans leurs annotations), le même split : la même
             # structure - sinon une nouvelle révision
             def content(data: dict[str, Any]) -> dict[str, Any]:
@@ -1187,6 +1278,90 @@ def evolve(slug: str, experiment_id: str, body: EvolveRequest, *, author: str, e
             builder.conclusion = follow.Conclusion()
 
     return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change, revalidate_form=True)
+
+
+def _campaign_variant(parent: follow.Experiment, variant: int) -> kinds.ProcessLot:
+    """Le lot de la campagne ``parent``, qui doit avoir la variante ``variant``."""
+    if parent.structure_type != kinds.ProcessLot.registry_key():
+        raise InvalidInput("Cette expérience n'est pas une campagne à plusieurs variantes.", code="not_a_campaign")
+    lot = kinds.ProcessLot.model_validate(parent.structure)
+    if not 0 <= variant < len(lot.entries):
+        raise InvalidInput(f"Cette campagne n'a pas de variante n° {variant + 1}.", code="unknown_variant")
+    return lot
+
+
+def _replace_variant(
+    builder: follow.ExperimentBuilder, lot: kinds.ProcessLot, variant: int, entry: ProcessStructure, step_ids: list[str], layer_origins: list[int]
+) -> None:
+    """La structure simulée de la variante ``variant`` remplacée par ``entry`` (ses étapes portant
+    ``step_ids``, ``layer_origins`` la position de l'étape qui a créé chaque couche) - et, avec des
+    étiquettes de couches, la provenance de ses couches réécrite pour elle."""
+    lot.entries[variant] = entry
+    builder.structure = lot
+    layer_steps = builder.metadata.get(simulation.LAYER_STEPS_METADATA_KEY)
+    if isinstance(layer_steps, list) and variant < len(layer_steps):
+        layer_steps[variant] = [None if origin == simulation.SUBSTRATE_ORIGIN else step_ids[origin] for origin in layer_origins]
+
+
+def set_variant_override(
+    slug: str, experiment_id: str, variant: int, body: VariantOverrideRequest, *, author: str, expected_version: str | None
+) -> follow.Experiment:
+    """Corriger une variante d'une campagne : le procédé envoyé remplace celui que le plan calcule
+    pour la variante ``variant`` (:data:`kinds.VARIANT_OVERRIDES_KEY`), sa structure simulée avec -
+    une retouche, sans nouveau numéro. Une campagne seulement (``not_a_campaign``), une de ses
+    variantes (``unknown_variant``). Les étapes gardent les ids reçus (de nouvelles étapes en
+    reçoivent)."""
+    declared = simulation.declared_params_by_index(body.declared_params)
+    recipes = body.recipes or None
+    anchors = body.lattice_anchors
+    origins = simulation.preset_origins_by_index(body.preset_origins, len(body.steps))
+    process = simulation.process_metadata(body.substrate, body.steps, declared, recipes, origins, anchors)
+    step_ids = simulation.settle_step_ids(body.step_ids)
+    entry, layer_origins = kinds.simulate_recorded_process(process)
+
+    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
+        lot = _campaign_variant(parent, variant)
+        overrides = dict(builder.metadata.get(kinds.VARIANT_OVERRIDES_KEY) or {})
+        overrides[str(variant)] = {"process": process, "step_ids": step_ids}
+        builder.metadata[kinds.VARIANT_OVERRIDES_KEY] = overrides
+        _replace_variant(builder, lot, variant, entry, step_ids, layer_origins)
+
+    return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
+
+
+def clear_variant_override(slug: str, experiment_id: str, variant: int, *, author: str, expected_version: str | None) -> follow.Experiment:
+    """Revenir à la variante calculée : la retouche de la variante ``variant`` retirée, sa structure
+    simulée de nouveau depuis le procédé commun et le plan (hors du verrou : la pointe lue d'abord,
+    refusée si elle a bougé entre-temps). Rien à faire sans retouche (la pointe telle quelle) ;
+    ``unknown_variant``, ``not_a_campaign`` comme pour la retouche."""
+    reader = get_repository(slug)
+    tip = tip_of(reader, experiment_id)
+    _campaign_variant(tip, variant)
+    computed = None
+    if kinds.variant_override(tip.metadata, variant) is not None:
+        without = {key: value for key, value in tip.metadata.items() if key != kinds.VARIANT_OVERRIDES_KEY}
+        ids = step_ids_of(reader, tip)
+        entry, layer_origins = kinds.simulate_recorded_process(kinds.variant_process(without, ids, variant))
+        computed = (entry, layer_origins, ids)
+
+    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
+        if parent.id != tip.id:
+            raise PreconditionFailed(
+                "Cette étude a changé depuis que vous l'avez ouverte - rechargez la page pour voir sa dernière version.", code="stale_version"
+            )
+        if computed is None:
+            return
+        lot = _campaign_variant(parent, variant)
+        overrides = dict(builder.metadata.get(kinds.VARIANT_OVERRIDES_KEY) or {})
+        overrides.pop(str(variant), None)
+        if overrides:
+            builder.metadata[kinds.VARIANT_OVERRIDES_KEY] = overrides
+        else:
+            builder.metadata.pop(kinds.VARIANT_OVERRIDES_KEY, None)
+        entry, layer_origins, ids = computed
+        _replace_variant(builder, lot, variant, entry, ids, layer_origins)
+
+    return amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
 
 
 def set_status(

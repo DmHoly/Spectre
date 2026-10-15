@@ -37,10 +37,14 @@ function variantCaption(variation, i) {
 // variante, avec la valeur de ses paramètres variés, celle de la plaque de référence marquée « RÉF »
 // (`reference_index`, choisie au lancement ; null : pas de référence dans le split - absent, la
 // première, comme avant ce choix).
+// Une variante retouchée (corrigée à la main dans l'éditeur, `overridden` : ses index) est
+// marquée « retouchée ».
 // Flèches, points, et ← → au clavier une fois le carrousel focalisé. `onChange(index)` suit le
 // défilement ; avec `onEnlarge(index)`, la structure affichée est un bouton qui l'agrandit (voir
-// variantZoomItems). Partagé par la fiche d'expérience, l'atlas et la vue d'ensemble d'un µprojet.
-function mountStructureCarousel(container, variation, { onChange, onEnlarge } = {}) {
+// variantZoomItems) ; avec `onFix(index)`, un bouton « Corriger cette variante » ouvre l'éditeur sur
+// elle, et `onReset(index)` ramène une variante retouchée à la variante calculée. Partagé par la
+// fiche d'expérience, l'atlas et la vue d'ensemble d'un µprojet.
+function mountStructureCarousel(container, variation, { onChange, onEnlarge, onFix, onReset } = {}) {
   const svgs = (variation && variation.svgs) || [];
   if (!container || svgs.length === 0) {
     if (container) container.innerHTML = "";
@@ -48,11 +52,23 @@ function mountStructureCarousel(container, variation, { onChange, onEnlarge } = 
   }
   let index = 0;
   const referenceIndex = variation.reference_index === undefined ? 0 : variation.reference_index;
+  const overridden = new Set(variation.overridden || []);
+  function actionsHtml() {
+    if (!onFix && !onReset) return "";
+    const fixed = overridden.has(index);
+    return `
+        <div class="atlas-carousel__actions">
+          ${onFix ? `<button type="button" class="btn btn-line" style="min-height:32px;padding:5px 12px;font-size:12.5px;" data-fix title="${fixed ? "Reprendre la correction de cette variante dans l'éditeur" : "Ouvrir l'éditeur sur le procédé de cette variante : la structure corrigée remplace son dessin automatique (une retouche, sans nouveau numéro de version)"}">${fixed ? "Reprendre la correction" : "Corriger cette variante"}</button>` : ""}
+          ${fixed && onReset ? `<button type="button" class="btn btn-line" style="min-height:32px;padding:5px 12px;font-size:12.5px;" data-reset title="Retirer la correction : la variante est recalculée depuis le procédé commun et le plan">Revenir à la variante calculée</button>` : ""}
+        </div>`;
+  }
   function paint() {
     const single = svgs.length < 2;
     container.innerHTML = `
       <div class="atlas-carousel" tabindex="0" role="group" aria-roledescription="carrousel" aria-label="Structures des ${svgs.length} variantes">
-        <div class="atlas-carousel__badge">${index === referenceIndex ? `<span class="badge badge-role">RÉF</span>` : ""}<span>${escapeHtml(variantCaption(variation, index))}</span></div>
+        <div class="atlas-carousel__badge">${index === referenceIndex ? `<span class="badge badge-role">RÉF</span>` : ""}${
+          overridden.has(index) ? `<span class="badge badge-retouched" title="Variante corrigée à la main : son dessin n'est plus celui que le plan calcule">retouchée</span>` : ""
+        }<span>${escapeHtml(variantCaption(variation, index))}</span></div>
         ${
           onEnlarge
             ? `<button type="button" class="atlas-carousel__stage structure-zoomable" data-enlarge aria-label="Agrandir la structure : ${escapeHtml(variantCaption(variation, index))}" title="Agrandir et zoomer">${svgs[index]}${STRUCTURE_ZOOM_BADGE}</button>`
@@ -65,7 +81,7 @@ function mountStructureCarousel(container, variation, { onChange, onEnlarge } = 
           }</span>
           <span class="help">${index + 1} / ${svgs.length}</span>
           <button type="button" class="btn btn-line" data-dir="1" aria-label="Variante suivante" ${single ? "disabled" : ""}>&rarr;</button>
-        </div>
+        </div>${actionsHtml()}
       </div>`;
   }
   function go(next, focus) {
@@ -80,6 +96,8 @@ function mountStructureCarousel(container, variation, { onChange, onEnlarge } = 
     const dot = event.target.closest("[data-go]");
     if (dot) return go(parseInt(dot.dataset.go, 10), false);
     if (onEnlarge && event.target.closest("[data-enlarge]")) onEnlarge(index);
+    if (onFix && event.target.closest("[data-fix]")) onFix(index);
+    if (onReset && event.target.closest("[data-reset]")) onReset(index);
   };
   container.onkeydown = (event) => {
     if (!event.target.closest(".atlas-carousel")) return;
@@ -101,9 +119,10 @@ function mountStructureCarousel(container, variation, { onChange, onEnlarge } = 
 // structure avec la valeur de ses paramètres variés, celle de référence marquée « RÉF ».
 function variantZoomItems(variation) {
   const referenceIndex = variation.reference_index === undefined ? 0 : variation.reference_index;
+  const overridden = new Set((variation && variation.overridden) || []);
   return ((variation && variation.svgs) || []).map((svg, i) => ({
     html: svg,
-    caption: variantCaption(variation, i),
+    caption: variantCaption(variation, i) + (overridden.has(i) ? " · retouchée" : ""),
     badge: i === referenceIndex ? "RÉF" : null,
   }));
 }

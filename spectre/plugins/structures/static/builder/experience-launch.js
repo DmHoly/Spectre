@@ -26,6 +26,7 @@ let waferOriginDetail = null;
 
 async function loadExistingProcess() {
   if (!evolveExperienceId) return;
+  if (evolveVariant !== null) return loadVariantToFix();
   try {
     // Une expérience dont la structure n'est qu'une image (image-structure.html) n'a pas de procédé
     // à rouvrir : on la redessine à partir du seul substrat, le reste (intention, objectifs,
@@ -47,6 +48,7 @@ async function loadExistingProcess() {
       ? await experimentsApi.getVersion(slug, evolveExperienceId, evolveVersionId)
       : await experimentsApi.get(slug, evolveExperienceId);
     evolveParent = detail;
+    if (detail.is_batch) adoptCampaign(detail);
     if (!detail.is_tip) {
       // une version passée ne se continue que sur une nouvelle piste
       document.getElementById("branch-fork").checked = true;
@@ -83,13 +85,100 @@ async function loadExistingProcess() {
       evolveWitness = { sample_id: entry.sample_id || null, location: entry.location || null, fdl: entry.fdl || [] };
     }
     const named = (detail.physical_tracking || []).filter((e, i) => e.sample_id && i !== witnessPlace);
-    if (!detail.is_batch && named.length > 1) {
+    if (detail.is_batch) {
+      // un split : une place par variante, reprises à leur place dans le tableau de l'écran 3
+      const places = (detail.physical_tracking || []).filter((e, i) => i !== witnessPlace);
+      state.variationEntities = places.map((e) => ({ sample_id: e.sample_id || "", location: e.location || "", fdl: e.fdl || [] }));
+      const wrap = document.getElementById("entity-fields-wrap");
+      wrap.querySelector(".field-row").hidden = true;
+      document.getElementById("exp-entity-fdl").parentElement.hidden = true;
+      document.getElementById("entity-field-hint").textContent = `Split de ${places.length} variante${places.length > 1 ? "s" : ""}${named.length ? ` (${named.map((e) => e.sample_id).join(", ")})` : ""} : les plaques restent à leur place - elles se vérifient à l'écran 3, avec le tableau des variations.`;
+    } else if (named.length > 1) {
       evolveReplicates = named.map((e) => ({ sample_id: e.sample_id, location: e.location || "", fdl: e.fdl || [] }));
       const wrap = document.getElementById("entity-fields-wrap");
       wrap.querySelector(".field-row").hidden = true;
       document.getElementById("exp-entity-fdl").parentElement.hidden = true;
       document.getElementById("entity-field-hint").textContent = `${named.length} plaques suivies (${named.map((e) => e.sample_id).join(", ")}) : reprises telles quelles - elles se modifient sur la fiche, carte « Plaques ».`;
     }
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// Un split modifié sur sa piste : son plan reconstitué (state.variationFactors, écran 3 - les
+// facteurs nomment leurs étapes par id, comme la campagne les a enregistrés), sa plaque de
+// référence (la case « Réf. ») et sa plaque de comparaison. Sans plan enregistré (une campagne
+// d'avant les plans), le split est à redéfinir.
+function adoptCampaign(detail) {
+  const plan = detail.campaign_plan;
+  if (!plan || !plan.factors.length) {
+    showError(new Error("Le plan de cette campagne n'a pas été enregistré : redéfinissez ses variations à l'écran 3 avant d'enregistrer."));
+    return;
+  }
+  const factors = plan.factors.map((f) => {
+    const stepIndex = f.step_id === SUBSTRATE_FACTOR_ID ? -1 : state.steps.findIndex((s) => s.id === f.step_id);
+    const param = stepIndex === -2 ? null : variableParams(stepIndex).find((p) => p.field === f.field);
+    const label = f.label || `${param ? paramDisplayLabel(param) : f.field} — ${variationTargetName(stepIndex)}`;
+    return { step_id: f.step_id, field: f.field, field_label: label, values: f.values.slice(), scale: f.scale || "linear" };
+  });
+  adoptVariationPlan(factors, detail.reference_place, detail.comparison_reference);
+  // un split s'enregistre depuis l'écran 3, ses variantes recalculées sous les yeux
+  const continueBtn = document.getElementById("continue-btn");
+  continueBtn.textContent = "Variations & enregistrement →";
+  continueBtn.title = "Vérifier le tableau des variantes, puis enregistrer la nouvelle version du split";
+  const launchBtn = document.getElementById("launch-btn");
+  launchBtn.textContent = "Variations & enregistrement →";
+  launchBtn.title = continueBtn.title;
+}
+
+// L'évolution en place d'un split (la pointe d'une campagne, « Continuer cette piste »).
+function evolvingCampaign() {
+  return Boolean(evolveParent && evolveParent.is_batch && !planId && !document.getElementById("branch-fork").checked);
+}
+
+// Corriger une seule variante d'une campagne (?variante=n) : l'éditeur sur son procédé - celui que
+// le plan calcule, ou sa correction en place -, et rien d'autre (ni intention ni plaques).
+async function loadVariantToFix() {
+  try {
+    const detail = await experimentsApi.get(slug, evolveExperienceId);
+    evolveParent = detail;
+    if (!detail.is_batch) throw new Error("Cette expérience n'est pas une campagne : modifiez sa structure.");
+    const data = await experimentsApi.process(slug, evolveExperienceId, undefined, evolveVariant);
+    setSubstrateFields(data.substrate);
+    state.steps = attachStepExtras(data.steps, data);
+    selectLastStep();
+    renderSteps();
+    const variation = await experimentsApi.variants(slug, evolveExperienceId).catch(() => null);
+    const caption = variation ? variantCaption(variation, evolveVariant) : `variante ${evolveVariant + 1}`;
+    const fixed = Boolean(variation && (variation.overridden || []).includes(evolveVariant));
+    setPageTitle(`Corriger la variante ${evolveVariant + 1}`);
+    document.getElementById("based-on-note").hidden = false;
+    document.getElementById("based-on-label").textContent = fixed ? "Variante retouchée :" : "Variante :";
+    document.getElementById("based-on-name").textContent = `${caption} · ${detail.title}`;
+    const link = document.getElementById("edit-structure-link");
+    link.textContent = "retour à la fiche";
+    link.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(evolveExperienceId)}`;
+    updateStageMeta();
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// Enregistrer la correction d'une variante : son procédé remplace celui que le plan calcule pour
+// elle (PUT .../variant-overrides/{n}) - une retouche, puis retour à la fiche.
+async function commitVariantOverride() {
+  const body = {
+    substrate: substrateSpec(),
+    steps: state.steps,
+    declared_params: declaredParamsPayload(state.steps),
+    layer_labels: layerLabelsPayload(state.steps),
+    recipes: processRecipesPayload(state.steps),
+    preset_origins: presetOriginsPayload(state.steps),
+    bricks: bricksPayload(state.steps),
+  };
+  try {
+    await experimentsApi.setVariantOverride(slug, evolveExperienceId, evolveParent && evolveParent.version_id, evolveVariant, body);
+    window.location.href = `/microprojets/${encodeURIComponent(slug)}/experiences/${encodeURIComponent(evolveExperienceId)}`;
   } catch (err) {
     showError(err);
   }
@@ -158,10 +247,15 @@ async function commitExperience(entities) {
     payload.reference_place = state.referencePlace;
     payload.comparison_reference = state.referencePlace === null ? comparisonPayload() : null;
   }
-  // Une nouvelle piste partie de la version de départ (une fourche, ou une campagne) garde le lien
-  // de filiation ; continuer la piste envoie la version affichée (If-Match).
-  if (evolveExperienceId && (payload.branch || state.campaignPlan || planId)) {
+  // Une nouvelle piste partie de la version de départ (une fourche, une prévision, ou une campagne
+  // lancée depuis une étude simple) garde le lien de filiation ; continuer la piste envoie la
+  // version affichée (If-Match) - un split modifié reste sur sa piste, avec son plan recalculé.
+  if (evolveExperienceId && (payload.branch || planId || (state.campaignPlan && !evolvingCampaign()))) {
     payload.from_version = { experiment_id: evolveExperienceId, version_id: evolveParent ? evolveParent.version_id : null };
+  }
+  if (evolvingCampaign() && !state.campaignPlan) {
+    showError(new Error("Cette étude est un split : gardez au moins une variation (écran 3) pour la modifier sur sa piste, ou cochez « Explorer une nouvelle piste » pour une étude simple."));
+    return;
   }
   // plusieurs plaques sans variation, déclarées comme répétitions exactes de la référence
   if (!state.campaignPlan && state.repeats && !(evolveExperienceId && !payload.from_version)) payload.repeats = true;
@@ -189,6 +283,15 @@ async function commitExperience(entities) {
 // (le serveur la reprend automatiquement de la version précédente, voir loadExistingProcess).
 document.getElementById("launch-btn").addEventListener("click", () => {
   clearError();
+  if (evolveVariant !== null) {
+    commitVariantOverride();
+    return;
+  }
+  if (evolveParent && evolveParent.is_batch) {
+    // un split : ses variantes se recalculent et se vérifient à l'écran 3 avant d'enregistrer
+    goToVariations();
+    return;
+  }
   if (evolveReplicates) {
     // les réplicats de la piste restent ; une nouvelle piste les nomme (aucune plaque n'est reprise en silence)
     commitExperience(document.getElementById("branch-fork").checked ? evolveReplicates : []);
