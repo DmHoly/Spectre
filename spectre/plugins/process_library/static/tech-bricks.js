@@ -35,7 +35,7 @@ function brickRow(brick) {
     <div class="step-row" style="align-items:flex-start;">
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:600;">${escapeHtml(brick.name)} ${scopeSuffix(brick.scope)}</div>
-        <div style="font-size:12px;color:var(--text-faint);">${{ sag: "Gabarit SAG · ", epi: "Épitaxie · ", process: "Procédé · " }[brick.role] || ""}${brick.steps.length} étape(s)</div>
+        <div style="font-size:12px;color:var(--text-faint);">${brick.substrate ? "brique de départ · " : ""}${brick.steps.length} étape(s) · v${brick.version || 1}</div>
         ${brick.notes ? `<div style="font-size:12px;color:var(--text-soft);margin-top:3px;max-width:56ch;">${escapeHtml(brick.notes)}</div>` : ""}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
@@ -86,7 +86,6 @@ async function init() {
     state.currentRole = microproject.role;
     document.getElementById("crumb").textContent = "/ " + microproject.name;
     document.getElementById("back-link").href = "/bibliotheque";
-    document.getElementById("macro-steps-link").href = `/microprojets/${encodeURIComponent(slug)}/macro-etapes`;
     document.getElementById("new-brick-link").href = `/microprojets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/nouvelle`;
     if (!(state.currentRole === "editor" || state.currentRole === "owner")) {
       document.getElementById("new-brick-link").style.display = "none";

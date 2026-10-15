@@ -45,13 +45,13 @@ function generateBrickGroupId() {
 // n'existe que sur les copies vivantes dans une structure en cours, posée fraîche à chaque
 // groupement ou insertion.
 function stripBrickTag(step) {
-  const { brick_group_id, brick_name, brick_source, brick_role, brick_version, ...rest } = step;
+  const { brick_group_id, brick_name, brick_source, brick_version, ...rest } = step;
   return rest;
 }
 
-// L'étiquette de brique de `from` (groupe, nom, source, rôle de macro-étape) posée sur `to`.
+// L'étiquette de brique de `from` (groupe, nom, source, version) posée sur `to`.
 function copyBrickTag(from, to) {
-  ["brick_group_id", "brick_name", "brick_source", "brick_role", "brick_version"].forEach((key) => {
+  ["brick_group_id", "brick_name", "brick_source", "brick_version"].forEach((key) => {
     if (from && from[key]) to[key] = from[key];
   });
   return to;
@@ -75,7 +75,7 @@ function bricksPayload(steps) {
       last.step_indexes.push(i);
     } else {
       const name = Array.from((step.brick_name || "").trim() || "Brique").slice(0, BRICK_NAME_MAX).join("");
-      bricks.push({ group_id: step.brick_group_id, name, source: step.brick_source || null, step_indexes: [i], ...(step.brick_role ? { role: step.brick_role } : {}), ...(step.brick_version ? { version: step.brick_version } : {}) });
+      bricks.push({ group_id: step.brick_group_id, name, source: step.brick_source || null, step_indexes: [i], ...(step.brick_version ? { version: step.brick_version } : {}) });
     }
   });
   return bricks;
@@ -90,7 +90,6 @@ function attachBricks(steps, bricks) {
       tagged[i].brick_group_id = brick.group_id;
       tagged[i].brick_name = brick.name;
       if (brick.source) tagged[i].brick_source = brick.source;
-      if (brick.role) tagged[i].brick_role = brick.role;
       if (brick.version) tagged[i].brick_version = brick.version;
     });
   });
@@ -224,7 +223,6 @@ function commitStructure() {
   invalidateVariations();
   renderRail();
   renderInspector();
-  renderAssembly(); // assembly.js : les emplacements SAG / épi / procédé suivent la structure
   captureHistory();
   scheduleSimulate();
   updateStageMeta();
@@ -259,16 +257,13 @@ function insertStepOfKind(kind, at = defaultInsertIndex()) {
 
 // Une brique technologique est une séquence d'étapes préenregistrée (voir brick-mode.js /
 // spectre.core.tech_bricks) - l'insérer copie ses étapes une bonne fois pour toutes, comme un
-// préset : aucun lien vivant après coup avec la brique elle-même. Elle arrive repliée.
+// préset : aucun lien vivant après coup avec la brique elle-même. Elle arrive repliée. Une brique
+// de départ (qui garde un substrat) posée dans une structure vide apporte aussi son substrat ;
+// ailleurs, seules ses étapes s'appliquent, par-dessus ce qui existe.
 function insertBrickAt(brick, at = defaultInsertIndex()) {
   if (state.wizardScreen !== "structure" || !brick || !brick.steps || !brick.steps.length) return;
   clearError();
-  // une macro-étape (gabarit SAG, épi, procédé) : une seule par structure - elle prend la place de
-  // celle du même rôle, ou la sienne dans l'assemblage (assembly.js)
-  if (brick.role) {
-    assembleBrick(brick.role, brick);
-    return;
-  }
+  if (brick.substrate && state.steps.length === 0) setSubstrateFields(JSON.parse(JSON.stringify(brick.substrate)));
   const target = snapGapOutsideBricks(at, true);
   const groupId = generateBrickGroupId();
   const copied = copiedBrickSteps(brick, groupId);
@@ -281,14 +276,13 @@ function insertBrickAt(brick, at = defaultInsertIndex()) {
 }
 
 // Les étapes d'une brique de bibliothèque, copiées pour la structure : sans id (de nouvelles
-// étapes), étiquetées du groupe `groupId`, du nom, de la source et du rôle de la brique.
+// étapes), étiquetées du groupe `groupId`, du nom, de la source et de la version de la brique.
 function copiedBrickSteps(brick, groupId) {
   return reconcileOwnRecipes(JSON.parse(JSON.stringify(brick.steps))).map((s) => ({
     ...withoutStepId(stripBrickTag(s)),
     brick_group_id: groupId,
     brick_name: brick.name,
     ...(brick.id ? { brick_source: brick.id, brick_version: brick.version || 1 } : {}),
-    ...(brick.role ? { brick_role: brick.role } : {}),
   }));
 }
 
@@ -412,11 +406,8 @@ async function groupSelectionIntoBrick() {
     nameInput.focus();
     return;
   }
-  const role = document.getElementById("group-brick-role").value || null;
-  if (role && roleGroupSpan(role)) {
-    showError(new Error(`La structure a déjà une brique « ${brickRoleLabel(role)} » - une seule par structure.`));
-    return;
-  }
+  // une sélection qui part de la première étape peut garder le substrat : une brique de départ
+  const starting = indices[0] === 0 && document.getElementById("group-brick-start").checked;
   try {
     const selectedSteps = indices.map((idx) => withoutStepId(stripBrickTag(state.steps[idx])));
     const created = await processLibraryApi.createTechBrick({
@@ -427,16 +418,14 @@ async function groupSelectionIntoBrick() {
       recipes: processRecipesPayload(selectedSteps),
       preset_origins: presetOriginsPayload(selectedSteps),
       lattice_openings: latticeOpeningsPayload(selectedSteps),
-      ...(role ? { role } : {}),
-      // un gabarit SAG garde son substrat (et son réseau) : le départ de toute structure bâtie dessus
-      ...(role === "sag" ? { substrate: substrateSpec() } : {}),
+      ...(starting ? { substrate: substrateSpec() } : {}),
       scope: "microproject",
       microproject: slug,
     });
     state.techBricks = [...state.techBricks, created];
     const groupId = generateBrickGroupId();
     indices.forEach((idx) => {
-      state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name, brick_source: created.id, brick_version: created.version || 1, ...(role ? { brick_role: role } : {}) };
+      state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name, brick_source: created.id, brick_version: created.version || 1 };
     });
     renderBrickList();
     nameInput.value = "";
@@ -543,7 +532,6 @@ function gapHtml(gap) {
 
 function brickGroupHtml(groupId, start, end) {
   const name = state.steps[start].brick_name || "Brique";
-  const role = state.steps[start].brick_role || null;
   const count = end - start + 1;
   const variations = state.wizardScreen === "variations";
   const containsSelection =
@@ -583,7 +571,7 @@ function brickGroupHtml(groupId, start, end) {
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(${collapsed ? -90 : 0}deg);"><path d="M6 9l6 6 6-6"/></svg>
         </button>
         <button class="sb-brick__name js-select-brick" type="button" data-group-id="${escapeHtml(groupId)}" title="Sélectionner la brique">
-          <span class="sb-brick__tag ${role ? `sb-brick__tag--${role}` : ""}">${escapeHtml(role ? brickRoleShort(role) : "Brique")}</span>${escapeHtml(name)}${collapsed ? "" : ` <span class="sb-brick__count">· ${count}</span>`}
+          <span class="sb-brick__tag">Brique</span>${escapeHtml(name)}${collapsed ? "" : ` <span class="sb-brick__count">· ${count}</span>`}
         </button>
       </div>
       <div class="sb-brick__chips">${inner}</div>

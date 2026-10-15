@@ -83,8 +83,46 @@ def ship_whole_step_presets(conn: sqlite3.Connection | None = None) -> None:
             shutil.copyfile(library.DEFAULTS_DIR / "presets.yml", path)
 
 
+def _brick_and_structure_files() -> list[Path]:
+    return [path for path, key in legacy_files() if key in ("bricks", "structures")]
+
+
+def _without_macro_step(raw: dict) -> bool:
+    """Retire de ``raw`` (une brique de bibliothèque, ou la brique d'un procédé) ce qui tenait aux
+    macro-étapes ; vrai si quelque chose a été retiré."""
+    changed = False
+    for key in ("role", "preview_on"):
+        if key in raw:
+            raw.pop(key)
+            changed = True
+    for brick in raw.get("bricks") or []:
+        if isinstance(brick, dict) and "role" in brick:
+            brick.pop("role")
+            changed = True
+    return changed
+
+
+def drop_macro_step_roles(conn: sqlite3.Connection | None = None) -> None:
+    """Les macro-étapes (gabarit SAG, épitaxie, procédé - retirées le 2026-10-15) : une brique perd
+    son ``role`` et ses briques d'aperçu (``preview_on``) ; un gabarit SAG garde son substrat, et
+    devient une brique de départ comme une autre. Les briques d'un procédé (``bricks`` d'une brique
+    ou d'une structure enregistrée) perdent leur rôle de même. Un fichier déjà migré est laissé tel
+    quel."""
+    for path in _brick_and_structure_files():
+        with path_lock(path):
+            data = read_json(path, strict=True)
+            items = data.get("items") if isinstance(data.get("items"), list) else []
+            changed = False
+            for raw in items:
+                if isinstance(raw, dict) and _without_macro_step(raw):
+                    changed = True
+            if changed:
+                write_json(path, {**data, "items": items})
+
+
 MIGRATIONS = (
     Migration("0001_item_ids", add_ids, files=lambda: [path for path, _key in legacy_files()]),
     Migration("0002_whole_step_presets", whole_step_presets, files=_step_preset_files),
     Migration("0003_ship_whole_step_presets", ship_whole_step_presets, files=_active_presets_file),
+    Migration("0004_drop_macro_step_roles", drop_macro_step_roles, files=_brick_and_structure_files),
 )

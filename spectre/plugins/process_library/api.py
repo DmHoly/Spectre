@@ -105,9 +105,7 @@ class NewTechBrick(_NewItem, _InlineLatticeAnchors):
     preset_origins: dict[str, simulation.PresetOrigin] = {}
     # the lithographies anchored to the substrate's lattice (see simulation.LatticeOpening), by step index
     lattice_openings: dict[str, simulation.LatticeOpening] = {}
-    role: simulation.BrickRole | None = None
-    substrate: simulation.SubstrateSpec | None = None  # a SAG template's own (see tech_bricks.TechBrick)
-    preview_on: list[str] = Field(default_factory=list, max_length=3)  # the bricks it was composed on, for its preview
+    substrate: simulation.SubstrateSpec | None = None  # a starting brick's own (see tech_bricks.TechBrick)
     notes: str | None = None
 
 
@@ -120,9 +118,7 @@ class TechBrickChanges(_ItemChanges, _InlineLatticeAnchors):
     recipes: simulation.ProcessRecipes | None = None
     preset_origins: dict[str, simulation.PresetOrigin] | None = None
     lattice_openings: dict[str, simulation.LatticeOpening] | None = None
-    role: simulation.BrickRole | None = None
     substrate: simulation.SubstrateSpec | None = None
-    preview_on: list[str] | None = Field(None, max_length=3)
     notes: str | None = None
 
 
@@ -241,7 +237,7 @@ def delete_step_preset(preset_id: str, user: User = Depends(current_user)) -> No
 @router.get("/tech-brick-usages")
 def list_tech_brick_usages(microproject: str | None = None, user: User = Depends(current_user)) -> dict[str, list[dict[str, Any]]]:
     """Par id de brique visible, les études dont la version courante en a une copie (voir
-    :mod:`.usages`) - la page des macro-étapes s'en sert pour dire où chacune sert."""
+    :mod:`.usages`) - la page des briques s'en sert pour dire où chacune sert."""
     return usages.tech_brick_usages(user, microproject)
 
 

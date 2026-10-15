@@ -673,57 +673,41 @@ source, step_indexes}`, champs en plus refusés ; un nom de 120 caractères au p
   champs du constructeur ont `maxlength`) ; celui d'une brique enregistrée avant la limite est
   coupé à l'envoi (`bricksPayload`), et le mode brique demande de le raccourcir pour l'enregistrer.
 
-### Macro-étapes : gabarit SAG, épitaxie, procédé
+### Briques de départ et copie tracée
 
-Une brique peut avoir un **rôle** de macro-étape (`simulation.BRICK_ROLES` : `sag`, `epi`, `process` ;
-absent, une brique libre comme avant). Une structure s'assemble ainsi : un gabarit SAG, une épitaxie
-par-dessus, un procédé par-dessus. Chacun est une brique réutilisable : la même épi va sur un autre
-gabarit, le même procédé sur une autre épi.
+Les macro-étapes d'avant (un rôle gabarit SAG / épitaxie / procédé sur une brique, un assemblage à
+trois emplacements, une page par µprojet) ont été retirées le 2026-10-15 : elles faisaient doublon
+avec les briques. Une structure se compose de briques quelconques, dans l'ordre qu'on veut ; ce
+qu'un gabarit SAG apportait tient à une seule chose, qui reste :
 
-- **Bibliothèque** (`TechBrick`) : `role`. Un gabarit SAG garde son `substrate` (avec son réseau de
-  fils, ci-dessous) : c'est le départ de toute structure bâtie dessus ; une autre brique n'en a pas
-  (effacé à l'enregistrement). Une épi ou un procédé garde `preview_on`, les ids (3 au plus) des
-  macro-étapes sur lesquelles on l'a composé, pour l'aperçu seulement. `briques.yml` accepte
-  `role`, `substrate` et `lattice_openings`.
-- **Dans une structure** (`ProcessBrick.role`, requêtes et `process_bricks` d'une étude) : au plus une
-  brique par rôle (422 `invalid_brick`). Le rôle suit la brique d'une version à l'autre, comme son
-  nom. Une combinaison au marché ne garde le rôle que pour la première brique de chaque rôle.
-- **Constructeur** (`assembly.js`) : le panneau « Assemblage » de la palette a un emplacement par
-  rôle (SAG, Épi, Procédé). Choisir une brique la copie à sa place (le SAG en tête, l'épi après lui,
-  le procédé après l'épi), ou remplace celle du même rôle ; « Retirer » l'enlève. Un gabarit SAG
-  apporte son substrat, le nombre de fils vus gardé. Cliquer ou glisser une brique à rôle depuis la
-  liste fait de même. « Grouper en brique » propose les rôles que la structure n'a pas encore. Le
-  flow écrit le rôle à la place de « Brique ».
-- **Page des macro-étapes** (`/microprojets/{slug}/macro-etapes`, `process_library/static/macro-steps.js`,
-  carte de la Bibliothèque et lien de la page des briques) : une colonne par rôle, une carte par brique
-  (aperçu simulé sur son contexte : ses `preview_on`, sinon la première brique de chaque rôle d'avant,
-  écrite en italique ; version, portée, pas du réseau ; Modifier, Dupliquer, Assembler, Supprimer)
-  et **où elle sert** : « Utilisée dans N études · M sur une version antérieure », la liste s'ouvre.
-  `GET /api/tech-brick-usages?microproject=` (`process_library/usages.py`) rend, par id de brique
-  visible, les études dont la version courante (la pointe de chaque piste) a une copie de la brique
-  (`process_bricks`, `source`), avec la version copiée ; tous les µprojets sont lus (une brique
-  partagée sert partout), mais d'une étude d'un µprojet dont on n'est pas membre, seul le nom du
-  µprojet (comme les usages d'une référence). D'où la dépendance de `process_library` à
-  `experiments`, listé avant lui.
-  « + Nouveau » ouvre le mode brique au rôle choisi (`?role=`), qui revient sur la page. La barre
-  « Assembler une structure » ouvre une nouvelle expérience déjà assemblée
-  (`/structures/nouvelle?assemblage=<id>,<id>,…`, `assembly.loadAssembly`).
-- **Mode brique** : un sélecteur de rôle. Une épi (un procédé) se compose sur les macro-étapes
-  d'avant, posées depuis l'assemblage : elles ne servent qu'à l'aperçu. À l'enregistrement, seules
-  les étapes de la brique sont gardées (pas celles d'une macro-étape d'un autre rôle) : la recette
-  d'épi ne contient pas le SAG. À la réouverture, les briques de `preview_on` sont reposées.
-- **Copie tracée** : une brique de bibliothèque a une `version`, qui monte quand son contenu change
-  (`tech_bricks.BRICK_CONTENT_FIELDS` : étapes, paramètres, étiquettes, recettes, ancrages, rôle,
-  substrat ; pas son nom, ses notes ni `preview_on` - `revised_brick`). Sa copie dans une structure
+- **Brique de départ** : toute brique peut garder un `substrate` (avec son réseau de fils,
+  ci-dessous) - case « Brique de départ » du mode brique, « Garder le substrat » de « Grouper en
+  brique » quand la sélection part de la première étape. Posée dans une **structure vide**, elle
+  apporte son substrat ; ailleurs, seules ses étapes s'appliquent, par-dessus ce qui existe. Une
+  brique sans substrat ne l'écrit pas dans sa forme. `briques.yml` accepte `substrate` et
+  `lattice_openings`. Un gabarit SAG d'avant est devenu une brique de départ (migration
+  `0004_drop_macro_step_roles` : `role` et `preview_on` retirés des briques, `role` retiré des briques
+  internes d'une brique et d'une structure enregistrée) ; les `process_bricks` d'une version d'étude
+  qui portent encore un `role` sont lus en l'ignorant (`ProcessBrick`), jamais réécrits.
+- **Où sert une brique** : `GET /api/tech-brick-usages?microproject=` (`process_library/usages.py`)
+  rend, par id de brique visible, les études dont la version courante (la pointe de chaque piste) a
+  une copie de la brique (`process_bricks`, `source`), avec la version copiée ; tous les µprojets
+  sont lus (une brique partagée sert partout), mais d'une étude d'un µprojet dont on n'est pas
+  membre, seul le nom du µprojet (comme les usages d'une référence). D'où la dépendance de
+  `process_library` à `experiments`, listé avant lui.
+- **Copie tracée** (`brick-origin.js`) : une brique de bibliothèque a une `version`, qui monte quand
+  son contenu change (`tech_bricks.BRICK_CONTENT_FIELDS` : étapes, paramètres, étiquettes, recettes,
+  ancrages, substrat ; pas son nom ni ses notes - `revised_brick`). Sa copie dans une structure
   garde la version d'alors (`ProcessBrick.version`, dans `process_bricks` d'une étude ; absente, la
   forme d'avant) : une trace, jamais un lien. L'inspecteur d'une brique dit si elle est conforme,
   modifiée depuis, si la brique a changé (vN) ou si elle a disparu. Il propose « Réappliquer la
-  brique » (même groupe, même place ; un gabarit SAG reprend son substrat), « Mettre à jour la
-  brique » (une nouvelle version, que la copie suit) et « Détacher ». L'assemblage écrit
-  « · modifiée » ou « · vN disponible » à côté de la brique en place. Les ouvertures d'une
-  lithographie ancrée et le nombre de fils vus ne comptent pas dans la comparaison.
+  brique » (même groupe, même place ; une brique de départ en tête reprend son substrat, le nombre
+  de fils vus gardé), « Mettre à jour la brique » (une nouvelle version, que la copie suit ; une
+  brique de départ en tête reprend le substrat de la structure) et « Détacher ». Les ouvertures
+  d'une lithographie ancrée et le nombre de fils vus ne comptent pas dans la comparaison ; le
+  substrat d'une brique de départ compte quand elle est en tête.
 
-### Réseau de fils (gabarit SAG)
+### Réseau de fils
 
 Le substrat peut porter un réseau de fils, `substrate.lattice = {pitch, wires}` (`simulation.Lattice` :
 un pas en nm, de 1 à `MAX_LATTICE_WIRES` = 50 fils ; absent, la forme d'avant). Le domaine fait alors
@@ -737,9 +721,8 @@ ignore), d'un des modes de `LATTICE_OPENING_SIZES` :
 - `{mode: "pixel", margin}` : une seule ouverture sur tout le pixel, moins la marge de chaque côté.
 
 Une ouverture qui ne tient pas est refusée (422) : un diamètre ou une largeur qui atteint le pas, une
-marge qui couvre le pixel. C'est la
-première des macro-étapes réutilisables : un gabarit SAG ne dit plus des nm absolus. Une même épi se
-voit ainsi sur 1 fil, puis le procédé sur un pixel de N fils.
+marge qui couvre le pixel. Une brique de départ qui porte un réseau ne dit plus des nm absolus : la
+même épi se voit sur 1 fil, puis le procédé sur un pixel de N fils.
 
 - **Résolution** : dès la lecture d'une requête (`schemas.ProcessInput`, `simulation.resolve_lattice`),
   la largeur du domaine et les ouvertures des lithographies ancrées sont recalculées. La suite
@@ -1317,7 +1300,7 @@ Toutes nouvelles, réservées aux administrateurs (403 sinon).
 | promotion | `/promotion` (nouvelle : promouvoir une structure comme référence, `?microprojet=&etude=&version=&variante=&reference=&retour=` ; entrée « Promouvoir une réf. » de la barre du haut) |
 | comparator | `/comparateur` (nouvelle : `?item=` répété, `&base=n` ; bouton à icône de la barre du haut, à côté de la session) |
 | structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/structures/sans-structure`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image`, `/experiences/{experiment_id}/evoluer-sans-structure` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
-| process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques`, `/microprojets/{slug}/macro-etapes` |
+| process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
 | intent_forms | `/microprojets/{slug}/formulaire-intention` |
 | wafers | `/plaques` (l'index : toutes les plaques connues et leur recherche ; entrée « Plaques » du menu Data), `/plaques/{lasermark}` |
 | lots | `/lots`, `/lots/{code}` |

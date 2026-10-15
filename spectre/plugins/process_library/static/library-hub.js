@@ -4,8 +4,6 @@
    constructeur, qui vit sous un µprojet (simulation) : d'où le sélecteur "µprojet de travail",
    mémorisé en local, qui ne sert qu'à ouvrir ces éditeurs. */
 
-// le rôle d'une brique de macro-étape (voir structures/static/builder/assembly.js)
-const BRICK_ROLE_NAMES = { sag: "Gabarit SAG", epi: "Épitaxie", process: "Procédé" };
 
 // le type de l'étape d'un préset, comme dans la palette du constructeur
 const PRESET_KIND_LABELS = {
@@ -50,7 +48,7 @@ const COLLECTIONS = [
     list: () => processLibraryApi.techBricks(),
     update: (id, changes) => processLibraryApi.updateTechBrick(id, changes),
     remove: (id) => processLibraryApi.deleteTechBrick(id),
-    summary: (item) => `${BRICK_ROLE_NAMES[item.role] ? `${BRICK_ROLE_NAMES[item.role]} · ` : ""}${item.steps.length} étape(s)`,
+    summary: (item) => `${item.substrate ? "brique de départ · " : ""}${item.steps.length} étape(s) · v${item.version || 1}`,
     editorHref: (s, item) => `/microprojets/${s}/briques-technologiques/bibliotheque/${encodeURIComponent(item.id)}?retour=bibliotheque`,
   },
 ];
@@ -159,7 +157,6 @@ function applyMicroproject(microproject) {
   set("presets-link", `/microprojets/${s}/presets-etapes?partagee=1`);
   set("new-brick-link", `/microprojets/${s}/briques-technologiques/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
   set("bricks-link", `/microprojets/${s}/briques-technologiques`);
-  set("macro-steps-link", `/microprojets/${s}/macro-etapes`);
 }
 
 async function initWorkMicroproject() {

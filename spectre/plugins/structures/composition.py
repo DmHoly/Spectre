@@ -69,7 +69,7 @@ class _Source:
             key = name_key(brick.name)
             if not key:
                 continue
-            bricks.setdefault(key, {"name": brick.name.strip(), "group_id": brick.group_id, "source": brick.source, "role": brick.role, "version": brick.version})
+            bricks.setdefault(key, {"name": brick.name.strip(), "group_id": brick.group_id, "source": brick.source, "version": brick.version})
             for i in brick.step_indexes:
                 if 0 <= i < len(steps) and brick_of[i] is None:
                     brick_of[i] = key
@@ -295,7 +295,6 @@ def compose(processes: list[ProcessInput], choices: list[Any] | None = None) -> 
     # les briques : les étapes consécutives d'une même brique
     bricks: list[dict[str, Any]] = []
     group_ids: set[str] = set()
-    roles: set[str] = set()  # une macro-étape par rôle : la première venue le garde
     start = 0
     while start < len(brick_runs):
         key, s = brick_runs[start]
@@ -311,9 +310,6 @@ def compose(processes: list[ProcessInput], choices: list[Any] | None = None) -> 
             assembled = {"group_id": group_id, "name": brick["name"], "source": brick["source"], "step_indexes": list(range(start, end))}
             if brick.get("version"):
                 assembled["version"] = brick["version"]
-            if brick.get("role") and brick["role"] not in roles:
-                roles.add(brick["role"])
-                assembled["role"] = brick["role"]
             bricks.append(assembled)
         start = end
 
