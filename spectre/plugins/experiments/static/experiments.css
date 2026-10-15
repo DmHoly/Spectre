@@ -1303,6 +1303,9 @@ a.plate-row__lasermark {
   color: var(--text-faint);
   font-size: 12px;
 }
+.evo-row__follow {
+  color: var(--gold-dark);
+}
 .evo-row__refs {
   display: inline-flex;
   gap: 4px;

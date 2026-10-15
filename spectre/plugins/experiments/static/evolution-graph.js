@@ -9,7 +9,8 @@
 
    Forme d'un nœud = niveau du changement (plein : première ou majeur ; anneau : mineur ; petit
    point : retouche, sans nouveau numéro ; petit cercle creux : sans changement ; losange :
-   combinaison) ; anneau or : une version de référence ; anneau pointillé : la tête d'une colonne. Jamais la
+   combinaison) ; anneau or : une version de référence ; anneau or pointillé : la référence suivie
+   change ici ; anneau pointillé : la tête d'une colonne. Jamais la
    forme seule : chaque page écrit le niveau en toutes lettres et pose la légende (`legendHtml`). */
 
 const EvolutionGraph = (() => {
@@ -21,10 +22,12 @@ const EvolutionGraph = (() => {
   const rowY = (index) => index * ROW + ROW / 2;
   const width = (laneCount) => PAD * 2 + (Math.max(laneCount, 1) - 1) * COL;
 
-  function nodeShape({ change_level, is_merge = false, marked = false, is_tip = false }) {
+  function nodeShape({ change_level, is_merge = false, marked = false, is_tip = false, reference_changed = false }) {
     let shape = "";
     if (is_tip) shape += `<circle r="13" fill="none" stroke="var(--navy-500)" stroke-width="1.5" stroke-dasharray="2 2"></circle>`;
     if (marked) shape += `<circle r="10" fill="none" stroke="var(--gold)" stroke-width="2.5"></circle>`;
+    // la référence suivie change ici : un anneau or en pointillé (jamais seul : la rangée l'écrit)
+    if (reference_changed && !marked) shape += `<circle r="10" fill="none" stroke="var(--gold-dark)" stroke-width="1.5" stroke-dasharray="3 2"></circle>`;
     if (is_merge) {
       shape += `<path d="M0,-7 L7,0 L0,7 L-7,0 Z" fill="var(--surface)" stroke="var(--navy)" stroke-width="2"></path>`;
     } else if (change_level === "initial" || change_level === "major") {

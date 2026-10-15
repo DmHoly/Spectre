@@ -159,14 +159,15 @@ def _shared_candidates(everything: list[Microproject], dismissed: set[tuple[int,
 
 
 def _used_slugs(everything: list[Microproject]) -> set[str]:
-    """Les slugs de référence que cite une version d'étude, quelle qu'elle soit (``reference_origin``) :
-    une référence dont une étude est partie ne se retire pas en silence."""
+    """Les slugs de référence que cite une version d'étude, quelle qu'elle soit (``reference_origin``,
+    ``reference_followed``) : une référence dont une étude est partie, ou qu'elle suit, ne se retire
+    pas en silence."""
     used = set()
     for microproject in everything:
         for version in get_repository(microproject.slug):
-            origin = experiments.reference_origin_of(version)
-            if origin is not None:
-                used.add(origin["reference"])
+            for cited in (experiments.reference_origin_of(version), experiments.reference_followed_of(version)):
+                if cited is not None:
+                    used.add(cited["reference"])
     return used
 
 

@@ -96,6 +96,7 @@
     const parts = [node.label, LEVEL_TEXT[node.change_level] || node.change_level, node.title, `piste ${lane.experiment_id}`];
     if (node.is_merge) parts.push(`combinaison${mergeParents(node, index) ? ` de ${mergeParents(node, index)}` : ""}`);
     if (publishedOf(node).length) parts.push(`publiée comme ${publishedOf(node).map((entry) => entry.label.replace(/^R /, "référence ")).join(", ")}`);
+    if (node.reference_changed && node.reference_followed) parts.push(`suit désormais la référence ${node.reference_followed.reference} ${node.reference_followed.version}`);
     if (node.is_tip) parts.push("dernière version de la piste");
     return parts.join(", ");
   }
@@ -111,13 +112,25 @@
     return parents.length > 1 ? parents.join(" et ") : "";
   }
 
+  // le nœud où l'étude a changé de référence suivie : « suit désormais X 1.0 »
+  function followNote(node) {
+    if (!node.reference_changed) return "";
+    const followed = node.reference_followed;
+    const text = followed ? `suit désormais ${escapeHtml(referenceName(followed.reference))} ${escapeHtml(followed.version)}` : "ne suit plus de référence";
+    return `<span class="evo-row__fork evo-row__follow" title="La référence suivie par l'étude change ici (son origine reste)">· ${text}</span>`;
+  }
+  function referenceName(slug) {
+    const found = state.published.find((entry) => entry.reference && entry.reference.slug === slug);
+    return found ? found.reference.name : slug;
+  }
+
   function forkNote(node, index) {
     const parents = mergeParents(node, index);
-    if (parents) return `<span class="evo-row__fork">· issue de ${escapeHtml(parents)}</span>`;
+    if (parents) return `<span class="evo-row__fork">· issue de ${escapeHtml(parents)}</span>${followNote(node)}`;
     const fork = state.history.edges.find((edge) => edge.child === node.version_id && edge.kind === "fork");
-    if (!fork) return "";
+    if (!fork) return followNote(node);
     const from = index.get(fork.parent);
-    return from ? `<span class="evo-row__fork">· nouvelle piste depuis ${escapeHtml(from.node.label)}</span>` : "";
+    return (from ? `<span class="evo-row__fork">· nouvelle piste depuis ${escapeHtml(from.node.label)}</span>` : "") + followNote(node);
   }
 
   function renderGraph() {
@@ -145,6 +158,7 @@
       edges,
       idOf: (node) => node.version_id,
       shapeOf: (node) => ({ ...node, marked: publishedOf(node).length > 0 }),
+      nodeClass: (node) => (node.reference_changed ? "is-reference-changed" : ""),
     });
 
     if (!state.focusId || !index.has(state.focusId)) state.focusId = state.selectedId && index.has(state.selectedId) ? state.selectedId : nodes[nodes.length - 1].version_id;
@@ -189,6 +203,7 @@
       [{ change_level: "none" }, "Sans changement de structure"],
       [{ change_level: "none", is_merge: true }, "Combinaison de deux études (deux parents)"],
       [{ change_level: "minor", marked: true }, "Publiée comme version de référence"],
+      [{ change_level: "patch", reference_changed: true }, "Change de référence suivie (« suit désormais … »)"],
       [{ change_level: "minor", is_tip: true }, "Dernière version d'une piste"],
     ]);
   }
@@ -323,7 +338,11 @@
       <h2 class="evo-panel__title">${escapeHtml(node.title)}</h2>
       <p class="evo-panel__meta">
         <span class="mono" style="font-weight:600;color:var(--accent-dark);">${escapeHtml(node.label)}</span> · ${escapeHtml(level)}${node.is_tip ? " · dernière version" : ""}<br>
-        ${escapeHtml(node.author || "Auteur inconnu")} · ${escapeHtml(formatDate(node.created_at))}
+        ${escapeHtml(node.author || "Auteur inconnu")} · ${escapeHtml(formatDate(node.created_at))}${
+          node.reference_followed
+            ? `<br>Référence suivie : <a href="/references/${encodeURIComponent(node.reference_followed.reference)}?version=${encodeURIComponent(node.reference_followed.version)}">${escapeHtml(referenceName(node.reference_followed.reference))} ${escapeHtml(node.reference_followed.version)}</a>${node.reference_changed ? " (changée ici)" : ""}`
+            : ""
+        }
       </p>
       ${state.panelError ? `<div class="error" role="alert" style="margin-bottom:12px;">${escapeHtml(state.panelError)}</div>` : ""}
       <div class="evo-actions">

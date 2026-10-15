@@ -4,7 +4,7 @@ ajoutée par un autre plugin sans que rien d'autre ne change."""
 
 from __future__ import annotations
 
-from support.experiments import conclude, launch, launch_campaign, launch_declared
+from support.experiments import conclude, get_experiment, launch, launch_campaign, launch_declared
 from support.http import assert_created, assert_ok
 from support.microprojects import join_as, signup_with_microproject
 from support.references import create_reference, get_reference, origin, post_promotion, preview_promotion, publish
@@ -129,3 +129,28 @@ def test_a_rule_registered_by_another_plugin_joins_the_form_and_can_block(client
     refused = post_promotion(client, slug, study["id"], new_reference={"name": "Regle"})
     assert refused.status_code == 409 and refused.json()["code"] == "not_enough_wafers"
     assert assert_ok(client.get("/api/references")) == []
+
+
+def test_a_promotion_can_make_its_version_the_reference_the_study_follows(client):
+    slug = signup_with_microproject(client, "promo-follow@example.com", "Epi")
+    base = _study(client, slug)
+    create_reference(client, "Base")
+    publish(client, "base", slug, base["id"])
+    study = _study(client, slug, thickness=35, reference_origin=origin("base", "1.0"))
+    child = launch(client, slug, title="Fille", intent="y", steps=steps(36), from_version={"experiment_id": study["id"]})
+
+    # sans rien demander, l'étude garde sa référence
+    assert_created(post_promotion(client, slug, study["id"], new_reference={"name": "Nouvelle"}))
+    assert get_experiment(client, slug, study["id"])["reference_followed"] == {"reference": "base", "version": "1.0"}
+
+    # « de l'étude et de toute sa branche » : la version promue devient la référence suivie
+    bis = _study(client, slug, thickness=37, reference_origin=origin("base", "1.0"))
+    version = assert_created(post_promotion(client, slug, bis["id"], new_reference={"name": "Suivie"}, follow="study"))
+    assert get_experiment(client, slug, bis["id"])["reference_followed"] == {"reference": "suivie", "version": "1.0"}
+    assert get_experiment(client, slug, bis["id"])["reference_origin"] == {"reference": "base", "version": "1.0"}
+    assert version["number"] == "1.0"
+
+    assert_created(post_promotion(client, slug, study["id"], reference="suivie", follow="branch"))
+    for ref in (study["id"], child["id"]):
+        assert get_experiment(client, slug, ref)["reference_followed"] == {"reference": "suivie", "version": "1.1"}, ref
+    assert post_promotion(client, slug, study["id"], reference="suivie", follow="all").status_code == 422
