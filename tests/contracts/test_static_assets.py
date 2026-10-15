@@ -43,3 +43,17 @@ def test_every_static_path_written_in_a_script_is_served(client):
     urls = scan_static_urls()
     missing = [str(url) for url in urls if client.get(url.path).status_code != 200]
     assert not missing, "Chemins /static/ écrits dans le front mais non servis :\n  " + "\n  ".join(missing)
+
+
+def test_a_page_that_mounts_the_session_loads_the_accounts_client():
+    # accounts/session.js (nom, initiales, entrées réservées aux administrateurs) appelle accountsApi,
+    # déclaré par accounts/client.js, au DOMContentLoaded : sans ce client dans la page, le badge
+    # reste vide et le menu administrateur caché (l'ordre des deux scripts est libre)
+    pages: dict[str, set[str]] = {}
+    for page, url in _page_assets():
+        pages.setdefault(page, set()).add(url)
+    broken = sorted(
+        page for page, urls in pages.items()
+        if "/static/accounts/session.js" in urls and "/static/accounts/client.js" not in urls
+    )
+    assert not broken, "Pages chargeant session.js sans accounts/client.js :\n  " + "\n  ".join(broken)

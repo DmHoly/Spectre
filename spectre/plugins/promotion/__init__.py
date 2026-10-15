@@ -8,7 +8,7 @@ from ...kernel.plugin import NavEntry, Page, Plugin
 from .api import router
 from .migrations import MIGRATIONS
 
-# un signet coché : la référence choisie (un lien direct de la barre, hors menu : toujours en vue)
+# un signet coché : la référence choisie (dans le menu Structure, après les références)
 PROMOTION_GLYPH = '<path d="M6 3h12v18l-6-4-6 4Z"/><path d="m9.5 10 2 2 3.5-3.5"/>'
 
 PLUGIN = Plugin(
@@ -16,7 +16,7 @@ PLUGIN = Plugin(
     depends_on=("experiments", "microprojects", "structures", "references"),
     router=router,
     pages=(Page("/promotion", "promotion.html"),),
-    nav=(NavEntry("Promouvoir une réf.", "/promotion", order=26, match=r"^/promotion", id="nav-promotion", glyph=PROMOTION_GLYPH),),
+    nav=(NavEntry("Promouvoir une réf.", "/promotion", order=26, match=r"^/promotion", id="nav-promotion", group="structure", glyph=PROMOTION_GLYPH),),
     migrations=MIGRATIONS,
     title="Promotion de référence",
     description="Choisir une structure comme référence : un formulaire dédié, ouvert depuis chaque étude, split ou conclusion, avec ses règles et son journal.",
