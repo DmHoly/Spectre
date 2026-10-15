@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brique — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/references/references.css">
+  <link rel="stylesheet" href="/static/promotion/promotion.css">
+  <link rel="stylesheet" href="/static/process_library/bricks.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Briques" -->
+
+  <div class="page ref-page">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a href="/briques">Briques de référence</a> / <span id="name-crumb">…</span></p>
+
+    <header class="ref-head">
+      <div>
+        <div class="page-eyebrow" id="brick-eyebrow">Brique technologique</div>
+        <h1 class="ref-head__title" id="brick-name"><span class="skeleton" style="display:inline-block;height:24px;width:220px;"></span></h1>
+        <p class="ref-head__lead" id="brick-notes"></p>
+        <p class="ref-meta" id="brick-meta"></p>
+      </div>
+      <div class="ref-head__actions" id="head-actions"></div>
+    </header>
+
+    <div id="error" class="error" role="alert" hidden style="margin-bottom:16px;"></div>
+    <div id="flash" class="flash flash-ok" role="status" hidden style="margin-bottom:16px;"></div>
+
+    <div id="reference-box" class="card card-pad sp-brick__reference" hidden>
+      <div class="promo-panel__label">Brique de référence</div>
+      <div id="reference-text"></div>
+    </div>
+
+    <div class="sp-brick__layout">
+      <section class="card card-pad" aria-labelledby="versions-title">
+        <h2 class="section-title" id="versions-title">Versions</h2>
+        <p class="help" style="margin:0 0 12px;">Chaque changement du contenu de la brique fait une version : majeur (X+1.0) pour une étape ajoutée, retirée ou déplacée, ou un autre substrat ; mineur (X.Y+1) pour un paramètre. Une retouche (nom d'étape, étiquette) garde le numéro.</p>
+        <ol class="sp-brick__versions" id="versions"></ol>
+      </section>
+
+      <aside class="sp-brick__aside">
+        <section class="card card-pad" aria-labelledby="preview-title">
+          <h2 class="section-title" id="preview-title">Aperçu <span class="help" style="display:inline;" id="preview-note"></span></h2>
+          <div class="sp-brick__art skeleton" id="preview" aria-hidden="true"></div>
+          <div class="help" id="preview-substrate" style="margin-top:8px;"></div>
+        </section>
+        <section class="card card-pad" aria-labelledby="usages-title">
+          <h2 class="section-title" id="usages-title">Où elle sert</h2>
+          <div id="usages" class="help">Chargement…</div>
+        </section>
+        <section class="card card-pad" aria-labelledby="steps-title">
+          <h2 class="section-title" id="steps-title">Étapes</h2>
+          <ol class="sp-brick__steps" id="steps"></ol>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/structures/client.js"></script>
+  <script src="/static/process_library/client.js"></script>
+  <script src="/static/promotion/link.js"></script>
+  <script src="/static/process_library/brick.js"></script>
+</body>
+</html>

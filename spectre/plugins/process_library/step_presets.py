@@ -62,7 +62,7 @@ class StepPreset(LibraryItem):
         return self
 
 
-def revised(old: StepPreset, new: StepPreset) -> StepPreset:
+def revised(old: StepPreset, new: StepPreset, **_: Any) -> StepPreset:
     """``new``, one version above ``old`` when its content changed (:data:`CONTENT_FIELDS`)."""
     before, after = old.model_dump(mode="json", include=set(CONTENT_FIELDS)), new.model_dump(mode="json", include=set(CONTENT_FIELDS))
     return new.model_copy(update={"version": old.version + 1}) if before != after else new.model_copy(update={"version": old.version})

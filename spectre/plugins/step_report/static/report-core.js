@@ -59,7 +59,7 @@ const StepReportCore = (() => {
   // ce qui n'est pas un paramètre de l'étape : son identité, sa brique, sa trace de préset, ses ajouts de la page
   const NOT_PARAMS = new Set([
     "id", "kind", "name", "declaredParams", "layerLabel", "ownRecipe", "presetOrigin", "parameters", "openings", "lattice_opening",
-    "brick_group_id", "brick_name", "brick_source", "brick_role", "brick_version",
+    "brick_group_id", "brick_name", "brick_source", "brick_version",
   ]);
 
   function kindInfo(kind) {

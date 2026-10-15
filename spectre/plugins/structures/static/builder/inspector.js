@@ -140,7 +140,6 @@ function livePreviewFromForm() {
   updateStepInspectorHeader();
   invalidateVariations();
   renderRail();
-  if (previous.brick_source) renderAssembly(); // une macro-étape retouchée : « modifiée » dans l'assemblage
   scheduleSimulate();
 }
 
@@ -186,7 +185,8 @@ function renderMultiInspector() {
   const indices = [...state.selectedStepIndices].sort((a, b) => a - b);
   document.getElementById("group-brick-count").textContent = `${indices.length} étapes sélectionnées`;
   const contiguous = indices.every((idx, k) => k === 0 || idx === indices[k - 1] + 1);
-  renderGroupRoleOptions();
+  // garder le substrat avec la brique : seulement pour une sélection qui part de la première étape
+  document.getElementById("group-brick-start-wrap").hidden = !(contiguous && indices[0] === 0);
   const alreadyGrouped = indices.some((idx) => state.steps[idx] && state.steps[idx].brick_group_id);
   const help = document.getElementById("group-brick-help");
   const btn = document.getElementById("group-brick-btn");
@@ -214,8 +214,7 @@ function renderBrickGroupInspector() {
   const groupId = state.selectedBrickGroup;
   const [start, end] = brickGroupSpan(groupId);
   document.getElementById("brick-group-title").textContent = state.steps[start].brick_name || "Brique";
-  const role = state.steps[start].brick_role;
-  document.getElementById("brick-group-eyebrow").textContent = role ? `Macro-étape · ${brickRoleLabel(role)}` : "Brique technologique";
+  document.getElementById("brick-group-eyebrow").textContent = "Brique technologique";
   renderBrickOrigin(groupId);
   const list = document.getElementById("brick-group-steps");
   const rows = [];

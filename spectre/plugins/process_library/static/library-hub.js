@@ -4,8 +4,6 @@
    constructeur, qui vit sous un µprojet (simulation) : d'où le sélecteur "µprojet de travail",
    mémorisé en local, qui ne sert qu'à ouvrir ces éditeurs. */
 
-// le rôle d'une brique de macro-étape (voir structures/static/builder/assembly.js)
-const BRICK_ROLE_NAMES = { sag: "Gabarit SAG", epi: "Épitaxie", process: "Procédé" };
 
 // le type de l'étape d'un préset, comme dans la palette du constructeur
 const PRESET_KIND_LABELS = {
@@ -32,7 +30,7 @@ const COLLECTIONS = [
     list: () => processLibraryApi.savedStructures(),
     update: (id, changes) => processLibraryApi.updateSavedStructure(id, changes),
     remove: (id) => processLibraryApi.deleteSavedStructure(id),
-    summary: (item) => `${item.steps.length} étape(s)`,
+    summary: (item) => `${item.steps.length} étape(s)${usageText(`structure:${item.id}`)}`,
     editorHref: (s, item) => `/microprojets/${s}/structures/bibliotheque/${encodeURIComponent(item.id)}?retour=bibliotheque`,
   },
   {
@@ -50,13 +48,21 @@ const COLLECTIONS = [
     list: () => processLibraryApi.techBricks(),
     update: (id, changes) => processLibraryApi.updateTechBrick(id, changes),
     remove: (id) => processLibraryApi.deleteTechBrick(id),
-    summary: (item) => `${BRICK_ROLE_NAMES[item.role] ? `${BRICK_ROLE_NAMES[item.role]} · ` : ""}${item.steps.length} étape(s)`,
+    summary: (item) => `${item.reference ? "brique de référence · " : ""}${item.substrate ? "brique de départ · " : ""}${item.steps.length} étape(s) · v${item.version || "1.0"}${usageText(item.id)}`,
     editorHref: (s, item) => `/microprojets/${s}/briques-technologiques/bibliotheque/${encodeURIComponent(item.id)}?retour=bibliotheque`,
   },
 ];
 
 let workSlug = null;
 const loaded = new Map(); // listId -> éléments affichés
+let usages = {}; // id de brique, ou `structure:<id>` -> les études qui en ont une copie (GET /api/tech-brick-usages)
+
+// « · utilisée dans N études » pour une brique ou une structure insérée comme brique
+function usageText(key) {
+  const uses = usages[key];
+  if (!uses || !uses.length) return "";
+  return ` · utilisée dans ${uses.length} étude${uses.length > 1 ? "s" : ""}`;
+}
 
 const errorBox = document.getElementById("error");
 function showError(err) {
@@ -159,7 +165,6 @@ function applyMicroproject(microproject) {
   set("presets-link", `/microprojets/${s}/presets-etapes?partagee=1`);
   set("new-brick-link", `/microprojets/${s}/briques-technologiques/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
   set("bricks-link", `/microprojets/${s}/briques-technologiques`);
-  set("macro-steps-link", `/microprojets/${s}/macro-etapes`);
 }
 
 async function initWorkMicroproject() {
@@ -184,6 +189,7 @@ async function initWorkMicroproject() {
 
 async function init() {
   try {
+    usages = await processLibraryApi.techBrickUsages({}).catch(() => ({})); // un renseignement : la page s'en passe
     await Promise.all(COLLECTIONS.map(loadCollection));
   } catch (err) {
     showError(err);

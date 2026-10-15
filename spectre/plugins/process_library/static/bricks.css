@@ -1,0 +1,165 @@
+/* Les briques de référence (bricks.js, /briques) et la fiche d'une brique (brick.js, /briques/{id}).
+   Reprend la liste et l'en-tête des références (references.css, chargée avant). Tokens du noyau. */
+
+.sp-bricks__head,
+.sp-bricks__row {
+  grid-template-columns: minmax(0, 2.2fr) 150px 130px minmax(0, 1fr) 80px;
+}
+
+.sp-brick__reference {
+  border-left: 3px solid var(--gold);
+  margin-bottom: var(--space-4);
+}
+.sp-brick__why {
+  color: var(--text);
+  white-space: pre-line;
+}
+
+.sp-brick__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .sp-brick__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.sp-brick__aside {
+  display: grid;
+  gap: var(--space-4);
+}
+
+/* -- les versions, de la plus récente à la première ------------------------------------------- */
+
+.sp-brick__versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.sp-brick__version {
+  position: relative;
+  padding: 10px 12px 10px 22px;
+  border-left: 2px solid var(--border);
+}
+.sp-brick__version::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 16px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--navy-500);
+}
+.sp-brick__version.is-current {
+  border-left-color: var(--gold);
+}
+.sp-brick__version.is-current::before {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+.sp-brick__version-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+.sp-brick__version-head .ref-number {
+  font-size: 15px;
+}
+.sp-brick__level {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-soft);
+}
+.sp-brick__level--major {
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+.sp-brick__current {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gold-dark, var(--accent-dark));
+}
+.sp-brick__version-meta {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-left: auto;
+}
+.sp-brick__note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text);
+  white-space: pre-line;
+}
+.sp-brick__changes {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  display: grid;
+  gap: 2px;
+}
+
+/* -- l'aperçu, les étapes, les usages --------------------------------------------------------- */
+
+.sp-brick__art {
+  min-height: 160px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 6px;
+  display: grid;
+  place-items: center;
+}
+.sp-brick__art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 260px;
+}
+.sp-brick__art.is-failed {
+  color: var(--text-faint);
+  font-size: 12.5px;
+}
+.sp-brick__steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+.sp-brick__kind {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.sp-brick__usage-summary {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.sp-brick__usages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.sp-brick__usage-v {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-dark);
+}
+.sp-brick__usage-v.is-stale {
+  color: var(--hold);
+}

@@ -13,7 +13,7 @@ from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..references import service as references
 from . import service
-from .schemas import PromotionRequest
+from .schemas import BrickPromotionRequest, PromotionRequest
 
 router = APIRouter(prefix="/api", tags=["promotion"])
 
@@ -35,6 +35,24 @@ def promote(body: PromotionRequest, response: Response, user: User = Depends(cur
     slug, number = service.promote(user, body)
     created(response, f"/api/references/{quote(slug, safe='')}/versions/{number}")
     return references.get_version(user, slug, number)
+
+
+@router.post("/promotions/bricks/preview")
+def preview_brick(body: BrickPromotionRequest, user: User = Depends(current_user)) -> dict:
+    """Ce que donnerait la promotion d'une brique comme brique de référence, sans rien écrire :
+    ``{brick, rules: [{rule, label, level, message, code}], can_promote}`` (:mod:`.brick_rules`)."""
+    return service.preview_brick(user, body)
+
+
+@router.post("/promotions/bricks", status_code=201)
+def promote_brick(body: BrickPromotionRequest, response: Response, user: User = Depends(current_user)) -> dict:
+    """Promouvoir une brique comme brique de référence - 201 + ``Location`` vers la brique, qui
+    passe en partagée ; refusée avec le statut et le code de la première règle qui bloque (403
+    ``forbidden`` / ``builtin_brick``, 422 ``brick_empty``, 409 ``brick_already_reference`` /
+    ``brick_name_taken``)."""
+    brick = service.promote_brick(user, body)
+    created(response, f"/api/tech-bricks/{quote(brick['id'], safe='')}")
+    return brick
 
 
 @router.get("/promotions")

@@ -37,3 +37,12 @@ class PromotionRequest(BaseModel):
     parent: str | None = Field(None, max_length=12, pattern=REFERENCE_NUMBER_PATTERN)
     note: str = Field("", max_length=MAX_TEXT_LENGTH)
     follow: Literal["study", "branch"] | None = None
+
+
+class BrickPromotionRequest(BaseModel):
+    """Une brique à promouvoir comme brique de référence (``brick_id``), et pourquoi (``note``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    brick_id: str = Field(max_length=120)
+    note: str = Field("", max_length=MAX_TEXT_LENGTH)

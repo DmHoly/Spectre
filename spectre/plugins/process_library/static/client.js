@@ -40,6 +40,9 @@ const processLibraryApi = {
   techBrickUsages(filters) {
     return api.get(api.withQuery("/api/tech-brick-usages", filters));
   },
+  // filters : aussi `reference` ("true" : les briques de référence seulement). Une brique porte sa
+  // `version` ("1.2"), ses `versions` ([{number, level, created_at, created_by, note}] ; seule, avec
+  // `content` et `changes`) et, promue, sa `reference` ({promoted_by, promoted_at, note})
   techBricks(filters) {
     return api.get(api.withQuery("/api/tech-bricks", filters));
   },
@@ -54,5 +57,9 @@ const processLibraryApi = {
   },
   deleteTechBrick(brickId) {
     return api.del(`/api/tech-bricks/${encodeURIComponent(brickId)}`);
+  },
+  // retirer une brique des briques de référence (la promouvoir passe par promotionApi.promoteBrick)
+  demoteTechBrick(brickId) {
+    return api.del(`/api/tech-bricks/${encodeURIComponent(brickId)}/reference`);
   },
 };

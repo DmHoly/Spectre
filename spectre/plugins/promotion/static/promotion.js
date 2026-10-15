@@ -8,6 +8,7 @@
 
 (() => {
   const params = new URLSearchParams(window.location.search);
+  if (params.get("brique")) return; // une brique à promouvoir : promotion-brick.js tient la page
   const $ = (id) => document.getElementById(id);
   const errorBox = $("error");
   const state = {

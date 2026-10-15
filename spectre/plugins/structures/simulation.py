@@ -1254,16 +1254,10 @@ BRICKS_METADATA_KEY = "process_bricks"
 # il faut au moins deux étapes étiquetées d'une même brique pour que leurs étiquettes n'en fassent qu'une
 MIN_GROUPED_LABELS = 2
 BRICK_GROUP_ID_RE = r"^[A-Za-z0-9_.:-]{1,80}$"
+# la version d'une brique de bibliothèque (« 1.2 », voir process_library.tech_bricks)
+BRICK_VERSION_RE = r"^[1-9][0-9]{0,4}\.[0-9]{1,5}$"
 # le nom d'une brique (celle d'un procédé comme celle de la bibliothèque, dont elle reprend le nom)
 BRICK_NAME_MAX_LENGTH = 120
-
-# Le rôle d'une macro-étape : le gabarit SAG (substrat, masque, lithographie sur le réseau), l'épitaxie
-# (des croissances, sans position) et le procédé (ce qu'on fait par-dessus). Une structure en a au
-# plus une de chaque ; une brique sans rôle est une brique libre, comme avant.
-BRICK_ROLES = ("sag", "epi", "process")
-BrickRole = Literal["sag", "epi", "process"]
-BRICK_ROLE_LABELS = {"sag": "gabarit SAG", "epi": "épitaxie", "process": "procédé"}
-
 
 class ProcessBrick(BaseModel):
     """Une brique du procédé : son identifiant de groupe (celui du constructeur, gardé d'une version
@@ -1276,18 +1270,28 @@ class ProcessBrick(BaseModel):
     name: str = Field(min_length=1, max_length=BRICK_NAME_MAX_LENGTH)
     source: str | None = Field(None, max_length=120)
     step_indexes: list[int] = Field(min_length=1)
-    # son rôle de macro-étape (gabarit SAG, épitaxie, procédé) ; absent : une brique libre, la forme d'avant
-    role: BrickRole | None = None
-    # la version de la brique de bibliothèque (``source``) quand on l'a copiée : une trace, jamais un
-    # lien - le constructeur dit si elle a changé depuis ; absente, la forme d'avant
-    version: int | None = Field(None, ge=1)
+    # la version de la brique de bibliothèque (``source``) quand on l'a copiée (« 1.2 ») : une trace,
+    # jamais un lien - le constructeur dit si elle a changé depuis ; absente, la forme d'avant
+    version: str | None = Field(None, pattern=BRICK_VERSION_RE)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _the_forms_of_before(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        # le rôle de macro-étape d'avant (gabarit SAG, épitaxie, procédé - retiré le 2026-10-15) :
+        # une brique enregistrée avant en porte encore un, qui ne veut plus rien dire
+        data = {key: value for key, value in data.items() if key != "role"}
+        # le compteur entier d'avant les numéros X.Y : N se lit N.0
+        if isinstance(data.get("version"), int) and not isinstance(data.get("version"), bool):
+            data["version"] = f"{data['version']}.0" if data["version"] >= 1 else None
+        return data
 
     @model_serializer(mode="wrap")
-    def _without_empty_role(self, handler: Any) -> dict[str, Any]:
+    def _without_empty_version(self, handler: Any) -> dict[str, Any]:
         data = handler(self)
-        for key in ("role", "version"):
-            if data.get(key) is None:
-                data.pop(key, None)
+        if data.get("version") is None:
+            data.pop("version", None)
         return data
 
     @field_validator("name")
@@ -1306,16 +1310,10 @@ class ProcessBrick(BaseModel):
 
 def checked_bricks(bricks: list[ProcessBrick] | None, step_count: int) -> list[ProcessBrick]:
     """Les briques d'une requête, vérifiées : des étapes du procédé, consécutives et dans l'ordre,
-    aucune dans deux briques, deux briques jamais du même groupe, au plus une brique par rôle de
-    macro-étape - sinon 422 ``invalid_brick``."""
+    aucune dans deux briques, deux briques jamais du même groupe - sinon 422 ``invalid_brick``."""
     seen_steps: set[int] = set()
     seen_groups: set[str] = set()
-    seen_roles: set[str] = set()
     for brick in bricks or []:
-        if brick.role is not None:
-            if brick.role in seen_roles:
-                raise InvalidInput(f"Une structure n'a qu'une brique de {BRICK_ROLE_LABELS[brick.role]} (« {brick.name} »).", code="invalid_brick")
-            seen_roles.add(brick.role)
         indexes = brick.step_indexes
         if any(not 0 <= i < step_count for i in indexes):
             raise InvalidInput(f"La brique « {brick.name} » désigne une étape inconnue.", code="invalid_brick")
@@ -1340,7 +1338,6 @@ def bricks_metadata(bricks: list[ProcessBrick], step_ids: list[str]) -> list[dic
             "name": brick.name,
             "source": brick.source,
             "step_ids": [step_ids[i] for i in brick.step_indexes],
-            **({"role": brick.role} if brick.role else {}),
             **({"version": brick.version} if brick.version else {}),
         }
         for brick in bricks
@@ -1360,11 +1357,12 @@ def bricks_from_metadata(raw: Any, step_ids: list[str]) -> list[ProcessBrick]:
         if not indexes:
             continue
         try:
-            role = item.get("role") if item.get("role") in BRICK_ROLES else None
-            version = item.get("version") if isinstance(item.get("version"), int) and item.get("version") >= 1 else None
-            bricks.append(
-                ProcessBrick(group_id=item.get("group_id"), name=item.get("name"), source=item.get("source"), step_indexes=indexes, role=role, version=version)
-            )
+            version = item.get("version")
+            if isinstance(version, int) and not isinstance(version, bool):
+                version = f"{version}.0" if version >= 1 else None
+            elif not (isinstance(version, str) and re.match(BRICK_VERSION_RE, version)):
+                version = None
+            bricks.append(ProcessBrick(group_id=item.get("group_id"), name=item.get("name"), source=item.get("source"), step_indexes=indexes, version=version))
         except (ValueError, TypeError):
             continue
     return bricks

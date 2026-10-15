@@ -14,16 +14,24 @@ from ..experiments.repository import branch_tips, display_status, get_repository
 from ..microprojects import service as microprojects
 from ..structures.simulation import BRICKS_METADATA_KEY
 from . import service
-from .service import TECH_BRICKS
+from .service import SAVED_STRUCTURES, TECH_BRICKS
+from .tech_bricks import brick_version_text
+
+
+# la source d'une copie d'une structure de la bibliothèque insérée comme brique (constructeur, palette.js)
+STRUCTURE_SOURCE_PREFIX = "structure:"
 
 
 def tech_brick_usages(user: User, microproject_slug: str | None) -> dict[str, list[dict[str, Any]]]:
-    """Par id de brique visible (intégrées, partagées, celles de ``microproject_slug``), les études
+    """Par id de brique visible (intégrées, partagées, celles de ``microproject_slug``) - et par
+    ``structure:<id>`` de structure de la bibliothèque visible, insérée comme brique -, les études
     qui en ont une copie, la plus récente d'abord - une liste vide pour une brique qui ne sert nulle
     part. Une étude : ``{microproject, linked, version}`` ; pour un membre de son µprojet, aussi
     ``experiment_id``, ``title``, ``status`` et ``updated_at``. ``version`` : celle de la brique
-    quand on l'a copiée (``None`` pour une copie d'avant les versions)."""
+    quand on l'a copiée (« 1.2 » ; ``None`` pour une copie d'avant les versions)."""
     visible = {entry.item.id for entry in service.list_items(TECH_BRICKS, user, microproject_slug=microproject_slug)}
+    # une structure de la bibliothèque insérée comme brique : sa copie cite `structure:<id>`
+    visible |= {f"{STRUCTURE_SOURCE_PREFIX}{entry.item.id}" for entry in service.list_items(SAVED_STRUCTURES, user, microproject_slug=microproject_slug)}
     found: dict[str, list[tuple[Any, Any, int | None]]] = {brick_id: [] for brick_id in visible}
     everything = microprojects.list_all()
     access = microprojects.accesses(user, everything)
@@ -35,8 +43,7 @@ def tech_brick_usages(user: User, microproject_slug: str | None) -> dict[str, li
                 source = item.get("source") if isinstance(item, dict) else None
                 if source in found and source not in seen:
                     seen.add(source)
-                    version = item.get("version")
-                    found[source].append((mp, tip, version if isinstance(version, int) else None))
+                    found[source].append((mp, tip, brick_version_text(item.get("version"))))
     result: dict[str, list[dict[str, Any]]] = {}
     for brick_id, uses in found.items():
         uses.sort(key=lambda use: use[1].created_at, reverse=True)
@@ -44,7 +51,7 @@ def tech_brick_usages(user: User, microproject_slug: str | None) -> dict[str, li
     return result
 
 
-def _usage(mp: Any, tip: Any, version: int | None, access: Any) -> dict[str, Any]:
+def _usage(mp: Any, tip: Any, version: str | None, access: Any) -> dict[str, Any]:
     if access is None or access.role is None:
         return {"microproject": {"name": mp.name}, "linked": False, "version": version}
     return {

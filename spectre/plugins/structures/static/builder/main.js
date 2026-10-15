@@ -4,11 +4,15 @@
    context.js a lu dans l'URL, puis charge ce qui doit l'être. */
 
 async function loadPickers() {
-  [state.materials, state.recipes, state.stepPresets, state.techBricks] = await Promise.all([
+  // les références (leur dernière version, proposée comme brique) : un renseignement, la page s'en passe
+  const references = pluginEnabled("references") && typeof referencesApi !== "undefined" ? referencesApi.list().catch(() => []) : Promise.resolve([]);
+  [state.materials, state.recipes, state.stepPresets, state.techBricks, state.savedStructures, state.references] = await Promise.all([
     structuresApi.listMaterials(),
     structuresApi.listRecipes(),
     processLibraryApi.stepPresets({ microproject: slug }),
     processLibraryApi.techBricks({ microproject: slug }),
+    processLibraryApi.savedStructures({ microproject: slug }).catch(() => []),
+    references,
   ]);
   document.getElementById("substrate-material").innerHTML = materialOptions("Si");
   populateKindSelect();
@@ -75,12 +79,12 @@ async function init() {
     await loadStartPlace();
     await loadComposition();
     await loadChosenStructureForExperience();
-    await loadAssembly();
     await loadPlan();
   }
   // Tout ce qui est chargé programmatiquement (structure existante, modèle, brique...) constitue le
   // point de départ : l'historique d'annulation ne commence qu'à partir d'ici.
   renderSteps();
+  prefetchReferenceBricks(); // palette.js : les versions de référence copiées dans la structure chargée
   resetHistory();
   // « Éditer la fiche » depuis l'en-tête d'une fiche : on arrive directement sur l'intention
   if (!isLibraryMode && !isBrickMode && !isPresetMode && queryParams.get("etape") === "intention") setStage("intention");
