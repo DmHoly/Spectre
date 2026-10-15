@@ -73,6 +73,12 @@ const experimentsApi = {
       ifMatch: versionId && `"${versionId}"`,
     });
   },
+  // la référence que l'étude suit désormais : body = {reference, version, scope: "study" | "branch"}
+  setReference(microprojectSlug, experimentId, versionId, body) {
+    return api.put(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/reference`, body, {
+      ifMatch: versionId && `"${versionId}"`,
+    });
+  },
   setTags(microprojectSlug, experimentId, versionId, body) {
     return api.put(`/api/microprojects/${encodeURIComponent(microprojectSlug)}/experiments/${encodeURIComponent(experimentId)}/tags`, body, {
       ifMatch: versionId && `"${versionId}"`,

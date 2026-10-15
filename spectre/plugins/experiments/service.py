@@ -61,6 +61,11 @@ CONTEXT_METADATA_KEY = "context"
 # amend() comme toute métadonnée, gardée par une fourche et par une combinaison (celle de la
 # première étude) quand la requête n'en donne pas.
 REFERENCE_ORIGIN_KEY = "reference_origin"
+# La référence que l'étude suit aujourd'hui (``{reference, version}``), quand ce n'est plus celle
+# dont elle est partie : posée après coup par :func:`set_reference_followed` (une retouche de la
+# piste, sans nouveau numéro), reportée par amend() et héritée au lancement comme l'origine. Sans
+# elle, l'étude suit son origine (:func:`reference_followed_of`). L'origine, elle, reste l'histoire.
+REFERENCE_FOLLOWED_KEY = "reference_followed"
 
 # L'étude dont viennent les plaques d'une étude partie de plaques existantes (``{microproject,
 # experiment_id, version_id, variant}`` : son µprojet, sa piste, la version dont la structure a été
@@ -907,11 +912,100 @@ def comparison_reference_of(version: follow.Experiment) -> dict[str, Any] | None
 
 def _set_reference_origin(metadata: dict[str, Any], body: CreateExperimentRequest, source: follow.Experiment | None) -> None:
     """La version de référence dont part la nouvelle piste : celle de la requête, sinon celle de
-    ``source`` (la version dont elle part : une fourche, ou la première étude d'une combinaison)."""
+    ``source`` (la version dont elle part : une fourche, ou la première étude d'une combinaison) -
+    et, dans ce cas, la référence que ``source`` suit, si elle en suit une autre."""
     if body.reference_origin is not None:
         metadata[REFERENCE_ORIGIN_KEY] = body.reference_origin.model_dump()
-    elif source is not None and reference_origin_of(source) is not None:
+        return
+    if source is None:
+        return
+    if reference_origin_of(source) is not None:
         metadata[REFERENCE_ORIGIN_KEY] = reference_origin_of(source)
+    followed = _followed_recorded(source)
+    if followed is not None:
+        metadata[REFERENCE_FOLLOWED_KEY] = followed
+
+
+def _reference_pair(value: Any) -> dict[str, str] | None:
+    if isinstance(value, dict) and isinstance(value.get("reference"), str) and isinstance(value.get("version"), str):
+        return {"reference": value["reference"], "version": value["version"]}
+    return None
+
+
+def _followed_recorded(version: follow.Experiment) -> dict[str, str] | None:
+    """La référence suivie telle qu'enregistrée (``None`` quand l'étude suit son origine)."""
+    return _reference_pair(version.metadata.get(REFERENCE_FOLLOWED_KEY))
+
+
+def reference_followed_of(version: follow.Experiment) -> dict[str, str] | None:
+    """La version de référence que l'étude suit (``{reference, version}``) : celle choisie après
+    coup (:func:`set_reference_followed`), sinon celle dont elle est partie - ``None`` sans aucune."""
+    return _followed_recorded(version) or reference_origin_of(version)
+
+
+def reference_changed_at(repo: follow.Repository, version: follow.Experiment) -> bool:
+    """Si ``version`` est celle où la référence suivie a changé : elle n'en suit pas la même que
+    son premier parent (ou, sans parent, en suit une autre que son origine)."""
+    parent = _first_parent(repo, version)
+    before = reference_followed_of(parent) if parent is not None else reference_origin_of(version)
+    return reference_followed_of(version) != before
+
+
+def descendant_lines(repo: follow.Repository, experiment_id: str) -> list[str]:
+    """Les autres pistes actives qui descendent d'une version de la piste ``experiment_id`` (une
+    fourche, une combinaison, une étude partie de ses plaques), par ordre de nom - sa branche."""
+    own = {version.id for version in history_of(repo, experiment_id)}
+    found = []
+    for name, tip_id in sorted(repo.branches.items()):
+        if name == experiment_id:
+            continue
+        frontier, seen = [tip_id], set()
+        while frontier:
+            current = frontier.pop()
+            if current in own:
+                found.append(name)
+                break
+            if current in seen:
+                continue
+            seen.add(current)
+            try:
+                frontier.extend(repo.get(current).parents)
+            except (KeyError, follow.FollowError):
+                continue
+    return found
+
+
+def set_reference_followed(
+    slug: str,
+    experiment_id: str,
+    followed: dict[str, str],
+    *,
+    scope: str,
+    author: str,
+    expected_version: str | None,
+) -> follow.Experiment:
+    """L'étude suit désormais la version de référence ``followed`` (``{reference, version}``) : une
+    retouche de la piste (sans nouveau numéro) qui la porte ; son origine ne change pas. ``scope`` :
+    ``study`` (cette piste) ou ``branch`` (toute sa branche : les pistes qui en descendent reçoivent
+    la même retouche, après elle). Suivre à nouveau son origine retire la clé. Renvoie la pointe de
+    la piste."""
+    chosen = {"reference": followed["reference"], "version": followed["version"]}
+
+    def change(builder: follow.ExperimentBuilder, parent: follow.Experiment) -> None:
+        if reference_origin_of(parent) == chosen:
+            builder.metadata.pop(REFERENCE_FOLLOWED_KEY, None)
+        else:
+            builder.metadata[REFERENCE_FOLLOWED_KEY] = dict(chosen)
+
+    descendants: list[str] = []
+    if scope == "branch":
+        with writing(slug) as repo:
+            tip_of(repo, experiment_id)
+            descendants = descendant_lines(repo, experiment_id)
+    tip = amend(slug, experiment_id, author=author, expected_version=expected_version, change=change)
+    for name in descendants:
+        amend(slug, name, author=author, change=change)
+    return tip
 
 
 def reference_origin_of(version: follow.Experiment) -> dict[str, str] | None:

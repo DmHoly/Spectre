@@ -580,12 +580,13 @@ function defaultComparison() {
 // -- la plaque témoin : une répétition exacte de la dernière version connue de la référence ---------
 
 // La version de référence dont part l'étude, quel que soit son départ : la référence chargée, sinon
-// celle de l'étude de départ (une plaque, des plaques reprises, la version qu'on fait évoluer), ou
-// pour une combinaison celle de sa principale, à défaut la référence qu'elle cite - null sans elle.
+// celle que suit l'étude de départ (une plaque, des plaques reprises, la version qu'on fait
+// évoluer ; sa référence suivie, son origine à défaut), ou pour une combinaison celle de sa
+// principale, à défaut la référence qu'elle cite - null sans elle.
 function originReference() {
   if (referenceOrigin) return referenceOrigin;
-  const cited = [startDetail, waferOriginDetail, compositionMainDetail, evolveParent].find((d) => d && d.reference_origin);
-  if (cited) return cited.reference_origin;
+  const cited = [startDetail, waferOriginDetail, compositionMainDetail, evolveParent].find((d) => d && (d.reference_followed || d.reference_origin));
+  if (cited) return cited.reference_followed || cited.reference_origin;
   const source = compositionOrigin && compositionOrigin.sources.find((s) => s.kind === "reference");
   return source ? { reference: source.reference, version: source.version } : null;
 }

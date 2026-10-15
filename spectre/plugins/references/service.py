@@ -752,20 +752,23 @@ def _published_from(conn: sqlite3.Connection, microproject: Microproject) -> lis
 
 
 def suggested_target(conn: sqlite3.Connection, source: PublicationSource) -> dict[str, Any] | None:
-    """La référence où publier d'office ``source`` : celle dont part l'étude (``reference_origin``),
-    à la suite de la dernière version qui y a été publiée depuis la piste (republier une étude
-    partie d'une référence continue sa suite : 1.1 puis 1.2), sinon depuis la version d'origine ;
-    sans origine, la dernière référence où a été publiée une version dont elle descend - ``None``
-    sinon. ``{reference, parent, why}``."""
-    origin = experiments.reference_origin_of(source.version)
+    """La référence où publier d'office ``source`` : celle que l'étude suit (``reference_followed``
+    - celle dont elle est partie, tant qu'elle n'en a pas choisi une autre), à la suite de la
+    dernière version qui y a été publiée depuis la piste (republier une étude partie d'une référence
+    continue sa suite : 1.1 puis 1.2), sinon depuis la version suivie ; sans référence, la dernière
+    référence où a été publiée une version dont elle descend - ``None`` sinon.
+    ``{reference, parent, why}``."""
+    followed = experiments.reference_followed_of(source.version)
+    is_origin = followed == experiments.reference_origin_of(source.version)
     on_line = [
         (slug, v) for slug, v in _published_from(conn, source.microproject) if descends(source.repo, source.version, v.version_id)
     ]
-    if origin is not None and find_slug(conn, origin["reference"]) is not None:
-        same = next((v for slug, v in on_line if slug == origin["reference"]), None)
+    if followed is not None and find_slug(conn, followed["reference"]) is not None:
+        same = next((v for slug, v in on_line if slug == followed["reference"]), None)
+        how = "l'étude en est partie" if is_origin else "l'étude la suit"
         if same is not None:
-            return {"reference": origin["reference"], "parent": same.number, "why": f"l'étude en est partie ({origin['version']}) et y a été publiée ({same.number})"}
-        return {"reference": origin["reference"], "parent": origin["version"], "why": "l'étude en est partie"}
+            return {"reference": followed["reference"], "parent": same.number, "why": f"{how} ({followed['version']}) et y a été publiée ({same.number})"}
+        return {"reference": followed["reference"], "parent": followed["version"], "why": how}
     if on_line:
         slug, same = on_line[0]
         return {"reference": slug, "parent": same.number, "why": f"une version dont elle descend y a été publiée ({same.number})"}
@@ -782,7 +785,8 @@ def plan_publication(conn: sqlite3.Connection, source: PublicationSource, refere
     serait la 1.0), sans rien écrire. La version dont elle dérive : ``parent`` (un numéro de cette
     référence : 422 ``unknown_parent_version`` sinon) s'il est donné ; sinon la dernière version de
     cette référence publiée depuis ce µprojet dont la source descend (:func:`published_on_line`) ;
-    sinon la version dont part la piste (``reference_origin``) ; sinon sa dernière version. Son
+    sinon la version que la piste suit (``reference_followed``, son origine à défaut) ; sinon sa
+    dernière version. Son
     numéro : :func:`next_number` selon le changement de structure depuis elle
     (:func:`experiments.structure_change_level`)."""
     snapshot, error = None, None
@@ -798,11 +802,11 @@ def plan_publication(conn: sqlite3.Connection, source: PublicationSource, refere
         base = _version(versions, parent)
     elif versions:
         on_line = published_on_line(versions, source.microproject, source.repo, source.version)
-        origin = experiments.reference_origin_of(source.version)
-        from_origin = None
-        if origin is not None and reference is not None and origin["reference"] == reference.slug:
-            from_origin = next((v for v in versions if v.number == origin["version"]), None)
-        base = (on_line[-1] if on_line else None) or from_origin or versions[-1]
+        followed = experiments.reference_followed_of(source.version)
+        from_followed = None
+        if followed is not None and reference is not None and followed["reference"] == reference.slug:
+            from_followed = next((v for v in versions if v.number == followed["version"]), None)
+        base = (on_line[-1] if on_line else None) or from_followed or versions[-1]
     level = number = None
     if snapshot is not None:
         level = experiments.structure_change_level(base.snapshot.get("metadata") if base else None, snapshot["metadata"])

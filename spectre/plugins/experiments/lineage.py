@@ -14,6 +14,7 @@ from ..structures import kinds
 from . import versioning
 from .entities import compact, study_fdl
 from .repository import CONCLUDED_STATUSES, display_status, hold_of
+from .service import reference_changed_at, reference_followed_of
 
 # Ce que montre l'historique des structures par défaut : les versions qui changent la structure en
 # grand (la première, un changement majeur ou mineur) ; une retouche (un nom d'étape) ou une version
@@ -72,6 +73,8 @@ def structure_history(repo: Any, *, all_versions: bool = False, include: set[str
     lane_starts = {
         exp_id for exp_id, exp in experiments.items() if not exp.parents or experiments[exp.parents[0]].branch != exp.branch
     }
+    # la version où l'étude change de référence suivie se montre toujours, même légère
+    reference_changed = {exp_id for exp_id, exp in experiments.items() if reference_changed_at(repo, exp)}
     if all_versions:
         keep = set(experiments)
     else:
@@ -81,6 +84,7 @@ def structure_history(repo: Any, *, all_versions: bool = False, include: set[str
             if numbers[exp_id]["level"] in STRUCTURAL_LEVELS
             or len(dag[exp_id]) != 1
             or exp_id in lane_starts
+            or exp_id in reference_changed
             or exp_id in (include or ())
         }
 
@@ -120,6 +124,10 @@ def structure_history(repo: Any, *, all_versions: bool = False, include: set[str
             "is_merge": len(dag[exp.id]) > 1,
             "structure_kind": _structure_kind(exp.structure_type),
             "has_process": "structureforge_process" in exp.metadata,
+            # la version de référence que l'étude suit à ce point ({reference, version}, None sans
+            # aucune) et si c'est ici qu'elle a changé
+            "reference_followed": reference_followed_of(exp),
+            "reference_changed": exp.id in reference_changed,
         }
         for exp in sorted((experiments[exp_id] for exp_id in keep), key=lambda exp: (exp.created_at, exp.id))
     ]

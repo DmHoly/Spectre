@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..experiments.schemas import REFERENCE_NUMBER_PATTERN
@@ -20,7 +22,9 @@ class PromotionRequest(BaseModel):
     split, sa variante (``variant``, à partir de 0). La référence : ``reference`` (une existante) ou
     ``new_reference`` (une nouvelle) - aucune des deux : celle que la promotion propose (dont part
     l'étude), sinon une nouvelle à nommer. ``parent`` : la version dont elle dérive (automatique
-    sinon). ``note`` : pourquoi cette structure devient la référence."""
+    sinon). ``note`` : pourquoi cette structure devient la référence. ``follow`` : une fois promue,
+    la nouvelle version devient la référence suivie de l'étude (``study``) ou de l'étude et de toute
+    sa branche (``branch``) - ``None`` : l'étude garde sa référence."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -32,3 +36,4 @@ class PromotionRequest(BaseModel):
     new_reference: NewReference | None = None
     parent: str | None = Field(None, max_length=12, pattern=REFERENCE_NUMBER_PATTERN)
     note: str = Field("", max_length=MAX_TEXT_LENGTH)
+    follow: Literal["study", "branch"] | None = None

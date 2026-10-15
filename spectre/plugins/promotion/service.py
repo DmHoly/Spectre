@@ -7,7 +7,8 @@ variante d'un split, une version passée.
   et le verdict de chaque règle (:mod:`.rules`).
 - :func:`promote` : la même chose sous le verrou des références, puis, si aucune règle ne bloque, la
   nouvelle référence (si on en nomme une), sa version (:func:`references.record_publication`) et
-  l'entrée du journal - dans une seule transaction.
+  l'entrée du journal - dans une seule transaction ; puis, si on l'a demandé (``follow``), l'étude
+  (ou toute sa branche) suit désormais cette version (:func:`experiments.set_reference_followed`).
 - :func:`journal` : les promotions, les plus récentes d'abord, masquées comme les références (la
   source ne nomme que son µprojet pour qui n'en est pas membre)."""
 
@@ -21,6 +22,7 @@ from ...kernel.db import get_conn
 from ...kernel.errors import InvalidInput, NotFound
 from ...kernel.locks import keyed_lock
 from ..accounts.service import User
+from ..experiments import service as experiments
 from ..experiments.repository import display_status
 from ..microprojects import service as microprojects
 from ..references import service as references
@@ -65,6 +67,14 @@ def _source(user: User, body: PromotionRequest) -> references.PublicationSource:
     )
 
 
+def _followed_payload(conn: sqlite3.Connection, version: Any) -> dict[str, Any] | None:
+    followed = experiments.reference_followed_of(version)
+    if followed is None:
+        return None
+    found = references.find_slug(conn, followed["reference"])
+    return {**followed, "name": found.name if found else followed["reference"], "is_origin": followed == experiments.reference_origin_of(version)}
+
+
 def preview(user: User, body: PromotionRequest) -> dict[str, Any]:
     """Ce que donnerait la promotion de ``body`` (rien n'est écrit) : ``{source, suggestion, target,
     parents, base, level, level_text, number, rules, can_promote}``."""
@@ -74,6 +84,7 @@ def preview(user: User, body: PromotionRequest) -> dict[str, Any]:
         if suggestion is not None:
             found = references.find_slug(conn, suggestion["reference"])
             suggestion = {**suggestion, "name": found.name if found else suggestion["reference"]}
+        followed_payload = _followed_payload(conn, source.version)
     results = rules.evaluate(candidate)
     publication = candidate.publication
     version = source.version
@@ -94,6 +105,9 @@ def preview(user: User, body: PromotionRequest) -> dict[str, Any]:
             "variants": [{"index": i, "label": label} for i, label in enumerate(references.variant_labels(version))],
             "variant": source.variant,
             "structure_svg": svg,
+            # la version de référence que l'étude suit aujourd'hui ({reference, version, name,
+            # is_origin} : son nom, et si c'est encore celle dont elle est partie) - None sans aucune
+            "reference_followed": followed_payload,
         },
         "suggestion": suggestion,
         "target": {"reference": {"slug": reference.slug, "name": reference.name} if reference else None, "new_name": candidate.new_name},
@@ -111,8 +125,9 @@ def preview(user: User, body: PromotionRequest) -> dict[str, Any]:
 
 def promote(user: User, body: PromotionRequest) -> tuple[str, str]:
     """Promouvoir ``body`` : refusée avec l'erreur de la première règle qui bloque ; sinon la
-    nouvelle référence (si on en nomme une), sa version et l'entrée du journal. Renvoie
-    ``(slug de la référence, numéro de la version)``."""
+    nouvelle référence (si on en nomme une), sa version et l'entrée du journal ; puis, avec
+    ``follow``, l'étude (ou sa branche) suit cette version. Renvoie ``(slug de la référence, numéro
+    de la version)``."""
     source = _source(user, body)
     with keyed_lock(references.LOCK_NAMESPACE, references.WRITE_LOCK_KEY), get_conn() as conn:
         candidate, _, description = _candidate(conn, user, body, source)
@@ -152,7 +167,16 @@ def promote(user: User, body: PromotionRequest) -> tuple[str, str]:
                 version.published_at,
             ),
         )
-        return reference.slug, version.number
+    if body.follow is not None:
+        experiments.set_reference_followed(
+            source.microproject.slug,
+            source.experiment_id,
+            {"reference": reference.slug, "version": version.number},
+            scope=body.follow,
+            author=user.name,
+            expected_version=None,
+        )
+    return reference.slug, version.number
 
 
 def journal(user: User, *, microproject: str | None = None, experiment_id: str | None = None, limit: int = 30) -> list[dict[str, Any]]:

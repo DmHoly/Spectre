@@ -98,6 +98,25 @@
           </div>
         </fieldset>
 
+        <!-- 4. l'étude la suit -->
+        <fieldset class="promo-step">
+          <legend class="promo-step__title"><span class="promo-step__num" aria-hidden="true">4</span>Et l'étude ensuite</legend>
+          <div class="promo-choice" role="radiogroup" aria-label="La référence que suit l'étude une fois promue">
+            <label class="promo-choice__option">
+              <input type="radio" name="follow-mode" value="" id="follow-none" checked>
+              <span><strong>L'étude garde sa référence</strong><span class="promo-choice__sub" id="follow-none-sub">Celle dont elle est partie</span></span>
+            </label>
+            <label class="promo-choice__option">
+              <input type="radio" name="follow-mode" value="study" id="follow-study">
+              <span><strong>Cette référence devient celle de l'étude</strong><span class="promo-choice__sub">Sa fiche la cite ; la prochaine promotion y repart</span></span>
+            </label>
+            <label class="promo-choice__option">
+              <input type="radio" name="follow-mode" value="branch" id="follow-branch">
+              <span><strong>… de l'étude et de toute sa branche</strong><span class="promo-choice__sub">Les pistes qui en descendent la suivent aussi</span></span>
+            </label>
+          </div>
+        </fieldset>
+
         <div class="promo-submit">
           <button class="btn promote-btn promote-btn--large" type="submit" id="submit-btn" disabled>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4Z"/><path d="m9.5 10 2 2 3.5-3.5"/></svg>

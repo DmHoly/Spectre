@@ -251,6 +251,13 @@ class TagsRequest(BaseModel):
     tags: list[str]
 
 
+class FollowedReferenceRequest(ReferenceOrigin):
+    """La référence que l'étude suit désormais (``{reference, version}``) et la portée du choix :
+    ``study`` (cette piste) ou ``branch`` (cette piste et toutes celles qui en descendent)."""
+
+    scope: Literal["study", "branch"] = "study"
+
+
 class EntitiesRequest(BaseModel):
     entities: list[EntityTrackingInput] = Field(..., max_length=MAX_TRACKED_ENTITIES)
     # the FDL of the study - None keeps those already there, [] removes them

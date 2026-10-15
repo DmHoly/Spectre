@@ -46,6 +46,12 @@
     return $("mode-new").checked ? "new" : "existing";
   }
 
+  // ce que l'étude suit une fois promue : "" (elle garde sa référence), "study" ou "branch"
+  function followMode() {
+    const chosen = document.querySelector('input[name="follow-mode"]:checked');
+    return chosen ? chosen.value : "";
+  }
+
   // -- le corps envoyé (aperçu et promotion) ---------------------------------------------------------
 
   function body() {
@@ -64,6 +70,7 @@
       result.reference = $("f-reference").value;
       if ($("f-parent").value) result.parent = $("f-parent").value;
     }
+    if (followMode()) result.follow = followMode();
     return result;
   }
 
@@ -138,6 +145,11 @@
       schedule(0);
     }
     markSuggestion(preview.suggestion);
+    // ce que l'étude suit aujourd'hui, pour dire ce que « garder » veut dire
+    const followed = preview.source.reference_followed;
+    $("follow-none-sub").textContent = followed
+      ? `${followed.is_origin ? "Celle dont elle est partie" : "Celle qu'elle suit"} : ${followed.name} ${followed.version}`
+      : "Elle n'en suit aucune pour l'instant";
     const hint = $("f-reference-hint");
     hint.textContent = preview.suggestion && $("f-reference").value === preview.suggestion.reference ? `Proposée : ${preview.suggestion.why}.` : "";
 
@@ -288,7 +300,7 @@
       <div class="promo-done__mark" aria-hidden="true">${PROMO_ICON}</div>
       <div class="promo-done__body">
         <h2 class="promo-done__title" id="done-title">Promue : <span class="promo-outcome__r" aria-hidden="true">R</span>${escapeHtml(version.reference.name)} <span class="ref-number">${escapeHtml(version.number)}</span></h2>
-        <p class="promo-done__text">${escapeHtml(level || version.change_level)}${version.parent ? `, depuis la ${escapeHtml(version.parent)}` : ""}. Elle est maintenant proposée à tous les µprojets comme point de départ.</p>
+        <p class="promo-done__text">${escapeHtml(level || version.change_level)}${version.parent ? `, depuis la ${escapeHtml(version.parent)}` : ""}. Elle est maintenant proposée à tous les µprojets comme point de départ.${followMode() === "branch" ? " L'étude et toute sa branche la suivent désormais." : followMode() === "study" ? " L'étude la suit désormais." : ""}</p>
         <div class="promo-done__actions">
           <a class="btn btn-primary" href="${referenceUrl(version.reference.slug, version.number)}">Voir la référence</a>
           ${back ? `<a class="btn btn-line" href="${escapeHtml(back)}">Revenir à la page d'avant</a>` : ""}

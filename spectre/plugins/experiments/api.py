@@ -39,6 +39,7 @@ from .schemas import (
     CreateExperimentRequest,
     EntitiesRequest,
     EvolveRequest,
+    FollowedReferenceRequest,
     PlanRequest,
     PlanUpdate,
     StatusRequest,
@@ -95,6 +96,9 @@ def _detail(slug: str, repo: follow.Repository, experiment_id: str, version: fol
         # la version de référence dont part l'étude, telle qu'enregistrée ({reference, version}) : le
         # plugin references la résout (une origine inconnue se montre comme telle)
         "reference_origin": service.reference_origin_of(version),
+        # la version de référence que l'étude suit aujourd'hui : celle choisie après coup (PUT
+        # .../reference), sinon son origine - None sans aucune
+        "reference_followed": service.reference_followed_of(version),
         # pour une étude partie de plaques existantes, l'étude qui les suivait ({microproject,
         # experiment_id, version_id, variant}), telle qu'enregistrée : son titre se lit chez elle,
         # pour qui est membre de son µprojet
@@ -434,6 +438,29 @@ def set_tags(
     user: User = Depends(current_user),
 ) -> dict:
     after = service.set_tags(microproject.slug, experiment_id, body.tags, author=user.name, expected_version=if_match_version(if_match))
+    return _written(response, microproject.slug, experiment_id, None, after)
+
+
+@router.put("/experiments/{experiment_id}/reference")
+def set_reference(
+    experiment_id: str,
+    body: FollowedReferenceRequest,
+    response: Response,
+    if_match: str | None = Header(None),
+    microproject: Microproject = Depends(require_role("editor")),
+    user: User = Depends(current_user),
+) -> dict:
+    """L'étude suit désormais cette version de référence (``{reference, version, scope}``) : une
+    retouche de la piste, sans nouveau numéro ; son origine reste. ``scope`` ``branch`` : les
+    pistes qui en descendent la suivent aussi. ``If-Match`` vaut pour cette piste."""
+    after = service.set_reference_followed(
+        microproject.slug,
+        experiment_id,
+        {"reference": body.reference, "version": body.version},
+        scope=body.scope,
+        author=user.name,
+        expected_version=if_match_version(if_match),
+    )
     return _written(response, microproject.slug, experiment_id, None, after)
 
 
