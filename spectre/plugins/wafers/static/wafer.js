@@ -1,9 +1,11 @@
 /* Page d'une plaque (wafer.html, /plaques/<lasermark>) : la structure qu'elle a vue (celle de la
-   dernière étude de vos µprojets qui la suit), où elle est, ses FDL, ses données en base, son
-   parcours - chaque étude qui la suit (la plus récente d'abord), avec son µprojet, son statut, la
-   variante qu'elle porte dans une campagne, l'emplacement et les FDL notés dans cette étude - et sa
-   vie en ligne (tracking.js) ; « Comparer sa structure » ouvre le comparateur sur elle. On y arrive
-   depuis la recherche de la topbar ou un lasermark cliqué sur une fiche. */
+   dernière étude de vos µprojets qui la suit), où elle est, ses FDL, ses données en base, sa fiche
+   de plaque (une plaque enregistrée pour elle-même, avant toute étude : records.js), son parcours -
+   chaque étude qui la suit (la plus récente d'abord), avec son µprojet, son statut, la variante
+   qu'elle porte dans une campagne, l'emplacement et les FDL notés dans cette étude - et sa vie en
+   ligne (tracking.js) ; « Comparer sa structure » ouvre le comparateur sur elle, « Rattacher à une
+   étude » (attach.js) la fait entrer dans une étude existante. On y arrive depuis la recherche de
+   la topbar, l'index des plaques ou un lasermark cliqué sur une fiche. */
 
 const { lasermark } = routeParams("/plaques/{lasermark}");
 
@@ -71,9 +73,12 @@ function renderNoStructure(plate, aside, figure) {
           ? `<p class="help" style="margin:0 0 8px;">Définissez-la en lançant une expérience qui suit cette plaque${slugs.length > 1 ? ", dans" : ` dans ${escapeHtml(slugs[0].code || slugs[0].name)}`}&nbsp;:</p>
              ${slugs.length > 1 ? `<select class="plate-structure__mp js-structure-mp" aria-label="µprojet">${slugs.map((m) => `<option value="${escapeHtml(m.slug)}">${escapeHtml(m.code || m.name)} - ${escapeHtml(m.name)}</option>`).join("")}</select>` : ""}
              <div class="plate-structure__options js-structure-options">${cards(slugs[0].slug)}</div>`
-          : `<p class="help" style="margin:0;">Suivez d'abord cette plaque dans une étude d'un de vos <a href="/">µprojets</a> : sa structure se définit au lancement (dessin collé, constructeur ou structure existante).</p>`
+          : `<p class="help" style="margin:0;">Sa structure sera celle de l'étude qui la suivra : une étude existante d'un de vos µprojets, ou une nouvelle expérience lancée depuis la page du <a href="/">µprojet</a> (dessin collé, constructeur ou structure existante) en la suivant dans la carte « Plaques & entités physiques ».</p>
+             <p class="plate-structure__attach"><button type="button" class="btn btn-line js-structure-attach">Rattacher à une étude</button></p>`
       }
     </div>`;
+  const attach = figure.querySelector(".js-structure-attach");
+  if (attach) attach.addEventListener("click", () => openAttach(plate));
   const select = figure.querySelector(".js-structure-mp");
   if (select) select.addEventListener("change", () => (figure.querySelector(".js-structure-options").innerHTML = cards(select.value)));
   aside.querySelector(".js-structure-caption").innerHTML = "";
@@ -111,6 +116,40 @@ async function renderStructure(plate) {
   aside.hidden = false;
 }
 
+// « Rattacher à une étude » : la plaque entre dans une étude existante ; la page se relit ensuite
+// (son parcours la montre).
+function openAttach(plate) {
+  WaferAttach.open({ lasermark: plate.lasermark, onDone: () => window.location.reload() });
+}
+
+// La fiche de plaque : quand, par qui, depuis quelle base, et ce que la base en disait ce jour-là
+function renderRecord(plate) {
+  const record = plate.record;
+  const fact = document.getElementById("plate-record-fact");
+  const remove = document.getElementById("plate-record-delete");
+  if (!record) {
+    fact.hidden = true;
+    remove.hidden = true;
+    return;
+  }
+  const summary = WaferRecords.summaryHtml(record.summary);
+  document.getElementById("plate-record").innerHTML = `${WaferRecords.chipHtml(record, { title: false })} créée le ${escapeHtml(formatDate(record.created_at))} par ${escapeHtml(record.created_by)}, depuis ${escapeHtml(WaferRecords.sourceLabel(record.source))}${summary ? `<span class="plate-hero__record-summary">${summary}</span>` : ""}`;
+  fact.hidden = false;
+  remove.hidden = false;
+  remove.addEventListener("click", async () => {
+    const n = plate.occurrences.length;
+    if (!window.confirm(`Retirer la fiche de la plaque « ${plate.lasermark} » ?${n ? ` Les ${n} étude${n > 1 ? "s" : ""} qui la suivent restent.` : " Elle ne sera plus listée tant qu'aucune étude ne la suit."}`)) return;
+    remove.disabled = true;
+    try {
+      await wafersApi.deleteRecord(plate.key);
+      window.location.href = n ? window.location.pathname : "/plaques";
+    } catch (err) {
+      showError(err);
+      remove.disabled = false;
+    }
+  });
+}
+
 async function init() {
   document.getElementById("plate-crumb").textContent = lasermark;
   document.getElementById("crumb").textContent = `/ Plaques / ${lasermark}`;
@@ -125,7 +164,11 @@ async function init() {
     document.getElementById("plate-lasermark").textContent = plate.lasermark;
     document.getElementById("plate-summary").textContent = n
       ? `Suivie dans ${n} étude${n > 1 ? "s" : ""}${plate.microprojects.length > 1 ? `, sur ${plate.microprojects.length} µprojets` : ""}.`
-      : "Aucune étude ne suit cette plaque.";
+      : plate.record
+        ? "Une plaque d'avant Spectre : sa fiche existe, aucune étude ne la suit encore."
+        : "Aucune étude ne suit cette plaque, et elle n'a pas de fiche.";
+    renderRecord(plate);
+    document.getElementById("plate-attach").addEventListener("click", () => openAttach(plate));
     document.getElementById("plate-location").textContent = plate.last_location || "—";
     document.getElementById("plate-fdl").innerHTML = plate.fdl.length ? fdlChipsHtml(plate.fdl, { label: false }) : "—";
     document.getElementById("plate-microprojects").innerHTML = plate.microprojects.length
@@ -141,7 +184,7 @@ async function init() {
       : "—";
     document.getElementById("plate-trail").innerHTML = n
       ? plate.occurrences.map(trailItemHtml).join("")
-      : `<li class="help">Le lasermark se renseigne dans la carte « Plaques & entités physiques » d'une fiche, ou au lancement d'une expérience.</li>`;
+      : `<li class="help">Aucune étude encore. « Rattacher à une étude » la fait entrer dans une étude existante ; sinon, son lasermark se renseigne dans la carte « Plaques & entités physiques » d'une fiche, ou au lancement d'une expérience.</li>`;
     // la structure qu'elle a vue, dans le comparateur (une étude d'un de vos µprojets la suit)
     if (plate.occurrences.some((o) => o.experiment.member)) {
       const compare = document.getElementById("plate-compare");

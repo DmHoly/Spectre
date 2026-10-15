@@ -104,6 +104,7 @@ const WaferStartPicker = (() => {
   // Où la plaque est suivie, telle que le lecteur la voit : l'étude la plus récente (titre et
   // variante pour un membre de son µprojet), et combien d'études la suivent.
   function waferMeta(wafer) {
+    if (!wafer.latest) return "Fiche de plaque, sans étude : pas de structure d'où partir";
     const exp = wafer.latest.experiment;
     const parts = [microprojectLabel(exp.microproject)];
     if (exp.member && exp.title) parts.push(exp.title);

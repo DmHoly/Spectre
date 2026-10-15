@@ -19,7 +19,9 @@
 
   <!-- La page d'une plaque (un wafer, par son lasermark) : la structure qu'elle a vue, où elle est,
        ses FDL, toutes les études qui la suivent d'un µprojet à l'autre - le « passeport » de la
-       plaque - et sa vie en ligne (MES, Gozer, JIRA), lue par PRISM. Le passeport vient de
+       plaque -, sa fiche de plaque si elle en a une (une plaque d'avant Spectre, enregistrée sans
+       étude : « Rattacher à une étude », attach.js, lui en donne une après coup) et sa vie en ligne
+       (MES, Gozer, JIRA), lue par PRISM. Le passeport vient de
        GET /api/wafers/{wafer_key} (spectre.plugins.wafers), ses lots de GET /api/lots?wafer= (plugin
        lots), la structure de GET .../versions/{id} (experiments), la vie en ligne de
        GET /api/wafers/{wafer_key}/tracking (tracking.js). -->
@@ -44,9 +46,14 @@
         <div><dt>FDL</dt><dd id="plate-fdl">—</dd></div>
         <div><dt style="text-transform:none;letter-spacing:0.04em;">µprojets</dt><dd id="plate-microprojects">—</dd></div>
         <div><dt>Lot</dt><dd id="plate-lots">—</dd></div>
+        <div id="plate-record-fact" hidden><dt>Fiche</dt><dd id="plate-record">—</dd></div>
       </dl>
       <div class="plate-hero__actions">
         <a class="btn btn-line" id="plate-compare" href="/comparateur" hidden title="Ouvrir le comparateur sur la structure qu'a vue cette plaque, pour la comparer à d'autres">Comparer sa structure</a>
+        <button type="button" class="btn btn-line" id="plate-attach" title="Faire entrer cette plaque dans une étude existante : elle y prend une place, en reçoit la structure, ses données se saisissent dans le cahier de l'étude">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Rattacher à une étude
+        </button>
+        <button type="button" class="btn btn-line" id="plate-record-delete" hidden title="Retirer la fiche de plaque (les études qui la suivent restent)">Retirer la fiche</button>
         <div class="js-db-link"></div>
       </div>
     </header>
@@ -86,6 +93,9 @@
   <script src="/static/wafers/fdl.js"></script>
   <script src="/static/characterization/wafer-data-links.js"></script>
   <script src="/static/experiments/client.js"></script>
+  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/wafers/records.js"></script>
+  <script src="/static/wafers/attach.js"></script>
   <script src="/static/structures/structure-zoom.js"></script>
   <script src="/static/wafers/tracking.js"></script>
   <script src="/static/wafers/wafer.js"></script>
