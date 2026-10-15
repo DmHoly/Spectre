@@ -153,7 +153,8 @@ def test_builtin_items_are_read_only(client, collection):
         assert client.put("/api/library/files/tech-bricks", json={"content": content}).status_code == 200
     item = list_items(client, collection, scope="builtin")[0]
     assert item["id"].startswith("builtin-")
-    assert get_item(client, collection, item["id"]) == item
+    # (une brique seule détaille ses versions, la liste non)
+    assert {k: v for k, v in get_item(client, collection, item["id"]).items() if k != "versions"} == {k: v for k, v in item.items() if k != "versions"}
     assert client.patch(f"/api/{collection}/{item['id']}", json={"name": "Autre"}).status_code == 403
     assert client.delete(f"/api/{collection}/{item['id']}").status_code == 403
     assert client.post(f"/api/{collection}", json={**_body(collection, "X"), "scope": "builtin"}).status_code == 422

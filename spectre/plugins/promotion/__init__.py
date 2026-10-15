@@ -2,7 +2,9 @@
 d'une référence), par un formulaire dédié - la page ``/promotion`` - que chaque étude, variante de
 split, conclusion, page d'évolution et page de référence ouvre déjà rempli. Les règles vérifiées
 avant de promouvoir sont un registre (:mod:`.rules`) : une règle de plus ne change ni le formulaire,
-ni l'API. Chaque promotion est gardée au journal, avec son pourquoi et les verdicts des règles."""
+ni l'API. Chaque promotion est gardée au journal, avec son pourquoi et les verdicts des règles.
+La même page (``/promotion?brique=``) promeut une brique technologique comme **brique de
+référence**, avec ses propres règles (:mod:`.brick_rules`)."""
 
 from ...kernel.plugin import NavEntry, Page, Plugin
 from .api import router
@@ -13,7 +15,7 @@ PROMOTION_GLYPH = '<path d="M6 3h12v18l-6-4-6 4Z"/><path d="m9.5 10 2 2 3.5-3.5"
 
 PLUGIN = Plugin(
     name="promotion",
-    depends_on=("experiments", "microprojects", "structures", "references"),
+    depends_on=("experiments", "microprojects", "structures", "references", "process_library"),
     router=router,
     pages=(Page("/promotion", "promotion.html"),),
     nav=(NavEntry("Promouvoir une réf.", "/promotion", order=26, match=r"^/promotion", id="nav-promotion", glyph=PROMOTION_GLYPH),),

@@ -38,7 +38,7 @@ from ..structures import simulation
 from .models import LibraryItem
 from .step_presets import StepPreset, default_step_presets, revised
 from .structure_library import SavedStructure, default_structure_presets
-from .tech_bricks import TechBrick, default_tech_bricks, revised_brick
+from .tech_bricks import BrickReference, TechBrick, default_tech_bricks, revised_brick
 
 ItemT = TypeVar("ItemT", bound=LibraryItem)
 Scope = Literal["builtin", "shared", "microproject"]
@@ -55,7 +55,8 @@ class Collection(Generic[ItemT]):
     duplicate: str  # message d'un nom déjà pris, avec {name}
     missing: str  # message d'un élément introuvable
     check: Callable[[ItemT], None] | None = None  # règle propre à la collection ; InvalidInput
-    revise: Callable[[ItemT, ItemT], ItemT] | None = None  # l'élément modifié, d'après l'ancien (sa version)
+    # l'élément modifié, d'après l'ancien (sa version) ; `user_id` et `note` : qui modifie, et pourquoi
+    revise: Callable[..., ItemT] | None = None
 
     def shared_store(self) -> ItemStore[ItemT]:
         return ItemStore(data_dir() / self.shared_filename, self.item_cls)
@@ -245,6 +246,7 @@ def update_item(collection: Collection[ItemT], user: User, item_id: str, changes
     """Applique ``changes`` (champs de l'élément, et ``scope`` / ``microproject`` pour le déplacer)
     à l'élément ``item_id``. Sans effet, rien n'est écrit."""
     changes = dict(changes)
+    note = changes.pop("note", None)  # le pourquoi d'une nouvelle version (les briques)
     with _lock(collection):
         entry = get_item(collection, user, item_id)
         _require_edit(entry, user)
@@ -263,7 +265,7 @@ def update_item(collection: Collection[ItemT], user: User, item_id: str, changes
             return entry
         item = item.model_copy(update={"updated_by": user.id})
         if collection.revise:
-            item = collection.revise(entry.item, item)
+            item = collection.revise(entry.item, item, user_id=user.id, note=note)
         _reject_duplicate(collection, target, item.name, except_id=item.id)
         if moved:
             with collection.store(source).edit() as items:
@@ -282,6 +284,38 @@ def delete_item(collection: Collection, user: User, item_id: str) -> None:
         _require_edit(entry, user)
         with collection.store(entry.microproject).edit() as items:
             items[:] = [raw for raw in items if raw.get("id") != item_id]
+
+
+# -- les briques de référence ----------------------------------------------------------------------
+
+
+def reference_bricks(user: User) -> list[Entry[TechBrick]]:
+    """Les briques de référence : des briques partagées (ou intégrées), promues."""
+    return [entry for entry in list_items(TECH_BRICKS, user) if entry.item.is_reference]
+
+
+def set_brick_reference(user: User, brick_id: str, reference: BrickReference | None) -> Entry[TechBrick]:
+    """La brique ``brick_id`` promue comme brique de référence (``reference``), ou retirée des
+    références (``None``). Promue, une brique de µprojet passe en partagée (même id : les copies
+    qu'en ont les structures la retrouvent) ; son auteur devient qui la promeut. Qui peut modifier
+    la brique peut le faire ; ce que la promotion vérifie avant est du ressort du plugin promotion."""
+    with _lock(TECH_BRICKS):
+        entry = get_item(TECH_BRICKS, user, brick_id)
+        _require_edit(entry, user)
+        item = entry.item.model_copy(update={"reference": reference, "updated_by": user.id})
+        target = entry.microproject
+        if reference is not None and target is not None:
+            item = item.model_copy(update={"created_by": user.id})
+            _reject_duplicate(TECH_BRICKS, None, item.name, except_id=item.id)
+            with TECH_BRICKS.store(target).edit() as items:
+                items[:] = [raw for raw in items if raw.get("id") != item.id]
+            target = None
+            with TECH_BRICKS.store(None).edit() as items:
+                items.append(item.model_dump(mode="json"))
+        else:
+            with TECH_BRICKS.store(target).edit() as items:
+                items[:] = [item.model_dump(mode="json") if raw.get("id") == item.id else raw for raw in items]
+    return Entry(item, "microproject" if target else "shared", target)
 
 
 # -- les trois collections -------------------------------------------------------------------------

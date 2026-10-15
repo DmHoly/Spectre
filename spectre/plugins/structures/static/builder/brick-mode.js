@@ -35,9 +35,16 @@ async function saveTechBrick(forceNew) {
     showError(new Error("Ajoutez au moins une étape avant d'enregistrer la brique."));
     return;
   }
+  const note = document.getElementById("brick-note").value.trim();
+  if (!forceNew && state.editingBrickId && state.editingBrickIsReference && !note) {
+    showError(new Error("Une brique de référence ne change pas sans dire pourquoi : donnez une note à cette version."));
+    document.getElementById("brick-note").focus();
+    return;
+  }
   const payload = {
     name,
     steps,
+    ...(note && !forceNew && state.editingBrickId ? { note } : {}),
     declared_params: declaredParamsPayload(steps),
     layer_labels: layerLabelsPayload(steps),
     recipes: processRecipesPayload(steps),
@@ -55,7 +62,8 @@ async function saveTechBrick(forceNew) {
     } else {
       await processLibraryApi.createTechBrick(payload);
     }
-    window.location.href = returnTo === "bibliotheque" ? "/bibliotheque" : `/microprojets/${slug}/briques-technologiques`;
+    window.location.href =
+      returnTo === "bibliotheque" ? "/bibliotheque" : returnTo === "brique" && state.editingBrickId ? `/briques/${encodeURIComponent(state.editingBrickId)}` : `/microprojets/${slug}/briques-technologiques`;
   } catch (err) {
     showError(err);
   }
@@ -92,11 +100,17 @@ async function initBrickMode() {
       setPageTitle(found.scope === "builtin" ? "Enregistrer cette brique sous un nouveau nom" : "Dupliquer une brique");
       document.getElementById("brick-name").placeholder = `ex : ${found.name} + ...`;
     } else {
-      setPageTitle("Modifier la brique");
+      setPageTitle(found.reference ? "Modifier la brique de référence" : "Modifier la brique");
       document.getElementById("brick-name").value = found.name;
       document.getElementById("brick-shared-checkbox").checked = found.scope === "shared";
       document.getElementById("brick-notes").value = found.notes || "";
       state.editingBrickId = found.id;
+      state.editingBrickIsReference = Boolean(found.reference);
+      // la version courante, et la note de la prochaine (exigée d'une brique de référence)
+      const version = document.getElementById("brick-version");
+      version.textContent = `v${found.version || "1.0"}${found.reference ? " · référence" : ""}`;
+      version.hidden = false;
+      document.getElementById("brick-note").hidden = false;
       document.getElementById("brick-save-as-btn").hidden = false;
     }
   } catch (err) {

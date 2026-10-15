@@ -261,7 +261,15 @@ function insertStepOfKind(kind, at = defaultInsertIndex()) {
 // de départ (qui garde un substrat) posée dans une structure vide apporte aussi son substrat ;
 // ailleurs, seules ses étapes s'appliquent, par-dessus ce qui existe.
 function insertBrickAt(brick, at = defaultInsertIndex()) {
-  if (state.wizardScreen !== "structure" || !brick || !brick.steps || !brick.steps.length) return;
+  if (state.wizardScreen !== "structure" || !brick) return;
+  if (brick.pending) {
+    // une version de référence : lue d'abord (palette.js), puis insérée là où on la voulait
+    loadReferenceBrick(brick.id)
+      .then((full) => insertBrickAt(withStepExtras(full), at))
+      .catch(showError);
+    return;
+  }
+  if (!brick.steps || !brick.steps.length) return;
   clearError();
   if (brick.substrate && state.steps.length === 0) setSubstrateFields(JSON.parse(JSON.stringify(brick.substrate)));
   const target = snapGapOutsideBricks(at, true);
@@ -275,14 +283,23 @@ function insertBrickAt(brick, at = defaultInsertIndex()) {
   renderFrame();
 }
 
+// La version qu'une copie garde de sa source : celle de la brique ; pour une version de référence,
+// son numéro (pas le dernier de la référence) ; rien pour une structure de la bibliothèque.
+function copiedVersionOf(brick) {
+  if (brick.virtual === "reference") return brick.number || null;
+  if (brick.virtual === "structure") return null;
+  return brick.version || "1.0";
+}
+
 // Les étapes d'une brique de bibliothèque, copiées pour la structure : sans id (de nouvelles
 // étapes), étiquetées du groupe `groupId`, du nom, de la source et de la version de la brique.
 function copiedBrickSteps(brick, groupId) {
+  const version = copiedVersionOf(brick);
   return reconcileOwnRecipes(JSON.parse(JSON.stringify(brick.steps))).map((s) => ({
     ...withoutStepId(stripBrickTag(s)),
     brick_group_id: groupId,
     brick_name: brick.name,
-    ...(brick.id ? { brick_source: brick.id, brick_version: brick.version || 1 } : {}),
+    ...(brick.id ? { brick_source: brick.id, ...(version ? { brick_version: version } : {}) } : {}),
   }));
 }
 
@@ -425,7 +442,7 @@ async function groupSelectionIntoBrick() {
     state.techBricks = [...state.techBricks, created];
     const groupId = generateBrickGroupId();
     indices.forEach((idx) => {
-      state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name, brick_source: created.id, brick_version: created.version || 1 };
+      state.steps[idx] = { ...state.steps[idx], brick_group_id: groupId, brick_name: name, brick_source: created.id, brick_version: created.version || "1.0" };
     });
     renderBrickList();
     nameInput.value = "";
@@ -532,6 +549,7 @@ function gapHtml(gap) {
 
 function brickGroupHtml(groupId, start, end) {
   const name = state.steps[start].brick_name || "Brique";
+  const tag = brickTagOf(state.steps[start]);
   const count = end - start + 1;
   const variations = state.wizardScreen === "variations";
   const containsSelection =
@@ -571,7 +589,7 @@ function brickGroupHtml(groupId, start, end) {
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(${collapsed ? -90 : 0}deg);"><path d="M6 9l6 6 6-6"/></svg>
         </button>
         <button class="sb-brick__name js-select-brick" type="button" data-group-id="${escapeHtml(groupId)}" title="Sélectionner la brique">
-          <span class="sb-brick__tag">Brique</span>${escapeHtml(name)}${collapsed ? "" : ` <span class="sb-brick__count">· ${count}</span>`}
+          <span class="sb-brick__tag ${tag.cls}" title="${escapeHtml(tag.title)}">${escapeHtml(tag.text)}</span>${escapeHtml(name)}${collapsed ? "" : ` <span class="sb-brick__count">· ${count}</span>`}
         </button>
       </div>
       <div class="sb-brick__chips">${inner}</div>

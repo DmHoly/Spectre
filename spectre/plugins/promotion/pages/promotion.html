@@ -139,6 +139,42 @@
       </aside>
     </div>
 
+    <!-- ?brique=<id> : promouvoir une brique technologique comme brique de référence (promotion-brick.js) -->
+    <div class="promo-layout" id="brick-layout" hidden>
+      <form class="card promo-form" id="brick-form" novalidate>
+        <fieldset class="promo-step">
+          <legend class="promo-step__title"><span class="promo-step__num" aria-hidden="true">1</span>La brique</legend>
+          <div id="brick-summary" class="promo-field"><span class="help">Chargement…</span></div>
+        </fieldset>
+        <fieldset class="promo-step">
+          <legend class="promo-step__title"><span class="promo-step__num" aria-hidden="true">2</span>Pourquoi cette brique</legend>
+          <div class="promo-field">
+            <label for="b-note">Ce qu'elle fixe, pourquoi elle devient la brique de référence</label>
+            <textarea class="field" id="b-note" rows="4" maxlength="2000" placeholder="Ex. : la passivation validée sur les trois derniers lots…"></textarea>
+            <p class="help">Reste avec la brique : c'est ce que liront ceux qui l'inséreront. Ses prochaines versions demanderont aussi une note.</p>
+          </div>
+        </fieldset>
+        <div class="promo-submit">
+          <button class="btn promote-btn promote-btn--large" type="submit" id="brick-submit-btn" disabled>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4Z"/><path d="m9.5 10 2 2 3.5-3.5"/></svg>
+            <span>Promouvoir comme brique de référence</span>
+          </button>
+          <span class="help promo-submit__hint" id="brick-submit-hint" aria-live="polite"></span>
+        </div>
+      </form>
+      <aside class="promo-aside" aria-label="Aperçu et vérifications">
+        <section class="card card-pad promo-outcome" aria-labelledby="brick-outcome-title">
+          <h2 class="section-title" id="brick-outcome-title">Résultat</h2>
+          <div id="brick-outcome" class="promo-outcome__text"></div>
+          <div id="brick-structure" class="promo-structure"></div>
+        </section>
+        <section class="card card-pad" aria-labelledby="brick-rules-title">
+          <h2 class="section-title" id="brick-rules-title">Vérifications</h2>
+          <ul class="promo-rules" id="brick-rules" aria-live="polite"></ul>
+        </section>
+      </aside>
+    </div>
+
     <section class="card card-pad promo-done" id="done" hidden tabindex="-1" aria-labelledby="done-title"></section>
 
     <section class="promo-journal" aria-labelledby="journal-title">
@@ -157,7 +193,10 @@
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/experiments/client.js"></script>
   <script src="/static/references/client.js"></script>
+  <script src="/static/structures/client.js"></script>
+  <script src="/static/process_library/client.js"></script>
   <script src="/static/promotion/client.js"></script>
   <script src="/static/promotion/promotion.js"></script>
+  <script src="/static/promotion/promotion-brick.js"></script>
 </body>
 </html>

@@ -13,6 +13,29 @@ nouvelle étude) sont livrés, serveur et interface, ainsi que tout le 3 ter (an
 image, étiquettes de couches) : voir
 « Fait ».
 
+### Briques : fin des macro-étapes, versions X.Y, brique de référence, structures-briques (2026-10-15)
+
+Demandé le 2026-10-15 : « on va complètement supprimer les macro-étapes, qui font doublon avec les
+briques ; en revanche il faut un versionnement des briques (pousser une brique comme brique de
+référence et suivre son évolution) ; et pouvoir utiliser une structure complète comme brique du
+constructeur (la structure épitaxie devient automatiquement une brique qui porte son nom) ».
+
+- [x] **Macro-étapes retirées** : plus de rôle (gabarit SAG / épitaxie / procédé), ni d'assemblage,
+      ni de page des macro-étapes ; toute brique peut garder un substrat (brique de départ, pris
+      dans une structure vide seulement) ; le réseau de fils reste ; migration des fichiers de
+      briques et de structures, rôle ignoré dans les anciennes versions d'étude.
+- [x] **Versions X.Y des briques**, historique gardé avec la brique (numéro, date, auteur, note,
+      contenu, ce qui change en mots), même règle que les études ; la version entière d'avant se
+      lit « N.0 ».
+- [x] **Brique de référence** : promue par `/promotion?brique=` (règles propres, la brique garde
+      qui, quand, pourquoi), partagée, même id ; nouvelle version = l'enregistrer avec une note ;
+      page `/briques` et fiche `/briques/{id}` (versions, ce qui change, études sur chaque
+      version, aperçu) ; badge « Réf. » dans le flow, note demandée par « Mettre à jour la brique ».
+- [x] **Structures-briques** : les structures de la bibliothèque et la dernière version de chaque
+      référence dans la liste des briques du constructeur, insérées sous leur nom (sources
+      `structure:<id>`, `reference:<slug>@<n>`), substrat pris dans une structure vide, copie
+      tracée (conforme / modifiée / la source a changé), usages par structure.
+
 ### Une seule sorte de ref, version X.Y (2026-10-11)
 
 Demandé le 2026-10-11 : le double affichage « ref v1.0.0 » (or) et « R Ref. mocvd 1.0 » prêtait à

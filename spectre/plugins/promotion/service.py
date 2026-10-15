@@ -25,10 +25,13 @@ from ..accounts.service import User
 from ..experiments import service as experiments
 from ..experiments.repository import display_status
 from ..microprojects import service as microprojects
+from ..process_library import service as library
+from ..process_library.schemas import brick_payload
+from ..process_library.tech_bricks import BrickReference
 from ..references import service as references
 from ..structures import kinds
-from . import rules
-from .schemas import PromotionRequest
+from . import brick_rules, rules
+from .schemas import BrickPromotionRequest, PromotionRequest
 
 LEVEL_TEXT = {"initial": "première version", "major": "changement majeur", "minor": "changement mineur", "patch": "retouche", "none": "sans changement"}
 
@@ -229,6 +232,39 @@ def journal(user: User, *, microproject: str | None = None, experiment_id: str |
             }
         )
     return entries
+
+
+# -- les briques de référence ----------------------------------------------------------------------
+
+
+def _brick_candidate(user: User, body: BrickPromotionRequest) -> brick_rules.BrickCandidate:
+    entry = library.get_item(library.TECH_BRICKS, user, body.brick_id)
+    folded = entry.item.name.strip().casefold()
+    taken = any(
+        other.item.id != entry.item.id and other.item.name.strip().casefold() == folded
+        for other in library.list_items(library.TECH_BRICKS, user, scope="shared")
+    )
+    return brick_rules.BrickCandidate(user, entry, body.note, taken)
+
+
+def preview_brick(user: User, body: BrickPromotionRequest) -> dict[str, Any]:
+    """Ce que donnerait la promotion de la brique (rien n'est écrit) : ``{brick, rules, can_promote}``."""
+    candidate = _brick_candidate(user, body)
+    results = brick_rules.evaluate(candidate)
+    return {"brick": brick_payload(candidate.entry, user, detail=False), "rules": rules.public(results), "can_promote": rules.first_block(results) is None}
+
+
+def promote_brick(user: User, body: BrickPromotionRequest) -> dict[str, Any]:
+    """Promouvoir la brique comme brique de référence : refusée avec l'erreur de la première règle
+    qui bloque ; sinon la brique, partagée, porte sa référence (qui, quand, pourquoi) - c'est son
+    journal. Renvoie la brique."""
+    candidate = _brick_candidate(user, body)
+    results = brick_rules.evaluate(candidate)
+    blocked = rules.first_block(results)
+    if blocked is not None:
+        raise blocked.as_error()
+    reference = BrickReference(promoted_by=user.id, promoted_at=references.now(), note=body.note.strip())
+    return brick_payload(library.set_brick_reference(user, body.brick_id, reference), user, detail=True)
 
 
 def editable_microprojects(user: User) -> list[dict[str, Any]]:

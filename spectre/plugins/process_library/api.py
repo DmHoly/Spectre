@@ -10,13 +10,14 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field, model_validator
 from structureforge.process.steps import ProcessStep
 
-from ..accounts import service as accounts
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..structures import simulation
 from . import service, usages
-from .service import SAVED_STRUCTURES, STEP_PRESETS, TECH_BRICKS, Collection, Entry
+from .schemas import ItemSerializer, brick_payload
+from .service import SAVED_STRUCTURES, STEP_PRESETS, TECH_BRICKS, Collection
 from .structure_library import ExperimentOrigin
+from .tech_bricks import NOTE_MAX_LENGTH
 
 router = APIRouter(prefix="/api", tags=["process-library"])
 
@@ -120,6 +121,8 @@ class TechBrickChanges(_ItemChanges, _InlineLatticeAnchors):
     lattice_openings: dict[str, simulation.LatticeOpening] | None = None
     substrate: simulation.SubstrateSpec | None = None
     notes: str | None = None
+    # le pourquoi de la version que ce changement fait (obligatoire pour une brique de référence)
+    note: str | None = Field(None, max_length=NOTE_MAX_LENGTH)
 
 
 def _content(body: BaseModel) -> dict[str, Any]:
@@ -137,31 +140,7 @@ def _changes(body: _ItemChanges) -> dict[str, Any]:
     return {**_content(body), **body.model_dump(exclude_unset=True, include={"scope", "microproject"})}
 
 
-class _Serializer:
-    """Un élément tel que l'API le rend : ses champs, sa portée, ses auteurs (id et nom) et si le
-    demandeur peut le modifier. Les noms des comptes sont lus une fois par réponse."""
-
-    def __init__(self, user: User):
-        self.user = user
-        self._names: dict[int, str | None] = {}
-
-    def _account(self, user_id: int | None) -> dict[str, Any] | None:
-        if user_id is None:
-            return None
-        if user_id not in self._names:
-            account = accounts.get_by_id(user_id)
-            self._names[user_id] = account.name if account else None
-        return {"id": user_id, "name": self._names[user_id]}
-
-    def __call__(self, entry: Entry) -> dict[str, Any]:
-        return {
-            **entry.item.model_dump(mode="json"),
-            "scope": entry.scope,
-            "microproject": entry.microproject.slug if entry.microproject else None,
-            "created_by": self._account(entry.item.created_by),
-            "updated_by": self._account(entry.item.updated_by),
-            "can_edit": service.can_edit(entry, self.user),
-        }
+_Serializer = ItemSerializer  # la forme des éléments : schemas.py
 
 
 def _list(collection: Collection, user: User, microproject: str | None, scope: str | None) -> list[dict[str, Any]]:
@@ -241,24 +220,42 @@ def list_tech_brick_usages(microproject: str | None = None, user: User = Depends
     return usages.tech_brick_usages(user, microproject)
 
 
+
 @router.get("/tech-bricks")
-def list_tech_bricks(microproject: str | None = None, scope: str | None = None, user: User = Depends(current_user)) -> list[dict[str, Any]]:
-    return _list(TECH_BRICKS, user, microproject, scope)
+def list_tech_bricks(
+    microproject: str | None = None, scope: str | None = None, reference: bool | None = None, user: User = Depends(current_user)
+) -> list[dict[str, Any]]:
+    """Les briques visibles ; ``reference=true`` : les briques de référence seulement."""
+    entries = service.list_items(TECH_BRICKS, user, microproject_slug=microproject, scope=scope)
+    if reference is not None:
+        entries = [entry for entry in entries if entry.item.is_reference == reference]
+    return [brick_payload(entry, user, detail=False) for entry in entries]
 
 
 @router.post("/tech-bricks", status_code=201)
 def create_tech_brick(body: NewTechBrick, response: Response, user: User = Depends(current_user)) -> dict[str, Any]:
-    return _create(TECH_BRICKS, body, user, response)
+    entry = service.create_item(TECH_BRICKS, user, _content(body), scope=body.scope, microproject_slug=body.microproject)
+    response.headers["Location"] = f"/api/tech-bricks/{entry.item.id}"
+    return brick_payload(entry, user, detail=True)
 
 
 @router.get("/tech-bricks/{brick_id}")
 def get_tech_brick(brick_id: str, user: User = Depends(current_user)) -> dict[str, Any]:
-    return _Serializer(user)(service.get_item(TECH_BRICKS, user, brick_id))
+    return brick_payload(service.get_item(TECH_BRICKS, user, brick_id), user, detail=True)
 
 
 @router.patch("/tech-bricks/{brick_id}")
 def update_tech_brick(brick_id: str, body: TechBrickChanges, user: User = Depends(current_user)) -> dict[str, Any]:
-    return _Serializer(user)(service.update_item(TECH_BRICKS, user, brick_id, _changes(body)))
+    """Modifier une brique : un changement de contenu fait une version (``note`` : pourquoi, exigée
+    d'une brique de référence - 422 ``brick_note_required`` sinon)."""
+    return brick_payload(service.update_item(TECH_BRICKS, user, brick_id, _changes(body)), user, detail=True)
+
+
+@router.delete("/tech-bricks/{brick_id}/reference")
+def demote_tech_brick(brick_id: str, user: User = Depends(current_user)) -> dict[str, Any]:
+    """Retirer une brique des briques de référence (qui peut la modifier) : elle reste partagée, avec
+    ses versions. La promouvoir passe par le plugin promotion."""
+    return brick_payload(service.set_brick_reference(user, brick_id, None), user, detail=True)
 
 
 @router.delete("/tech-bricks/{brick_id}", status_code=204, response_class=Response)

@@ -31,11 +31,13 @@ function scopeSuffix(scope) {
 function brickRow(brick) {
   const canCreate = state.currentRole === "editor" || state.currentRole === "owner";
   const editHref = `/microprojets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/${encodeURIComponent(brick.id)}`;
+  const fiche = `/briques/${encodeURIComponent(brick.id)}`;
+  const ref = brick.reference ? `<span class="sb-brick__tag sb-brick__tag--ref" title="Brique de référence">Réf.</span> ` : "";
   return `
     <div class="step-row" style="align-items:flex-start;">
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;">${escapeHtml(brick.name)} ${scopeSuffix(brick.scope)}</div>
-        <div style="font-size:12px;color:var(--text-faint);">${brick.substrate ? "brique de départ · " : ""}${brick.steps.length} étape(s) · v${brick.version || 1}</div>
+        <div style="font-size:13px;font-weight:600;">${ref}<a href="${fiche}" title="La fiche de la brique : ses versions, où elle sert">${escapeHtml(brick.name)}</a> ${scopeSuffix(brick.scope)}</div>
+        <div style="font-size:12px;color:var(--text-faint);">${brick.substrate ? "brique de départ · " : ""}${brick.steps.length} étape(s) · v${escapeHtml(brick.version || "1.0")}${brick.versions && brick.versions.length > 1 ? ` (${brick.versions.length} versions)` : ""}</div>
         ${brick.notes ? `<div style="font-size:12px;color:var(--text-soft);margin-top:3px;max-width:56ch;">${escapeHtml(brick.notes)}</div>` : ""}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">

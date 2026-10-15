@@ -1254,6 +1254,8 @@ BRICKS_METADATA_KEY = "process_bricks"
 # il faut au moins deux étapes étiquetées d'une même brique pour que leurs étiquettes n'en fassent qu'une
 MIN_GROUPED_LABELS = 2
 BRICK_GROUP_ID_RE = r"^[A-Za-z0-9_.:-]{1,80}$"
+# la version d'une brique de bibliothèque (« 1.2 », voir process_library.tech_bricks)
+BRICK_VERSION_RE = r"^[1-9][0-9]{0,4}\.[0-9]{1,5}$"
 # le nom d'une brique (celle d'un procédé comme celle de la bibliothèque, dont elle reprend le nom)
 BRICK_NAME_MAX_LENGTH = 120
 
@@ -1268,17 +1270,21 @@ class ProcessBrick(BaseModel):
     name: str = Field(min_length=1, max_length=BRICK_NAME_MAX_LENGTH)
     source: str | None = Field(None, max_length=120)
     step_indexes: list[int] = Field(min_length=1)
-    # la version de la brique de bibliothèque (``source``) quand on l'a copiée : une trace, jamais un
-    # lien - le constructeur dit si elle a changé depuis ; absente, la forme d'avant
-    version: int | None = Field(None, ge=1)
+    # la version de la brique de bibliothèque (``source``) quand on l'a copiée (« 1.2 ») : une trace,
+    # jamais un lien - le constructeur dit si elle a changé depuis ; absente, la forme d'avant
+    version: str | None = Field(None, pattern=BRICK_VERSION_RE)
 
     @model_validator(mode="before")
     @classmethod
-    def _without_the_old_role(cls, data: Any) -> Any:
+    def _the_forms_of_before(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
         # le rôle de macro-étape d'avant (gabarit SAG, épitaxie, procédé - retiré le 2026-10-15) :
         # une brique enregistrée avant en porte encore un, qui ne veut plus rien dire
-        if isinstance(data, dict) and "role" in data:
-            data = {key: value for key, value in data.items() if key != "role"}
+        data = {key: value for key, value in data.items() if key != "role"}
+        # le compteur entier d'avant les numéros X.Y : N se lit N.0
+        if isinstance(data.get("version"), int) and not isinstance(data.get("version"), bool):
+            data["version"] = f"{data['version']}.0" if data["version"] >= 1 else None
         return data
 
     @model_serializer(mode="wrap")
@@ -1351,7 +1357,11 @@ def bricks_from_metadata(raw: Any, step_ids: list[str]) -> list[ProcessBrick]:
         if not indexes:
             continue
         try:
-            version = item.get("version") if isinstance(item.get("version"), int) and item.get("version") >= 1 else None
+            version = item.get("version")
+            if isinstance(version, int) and not isinstance(version, bool):
+                version = f"{version}.0" if version >= 1 else None
+            elif not (isinstance(version, str) and re.match(BRICK_VERSION_RE, version)):
+                version = None
             bricks.append(ProcessBrick(group_id=item.get("group_id"), name=item.get("name"), source=item.get("source"), step_indexes=indexes, version=version))
         except (ValueError, TypeError):
             continue

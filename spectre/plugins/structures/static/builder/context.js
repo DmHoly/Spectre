@@ -134,6 +134,10 @@ const state = {
   derivedFrom: null, // library mode only: name of the structure this one was derived from, if any
   editingLibraryId: null, // library mode only: id of the saved structure being edited in place (null = new)
   editingBrickId: null, // brick mode only: id of the tech brick being edited in place (null = new)
+  editingBrickIsReference: false, // brick mode only: a reference brick needs a note for each new version
+  savedStructures: [], // les structures de la bibliothèque, proposées comme briques (palette.js)
+  references: [], // les références (leur dernière version, proposée comme brique)
+  referenceBricks: {}, // id `reference:<slug>@<n>` -> la version lue comme brique
   editingPresetId: null, // preset mode only: id of the step preset being edited in place (null = new)
   presetVariableFields: [], // preset mode only: the fields the preset proposes to vary
   zoom: 1, // 1 = ajusté à la zone de dessin

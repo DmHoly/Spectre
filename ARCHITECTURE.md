@@ -27,8 +27,10 @@ toute exception y est écrite. Le *pourquoi* de chaque choix (constats, coûts, 
    `depends_on`, et seulement leurs modules publics, jamais leur `api` : `service` (ou `store`),
    `models`, `deps`, `schemas`, plus les modules de domaine que trois plugins offrent en propre -
    `accounts.security` (cookie de session, hachage des jetons), `experiments.repository`,
-   `experiments.lineage`, `experiments.entities`, `experiments.insights`, `experiments.plans`, `structures.kinds`,
-   `structures.campaigns`, `structures.simulation` et `structures.rendering`. La liste est tenue par
+   `experiments.lineage`, `experiments.entities`, `experiments.insights`, `experiments.plans`,
+   `experiments.versioning` (la règle X.Y, que les briques suivent), `structures.kinds`,
+   `structures.campaigns`, `structures.simulation`, `structures.rendering` et
+   `process_library.tech_bricks` (la forme d'une brique, lue par la promotion). La liste est tenue par
    `tests/contracts/test_plugin_imports.py` (`PUBLIC_MODULES`, `PUBLIC_EXTRA`). Le noyau n'importe
    aucun plugin.
 4. **Le domaine ne connaît pas HTTP.** `service.py`, `store.py` et `models.py` n'importent pas
@@ -107,9 +109,9 @@ placés au-dessus de lui.
 | 9 | `structures` | Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG, **types de structure** (`process`, `campaign`, `images`) exposés par `kinds.py`. Pages du constructeur | accounts, library, attachments | — |
 | 10 | `experiments` | Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut, conclusion, étiquettes, entités physiques, combinaison de deux études (une nouvelle piste à deux parents), suppression, diff, filiation, refs, statistiques et frise transverses. Seul point d'écriture vers Follow (`service.amend`) | microprojects, structures, attachments | `data/microprojects/<slug>/follow/` (dont `retired_lines.json`, les noms des pistes supprimées) |
 | 11 | `comparator` | Comparateur de structures : le tableau d'une liste de plaques, d'études et de versions de référence (`GET /api/comparisons`), une ligne par plaque ou structure, une colonne par paramètre regroupée par étape, chaque cellule comparée à la ligne de base (modifié, paramètre ajouté, couche en plus, étape déplacée, couche absente : `table.py`, pur) ; registre des sources de lignes (`register_source`) - les études ici, les plaques et les références chez leurs plugins ; page `/comparateur`, composant `Comparator` des pages qui comparent des structures. Ne stocke rien | experiments, microprojects, structures | — |
-| 12 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`). Pages bibliothèque, présets, briques | structures, microprojects, library, experiments (où servent les briques) | JSON par portée |
+| 12 | `process_library` | Structures enregistrées, présets d'étape, briques technologiques (portées `builtin` / `shared` / `microproject`) ; une brique est **versionnée** X.Y (ses versions gardées avec elle, `tech_bricks.py`) et peut être une **brique de référence** (promue par le plugin promotion). Pages bibliothèque, présets, briques d'un µprojet, briques de référence (`/briques`), fiche d'une brique (`/briques/{id}`) | structures, microprojects, library, experiments (où servent les briques, la règle de numérotation) | JSON par portée |
 | 13 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études des µprojets (numéro calculé, instantané de la structure), leur évolution, leurs usages (les études parties d'une version, lues dans `reference_origin`), la source « référence » du comparateur (`comparison_source.py`), les refs locales d'avant regroupées une fois par migration (`local_refs.py`) | experiments, microprojects, structures, comparator | `structure_references`, `reference_versions`, `retired_reference_slugs` |
-| 14 | `promotion` | Promouvoir une structure comme référence : le seul chemin pour choisir une nouvelle référence ou une nouvelle version (une étude, la variante d'un split, une version passée). Page `/promotion` (formulaire, vérifications, journal) ouverte par le bouton « Promouvoir comme référence » de chaque fiche, variante, conclusion « Retenir comme référence », page d'évolution et page de référence (`static/link.js`, `PromotionLink`). **Registre de règles** (`rules.py`, `register_rule`) : chaque règle rend `ok` / `warn` / `block` ; une règle de plus ne change ni le formulaire, ni l'API. Écrit les versions par `references.service.plan_publication` / `record_publication` | experiments, microprojects, structures, references | `promotions` (le journal : source, référence, numéro, pourquoi, verdicts des règles du jour) |
+| 14 | `promotion` | Promouvoir une structure comme référence : le seul chemin pour choisir une nouvelle référence ou une nouvelle version (une étude, la variante d'un split, une version passée). Page `/promotion` (formulaire, vérifications, journal) ouverte par le bouton « Promouvoir comme référence » de chaque fiche, variante, conclusion « Retenir comme référence », page d'évolution et page de référence (`static/link.js`, `PromotionLink`). **Registre de règles** (`rules.py`, `register_rule`) : chaque règle rend `ok` / `warn` / `block` ; une règle de plus ne change ni le formulaire, ni l'API. Écrit les versions par `references.service.plan_publication` / `record_publication`. La même page (`?brique=`) promeut une **brique de référence** avec ses propres règles (`brick_rules.py`) | experiments, microprojects, structures, references, process_library | `promotions` (le journal : source, référence, numéro, pourquoi, verdicts des règles du jour) |
 | 15 | `intent_forms` | Formulaires d'intention (portées) et formulaire actif d'un µprojet | experiments, microprojects | JSON + `follow/commit_form.yml` |
 | 16 | `wafers` | Index des plaques suivies, clé `wafer_key`, passeport d'une plaque, recherche par lasermark et par FDL, politique de visibilité, plaques de chaque FDL (`fdl_source` : PRISM - hook `fdl_wafers`, les lasermarks cités par le ticket Gozer, en lecture seule - avec la base locale `fdl_wafers`, saisie à la main, en repli pour une FDL que Gozer ne connaît pas ; `SPECTRE_FDL_SOURCE=local` pour s'en passer, démo avec `SPECTRE_DEMO_DATA=1`) ; la source « plaque » du comparateur (`comparison_source.py`) ; la vie d'une plaque en ligne (`GET /api/wafers/{wafer_key}/tracking`, `POST .../tracking/refresh`) : les tables lues par la source (`tracking_source` : les hooks PRISM de la catégorie « Traçabilité » - MES, épitaxie et fiche Gozer, FDL par plaque et par lot, tests, étapes de FDL - ou la démo), assemblées en une fiche (`tracking_model` : statut en cours / en attente / clos / introuvable, étape courante, parcours MES, épitaxie, FDL et leur avancement, tests) et gardées avec leur date de lecture (`tracking` : relues d'elles-mêmes après 24 h, plus jamais pour une plaque immobile depuis 30 jours, toujours sur le bouton ; une relecture en échec garde la fiche et le dit). Avec `characterization.prism_source`, les modules qui importent `prism` (`tracking_source`, `fdl_source`) | experiments, search, comparator | cache mémoire, `fdl_wafers`, `wafer_tracking` |
 | 17 | `twins` | Plaques jumelles : parmi toutes les plaques suivies que le lecteur peut lire, celles dont la structure est celle d'une ligne du comparateur - exactement, ou à 1 à 5 variations près (`GET /api/wafer-twins?item=&max_variations=`). Une variation est une différence que le tableau colorerait (paramètre modifié ou ajouté, couche en plus ou absente, étape déplacée : `comparator.table.differences`, même décompte que le résumé du comparateur). Chaque plaque est lue par la structure de sa dernière étude (`wafers.service.latest_members`), une structure partagée n'est lue et comparée qu'une fois ; une structure sans les colonnes de la base est écartée. Panneau `Twins` monté par la page `/comparateur` (le comparateur n'en dépend pas : il vérifie `pluginEnabled("twins")`). Ne stocke rien | experiments, comparator, wafers | — |
@@ -707,6 +709,69 @@ qu'un gabarit SAG apportait tient à une seule chose, qui reste :
   d'une lithographie ancrée et le nombre de fils vus ne comptent pas dans la comparaison ; le
   substrat d'une brique de départ compte quand elle est en tête.
 
+### Versions X.Y des briques, briques de référence, structures-briques
+
+Décidé le 2026-10-15 : « un système de versionnement des briques - pousser une brique comme brique
+de référence et suivre son évolution - et une structure complète utilisable comme brique du
+constructeur ».
+
+- **Versions** (`tech_bricks.py`) : le contenu d'une brique (`BRICK_CONTENT_FIELDS`) est numéroté
+  `MAJEUR.MINEUR` par la règle des études (`experiments.versioning.classify_process_change`,
+  `brick_change_level`) : une étape ajoutée, retirée ou déplacée, ou le substrat changé, ouvre
+  X+1.0 ; un paramètre (déclaré compris, les recettes propres, un ancrage au réseau) donne X.Y+1 ;
+  un nom d'étape, une étiquette, une trace de préset est une **retouche** qui garde le numéro (le
+  contenu gardé de la version courante suit). Chaque version est gardée avec la brique
+  (`versions`, :class:`BrickVersion` : `number`, `created_at`, `created_by`, `note`, `level`,
+  `content`) ; une brique d'avant les numéros (compteur entier `N`) se lit `N.0`, sa version
+  courante devenant sa première version gardée - de même pour la copie d'une étude
+  (`ProcessBrick.version`, `"1.2"` ; un entier d'avant se lit `N.0`). `GET /api/tech-bricks/{id}`
+  rend chaque version avec son contenu et, en mots, **ce qui change** depuis la précédente
+  (`changes`, `brick_changes` : substrat, étape ajoutée / retirée / remplacée / renommée, champ
+  modifié « « n-GaN » : thickness 200 nm → 300 nm », paramètres déclarés, recettes, ancrages,
+  étiquettes) ; la liste rend les versions sans leur contenu. `PATCH` accepte `note` : le pourquoi
+  de la version que le changement fait. `revised_brick` est le `revise` de la collection, qui
+  reçoit désormais `user_id` et `note` (`service.update_item`).
+- **Brique de référence** (`TechBrick.reference`, :class:`BrickReference` : `promoted_by`,
+  `promoted_at`, `note`) : une brique partagée que tout le monde reprend. La promouvoir passe par le
+  plugin promotion (`POST /api/promotions/bricks`, § promotion) : une brique de µprojet passe en
+  partagée, **même id** (les copies qu'en ont les structures la retrouvent), son auteur devient qui
+  la promeut (`service.set_brick_reference`). `DELETE /api/tech-bricks/{id}/reference` la retire des
+  références (qui peut la modifier) : elle reste partagée, avec ses versions. Une brique de
+  référence **ne change pas sans note** : un `PATCH` qui fait une version majeure ou mineure sans
+  `note` est refusé (422 `brick_note_required`) ; une retouche passe. `GET /api/tech-bricks?reference=true`
+  les liste.
+- **Pages** : `/briques` (`bricks.js`, entrée « Briques de réf. » du menu Structure) liste les briques
+  de référence (version courante, dernière mise à jour, qui l'a promue, usages) ; `/briques/{id}`
+  (`brick.js`) est la fiche de toute brique : sa référence (qui, quand, pourquoi), ses **versions**
+  de la plus récente à la première (numéro, niveau, date, auteur, note, ce qui change), son aperçu
+  simulé (sur son substrat de brique de départ, sinon un substrat d'aperçu), **où elle sert** (les
+  études et la version copiée, « M sur une version antérieure »), ses étapes ; « Ouvrir dans le
+  constructeur » (mode brique, sous le µprojet de la brique ou le µprojet de travail mémorisé par
+  le hub, `?retour=brique`), « Promouvoir comme brique de référence » (`PromotionLink.url({brick})`),
+  « Retirer des références ». La page des briques d'un µprojet et le hub lient chaque brique à sa
+  fiche (badge « Réf. »). **Constructeur** : le flow écrit « Réf. » (or sur navy inversé,
+  `sb-brick__tag--ref`) sur une brique de référence ; l'inspecteur dit « Brique de référence
+  « X » · v1.2 · fiche » ; « Mettre à jour la brique » demande la note d'une brique de référence
+  (`window.prompt`) ; le mode brique montre la version courante et un champ « Pourquoi cette
+  version ? », exigé d'une brique de référence.
+- **Une structure complète comme brique** (`palette.js`) : sans rien créer, la liste des briques du
+  constructeur propose aussi, sous leur nom, **chaque structure de la bibliothèque** (intégrée,
+  partagée, du µprojet) et **la dernière version de chaque référence** (sections « Structures de la
+  bibliothèque », « Références (dernière version) »). Insérée, elle copie ses étapes en un seul
+  groupe (ses briques internes aplaties : les briques ne s'imbriquent pas), nommé comme elle, de
+  source `structure:<id>` ou `reference:<slug>@<numéro>` (`ProcessBrick.source`) et, dans une
+  structure vide, apporte son substrat (comme une brique de départ). Une version de référence n'est
+  lue qu'au moment de l'insérer (`referencesApi.version`, gardée dans `state.referenceBricks` ;
+  celles copiées dans une structure chargée sont lues en arrière-plan, `prefetchReferenceBricks`).
+  Sa copie garde le numéro de la version copiée (`brick_version`) ; celle d'une structure, aucune
+  version (la structure est un instantané écrasable : la copie se compare par son contenu). Le flow
+  écrit « Réf. » sur une version de référence, « Struct. » sur une structure ; l'inspecteur dit
+  « Version de référence « X 1.2 » · évolution » ou « Structure de la bibliothèque « X » », conforme,
+  modifiée, « la source a changé depuis (1.3) » (une autre version de la référence depuis) ou
+  introuvable ; « Réappliquer » reprend la dernière version. `GET /api/tech-brick-usages` rend aussi,
+  par `structure:<id>` de structure visible, les études qui en ont une copie ; le hub l'écrit
+  (« utilisée dans N études ») sur ses structures et ses briques.
+
 ### Réseau de fils
 
 Le substrat peut porter un réseau de fils, `substrate.lattice = {pitch, wires}` (`simulation.Lattice` :
@@ -935,7 +1000,9 @@ Droits d'écriture :
 | `PUT …/presets-etapes/{name}?partagee=` | `PATCH /api/step-presets/{preset_id}` (la portée est modifiable) |
 | `DELETE …/presets-etapes/{name}?partagee=` | `DELETE /api/step-presets/{preset_id}` → 204 |
 | `…/structures-sauvegardees[/{name}]` | `/api/saved-structures[/{structure_id}]` (même schéma) ; `derived_from` : un nom, ou l'origine `{microproject, experiment_id, version_id, ref}` d'une ref publiée depuis la page d'évolution avant les références (une étiquette, gardée telle qu'envoyée ; la page n'en publie plus : on publie une référence) |
-| `…/briques-technologiques[/{name}]` | `/api/tech-bricks[/{brick_id}]` (même schéma) |
+| `…/briques-technologiques[/{name}]` | `/api/tech-bricks[/{brick_id}]` (même schéma) ; `GET /api/tech-bricks?reference=true\|false` : les briques de référence seulement (ou sans elles) ; chaque brique porte `version` (« 1.2 »), `versions` (`[{number, level, created_at, created_by, note}]`, avec `content` et `changes` sur `GET /api/tech-bricks/{brick_id}` seulement) et, promue, `reference` (`{promoted_by, promoted_at, note}`) ; `PATCH` accepte `note` (le pourquoi de la version que le changement fait ; 422 `brick_note_required` pour une brique de référence sans note) |
+| *(nouveau)* | `DELETE /api/tech-bricks/{brick_id}/reference` → la brique, retirée des briques de référence (qui peut la modifier) ; la promouvoir : `POST /api/promotions/bricks` (§ promotion) |
+| *(nouveau)* | `GET /api/tech-brick-usages?microproject=` → par id de brique visible, et par `structure:<id>` de structure visible, les études dont la version courante en a une copie, avec la version copiée |
 
 Une structure enregistrée et une brique gardent, comme `declared_params`, leurs étiquettes de couches
 par position d'étape (`layer_labels`, § 4 ; une position hors des étapes → 422) et l'appartenance
@@ -1136,6 +1203,8 @@ elle naît avec sa première version.
 | `POST /api/promotions` (même corps) | → 201 + `Location` `/api/references/{slug}/versions/{number}` + la version (`GET` d'une version) ; refusée avec le statut et le code de la **première règle qui bloque** ; sinon, dans une transaction sous le verrou des références : la nouvelle référence (si `new_reference`), la version (`references.service.record_publication`), l'entrée du journal ; µprojet inconnu → 422 `unknown_microproject`, piste, version ou référence inconnue → 404, `parent` inconnu → 422 `unknown_parent_version` |
 | `GET /api/promotions?microproject=&experiment_id=&limit=` | le journal, les plus récentes d'abord : `{reference: {slug, name, exists}, number, created_reference, source, note, warnings, promoted_by, promoted_at}` ; `source` masquée comme celle d'une version de référence |
 | `GET /api/promotion-sources` | les µprojets où l'on peut promouvoir (éditeur) : `[{slug, name}]` |
+| `POST /api/promotions/bricks/preview` `{brick_id, note}` | ce que donnerait la promotion d'une brique comme **brique de référence**, rien n'est écrit : `{brick, rules: [{rule, label, level, message, code}], can_promote}` (`brick_rules.py`) |
+| `POST /api/promotions/bricks` (même corps) | → 201 + `Location` `/api/tech-bricks/{id}` + la brique (partagée, `reference` posée) ; refusée avec le statut et le code de la première règle qui bloque : droit de promouvoir (403 `forbidden`, `builtin_brick`), brique utilisable (422 `brick_empty`), pas déjà une référence (409 `brick_already_reference`), nom libre parmi les briques partagées (409 `brick_name_taken`), justification (avertissement). Pas d'entrée au journal des promotions de structures : la brique porte elle-même qui l'a promue, quand et pourquoi |
 
 - **Les règles** (`rules.py`) : un registre, comme les sources du comparateur. Une règle
   (`Rule(id, label, check, order)`) reçoit le `Candidate` (qui promeut, la publication planifiée par
@@ -1297,10 +1366,10 @@ Toutes nouvelles, réservées aux administrateurs (403 sinon).
 | microprojects | `/microprojets/{slug}`, `/p/{code}` (redirection, **après** contrôle de session), `/projets/{rest:path}` (redirection héritée, 308) |
 | experiments | `/microprojets/{slug}/experiences/{experiment_id}` (`?version=` pour une version passée, en lecture seule ; un ancien id de version est résolu puis redirigé en 302 par le `page_router`, sans `?version=` si c'est la pointe, vers `/connexion` hors session, vers le µprojet si la version est introuvable), `/microprojets/{slug}/evolution` (nouvelle : « Évolution des structures », diagramme des pistes, versions et versions de référence ; liée depuis la page µprojet et la fiche), `/microprojets/{slug}/refs` (302 vers `/evolution`) |
 | references | `/references` (la liste des références de toute l'application ; entrée « Références » de la barre du haut), `/references/{slug}` (l'évolution d'une référence, `?version=1.1` : la version choisie) |
-| promotion | `/promotion` (nouvelle : promouvoir une structure comme référence, `?microprojet=&etude=&version=&variante=&reference=&retour=` ; entrée « Promouvoir une réf. » de la barre du haut) |
+| promotion | `/promotion` (nouvelle : promouvoir une structure comme référence, `?microprojet=&etude=&version=&variante=&reference=&retour=` ; entrée « Promouvoir une réf. » de la barre du haut ; `?brique=<id>&retour=` : promouvoir une brique comme brique de référence, `promotion-brick.js`) |
 | comparator | `/comparateur` (nouvelle : `?item=` répété, `&base=n` ; bouton à icône de la barre du haut, à côté de la session) |
 | structures | `/microprojets/{slug}/structures/nouvelle`, `/structures/image`, `/structures/sans-structure`, `/experiences/{experiment_id}/evoluer`, `/experiences/{experiment_id}/evoluer-image`, `/experiences/{experiment_id}/evoluer-sans-structure` (`?version=` : partir d'une version passée, sur une nouvelle piste), `/structures/bibliotheque/nouvelle`, `/structures/bibliotheque/{structure_id}`, `/briques-technologiques/bibliotheque/nouvelle`, `/briques-technologiques/bibliotheque/{brick_id}` |
-| process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques` |
+| process_library | `/bibliotheque`, `/microprojets/{slug}/presets-etapes`, `/microprojets/{slug}/briques-technologiques`, `/briques` (les briques de référence ; entrée « Briques de réf. » du menu Structure), `/briques/{brick_id}` (la fiche d'une brique : versions, où elle sert) |
 | intent_forms | `/microprojets/{slug}/formulaire-intention` |
 | wafers | `/plaques` (l'index : toutes les plaques connues et leur recherche ; entrée « Plaques » du menu Data), `/plaques/{lasermark}` |
 | lots | `/lots`, `/lots/{code}` |

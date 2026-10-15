@@ -1345,6 +1345,16 @@
   background: var(--navy);
   border-radius: 3px;
 }
+/* une brique de référence (promue, voir process_library) ou une version de référence : or sur navy inversé */
+.sb-brick__tag--ref {
+  color: var(--navy);
+  background: var(--gold-light);
+}
+/* une structure de la bibliothèque insérée comme brique */
+.sb-brick__tag--struct {
+  color: var(--surface);
+  background: var(--viz-2);
+}
 .sb-brick__count {
   font-family: var(--font-mono);
   font-weight: 500;
@@ -1501,6 +1511,15 @@
 .sb-palette__bricks .help {
   padding: 0 4px;
   margin: 0;
+}
+/* les sections de la liste des briques : briques, structures de la bibliothèque, références */
+.sb-palette__sub {
+  padding: 6px 4px 1px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
 .sb-brick-tool {

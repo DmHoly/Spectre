@@ -20,4 +20,12 @@ const promotionApi = {
   sources() {
     return api.get("/api/promotion-sources");
   },
+  // une brique comme brique de référence : {brick_id, note} -> {brick, rules, can_promote}
+  previewBrick(body) {
+    return api.post("/api/promotions/bricks/preview", body);
+  },
+  // promouvoir la brique -> la brique (partagée, avec sa référence) ; refusée avec la règle qui bloque
+  promoteBrick(body) {
+    return api.post("/api/promotions/bricks", body);
+  },
 };

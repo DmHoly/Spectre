@@ -4,7 +4,8 @@
    Aucune condition pour le montrer : ce que la structure permet ou non, le formulaire le dit (ses
    règles). Les pages qui l'utilisent chargent aussi /static/promotion/promotion.css.
 
-     PromotionLink.url({microproject, experimentId, versionId, variant, reference, back})
+     PromotionLink.url({microproject, experimentId, versionId, variant, reference, brick, back})
+     (`brick` : l'id d'une brique à promouvoir comme brique de référence, /promotion?brique=)
      PromotionLink.html(target, {label, compact, title})  - un <a class="btn promote-btn"> */
 
 const PromotionLink = (() => {
@@ -17,6 +18,7 @@ const PromotionLink = (() => {
     if (target.versionId) params.set("version", target.versionId);
     if (target.variant !== undefined && target.variant !== null) params.set("variante", String(target.variant));
     if (target.reference) params.set("reference", target.reference);
+    if (target.brick) params.set("brique", target.brick);
     params.set("retour", target.back || window.location.pathname + window.location.search + window.location.hash);
     return `/promotion?${params.toString()}`;
   }

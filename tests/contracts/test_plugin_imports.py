@@ -39,8 +39,9 @@ PUBLIC_MODULES = {"service", "store", "models", "deps", "schemas"}
 # entrée qu'aucun import n'utilise plus fait échouer le test.
 PUBLIC_EXTRA: dict[str, set[str]] = {
     "accounts": {"security"},
-    "experiments": {"repository", "lineage", "entities", "insights", "plans"},
+    "experiments": {"repository", "lineage", "entities", "insights", "plans", "versioning"},
     "structures": {"kinds", "campaigns", "simulation", "rendering", "library_files"},
+    "process_library": {"tech_bricks"},
 }
 
 # (module qui importe, module importé) -> ce qui supprimera l'import.

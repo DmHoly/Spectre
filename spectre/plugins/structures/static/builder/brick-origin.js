@@ -42,16 +42,36 @@ function brickGroupStatus(groupId) {
   const brick = findBrickEntry(first.brick_source);
   const version = first.brick_version || null;
   if (!brick) return { state: "missing", brick: null, version };
-  if (version && (brick.version || 1) !== version) return { state: "outdated", brick, version };
+  if (version && brick.version && brick.version !== version) return { state: "outdated", brick, version };
+  if (brick.pending) return { state: "loading", brick, version };
   return { state: sameBrickContent(state.steps.slice(span[0], span[1] + 1), brick, span[0]) ? "same" : "modified", brick, version };
 }
 
 const BRICK_STATUS_TEXT = {
-  same: "conforme à la brique",
+  same: "conforme à la source",
   modified: "modifiée depuis",
-  outdated: "la brique a changé depuis",
-  missing: "brique retirée ou introuvable",
+  outdated: "la source a changé depuis",
+  missing: "source retirée ou introuvable",
+  loading: "lecture de la version…",
 };
+
+// L'étiquette d'une brique dans le flow : « Réf. » pour une brique de référence ou une version de
+// référence, « Struct. » pour une structure de la bibliothèque, « Brique » sinon.
+function brickTagOf(step) {
+  const brick = step && step.brick_source ? findBrickEntry(step.brick_source) : null;
+  if (brick && brick.virtual === "reference") return { text: "Réf.", cls: "sb-brick__tag--ref", title: "Version de référence" };
+  if (brick && brick.reference) return { text: "Réf.", cls: "sb-brick__tag--ref", title: "Brique de référence" };
+  if (brick && brick.virtual === "structure") return { text: "Struct.", cls: "sb-brick__tag--struct", title: "Structure de la bibliothèque" };
+  return { text: "Brique", cls: "", title: "Brique technologique" };
+}
+
+// Ce qu'est la source d'une brique copiée, et où la voir.
+function brickKindOf(brick) {
+  if (brick.virtual === "reference") return { label: "Version de référence", href: `/references/${encodeURIComponent(brick.reference_slug)}?version=${encodeURIComponent(brick.number)}`, link: "évolution" };
+  if (brick.virtual === "structure") return { label: "Structure de la bibliothèque", href: null, link: "" };
+  if (brick.reference) return { label: "Brique de référence", href: `/briques/${encodeURIComponent(brick.id)}`, link: "fiche" };
+  return { label: "Brique", href: `/briques/${encodeURIComponent(brick.id)}`, link: "fiche" };
+}
 
 function renderBrickOrigin(groupId) {
   const holder = document.getElementById("brick-group-origin");
@@ -63,17 +83,19 @@ function renderBrickOrigin(groupId) {
   const span = brickGroupSpan(groupId);
   const first = state.steps[span[0]];
   const { brick } = status;
-  const canReapply = brick && status.state !== "same";
+  const canReapply = brick && status.state !== "same" && status.state !== "loading";
   const canUpdate = brick && brick.can_edit && status.state === "modified";
   const name = brick ? brick.name : first.brick_name || "";
+  const kind = brick ? brickKindOf(brick) : { label: "Brique", href: null, link: "" };
+  const version = status.version && !(brick && brick.virtual === "reference") ? ` · v${status.version}` : "";
   holder.innerHTML = `
     <div class="sb-preset-origin">
       <div class="sb-preset-origin__line">
-        <span class="sb-preset-origin__name">Brique « ${escapeHtml(name)} »${status.version ? ` · v${status.version}` : ""}</span>
-        <span class="sb-preset-origin__status is-${status.state}">${BRICK_STATUS_TEXT[status.state]}${status.state === "outdated" ? ` (v${brick.version})` : ""}</span>
+        <span class="sb-preset-origin__name">${escapeHtml(kind.label)} « ${escapeHtml(name)} »${version}${kind.href ? ` <a href="${escapeHtml(kind.href)}" title="Ses versions, où elle sert">${escapeHtml(kind.link)}</a>` : ""}</span>
+        <span class="sb-preset-origin__status is-${status.state}">${BRICK_STATUS_TEXT[status.state]}${status.state === "outdated" ? ` (${brick.virtual === "reference" ? "" : "v"}${escapeHtml(brick.version)})` : ""}</span>
       </div>
       <div class="sb-preset-origin__actions">
-        ${canReapply ? `<button class="btn btn-line" type="button" id="brick-reapply-btn" title="Remet la brique telle que la bibliothèque la décrit aujourd'hui">Réappliquer la brique</button>` : ""}
+        ${canReapply ? `<button class="btn btn-line" type="button" id="brick-reapply-btn" title="Remet la source telle qu'elle est aujourd'hui">Réappliquer</button>` : ""}
         ${canUpdate ? `<button class="btn btn-line" type="button" id="brick-update-btn" title="Enregistre cette copie dans la brique (nouvelle version) - sans toucher aux structures déjà construites">Mettre à jour la brique</button>` : ""}
         <button class="btn btn-line" type="button" id="brick-detach-btn" title="Oublier d'où vient cette brique (elle reste groupée)">Détacher</button>
       </div>
@@ -85,14 +107,23 @@ function renderBrickOrigin(groupId) {
   document.getElementById("brick-detach-btn").addEventListener("click", () => detachBrick(groupId));
 }
 
-// La brique `groupId` remplacée par la brique de bibliothèque telle qu'elle est aujourd'hui (même
-// groupe, même place ; une brique de départ posée en tête reprend aussi son substrat, le nombre de
-// fils vus gardé).
-function reapplyBrick(groupId) {
+// La brique `groupId` remplacée par sa source telle qu'elle est aujourd'hui (même groupe, même
+// place ; une brique de départ posée en tête reprend aussi son substrat, le nombre de fils vus
+// gardé). Pour une version de référence en retard : la dernière version, lue d'abord.
+async function reapplyBrick(groupId) {
   const status = brickGroupStatus(groupId);
   if (!status || !status.brick) return;
+  let brick = status.brick;
+  if (brick.virtual === "reference") {
+    try {
+      brick = withStepExtras(await loadReferenceBrick(referenceBrickId(brick.reference_slug, brick.version)));
+    } catch (err) {
+      showError(err);
+      return;
+    }
+  }
   const span = brickGroupSpan(groupId);
-  const brick = status.brick;
+  if (!span) return;
   state.steps.splice(span[0], span[1] - span[0] + 1, ...copiedBrickSteps(brick, groupId));
   if (brick.substrate && span[0] === 0) {
     const substrate = JSON.parse(JSON.stringify(brick.substrate));
@@ -109,14 +140,24 @@ function reapplyBrick(groupId) {
 }
 
 // La brique de bibliothèque mise à jour avec cette copie : une nouvelle version, que la copie suit.
+// Une brique de référence ne change pas sans dire pourquoi : la note est demandée.
 async function updateLibraryBrick(groupId) {
   const status = brickGroupStatus(groupId);
   if (!status || !status.brick) return;
   clearError();
   const span = brickGroupSpan(groupId);
   const steps = state.steps.slice(span[0], span[1] + 1).map((s) => withoutStepId(stripBrickTag(s)));
+  let note = "";
+  if (status.brick.reference) {
+    note = (window.prompt(`« ${status.brick.name} » est une brique de référence : pourquoi cette nouvelle version ?`) || "").trim();
+    if (!note) {
+      showError(new Error("Une brique de référence ne change pas sans dire pourquoi : la mise à jour est annulée."));
+      return;
+    }
+  }
   try {
     const updated = await processLibraryApi.updateTechBrick(status.brick.id, {
+      note,
       steps,
       declared_params: declaredParamsPayload(steps),
       layer_labels: layerLabelsPayload(steps),
@@ -127,7 +168,7 @@ async function updateLibraryBrick(groupId) {
       ...(status.brick.substrate && span[0] === 0 ? { substrate: substrateSpec() } : {}),
     });
     state.techBricks = state.techBricks.map((b) => (b.id === updated.id ? updated : b));
-    for (let k = span[0]; k <= span[1]; k++) state.steps[k] = { ...state.steps[k], brick_version: updated.version || 1 };
+    for (let k = span[0]; k <= span[1]; k++) state.steps[k] = { ...state.steps[k], brick_version: updated.version || "1.0" };
     renderBrickList();
     state.selectedBrickGroup = groupId;
     commitStructure();
