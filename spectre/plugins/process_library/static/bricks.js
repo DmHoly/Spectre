@@ -50,7 +50,7 @@
     document.getElementById("empty").hidden = shown.length > 0;
     document.getElementById("empty-text").textContent = q
       ? `Aucune brique de référence ne correspond à « ${q} ».`
-      : "Aucune brique de référence pour l'instant. Ouvrez la fiche d'une brique (page des briques d'un µprojet, ou la bibliothèque) et promouvez-la.";
+      : "Aucune brique de référence pour l'instant. « Promouvoir une brique », en haut de la page, en choisit une.";
     document.getElementById("count").textContent = `${shown.length} brique${shown.length > 1 ? "s" : ""}`;
     list.innerHTML = shown.map(rowHtml).join("");
   }
@@ -83,6 +83,8 @@
       render(q);
     }, 150);
   });
+
+  document.getElementById("pick-btn").addEventListener("click", () => BrickPicker.open());
 
   load();
 })();
