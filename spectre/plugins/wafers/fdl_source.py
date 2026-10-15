@@ -7,10 +7,17 @@ endroit qui choisit :
 
 - **la démo** (``SPECTRE_DEMO_DATA=1``, comme la caractérisation) : chaque numéro ``FDL-n`` contient
   des plaques inventées, toujours les mêmes pour le même numéro - de quoi essayer l'association ;
-- **la base locale** sinon : les lasermarks d'une FDL, collés à la main (``PUT
-  /api/fdls/{fdl}/wafers``) en attendant la vraie source - la seule qu'on écrit ;
-- **PRISM** viendra ici, en lecture seule, à la place de la base locale : la ligne connaît déjà
-  les plaques de chaque FDL.
+- **PRISM** sinon, en lecture seule : le hook ``fdl_wafers`` (catégorie « Traçabilité ») rend les
+  lasermarks que le ticket Gozer de la FDL cite, dans l'ordre du ticket - la ligne connaît déjà les
+  plaques de chaque FDL, Spectre ne porte aucune requête ;
+- **la base locale** : les lasermarks d'une FDL collés à la main (``PUT /api/fdls/{fdl}/wafers``),
+  la seule source qu'on écrit. Elle reste le repli, **automatique**, pour une FDL que Gozer ne
+  connaît pas (``known`` faux côté PRISM : une FDL pas encore créée, une clé qui n'en est pas une) :
+  c'est ce cas, et lui seul, que la saisie à la main couvre, et l'utilisateur n'a rien à régler
+  pour y arriver. Une base de la ligne qui ne répond pas n'y bascule pas (502) : une liste saisie
+  hier ne doit pas passer pour la vérité de Gozer. ``SPECTRE_FDL_SOURCE=local`` se passe de PRISM
+  tout à fait (un poste sans ``~/.prism/connections.yml``, les tests) ; sans configuration PRISM,
+  c'est une 503 qui le dit, comme pour la vie d'une plaque.
 """
 
 from __future__ import annotations
@@ -23,7 +30,8 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from ...kernel.db import get_conn
-from ...kernel.errors import Conflict, InvalidInput
+from ...kernel.db import data_dir
+from ...kernel.errors import Conflict, InvalidInput, Unavailable, UpstreamError
 from ..experiments.entities import MAX_TRACKED_ENTITIES, compact, normalize_fdl
 
 
@@ -39,7 +47,7 @@ class FdlWafer:
 
 
 class FdlSource(Protocol):
-    name: str  # "demo", "local" - "prism" à venir
+    name: str  # "demo", "local", "prism"
     editable: bool  # ses plaques se saisissent à la main
 
     def wafers(self, fdl: str) -> list[FdlWafer] | None:
@@ -48,9 +56,8 @@ class FdlSource(Protocol):
         ...
 
 
-def content(source: FdlSource, fdl: str) -> dict[str, Any]:
+def content(source: FdlSource, fdl: str, wafers: list[FdlWafer] | None) -> dict[str, Any]:
     """Ce que dit ``source`` de ``fdl`` : ``{fdl, source, editable, known, wafers}``."""
-    wafers = source.wafers(fdl)
     return {
         "fdl": fdl,
         "source": source.name,
@@ -109,12 +116,65 @@ class DemoSource:
         return [FdlWafer(f"D{number}-W{slot:02d}", slot) for slot in slots]
 
 
+class PrismSource:
+    """Les plaques citées par le ticket Gozer de la FDL : le hook PRISM ``fdl_wafers`` (une ligne par
+    plaque, ``Request_Number`` / ``wafer`` / ``rank``). ``None`` quand Gozer ne cite aucune plaque
+    pour ce numéro."""
+
+    name = "prism"
+    editable = False
+
+    @staticmethod
+    def _run(hook: str, params: dict[str, Any]) -> Any:
+        import prism
+
+        return prism.run_hook(hook, **params)
+
+    def wafers(self, fdl: str) -> list[FdlWafer] | None:
+        import prism
+
+        try:
+            df = self._run("fdl_wafers", {"fdl_numbers": [fdl]})
+        except prism.ConfigError as exc:
+            raise Unavailable(f"configuration de connexion PRISM incomplète : {exc}") from exc
+        except prism.PrismError as exc:
+            raise UpstreamError(f"la base de la ligne ne répond pas : {exc}") from exc
+        found: list[FdlWafer] = []
+        seen: set[str] = set()
+        rows = [] if df is None or len(df) == 0 else df.sort_values("rank").to_dict("records")
+        for row in rows:
+            if str(row.get("Request_Number") or "").strip().upper() != fdl.upper():
+                continue
+            mark = " ".join(str(row.get("wafer") or "").split())
+            if mark and compact(mark) not in seen:
+                seen.add(compact(mark))
+                found.append(FdlWafer(mark, len(found) + 1))
+        return found or None
+
+
 _LOCAL = LocalSource()
 _DEMO = DemoSource()
+_PRISM = PrismSource()
 
 
 def current_source() -> FdlSource:
-    return _DEMO if os.environ.get("SPECTRE_DEMO_DATA") == "1" else _LOCAL
+    if os.environ.get("SPECTRE_DEMO_DATA") == "1":
+        return _DEMO
+    if os.environ.get("SPECTRE_FDL_SOURCE", "prism") == "local":
+        return _LOCAL
+    # Le cache disque de PRISM vit avec les données de Spectre (comme pour la caractérisation).
+    os.environ.setdefault("PRISM_DATA_DIR", str(data_dir() / "prism"))
+    return _PRISM
+
+
+def resolve(fdl: str) -> tuple[FdlSource, list[FdlWafer] | None]:
+    """La source qui fait foi pour ``fdl`` et ses plaques : la source courante, ou la base locale
+    quand PRISM ne connaît pas la FDL (voir le module)."""
+    source = current_source()
+    wafers = source.wafers(fdl)
+    if wafers is None and source is _PRISM:
+        return _LOCAL, _LOCAL.wafers(fdl)
+    return source, wafers
 
 
 def fdl_key(text: str) -> str:
@@ -126,15 +186,17 @@ def fdl_key(text: str) -> str:
 
 
 def read(text: str) -> dict[str, Any]:
-    return content(current_source(), fdl_key(text))
+    fdl = fdl_key(text)
+    source, wafers = resolve(fdl)
+    return content(source, fdl, wafers)
 
 
 def write(text: str, lasermarks: list[str], *, author: str) -> dict[str, Any]:
     """Les plaques d'une FDL saisies à la main - seulement dans la base locale : une source qui
     connaît la ligne (la démo, PRISM) fait foi."""
     fdl = fdl_key(text)
-    source = current_source()
+    source, _ = resolve(fdl)
     if not isinstance(source, LocalSource):
         raise Conflict("Les plaques de cette FDL viennent de la base de la ligne : elles ne se saisissent pas ici.", code="fdl_source_read_only")
     source.set_wafers(fdl, lasermarks, author=author)
-    return content(source, fdl)
+    return content(source, fdl, source.wafers(fdl))

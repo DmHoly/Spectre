@@ -23,6 +23,8 @@ def isolated_environment(tmp_path, monkeypatch):
             monkeypatch.delenv(name)
     monkeypatch.delenv("SPECTRE_DEMO_DATA", raising=False)
     monkeypatch.delenv("SPECTRE_BASE_URL", raising=False)
+    # les plaques d'une FDL se lisent dans PRISM par défaut : un test ne parle jamais à la ligne
+    monkeypatch.setenv("SPECTRE_FDL_SOURCE", "local")
 
     monkeypatch.setenv("SPECTRE_LIBRARY_DIR", str(tmp_path / "library"))
     # le dossier de données aussi (la fixture data_dir le pose au même endroit) : une simulation
