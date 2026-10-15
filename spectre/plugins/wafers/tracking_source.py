@@ -32,7 +32,7 @@ import pandas as pd
 
 from ...kernel.db import data_dir
 from ...kernel.errors import Unavailable, UpstreamError
-from .tracking_model import TrackingFrames
+from .tracking_model import LookupFrames, TrackingFrames, lookup_summaries
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,12 @@ class TrackingSource(Protocol):
         quand rien n'a pu être lu."""
         ...
 
+    def lookup(self, lasermarks: list[str]) -> dict[str, dict[str, Any] | None]:
+        """Retrouver plusieurs plaques d'un coup : par clé, ce que la base en dit
+        (:func:`tracking_model.lookup_summaries`), ``None`` pour une plaque inconnue. Mêmes erreurs
+        que :meth:`fetch`."""
+        ...
+
 
 Runner = Callable[[str, dict[str, Any]], pd.DataFrame]
 
@@ -73,6 +79,30 @@ def _timed(frames: TrackingFrames, name: str, fn: Callable[[], pd.DataFrame]) ->
         return pd.DataFrame()
     frames.phases[name] = {"ok": True, "rows": int(len(df)), "seconds": round(time.perf_counter() - t0, 2), "error": None}
     return df
+
+
+def _timed_into(phases: dict[str, dict[str, Any]], name: str, what: str, fn: Callable[[], pd.DataFrame]) -> pd.DataFrame:
+    t0 = time.perf_counter()
+    try:
+        df = fn()
+    except Exception as exc:  # une base injoignable, une requête refusée : la phase le dit
+        logger.warning("%s : lecture %s en échec (%s)", what, name, exc)
+        phases[name] = {"ok": False, "rows": 0, "seconds": round(time.perf_counter() - t0, 2), "error": str(exc)[:300]}
+        return pd.DataFrame()
+    phases[name] = {"ok": True, "rows": int(len(df)), "seconds": round(time.perf_counter() - t0, 2), "error": None}
+    return df
+
+
+def read_lookup_frames(lasermarks: list[str], run: Runner) -> LookupFrames:
+    """Retrouver des plaques d'un coup : la fiche Gozer (``wafer_record``) et l'historique MES
+    (``wafer_mes_history``) de toutes, en une lecture chacun - pas de renommages ni de FDL ici, un
+    résumé suffit pour dire « la base la connaît »."""
+    names = _case_variants([lm.strip() for lm in lasermarks if lm.strip()])
+    frames = LookupFrames()
+    what = f"recherche de {len(lasermarks)} plaque(s)"
+    frames.record = _timed_into(frames.phases, "record", what, lambda: run("wafer_record", {"wafer_names": names}))
+    frames.mes = _timed_into(frames.phases, "mes", what, lambda: run("wafer_mes_history", {"wafer_names": names}))
+    return frames
 
 
 def _case_variants(ids: list[str]) -> list[str]:
@@ -188,6 +218,18 @@ class PrismSource:
             raise UpstreamError(f"les bases de la ligne ne répondent pas : {first}")
         return frames
 
+    def lookup(self, lasermarks: list[str]) -> dict[str, dict[str, Any] | None]:
+        import prism
+
+        try:
+            frames = read_lookup_frames(lasermarks, self._run)
+        except prism.ConfigError as exc:
+            raise Unavailable(f"configuration de connexion PRISM incomplète : {exc}") from exc
+        if not frames.any_ok:
+            first = next((p["error"] for p in frames.phases.values() if p.get("error")), "aucune lecture")
+            raise UpstreamError(f"les bases de la ligne ne répondent pas : {first}")
+        return lookup_summaries(frames, lasermarks)
+
 
 # --- la démo --------------------------------------------------------------------------------------
 
@@ -208,6 +250,8 @@ _STAGES = [
 # entre deux étapes (avec une reprise et une étape jamais clôturée) ; immobile depuis 40 jours et
 # dernière FDL close ; introuvable en MES (mais dans Gozer) ; renommée en route.
 _SCENARIOS = ("running", "waiting", "old", "missing", "alias")
+# Une plaque que la démo ne connaît pas (lookup) : son lasermark commence par ces lettres.
+DEMO_UNKNOWN_PREFIX = "ZZ"
 
 
 def demo_scenario(lasermark: str) -> str:
@@ -227,6 +271,19 @@ class DemoSource:
     def fetch(self, lasermark: str) -> TrackingFrames:
         tables = self._tables(lasermark.strip())
         return read_frames(lasermark, lambda hook, params: self._answer(tables, hook, params))
+
+    def lookup(self, lasermarks: list[str]) -> dict[str, dict[str, Any] | None]:
+        """La démo connaît toute plaque, sauf celles dont le lasermark commence par « ZZ » - de
+        quoi montrer une plaque introuvable."""
+        known = [lm.strip() for lm in lasermarks if lm.strip() and not lm.strip().upper().startswith(DEMO_UNKNOWN_PREFIX)]
+        tables = [self._tables(lm) for lm in known]
+        mes = [t["wafer_mes_history"] for t in tables if not t["wafer_mes_history"].empty]
+        frames = LookupFrames(
+            record=pd.concat([t["wafer_record"] for t in tables], ignore_index=True) if tables else pd.DataFrame(),
+            mes=pd.concat(mes, ignore_index=True) if mes else pd.DataFrame(),
+            phases={"record": {"ok": True, "rows": len(tables), "seconds": 0, "error": None}},
+        )
+        return lookup_summaries(frames, lasermarks)
 
     @staticmethod
     def _answer(tables: dict[str, pd.DataFrame], hook: str, params: dict[str, Any]) -> pd.DataFrame:

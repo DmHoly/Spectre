@@ -1,10 +1,26 @@
 /* Client de l'API du plugin wafers : les plaques (recherche, celles d'un µprojet), le passeport
-   d'une plaque, sa vie en ligne (suivi MES / Gozer) et les plaques d'une FDL. */
+   d'une plaque, sa vie en ligne (suivi MES / Gozer), les plaques d'une FDL, et les fiches de plaque
+   (les plaques d'avant Spectre : cherchées dans la base, enregistrées sans étude). */
 
 const wafersApi = {
-  // filters : {q, fdl, microproject} - [{key, lasermark, count, microprojects, latest, fdl, locations}]
+  // filters : {q, fdl, microproject} - q : un texte, ou plusieurs lasermarks (un tableau) -
+  // [{key, lasermark, count, microprojects, latest, fdl, locations, record}] ; une fiche de plaque
+  // sans étude : count 0, latest null, record {...}
   list(filters) {
     return api.get(api.withQuery("/api/wafers", filters));
+  },
+  // retrouver des plaques, dans Spectre puis dans la base, toutes d'un coup - {items: [{lasermark,
+  // key, record, studies, microprojects, base}], source, base_error}
+  lookup(lasermarks) {
+    return api.get(api.withQuery("/api/wafers/lookup", { lasermark: lasermarks }));
+  },
+  // les fiches de ces plaques (créées, ou rendues telles quelles : `created`) - {items, source, base_error}
+  createRecords(lasermarks) {
+    return api.post("/api/wafer-records", { lasermarks });
+  },
+  // retire la fiche d'une plaque (son auteur, ou un administrateur) ; ses études restent
+  deleteRecord(waferKey) {
+    return api.del(`/api/wafer-records/${encodeURIComponent(waferKey)}`);
   },
   // waferKey : la clé d'une plaque, ou son lasermark tel qu'écrit
   get(waferKey) {

@@ -36,7 +36,7 @@ def _search(user: User, q: str, limit: int) -> list[dict[str, Any]]:
     candidates = []
     for wafer in service.wafers(service.occurrences(user), q=q):
         latest = wafer["latest"]
-        if not latest["experiment"].get("member"):
+        if latest is None or not latest["experiment"].get("member"):
             continue
         candidates.append(
             {

@@ -9,6 +9,10 @@ entités). L'index d'un µprojet est gardé en mémoire et ne se reconstruit que
 bougé : chaque commit réécrit ``refs.json`` et ajoute un fichier dans ``objects/`` (voir
 :func:`_signature`) - taper dans la recherche ne relit donc pas tous les dépôts à chaque frappe.
 
+**Fiches de plaque** (:mod:`.records`) : une plaque enregistrée pour elle-même, sans étude, est
+dans l'index aussi (:func:`wafers`, :func:`passport`, avec ``records``) - ``count`` 0, ``latest``
+``None``, et sa fiche sous ``record``.
+
 **Visibilité** - une seule règle, pour les plaques comme pour les lots (qui la lisent ici) : chaque
 étude qui suit une plaque est lue (:func:`occurrences`), quel que soit son µprojet ; un membre de ce
 µprojet en voit tout, les autres n'en voient que le µprojet, le statut et les dates - ni titre, ni
@@ -207,12 +211,15 @@ def occurrence_payload(occurrence: Occurrence) -> dict[str, Any]:
 # --- plaques ------------------------------------------------------------------------------------
 
 
-def _unique(values: Iterable[Any]) -> list[Any]:
+def unique(values: Iterable[Any]) -> list[Any]:
     found: list[Any] = []
     for value in values:
         if value and value not in found:
             found.append(value)
     return found
+
+
+_unique = unique
 
 
 def _latest_first(found: Iterable[Occurrence]) -> list[Occurrence]:
@@ -228,60 +235,79 @@ def latest_members(found: Iterable[Occurrence]) -> dict[str, Occurrence]:
     return latest
 
 
-def _wafer_payload(key: str, found: list[Occurrence]) -> dict[str, Any]:
+def _wafer_payload(key: str, found: list[Occurrence], record: dict[str, Any] | None) -> dict[str, Any]:
     members = [o for o in found if o.member]
     return {
         "key": key,
-        "lasermark": found[0].entry["sample_id"],
+        "lasermark": found[0].entry["sample_id"] if found else record["lasermark"],
         "count": len(found),
         "microprojects": _unique(microproject_ref(o.microproject) for o in found),
-        "latest": occurrence_payload(found[0]),
+        "latest": occurrence_payload(found[0]) if found else None,
         "fdl": _unique(value for o in members for value in o.entry["fdl"]),
         "locations": _unique(o.entry["location"] for o in members),
+        "record": record,  # sa fiche de plaque (records), ou None
     }
 
 
-def _q_rank(query: str, key: str) -> int | None:
-    """Exact first, then starting with what was typed, then containing it."""
-    wanted = wafer_key(query)
-    if not wanted:
-        return None
-    if key == wanted:
-        return 0
-    if key.startswith(wanted):
-        return 1
-    return 2 if wanted in key else None
+def _queries(q: str | Iterable[str]) -> list[str]:
+    """Les textes cherchés : un seul, ou plusieurs lasermarks à la fois - sans les vides."""
+    values = [q] if isinstance(q, str) else list(q)
+    return [value for value in values if value.strip()]
 
 
-def wafers(found: Iterable[Occurrence], *, q: str = "", fdl: str = "") -> list[dict[str, Any]]:
-    """Les plaques de ces occurrences, une par clé (chacune avec ses études, la plus récente
-    d'abord) - celles dont le lasermark correspond à ``q`` (le lasermark exact d'abord), qui portent
-    une FDL correspondant à ``fdl`` (lue chez les membres seulement), ou toutes."""
+def _q_rank(queries: list[str], key: str) -> int | None:
+    """Exact first, then starting with what was typed, then containing it - the best of the
+    queries, None when none matches."""
+    ranks = []
+    for query in queries:
+        wanted = wafer_key(query)
+        if not wanted:
+            continue
+        if key == wanted:
+            ranks.append(0)
+        elif key.startswith(wanted):
+            ranks.append(1)
+        elif wanted in key:
+            ranks.append(2)
+    return min(ranks) if ranks else None
+
+
+def wafers(
+    found: Iterable[Occurrence], *, q: str | Iterable[str] = "", fdl: str = "", records: dict[str, dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
+    """Les plaques de ces occurrences et des fiches ``records``, une par clé (chacune avec ses
+    études, la plus récente d'abord) - celles dont le lasermark correspond à ``q`` (un texte, ou
+    plusieurs lasermarks ; le lasermark exact d'abord), qui portent une FDL correspondant à ``fdl``
+    (lue chez les membres seulement), ou toutes."""
+    queries = _queries(q)
     by_key: dict[str, list[Occurrence]] = {}
     for occurrence in found:
         if occurrence.key:
             by_key.setdefault(occurrence.key, []).append(occurrence)
+    for key in records or {}:
+        by_key.setdefault(key, [])
     ranked = []
     for key, group in by_key.items():
-        q_rank = _q_rank(q, key) if q.strip() else 0
+        q_rank = _q_rank(queries, key) if queries else 0
         fdl_rank = fdls.best_rank(fdl, (value for o in group if o.member for value in o.entry["fdl"])) if fdl.strip() else 0
         if q_rank is not None and fdl_rank is not None:
-            ranked.append(((q_rank, fdl_rank, key), _wafer_payload(key, _latest_first(group))))
+            ranked.append(((q_rank, fdl_rank, key), _wafer_payload(key, _latest_first(group), (records or {}).get(key))))
     return [payload for _rank, payload in sorted(ranked, key=lambda item: item[0])]
 
 
-def passport(lasermark: str, found: Iterable[Occurrence]) -> dict[str, Any]:
+def passport(lasermark: str, found: Iterable[Occurrence], record: dict[str, Any] | None = None) -> dict[str, Any]:
     """Tout ce qu'on sait d'une plaque : chaque étude qui la suit (la plus récente d'abord), où elle
-    a été rangée et ses FDL (chez les membres) - ce que montre sa page. Une plaque qu'aucune étude ne
-    suit (encore) n'est pas une erreur : la page l'explique."""
+    a été rangée et ses FDL (chez les membres), sa fiche de plaque s'il y en a une - ce que montre
+    sa page. Une plaque qu'aucune étude ne suit (encore) n'est pas une erreur : la page l'explique."""
     key = wafer_key(lasermark)
     group = _latest_first(o for o in found if o.key == key)
     members = [o for o in group if o.member]
     return {
         "key": key,
-        "lasermark": group[0].entry["sample_id"] if group else lasermark.strip(),
+        "lasermark": group[0].entry["sample_id"] if group else record["lasermark"] if record else lasermark.strip(),
         "occurrences": [occurrence_payload(o) for o in group],
         "fdl": _unique(value for o in members for value in o.entry["fdl"]),
         "microprojects": _unique(microproject_ref(o.microproject) for o in group),
         "last_location": next((o.entry["location"] for o in members if o.entry["location"]), None),
+        "record": record,
     }

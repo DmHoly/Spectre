@@ -29,9 +29,18 @@
 .plate-hero__actions {
   grid-area: actions;
   align-self: start;
+  justify-content: flex-end;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  max-width: 360px;
+}
+/* `hidden` l'emporte sur l'inline-flex des boutons */
+.plate-hero__actions [hidden] {
+  display: none !important;
+}
+.plate-structure__attach {
+  margin: 8px 0 0;
 }
 .plate-hero__facts {
   grid-area: facts;
@@ -1055,3 +1064,50 @@
 .wafer-index__date { margin: 2px 0 0; }
 .wafer-index__empty { padding: 28px 20px; text-align: center; }
 .wafer-index__more { padding: 12px; text-align: center; border-top: 1px solid var(--border-soft); }
+
+.wafer-index__lookup-btn { gap: 6px; }
+.wafer-index__lookup-btn.active { background: var(--accent-tint); border-color: var(--navy-500); }
+.wafer-index__row--record td { background: color-mix(in srgb, var(--accent-tint) 45%, transparent); }
+.wafer-index__missing {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 16px;
+  padding: 14px 20px; border-top: 1px solid var(--border-soft); font-size: 13px; color: var(--text-soft);
+}
+.wafer-index__missing .mono { color: var(--text); }
+.wafer-record-chip {
+  display: inline-flex; align-items: center; border-radius: var(--radius-pill); padding: 2px 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--navy); background: var(--accent-tint); border: 1px solid var(--navy-500); white-space: nowrap;
+}
+.plate-hero__record-summary { display: block; margin-top: 4px; font-size: 12.5px; color: var(--text-soft); }
+
+/* -- chercher dans la base (wafer-index.html, panneau « Chercher dans la base ») ------------------ */
+.wafer-lookup { padding: 18px 20px; margin-bottom: 16px; }
+.wafer-lookup__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.wafer-lookup__title { font-size: 16px; margin: 0 0 4px; }
+.wafer-lookup__lead { margin: 0 0 12px; max-width: 78ch; line-height: 1.5; }
+.wafer-lookup__close { flex: none; }
+.wafer-lookup__form { display: grid; grid-template-columns: minmax(0, 420px) auto; gap: 10px 14px; align-items: start; }
+.wafer-lookup__input { width: 100%; min-height: 72px; font-family: var(--font-mono); font-size: 13px; resize: vertical; }
+.wafer-lookup__form-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.wafer-lookup__hint { margin: 0; }
+.wafer-lookup__error { margin-top: 12px; }
+.wafer-lookup__results { margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 4px; }
+.wafer-lookup__table td:first-child, .wafer-lookup__table th:first-child { width: 32px; padding-right: 0; }
+.wafer-lookup__lasermark { font-weight: 600; }
+.wafer-lookup__row--unknown .wafer-lookup__lasermark { color: var(--text-soft); }
+.wafer-lookup__found { color: var(--success, #1b7f4b); font-weight: 600; }
+.wafer-lookup__unknown { color: var(--text-faint); font-style: italic; }
+.wafer-lookup__actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 12px; }
+@media (max-width: 720px) {
+  .wafer-lookup__form { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* -- rattacher à une étude (attach.js) ------------------------------------------------------------ */
+.wafer-dialog--narrow { width: min(560px, calc(100vw - 32px)); }
+.wafer-attach { display: grid; gap: 12px; }
+.wafer-attach__field { display: grid; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--text-soft); }
+.wafer-attach__field .field { font-weight: 400; color: var(--text); }
+.wafer-attach__places { border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; margin: 0; }
+.wafer-attach__places legend { font-size: 12.5px; font-weight: 600; color: var(--text-soft); padding: 0 4px; }
+.wafer-attach__place { display: flex; align-items: center; gap: 8px; padding: 5px 2px; font-size: 13.5px; cursor: pointer; }
+.wafer-attach__place .help { margin: 0; font-size: 12px; }

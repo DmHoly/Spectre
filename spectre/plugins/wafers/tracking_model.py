@@ -27,6 +27,8 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
+from ..experiments.entities import compact
+
 _DESC_MAX = 800
 _OBJ_MAX = 300
 _EPI_STEP = "EPITAXY"
@@ -52,6 +54,21 @@ class TrackingFrames:
     tests: pd.DataFrame = field(default_factory=_empty)
     fdl_steps: pd.DataFrame = field(default_factory=_empty)
     aliases: dict[str, str] = field(default_factory=dict)
+    phases: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    @property
+    def any_ok(self) -> bool:
+        return any(p.get("ok") for p in self.phases.values())
+
+
+@dataclass
+class LookupFrames:
+    """Ce que la source a lu pour retrouver des plaques d'un coup (:func:`lookup_summaries`) : la
+    fiche Gozer et l'historique MES de toutes, en une lecture chacun, et le compte rendu de ces deux
+    lectures (``phases``, comme :class:`TrackingFrames`)."""
+
+    record: pd.DataFrame = field(default_factory=_empty)
+    mes: pd.DataFrame = field(default_factory=_empty)
     phases: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @property
@@ -641,3 +658,57 @@ def last_movement(rec: dict[str, Any]) -> str | None:
     candidates += [e.get("end") or e.get("start") for e in rec.get("epitaxy", [])]
     dated = [c for c in candidates if c and re.match(r"^\d{4}-\d{2}-\d{2}", c)]
     return max(dated) if dated else None
+
+
+# --- retrouver des plaques dans la base ---------------------------------------------------------
+
+
+def _matching(df: pd.DataFrame, columns: tuple[str, ...], key: str) -> pd.DataFrame:
+    """Les lignes dont l'une des ``columns`` (déjà en minuscules) désigne la plaque ``key`` -
+    comparée sans casse ni séparateurs, comme partout dans Spectre."""
+    mask = pd.Series(False, index=df.index)
+    for col in columns:
+        if col in df.columns:
+            mask |= df[col].map(lambda v: compact(_text(v)) == key)
+    return df[mask]
+
+
+def lookup_summaries(frames: LookupFrames, lasermarks: Iterable[str]) -> dict[str, dict[str, Any] | None]:
+    """Par clé de plaque demandée, ce que la base en dit en quelques mots - ``None`` quand ni la
+    fiche Gozer ni la MES ne la connaissent : ``wafer_name``, ``substrate``, ``supplier``,
+    ``diameter_mm``, ``created`` (Gozer, ``gozer`` vrai) ; ``lot``, ``product``, ``last_step``,
+    ``last_movement``, ``n_steps`` (MES, ``mes`` vrai). C'est le résumé qu'une fiche de plaque garde."""
+    record = _lower(frames.record) if not frames.record.empty else frames.record
+    mes = _lower(frames.mes) if not frames.mes.empty else frames.mes
+    out: dict[str, dict[str, Any] | None] = {}
+    for lasermark in lasermarks:
+        key = compact(lasermark)
+        if not key or key in out:
+            continue
+        summary: dict[str, Any] = {}
+        rows = _matching(record, ("substrat_lasermark", "wafer_name"), key) if not record.empty else record
+        if not rows.empty:
+            r = rows.iloc[0]
+            summary.update(
+                gozer=True,
+                wafer_name=_text(r.get("wafer_name")),
+                substrate=_text(r.get("substrat_type")),
+                supplier=_text(r.get("substrat_supplier")),
+                diameter_mm=_int(r.get("diameter_mm")),
+                created=_ts_loose(r.get("creation_date")),
+            )
+        rows = _matching(mes, ("physical_item_id", "physical_item_id_out"), key) if not mes.empty else mes
+        if not rows.empty:
+            if "last_update" in rows.columns:
+                rows = rows.assign(_when=pd.to_datetime(rows["last_update"], errors="coerce")).sort_values("_when", kind="stable")
+            last = rows.iloc[-1]
+            summary.update(
+                mes=True,
+                lot=_text(last.get("physical_lot_id_out")) or _text(last.get("physical_lot_id")),
+                product=_text(last.get("productname")),
+                last_step=_text(last.get("step_detailed_name")),
+                last_movement=_ts_loose(last.get("last_update")),
+                n_steps=int(len(rows)),
+            )
+        out[key] = summary or None
+    return out
