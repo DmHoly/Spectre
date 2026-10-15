@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plaques — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/experiments/experiments.css">
+  <link rel="stylesheet" href="/static/wafers/wafers.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Plaques" -->
+
+  <!-- L'index des plaques : toutes celles que Spectre connaît (suivies par une étude de n'importe quel
+       µprojet), retrouvées par lasermark ou par FDL - de quoi arriver vite sur la page d'une plaque
+       (wafer.html). La liste vient de GET /api/wafers?q=&fdl= (spectre.plugins.wafers), vue selon la
+       règle de visibilité : hors des µprojets dont on est membre, ni titre ni FDL. -->
+  <div class="page" style="max-width:1180px;">
+    <header class="wafer-index__head">
+      <div class="page-eyebrow">Data</div>
+      <h1>Plaques</h1>
+      <p>Toutes les plaques connues de Spectre, d'un µprojet à l'autre : celles qu'une étude suit. Cherchez par lasermark (« W12-A3 », séparateurs et casse ignorés) ou par FDL (« 1234 »).</p>
+    </header>
+
+    <div class="wafer-index__toolbar">
+      <label class="wafer-index__search">
+        <span class="visually-hidden">Rechercher une plaque</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="wafer-search" class="field" type="search" placeholder="Lasermark ou FDL…" autocomplete="off" spellcheck="false" autofocus>
+      </label>
+      <div class="view-toggle" role="group" aria-label="Trier les plaques">
+        <button type="button" class="view-toggle__btn active" data-sort="lasermark" aria-pressed="true">Par lasermark</button>
+        <button type="button" class="view-toggle__btn" data-sort="recent" aria-pressed="false">Récentes d'abord</button>
+      </div>
+      <span id="wafer-count" class="wafer-index__count mono" aria-live="polite"></span>
+    </div>
+
+    <div id="error" class="error" role="alert" style="display:none;margin-bottom:16px;"></div>
+
+    <div class="card wafer-index__card">
+      <div class="wafer-index__scroll">
+        <table class="wafer-index__table" aria-busy="true" id="wafer-table">
+          <thead>
+            <tr>
+              <th scope="col">Plaque</th>
+              <th scope="col">µprojets</th>
+              <th scope="col">Études</th>
+              <th scope="col">FDL</th>
+              <th scope="col">Dernier emplacement</th>
+              <th scope="col">Dernière étude</th>
+            </tr>
+          </thead>
+          <tbody id="wafer-rows"></tbody>
+        </table>
+      </div>
+      <div id="wafer-empty" class="wafer-index__empty help" hidden></div>
+      <div class="wafer-index__more" id="wafer-more" hidden>
+        <button type="button" class="btn btn-line" id="wafer-more-btn">Afficher plus</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/wafers/client.js"></script>
+  <script src="/static/experiments/status.js"></script>
+  <script src="/static/wafers/fdl.js"></script>
+  <script src="/static/wafers/wafer-index.js"></script>
+</body>
+</html>

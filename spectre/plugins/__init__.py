@@ -23,6 +23,7 @@ from .materials import PLUGIN as materials
 from .microprojects import PLUGIN as microprojects
 from .notebook import PLUGIN as notebook
 from .planning import PLUGIN as planning
+from .prism import PLUGIN as prism
 from .process_library import PLUGIN as process_library
 from .promotion import PLUGIN as promotion
 from .references import PLUGIN as references
@@ -59,6 +60,7 @@ PLUGINS = (
     links,
     atlas,
     characterization,
+    prism,
     external_images,
     notebook,
     kpis,

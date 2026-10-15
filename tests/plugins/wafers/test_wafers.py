@@ -127,3 +127,23 @@ def test_a_study_shows_what_it_is_to_its_microprojects_members_only(client):
     assert list_wafers(client, fdl="77") == []  # an FDL is only read by the members
     refused = client.get("/api/wafers", params={"microproject": slug})
     assert refused.status_code == 403
+
+
+def test_the_plate_index_page_is_served_and_listed_in_the_data_menu(client):
+    signup(client, "plates@example.com")
+    page = client.get("/plaques")
+    assert page.status_code == 200 and 'id="wafer-search"' in page.text and "/static/wafers/wafer-index.js" in page.text
+    assert 'href="/plaques"' in page.text  # l'entrée « Plaques » du menu Data
+    assert client.get("/plaques/W12-A3").status_code == 200  # la page d'une plaque reste servie sous /plaques/{lasermark}
+
+
+def test_the_plate_index_lists_every_known_plate_and_narrows_by_lasermark_or_fdl(client):
+    signup(client, "plates@example.com")
+    first = create_microproject(client, "Lot A")["slug"]
+    second = create_microproject(client, "Lot B")["slug"]
+    launch(client, first, title="Dopage", intent="x", entities=[{"sample_id": "W12-A3", "fdl": ["FDL-1234"]}])
+    launch(client, second, title="Recuit", intent="x", entities=[{"sample_id": "W20-B1", "fdl": ["FDL-77"]}])
+
+    assert [w["key"] for w in list_wafers(client)] == ["W12A3", "W20B1"]  # sans recherche : toutes, par lasermark
+    assert [w["key"] for w in list_wafers(client, q="b1")] == ["W20B1"]
+    assert [w["key"] for w in list_wafers(client, fdl="1234")] == ["W12A3"]

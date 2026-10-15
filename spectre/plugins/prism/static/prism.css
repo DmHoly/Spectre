@@ -1,0 +1,26 @@
+/* La gestion de PRISM (pages/prism-data.html) : le gabarit à menu latéral vient de settings.css ;
+   ici, le catalogue des données - cartes par catégorie, tableaux de colonnes, pastilles de niveau. */
+
+.prism-breadcrumb {
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+
+.donnees-table-wrap { overflow: auto; max-height: 60vh; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); }
+.donnees-table { border-collapse: collapse; font-size: 12.5px; width: 100%; white-space: nowrap; }
+.donnees-table th, .donnees-table td { padding: 6px 10px; border-bottom: 1px solid var(--border-soft); text-align: left; }
+.donnees-table th { position: sticky; top: 0; background: var(--surface); font-weight: 700; }
+.donnees-table tr:nth-child(even) { background: var(--bg); }
+
+.category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.hook-chip-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.hook-chip { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-soft); font-size: 13px; }
+.hook-chip--implemented { background: #fff; }
+.hook-chip--implemented:hover { border-color: var(--accent); }
+.hook-chip--planned { background: var(--bg); color: var(--text-faint); }
+.badge-planned { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); background: var(--border-soft); padding: 2px 7px; border-radius: 999px; flex: none; }
+.badge-level { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 7px; border-radius: 999px; flex: none; }
+.badge-level--raw { color: #6c4a1e; background: #f6e9d8; }
+.badge-level--kpi { color: var(--accent); background: var(--accent-tint); }
+
+#wiki-chart svg { max-width: 100%; }

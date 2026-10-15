@@ -1,6 +1,6 @@
 """API des types de données de caractérisation (voir :mod:`.service`) : le catalogue, la fiche
 d'un type, une requête pour voir ce qu'elle renvoie, et ses graphiques documentaires en PNG. Page
-associée : /donnees (``pages/data-types.html``)."""
+associée : /prism/donnees (plugin ``prism``, ``pages/prism-data.html``)."""
 
 from __future__ import annotations
 

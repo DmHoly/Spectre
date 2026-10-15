@@ -1,10 +1,11 @@
 /* Menu « Données en base » des plaques d'une page, via characterizationApi
    (characterization/static/client.js). */
 
-/* « Données en base » : les types de données implémentés qui prennent des lasermarks (page Data),
-   ouverts sur les plaques données - un clic, et la requête part avec ces wafers (data-types.js,
-   ?wafers=). Rien n'est affiché s'il n'y a aucun type de ce genre (ou aucun lasermark). Utilisé par
-   la fiche d'expérience et la page d'une plaque. */
+/* « Données en base » : les types de données implémentés qui prennent des lasermarks (PRISM >
+   Données), ouverts sur les plaques données - un clic, et la requête part avec ces wafers
+   (prism/static/data-types.js, ?wafers=). Rien n'est affiché sans le plugin prism, pour un compte qui
+   n'est pas administrateur (cette page leur est fermée), s'il n'y a aucun type de ce genre ni aucun
+   lasermark. Utilisé par la fiche d'expérience et la page d'une plaque. */
 let byWaferDataTypesPromise = null;
 function byWaferDataTypes() {
   if (!byWaferDataTypesPromise) {
@@ -15,14 +16,15 @@ function byWaferDataTypes() {
 
 async function renderWaferDbLinks(hosts, lasermarkList) {
   const lasermarks = [...new Set((lasermarkList || []).filter(Boolean))];
-  const dataTypes = lasermarks.length ? await byWaferDataTypes() : [];
+  const user = lasermarks.length && pluginEnabled("prism") ? await accountsApi.me().catch(() => null) : null;
+  const dataTypes = user && user.is_admin ? await byWaferDataTypes() : [];
   if (!dataTypes.length) {
     hosts.forEach((h) => (h.innerHTML = ""));
     return;
   }
   const wafers = encodeURIComponent(lasermarks.join(","));
   const items = dataTypes
-    .map((t) => `<li><a href="/donnees/${encodeURIComponent(t.key)}?wafers=${wafers}" target="_blank" rel="noopener">${escapeHtml(t.title)}<span>${escapeHtml(t.category || "")}</span></a></li>`)
+    .map((t) => `<li><a href="/prism/donnees/${encodeURIComponent(t.key)}?wafers=${wafers}" target="_blank" rel="noopener">${escapeHtml(t.title)}<span>${escapeHtml(t.category || "")}</span></a></li>`)
     .join("");
   const icon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>`;
   hosts.forEach((host) => {
@@ -30,7 +32,7 @@ async function renderWaferDbLinks(hosts, lasermarkList) {
       <details class="db-menu">
         <summary class="btn btn-line db-menu__btn" title="Les données de ${lasermarks.length > 1 ? "ces plaques" : "cette plaque"} en base (PRISM)">${icon}Données en base</summary>
         <div class="db-menu__pop">
-          <div class="db-menu__title">Ouvrir dans Data, pour ${escapeHtml(lasermarks.length > 3 ? `${lasermarks.length} plaques` : lasermarks.join(", "))}</div>
+          <div class="db-menu__title">Ouvrir dans PRISM, pour ${escapeHtml(lasermarks.length > 3 ? `${lasermarks.length} plaques` : lasermarks.join(", "))}</div>
           <ul>${items}</ul>
         </div>
       </details>`;

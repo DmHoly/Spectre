@@ -241,7 +241,7 @@ Variables lues par PRISM lui-même (voir sa documentation) :
 
 ## Données de caractérisation (PRISM)
 
-La page **Data** (`/donnees`) et l'onglet « Données » des fiches interrogent les bases via PRISM.
+La page **PRISM** (menu Data, réservée aux administrateurs : `/prism/donnees`) et l'onglet « Données » des fiches interrogent les bases via PRISM.
 La configuration se fait une fois par poste, **hors du dépôt** (aucun secret n'y est commité) :
 
 1. copier le modèle `config/connections.example.yml` du dépôt PRISM en `~/.prism/connections.yml`
@@ -337,11 +337,12 @@ ses tables (`migrations.py`), ses pages (`pages/`) et son front (`static/`, serv
 | `experiments` | Pistes et versions Follow : création, évolution, statut, conclusion, étiquettes, entités, combinaison de deux études, diff, filiation, statistiques | `/api/microprojects/{mp}/experiments`, `.../lineage`, `.../structure-history`, `/api/experiment-stats`, `/api/experiment-timeline` | `/microprojets/{slug}/experiences/{experiment_id}`, `/microprojets/{slug}/evolution` |
 | `references` | Références de structure de toute l'application : versions `MAJEUR.MINEUR` publiées depuis les études, instantanés, évolution, usages, refs locales d'avant regroupées une fois | `/api/references`, `/api/reference-versions` | `/references`, `/references/{slug}` |
 | `intent_forms` | Formulaires d'intention et formulaire actif d'un µprojet | `/api/intent-forms`, `/api/microprojects/{mp}/active-intent-form` | `/microprojets/{slug}/formulaire-intention` |
-| `wafers` | Index des plaques suivies, recherche par lasermark et FDL, visibilité, plaques de chaque FDL | `/api/wafers`, `/api/fdls` | `/plaques/{lasermark}` |
+| `wafers` | Index des plaques suivies, recherche par lasermark et FDL, visibilité, plaques de chaque FDL | `/api/wafers`, `/api/fdls` | `/plaques` (l'index et sa recherche), `/plaques/{lasermark}` |
 | `lots` | Lots de fabrication, wafers, thématiques visées, Gantt | `/api/lots`, `/api/lot-priorities` | `/lots`, `/lots/{code}` |
 | `links` | Liens entre µprojets et entre entités physiques | `/api/microproject-links`, `/api/entity-links` | — |
 | `atlas` | Vue graphe d'un projet corporate | `/api/areas/{area_slug}/atlas` | `/management/{slug}/atlas` |
-| `characterization` | Adaptateur PRISM (ou source démo) : catalogue, requêtes, graphiques | `/api/characterization` | `/donnees`, `/donnees/{key}` |
+| `characterization` | Adaptateur PRISM (ou source démo) : catalogue, requêtes, graphiques | `/api/characterization` | — (page : plugin `prism`) |
+| `prism` | La gestion de PRISM, pour les administrateurs : menu latéral, catalogue des données (hooks, colonnes, testeur en direct) ; menu « Data » de la barre du haut | — | `/prism`, `/prism/donnees`, `/prism/donnees/{key}` (`/donnees` y renvoie) |
 | `external_images` | Politique des images externes (racines autorisées, formats) et parcours des dossiers ; les images sont un contenu du cahier | `/api/microprojects/{mp}/external-images` (et `.../roots`) | — |
 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens - les anciennes preuves et les anciens jeux d'images), rattachées aux plaques mesurées et aux étapes du procédé | `/api/microprojects/{mp}/snapshots`, `.../experiments/{exp}/notebook-entries` (et `.../{entry_id}/external-images/{index}`) | — (panneau de la fiche) |
 | `kpis` | Registre de KPI et séries mensuelles d'un projet corporate | `/api/areas/{area_slug}/kpis` | — |

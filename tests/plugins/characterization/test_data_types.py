@@ -1,7 +1,7 @@
 """L'API /api/characterization - les types de données de caractérisation, servis par PRISM (paquet
 ``prism-aledia-datahook``) ou par la démo (``SPECTRE_DEMO_DATA=1``). La logique des hooks (YAML,
 post-traitements KPI, cache) est testée dans PRISM lui-même ; ici on vérifie ce que Spectre ajoute :
-l'authentification, la forme JSON renvoyée à la page /donnees, la vérification des paramètres, et la
+l'authentification, la forme JSON renvoyée à la page /prism/donnees, la vérification des paramètres, et la
 traduction des erreurs PRISM en codes HTTP lisibles - et que la démo tient le même contrat.
 
 L'accès base de PRISM (``prism.connections.run_query``) est toujours mocké : ces tests ne doivent
