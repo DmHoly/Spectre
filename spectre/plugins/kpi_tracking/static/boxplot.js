@@ -34,12 +34,16 @@ function kpiNiceTicks(low, high, count = 5) {
 }
 
 /* groups : [{wafer, studies, stats|null, outliers, index?}] (index : sa place dans la liste complète, quand on n'en montre qu'une partie) ; options.colorOf(group, index) -> couleur CSS,
+   options.best : l'index (g.index) de la meilleure plaque, mise en avant (halo or et étoile) ;
+   options.goal : l'objectif du KPI - une cible (trait) ou une plage (bande) se dessine derrière les boîtes ;
    options.label : le titre accessible du dessin. Renvoie une chaîne SVG. */
 function kpiBoxplotSvg(groups, options = {}) {
   const esc = escapeHtml;
   const measured = groups.filter((g) => g.stats);
   if (!measured.length) return "";
-  const extent = measured.flatMap((g) => [g.stats.whisker_low, g.stats.whisker_high, ...g.outliers]);
+  const goal = options.goal || null;
+  const goalValues = !goal ? [] : goal.mode === "target" ? [goal.target] : goal.mode === "range" ? [goal.min, goal.max] : [];
+  const extent = measured.flatMap((g) => [g.stats.whisker_low, g.stats.whisker_high, ...g.outliers]).concat(goalValues);
   const { ticks, low, high } = kpiNiceTicks(Math.min(...extent), Math.max(...extent));
   const band = Math.max(84, Math.min(150, 720 / groups.length)); // large quand il y a peu de plaques
   const frame = { left: 64, right: 16, top: 14, height: 250 };
@@ -52,6 +56,13 @@ function kpiBoxplotSvg(groups, options = {}) {
     marks += `<line class="kt-plot-grid" x1="${frame.left}" x2="${width - frame.right}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/>
       <text class="kt-plot-tick" x="${frame.left - 8}" y="${(y(t) + 3.5).toFixed(1)}" text-anchor="end">${esc(kpiFormatNumber(t))}</text>`;
   });
+  // l'objectif, sous les boîtes : une plage (bande) ou une cible (trait pointillé)
+  if (goal && goal.mode === "range") {
+    marks += `<rect class="kt-plot-goal" x="${frame.left}" y="${y(goal.max).toFixed(1)}" width="${width - frame.left - frame.right}" height="${Math.max(1, y(goal.min) - y(goal.max)).toFixed(1)}"><title>${esc(`Plage visée : ${kpiFormatNumber(goal.min)} – ${kpiFormatNumber(goal.max)}`)}</title></rect>`;
+  } else if (goal && goal.mode === "target") {
+    marks += `<line class="kt-plot-target" x1="${frame.left}" x2="${width - frame.right}" y1="${y(goal.target).toFixed(1)}" y2="${y(goal.target).toFixed(1)}"/>
+      <text class="kt-plot-tick kt-plot-tick--gold" x="${width - frame.right - 4}" y="${(y(goal.target) - 4).toFixed(1)}" text-anchor="end">cible ${esc(kpiFormatNumber(goal.target))}</text>`;
+  }
   marks += `<line class="kt-plot-axis" x1="${frame.left}" x2="${frame.left}" y1="${frame.top}" y2="${frame.top + frame.height}"/>
     <line class="kt-plot-axis" x1="${frame.left}" x2="${width - frame.right}" y1="${frame.top + frame.height}" y2="${frame.top + frame.height}"/>`;
   groups.forEach((g, i) => {
@@ -63,7 +74,8 @@ function kpiBoxplotSvg(groups, options = {}) {
       g.date ? `<text class="kt-plot-tick" x="${cx}" y="${baseline + 29}" text-anchor="middle">${esc(g.date)}</text>` : ""
     }`;
     const rows = g.date ? 13 : 0;
-    const open = `<g class="kt-plot-group" data-group="${g.index ?? i}" tabindex="0" role="button" aria-label="${esc(`Récapitulatif de la plaque ${g.wafer}${g.date ? ` du ${g.date}` : ""}`)}">`;
+    const isBest = options.best !== null && options.best !== undefined && (g.index ?? i) === options.best;
+    const open = `<g class="kt-plot-group${isBest ? " kt-plot-group--best" : ""}" data-group="${g.index ?? i}" tabindex="0" role="button" aria-label="${esc(`${isBest ? "Meilleure plaque : " : ""}Récapitulatif de la plaque ${g.wafer}${g.date ? ` du ${g.date}` : ""}`)}">`;
     if (!g.stats) {
       marks += `${open}${caption}<text class="kt-plot-empty" x="${cx}" y="${baseline - 8}" text-anchor="middle">aucune mesure</text>
         <title>${esc(`${g.wafer}${g.date ? ` · ${g.date}` : ""} · aucune mesure · ${studies}`)}</title></g>`;
@@ -72,9 +84,14 @@ function kpiBoxplotSvg(groups, options = {}) {
     const s = g.stats;
     const color = colorOf(g, i);
     const w = Math.min(46, band * 0.55);
-    const tip = `${g.wafer}${g.date ? ` · mesurée le ${g.date}` : ""} · ${studies}\nn ${s.n} · médiane ${kpiFormatNumber(s.median)} · moyenne ${kpiFormatNumber(s.mean)}\nQ1 ${kpiFormatNumber(s.q1)} · Q3 ${kpiFormatNumber(s.q3)}\nmin ${kpiFormatNumber(s.minimum)} · max ${kpiFormatNumber(s.maximum)}`;
+    const tip = `${isBest ? "★ Meilleure plaque\n" : ""}${g.wafer}${g.date ? ` · mesurée le ${g.date}` : ""} · ${studies}\nn ${s.n} · médiane ${kpiFormatNumber(s.median)} · moyenne ${kpiFormatNumber(s.mean)}\nQ1 ${kpiFormatNumber(s.q1)} · Q3 ${kpiFormatNumber(s.q3)}\nmin ${kpiFormatNumber(s.minimum)} · max ${kpiFormatNumber(s.maximum)}`;
     const boxTop = y(s.q3);
-    marks += `${open}<g style="color:${color}">
+    // la meilleure plaque d'après l'objectif : un halo or sur sa colonne et une étoile au-dessus de sa boîte
+    const halo = isBest
+      ? `<rect class="kt-plot-best" x="${cx - band / 2 + 3}" y="${frame.top}" width="${band - 6}" height="${frame.height + 50 + rows}" rx="8"/>
+         <text class="kt-plot-star" x="${cx}" y="${Math.max(frame.top + 10, y(s.whisker_high) - 8).toFixed(1)}" text-anchor="middle">★</text>`
+      : "";
+    marks += `${open}${halo}<g style="color:${color}">
         <title>${esc(tip)}</title>
         <line x1="${cx}" x2="${cx}" y1="${y(s.whisker_low).toFixed(1)}" y2="${y(s.q1).toFixed(1)}" stroke="currentColor" stroke-width="1.4"/>
         <line x1="${cx}" x2="${cx}" y1="${y(s.q3).toFixed(1)}" y2="${y(s.whisker_high).toFixed(1)}" stroke="currentColor" stroke-width="1.4"/>

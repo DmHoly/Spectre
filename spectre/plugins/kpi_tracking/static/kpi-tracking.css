@@ -486,3 +486,137 @@ select[multiple].field {
   transform: translateX(-50%);
   white-space: nowrap;
 }
+
+/* -- objectif d'un KPI (configurateur) --------------------------------------------------- */
+
+.kt-goal {
+  display: grid;
+  grid-template-columns: auto minmax(200px, 1.4fr) repeat(3, minmax(70px, 0.5fr)) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.kt-goal [hidden] {
+  display: none;
+}
+.kt-goal__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+@media (max-width: 760px) {
+  .kt-goal {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* -- objectif et meilleure plaque ------------------------------------------------------- */
+
+.kt-plot-goal {
+  fill: var(--gold);
+  fill-opacity: 0.14;
+  stroke: var(--gold);
+  stroke-opacity: 0.5;
+  stroke-dasharray: 4 3;
+}
+.kt-plot-target {
+  stroke: var(--gold-dark);
+  stroke-width: 1.4;
+  stroke-dasharray: 6 4;
+}
+.kt-plot-tick--gold {
+  fill: var(--gold-dark);
+  font-weight: 600;
+}
+.kt-plot-best {
+  fill: var(--gold);
+  fill-opacity: 0.16;
+  stroke: var(--gold);
+  stroke-width: 1.5;
+}
+.kt-plot-star {
+  fill: var(--gold-dark);
+  font-size: 15px;
+}
+
+.kt-box__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 250px;
+  gap: 18px;
+  align-items: start;
+}
+.kt-box__layout--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+.kt-best {
+  position: sticky;
+  top: calc(var(--topbar-h) + 14px);
+  padding: 14px 16px;
+  border: 1px solid var(--gold);
+  border-top-width: 3px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.kt-best__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold-dark);
+}
+.kt-best__wafer {
+  margin: 4px 0 0;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--navy);
+}
+.kt-best__date,
+.kt-best__goal,
+.kt-best__outside {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.kt-best__outside {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.kt-best__value {
+  margin: 10px 0 0;
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.kt-best__unit {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-faint);
+  margin-left: 4px;
+}
+.kt-best__quart {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.kt-best__plot {
+  margin: 8px 0;
+  overflow: hidden;
+}
+.kt-best__plot svg {
+  max-width: 100%;
+  height: auto;
+}
+@media (max-width: 900px) {
+  .kt-box__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .kt-best {
+    position: static;
+    order: -1;
+  }
+}

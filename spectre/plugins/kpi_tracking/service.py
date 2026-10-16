@@ -45,6 +45,7 @@ MAX_KPIS = 30  # des boîtes à moustaches : au-delà, la page n'est plus lisibl
 MAX_LABEL = 80
 MAX_FILTERS = 8  # par KPI suivi
 MAX_VALUES = 200  # valeurs distinctes proposées pour un filtre
+MIN_ROWS_BEST = 3  # une boîte de moins de lignes n'est pas une distribution : elle ne peut pas être la meilleure plaque
 MAX_OUTLIERS = 50  # par plaque et par KPI : de quoi les montrer, sans faire grossir la réponse d'un wafer très dispersé
 
 # Les colonnes d'un type de données qui sont de l'identification ou de la position, pas une mesure.
@@ -55,6 +56,11 @@ WAFER_COLUMNS = ("wafername", "wafer_name", "wafer name")
 # Les comparaisons d'un filtre, avec leur écriture. Les quatre premières demandent une cellule numérique.
 OPERATORS = {"gt": ">", "gte": "≥", "lt": "<", "lte": "≤", "eq": "=", "ne": "≠", "contains": "contient", "in": "dans"}
 NUMERIC_OPERATORS = ("gt", "gte", "lt", "lte")
+
+
+# Ce que « meilleur » veut dire pour un KPI : la médiane d'une plaque la plus haute, la plus basse, la plus proche
+# d'une valeur cible, ou dans une plage (une longueur d'onde se vise dans une plage, une tension près d'une cible).
+GOAL_MODES = ("max", "min", "target", "range")
 
 
 @dataclass(frozen=True)
@@ -82,6 +88,11 @@ class TrackedKpi:
     position: int
     created_at: str  # SQLite « YYYY-MM-DD HH:MM:SS », UTC
     filters: tuple[dict[str, Any], ...] = ()  # [{column, op, value}] : les lignes gardées satisfont tous les filtres
+    goal: dict[str, Any] | None = None  # {mode: max|min|target|range, target?, min?, max?} ; None : pas de « meilleure plaque »
+
+    @property
+    def goal_summary(self) -> str:
+        return describe_goal(self.goal) if self.goal else ""
 
     @property
     def summary(self) -> str:
@@ -131,6 +142,7 @@ class KpiDistribution:
     hook_title: str = ""
     message: str = ""
     groups: list[WaferDistribution] = field(default_factory=list)
+    best: int | None = None  # l'index (dans ``groups``) de la meilleure plaque d'après l'objectif du KPI, toutes dates confondues
 
 
 @dataclass(frozen=True)
@@ -205,7 +217,8 @@ def _catalog_entry(hook: str, column: str) -> CatalogKpi | None:
 
 def _tracked(row) -> TrackedKpi:
     return TrackedKpi(
-        row["id"], row["hook"], row["column_name"], row["label"], row["position"], row["created_at"], tuple(json.loads(row["filters"]))
+        row["id"], row["hook"], row["column_name"], row["label"], row["position"], row["created_at"],
+        tuple(json.loads(row["filters"])), json.loads(row["goal"]),
     )
 
 
@@ -274,12 +287,77 @@ def clean_filters(entry: CatalogKpi, filters: list[dict[str, Any]] | None) -> li
     return cleaned
 
 
+def describe_goal(goal: dict[str, Any]) -> str:
+    mode = goal["mode"]
+    if mode == "max":
+        return "médiane la plus haute"
+    if mode == "min":
+        return "médiane la plus basse"
+    if mode == "target":
+        return f"médiane au plus près de {goal['target']:g}"
+    return f"médiane entre {goal['min']:g} et {goal['max']:g}"
+
+
+def clean_goal(goal: dict[str, Any] | None) -> dict[str, Any] | None:
+    """L'objectif d'un KPI, vérifié (``None`` ou sans ``mode`` : aucun) : 422 ``unknown_goal`` pour un mode inconnu,
+    ``invalid_goal`` pour une cible ou une plage qui n'est pas un nombre (ou à l'envers)."""
+    if not goal or not goal.get("mode"):
+        return None
+    mode = goal["mode"]
+    if mode not in GOAL_MODES:
+        raise InvalidInput(f"Objectif inconnu : {mode!r}.", code="unknown_goal")
+    if mode in ("max", "min"):
+        return {"mode": mode}
+    if mode == "target":
+        target = _parse_number(goal.get("target"))
+        if target is None:
+            raise InvalidInput("La valeur cible doit être un nombre.", code="invalid_goal")
+        return {"mode": "target", "target": target}
+    low, high = _parse_number(goal.get("min")), _parse_number(goal.get("max"))
+    if low is None or high is None or low > high:
+        raise InvalidInput("La plage demande deux nombres, le minimum d'abord.", code="invalid_goal")
+    return {"mode": "range", "min": low, "max": high}
+
+
+def goal_score(goal: dict[str, Any], median: float) -> tuple[float, float]:
+    """Plus petit = meilleur : comment une médiane s'écarte de l'objectif (le second terme départage dans une plage :
+    la plus proche du centre)."""
+    mode = goal["mode"]
+    if mode == "max":
+        return (-median, 0.0)
+    if mode == "min":
+        return (median, 0.0)
+    if mode == "target":
+        return (abs(median - goal["target"]), 0.0)
+    outside = max(goal["min"] - median, median - goal["max"], 0.0)
+    return (outside, abs(median - (goal["min"] + goal["max"]) / 2))
+
+
+def best_group(goal: dict[str, Any] | None, groups: list[WaferDistribution]) -> int | None:
+    """La meilleure plaque d'après l'objectif, toutes dates confondues : celle dont la médiane le tient le mieux (la
+    plus ancienne en cas d'égalité) parmi les boîtes d'au moins ``MIN_ROWS_BEST`` lignes."""
+    if not goal:
+        return None
+    scored = [
+        (goal_score(goal, g.stats.median), g.sort_date or "9999", index)
+        for index, g in enumerate(groups)
+        if g.stats and g.stats.n >= MIN_ROWS_BEST
+    ]
+    return min(scored)[2] if scored else None
+
+
 def _filters_key(filters: list[dict[str, Any]]) -> str:
     return json.dumps(filters, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def add_tracked(
-    area: ManagementArea, user: User, hook: str, column: str, label: str | None = None, filters: list[dict[str, Any]] | None = None
+    area: ManagementArea,
+    user: User,
+    hook: str,
+    column: str,
+    label: str | None = None,
+    filters: list[dict[str, Any]] | None = None,
+    goal: dict[str, Any] | None = None,
 ) -> TrackedKpi:
     """Suit ``column`` de ``hook`` : elle doit être au catalogue (422 ``unknown_kpi`` sinon). Une même colonne se
     suit plusieurs fois avec des filtres différents (409 ``kpi_already_tracked`` pour le même couple colonne et filtres)."""
@@ -288,6 +366,7 @@ def add_tracked(
         raise InvalidInput(f"« {column} » de « {hook} » n'est pas un KPI disponible.", code="unknown_kpi")
     label = _clean_label(label)
     key = _filters_key(clean_filters(entry, filters))
+    goal_json = json.dumps(clean_goal(goal))
     with get_conn() as conn:
         count, last = conn.execute(
             "SELECT COUNT(*), COALESCE(MAX(position), -1) FROM area_tracked_kpis WHERE area_id = ?",
@@ -302,8 +381,8 @@ def add_tracked(
         if exists:
             raise Conflict("Ce KPI est déjà suivi par le projet, avec les mêmes filtres.", code="kpi_already_tracked")
         cursor = conn.execute(
-            "INSERT INTO area_tracked_kpis (area_id, hook, column_name, label, filters, position, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (area.id, hook, column, label, key, last + 1, user.id),
+            "INSERT INTO area_tracked_kpis (area_id, hook, column_name, label, filters, goal, position, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (area.id, hook, column, label, key, goal_json, last + 1, user.id),
         )
         row = conn.execute("SELECT * FROM area_tracked_kpis WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return _tracked(row)
@@ -317,12 +396,23 @@ def _get_tracked(conn, area: ManagementArea, kpi_id: int):
 
 
 def update_tracked(
-    area: ManagementArea, kpi_id: int, *, label: str | None = None, filters: list[dict[str, Any]] | None = None, set_filters: bool = False
+    area: ManagementArea,
+    kpi_id: int,
+    *,
+    label: str | None = None,
+    filters: list[dict[str, Any]] | None = None,
+    set_filters: bool = False,
+    goal: dict[str, Any] | None = None,
+    set_goal: bool = False,
 ) -> TrackedKpi:
     """Change le nom affiché (``label`` vide : la colonne et ses filtres) et/ou les filtres (``set_filters`` :
-    ``filters`` remplace ceux d'avant, vide les retire) d'un KPI suivi."""
+    ``filters`` remplace ceux d'avant, vide les retire) et/ou l'objectif (``set_goal`` : ``goal`` le remplace, ``None``
+    le retire) d'un KPI suivi."""
+    new_goal = json.dumps(clean_goal(goal)) if set_goal else None
     with get_conn() as conn:
         row = _get_tracked(conn, area, kpi_id)
+        if set_goal:
+            conn.execute("UPDATE area_tracked_kpis SET goal = ? WHERE id = ?", (new_goal, kpi_id))
         if label is not None:
             conn.execute("UPDATE area_tracked_kpis SET label = ? WHERE id = ?", (_clean_label(label), kpi_id))
         if set_filters:
@@ -550,7 +640,9 @@ def distributions(area: ManagementArea, user: User, *, refresh: bool = False) ->
                     )
                 )
         groups.sort(key=lambda g: (g.sort_date or "9999", g.wafer))  # chronologique : l'axe du temps de la page
-        results.append(KpiDistribution(kpi, "ok", entry.unit, entry.description, entry.hook_title, groups=groups))
+        results.append(
+            KpiDistribution(kpi, "ok", entry.unit, entry.description, entry.hook_title, groups=groups, best=best_group(kpi.goal, groups))
+        )
     return Distributions(
         source=sorted(sources)[0] if len(sources) == 1 else ("mixed" if sources else None),
         wafers=list(wafers.values()),

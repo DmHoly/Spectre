@@ -305,3 +305,70 @@ def test_the_distinct_values_of_a_column_are_offered_as_a_list(client):
     signup(client, "reader@example.com")
     login(client, "reader@example.com")
     assert client.get(url, params={"hook": "pl", "column": "X"}).status_code == 403
+
+
+def test_a_goal_names_the_best_wafer_ever(client):
+    signup(client, "boss@example.com")
+    slug = create_microproject(client, "Suivi KPI", area=AREA)["slug"]
+    launch(client, slug, title="Essai", intent="x", entities=[{"sample_id": f"W{n}"} for n in range(1, 7)])
+    no_goal = track(client, AREA, "pl", PL).json()
+    assert no_goal["goal"] is None and no_goal["goal_summary"] == ""
+    assert distribution_of(client, PL, no_goal["title"])["best"] is None  # sans objectif, pas de meilleure plaque
+
+    def best_of(kpi):
+        shown = distribution_of(client, PL, kpi["title"])
+        return shown, shown["groups"][shown["best"]]
+
+    kpi = client.patch(f"{BASE.format(AREA)}/kpis/{no_goal['id']}", json={"goal": {"mode": "max"}}).json()
+    assert kpi["goal"] == {"mode": "max"} and kpi["goal_summary"] == "médiane la plus haute"
+    shown, top = best_of(kpi)
+    medians = [g["stats"]["median"] for g in shown["groups"]]
+    assert top["stats"]["median"] == max(medians) and shown["goal"] == {"mode": "max"}
+
+    low = client.patch(f"{BASE.format(AREA)}/kpis/{kpi['id']}", json={"goal": {"mode": "min"}}).json()
+    assert best_of(low)[1]["stats"]["median"] == min(medians)
+
+    middle = sorted(medians)[len(medians) // 2]
+    target = client.patch(f"{BASE.format(AREA)}/kpis/{kpi['id']}", json={"goal": {"mode": "target", "target": str(middle).replace(".", ",")}}).json()
+    assert target["goal"]["target"] == middle and "au plus près" in target["goal_summary"]
+    assert best_of(target)[1]["stats"]["median"] == middle
+
+    ranged = client.patch(f"{BASE.format(AREA)}/kpis/{kpi['id']}", json={"goal": {"mode": "range", "min": min(medians) - 1, "max": min(medians) + 1}}).json()
+    assert best_of(ranged)[1]["stats"]["median"] == min(medians)  # la seule dans la plage
+
+    assert client.patch(f"{BASE.format(AREA)}/kpis/{kpi['id']}", json={"label": "Renommé"}).json()["goal"]["mode"] == "range"  # une clé absente ne change rien
+    cleared = client.patch(f"{BASE.format(AREA)}/kpis/{kpi['id']}", json={"goal": None}).json()
+    assert cleared["goal"] is None
+
+
+def test_goals_are_checked(client):
+    signup(client, "boss@example.com")
+    kpi = track(client, AREA, "pl", PL).json()
+    url = f"{BASE.format(AREA)}/kpis/{kpi['id']}"
+
+    def refused(goal, code):
+        response = client.patch(url, json={"goal": goal})
+        assert response.status_code == 422 and (code is None or response.json()["code"] == code), response.text
+
+    refused({"mode": "target"}, "invalid_goal")
+    refused({"mode": "target", "target": "beaucoup"}, "invalid_goal")
+    refused({"mode": "range", "min": 5}, "invalid_goal")
+    refused({"mode": "range", "min": 9, "max": 5}, "invalid_goal")
+    refused({"mode": "meilleure"}, None)  # un mode inconnu : refusé par le schéma
+    created = track(client, AREA, "eqe", "max_EQE", goal={"mode": "range", "min": "0.02", "max": 0.03})
+    assert created.status_code == 201 and created.json()["goal"] == {"mode": "range", "min": 0.02, "max": 0.03}
+    assert created.json()["goal_summary"] == "médiane entre 0.02 et 0.03"
+
+
+def test_a_box_of_a_few_rows_cannot_be_the_best(client, monkeypatch):
+    from spectre.plugins.characterization import service as characterization
+    from spectre.plugins.characterization.source import QueryResult
+
+    signup(client, "boss@example.com")
+    slug = create_microproject(client, "Suivi KPI", area=AREA)["slug"]
+    launch(client, slug, title="Essai", intent="x", entities=[{"sample_id": "W1"}, {"sample_id": "W2"}])
+    track(client, AREA, "ncel", "na_current_a", goal={"mode": "max"})
+    rows = [["W1", "2026-09-01", 1.0], ["W1", "2026-09-01", 2.0], ["W1", "2026-09-01", 3.0], ["W2", "2026-09-02", 100.0], ["W2", "2026-09-02", 100.0]]
+    monkeypatch.setattr(characterization, "query", lambda key, parameters, *, refresh=False: QueryResult(source="prism", columns=["wafername", "Test_Date", "na_current_a"], rows=rows))
+    shown = distribution_of(client, "na_current_a")
+    assert shown["groups"][shown["best"]]["wafer"] == "W1"  # W2 : deux lignes seulement
