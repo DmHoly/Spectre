@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KPI suivis — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/kpi_tracking/kpi-tracking.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" -->
+
+  <div class="page">
+    <p style="color:var(--text-faint);margin-bottom:8px;"><a id="microproject-link" href="/">&larr; Retour au µprojet</a></p>
+    <div class="kt-head">
+      <div>
+        <h1 style="font-size:22px;">KPI suivis</h1>
+        <p id="kt-subtitle" class="kt-subtitle">Les mesures PRISM des plaques que ce µprojet suit, KPI par KPI.</p>
+      </div>
+      <div class="kt-head__actions">
+        <span id="kt-source" class="badge badge-planned" style="display:none;"></span>
+        <button id="kt-refresh" class="btn btn-line" type="button" style="display:none;" title="Retaper la base PRISM au lieu de lire son cache">Actualiser depuis PRISM</button>
+      </div>
+    </div>
+
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+    <div id="flash" class="flash flash-ok" style="display:none;margin-bottom:16px;"></div>
+
+    <div class="tabs" role="tablist" style="margin-bottom:20px;">
+      <button class="tab active" type="button" role="tab" id="tab-distributions" data-tab="distributions" aria-selected="true">Distributions</button>
+      <button class="tab" type="button" role="tab" id="tab-configuration" data-tab="configuration" aria-selected="false">Configuration</button>
+    </div>
+
+    <section id="panel-distributions" role="tabpanel" aria-labelledby="tab-distributions">
+      <div id="kt-boxes"><div class="skeleton" style="height:260px;width:100%;"></div></div>
+    </section>
+
+    <section id="panel-configuration" role="tabpanel" aria-labelledby="tab-configuration" style="display:none;">
+      <div class="card card-pad" style="margin-bottom:20px;">
+        <div class="section-title" style="margin-bottom:8px;">KPI suivis par ce µprojet</div>
+        <p class="help" style="margin-bottom:12px;">Chaque KPI suivi a sa boîte à moustaches dans l'onglet « Distributions » : une par plaque suivie, sur toutes les mesures de cette plaque.</p>
+        <div id="kt-tracked"></div>
+      </div>
+      <div class="card card-pad">
+        <div class="section-title" style="margin-bottom:8px;">KPI disponibles dans PRISM</div>
+        <p class="help" style="margin-bottom:12px;">Les colonnes de KPI des types de données par plaque. Les formules se corrigent dans PRISM, pas dans Spectre.</p>
+        <div id="kt-catalog"></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/kpi_tracking/client.js"></script>
+  <script src="/static/kpi_tracking/boxplot.js"></script>
+  <script src="/static/kpi_tracking/kpi-tracking.js"></script>
+</body>
+</html>

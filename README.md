@@ -345,6 +345,7 @@ ses tables (`migrations.py`), ses pages (`pages/`) et son front (`static/`, serv
 | `notebook` | Cahier de données d'une étude, le seul : entrées PRISM (instantanés et vues DataViz) et manuelles (valeurs, textes, tableaux, fichiers, images externes, liens - les anciennes preuves et les anciens jeux d'images), rattachées aux plaques mesurées et aux étapes du procédé | `/api/microprojects/{mp}/snapshots`, `.../experiments/{exp}/notebook-entries` (et `.../{entry_id}/external-images/{index}`) | — (panneau de la fiche) |
 | `kpis` | Registre de KPI et séries mensuelles d'un projet corporate | `/api/areas/{area_slug}/kpis` | — |
 | `kpis_demo` | Séries et fiche d'étude fictives, actif seulement si `SPECTRE_DEMO_DATA=1` | `/api/areas/{area_slug}/kpis/{kpi_key}/studies` | — |
+| `kpi_tracking` | KPI PRISM qu'un µprojet suit et boîte à moustaches par plaque suivie | `/api/microprojects/{mp}/kpi-tracking` (`catalog`, `kpis`, `distributions`) | `/microprojets/{slug}/kpi` |
 | `docs` | Documentation dans l'application | — | `/docs`, `/docs/guide`, `/docs/exemples`, `/docs/architecture` |
 
 Règles principales :

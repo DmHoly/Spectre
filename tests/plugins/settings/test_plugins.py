@@ -28,7 +28,7 @@ def test_an_admin_lists_the_plugins_with_their_description_and_state(client):
     assert (lots["required"], lots["available"], lots["enabled"], lots["active"]) == (False, True, True, True)
     assert {dep["name"] for dep in lots["depends_on"]} == {"wafers", "areas", "experiments", "search"}
     assert plugins["experiments"]["required"] and plugins["wafers"]["required"] and plugins["settings"]["required"]
-    assert {dep["name"] for dep in plugins["characterization"]["dependents"]} == {"notebook", "prism"}
+    assert {dep["name"] for dep in plugins["characterization"]["dependents"]} == {"notebook", "prism", "kpi_tracking"}
     assert not plugins["kpis_demo"]["available"] and not plugins["kpis_demo"]["active"]
 
 

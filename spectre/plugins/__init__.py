@@ -14,6 +14,7 @@ from .docs import PLUGIN as docs
 from .experiments import PLUGIN as experiments
 from .external_images import PLUGIN as external_images
 from .intent_forms import PLUGIN as intent_forms
+from .kpi_tracking import PLUGIN as kpi_tracking
 from .kpis import PLUGIN as kpis
 from .kpis_demo import PLUGIN as kpis_demo
 from .library import PLUGIN as library
@@ -69,5 +70,6 @@ PLUGINS = (
     simulation_progress,
     step_report,
     materials,
+    kpi_tracking,
     docs,
 )

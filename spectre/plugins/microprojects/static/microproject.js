@@ -2,6 +2,12 @@ const { slug } = routeParams("/microprojets/{slug}");
 const errorBox = document.getElementById("error");
 // la page « Évolution des structures » (plugin experiments) : pistes, versions et refs
 document.getElementById("evolution-link").href = `/microprojets/${encodeURIComponent(slug)}/evolution`;
+// le plugin kpi_tracking, quand il est actif
+if (pluginEnabled("kpi_tracking")) {
+  const kpiLink = document.getElementById("kpi-link");
+  kpiLink.href = `/microprojets/${encodeURIComponent(slug)}/kpi`;
+  kpiLink.style.display = "";
+}
 let currentUser = null;
 let canEdit = false; // can_edit du µprojet (rôle effectif editor ou owner, calculé par le serveur)
 let canManage = false; // can_manage : owner (membre, manager de son équipe ou administrateur)
