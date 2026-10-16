@@ -630,7 +630,8 @@ function updateLithoPlacement() {
 function renderKindFields(kind) {
   const container = document.getElementById("kind-fields");
   const def = STEP_KIND_DEFS[kind];
-  container.innerHTML = def.renderFields() + declaredParamsSectionHtml(state.formDeclaredParams) + layerLabelSectionHtml(kind);
+  if (typeof stopMeasuring === "function") stopMeasuring(); // measures.js : un autre formulaire, une autre étape
+  container.innerHTML = def.renderFields() + declaredParamsSectionHtml(state.formDeclaredParams) + layerLabelSectionHtml(kind) + measuresSectionHtml(kind);
   if (def.wire) def.wire();
   wireDeclaredParamsSection(state.formDeclaredParams, renderDeclaredParams);
 }

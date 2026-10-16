@@ -33,7 +33,8 @@ function presetContentOf(step) {
   const { id, presetOrigin, brick_group_id, brick_name, brick_source, brick_version, declaredParams, layerLabel, ownRecipe, ...fields } = step;
   // la place d'une étiquette (texte déplacé, point d'accroche posé) tient au dessin d'une structure,
   // pas à l'étape : hors du préset
-  const label = layerLabel ? { text: layerLabel.text, values: layerLabel.values } : null;
+  // ni sa place ni ses cotes : une étape seulement cotée n'a pas d'étiquette à reprendre
+  const label = layerLabel && layerLabel.shown !== false ? { text: layerLabel.text, values: layerLabel.values } : null;
   return { fields, declared: declaredParams || [], label, recipe: ownRecipe && ownRecipe.name === step.recipe ? ownRecipe : null };
 }
 

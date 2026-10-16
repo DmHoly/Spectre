@@ -71,6 +71,7 @@ function fillKindFields(step) {
   const def = STEP_KIND_DEFS[step.kind];
   if (def.fillFields) def.fillFields(step);
   refreshLayerLabelValues(step);
+  refreshMeasuresList(); // measures.js
 }
 
 // Les valeurs par défaut d'un type d'étape sont celles de son formulaire (step-kinds.js) - on le

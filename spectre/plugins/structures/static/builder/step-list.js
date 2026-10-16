@@ -521,7 +521,7 @@ function stepChipHtml(i) {
         <span class="sb-chip__sub">${escapeHtml(chipSubtitle(step))}</span>
       </span>
       ${declared ? `<span class="sb-chip__badge" title="${declared} paramètre(s) déclaré(s)">+${declared}</span>` : ""}
-      ${step.layerLabel ? `<span class="sb-chip__badge sb-chip__badge--label" title="Étiquetée sur la structure : ${escapeHtml(step.layerLabel.text || stepMaterial(step) || step.name)}" aria-label="Étiquetée sur la structure"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span>` : ""}
+      ${chipLabelBadge(step)}
       ${step.presetOrigin ? presetChipBadgeHtml(step) : ""}
       ${hasFactor ? `<span class="sb-chip__badge sb-chip__badge--factor" title="Paramètre varié">×${factorCount}</span>` : ""}
       ${multi ? `<span class="sb-chip__check" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>` : ""}
@@ -794,3 +794,20 @@ flowTrack.addEventListener("drop", (event) => {
 });
 
 document.addEventListener("dragend", endFlowDrag);
+
+// La pastille d'une étape étiquetée (layer-label.js) ou cotée (measures.js) : en bas de sa puce.
+const LABEL_BADGE_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>';
+const MEASURE_BADGE_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7v10M20 7v10M4 12h16M8 9l-4 3 4 3M16 9l4 3-4 3"/></svg>';
+
+function chipLabelBadge(step) {
+  const label = step.layerLabel;
+  if (!label) return "";
+  const shown = label.shown !== false;
+  const measures = (label.measures || []).length;
+  const titles = [];
+  if (shown) titles.push(`Étiquetée sur la structure : ${label.text || stepMaterial(step) || step.name}`);
+  if (measures) titles.push(`${measures} cote${measures > 1 ? "s" : ""} sur son image`);
+  if (!titles.length) return "";
+  const title = escapeHtml(titles.join(" · "));
+  return `<span class="sb-chip__badge sb-chip__badge--label" title="${title}" aria-label="${title}">${shown ? LABEL_BADGE_ICON : ""}${measures ? MEASURE_BADGE_ICON : ""}</span>`;
+}
