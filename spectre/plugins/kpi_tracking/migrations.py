@@ -48,4 +48,30 @@ CREATE TABLE IF NOT EXISTS area_tracked_kpis (
 CREATE INDEX IF NOT EXISTS idx_area_tracked_kpis_area ON area_tracked_kpis(area_id, position);
 """
 
-MIGRATIONS = (Migration("0001_initial", SCHEMA), Migration("0002_per_area", PER_AREA))
+
+# Un KPI suit une colonne avec des filtres (``filters`` : une liste JSON de {column, op, value}, '[]' sans filtre) :
+# la même colonne se suit plusieurs fois, avec des filtres différents - l'unicité porte donc sur les
+# trois. SQLite ne change pas une contrainte en place : la table est refaite.
+FILTERS = """
+CREATE TABLE area_tracked_kpis_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    area_id INTEGER NOT NULL REFERENCES management_areas(id) ON DELETE CASCADE,
+    hook TEXT NOT NULL,
+    column_name TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    filters TEXT NOT NULL DEFAULT '[]',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (area_id, hook, column_name, filters)
+);
+
+INSERT INTO area_tracked_kpis_new (id, area_id, hook, column_name, label, position, created_by, created_at)
+    SELECT id, area_id, hook, column_name, label, position, created_by, created_at FROM area_tracked_kpis;
+
+DROP TABLE area_tracked_kpis;
+ALTER TABLE area_tracked_kpis_new RENAME TO area_tracked_kpis;
+CREATE INDEX IF NOT EXISTS idx_area_tracked_kpis_area ON area_tracked_kpis(area_id, position);
+"""
+
+MIGRATIONS = (Migration("0001_initial", SCHEMA), Migration("0002_per_area", PER_AREA), Migration("0003_filters", FILTERS))

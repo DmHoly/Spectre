@@ -26,6 +26,19 @@ const KpiDistributionTabs = (function () {
         const result = await load(false);
         const kpi = result.kpis.find((d) => d.id === k.id);
         panel.innerHTML = kpi ? cardHtml(kpi, result) : `<div class="error">Ce KPI n'est plus suivi.</div>`;
+        if (!kpi) return;
+        // un clic (ou Entrée) sur une boîte ouvre le récapitulatif de sa plaque
+        const openGroup = (event) => {
+          const target = event.target.closest("[data-group]");
+          if (target && kpi.groups[target.dataset.group]) KpiWaferModal.open({ group: kpi.groups[target.dataset.group], kpi });
+        };
+        panel.onclick = openGroup;
+        panel.onkeydown = (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openGroup(event);
+          }
+        };
       },
     }));
   }
@@ -55,7 +68,8 @@ const KpiDistributionTabs = (function () {
         <div>${kpi.unit ? `<span class="kt-box__unit" style="margin-left:0;">${escapeHtml(kpi.unit)}</span>` : ""}</div>
         <span class="kt-box__meta">${meta}${result.source ? ` · ${escapeHtml(SOURCE_LABELS[result.source] || "")}` : ""}</span>
       </div>${kpi.description ? `<p class="kt-box__desc">${escapeHtml(kpi.description)}</p>` : ""}`;
-    if (kpi.status !== "ok") return `${head}<div class="kt-box__error">${escapeHtml(kpi.message || "Calcul impossible.")}</div>`;
+    const filters = kpi.summary ? `<p class="kt-filters-line">Filtres : ${escapeHtml(kpi.summary)}</p>` : "";
+    if (kpi.status !== "ok") return `${head}${filters}<div class="kt-box__error">${escapeHtml(kpi.message || "Calcul impossible.")}</div>`;
     const svg = kpiBoxplotSvg(kpi.groups, {
       label: `${kpi.title} : une boîte à moustaches par plaque`,
       colorOf: (group) => (colors.get(group.microprojects[0] && group.microprojects[0].slug) || { color: kpiBoxplotColor(0) }).color,
@@ -63,8 +77,8 @@ const KpiDistributionTabs = (function () {
     const body = svg
       ? `<div class="kt-box__plot">${svg}</div>`
       : `<p class="help">${wafers ? "Aucune mesure de ce KPI sur les plaques suivies pour l'instant." : "Aucune plaque suivie par les µprojets de ce projet."}</p>`;
-    const count = `<p class="kt-box__meta" style="margin:8px 0 0;">${wafers} plaque${wafers > 1 ? "s" : ""} suivie${wafers > 1 ? "s" : ""} · une boîte par plaque, sur toutes ses mesures</p>`;
-    return `${head}${legendHtml(colors)}${body}${count}`;
+    const count = `<p class="kt-box__meta" style="margin:8px 0 0;">${wafers} plaque${wafers > 1 ? "s" : ""} suivie${wafers > 1 ? "s" : ""} · une boîte par plaque (et par date de mesure), sur toutes ses lignes gardées</p>`;
+    return `${head}${filters}${legendHtml(colors)}${body}${count}`;
   }
 
   return { kpisFor };

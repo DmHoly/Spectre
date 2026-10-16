@@ -44,7 +44,7 @@ function kpiBoxplotSvg(groups, options = {}) {
   const band = Math.max(84, Math.min(150, 720 / groups.length)); // large quand il y a peu de plaques
   const frame = { left: 64, right: 16, top: 14, height: 250 };
   const width = frame.left + frame.right + band * groups.length;
-  const height = frame.top + frame.height + 58;
+  const height = frame.top + frame.height + 72;
   const y = (v) => frame.top + frame.height * (1 - (v - low) / (high - low));
   const colorOf = options.colorOf || ((g, i) => kpiBoxplotColor(i));
   let marks = "";
@@ -57,19 +57,24 @@ function kpiBoxplotSvg(groups, options = {}) {
   groups.forEach((g, i) => {
     const cx = frame.left + band * (i + 0.5);
     const baseline = frame.top + frame.height;
-    const studies = g.studies.map((s) => s.title).join(" · ");
-    const caption = `<text class="kt-plot-tick kt-plot-tick--strong" x="${cx}" y="${baseline + 16}" text-anchor="middle">${esc(g.wafer)}</text>`;
+    const studies = g.studies.map((s) => s.title || "étude d'un µprojet privé").join(" · ");
+    // une plaque mesurée à plusieurs dates a une boîte par date : le jour se lit sous son nom
+    const caption = `<text class="kt-plot-tick kt-plot-tick--strong" x="${cx}" y="${baseline + 16}" text-anchor="middle">${esc(g.wafer)}</text>${
+      g.date ? `<text class="kt-plot-tick" x="${cx}" y="${baseline + 29}" text-anchor="middle">${esc(g.date)}</text>` : ""
+    }`;
+    const rows = g.date ? 13 : 0;
+    const open = `<g class="kt-plot-group" data-group="${i}" tabindex="0" role="button" aria-label="${esc(`Récapitulatif de la plaque ${g.wafer}${g.date ? ` du ${g.date}` : ""}`)}">`;
     if (!g.stats) {
-      marks += `${caption}<text class="kt-plot-empty" x="${cx}" y="${baseline - 8}" text-anchor="middle">aucune mesure</text>
-        <title>${esc(`${g.wafer} · aucune mesure · ${studies}`)}</title>`;
+      marks += `${open}${caption}<text class="kt-plot-empty" x="${cx}" y="${baseline - 8}" text-anchor="middle">aucune mesure</text>
+        <title>${esc(`${g.wafer}${g.date ? ` · ${g.date}` : ""} · aucune mesure · ${studies}`)}</title></g>`;
       return;
     }
     const s = g.stats;
     const color = colorOf(g, i);
     const w = Math.min(46, band * 0.55);
-    const tip = `${g.wafer} · ${studies}\nn ${s.n} · médiane ${kpiFormatNumber(s.median)} · moyenne ${kpiFormatNumber(s.mean)}\nQ1 ${kpiFormatNumber(s.q1)} · Q3 ${kpiFormatNumber(s.q3)}\nmin ${kpiFormatNumber(s.minimum)} · max ${kpiFormatNumber(s.maximum)}`;
+    const tip = `${g.wafer}${g.date ? ` · mesurée le ${g.date}` : ""} · ${studies}\nn ${s.n} · médiane ${kpiFormatNumber(s.median)} · moyenne ${kpiFormatNumber(s.mean)}\nQ1 ${kpiFormatNumber(s.q1)} · Q3 ${kpiFormatNumber(s.q3)}\nmin ${kpiFormatNumber(s.minimum)} · max ${kpiFormatNumber(s.maximum)}`;
     const boxTop = y(s.q3);
-    marks += `<g style="color:${color}">
+    marks += `${open}<g style="color:${color}">
         <title>${esc(tip)}</title>
         <line x1="${cx}" x2="${cx}" y1="${y(s.whisker_low).toFixed(1)}" y2="${y(s.q1).toFixed(1)}" stroke="currentColor" stroke-width="1.4"/>
         <line x1="${cx}" x2="${cx}" y1="${y(s.q3).toFixed(1)}" y2="${y(s.whisker_high).toFixed(1)}" stroke="currentColor" stroke-width="1.4"/>
@@ -80,8 +85,9 @@ function kpiBoxplotSvg(groups, options = {}) {
         ${g.outliers.map((v) => `<circle cx="${cx}" cy="${y(v).toFixed(1)}" r="2.4" fill="none" stroke="currentColor" stroke-width="1.2"><title>${esc(`${g.wafer} · ${kpiFormatNumber(v)}`)}</title></circle>`).join("")}
       </g>
       ${caption}
-      <text class="kt-plot-tick" x="${cx}" y="${baseline + 30}" text-anchor="middle">n ${s.n}</text>
-      <text class="kt-plot-tick" x="${cx}" y="${baseline + 43}" text-anchor="middle">méd. ${esc(kpiFormatNumber(s.median))}</text>`;
+      <text class="kt-plot-tick" x="${cx}" y="${baseline + 30 + rows}" text-anchor="middle">n ${s.n}</text>
+      <text class="kt-plot-tick" x="${cx}" y="${baseline + 43 + rows}" text-anchor="middle">méd. ${esc(kpiFormatNumber(s.median))}</text>
+      <rect x="${cx - band / 2}" y="${frame.top}" width="${band}" height="${frame.height + 50 + rows}" fill="transparent"/></g>`;
   });
   return `<svg viewBox="0 0 ${width} ${height}" style="width:${width}px;max-width:100%;height:auto" role="img" aria-label="${esc(options.label || "Boîtes à moustaches par plaque")}">${marks}</svg>`;
 }

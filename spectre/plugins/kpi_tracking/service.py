@@ -10,7 +10,8 @@ Deux choses distinctes :
   **tous les µprojets du projet** (``physical_tracking`` de la pointe de chaque piste) ; chaque type
   de données est interrogé **une fois** pour toutes ces plaques (par paquets du plafond de
   ``characterization``), et pour chaque KPI et chaque plaque on garde la distribution de la colonne
-  sur ses lignes (les dispositifs mesurés) : quartiles, moustaches à 1,5 × l'écart interquartile et
+  sur ses lignes (les dispositifs mesurés) - une plaque mesurée à plusieurs dates (la colonne « date » du
+  type de données) en a une boîte par date - : quartiles, moustaches à 1,5 × l'écart interquartile et
   valeurs aberrantes - de quoi tracer une boîte à moustaches par plaque. Le cache par plaque de PRISM
   fait que seule une plaque nouvelle ou ``refresh`` retape la base.
 
@@ -22,8 +23,10 @@ le titre d'une étude, lui, ne se montre qu'à qui peut lire son µprojet.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -40,11 +43,17 @@ log = logging.getLogger(__name__)
 
 MAX_KPIS = 30  # des boîtes à moustaches : au-delà, la page n'est plus lisible
 MAX_LABEL = 80
+MAX_FILTERS = 8  # par KPI suivi
 MAX_OUTLIERS = 50  # par plaque et par KPI : de quoi les montrer, sans faire grossir la réponse d'un wafer très dispersé
 
 # Les colonnes d'un type de données qui sont de l'identification ou de la position, pas une mesure.
 NOT_A_KPI = {"wafername", "wafer_name", "wafer name", "x", "y", "srgb"}
 WAFER_COLUMNS = ("wafername", "wafer_name", "wafer name")
+
+
+# Les comparaisons d'un filtre, avec leur écriture. Les quatre premières demandent une cellule numérique.
+OPERATORS = {"gt": ">", "gte": "≥", "lt": "<", "lte": "≤", "eq": "=", "ne": "≠", "contains": "contient", "in": "dans"}
+NUMERIC_OPERATORS = ("gt", "gte", "lt", "lte")
 
 
 @dataclass(frozen=True)
@@ -56,6 +65,7 @@ class CatalogKpi:
     hook_title: str
     unit: str = ""
     description: str = ""
+    filter_columns: tuple[str, ...] = ()  # les colonnes du même type de données qu'un filtre peut porter
 
     @property
     def key(self) -> str:
@@ -67,13 +77,21 @@ class TrackedKpi:
     id: int
     hook: str
     column: str
-    label: str  # le nom d'affichage choisi ; vide : la colonne
+    label: str  # le nom d'affichage choisi ; vide : la colonne, suivie de ses filtres
     position: int
     created_at: str  # SQLite « YYYY-MM-DD HH:MM:SS », UTC
+    filters: tuple[dict[str, Any], ...] = ()  # [{column, op, value}] : les lignes gardées satisfont tous les filtres
+
+    @property
+    def summary(self) -> str:
+        """Les filtres en une ligne (« Dominant WL(nm) > 613 · Led_Name contient MONO2 »)."""
+        return " · ".join(describe_filter(f) for f in self.filters)
 
     @property
     def title(self) -> str:
-        return self.label or self.column
+        if self.label:
+            return self.label
+        return f"{self.column} ({self.summary})" if self.filters else self.column
 
 
 @dataclass(frozen=True)
@@ -96,6 +114,7 @@ class WaferDistribution:
     studies: list[dict[str, str | None]]  # [{microproject, experiment_id, title}] ; title None : étude d'un µprojet illisible
     stats: BoxStats | None  # None : aucune mesure de ce KPI sur cette plaque
     outliers: list[float] = field(default_factory=list)
+    date: str | None = None  # le jour de mesure, quand la plaque a été mesurée à plusieurs dates : une boîte par date
 
 
 @dataclass(frozen=True)
@@ -133,6 +152,14 @@ def catalog() -> list[CatalogKpi]:
         if tuple(data_type.parameters) != (characterization.WAFER_PARAMETER,):
             continue
         seen: set[str] = set()
+        filterable = tuple(
+            dict.fromkeys(
+                name
+                for column in (*data_type.raw_columns, *data_type.kpi_columns)
+                for name in _column_names(str(column.get("name") or ""))
+                if name.lower() not in WAFER_COLUMNS
+            )
+        )
         for column in data_type.kpi_columns:
             for name in _column_names(str(column.get("name") or "")):
                 if name.lower() in NOT_A_KPI or name in seen:
@@ -145,6 +172,7 @@ def catalog() -> list[CatalogKpi]:
                         hook_title=data_type.title,
                         unit=str(column.get("unit") or ""),
                         description=str(column.get("description") or ""),
+                        filter_columns=filterable,
                     )
                 )
     return kpis
@@ -158,7 +186,9 @@ def _catalog_entry(hook: str, column: str) -> CatalogKpi | None:
 
 
 def _tracked(row) -> TrackedKpi:
-    return TrackedKpi(row["id"], row["hook"], row["column_name"], row["label"], row["position"], row["created_at"])
+    return TrackedKpi(
+        row["id"], row["hook"], row["column_name"], row["label"], row["position"], row["created_at"], tuple(json.loads(row["filters"]))
+    )
 
 
 def list_tracked(area: ManagementArea) -> list[TrackedKpi]:
@@ -176,12 +206,70 @@ def _clean_label(label: str | None) -> str:
     return label
 
 
-def add_tracked(area: ManagementArea, user: User, hook: str, column: str, label: str | None = None) -> TrackedKpi:
-    """Suit ``column`` de ``hook`` : elle doit être au catalogue (422 ``unknown_kpi`` sinon), une fois par projet
-    (409 ``kpi_already_tracked``)."""
-    if _catalog_entry(hook, column) is None:
+def describe_filter(f: dict[str, Any]) -> str:
+    value = f["value"]
+    shown = ", ".join(value) if isinstance(value, list) else f"{value:g}" if isinstance(value, float) else str(value)
+    return f"{f['column']} {OPERATORS[f['op']]} {shown}"
+
+
+def _parse_number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value) if math.isfinite(value) else None
+    try:
+        number = float(str(value).strip().replace(",", "."))
+    except ValueError:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def clean_filters(entry: CatalogKpi, filters: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Les filtres d'un KPI, vérifiés et mis en forme : une colonne du même type de données (422
+    ``unknown_filter_column``), une comparaison connue, une valeur du bon genre - un nombre pour ``>``, ``≥``,
+    ``<``, ``≤``, un texte pour les autres (``dans`` : une liste, séparée par des virgules ou des points-virgules)."""
+    filters = filters or []
+    if len(filters) > MAX_FILTERS:
+        raise InvalidInput(f"{MAX_FILTERS} filtres au plus par KPI.", code="too_many_filters")
+    cleaned = []
+    for raw in filters:
+        column, op, value = str(raw.get("column") or ""), raw.get("op"), raw.get("value")
+        if column not in entry.filter_columns:
+            raise InvalidInput(f"« {column} » n'est pas une colonne filtrable de « {entry.hook} ».", code="unknown_filter_column")
+        if op not in OPERATORS:
+            raise InvalidInput(f"Comparaison inconnue : {op!r}.", code="unknown_operator")
+        if op in NUMERIC_OPERATORS:
+            number = _parse_number(value)
+            if number is None:
+                raise InvalidInput(f"« {OPERATORS[op]} » demande un nombre pour « {column} ».", code="invalid_filter_value")
+            value = number
+        elif op == "in":
+            items = value if isinstance(value, list) else re.split(r"[;,]", str(value or ""))
+            value = [" ".join(str(item).split()) for item in items if str(item).strip()]
+            if not value:
+                raise InvalidInput(f"Indiquez au moins une valeur pour « {column} ».", code="invalid_filter_value")
+        else:
+            value = " ".join(str(value if value is not None else "").split())
+            if not value:
+                raise InvalidInput(f"Indiquez une valeur pour « {column} ».", code="invalid_filter_value")
+        cleaned.append({"column": column, "op": op, "value": value})
+    return cleaned
+
+
+def _filters_key(filters: list[dict[str, Any]]) -> str:
+    return json.dumps(filters, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def add_tracked(
+    area: ManagementArea, user: User, hook: str, column: str, label: str | None = None, filters: list[dict[str, Any]] | None = None
+) -> TrackedKpi:
+    """Suit ``column`` de ``hook`` : elle doit être au catalogue (422 ``unknown_kpi`` sinon). Une même colonne se
+    suit plusieurs fois avec des filtres différents (409 ``kpi_already_tracked`` pour le même couple colonne et filtres)."""
+    entry = _catalog_entry(hook, column)
+    if entry is None:
         raise InvalidInput(f"« {column} » de « {hook} » n'est pas un KPI disponible.", code="unknown_kpi")
     label = _clean_label(label)
+    key = _filters_key(clean_filters(entry, filters))
     with get_conn() as conn:
         count, last = conn.execute(
             "SELECT COUNT(*), COALESCE(MAX(position), -1) FROM area_tracked_kpis WHERE area_id = ?",
@@ -190,33 +278,47 @@ def add_tracked(area: ManagementArea, user: User, hook: str, column: str, label:
         if count >= MAX_KPIS:
             raise InvalidInput(f"{MAX_KPIS} KPI suivis au plus par projet.", code="too_many_kpis")
         exists = conn.execute(
-            "SELECT 1 FROM area_tracked_kpis WHERE area_id = ? AND hook = ? AND column_name = ?",
-            (area.id, hook, column),
+            "SELECT 1 FROM area_tracked_kpis WHERE area_id = ? AND hook = ? AND column_name = ? AND filters = ?",
+            (area.id, hook, column, key),
         ).fetchone()
         if exists:
-            raise Conflict("Ce KPI est déjà suivi par le projet.", code="kpi_already_tracked")
+            raise Conflict("Ce KPI est déjà suivi par le projet, avec les mêmes filtres.", code="kpi_already_tracked")
         cursor = conn.execute(
-            "INSERT INTO area_tracked_kpis (area_id, hook, column_name, label, position, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-            (area.id, hook, column, label, last + 1, user.id),
+            "INSERT INTO area_tracked_kpis (area_id, hook, column_name, label, filters, position, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (area.id, hook, column, label, key, last + 1, user.id),
         )
         row = conn.execute("SELECT * FROM area_tracked_kpis WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return _tracked(row)
 
 
 def _get_tracked(conn, area: ManagementArea, kpi_id: int):
-    row = conn.execute(
-        "SELECT * FROM area_tracked_kpis WHERE id = ? AND area_id = ?", (kpi_id, area.id)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM area_tracked_kpis WHERE id = ? AND area_id = ?", (kpi_id, area.id)).fetchone()
     if row is None:
         raise NotFound("KPI suivi inconnu pour ce projet.")
     return row
 
 
-def rename_tracked(area: ManagementArea, kpi_id: int, label: str) -> TrackedKpi:
-    label = _clean_label(label)
+def update_tracked(
+    area: ManagementArea, kpi_id: int, *, label: str | None = None, filters: list[dict[str, Any]] | None = None, set_filters: bool = False
+) -> TrackedKpi:
+    """Change le nom affiché (``label`` vide : la colonne et ses filtres) et/ou les filtres (``set_filters`` :
+    ``filters`` remplace ceux d'avant, vide les retire) d'un KPI suivi."""
     with get_conn() as conn:
-        _get_tracked(conn, area, kpi_id)
-        conn.execute("UPDATE area_tracked_kpis SET label = ? WHERE id = ?", (label, kpi_id))
+        row = _get_tracked(conn, area, kpi_id)
+        if label is not None:
+            conn.execute("UPDATE area_tracked_kpis SET label = ? WHERE id = ?", (_clean_label(label), kpi_id))
+        if set_filters:
+            entry = _catalog_entry(row["hook"], row["column_name"])
+            if entry is None:
+                raise InvalidInput("Ce KPI n'est plus au catalogue PRISM : ses filtres ne peuvent plus être changés.", code="unknown_kpi")
+            key = _filters_key(clean_filters(entry, filters))
+            twin = conn.execute(
+                "SELECT 1 FROM area_tracked_kpis WHERE area_id = ? AND hook = ? AND column_name = ? AND filters = ? AND id != ?",
+                (area.id, row["hook"], row["column_name"], key, kpi_id),
+            ).fetchone()
+            if twin:
+                raise Conflict("Ce KPI est déjà suivi par le projet, avec les mêmes filtres.", code="kpi_already_tracked")
+            conn.execute("UPDATE area_tracked_kpis SET filters = ? WHERE id = ?", (key, kpi_id))
         row = _get_tracked(conn, area, kpi_id)
     return _tracked(row)
 
@@ -309,7 +411,52 @@ def _query_hook(hook: str, wafers: list[str], refresh: bool) -> tuple[str, list[
     return source, columns, rows
 
 
-def _values_by_wafer(columns: list[str], rows: list[list[Any]], column: str) -> dict[str, list[float]]:
+def _truthy(text: Any) -> bool:
+    return str(text).strip().lower() in ("true", "vrai", "oui", "yes", "1")
+
+
+def _matches(cell: Any, op: str, value: Any) -> bool:
+    """La cellule satisfait-elle ``op value`` ? Une cellule qu'on ne peut pas comparer (vide, courbe, texte face à
+    ``>``) ne la satisfait pas - la ligne est écartée, jamais devinée."""
+    if cell is None or isinstance(cell, (list, tuple, dict)):
+        return False
+    if op in NUMERIC_OPERATORS:
+        number = _number(cell)
+        if number is None:
+            return False
+        return {"gt": number > value, "gte": number >= value, "lt": number < value, "lte": number <= value}[op]
+    if op == "contains":
+        return isinstance(cell, str) and str(value).casefold() in cell.casefold()
+    wanted = value if isinstance(value, list) else [value]
+    if isinstance(cell, bool):
+        hit = any(_truthy(v) == cell for v in wanted)
+    elif isinstance(cell, (int, float)):
+        hit = any(_parse_number(v) == float(cell) for v in wanted)
+    else:
+        hit = str(cell).casefold() in {str(v).casefold() for v in wanted}
+    return not hit if op == "ne" else hit
+
+
+def _day(cell: Any) -> str | None:
+    """Le jour d'une cellule de date (``AAAA-MM-JJ`` d'un texte ISO ou d'une date) ; ``None`` si vide."""
+    if cell is None:
+        return None
+    text = str(cell).strip()
+    match = re.match(r"\d{4}-\d{2}-\d{2}", text)
+    return match.group(0) if match else (text or None)
+
+
+def _date_column(columns: list[str]) -> int | None:
+    """La colonne de date de mesure d'un type de données (« PL date », « Test_Date »...) : la première dont le nom
+    dit « date ». Sans elle, une plaque n'a qu'une boîte."""
+    return next((i for i, name in enumerate(columns) if "date" in name.lower()), None)
+
+
+def _values_by_wafer(
+    columns: list[str], rows: list[list[Any]], column: str, filters: tuple[dict[str, Any], ...] = ()
+) -> dict[str, dict[str | None, list[float]]]:
+    """Les valeurs de ``column`` par plaque puis par jour de mesure (``None`` : pas de date), sur les lignes qui
+    passent tous les ``filters``. Une plaque mesurée à deux dates a donc deux listes."""
     lower = [c.lower() for c in columns]
     wafer_at = next((lower.index(name) for name in WAFER_COLUMNS if name in lower), None)
     if wafer_at is None:
@@ -317,11 +464,19 @@ def _values_by_wafer(columns: list[str], rows: list[list[Any]], column: str) -> 
     if column not in columns:
         raise InvalidInput(f"la colonne « {column} » n'est plus dans la requête")
     value_at = columns.index(column)
-    by_wafer: dict[str, list[float]] = {}
+    missing = [f["column"] for f in filters if f["column"] not in columns]
+    if missing:
+        raise InvalidInput(f"la colonne de filtre « {missing[0]} » n'est plus dans la requête")
+    tests = [(columns.index(f["column"]), f["op"], f["value"]) for f in filters]
+    date_at = _date_column(columns)
+    by_wafer: dict[str, dict[str | None, list[float]]] = {}
     for row in rows:
+        if not all(_matches(row[at], op, value) for at, op, value in tests):
+            continue
         number = _number(row[value_at])
         if number is not None and row[wafer_at]:
-            by_wafer.setdefault(compact(str(row[wafer_at])), []).append(number)
+            day = _day(row[date_at]) if date_at is not None else None
+            by_wafer.setdefault(compact(str(row[wafer_at])), {}).setdefault(day, []).append(number)
     return by_wafer
 
 
@@ -358,16 +513,21 @@ def distributions(area: ManagementArea, user: User, *, refresh: bool = False) ->
         source, columns, rows = outcome
         sources.add(source)
         try:
-            by_wafer = _values_by_wafer(columns, rows, kpi.column)
+            by_wafer = _values_by_wafer(columns, rows, kpi.column, kpi.filters)
         except InvalidInput as exc:
             results.append(_failed(kpi, entry, "error", str(exc)))
             continue
         groups = []
         for key, wafer in wafers.items():
-            computed = box_stats(by_wafer.get(key, []))
-            groups.append(
-                WaferDistribution(wafer["wafer"], wafer["microprojects"], wafer["studies"], computed[0] if computed else None, computed[1] if computed else [])
-            )
+            days = by_wafer.get(key) or {None: []}
+            for day in sorted(days, key=lambda d: (d is None, d or "")):  # une boîte par date de mesure
+                computed = box_stats(days[day])
+                groups.append(
+                    WaferDistribution(
+                        wafer["wafer"], wafer["microprojects"], wafer["studies"],
+                        computed[0] if computed else None, computed[1] if computed else [], day,
+                    )
+                )
         results.append(KpiDistribution(kpi, "ok", entry.unit, entry.description, entry.hook_title, groups=groups))
     return Distributions(
         source=sorted(sources)[0] if len(sources) == 1 else ("mixed" if sources else None),

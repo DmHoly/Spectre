@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
@@ -18,14 +20,25 @@ from . import service
 router = APIRouter(prefix="/api/areas/{area_slug}/kpi-tracking", tags=["kpi_tracking"])
 
 
+class FilterInput(BaseModel):
+    """Garder les lignes où ``column`` ``op`` ``value`` : un nombre pour gt/gte/lt/lte, un texte pour eq/ne/contains,
+    une liste (ou un texte séparé par des virgules) pour ``in``."""
+
+    column: str
+    op: Literal["gt", "gte", "lt", "lte", "eq", "ne", "contains", "in"]
+    value: float | str | list[str]
+
+
 class TrackKpiRequest(BaseModel):
     hook: str
     column: str
     label: str | None = None
+    filters: list[FilterInput] = []
 
 
-class RenameKpiRequest(BaseModel):
-    label: str
+class UpdateKpiRequest(BaseModel):
+    label: str | None = None  # vide : la colonne et ses filtres
+    filters: list[FilterInput] | None = None  # remplace ceux d'avant ; [] les retire
 
 
 def _managed(area_slug: str, user: User) -> areas.ManagementArea:
@@ -42,6 +55,9 @@ def _tracked_payload(kpi: service.TrackedKpi, catalogue: dict[str, service.Catal
         "column": kpi.column,
         "label": kpi.label,
         "title": kpi.title,
+        "filters": list(kpi.filters),
+        "summary": kpi.summary,
+        "filter_columns": list(entry.filter_columns) if entry else [],
         "unit": entry.unit if entry else "",
         "description": entry.description if entry else "",
         "hook_title": entry.hook_title if entry else kpi.hook,
@@ -71,15 +87,19 @@ def list_tracked_kpis(area_slug: str, user: User = Depends(current_user)) -> lis
 @router.post("/kpis", status_code=201)
 def track_kpi(area_slug: str, body: TrackKpiRequest, response: Response, user: User = Depends(current_user)) -> dict:
     area = _managed(area_slug, user)
-    kpi = service.add_tracked(area, user, body.hook, body.column, body.label)
+    kpi = service.add_tracked(area, user, body.hook, body.column, body.label, [f.model_dump() for f in body.filters])
     response.headers["Location"] = f"/api/areas/{area.slug}/kpi-tracking/kpis/{kpi.id}"
     return _tracked_payload(kpi, _catalogue())
 
 
 @router.patch("/kpis/{kpi_id}")
-def rename_kpi(area_slug: str, kpi_id: int, body: RenameKpiRequest, user: User = Depends(current_user)) -> dict:
+def update_kpi(area_slug: str, kpi_id: int, body: UpdateKpiRequest, user: User = Depends(current_user)) -> dict:
+    """Renommer un KPI suivi et/ou remplacer ses filtres (une clé absente ne change rien)."""
     area = _managed(area_slug, user)
-    return _tracked_payload(service.rename_tracked(area, kpi_id, body.label), _catalogue())
+    filters = None if body.filters is None else [f.model_dump() for f in body.filters]
+    return _tracked_payload(
+        service.update_tracked(area, kpi_id, label=body.label, filters=filters, set_filters=body.filters is not None), _catalogue()
+    )
 
 
 @router.delete("/kpis/{kpi_id}", status_code=204)
@@ -110,6 +130,7 @@ def get_distributions(area_slug: str, refresh: bool = False, user: User = Depend
                         "wafer": g.wafer,
                         "microprojects": g.microprojects,
                         "studies": g.studies,
+                        "date": g.date,
                         "stats": asdict(g.stats) if g.stats else None,
                         "outliers": g.outliers,
                     }

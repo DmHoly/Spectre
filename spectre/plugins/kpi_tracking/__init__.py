@@ -12,7 +12,7 @@ SLIDERS_GLYPH = '<path d="M4 7h10"/><path d="M18 7h2"/><circle cx="16" cy="7" r=
 
 PLUGIN = Plugin(
     name="kpi_tracking",
-    depends_on=("accounts", "areas", "microprojects", "experiments", "characterization"),
+    depends_on=("accounts", "areas", "microprojects", "experiments", "wafers", "characterization"),
     router=router,
     pages=(Page("/kpi", "kpi-config.html"),),
     nav=(NavEntry("KPI", "/kpi", order=42, match=r"^/kpi", group="data", glyph=SLIDERS_GLYPH),),

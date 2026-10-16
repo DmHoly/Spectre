@@ -162,3 +162,104 @@ def test_box_stats():
     assert outliers == [100] and stats.whisker_high == 9 and stats.whisker_low == 1
     single, none = box_stats([4.0])
     assert single.q1 == single.median == single.q3 == 4.0 and none == []
+
+
+PL = "Integrated PL (a.u.)"
+
+
+def distribution_of(client, column, title=None):
+    kpis = [k for k in client.get(f"{BASE.format(AREA)}/distributions").json()["kpis"] if k["column"] == column and (title is None or k["title"] == title)]
+    assert len(kpis) == 1, [k["title"] for k in kpis]
+    return kpis[0]
+
+
+def test_filters_keep_only_the_rows_that_match(client):
+    signup(client, "boss@example.com")
+    slug = create_microproject(client, "Suivi KPI", area=AREA)["slug"]
+    launch(client, slug, title="Essai", intent="x", entities=[{"sample_id": "W1"}])
+    plain = track(client, AREA, "pl", PL).json()
+    centre = track(client, AREA, "pl", PL, filters=[{"column": "X", "op": "eq", "value": "0"}])  # la même colonne, filtrée
+    assert centre.status_code == 201 and centre.json()["title"] == f"{PL} (X = 0)" and centre.json()["summary"] == "X = 0"
+    nowhere = track(client, AREA, "pl", PL, filters=[{"column": "Dominant WL(nm)", "op": "gt", "value": 10000}]).json()
+
+    total = distribution_of(client, PL, plain["title"])["groups"][0]["stats"]["n"]
+    on_axis = distribution_of(client, PL, centre.json()["title"])["groups"][0]["stats"]["n"]
+    assert 0 < on_axis < total
+    assert distribution_of(client, PL, nowhere["title"])["groups"][0]["stats"] is None  # aucune ligne ne passe
+
+    # plusieurs filtres se cumulent ; un nombre peut s'écrire avec une virgule
+    both = track(
+        client, AREA, "pl", PL, label="Axe, grandes longueurs",
+        filters=[{"column": "X", "op": "eq", "value": "0"}, {"column": "Dominant WL(nm)", "op": "gte", "value": "0,5"}],
+    ).json()
+    assert distribution_of(client, PL, both["title"])["groups"][0]["stats"]["n"] == on_axis
+    assert both["filters"][1] == {"column": "Dominant WL(nm)", "op": "gte", "value": 0.5}
+
+
+def test_a_text_filter_picks_a_led(client):
+    signup(client, "boss@example.com")
+    slug = create_microproject(client, "Suivi KPI", area=AREA)["slug"]
+    launch(client, slug, title="Essai", intent="x", entities=[{"sample_id": "W1"}])
+    only = track(client, AREA, "eqe", "max_EQE", filters=[{"column": "Led_Name", "op": "contains", "value": "mono2-118x118-5805-r"}]).json()
+    assert distribution_of(client, "max_EQE")["groups"][0]["stats"]["n"] == 1  # sans casse
+    listed = track(client, AREA, "eqe", "max_EQE", filters=[{"column": "Led_Name", "op": "in", "value": "MONO2-118x118-5805-R; MONO2-118x118-5806-R"}]).json()
+    assert listed["filters"][0]["value"] == ["MONO2-118x118-5805-R", "MONO2-118x118-5806-R"] and only["id"] != listed["id"]
+    by_title = {k["title"]: k for k in client.get(f"{BASE.format(AREA)}/distributions").json()["kpis"]}
+    assert by_title[listed["title"]]["groups"][0]["stats"]["n"] == 2
+    is_lit = track(client, AREA, "eqe", "max_EQE", filters=[{"column": "is_lit", "op": "eq", "value": "oui"}]).json()
+    unlit = track(client, AREA, "eqe", "max_EQE", filters=[{"column": "is_lit", "op": "ne", "value": "oui"}]).json()
+    by_title = {k["title"]: k for k in client.get(f"{BASE.format(AREA)}/distributions").json()["kpis"]}
+    lit, dead = (by_title[k["title"]]["groups"][0]["stats"] for k in (is_lit, unlit))
+    assert lit["n"] > 50 and dead["n"] < lit["n"] and dead["maximum"] == 0  # les éteints : EQE nul
+
+
+def test_filters_are_checked_and_editable(client):
+    signup(client, "boss@example.com")
+    kpi = track(client, AREA, "pl", PL).json()
+    assert kpi["filters"] == [] and "Dominant WL(nm)" in kpi["filter_columns"] and "wafername" not in kpi["filter_columns"]
+
+    def bad(filters, code=None, status=422):
+        response = track(client, AREA, "pl", PL, filters=filters)
+        assert response.status_code == status, response.text
+        assert code is None or response.json()["code"] == code
+
+    bad([{"column": "inconnue", "op": "eq", "value": "1"}], "unknown_filter_column")
+    bad([{"column": "wafername", "op": "eq", "value": "W1"}], "unknown_filter_column")
+    bad([{"column": "X", "op": "gt", "value": "beaucoup"}], "invalid_filter_value")
+    bad([{"column": "X", "op": "contains", "value": "  "}], "invalid_filter_value")
+    bad([{"column": "X", "op": "in", "value": " ; "}], "invalid_filter_value")
+    bad([{"column": "X", "op": "environ", "value": "1"}])  # une comparaison inconnue : refusée par le schéma
+    bad([{"column": "X", "op": "gt", "value": str(n)} for n in range(9)], "too_many_filters")
+    assert track(client, AREA, "pl", PL).status_code == 409  # les mêmes filtres (aucun)
+
+    url = f"{BASE.format(AREA)}/kpis/{kpi['id']}"
+    edited = client.patch(url, json={"filters": [{"column": "Dominant WL(nm)", "op": "gt", "value": 613}]})
+    assert edited.status_code == 200 and edited.json()["summary"] == "Dominant WL(nm) > 613" and edited.json()["title"] == f"{PL} (Dominant WL(nm) > 613)"
+    assert client.patch(url, json={"label": "Rouge"}).json()["filters"][0]["value"] == 613  # une clé absente ne change rien
+    twin = track(client, AREA, "pl", PL).json()
+    assert client.patch(f"{BASE.format(AREA)}/kpis/{twin['id']}", json={"filters": [{"column": "Dominant WL(nm)", "op": "gt", "value": 613}]}).status_code == 409
+    assert client.patch(url, json={"filters": []}).status_code == 409  # retirer ses filtres le ferait doublon de `twin`
+    client.delete(f"{BASE.format(AREA)}/kpis/{twin['id']}")
+    cleared = client.patch(url, json={"filters": [], "label": ""})
+    assert cleared.status_code == 200 and cleared.json()["filters"] == [] and cleared.json()["title"] == PL
+
+
+def test_a_wafer_measured_on_two_dates_gets_a_box_per_date(client, monkeypatch):
+    from spectre.plugins.characterization import service as characterization
+    from spectre.plugins.characterization.source import QueryResult
+
+    signup(client, "boss@example.com")
+    slug = create_microproject(client, "Suivi KPI", area=AREA)["slug"]
+    launch(client, slug, title="Essai", intent="x", entities=[{"sample_id": "W1"}, {"sample_id": "W2"}])
+    track(client, AREA, "ncel", "na_current_a")
+    columns = ["wafername", "Test_Date", "na_current_a"]
+    rows = [
+        ["W1", "2026-09-01T08:00:00", 1.0], ["W1", "2026-09-01T09:30:00", 2.0], ["W1", "2026-09-20", 10.0], ["W1", "2026-09-20", 12.0],
+        ["W2", "2026-09-05", 5.0],
+    ]
+    monkeypatch.setattr(characterization, "query", lambda key, parameters, *, refresh=False: QueryResult(source="prism", columns=columns, rows=rows))
+
+    groups = distribution_of(client, "na_current_a")["groups"]
+    assert [(g["wafer"], g["date"], g["stats"]["n"], g["stats"]["median"]) for g in groups] == [
+        ("W1", "2026-09-01", 2, 1.5), ("W1", "2026-09-20", 2, 11.0), ("W2", "2026-09-05", 1, 5.0),
+    ]
