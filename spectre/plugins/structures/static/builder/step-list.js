@@ -295,12 +295,37 @@ function copiedVersionOf(brick) {
 // étapes), étiquetées du groupe `groupId`, du nom, de la source et de la version de la brique.
 function copiedBrickSteps(brick, groupId) {
   const version = copiedVersionOf(brick);
-  return reconcileOwnRecipes(JSON.parse(JSON.stringify(brick.steps))).map((s) => ({
+  const source = reconcileOwnRecipes(JSON.parse(JSON.stringify(brick.steps)));
+  const copies = source.map((s) => ({
     ...withoutStepId(stripBrickTag(s)),
     brick_group_id: groupId,
     brick_name: brick.name,
     ...(brick.id ? { brick_source: brick.id, ...(version ? { brick_version: version } : {}) } : {}),
   }));
+  return withFollowedIdsRenewed(copies, source.map((s) => s.id));
+}
+
+// Les cotes suivies de la brique (measure.also : les ids de ses étapes) visent les étapes de la copie, pas
+// celles de la brique : si une cote en suit, ses étapes reçoivent des ids neufs et la cote les reprend.
+function withFollowedIdsRenewed(copies, sourceIds, withSubstrate = false) {
+  const followed = (measures) => (measures || []).some((m) => (m.also || []).length);
+  const follows = copies.some((s) => s.layerLabel && followed(s.layerLabel.measures)) || (withSubstrate && followed(state.substrateMeasures));
+  if (!follows) return copies;
+  const taken = takenStepIds();
+  const renewed = new Map();
+  const identified = copies.map((s, i) => {
+    const id = newClientStepId(taken);
+    taken.add(id);
+    if (sourceIds[i]) renewed.set(sourceIds[i], id);
+    return { ...s, id };
+  });
+  const remapped = (m) => (m.also ? { ...m, also: m.also.map((id) => renewed.get(id)).filter(Boolean) } : m);
+  if (withSubstrate) state.substrateMeasures = (state.substrateMeasures || []).map(remapped); // celles du substrat, qui suivent les mêmes étapes
+  return identified.map((s) =>
+    s.layerLabel && s.layerLabel.measures
+      ? { ...s, layerLabel: { ...s.layerLabel, measures: s.layerLabel.measures.map(remapped) } }
+      : s
+  );
 }
 
 // Déplace le bloc (une brique entière si `index` en fait partie, sinon l'étape seule) d'un cran,
@@ -426,16 +451,17 @@ async function groupSelectionIntoBrick() {
   // une sélection qui part de la première étape peut garder le substrat : une brique de départ
   const starting = indices[0] === 0 && document.getElementById("group-brick-start").checked;
   try {
-    const selectedSteps = indices.map((idx) => withoutStepId(stripBrickTag(state.steps[idx])));
+    const sourceSteps = indices.map((idx) => state.steps[idx]); // avec leurs ids : les cotes suivies se disent en positions (layer-label.js)
+    const selectedSteps = sourceSteps.map((s) => withoutStepId(stripBrickTag(s)));
     const created = await processLibraryApi.createTechBrick({
       name,
       steps: selectedSteps,
       declared_params: declaredParamsPayload(selectedSteps),
-      layer_labels: layerLabelsPayload(selectedSteps),
+      layer_labels: layerLabelsForLibrary(sourceSteps),
       recipes: processRecipesPayload(selectedSteps),
       preset_origins: presetOriginsPayload(selectedSteps),
       lattice_openings: latticeOpeningsPayload(selectedSteps),
-      ...(starting ? { substrate: substrateSpec() } : {}),
+      ...(starting ? { substrate: substrateForLibrary(sourceSteps) } : {}),
       ...newItemScope(),
     });
     state.techBricks = [...state.techBricks, created];

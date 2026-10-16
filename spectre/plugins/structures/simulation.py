@@ -1487,6 +1487,16 @@ class Measure(BaseModel):
     point: tuple[float, float]
     scope: Literal["material", "layer"] = "material"
     also: list[str] = Field(default_factory=list, max_length=MAX_FOLLOWED_STEPS)
+    # la même chose dans une bibliothèque (structure, brique), qui ne garde pas les ids de ses étapes : leurs
+    # positions dans la liste enregistrée, derrière l'étape cotée - le constructeur les rend ids à l'ouverture
+    also_at: list[int] = Field(default_factory=list, max_length=MAX_FOLLOWED_STEPS)
+
+    @field_validator("also_at")
+    @classmethod
+    def _step_positions(cls, positions: list[int]) -> list[int]:
+        if any(position < 0 for position in positions):
+            raise ValueError("étape suivie : une position d'étape ne se compte pas en négatif")
+        return sorted(set(positions))
 
     @field_validator("also")
     @classmethod
@@ -1503,8 +1513,9 @@ class Measure(BaseModel):
     def _without_empty_also(self, handler: Any) -> dict[str, Any]:
         # une cote qui n'est suivie nulle part s'enregistre comme avant le suivi
         data = handler(self)
-        if not data.get("also"):
-            data.pop("also", None)
+        for key in ("also", "also_at"):
+            if not data.get(key):
+                data.pop(key, None)
         return data
 
     @field_validator("point")

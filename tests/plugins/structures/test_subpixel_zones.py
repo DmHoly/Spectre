@@ -177,3 +177,15 @@ def test_a_zone_can_be_named_and_its_label_moved_without_changing_the_structure(
     assert simulation.view_neutral_process(process(named)) == simulation.view_neutral_process(process(ZONES))
     with pytest.raises(ValueError):
         simulation.LatticeOpening.model_validate({"mode": "zones", "gap": 400, "zones": [{**ZONES[0], "offset": [float("inf"), 0]}]})
+
+
+def test_a_library_keeps_the_steps_a_measure_follows(client):
+    """Une bibliothèque ne garde pas les ids d'étape : une cote suivie s'y range en positions (``also_at``)."""
+    from support.process_library import create_item, get_item
+
+    signup_with_microproject(client, "zones-follow@example.com", "Salle blanche")
+    steps = zone_steps()
+    label = {"text": "", "values": [], "measures": [{"direction": "thickness", "point": [10, 5], "scope": "material", "also_at": [2, 2, 1]}]}
+    saved = create_item(client, "saved-structures", {"name": "Cotes suivies", "substrate": substrate(), "steps": steps, "layer_labels": {"1": label}}, scope="shared")
+    measure = get_item(client, "saved-structures", saved["id"])["layer_labels"]["1"]["measures"][0]
+    assert measure["also_at"] == [1, 2] and "also" not in measure

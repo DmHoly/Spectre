@@ -80,7 +80,7 @@ function escapeHtml(value) {
  */
 function loadStructureBuilder(filenames, exportNames) {
   global.document = makeDocument();
-  global.window = { location: { pathname: "/projets/test-js/structures/nouvelle", search: "" } };
+  global.window = { location: { pathname: "/projets/test-js/structures/nouvelle", search: "" }, addEventListener() {} };
   global.escapeHtml = escapeHtml;
 
   for (const filename of filenames) {

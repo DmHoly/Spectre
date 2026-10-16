@@ -31,8 +31,75 @@ function layerLabelsPayload(steps) {
   return out;
 }
 
+// -- les cotes suivies (« Suivre aux étapes », measure.also : des ids d'étape) hors d'un procédé d'étude ------
+//
+// Une bibliothèque (structure, brique) ne garde pas les ids de ses étapes : à l'enregistrement, une cote
+// suivie ne dit plus « l'étape st_1a2b3c4d » mais « la 4e étape de la liste » (measure.also_at, des positions
+// derrière l'étape cotée) ; à l'ouverture, ces étapes reçoivent des ids neufs et la cote les reprend.
+// Le serveur adopte un id bien formé (``settle_step_ids``) tant qu'il n'a pas déjà servi.
+
+function newClientStepId(taken) {
+  for (;;) {
+    const id = `st_${Array.from({ length: 8 }, () => Math.floor(Math.random() * 16).toString(16)).join("")}`;
+    if (!taken.has(id)) return id;
+  }
+}
+
+// Les ids d'étape pris par le constructeur (ceux de ses étapes, et des listes `extra` en cours d'ouverture).
+function takenStepIds(...lists) {
+  return new Set([state.steps, ...lists].flat().map((step) => step && step.id).filter(Boolean));
+}
+
+// Une cote dont le suivi est dit en positions (``also_at``) plutôt qu'en ids : celles des étapes de `steps`
+// derrière la position `after` (-1 : le substrat) - ce qui ne s'y trouve pas est laissé de côté.
+function measureWithFollowPositions(measure, steps, after) {
+  const { also, ...rest } = measure;
+  const positions = [...new Set((also || []).map((id) => steps.findIndex((step) => step.id === id)).filter((position) => position > after))].sort((a, b) => a - b);
+  return positions.length ? { ...rest, also_at: positions } : rest;
+}
+
+// L'étiquette d'une étape (ou d'un substrat) dont les cotes suivent en positions, pour une bibliothèque.
+function layerLabelsForLibrary(steps) {
+  const out = {};
+  steps.forEach((step, i) => {
+    if (!step.layerLabel) return;
+    const label = step.layerLabel;
+    out[i] = label.measures ? { ...label, measures: label.measures.map((m) => measureWithFollowPositions(m, steps, i)) } : label;
+  });
+  return out;
+}
+
+function substrateForLibrary(steps) {
+  const spec = substrateSpec();
+  return spec.measures ? { ...spec, measures: spec.measures.map((m) => measureWithFollowPositions(m, steps, -1)) } : spec;
+}
+
+// Rend ids les positions suivies (``also_at``) des cotes de `steps` (les étiquettes de leurs étapes) et de
+// `substrateMeasures` : les étapes qui n'ont pas d'id en reçoivent un. Renvoie ce qu'il a changé, `steps` et les cotes du substrat.
+function resolveFollowPositions(steps, substrateMeasures = []) {
+  const pending = (measures) => (measures || []).some((m) => (m.also_at || []).length);
+  if (!pending(substrateMeasures) && !steps.some((step) => step.layerLabel && pending(step.layerLabel.measures))) return { steps, substrateMeasures };
+  const taken = takenStepIds(steps);
+  const identified = steps.map((step) => (step.id ? step : { ...step, id: (() => { const id = newClientStepId(taken); taken.add(id); return id; })() }));
+  const resolved = (measures) =>
+    (measures || []).map((m) => {
+      const { also_at, ...rest } = m;
+      if (!(also_at || []).length) return m;
+      const ids = also_at.map((position) => identified[position] && identified[position].id).filter(Boolean);
+      return { ...rest, ...(ids.length ? { also: [...new Set([...(rest.also || []), ...ids])] } : {}) };
+    });
+  return {
+    steps: identified.map((step) => (step.layerLabel && step.layerLabel.measures ? { ...step, layerLabel: { ...step.layerLabel, measures: resolved(step.layerLabel.measures) } } : step)),
+    substrateMeasures: resolved(substrateMeasures),
+  };
+}
+
 function attachLayerLabels(steps, labels) {
   if (!labels) return steps;
+  return resolveFollowPositions(attachLayerLabelsAsIs(steps, labels)).steps;
+}
+
+function attachLayerLabelsAsIs(steps, labels) {
   return steps.map((step, i) => {
     const label = labels[i] || labels[String(i)];
     if (!label) return step;

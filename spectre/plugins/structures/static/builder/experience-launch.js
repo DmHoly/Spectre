@@ -534,7 +534,8 @@ async function loadTemplateProcess() {
     const data = await experimentsApi.process(slug, templateExperienceId);
     setSubstrateFields(data.substrate);
     // une nouvelle étude sans filiation : ses étapes sont neuves, le serveur leur donne leurs ids
-    state.steps = attachStepExtras(data.steps.map(withoutStepId), data);
+    // ...et les cotes suivies de la source visent ses ids : elles reprennent ceux des étapes neuves
+    state.steps = withFollowedIdsRenewed(attachStepExtras(data.steps.map(withoutStepId), data), data.steps.map((s) => s.id), true);
     selectLastStep();
     renderSteps();
   } catch (err) {

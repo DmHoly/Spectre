@@ -317,3 +317,26 @@ test("a zone keeps only what differs from the common values of a step", () => {
   const back = stepWithZoneValues({ ...edited, thickness: { value: 20, unit: "nm" } }, edited, 1);
   assert.equal(back.zone_overrides, undefined);
 });
+
+test("a followed measure is saved in a library as step positions and comes back as ids", () => {
+  globalThis.state = globalThis.state || {};
+  globalThis.state.steps = [];
+  const { layerLabelsForLibrary, resolveFollowPositions } = loadStructureBuilder(["layer-label.js"], ["layerLabelsForLibrary", "resolveFollowPositions"]);
+  const steps = [
+    { id: "st_00000001", kind: "deposition", name: "A", layerLabel: { text: "", values: [], measures: [{ direction: "thickness", point: [1, 2], scope: "material", also: ["st_00000003", "st_00000001", "st_0000ffff"] }] } },
+    { id: "st_00000002", kind: "etch", name: "B" },
+    { id: "st_00000003", kind: "deposition", name: "C" },
+  ];
+  const saved = layerLabelsForLibrary(steps);
+  // « la 3e étape » (position 2) : pas l'étape cotée elle-même, pas une étape qui n'existe plus
+  assert.deepEqual(saved[0].measures[0].also_at, [2]);
+  assert.equal(saved[0].measures[0].also, undefined);
+  // à l'ouverture : des étapes sans id, qui en reçoivent, et la cote les reprend
+  const reopened = steps.map(({ id, ...rest }, i) => (i === 0 ? { ...rest, layerLabel: { ...rest.layerLabel, measures: saved[0].measures } } : rest));
+  const { steps: identified } = resolveFollowPositions(reopened);
+  assert.ok(identified.every((s) => /^st_[0-9a-f]{8}$/.test(s.id)));
+  assert.deepEqual(identified[0].layerLabel.measures[0].also, [identified[2].id]);
+  assert.equal(identified[0].layerLabel.measures[0].also_at, undefined);
+  // sans suivi : rien ne change
+  assert.equal(resolveFollowPositions([{ kind: "etch" }]).steps[0].id, undefined);
+});

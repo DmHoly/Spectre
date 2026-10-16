@@ -146,7 +146,8 @@ async function updateLibraryBrick(groupId) {
   if (!status || !status.brick) return;
   clearError();
   const span = brickGroupSpan(groupId);
-  const steps = state.steps.slice(span[0], span[1] + 1).map((s) => withoutStepId(stripBrickTag(s)));
+  const sourceSteps = state.steps.slice(span[0], span[1] + 1); // avec leurs ids : les cotes suivies se disent en positions (layer-label.js)
+  const steps = sourceSteps.map((s) => withoutStepId(stripBrickTag(s)));
   let note = "";
   if (status.brick.reference) {
     note = (window.prompt(`« ${status.brick.name} » est une brique de référence : pourquoi cette nouvelle version ?`) || "").trim();
@@ -160,12 +161,12 @@ async function updateLibraryBrick(groupId) {
       note,
       steps,
       declared_params: declaredParamsPayload(steps),
-      layer_labels: layerLabelsPayload(steps),
+      layer_labels: layerLabelsForLibrary(sourceSteps),
       recipes: processRecipesPayload(steps),
       preset_origins: presetOriginsPayload(steps),
       lattice_openings: latticeOpeningsPayload(steps),
       // une brique de départ garde un substrat : celui de la structure quand elle est en tête
-      ...(status.brick.substrate && span[0] === 0 ? { substrate: substrateSpec() } : {}),
+      ...(status.brick.substrate && span[0] === 0 ? { substrate: substrateForLibrary(sourceSteps) } : {}),
     });
     state.techBricks = state.techBricks.map((b) => (b.id === updated.id ? updated : b));
     for (let k = span[0]; k <= span[1]; k++) state.steps[k] = { ...state.steps[k], brick_version: updated.version || "1.0" };

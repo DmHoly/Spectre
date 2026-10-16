@@ -297,6 +297,15 @@ function adoptStepIds(sent, ids) {
   if (changed) absorbAdoptedStepIds(before);
 }
 
+// Les cotes du substrat d'une structure de bibliothèque suivent des étapes en positions (``also_at``,
+// layer-label.js) : une fois ses étapes en place, elles deviennent des ids.
+function resolveSubstrateFollows() {
+  if (!(state.substrateMeasures || []).some((m) => (m.also_at || []).length)) return;
+  const resolved = resolveFollowPositions(state.steps, state.substrateMeasures);
+  resolved.steps.forEach((step, i) => (state.steps[i] = step));
+  state.substrateMeasures = resolved.substrateMeasures;
+}
+
 async function simulateNow() {
   if (simulating) {
     simulateAgain = true;
@@ -310,6 +319,7 @@ async function simulateNow() {
   const progress = typeof SimulationProgress !== "undefined" && pluginEnabled("simulation_progress") ? SimulationProgress.start() : null;
   // les lithographies ancrées au réseau suivent ses dernières valeurs (le serveur les recalcule de même)
   applyLatticeToSteps();
+  resolveSubstrateFollows();
   const sent = state.steps.slice();
   try {
     const result = await structuresApi.simulate(

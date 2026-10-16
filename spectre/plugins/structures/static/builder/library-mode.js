@@ -31,10 +31,10 @@ async function saveLibraryStructure(forceNew) {
   }
   const payload = {
     name,
-    substrate: substrateSpec(),
+    substrate: substrateForLibrary(state.steps), // layer-label.js : ses cotes suivies, en positions d'étape
     steps: state.steps,
     declared_params: declaredParamsPayload(state.steps),
-    layer_labels: layerLabelsPayload(state.steps),
+    layer_labels: layerLabelsForLibrary(state.steps),
     recipes: processRecipesPayload(state.steps),
     preset_origins: presetOriginsPayload(state.steps),
     lattice_openings: latticeOpeningsPayload(state.steps),
