@@ -390,3 +390,55 @@ a.lot-chip:hover {
   border-top: 1px solid var(--border-soft);
   max-width: 420px;
 }
+
+/* -- Lots JIRA (jira-lots.js) : les lots des FDL, à importer ---------------------------------- */
+
+.lots-head__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.jira-lots {
+  border: none;
+  border-radius: 14px;
+  padding: 0;
+  box-shadow: var(--shadow-lift);
+  width: min(720px, calc(100vw - 32px));
+}
+.jira-lots__inner {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+.jira-lots__list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.jira-lots__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.jira-lots__name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  min-width: 90px;
+}
+.jira-lots__meta {
+  flex: 1 1 200px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.jira-lots__result {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--done);
+}

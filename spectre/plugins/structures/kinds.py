@@ -371,6 +371,12 @@ def _process_svg(process_structure: ProcessStructure, annotations: list[LayerAnn
     return svg_for_process_structure(process_structure, {m.name: m.color for m in materials}, annotations)
 
 
+def render_process_svg(process_structure: ProcessStructure) -> str:
+    """Le dessin d'une structure simulée, sans étiquettes de couches (une structure de la
+    bibliothèque, :mod:`spectre.plugins.structures.sources`)."""
+    return _process_svg(process_structure, [])
+
+
 _STEP_LIST: TypeAdapter[list[ProcessStep]] = TypeAdapter(list[ProcessStep])
 _LABELS: TypeAdapter[dict[str, LayerLabel]] = TypeAdapter(dict[str, LayerLabel])
 _DECLARED: TypeAdapter[dict[str, list[DeclaredParam]]] = TypeAdapter(dict[str, list[DeclaredParam]])

@@ -27,10 +27,10 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
-from ..experiments.entities import compact
+from ..experiments.entities import compact, normalize_fdl
 
-_DESC_MAX = 800
-_OBJ_MAX = 300
+_DESC_MAX = 4000  # la description d'un ticket, lue entière dans sa fenêtre de détail
+_OBJ_MAX = 600
 _EPI_STEP = "EPITAXY"
 
 
@@ -164,6 +164,12 @@ def _raw_lot_tokens(s: str | None) -> list[str]:
         if tok and tok.lower() not in _PLACEHOLDERS and not find_lots(tok):
             out.setdefault(tok, None)
     return list(out)
+
+
+def lot_names(raw: str | None) -> list[str]:
+    """Les noms de lot d'une valeur brute de ``jira_nom_lots`` : la nomenclature d'abord
+    (« qmde 06 » -> QMDE06), puis les autres valeurs qui ne sont pas des « à définir »."""
+    return list(dict.fromkeys(find_lots(raw) + _raw_lot_tokens(raw)))
 
 
 def _lot_name(tickets: list[dict], mes_lot: str | None) -> tuple[str | None, str | None, list[str]]:
@@ -402,7 +408,7 @@ def _ticket(r: pd.Series, via: str) -> dict[str, Any]:
         "task_code": _text(r.get("task_code")), "requester": _text(r.get("requester")),
         "created": _ts_loose(r.get("creation_date")), "closed": closed,
         "state": "clos" if closed else "ouvert",
-        "objective": _trunc(full_obj, _OBJ_MAX), "description": _trunc(full_desc, _DESC_MAX),
+        "objective": _trunc(full_obj, _OBJ_MAX), "description": _trunc(clean_jira_text(full_desc, keep_lines=True), _DESC_MAX),
         "labels": _text(r.get("jira_labels")), "via": via,
         # candidats de nom de lot, calculés sur le texte complet (avant troncature)
         "lots_jira": find_lots(nom_lots), "lots_raw": _raw_lot_tokens(nom_lots),
@@ -468,7 +474,7 @@ _DONE = {"done"}
 _RUN = {"in progress"}
 _HOLD = {"hold", "futur hold"}
 _SKIP = {"canceled", "cancelled", "skipped", "rejected", "scrapped", "material scrapped"}
-_FDL_DESC_MAX = 300
+_FDL_DESC_MAX = 4000  # la description d'une étape, lue entière dans sa fenêtre de détail
 
 
 def step_category(status: str | None, closed: str | None) -> str:
@@ -487,8 +493,9 @@ def step_category(status: str | None, closed: str | None) -> str:
     return "done" if closed else "todo"
 
 
-def clean_jira_text(raw: Any) -> str | None:
-    """Texte wiki Jira -> texte brut sur une ligne (couleurs, gras, macros, retours à la ligne)."""
+def clean_jira_text(raw: Any, *, keep_lines: bool = False) -> str | None:
+    """Texte wiki Jira -> texte brut (couleurs, gras, macros) : sur une ligne, ou en gardant ses
+    lignes (``keep_lines`` : ce que montre la fenêtre de détail d'une étape ou d'un ticket)."""
     t = _text(raw)
     if t is None:
         return None
@@ -497,6 +504,10 @@ def clean_jira_text(raw: Any) -> str | None:
         t = re.sub(rf"{marker}([^{marker[-1]}\n]+){marker}", r"\1", t)
     t = re.sub(r"\{\{([^}]+)\}\}", r"\1", t)
     t = re.sub(r"\{[a-zA-Z0-9:_\- ]+\}", "", t)
+    if keep_lines:
+        t = re.sub(r"(?m)^\s*h[1-6]\.\s*", "", t.replace("\r\n", "\n").replace("\r", "\n"))
+        lines = [re.sub(r"[ \t]+", " ", line).strip() for line in t.split("\n")]
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip() or None
     return re.sub(r"\s+", " ", t.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")).strip() or None
 
 
@@ -598,7 +609,7 @@ def build_fdl_flows(fdl_steps: pd.DataFrame, now: datetime) -> dict[str, dict[st
                     "days": _num(r.get("jira_estimation_in_days")),
                     "assignee": _text(r.get("assignee")),
                     "late": bool(est and today and est < today and cat in ("todo", "running", "hold")),
-                    "description": _trunc(clean_jira_text(r.get("jira_workshop_description")), _FDL_DESC_MAX),
+                    "description": _trunc(clean_jira_text(r.get("jira_workshop_description"), keep_lines=True), _FDL_DESC_MAX),
                 }
             )
         ordered = _order_by_chain(steps)
@@ -643,9 +654,43 @@ def build(frames: TrackingFrames, now: datetime | None = None) -> dict[str, Any]
     rec["record"] = _record(frames.record, names)
     cited = {t["request"] for t in rec["tickets"]} | {e["request"] for e in rec["epitaxy"]} | set(bw_req) | set(test_req)
     rec["fdls"] = {r: f for r, f in build_fdl_flows(frames.fdl_steps, now).items() if r in cited}
+    rec["fdl_numbers"] = plate_fdls(rec)
+    rec["renames"] = renames(steps)
     rec["last_movement"] = last_movement(rec)
     rec["phases"] = frames.phases
     return rec
+
+
+def plate_fdls(rec: dict[str, Any]) -> list[str]:
+    """Les FDL qui citent la plaque elle-même, normalisées comme partout dans Spectre (« FDL-12 ») :
+    les tickets posés sur la plaque (pas ceux du lot entier), les FDL d'épitaxie, de base wafer et
+    de test de Gozer - ce que la page de la plaque montre et ce par quoi la recherche la retrouve."""
+    values = [t["request"] for t in rec.get("tickets", []) if t.get("via") == "wafer" and t.get("request")]
+    values += [e["request"] for e in rec.get("epitaxy", []) if e.get("request")]
+    values += list(rec.get("base_wafer_fdl", [])) + list(rec.get("test_fdl", []))
+    found: dict[str, None] = {}
+    for value in values:
+        number = normalize_fdl(value)
+        if number:
+            found.setdefault(number, None)
+    return list(found)
+
+
+def renames(steps: pd.DataFrame) -> list[dict[str, Any]]:
+    """Les changements de nom de la plaque vus dans la MES - une étape entrée sous un identifiant et
+    sortie sous un autre (un collage, un report) : ``{from, to, at, step}``, dans l'ordre, chaque
+    paire une fois."""
+    if steps.empty:
+        return []
+    found: dict[tuple[str, str], dict[str, Any]] = {}
+    for _, r in steps.iterrows():
+        a, b = _text(r.get("physical_item_id")), _text(r.get("physical_item_id_out"))
+        if a and b and a.upper() != b.upper():
+            found.setdefault(
+                (a.upper(), b.upper()),
+                {"from": a, "to": b, "at": _ts(r["_end_eff"]) or _ts(r["step_start_date"]), "step": _text(r.get("step_detailed_name"))},
+            )
+    return list(found.values())
 
 
 def last_movement(rec: dict[str, Any]) -> str | None:

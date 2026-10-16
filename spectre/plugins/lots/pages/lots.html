@@ -43,7 +43,10 @@
         <h1>Suivi des lots</h1>
         <p>Chaque lot : sa priorité (P10, P20…), ses wafers, son début, sa fin prévisionnelle et sa fin déclarée - et les expériences et thématiques qu'il porte, retrouvées à partir de ses wafers.</p>
       </div>
-      <button type="button" class="btn btn-primary" id="new-lot-btn">+ Nouveau lot</button>
+      <div class="lots-head__actions">
+        <button type="button" class="btn btn-line" id="jira-lots-btn" title="Les lots cités par les feuilles de lancement JIRA : les importer avec toutes leurs plaques">Lots JIRA</button>
+        <button type="button" class="btn btn-primary" id="new-lot-btn">+ Nouveau lot</button>
+      </div>
     </div>
 
     <div class="lots-toolbar">
@@ -106,6 +109,7 @@
   <script src="/static/experiments/lineage-graph.js"></script>
   <script src="/static/kernel/timeline.js"></script>
   <script src="/static/lots/lots-gantt.js"></script>
+  <script src="/static/lots/jira-lots.js"></script>
   <script src="/static/lots/lots.js"></script>
 </body>
 </html>

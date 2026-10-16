@@ -40,7 +40,10 @@ PUBLIC_MODULES = {"service", "store", "models", "deps", "schemas"}
 PUBLIC_EXTRA: dict[str, set[str]] = {
     "accounts": {"security"},
     "experiments": {"repository", "lineage", "entities", "insights", "plans", "versioning"},
-    "structures": {"kinds", "campaigns", "simulation", "rendering", "library_files"},
+    "structures": {"kinds", "campaigns", "simulation", "rendering", "library_files", "sources"},
+    # les fiches de plaque (un lot JIRA importé crée celles de ses plaques) et la vie en ligne (le
+    # lot JIRA détecté quand une plaque est lue, les hooks de la ligne lus par son adaptateur)
+    "wafers": {"records", "tracking"},
     "process_library": {"tech_bricks"},
 }
 

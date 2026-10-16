@@ -373,6 +373,46 @@ def create(
 _NEXT_CODE_ATTEMPTS = 20
 
 
+def find_by_code(code: str) -> Lot | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM lots WHERE code = ? COLLATE NOCASE", (" ".join((code or "").split()),)).fetchone()
+    return _lot_from_row(row) if row else None
+
+
+def is_valid_code(code: str) -> bool:
+    return bool(_CODE_RE.match(" ".join((code or "").split())))
+
+
+def upsert_from_line(
+    code: str, lasermarks: list[str], *, title: str = "", description: str = "", started_on: str | None = None, created_by: int | None = None
+) -> tuple[Lot, bool, int]:
+    """Un lot que la ligne connaît (son nom de lot JIRA, ``jira_nom_lots``) : créé s'il n'existe pas
+    - source ``prism``, ses plaques viennent de la base -, et ses plaques ``lasermarks`` ajoutées
+    s'il ne les a pas encore (même à un lot déclaratif du même nom : c'est lui). Rend ``(lot,
+    créé, plaques ajoutées)`` ; au-delà de :data:`MAX_WAFERS` plaques, les suivantes sont ignorées."""
+    code = _check_code(code)
+    started = _check_date(started_on, "Début")
+    with keyed_lock("lots", f"line:{code.upper()}"), get_conn() as conn:
+        row = conn.execute("SELECT * FROM lots WHERE code = ? COLLATE NOCASE", (code,)).fetchone()
+        created = row is None
+        if created:
+            status = "wip" if started else "planned"
+            cursor = conn.execute(
+                "INSERT INTO lots (code, title, description, priority, status, started_on, source, created_by, updated_at) VALUES (?, ?, ?, '', ?, ?, 'prism', ?, ?)",
+                (code, title.strip()[:160], description.strip(), status, started, created_by, _now()),
+            )
+            lot_id = int(cursor.lastrowid)
+        else:
+            lot_id = row["id"]
+        count = conn.execute("SELECT COUNT(*) AS n FROM lot_wafers WHERE lot_id = ?", (lot_id,)).fetchone()["n"]
+        existing = {r["lasermark_key"] for r in conn.execute("SELECT lasermark_key FROM lot_wafers WHERE lot_id = ?", (lot_id,))}
+        fresh = [lm for lm in parse_lasermarks(lasermarks) if wafer_key(lm) not in existing][: max(0, MAX_WAFERS - count)]
+        added = _write_wafers(conn, lot_id, fresh) if fresh else 0
+        if added and not created:
+            _touch(conn, lot_id)
+    return get(lot_id), created, added
+
+
 def _insert_lot(conn: sqlite3.Connection, code: str, values: tuple) -> int:
     """``values`` : titre, description, priorité, statut, début, fin prévisionnelle, auteur."""
     cursor = conn.execute(

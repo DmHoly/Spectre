@@ -8,6 +8,14 @@ const lotsApi = {
     const { wafer, ...rest } = filters || {};
     return api.get(api.withQuery("/api/lots", { ...rest, wafer: Array.isArray(wafer) ? wafer.join(",") : wafer }));
   },
+  // les lots cités par les FDL JIRA - {source, items: [{name, raw, n_fdl, first, last, spectre}]}
+  jiraLots(q) {
+    return api.get(api.withQuery("/api/jira-lots", { q }));
+  },
+  // importe un lot JIRA : le lot, toutes ses plaques et leurs fiches - {lot, created, added, wafers, records_created, base_error}
+  importJiraLot(name) {
+    return api.post("/api/jira-lots/import", { name });
+  },
   // les priorités proposées à la saisie (P10, P20...)
   priorities() {
     return api.get("/api/lot-priorities");
