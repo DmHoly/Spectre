@@ -20,6 +20,28 @@ const { slug } = routeParams("/management/{slug}");
 const atlasLink = document.getElementById("atlas-link");
 if (atlasLink) atlasLink.href = `/management/${encodeURIComponent(slug)}/atlas`;
 
+// Les onglets du bloc : les tendances mensuelles déclarées côté serveur et, avec le plugin kpi_tracking, un
+// onglet par KPI de plaque que le projet suit (une boîte à moustaches par plaque de ses µprojets) - ils
+// prennent la place des aperçus « à venir » de PRISM, que ce plugin vient justement brancher. Sans KPI
+// suivi, un onglet renvoie à la page de configuration.
+async function loadTrendKpis() {
+  const kpis = await kpisApi.list(slug);
+  if (!pluginEnabled("kpi_tracking")) return kpis;
+  const tracked = await KpiDistributionTabs.kpisFor(slug);
+  const own = tracked.length
+    ? tracked
+    : [
+        {
+          key: "tracked:none",
+          label: "KPI de plaques",
+          render: async (panel) => {
+            panel.innerHTML = `<div class="empty-state"><p>Ce projet ne suit encore aucun KPI de plaque.</p><a class="btn btn-line" href="/kpi?projet=${encodeURIComponent(slug)}">Configurer les KPI</a></div>`;
+          },
+        },
+      ];
+  return [...kpis.filter((k) => k.status !== "placeholder"), ...own];
+}
+
 // Tendances, juste sous les objectifs : bloc KPI à onglets réutilisable (kpis/static/kpi-trend.js), un
 // onglet par KPI déclaré côté serveur (spectre/plugins/kpis/service.py). Sans le plugin kpis, la
 // section reste cachée.
@@ -27,7 +49,7 @@ if (!pluginEnabled("kpis")) document.getElementById("trends").hidden = true;
 else KpiTrendBlock.mount(document.getElementById("trends"), {
   eyebrow: "Tendances",
   title: "Évolution des KPI",
-  loadKpis: () => kpisApi.list(slug),
+  loadKpis: loadTrendKpis,
   loadSeries: (key, months, variant) => kpisApi.series(slug, key, months, variant),
   storageKey: `spectre:tendances:${slug}`,
   // un point jalon (étude) d'une tendance -> sa fiche (aujourd'hui : données de démo EQE)

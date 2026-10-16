@@ -18,24 +18,24 @@
     <div class="kt-head">
       <div>
         <h1 style="font-size:22px;">Configuration des KPI</h1>
-        <p class="kt-subtitle">Les KPI PRISM que chaque µprojet suit. Une fois choisis, ils se tracent en boîtes à moustaches, une par plaque suivie, dans l'onglet « Distributions » du µprojet.</p>
+        <p class="kt-subtitle">Les KPI PRISM que suit chaque projet corporate. Une fois choisis, chacun a son onglet dans le bloc « Évolution des KPI » de la page du projet : une boîte à moustaches par plaque de ses µprojets.</p>
       </div>
       <div class="kt-head__actions">
-        <a id="kt-open" class="btn btn-line" href="#" style="display:none;">Voir les distributions</a>
+        <a id="kt-open" class="btn btn-line" href="#" style="display:none;">Voir la page du projet</a>
       </div>
     </div>
 
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
 
     <div class="card card-pad" style="margin-bottom:20px;">
-      <label for="kt-microproject" style="margin-bottom:6px;">µprojet</label>
-      <select id="kt-microproject" class="field" style="max-width:420px;" disabled><option>Chargement…</option></select>
-      <p id="kt-readonly" class="help" style="margin-top:8px;display:none;">Vous pouvez lire ce choix, pas le modifier (rôle éditeur requis).</p>
+      <label for="kt-area" style="margin-bottom:6px;">Projet corporate</label>
+      <select id="kt-area" class="field" style="max-width:420px;" disabled><option>Chargement…</option></select>
+      <p id="kt-readonly" class="help" style="margin-top:8px;display:none;">Vous pouvez lire ce choix, pas le modifier (administrateur ou manager d'une équipe du projet).</p>
     </div>
 
     <div id="kt-panels" style="display:none;">
       <div class="card card-pad" style="margin-bottom:20px;">
-        <div class="section-title" style="margin-bottom:8px;">KPI suivis par ce µprojet</div>
+        <div class="section-title" style="margin-bottom:8px;">KPI suivis par ce projet</div>
         <div id="kt-tracked"></div>
       </div>
       <div class="card card-pad">
@@ -53,7 +53,7 @@
   <script src="/static/search/client.js"></script>
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/accounts/client.js"></script>
-  <script src="/static/microprojects/client.js"></script>
+  <script src="/static/areas/client.js"></script>
   <script src="/static/kpi_tracking/client.js"></script>
   <script src="/static/kpi_tracking/kpi-config.js"></script>
   <script src="/static/kpi_tracking/kpi-config-page.js"></script>

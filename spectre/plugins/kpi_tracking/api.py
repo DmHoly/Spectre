@@ -1,6 +1,7 @@
-"""``/api/microprojects/{microproject_slug}/kpi-tracking`` : les KPI qu'un µprojet suit et leurs
-distributions sur ses plaques (:mod:`.service`). Lire demande le rôle ``viewer`` du µprojet, choisir
-ses KPI ``editor`` ; ``?refresh=true`` (retaper la base de PRISM) aussi ``editor``."""
+"""``/api/areas/{area_slug}/kpi-tracking`` : les KPI qu'un projet corporate suit et leurs distributions sur
+les plaques de tous ses µprojets (:mod:`.service`). Lire est ouvert à tout compte connecté, comme les
+tendances du projet (:mod:`spectre.plugins.kpis`) ; choisir ses KPI, et ``?refresh=true`` (retaper la base de
+PRISM), demandent de pouvoir gérer le projet (un administrateur, ou un manager d'une de ses équipes)."""
 
 from __future__ import annotations
 
@@ -11,11 +12,10 @@ from pydantic import BaseModel
 
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from ..microprojects.deps import require_role
-from ..microprojects.service import Microproject, check_role
+from ..areas import service as areas
 from . import service
 
-router = APIRouter(prefix="/api/microprojects/{microproject_slug}/kpi-tracking", tags=["kpi_tracking"])
+router = APIRouter(prefix="/api/areas/{area_slug}/kpi-tracking", tags=["kpi_tracking"])
 
 
 class TrackKpiRequest(BaseModel):
@@ -26,6 +26,12 @@ class TrackKpiRequest(BaseModel):
 
 class RenameKpiRequest(BaseModel):
     label: str
+
+
+def _managed(area_slug: str, user: User) -> areas.ManagementArea:
+    area = areas.get_by_slug(area_slug)
+    areas.require_manage(user, area)
+    return area
 
 
 def _tracked_payload(kpi: service.TrackedKpi, catalogue: dict[str, service.CatalogKpi]) -> dict:
@@ -44,55 +50,49 @@ def _tracked_payload(kpi: service.TrackedKpi, catalogue: dict[str, service.Catal
     }
 
 
-def _catalog_payload() -> dict[str, service.CatalogKpi]:
+def _catalogue() -> dict[str, service.CatalogKpi]:
     return {k.key: k for k in service.catalog()}
 
 
 @router.get("/catalog")
-def get_catalog(microproject: Microproject = Depends(require_role("viewer"))) -> list[dict]:
+def get_catalog(area_slug: str, user: User = Depends(current_user)) -> list[dict]:
     """Les KPI qu'on peut suivre : une colonne de KPI par type de données PRISM par plaque."""
+    areas.get_by_slug(area_slug)
     return [{**asdict(k), "key": k.key} for k in service.catalog()]
 
 
 @router.get("/kpis")
-def list_tracked_kpis(microproject: Microproject = Depends(require_role("viewer"))) -> list[dict]:
-    catalogue = _catalog_payload()
-    return [_tracked_payload(k, catalogue) for k in service.list_tracked(microproject)]
+def list_tracked_kpis(area_slug: str, user: User = Depends(current_user)) -> list[dict]:
+    area = areas.get_by_slug(area_slug)
+    catalogue = _catalogue()
+    return [_tracked_payload(k, catalogue) for k in service.list_tracked(area)]
 
 
 @router.post("/kpis", status_code=201)
-def track_kpi(
-    body: TrackKpiRequest,
-    response: Response,
-    microproject: Microproject = Depends(require_role("editor")),
-    user: User = Depends(current_user),
-) -> dict:
-    kpi = service.add_tracked(microproject, user, body.hook, body.column, body.label)
-    response.headers["Location"] = f"/api/microprojects/{microproject.slug}/kpi-tracking/kpis/{kpi.id}"
-    return _tracked_payload(kpi, _catalog_payload())
+def track_kpi(area_slug: str, body: TrackKpiRequest, response: Response, user: User = Depends(current_user)) -> dict:
+    area = _managed(area_slug, user)
+    kpi = service.add_tracked(area, user, body.hook, body.column, body.label)
+    response.headers["Location"] = f"/api/areas/{area.slug}/kpi-tracking/kpis/{kpi.id}"
+    return _tracked_payload(kpi, _catalogue())
 
 
 @router.patch("/kpis/{kpi_id}")
-def rename_kpi(kpi_id: int, body: RenameKpiRequest, microproject: Microproject = Depends(require_role("editor"))) -> dict:
-    return _tracked_payload(service.rename_tracked(microproject, kpi_id, body.label), _catalog_payload())
+def rename_kpi(area_slug: str, kpi_id: int, body: RenameKpiRequest, user: User = Depends(current_user)) -> dict:
+    area = _managed(area_slug, user)
+    return _tracked_payload(service.rename_tracked(area, kpi_id, body.label), _catalogue())
 
 
 @router.delete("/kpis/{kpi_id}", status_code=204)
-def untrack_kpi(kpi_id: int, microproject: Microproject = Depends(require_role("editor"))) -> Response:
-    service.remove_tracked(microproject, kpi_id)
+def untrack_kpi(area_slug: str, kpi_id: int, user: User = Depends(current_user)) -> Response:
+    service.remove_tracked(_managed(area_slug, user), kpi_id)
     return Response(status_code=204)
 
 
 @router.get("/distributions")
-def get_distributions(
-    refresh: bool = False,
-    microproject: Microproject = Depends(require_role("viewer")),
-    user: User = Depends(current_user),
-) -> dict:
-    """Une boîte à moustaches par plaque suivie et par KPI suivi, calculée à la demande."""
-    if refresh:
-        check_role(user, microproject, "editor")
-    result = service.distributions(microproject, refresh=refresh)
+def get_distributions(area_slug: str, refresh: bool = False, user: User = Depends(current_user)) -> dict:
+    """Une boîte à moustaches par plaque du projet et par KPI suivi, calculée à la demande."""
+    area = _managed(area_slug, user) if refresh else areas.get_by_slug(area_slug)
+    result = service.distributions(area, user, refresh=refresh)
     return {
         "source": result.source,
         "wafers": result.wafers,
@@ -106,7 +106,13 @@ def get_distributions(
                 "status": d.status,
                 "message": d.message,
                 "groups": [
-                    {"wafer": g.wafer, "studies": g.studies, "stats": asdict(g.stats) if g.stats else None, "outliers": g.outliers}
+                    {
+                        "wafer": g.wafer,
+                        "microprojects": g.microprojects,
+                        "studies": g.studies,
+                        "stats": asdict(g.stats) if g.stats else None,
+                        "outliers": g.outliers,
+                    }
                     for g in d.groups
                 ],
             }

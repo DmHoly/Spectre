@@ -21,7 +21,11 @@
    « données fictives ». Un KPI à `variants` (ex : expériences en cours / wafers engagés) affiche
    une bascule au-dessus de la courbe. Un point porteur d'une étude (`study`, `label`) est marqué
    d'un jalon cliquable (et listé sous la courbe) qui appelle `onPointClick`. Voir
-   spectre/plugins/kpis/service.py pour ajouter un KPI côté serveur. */
+   spectre/plugins/kpis/service.py pour ajouter un KPI côté serveur.
+
+   Un KPI de `kpis` peut aussi porter une fonction `render(panelElement)` (asynchrone) : son onglet
+   se dessine alors lui-même, sans période ni série (les boutons de période se masquent) - ce que fait
+   le plugin kpi_tracking pour ses boîtes à moustaches. */
 
 (function () {
   const MONTHS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
@@ -144,6 +148,20 @@
       renderTabs();
       if (focus) tablist.querySelector(`[data-key="${CSS.escape(key)}"]`).focus();
       panel.setAttribute("aria-busy", "true");
+      const own = state.kpis.find((k) => k.key === key);
+      root.classList.toggle("kpi-block--custom", !!(own && own.render));
+      if (own && own.render) {
+        // un onglet qui se dessine lui-même (une boîte à moustaches par plaque : pas de période ni de série)
+        state.series = null;
+        try {
+          await own.render(panel);
+        } catch (err) {
+          if (state.active === key) panel.innerHTML = `<div class="error">${escapeHtml(err.message || String(err))}</div>`;
+        } finally {
+          if (state.active === key) panel.removeAttribute("aria-busy");
+        }
+        return;
+      }
       const months = state.months;
       const variant = variantOf(key);
       try {

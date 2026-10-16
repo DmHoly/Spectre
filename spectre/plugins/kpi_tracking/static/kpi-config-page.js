@@ -1,11 +1,12 @@
-/* Page « Configuration des KPI » du menu Data (spectre.plugins.kpi_tracking) : on choisit un µprojet
-   (gardé dans l'adresse, ?microprojet=) et on règle les KPI qu'il suit - la même configuration que
-   l'onglet du µprojet (kpi-config.js). */
+/* Page « Configuration des KPI » du menu Data (spectre.plugins.kpi_tracking) : on choisit un projet corporate
+   (gardé dans l'adresse, ?projet=) et on règle les KPI qu'il suit (kpi-config.js). Ses µprojets les
+   partagent : leurs plaques se remontent toutes dans le bloc « Évolution des KPI » de la page du projet. */
 
-const selectEl = document.getElementById("kt-microproject");
+const selectEl = document.getElementById("kt-area");
 const panels = document.getElementById("kt-panels");
 const openLink = document.getElementById("kt-open");
-let loadToken = 0; // une réponse tardive d'un µprojet quitté ne remplace pas le courant
+let loadToken = 0; // une réponse tardive d'un projet quitté ne remplace pas le courant
+const manageable = new Map(); // slug -> peut gérer le projet
 
 function clearError() {
   const box = document.getElementById("error");
@@ -24,18 +25,20 @@ async function show(slug) {
   clearError();
   panels.style.display = "none";
   openLink.style.display = "none";
-  history.replaceState(null, "", slug ? `?microprojet=${encodeURIComponent(slug)}` : location.pathname);
+  history.replaceState(null, "", slug ? `?projet=${encodeURIComponent(slug)}` : location.pathname);
   if (!slug) return;
   try {
-    const [microproject, tracked, catalog] = await Promise.all([microprojectsApi.get(slug), kpiTrackingApi.list(slug), kpiTrackingApi.catalog(slug)]);
+    const [tracked, catalog] = await Promise.all([kpiTrackingApi.list(slug), kpiTrackingApi.catalog(slug)]);
     if (token !== loadToken) return;
-    const trackedEl = document.getElementById("kt-tracked");
-    const catalogEl = document.getElementById("kt-catalog");
     // les écouteurs se posent sur de nouveaux éléments : le choix précédent ne reste pas branché
-    for (const el of [trackedEl, catalogEl]) el.replaceWith(el.cloneNode(false));
+    for (const id of ["kt-tracked", "kt-catalog"]) {
+      const el = document.getElementById(id);
+      el.replaceWith(el.cloneNode(false));
+    }
+    const canEdit = !!manageable.get(slug);
     mountKpiConfig({
       slug,
-      canEdit: !!microproject.can_edit,
+      canEdit,
       catalog,
       tracked,
       trackedEl: document.getElementById("kt-tracked"),
@@ -44,8 +47,8 @@ async function show(slug) {
       clearError,
       onChange() {},
     });
-    document.getElementById("kt-readonly").style.display = microproject.can_edit ? "none" : "";
-    openLink.href = `/microprojets/${encodeURIComponent(slug)}/kpi`;
+    document.getElementById("kt-readonly").style.display = canEdit ? "none" : "";
+    openLink.href = `/management/${encodeURIComponent(slug)}`;
     openLink.style.display = "";
     panels.style.display = "";
   } catch (err) {
@@ -57,16 +60,17 @@ selectEl.addEventListener("change", () => show(selectEl.value));
 
 (async function init() {
   try {
-    const microprojects = await microprojectsApi.list({ scope: "readable" });
-    microprojects.sort((a, b) => a.name.localeCompare(b.name, "fr"));
-    if (!microprojects.length) {
-      selectEl.innerHTML = "<option>Aucun µprojet</option>";
+    const areas = (await areasApi.list()).filter((a) => !a.is_system);
+    areas.sort((a, b) => a.name.localeCompare(b.name, "fr"));
+    areas.forEach((a) => manageable.set(a.slug, a.can_manage));
+    if (!areas.length) {
+      selectEl.innerHTML = "<option>Aucun projet</option>";
       return;
     }
-    selectEl.innerHTML = '<option value="">Choisir un µprojet…</option>' + microprojects.map((m) => `<option value="${escapeHtml(m.slug)}">${escapeHtml(m.code ? `${m.code} · ${m.name}` : m.name)}</option>`).join("");
+    selectEl.innerHTML = '<option value="">Choisir un projet…</option>' + areas.map((a) => `<option value="${escapeHtml(a.slug)}">${escapeHtml(a.name)}</option>`).join("");
     selectEl.disabled = false;
-    const wanted = new URLSearchParams(location.search).get("microprojet");
-    if (wanted && microprojects.some((m) => m.slug === wanted)) {
+    const wanted = new URLSearchParams(location.search).get("projet");
+    if (wanted && manageable.has(wanted)) {
       selectEl.value = wanted;
       show(wanted);
     }

@@ -372,3 +372,8 @@
   font-size: 11px;
   color: var(--text-faint);
 }
+
+/* un onglet qui se dessine lui-même (kpi.render) : pas de période à choisir */
+.kpi-block--custom .kpi-block__ranges {
+  visibility: hidden;
+}

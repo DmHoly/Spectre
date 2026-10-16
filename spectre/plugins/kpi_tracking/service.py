@@ -1,21 +1,23 @@
-"""Les KPI qu'un µprojet suit, et leur distribution sur les plaques qu'il suit.
+"""Les KPI qu'un projet corporate suit, et leur distribution sur toutes ses plaques.
 
 Deux choses distinctes :
 
-- **le choix** : une liste de KPI par µprojet (:class:`TrackedKpi`), chacun une colonne d'un type de
-  données PRISM par plaque (``hook`` + ``column``) pris dans le :func:`catalog` - les colonnes de
-  « KPI » que la fiche de chaque hook déclare (``kpi_columns``), pas les coordonnées ni les
-  identifiants. Rangé en base, par µprojet ;
-- **le calcul** (:func:`distributions`) : à la demande, jamais stocké. Les plaques sont celles que
-  les études du µprojet suivent (``physical_tracking`` de la pointe de chaque piste) ; chaque type de
-  données est interrogé **une fois** pour toutes les plaques (par paquets du plafond de
+- **le choix** : une liste de KPI par projet corporate (:class:`TrackedKpi`), chacun une colonne d'un
+  type de données PRISM par plaque (``hook`` + ``column``) prise dans le :func:`catalog` - les
+  colonnes de « KPI » que la fiche de chaque hook déclare (``kpi_columns``), pas les coordonnées ni
+  les identifiants. Rangé en base, par projet ; tous ses µprojets le partagent ;
+- **le calcul** (:func:`distributions`) : à la demande, jamais stocké. On remonte les plaques de
+  **tous les µprojets du projet** (``physical_tracking`` de la pointe de chaque piste) ; chaque type
+  de données est interrogé **une fois** pour toutes ces plaques (par paquets du plafond de
   ``characterization``), et pour chaque KPI et chaque plaque on garde la distribution de la colonne
   sur ses lignes (les dispositifs mesurés) : quartiles, moustaches à 1,5 × l'écart interquartile et
   valeurs aberrantes - de quoi tracer une boîte à moustaches par plaque. Le cache par plaque de PRISM
   fait que seule une plaque nouvelle ou ``refresh`` retape la base.
 
 Un type de données en échec (base injoignable, colonne disparue de la requête) n'ôte rien aux autres
-KPI : le KPI concerné porte son ``status`` et son message, les autres leurs distributions.
+KPI : le KPI concerné porte son ``status`` et son message, les autres leurs distributions. Comme les
+tendances du projet (:mod:`spectre.plugins.kpis`), la lecture est ouverte à tout compte connecté ;
+le titre d'une étude, lui, ne se montre qu'à qui peut lire son µprojet.
 """
 
 from __future__ import annotations
@@ -31,7 +33,8 @@ from ..accounts.service import User
 from ..characterization import service as characterization
 from ..experiments.entities import compact
 from ..experiments.repository import branch_tips, get_repository
-from ..microprojects.service import Microproject
+from ..areas.service import ManagementArea
+from ..microprojects import service as microprojects
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +49,7 @@ WAFER_COLUMNS = ("wafername", "wafer_name", "wafer name")
 
 @dataclass(frozen=True)
 class CatalogKpi:
-    """Un KPI qu'un µprojet peut suivre : une colonne de KPI d'un type de données par plaque de PRISM."""
+    """Un KPI qu'un projet peut suivre : une colonne de KPI d'un type de données par plaque de PRISM."""
 
     hook: str
     column: str
@@ -89,7 +92,8 @@ class BoxStats:
 @dataclass(frozen=True)
 class WaferDistribution:
     wafer: str  # la plaque telle qu'une étude la nomme
-    studies: list[dict[str, str]]  # [{experiment_id, title}] : les études qui la suivent
+    microprojects: list[dict[str, str]]  # [{slug, name}] : les µprojets dont une étude la suit
+    studies: list[dict[str, str | None]]  # [{microproject, experiment_id, title}] ; title None : étude d'un µprojet illisible
     stats: BoxStats | None  # None : aucune mesure de ce KPI sur cette plaque
     outliers: list[float] = field(default_factory=list)
 
@@ -123,7 +127,7 @@ def _column_names(declared: str) -> list[str]:
 def catalog() -> list[CatalogKpi]:
     """Les KPI disponibles : les colonnes de KPI des types de données implémentés qui se requêtent
     par plaque (et par plaque seulement - un type qui demande autre chose, un numéro de FDL, ne se
-    rattache pas aux plaques d'un µprojet)."""
+    rattache pas aux plaques d'un projet)."""
     kpis: list[CatalogKpi] = []
     for data_type in characterization.list_types(status="implemented", by_wafer=True):
         if tuple(data_type.parameters) != (characterization.WAFER_PARAMETER,):
@@ -150,17 +154,17 @@ def _catalog_entry(hook: str, column: str) -> CatalogKpi | None:
     return next((k for k in catalog() if k.hook == hook and k.column == column), None)
 
 
-# --- le choix du µprojet ------------------------------------------------------------------------
+# --- le choix du projet ------------------------------------------------------------------------
 
 
 def _tracked(row) -> TrackedKpi:
     return TrackedKpi(row["id"], row["hook"], row["column_name"], row["label"], row["position"], row["created_at"])
 
 
-def list_tracked(microproject: Microproject) -> list[TrackedKpi]:
+def list_tracked(area: ManagementArea) -> list[TrackedKpi]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM microproject_tracked_kpis WHERE microproject_id = ? ORDER BY position, id", (microproject.id,)
+            "SELECT * FROM area_tracked_kpis WHERE area_id = ? ORDER BY position, id", (area.id,)
         ).fetchall()
     return [_tracked(row) for row in rows]
 
@@ -172,55 +176,55 @@ def _clean_label(label: str | None) -> str:
     return label
 
 
-def add_tracked(microproject: Microproject, user: User, hook: str, column: str, label: str | None = None) -> TrackedKpi:
-    """Suit ``column`` de ``hook`` : elle doit être au catalogue (422 ``unknown_kpi`` sinon), une fois par µprojet
+def add_tracked(area: ManagementArea, user: User, hook: str, column: str, label: str | None = None) -> TrackedKpi:
+    """Suit ``column`` de ``hook`` : elle doit être au catalogue (422 ``unknown_kpi`` sinon), une fois par projet
     (409 ``kpi_already_tracked``)."""
     if _catalog_entry(hook, column) is None:
         raise InvalidInput(f"« {column} » de « {hook} » n'est pas un KPI disponible.", code="unknown_kpi")
     label = _clean_label(label)
     with get_conn() as conn:
         count, last = conn.execute(
-            "SELECT COUNT(*), COALESCE(MAX(position), -1) FROM microproject_tracked_kpis WHERE microproject_id = ?",
-            (microproject.id,),
+            "SELECT COUNT(*), COALESCE(MAX(position), -1) FROM area_tracked_kpis WHERE area_id = ?",
+            (area.id,),
         ).fetchone()
         if count >= MAX_KPIS:
-            raise InvalidInput(f"{MAX_KPIS} KPI suivis au plus par µprojet.", code="too_many_kpis")
+            raise InvalidInput(f"{MAX_KPIS} KPI suivis au plus par projet.", code="too_many_kpis")
         exists = conn.execute(
-            "SELECT 1 FROM microproject_tracked_kpis WHERE microproject_id = ? AND hook = ? AND column_name = ?",
-            (microproject.id, hook, column),
+            "SELECT 1 FROM area_tracked_kpis WHERE area_id = ? AND hook = ? AND column_name = ?",
+            (area.id, hook, column),
         ).fetchone()
         if exists:
-            raise Conflict("Ce KPI est déjà suivi par le µprojet.", code="kpi_already_tracked")
+            raise Conflict("Ce KPI est déjà suivi par le projet.", code="kpi_already_tracked")
         cursor = conn.execute(
-            "INSERT INTO microproject_tracked_kpis (microproject_id, hook, column_name, label, position, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-            (microproject.id, hook, column, label, last + 1, user.id),
+            "INSERT INTO area_tracked_kpis (area_id, hook, column_name, label, position, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+            (area.id, hook, column, label, last + 1, user.id),
         )
-        row = conn.execute("SELECT * FROM microproject_tracked_kpis WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        row = conn.execute("SELECT * FROM area_tracked_kpis WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return _tracked(row)
 
 
-def _get_tracked(conn, microproject: Microproject, kpi_id: int):
+def _get_tracked(conn, area: ManagementArea, kpi_id: int):
     row = conn.execute(
-        "SELECT * FROM microproject_tracked_kpis WHERE id = ? AND microproject_id = ?", (kpi_id, microproject.id)
+        "SELECT * FROM area_tracked_kpis WHERE id = ? AND area_id = ?", (kpi_id, area.id)
     ).fetchone()
     if row is None:
-        raise NotFound("KPI suivi inconnu pour ce µprojet.")
+        raise NotFound("KPI suivi inconnu pour ce projet.")
     return row
 
 
-def rename_tracked(microproject: Microproject, kpi_id: int, label: str) -> TrackedKpi:
+def rename_tracked(area: ManagementArea, kpi_id: int, label: str) -> TrackedKpi:
     label = _clean_label(label)
     with get_conn() as conn:
-        _get_tracked(conn, microproject, kpi_id)
-        conn.execute("UPDATE microproject_tracked_kpis SET label = ? WHERE id = ?", (label, kpi_id))
-        row = _get_tracked(conn, microproject, kpi_id)
+        _get_tracked(conn, area, kpi_id)
+        conn.execute("UPDATE area_tracked_kpis SET label = ? WHERE id = ?", (label, kpi_id))
+        row = _get_tracked(conn, area, kpi_id)
     return _tracked(row)
 
 
-def remove_tracked(microproject: Microproject, kpi_id: int) -> None:
+def remove_tracked(area: ManagementArea, kpi_id: int) -> None:
     with get_conn() as conn:
-        _get_tracked(conn, microproject, kpi_id)
-        conn.execute("DELETE FROM microproject_tracked_kpis WHERE id = ?", (kpi_id,))
+        _get_tracked(conn, area, kpi_id)
+        conn.execute("DELETE FROM area_tracked_kpis WHERE id = ?", (kpi_id,))
 
 
 # --- le calcul ----------------------------------------------------------------------------------
@@ -265,19 +269,26 @@ def _number(value: Any) -> float | None:
     return float(value) if math.isfinite(value) else None
 
 
-def tracked_wafers(microproject: Microproject) -> dict[str, dict[str, Any]]:
-    """Les plaques que le µprojet suit, par clé de plaque (:func:`compact`) : ``{wafer, studies}``, dans l'ordre
-    des pistes. Une plaque suivie par deux études n'y est qu'une fois, avec ses deux études."""
+def tracked_wafers(area: ManagementArea, user: User) -> dict[str, dict[str, Any]]:
+    """Les plaques que les µprojets du projet suivent, par clé de plaque (:func:`compact`) :
+    ``{wafer, microprojects, studies}``, dans l'ordre des µprojets puis des pistes. Une plaque suivie par
+    deux études n'y est qu'une fois, avec ses deux études. Le titre d'une étude est celui qu'un
+    lecteur de son µprojet voit : ``None`` pour qui ne peut pas le lire."""
     wafers: dict[str, dict[str, Any]] = {}
-    for tip in branch_tips(get_repository(microproject.slug)):
-        for entry in tip.metadata.get("physical_tracking", []):
-            name = (entry.get("sample_id") or "").strip()
-            if not name:
-                continue
-            found = wafers.setdefault(compact(name), {"wafer": name, "studies": []})
-            study = {"experiment_id": tip.branch, "title": tip.title}
-            if study not in found["studies"]:
-                found["studies"].append(study)
+    for microproject in sorted(microprojects.list_by_management_area(area.id), key=lambda m: (m.created_at or "", m.id)):  # le plus ancien d'abord
+        readable = microprojects.has_role(user, microproject, "viewer")
+        for tip in branch_tips(get_repository(microproject.slug)):
+            for entry in tip.metadata.get("physical_tracking", []):
+                name = (entry.get("sample_id") or "").strip()
+                if not name:
+                    continue
+                found = wafers.setdefault(compact(name), {"wafer": name, "microprojects": [], "studies": []})
+                ref = {"slug": microproject.slug, "name": microproject.name}
+                if ref not in found["microprojects"]:
+                    found["microprojects"].append(ref)
+                study = {"microproject": microproject.slug, "experiment_id": tip.branch, "title": tip.title if readable else None}
+                if study not in found["studies"]:
+                    found["studies"].append(study)
     return wafers
 
 
@@ -314,10 +325,10 @@ def _values_by_wafer(columns: list[str], rows: list[list[Any]], column: str) -> 
     return by_wafer
 
 
-def distributions(microproject: Microproject, *, refresh: bool = False) -> Distributions:
+def distributions(area: ManagementArea, user: User, *, refresh: bool = False) -> Distributions:
     """La distribution de chaque KPI suivi sur chaque plaque suivie - voir le docstring du module."""
-    tracked = list_tracked(microproject)
-    wafers = tracked_wafers(microproject)
+    tracked = list_tracked(area)
+    wafers = tracked_wafers(area, user)
     catalogue = {k.key: k for k in catalog()} if tracked else {}
     queries: dict[str, tuple[str, list[str], list[list[Any]]] | Exception] = {}
     sources: set[str] = set()
@@ -340,7 +351,7 @@ def distributions(microproject: Microproject, *, refresh: bool = False) -> Distr
             if isinstance(outcome, DomainError):
                 message = str(outcome)
             else:
-                log.exception("KPI suivi %s:%s du µprojet %s : calcul impossible", kpi.hook, kpi.column, microproject.slug, exc_info=outcome)
+                log.exception("KPI suivi %s:%s du projet %s : calcul impossible", kpi.hook, kpi.column, area.slug, exc_info=outcome)
                 message = "Calcul impossible pour le moment : l'erreur a été journalisée sur le serveur."
             results.append(_failed(kpi, entry, "error", message))
             continue
@@ -355,7 +366,7 @@ def distributions(microproject: Microproject, *, refresh: bool = False) -> Distr
         for key, wafer in wafers.items():
             computed = box_stats(by_wafer.get(key, []))
             groups.append(
-                WaferDistribution(wafer["wafer"], wafer["studies"], computed[0] if computed else None, computed[1] if computed else [])
+                WaferDistribution(wafer["wafer"], wafer["microprojects"], wafer["studies"], computed[0] if computed else None, computed[1] if computed else [])
             )
         results.append(KpiDistribution(kpi, "ok", entry.unit, entry.description, entry.hook_title, groups=groups))
     return Distributions(

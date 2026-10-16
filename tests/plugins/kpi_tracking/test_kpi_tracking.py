@@ -1,5 +1,6 @@
-"""Le plugin kpi_tracking : les KPI qu'un µprojet suit (colonnes de KPI de PRISM) et leurs boîtes à
-moustaches par plaque. La source est la démo (``SPECTRE_DEMO_DATA=1``) : aucun accès base."""
+"""Le plugin kpi_tracking : les KPI qu'un projet corporate suit (colonnes de KPI de PRISM) et leurs boîtes à
+moustaches par plaque, sur les plaques de tous ses µprojets. La source est la démo (``SPECTRE_DEMO_DATA=1``) :
+aucun accès base."""
 
 from __future__ import annotations
 
@@ -10,9 +11,10 @@ from spectre.plugins.kpi_tracking.service import box_stats
 from support.accounts import login, signup
 from support.experiments import launch
 from support.http import assert_handler_404
-from support.microprojects import add_member, create_microproject
+from support.microprojects import create_microproject
 
-BASE = "/api/microprojects/{}/kpi-tracking"
+AREA = "native-pt2"
+BASE = "/api/areas/{}/kpi-tracking"
 
 
 @pytest.fixture(autouse=True)
@@ -26,63 +28,64 @@ def track(client, slug, hook, column, **fields):
 
 def test_the_catalog_offers_kpi_columns_of_per_wafer_types_only(client):
     signup(client, "boss@example.com")
-    microproject = create_microproject(client, "Suivi KPI")
-    catalog = client.get(f"{BASE.format(microproject['slug'])}/catalog").json()
+    catalog = client.get(f"{BASE.format(AREA)}/catalog").json()
     keys = {k["key"] for k in catalog}
     assert {"eqe:max_EQE", "pl:Integrated PL (a.u.)"} <= keys
     assert "eqe:V at Max EQE" in keys and "eqe:I at Max EQE" in keys  # « A / B » : deux KPI
     assert not [k for k in catalog if k["column"].lower() in ("wafername", "x", "y")]  # ni identifiant ni position
     assert not [k for k in catalog if k["hook"] in ("waferlist", "fdl_wafers")]  # pas un type par plaque
+    assert_handler_404(client.get(f"{BASE.format('inconnu')}/catalog"))
 
 
 def test_choose_rename_and_drop_tracked_kpis(client):
     signup(client, "boss@example.com")
-    slug = create_microproject(client, "Suivi KPI")["slug"]
-    assert client.get(f"{BASE.format(slug)}/kpis").json() == []
+    assert client.get(f"{BASE.format(AREA)}/kpis").json() == []
 
-    created = track(client, slug, "eqe", "max_EQE", label="  EQE   max ")
+    created = track(client, AREA, "eqe", "max_EQE", label="  EQE   max ")
     assert created.status_code == 201 and created.headers["Location"].endswith(f"/kpis/{created.json()['id']}")
     kpi = created.json()
     assert kpi["title"] == "EQE max" and kpi["hook_title"] and kpi["available"] is True
 
-    assert track(client, slug, "eqe", "max_EQE").status_code == 409  # une seule fois
-    unknown = track(client, slug, "eqe", "n_existe_pas")
+    assert track(client, AREA, "eqe", "max_EQE").status_code == 409  # une seule fois
+    unknown = track(client, AREA, "eqe", "n_existe_pas")
     assert unknown.status_code == 422 and unknown.json()["code"] == "unknown_kpi"
-    assert track(client, slug, "eqe", "wafername").status_code == 422  # un identifiant n'est pas un KPI
-    assert track(client, slug, "pl", "Integrated PL (a.u.)", label="x" * 81).status_code == 422
+    assert track(client, AREA, "eqe", "wafername").status_code == 422  # un identifiant n'est pas un KPI
+    assert track(client, AREA, "pl", "Integrated PL (a.u.)", label="x" * 81).status_code == 422
 
-    renamed = client.patch(f"{BASE.format(slug)}/kpis/{kpi['id']}", json={"label": ""})
+    renamed = client.patch(f"{BASE.format(AREA)}/kpis/{kpi['id']}", json={"label": ""})
     assert renamed.status_code == 200 and renamed.json()["title"] == "max_EQE"
 
-    track(client, slug, "pl", "Integrated PL (a.u.)")
-    assert [k["column"] for k in client.get(f"{BASE.format(slug)}/kpis").json()] == ["max_EQE", "Integrated PL (a.u.)"]
+    track(client, AREA, "pl", "Integrated PL (a.u.)")
+    assert [k["column"] for k in client.get(f"{BASE.format(AREA)}/kpis").json()] == ["max_EQE", "Integrated PL (a.u.)"]
 
-    assert client.delete(f"{BASE.format(slug)}/kpis/{kpi['id']}").status_code == 204
-    assert [k["column"] for k in client.get(f"{BASE.format(slug)}/kpis").json()] == ["Integrated PL (a.u.)"]
-    assert_handler_404(client.delete(f"{BASE.format(slug)}/kpis/{kpi['id']}"))
-    assert_handler_404(client.patch(f"{BASE.format(slug)}/kpis/9999", json={"label": "x"}))
+    assert client.delete(f"{BASE.format(AREA)}/kpis/{kpi['id']}").status_code == 204
+    assert [k["column"] for k in client.get(f"{BASE.format(AREA)}/kpis").json()] == ["Integrated PL (a.u.)"]
+    assert_handler_404(client.delete(f"{BASE.format(AREA)}/kpis/{kpi['id']}"))
+    assert_handler_404(client.patch(f"{BASE.format(AREA)}/kpis/9999", json={"label": "x"}))
 
 
-def test_a_kpi_belongs_to_its_microproject(client):
+def test_a_kpi_belongs_to_its_project(client):
     signup(client, "boss@example.com")
-    first = create_microproject(client, "Premier")["slug"]
-    second = create_microproject(client, "Second")["slug"]
-    kpi = track(client, first, "eqe", "max_EQE").json()
-    assert client.get(f"{BASE.format(second)}/kpis").json() == []
-    assert_handler_404(client.delete(f"{BASE.format(second)}/kpis/{kpi['id']}"))
-    assert len(client.get(f"{BASE.format(first)}/kpis").json()) == 1
+    other = client.post("/api/areas", json={"name": "Autre projet"}).json()["slug"]
+    kpi = track(client, AREA, "eqe", "max_EQE").json()
+    assert client.get(f"{BASE.format(other)}/kpis").json() == []
+    assert_handler_404(client.delete(f"{BASE.format(other)}/kpis/{kpi['id']}"))
+    assert len(client.get(f"{BASE.format(AREA)}/kpis").json()) == 1
 
 
-def test_distributions_draw_one_box_per_tracked_wafer(client):
+def test_distributions_gather_the_wafers_of_every_microproject_of_the_project(client):
     signup(client, "boss@example.com")
-    slug = create_microproject(client, "Suivi KPI")["slug"]
-    launch(client, slug, title="Essai A", intent="x", entities=[{"sample_id": "W1"}, {"sample_id": "W2"}])
-    launch(client, slug, title="Essai B", intent="x", entities=[{"sample_id": "w1"}, {"sample_id": "W3"}])  # W1 suivie deux fois
-    track(client, slug, "eqe", "max_EQE")
-    track(client, slug, "pl", "Integrated PL (a.u.)")
-    track(client, slug, "eqe", "I at Max EQE")  # une colonne que la requête (démo) ne renvoie pas
+    first = create_microproject(client, "Premier", area=AREA)["slug"]
+    second = create_microproject(client, "Second", area=AREA)["slug"]
+    elsewhere = create_microproject(client, "Ailleurs")["slug"]  # hors du projet : ses plaques ne comptent pas
+    launch(client, first, title="Essai A", intent="x", entities=[{"sample_id": "W1"}, {"sample_id": "W2"}])
+    launch(client, second, title="Essai B", intent="x", entities=[{"sample_id": "w1"}, {"sample_id": "W3"}])  # W1 suivie deux fois
+    launch(client, elsewhere, title="Essai C", intent="x", entities=[{"sample_id": "W9"}])
+    track(client, AREA, "eqe", "max_EQE")
+    track(client, AREA, "pl", "Integrated PL (a.u.)")
+    track(client, AREA, "eqe", "I at Max EQE")  # une colonne que la requête (démo) ne renvoie pas
 
-    result = client.get(f"{BASE.format(slug)}/distributions").json()
+    result = client.get(f"{BASE.format(AREA)}/distributions").json()
     assert result["source"] == "demo"
     assert sorted(w["wafer"].upper() for w in result["wafers"]) == ["W1", "W2", "W3"]
     by_column = {k["column"]: k for k in result["kpis"]}
@@ -93,8 +96,9 @@ def test_distributions_draw_one_box_per_tracked_wafer(client):
         stats = group["stats"]
         assert stats["n"] > 50
         assert stats["minimum"] <= stats["whisker_low"] <= stats["q1"] <= stats["median"] <= stats["q3"] <= stats["whisker_high"] <= stats["maximum"]
-    first = next(g for g in eqe["groups"] if g["wafer"].upper() == "W1")
-    assert sorted(s["title"] for s in first["studies"]) == ["Essai A", "Essai B"]
+    w1 = next(g for g in eqe["groups"] if g["wafer"].upper() == "W1")
+    assert [m["slug"] for m in w1["microprojects"]] == [first, second]  # le plus ancien d'abord
+    assert sorted(s["title"] for s in w1["studies"]) == ["Essai A", "Essai B"]
     assert by_column["Integrated PL (a.u.)"]["status"] == "ok"
 
     broken = by_column["I at Max EQE"]  # un KPI en échec n'ôte rien aux autres
@@ -103,11 +107,10 @@ def test_distributions_draw_one_box_per_tracked_wafer(client):
 
 def test_distributions_without_wafers_or_kpis(client):
     signup(client, "boss@example.com")
-    slug = create_microproject(client, "Vide")["slug"]
-    assert client.get(f"{BASE.format(slug)}/distributions").json() == {"source": None, "wafers": [], "kpis": []}
+    assert client.get(f"{BASE.format(AREA)}/distributions").json() == {"source": None, "wafers": [], "kpis": []}
 
-    track(client, slug, "eqe", "max_EQE")
-    result = client.get(f"{BASE.format(slug)}/distributions").json()
+    track(client, AREA, "eqe", "max_EQE")
+    result = client.get(f"{BASE.format(AREA)}/distributions").json()
     assert result["wafers"] == [] and result["kpis"][0]["status"] == "ok" and result["kpis"][0]["groups"] == []
 
 
@@ -115,10 +118,10 @@ def test_a_failing_prism_query_is_reported_on_its_kpis(client, monkeypatch):
     from spectre.plugins.characterization import service as characterization
 
     signup(client, "boss@example.com")
-    slug = create_microproject(client, "Suivi KPI")["slug"]
+    slug = create_microproject(client, "Suivi KPI", area=AREA)["slug"]
     launch(client, slug, title="Essai", intent="x", entities=[{"sample_id": "W1"}])
-    track(client, slug, "eqe", "max_EQE")
-    track(client, slug, "pl", "Integrated PL (a.u.)")
+    track(client, AREA, "eqe", "max_EQE")
+    track(client, AREA, "pl", "Integrated PL (a.u.)")
     real = characterization.query
 
     def flaky(key, parameters, *, refresh=False):
@@ -127,24 +130,28 @@ def test_a_failing_prism_query_is_reported_on_its_kpis(client, monkeypatch):
         return real(key, parameters, refresh=refresh)
 
     monkeypatch.setattr(characterization, "query", flaky)
-    by_column = {k["column"]: k for k in client.get(f"{BASE.format(slug)}/distributions").json()["kpis"]}
+    by_column = {k["column"]: k for k in client.get(f"{BASE.format(AREA)}/distributions").json()["kpis"]}
     assert by_column["max_EQE"]["status"] == "error" and "injoignable" in by_column["max_EQE"]["message"]
     assert by_column["Integrated PL (a.u.)"]["status"] == "ok"
 
 
-def test_a_viewer_reads_but_cannot_choose_nor_refresh(client):
-    signup(client, "boss@example.com")
-    slug = create_microproject(client, "Suivi KPI")["slug"]
-    track(client, slug, "eqe", "max_EQE")
-    signup(client, "viewer@example.com")
-    login(client, "boss@example.com")
-    add_member(client, slug, "viewer@example.com", "viewer")
-    login(client, "viewer@example.com")
+def test_anyone_reads_but_only_a_manager_chooses_or_refreshes(client):
+    signup(client, "boss@example.com")  # le premier compte est administrateur
+    slug = create_microproject(client, "Suivi KPI", area=AREA)["slug"]
+    launch(client, slug, title="Essai secret", intent="x", entities=[{"sample_id": "W1"}])
+    kpi = track(client, AREA, "eqe", "max_EQE").json()
+    signup(client, "reader@example.com")
+    login(client, "reader@example.com")
 
-    assert client.get(f"{BASE.format(slug)}/kpis").status_code == 200
-    assert client.get(f"{BASE.format(slug)}/distributions").status_code == 200
-    assert client.get(f"{BASE.format(slug)}/distributions?refresh=true").status_code == 403
-    assert track(client, slug, "pl", "Integrated PL (a.u.)").status_code == 403
+    assert client.get(f"{BASE.format(AREA)}/kpis").status_code == 200
+    seen = client.get(f"{BASE.format(AREA)}/distributions").json()
+    group = seen["kpis"][0]["groups"][0]
+    assert group["stats"] and group["microprojects"][0]["slug"] == slug
+    assert [s["title"] for s in group["studies"]] == [None]  # le titre d'une étude reste à ceux qui lisent son µprojet
+    assert client.get(f"{BASE.format(AREA)}/distributions?refresh=true").status_code == 403
+    assert track(client, AREA, "pl", "Integrated PL (a.u.)").status_code == 403
+    assert client.patch(f"{BASE.format(AREA)}/kpis/{kpi['id']}", json={"label": "x"}).status_code == 403
+    assert client.delete(f"{BASE.format(AREA)}/kpis/{kpi['id']}").status_code == 403
 
 
 def test_box_stats():
