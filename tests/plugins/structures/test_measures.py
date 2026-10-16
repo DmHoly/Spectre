@@ -196,3 +196,17 @@ def test_substrate_measures_neither_change_the_version_nor_the_simulation():
     assert classify_process_change(structure_signature(process(plain)), structure_signature(process(measured))) == "none"
     # la simulation (sa clé de reprise) ne voit pas non plus les cotes
     assert simulation._checkpoint_keys(plain, [], simulation.RecipeLibrary()) == simulation._checkpoint_keys(measured, [], simulation.RecipeLibrary())
+
+
+def test_a_followed_substrate_measure_ignores_the_same_material_added_on_top_of_it(client):
+    from support.structures import fixed_step_id, identified
+
+    signup(client, "measure-substrate-same-material@example.com")
+    steps = identified([deposition("GaN", "GaN", recipe="MOCVD Epitaxial", thickness_nm=300), FLIP])
+    measure = {"direction": "thickness", "point": [100, -50], "also": [fixed_step_id(1), fixed_step_id(2)]}
+    response = simulate(client, {"substrate": {**_substrate_with([measure]), "material": "GaN"}, "steps": steps})
+    assert response.status_code == 200, response.text
+    frames = response.json()["frames"]
+    # le substrat de GaN garde ses 100 nm, avec du GaN dessus (même retourné) : la cote ne prend que lui
+    assert re.findall(r'data-at="(\d)" data-length="([^"]+)"', frames[1]["svg"]) == [("0", "100")]
+    assert re.findall(r'data-at="(\d)" data-length="([^"]+)"', frames[2]["svg"]) == [("1", "100")]

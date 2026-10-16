@@ -804,7 +804,8 @@ def _measured(
         k, layer, shape = under[-1] if under else min(shapes, key=lambda item: item[2].distance(point))
     own = shape
     if scope == "material":
-        same = [other for _j, other_layer, other in shapes if other_layer.material == layer.material]
+        # suivie (among), la couche d'origine seule : pas la matière qu'on a ajoutée dessus depuis
+        same = [other for j, other_layer, other in shapes if other_layer.material == layer.material and (among is None or j in among)]
         union = shapely.union_all(same, grid_size=_UNION_GRID)
         parts = [g for g in getattr(union, "geoms", [union]) if not g.is_empty]
         shape = min(parts, key=lambda part: part.distance(own)) if parts else shape
