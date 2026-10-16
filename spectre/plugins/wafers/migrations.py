@@ -136,6 +136,21 @@ CREATE TABLE IF NOT EXISTS wafer_structures (
 );
 """
 
+NOTES = """
+-- Le contexte d'une plaque écrit sur sa page (spectre.plugins.wafers.notes) : pourquoi elle est là,
+-- ce qu'on voulait voir, ce qu'on a compris grâce à elle - quand aucune étude ne le dit pour elle.
+CREATE TABLE IF NOT EXISTS wafer_notes (
+    wafer_key TEXT PRIMARY KEY,
+    lasermark TEXT NOT NULL,
+    context TEXT,
+    hypothesis TEXT,
+    learnings TEXT,
+    updated_by TEXT NOT NULL,
+    updated_by_id INTEGER,
+    updated_at TEXT NOT NULL
+);
+"""
+
 MIGRATIONS = (
     Migration("0001_fdl_wafers", SCHEMA),
     Migration("0002_wafer_tracking", TRACKING),
@@ -144,4 +159,5 @@ MIGRATIONS = (
     Migration("0005_wafer_links", LINKS),
     Migration("0006_wafer_structures", STRUCTURES),
     Migration("0007_tracking_run_names", _run_names),
+    Migration("0008_wafer_notes", NOTES),
 )

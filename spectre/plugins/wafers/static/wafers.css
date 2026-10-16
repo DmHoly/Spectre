@@ -1351,3 +1351,73 @@
   color: var(--text-faint);
   font-size: 12.5px;
 }
+
+/* -- Son contexte : études de ses µprojets et notes de la plaque (plate-context.js) ------------ */
+
+.plate-context__list {
+  display: grid;
+  gap: 12px;
+}
+.plate-context__card {
+  padding: 14px 16px;
+}
+.plate-context__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.plate-context__title {
+  font-weight: 600;
+  color: var(--text);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.plate-context__field {
+  margin-top: 10px;
+}
+.plate-context__field p {
+  margin: 0;
+  white-space: pre-line;
+  line-height: 1.55;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+.plate-context__objectives {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.plate-context__answer {
+  display: block;
+  color: var(--text-soft);
+  white-space: pre-line;
+}
+.plate-context__conclusion {
+  border-left: 3px solid var(--done);
+  padding-left: 10px;
+}
+.plate-context__next {
+  margin-top: 4px !important;
+}
+.plate-context__notes.is-alone {
+  border-color: var(--accent);
+}
+.plate-context__edit {
+  display: block;
+  margin-top: 10px;
+}
+.plate-context__edit textarea {
+  width: 100%;
+  resize: vertical;
+}
+.plate-context__by {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+}
+.plate-context__hidden {
+  margin: 0;
+}

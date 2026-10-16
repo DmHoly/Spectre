@@ -25,7 +25,8 @@ def _wafers(query: str, user: User) -> list[SearchHit]:
     if len(service.wafer_key(query)) < 2:
         return []
     hits = []
-    found = service.wafers(service.occurrences(user), q=query, records=records.all_records(), line=tracking.line_facts(), aliases=links.aliases())
+    line = tracking.line_facts()
+    found = service.wafers(service.occurrences(user), q=query, records=records.all_records(), line=line, aliases=links.aliases(), lots=service.lot_names_index(line))
     for wafer in found[:WAFER_LIMIT]:
         latest = wafer["latest"]
         codes = [m["code"] or m["name"] for m in wafer["microprojects"]]

@@ -69,6 +69,17 @@ def _notify(key: str, lasermark: str, payload: dict[str, Any]) -> None:
             logger.exception("suivi de la plaque %s : l'observateur %s a échoué", lasermark, getattr(listener, "__name__", listener))
 
 
+def last_movements(keys: Iterable[str]) -> dict[str, str | None]:
+    """Par clé de plaque déjà lue en ligne, son dernier mouvement connu ('YYYY-MM-DD HH:MM', toutes
+    sources) - une plaque jamais lue n'y est pas."""
+    wanted = sorted({wafer_key(k) for k in keys} - {""})
+    if not wanted:
+        return {}
+    with get_conn() as conn:
+        rows = conn.execute(f"SELECT wafer_key, last_movement FROM wafer_tracking WHERE wafer_key IN ({','.join('?' * len(wanted))})", wanted).fetchall()
+    return {row["wafer_key"]: row["last_movement"] for row in rows}
+
+
 def line_facts(keys: Iterable[str] | None = None) -> dict[str, dict[str, Any]]:
     """Par clé de plaque déjà lue en ligne : ses FDL (``fdls``, normalisées), son nom de lot JIRA
     (``lot_name``) et ses noms de run d'épitaxie (``run_names``, le principal d'abord) - sans relire

@@ -85,9 +85,21 @@ def _source_and_version(conn: sqlite3.Connection) -> None:
     conn.execute("UPDATE lots SET updated_at = replace(updated_at, ' ', 'T') || '+00:00' WHERE updated_at LIKE '% %'")
 
 
+def _auto_close(conn: sqlite3.Connection) -> None:
+    """La clôture automatique d'un lot arrêté (spectre.plugins.lots.auto_close) : ``stopped_since``,
+    le dernier mouvement de ses plaques quand la règle l'a clos ('YYYY-MM-DD HH:MM'), et
+    ``status_set_at``, quand quelqu'un a choisi son statut à la main (la règle n'y revient pas)."""
+    columns = column_names(conn, "lots")
+    if "stopped_since" not in columns:
+        conn.execute("ALTER TABLE lots ADD COLUMN stopped_since TEXT")
+    if "status_set_at" not in columns:
+        conn.execute("ALTER TABLE lots ADD COLUMN status_set_at TEXT")
+
+
 MIGRATIONS = (
     Migration("0001_initial", _initial),
     # la table des étapes de cette toute première version n'est plus lue
     Migration("0002_drop_lot_steps", "DROP TABLE IF EXISTS lot_steps;"),
     Migration("0003_source_and_version", _source_and_version),
+    Migration("0004_auto_close", _auto_close),
 )

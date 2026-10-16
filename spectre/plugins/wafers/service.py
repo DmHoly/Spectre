@@ -71,6 +71,40 @@ def _tracked_since(repo: Any, tip: Any) -> dict[str, str]:
     return since
 
 
+def _value(obj: Any, name: str) -> Any:
+    value = getattr(obj, name, None)
+    return getattr(value, "value", value)  # une énumération Follow -> sa valeur
+
+
+def _story(tip: Any) -> dict[str, Any]:
+    """Pourquoi l'étude existe et ce qu'elle a appris - ce que la page d'une plaque montre de chaque
+    étude qui la suit : son contexte, ce qu'on veut démontrer (``intent``), son hypothèse, ses
+    objectifs (et leur réponse) et sa conclusion (résumé, décision, suite)."""
+    conclusion = tip.conclusion
+    results = {_value(r, "objective"): r for r in (getattr(conclusion, "objective_results", None) or [])}
+    objectives = []
+    for objective in tip.objectives or []:
+        name = getattr(objective, "name", None)
+        result = results.get(name)
+        objectives.append(
+            {"name": name, "rationale": getattr(objective, "rationale", None), "status": _value(result, "status") if result else None, "reasoning": getattr(result, "reasoning", None) if result else None}
+        )
+    return {
+        "context": (tip.metadata or {}).get("context") or None,
+        "intent": tip.intent or None,
+        "hypothesis": getattr(tip, "hypothesis", None) or None,
+        "objectives": objectives,
+        "conclusion": None
+        if conclusion is None
+        else {
+            "status": _value(conclusion, "status"),
+            "decision": _value(conclusion, "decision"),
+            "summary": getattr(conclusion, "summary", None) or None,
+            "next_steps": getattr(conclusion, "next_steps", None) or None,
+        },
+    }
+
+
 def _build(slug: str) -> list[dict[str, Any]]:
     repo = get_repository(slug)
     entries: list[dict[str, Any]] = []
@@ -78,6 +112,7 @@ def _build(slug: str) -> list[dict[str, Any]]:
         labels = tip.metadata.get("campaign_labels") or []
         campaign = tip.structure_type == kinds.ProcessLot.registry_key()
         since = _tracked_since(repo, tip)
+        story = _story(tip)
         for index, entry in enumerate(tip.metadata.get("physical_tracking", [])):
             if not entry.get("sample_id") and not entry.get("fdl"):
                 continue
@@ -96,6 +131,7 @@ def _build(slug: str) -> list[dict[str, Any]]:
                         "updated_at": tip.created_at.isoformat(),
                         "tracked_since": since.get(wafer_key(entry.get("sample_id"))) or tip.created_at.isoformat(),
                         "campaign": campaign,
+                        "story": story,  # contexte, intention, hypothèse, conclusion (membres seulement)
                     },
                 }
             )
@@ -182,7 +218,13 @@ def experiment_payload(occurrence: Occurrence, public: dict[str, Any]) -> dict[s
     une campagne pour les membres."""
     experiment = occurrence.entry["experiment"]
     member = (
-        {"id": experiment["id"], "version_id": experiment["version_id"], "title": experiment["title"], "campaign": experiment["campaign"]}
+        {
+            "id": experiment["id"],
+            "version_id": experiment["version_id"],
+            "title": experiment["title"],
+            "campaign": experiment["campaign"],
+            "story": experiment.get("story"),
+        }
         if occurrence.member
         else {}
     )
@@ -268,6 +310,29 @@ def _queries(q: str | Iterable[str]) -> list[str]:
     return [value for value in values if value.strip()]
 
 
+# Les lots qui contiennent chaque plaque, déclarés par le plugin qui les tient (lots) : chercher
+# « QMDE10 » trouve ses plaques sans que wafers dépende de lots. Chaque source rend {clé: [noms]}.
+_LOT_SOURCES: list[Any] = []
+
+
+def register_lot_names(source: Any) -> None:
+    if source not in _LOT_SOURCES:
+        _LOT_SOURCES.append(source)
+
+
+def lot_names_index(line: dict[str, dict[str, Any]] | None = None) -> dict[str, list[str]]:
+    """Par clé de plaque, les noms des lots qui la contiennent (plugin lots) et son lot JIRA lu en
+    ligne (``line``) - chaque nom une fois."""
+    found: dict[str, list[str]] = {}
+    for source in _LOT_SOURCES:
+        for key, names in source().items():
+            found.setdefault(key, []).extend(names)
+    for key, facts in (line or {}).items():
+        if facts.get("lot_name"):
+            found.setdefault(key, []).append(facts["lot_name"])
+    return {key: list(dict.fromkeys(n for n in names if n)) for key, names in found.items()}
+
+
 def _alias_rank(queries: list[str], key: str, names: list[str]) -> tuple[int | None, str | None]:
     """Le rang d'une plaque pour ``queries`` : par sa clé, sinon - juste après - par l'un de ses
     autres noms (celui qui a répondu est rendu)."""
@@ -307,16 +372,19 @@ def wafers(
     records: dict[str, dict[str, Any]] | None = None,
     line: dict[str, dict[str, Any]] | None = None,
     aliases: dict[str, list[str]] | None = None,
+    lots: dict[str, list[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Les plaques de ces occurrences et des fiches ``records``, une par clé (chacune avec ses
     études, la plus récente d'abord) - celles dont le lasermark correspond à ``q`` (un texte, ou
     plusieurs lasermarks ; le lasermark exact d'abord, puis les plaques dont un autre nom -
     ``aliases``, une plaque renommée, ou l'un de ses noms de run d'épitaxie - correspond :
-    ``matched_alias``), qui portent une FDL
+    ``matched_alias``, ``matched_kind`` : ``name``, ``run``, ``lot`` - un lot qui la contient,
+    ``lots``), qui portent une FDL
     correspondant à ``fdl`` (celles des études chez les membres seulement, et celles que la vie en
     ligne lui connaît - ``line``, publique comme sa page), ou toutes."""
     line = line or {}
     aliases = aliases or {}
+    lots = lots or {}
     queries = _queries(q)
     by_key: dict[str, list[Occurrence]] = {}
     for occurrence in found:
@@ -328,12 +396,15 @@ def wafers(
     for key, group in by_key.items():
         facts = line.get(key) or {}
         record = (records or {}).get(key)
-        q_rank, matched = _alias_rank(queries, key, aliases.get(key, []) + run_names(facts, record)) if queries else (0, None)
+        kinds_of = {**{n: "lot" for n in lots.get(key, [])}, **{n: "run" for n in run_names(facts, record)}, **{n: "name" for n in aliases.get(key, [])}}
+        q_rank, matched = _alias_rank(queries, key, list(kinds_of)) if queries else (0, None)
         values = [value for o in group if o.member for value in o.entry["fdl"]] + list(facts.get("fdls") or [])
         fdl_rank = fdls.best_rank(fdl, values) if fdl.strip() else 0
         if q_rank is not None and fdl_rank is not None:
             payload = _wafer_payload(key, _latest_first(group), record, facts, aliases.get(key))
             payload["matched_alias"] = matched
+            payload["matched_kind"] = kinds_of.get(matched) if matched else None
+            payload["lots"] = lots.get(key, [])
             ranked.append(((q_rank, fdl_rank, key), payload))
     return [payload for _rank, payload in sorted(ranked, key=lambda item: item[0])]
 

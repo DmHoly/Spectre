@@ -105,6 +105,7 @@ function latestHtml(wafer) {
 function aliasHtml(wafer) {
   const runs = wafer.run_names || [];
   const run = runs.length ? `<span class="wafer-index__alias">run <strong class="mono">${escapeHtml(runs[0])}</strong>${runs.length > 1 ? `, aussi ${runs.slice(1).map((r) => `<span class="mono">${escapeHtml(r)}</span>`).join(", ")}` : ""}</span>` : "";
+  if (wafer.matched_kind === "lot") return `${run}<span class="wafer-index__alias">trouvée par son lot <span class="mono">${escapeHtml(wafer.matched_alias)}</span></span>`;
   if (wafer.matched_alias && runs.includes(wafer.matched_alias)) return `${run}<span class="wafer-index__alias">trouvée par son run <span class="mono">${escapeHtml(wafer.matched_alias)}</span></span>`;
   if (wafer.matched_alias) return `${run}<span class="wafer-index__alias">trouvée par son autre nom <span class="mono">${escapeHtml(wafer.matched_alias)}</span></span>`;
   const names = wafer.aliases || [];
@@ -115,7 +116,7 @@ function rowHtml(wafer) {
   return `
     <tr${wafer.latest ? "" : ' class="wafer-index__row--record"'}>
       <td><a class="wafer-index__lasermark mono" href="${plateUrl(wafer.lasermark)}">${escapeHtml(wafer.lasermark)}</a>${wafer.latest && wafer.record ? ` ${WaferRecords.chipHtml(wafer.record)}` : ""}${
-        wafer.lot_name ? ` <span class="plate-tag plate-tag--mute" title="Lot JIRA">${escapeHtml(wafer.lot_name)}</span>` : ""
+        (wafer.lots || []).map((l) => ` <span class="plate-tag plate-tag--mute" title="Lot">${escapeHtml(l)}</span>`).join("")
       }${aliasHtml(wafer)}</td>
       <td>${microprojectsHtml(wafer) || '<span class="help">—</span>'}</td>
       <td class="mono">${wafer.count || '<span class="help">—</span>'}</td>

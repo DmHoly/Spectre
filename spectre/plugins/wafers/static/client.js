@@ -42,6 +42,10 @@ const wafersApi = {
   removeStructure(waferKey) {
     return api.del(`/api/wafers/${encodeURIComponent(waferKey)}/structure`);
   },
+  // son contexte écrit sur sa page : {context, hypothesis, learnings} - tous vides : null
+  setNotes(waferKey, body) {
+    return api.put(`/api/wafers/${encodeURIComponent(waferKey)}/notes`, body);
+  },
   // une plaque qui change de nom : {from_lasermark, to_lasermark, note, happened_at}
   createLink(body) {
     return api.post("/api/wafer-links", body);
