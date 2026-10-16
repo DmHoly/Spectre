@@ -16,6 +16,30 @@ const KPI_OPERATORS = [
   ["in", "dans la liste"],
 ];
 
+const KPI_GOALS = [
+  ["", "Pas d'objectif"],
+  ["max", "Médiane la plus haute"],
+  ["min", "Médiane la plus basse"],
+  ["target", "Médiane proche d'une valeur cible"],
+  ["range", "Médiane dans une plage"],
+];
+
+// Ce qui fait d'une plaque « la meilleure » pour ce KPI : la médiane de sa boîte la plus haute, la plus basse, la
+// plus proche d'une cible ou dans une plage (une longueur d'onde se vise dans une plage, une tension près d'une
+// cible). La meilleure plaque se met en avant et reste épinglée à côté du graphique.
+function kpiGoalFormHtml(k) {
+  const goal = k.goal || {};
+  const value = (v) => (v === undefined || v === null ? "" : escapeHtml(String(v)));
+  return `<div class="kt-goal" data-goal-form="${k.id}">
+    <span class="kt-goal__label">Meilleure plaque</span>
+    <select class="field" data-goal-mode aria-label="Objectif de ${escapeHtml(k.title)}">${KPI_GOALS.map(([key, text]) => `<option value="${key}"${key === (goal.mode || "") ? " selected" : ""}>${escapeHtml(text)}</option>`).join("")}</select>
+    <input type="text" class="field" data-goal-target placeholder="Cible" value="${value(goal.target)}" aria-label="Valeur cible"${goal.mode === "target" ? "" : " hidden"}>
+    <input type="text" class="field" data-goal-min placeholder="Min" value="${value(goal.min)}" aria-label="Minimum de la plage"${goal.mode === "range" ? "" : " hidden"}>
+    <input type="text" class="field" data-goal-max placeholder="Max" value="${value(goal.max)}" aria-label="Maximum de la plage"${goal.mode === "range" ? "" : " hidden"}>
+    <button type="button" class="btn btn-tint" data-goal-save="${k.id}">Enregistrer</button>
+  </div>`;
+}
+
 function kpiFilterText(f) {
   const value = Array.isArray(f.value) ? f.value.join(", ") : f.value;
   const op = (KPI_OPERATORS.find(([key]) => key === f.op) || [f.op, f.op])[1];
@@ -67,6 +91,7 @@ function mountKpiConfig({ slug, canEdit, catalog, tracked, trackedEl, catalogEl,
           <div class="kt-row__filters">
             ${chips}
             ${canEdit && k.available && columns.length ? kpiFilterFormHtml(`edit:${k.id}`, k.hook, columns, "Ajouter le filtre") : ""}
+            ${canEdit ? kpiGoalFormHtml(k) : `<p class="kt-row__meta" style="margin-top:6px;">Meilleure plaque : ${k.goal ? escapeHtml(k.goal_summary) : "pas d'objectif"}</p>`}
           </div>
         </div>`;
       })
@@ -182,6 +207,14 @@ function mountKpiConfig({ slug, canEdit, catalog, tracked, trackedEl, catalogEl,
   }
 
   function onFormChange(event) {
+    const goalForm = event.target.closest("[data-goal-form]");
+    if (goalForm && event.target.closest("[data-goal-mode]")) {
+      const mode = goalForm.querySelector("[data-goal-mode]").value;
+      goalForm.querySelector("[data-goal-target]").hidden = mode !== "target";
+      goalForm.querySelector("[data-goal-min]").hidden = mode !== "range";
+      goalForm.querySelector("[data-goal-max]").hidden = mode !== "range";
+      return;
+    }
     const form = event.target.closest("[data-filter-form]");
     if (form && event.target.closest("[data-filter-column], [data-filter-op]")) refreshValueControl(form);
   }
@@ -252,6 +285,23 @@ function mountKpiConfig({ slug, canEdit, catalog, tracked, trackedEl, catalogEl,
       run(async () => {
         try {
           await kpiTrackingApi.update(slug, kpi.id, { filters: kpi.filters.filter((_, i) => i !== Number(index)) });
+        } finally {
+          await reload();
+        }
+      });
+      return;
+    }
+    const saveGoal = event.target.closest("[data-goal-save]");
+    if (saveGoal) {
+      const form = saveGoal.closest("[data-goal-form]");
+      const mode = form.querySelector("[data-goal-mode]").value;
+      const goal = mode
+        ? { mode, target: form.querySelector("[data-goal-target]").value, min: form.querySelector("[data-goal-min]").value, max: form.querySelector("[data-goal-max]").value }
+        : null;
+      saveGoal.disabled = true;
+      run(async () => {
+        try {
+          await kpiTrackingApi.update(slug, saveGoal.dataset.goalSave, { goal });
         } finally {
           await reload();
         }

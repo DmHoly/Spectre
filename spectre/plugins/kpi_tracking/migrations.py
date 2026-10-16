@@ -74,4 +74,13 @@ ALTER TABLE area_tracked_kpis_new RENAME TO area_tracked_kpis;
 CREATE INDEX IF NOT EXISTS idx_area_tracked_kpis_area ON area_tracked_kpis(area_id, position);
 """
 
-MIGRATIONS = (Migration("0001_initial", SCHEMA), Migration("0002_per_area", PER_AREA), Migration("0003_filters", FILTERS))
+# Ce que « meilleur » veut dire pour un KPI (``goal`` : du JSON, 'null' sans objectif) : la médiane la plus haute,
+# la plus basse, la plus proche d'une cible, ou dans une plage - la meilleure plaque s'en déduit.
+GOAL = "ALTER TABLE area_tracked_kpis ADD COLUMN goal TEXT NOT NULL DEFAULT 'null';"
+
+MIGRATIONS = (
+    Migration("0001_initial", SCHEMA),
+    Migration("0002_per_area", PER_AREA),
+    Migration("0003_filters", FILTERS),
+    Migration("0004_goal", GOAL),
+)

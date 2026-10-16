@@ -29,16 +29,28 @@ class FilterInput(BaseModel):
     value: float | str | list[str]
 
 
+class GoalInput(BaseModel):
+    """Ce qui rend une plaque « la meilleure » pour ce KPI, sur sa médiane : la plus haute (``max``), la plus basse
+    (``min``), la plus proche de ``target``, ou dans la plage ``min``-``max`` (``range``)."""
+
+    mode: Literal["max", "min", "target", "range"]
+    target: float | str | None = None
+    min: float | str | None = None
+    max: float | str | None = None
+
+
 class TrackKpiRequest(BaseModel):
     hook: str
     column: str
     label: str | None = None
     filters: list[FilterInput] = []
+    goal: GoalInput | None = None
 
 
 class UpdateKpiRequest(BaseModel):
     label: str | None = None  # vide : la colonne et ses filtres
     filters: list[FilterInput] | None = None  # remplace ceux d'avant ; [] les retire
+    goal: GoalInput | None = None  # remplace l'objectif ; null le retire (une clé absente ne change rien)
 
 
 def _managed(area_slug: str, user: User) -> areas.ManagementArea:
@@ -57,6 +69,8 @@ def _tracked_payload(kpi: service.TrackedKpi, catalogue: dict[str, service.Catal
         "title": kpi.title,
         "filters": list(kpi.filters),
         "summary": kpi.summary,
+        "goal": kpi.goal,
+        "goal_summary": kpi.goal_summary,
         "filter_columns": list(entry.filter_columns) if entry else [],
         "unit": entry.unit if entry else "",
         "description": entry.description if entry else "",
@@ -87,7 +101,8 @@ def list_tracked_kpis(area_slug: str, user: User = Depends(current_user)) -> lis
 @router.post("/kpis", status_code=201)
 def track_kpi(area_slug: str, body: TrackKpiRequest, response: Response, user: User = Depends(current_user)) -> dict:
     area = _managed(area_slug, user)
-    kpi = service.add_tracked(area, user, body.hook, body.column, body.label, [f.model_dump() for f in body.filters])
+    goal = body.goal.model_dump() if body.goal else None
+    kpi = service.add_tracked(area, user, body.hook, body.column, body.label, [f.model_dump() for f in body.filters], goal)
     response.headers["Location"] = f"/api/areas/{area.slug}/kpi-tracking/kpis/{kpi.id}"
     return _tracked_payload(kpi, _catalogue())
 
@@ -98,7 +113,16 @@ def update_kpi(area_slug: str, kpi_id: int, body: UpdateKpiRequest, user: User =
     area = _managed(area_slug, user)
     filters = None if body.filters is None else [f.model_dump() for f in body.filters]
     return _tracked_payload(
-        service.update_tracked(area, kpi_id, label=body.label, filters=filters, set_filters=body.filters is not None), _catalogue()
+        service.update_tracked(
+            area,
+            kpi_id,
+            label=body.label,
+            filters=filters,
+            set_filters=body.filters is not None,
+            goal=body.goal.model_dump() if body.goal else None,
+            set_goal="goal" in body.model_fields_set,
+        ),
+        _catalogue(),
     )
 
 
@@ -133,6 +157,7 @@ def get_distributions(area_slug: str, refresh: bool = False, user: User = Depend
                 "available": d.status != "unavailable",
                 "status": d.status,
                 "message": d.message,
+                "best": d.best,  # l'index, dans `groups`, de la meilleure plaque d'après `goal` (null : pas d'objectif)
                 "groups": [
                     {
                         "wafer": g.wafer,

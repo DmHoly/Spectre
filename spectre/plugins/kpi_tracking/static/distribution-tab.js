@@ -43,8 +43,10 @@ const KpiDistributionTabs = (function () {
         draw(panel, kpi, result, timeline);
         // un clic (ou Entrée) sur une boîte ouvre le récapitulatif de sa plaque
         const openGroup = (event) => {
-          const target = event.target.closest("[data-group]");
-          if (target && kpi.groups[target.dataset.group]) KpiWaferModal.open({ group: kpi.groups[target.dataset.group], kpi });
+          const best = event.target.closest("[data-open-best]");
+          const target = best || event.target.closest("[data-group]");
+          const group = kpi.groups[best ? kpi.best : target && target.dataset.group];
+          if (group) KpiWaferModal.open({ group, kpi });
         };
         panel.onclick = openGroup;
         panel.onkeydown = (event) => {
@@ -105,12 +107,20 @@ const KpiDistributionTabs = (function () {
       panel.innerHTML = `${head}${filters}<div class="kt-box__error">${escapeHtml(kpi.message || "Calcul impossible.")}</div>`;
       return;
     }
-    panel.innerHTML = `${head}${filters}${legendHtml(colors)}<div class="kt-window-slot"></div><div class="kt-plot-slot"></div>`;
+    const best = kpi.best === null || kpi.best === undefined ? null : kpi.groups[kpi.best];
+    panel.innerHTML = `${head}${filters}${legendHtml(colors)}
+      <div class="kt-box__layout${best ? "" : " kt-box__layout--solo"}">
+        <div class="kt-box__main"><div class="kt-window-slot"></div><div class="kt-plot-slot"></div></div>
+        ${best ? `<aside class="kt-best" aria-label="Meilleure plaque"></aside>` : ""}
+      </div>`;
     const slot = panel.querySelector(".kt-plot-slot");
+    if (best) drawBest(panel.querySelector(".kt-best"), kpi, best, colors, timeline);
     const drawPlot = () => {
       const shown = kpi.groups.map((g, index) => ({ ...g, index })).filter((g) => inWindow(g, timeline));
       const svg = kpiBoxplotSvg(shown, {
         label: `${kpi.title} : une boîte à moustaches par plaque, dans l'ordre du temps`,
+        best: kpi.best,
+        goal: kpi.goal,
         colorOf: (group) => (colors.get(group.microprojects[0] && group.microprojects[0].slug) || { color: kpiBoxplotColor(0) }).color,
       });
       const wafers = result.wafers.length;
@@ -136,10 +146,29 @@ const KpiDistributionTabs = (function () {
           timeline.from = from;
           timeline.to = to;
           drawPlot();
+          if (best) drawBest(panel.querySelector(".kt-best"), kpi, best, colors, timeline);
         },
       });
     }
     drawPlot();
+  }
+
+  // La meilleure plaque d'après l'objectif du KPI, épinglée à côté du graphique : toujours visible, hors de la fenêtre
+  // de temps comprise (« meilleure de tous les temps »).
+  function drawBest(aside, kpi, group, colors, timeline) {
+    const s = group.stats;
+    const color = (colors.get(group.microprojects[0] && group.microprojects[0].slug) || { color: kpiBoxplotColor(0) }).color;
+    const svg = kpiBoxplotSvg([{ ...group, index: kpi.best }], { label: `Meilleure plaque : ${group.wafer}`, colorOf: () => color, goal: kpi.goal, best: kpi.best });
+    const outside = timeline && !inWindow(group, timeline);
+    aside.innerHTML = `<div class="kt-best__eyebrow">★ Meilleure plaque</div>
+      <p class="kt-best__wafer">${escapeHtml(group.wafer)}</p>
+      <p class="kt-best__date">${group.sort_date ? `${group.dated ? "mesurée le" : "suivie depuis le"} ${escapeHtml(KpiTimeWindow.fmt(KpiTimeWindow.dayMs(group.sort_date)))}` : ""}</p>
+      <p class="kt-best__value">${escapeHtml(kpiFormatNumber(s.median))}<span class="kt-best__unit">${escapeHtml(kpi.unit || "")} (médiane)</span></p>
+      <div class="kt-best__plot">${svg}</div>
+      <p class="kt-best__quart">Q1 ${escapeHtml(kpiFormatNumber(s.q1))} · Q3 ${escapeHtml(kpiFormatNumber(s.q3))} · n ${s.n}</p>
+      <p class="kt-best__goal">Objectif : ${escapeHtml(kpi.goal_summary)}</p>
+      ${outside ? '<p class="kt-best__outside">Hors de la fenêtre de temps actuelle</p>' : ""}
+      <p style="margin:10px 0 0;"><button type="button" class="btn btn-line" data-open-best>Voir sa fiche</button></p>`;
   }
 
   return { kpisFor };
