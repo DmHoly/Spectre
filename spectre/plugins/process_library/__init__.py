@@ -15,7 +15,7 @@ BRICKS_GLYPH = '<rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="1
 PLUGIN = Plugin(
     name="process_library",
     # experiments : où servent les briques (usages.py, les études qui en ont une copie)
-    depends_on=("structures", "microprojects", "library", "experiments"),
+    depends_on=("structures", "microprojects", "library", "experiments", "teams"),
     router=router,
     pages=(
         Page("/bibliotheque", "library-hub.html"),

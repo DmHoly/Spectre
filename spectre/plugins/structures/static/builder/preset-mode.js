@@ -60,16 +60,15 @@ async function saveStepPreset(forceNew) {
     name,
     variable_fields: state.presetVariableFields,
     notes: document.getElementById("preset-notes").value.trim() || null,
-    scope: document.getElementById("preset-shared-checkbox").checked ? "shared" : "microproject",
-    microproject: slug,
+    ...newItemScope(),
   };
   try {
     if (!forceNew && state.editingPresetId) {
-      await processLibraryApi.updateStepPreset(state.editingPresetId, payload);
+      await processLibraryApi.updateStepPreset(state.editingPresetId, withoutScope(payload));
     } else {
       await processLibraryApi.createStepPreset(payload);
     }
-    window.location.href = returnTo === "bibliotheque" ? "/bibliotheque" : `/microprojets/${slug}/presets-etapes`;
+    window.location.href = "/bibliotheque";
   } catch (err) {
     showError(err);
   }
@@ -80,7 +79,6 @@ async function initPresetMode() {
   document.getElementById("preset-save-mode-btn").hidden = false;
   document.getElementById("preset-preview-note").hidden = false;
   document.getElementById("palette-bricks").hidden = true;
-  if (queryParams.get("partagee") === "1") document.getElementById("preset-shared-checkbox").checked = true;
 
   if (!presetId) {
     setPageTitle("Nouveau préset d'étape");
@@ -104,7 +102,7 @@ async function initPresetMode() {
     } else {
       setPageTitle("Modifier le préset");
       document.getElementById("preset-name").value = found.name;
-      document.getElementById("preset-shared-checkbox").checked = found.scope === "shared";
+      showItemAccess(found, processLibraryApi.setPresetEditors);
       document.getElementById("preset-version").textContent = `version ${found.version}`;
       document.getElementById("preset-version").hidden = false;
       state.editingPresetId = found.id;

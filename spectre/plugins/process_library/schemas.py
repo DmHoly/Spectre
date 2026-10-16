@@ -8,6 +8,7 @@ from typing import Any
 
 from ..accounts import service as accounts
 from ..accounts.service import User
+from ..teams import service as teams
 from . import service
 from .service import Entry
 from .tech_bricks import brick_changes
@@ -29,7 +30,22 @@ class ItemSerializer:
             self._names[user_id] = account.name if account else None
         return {"id": user_id, "name": self._names[user_id]}
 
+    def _team_refs(self, team_ids: list[int]) -> list[dict[str, Any]]:
+        refs = []
+        for team_id in team_ids:
+            try:
+                refs.append(teams.get_by_id(team_id).ref())
+            except teams.TeamNotFoundError:
+                continue  # une équipe supprimée n'a plus de badge
+        return refs
+
+    def _editor(self, user_id: int) -> dict[str, Any] | None:
+        account = accounts.get_by_id(user_id)
+        return {"id": user_id, "name": account.name, "email": account.email} if account else None
+
     def __call__(self, entry: Entry) -> dict[str, Any]:
+        item = entry.item
+        shared = entry.scope == "shared"
         return {
             **entry.item.model_dump(mode="json"),
             "scope": entry.scope,
@@ -37,6 +53,11 @@ class ItemSerializer:
             "created_by": self.account(entry.item.created_by),
             "updated_by": self.account(entry.item.updated_by),
             "can_edit": service.can_edit(entry, self.user),
+            "can_manage_access": service.can_manage_access(entry, self.user),
+            # les équipes de l'auteur (un compte peut en avoir plusieurs), et ceux à qui il a donné la main
+            "owner_teams": self._team_refs(sorted(teams.roles_of(item.created_by))) if shared and item.created_by is not None else [],
+            "editors": [e for e in map(self._editor, item.editors) if e] if shared else [],
+            "editor_teams": self._team_refs(item.editor_teams) if shared else [],
         }
 
 

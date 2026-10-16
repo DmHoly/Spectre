@@ -436,8 +436,7 @@ async function groupSelectionIntoBrick() {
       preset_origins: presetOriginsPayload(selectedSteps),
       lattice_openings: latticeOpeningsPayload(selectedSteps),
       ...(starting ? { substrate: substrateSpec() } : {}),
-      scope: "microproject",
-      microproject: slug,
+      ...newItemScope(),
     });
     state.techBricks = [...state.techBricks, created];
     const groupId = generateBrickGroupId();

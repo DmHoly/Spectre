@@ -316,8 +316,7 @@ async function saveStepAsPreset(step) {
       step: { ...body.step, name: step.name },
       variable_fields: variable,
       notes: document.getElementById("preset-save-notes").value.trim() || null,
-      scope: shared && shared.checked ? "shared" : "microproject",
-      microproject: slug,
+      ...newItemScope({ shared: Boolean(shared && shared.checked) }),
     });
     state.stepPresets = [...state.stepPresets, created];
     step.presetOrigin = { id: created.id, name: created.name, version: created.version };
