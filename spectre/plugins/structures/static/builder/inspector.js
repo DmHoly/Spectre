@@ -41,6 +41,7 @@ function renderInspector() {
   } else {
     state.selectedBrickGroup = null;
     showInspectorSection("substrate-section");
+    mountSubstrateMeasures(); // measures.js
   }
 }
 
@@ -87,6 +88,7 @@ function defaultStepOfKind(kind) {
 
 function renderStepInspector() {
   showInspectorSection("step-form-section");
+  unmountSubstrateMeasures(); // measures.js
   fillKindFields(state.steps[state.selectedIndex]);
   updateStepInspectorHeader();
   renderPresetPanel();

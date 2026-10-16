@@ -50,6 +50,7 @@ from ..structures.simulation import (
     SubstrateSpec,
     checked_bricks,
     layer_labels_by_index,
+    substrate_shape,
 )
 from .models import LibraryItem
 
@@ -186,7 +187,7 @@ def brick_change_level(before: dict[str, Any], after: dict[str, Any]) -> BrickCh
     ``patch`` for a name, a label or a trace, ``none`` for the same content."""
     if before == after:
         return "none"
-    shape = lambda content: {key: content.get(key) for key in ("substrate", "steps", "declared_params") if content.get(key) is not None}
+    shape = lambda content: {key: (substrate_shape(content[key]) if key == "substrate" else content[key]) for key in ("substrate", "steps", "declared_params") if content.get(key) is not None}
     level = classify_process_change(shape(before), shape(after))
     if level in ("major", "minor"):
         return level
@@ -270,7 +271,7 @@ def brick_changes(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
     substrate, each step added, removed, replaced or whose fields changed, the declared
     parameters, the brick's own recipes, the anchors, the labels."""
     lines: list[str] = []
-    if before.get("substrate") != after.get("substrate"):
+    if substrate_shape(before.get("substrate")) != substrate_shape(after.get("substrate")):
         lines.append(f"Substrat : {_substrate_text(before.get('substrate'))} → {_substrate_text(after.get('substrate'))}")
     old_steps, new_steps = before.get("steps") or [], after.get("steps") or []
     old_keys, new_keys = [(s.get("kind"), s.get("name")) for s in old_steps], [(s.get("kind"), s.get("name")) for s in new_steps]

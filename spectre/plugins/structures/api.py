@@ -52,7 +52,7 @@ def simulate(
     step_ids = simulation.settle_step_ids(body.step_ids)
     return {
         **rendering.frames_payload(
-            result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels, bricks, result.frame_keys, step_ids
+            result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels, bricks, result.frame_keys, step_ids, body.substrate
         ),
         "step_ids": step_ids,
     }

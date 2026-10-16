@@ -127,6 +127,7 @@ const state = {
   selectedStepIndices: new Set(), // sélection multiple (Ctrl/Maj+clic) - pour grouper en brique ou supprimer en bloc ; vidée à chaque changement structurel
   selectedBrickGroup: null, // brick_group_id dont l'inspecteur montre les actions (clic sur l'étiquette d'une brique)
   formDeclaredParams: [], // paramètres déclarés (voir form-widgets.js) du formulaire d'étape actuellement ouvert
+  substrateMeasures: [], // cotes du substrat (measures.js), portées par le substrat envoyé au serveur
   formLayerLabel: null, // étiquette de couche ({text, values}, voir layer-label.js) du formulaire d'étape ouvert
   formOwnRecipe: null, // recette du procédé (voir own-recipe.js) que nomme le formulaire d'étape ouvert, sinon null
   formOwnRecipeKind: null, // son type : "deposition" ou "etch"

@@ -54,6 +54,7 @@ from ..structures.simulation import (
     MIN_GROUPED_LABELS,
     STEP_IDS_METADATA_KEY,
     label_without_place,
+    substrate_shape,
     split_declared_unit,
     view_neutral_process,
 )
@@ -131,6 +132,9 @@ def structure_signature(metadata: dict[str, Any]) -> dict[str, Any] | None:
     if process is not None:
         # un procédé à réseau de fils : le nombre de fils vus n'est pas la structure
         process = view_neutral_process(process)
+        # les cotes du substrat se dessinent, elles ne sont pas la structure
+        if isinstance(process, dict) and isinstance(process.get("substrate"), dict) and "measures" in process["substrate"]:
+            process = {**process, "substrate": substrate_shape(process["substrate"])}
         # le plan d'une campagne : ses facteurs et leurs valeurs sont des réglages (un split dont
         # les valeurs changent est un changement mineur, comme une épaisseur)
         plan = metadata.get("campaign_plan")

@@ -102,19 +102,36 @@ class LatticeOpening(BaseModel):
 LATTICE_OPENING_KEY = "lattice_opening"
 
 
+MAX_MEASURES = 6  # les cotes d'une étape, ou du substrat
+
+
 class SubstrateSpec(BaseModel):
     material: str
     domain_width: Length
     thickness: Length
     # le réseau de fils (gabarit SAG) : il fixe la largeur du domaine ; absent, la forme d'avant
     lattice: Lattice | None = None
+    # les cotes du substrat (:class:`Measure`), dessinées sur l'image de départ comme celles d'une étape
+    # sur la sienne, et suivies aux étapes d'après : ce qu'on montre, pas ce qu'est la structure - ni le
+    # versionnage ni la simulation ne les comptent (:func:`substrate_shape`)
+    measures: list["Measure"] = Field(default_factory=list, max_length=MAX_MEASURES)
 
     @model_serializer(mode="wrap")
     def _without_empty_lattice(self, handler: Any) -> dict[str, Any]:
         data = handler(self)
         if data.get("lattice") is None:
             data.pop("lattice", None)
+        if not data.get("measures"):
+            data.pop("measures", None)
         return data
+
+
+def substrate_shape(substrate: Any) -> Any:
+    """Un substrat enregistré (``{material, thickness, ...}``) sans ses cotes : ce qui compte pour dire
+    s'il a changé, et pour la simulation."""
+    if not isinstance(substrate, dict) or "measures" not in substrate:
+        return substrate
+    return {key: value for key, value in substrate.items() if key != "measures"}
 
 
 class SimulationFailedError(InvalidInput):
@@ -542,7 +559,7 @@ def _checkpoint_keys(substrate: SubstrateSpec, steps: list[ProcessStep], recipes
 
     context = {
         "engine": engine_signature(),
-        "substrate": substrate.model_dump(mode="json"),
+        "substrate": substrate.model_dump(mode="json", exclude={"measures"}),
         # le matériau d'une couche décide de sa vitesse de gravure (sa catégorie)
         "materials": [material.model_dump(mode="json") for material in materials()],
         "recipes": recipes.model_dump(mode="json"),
@@ -1148,7 +1165,6 @@ LABEL_PLACE_KEYS = ("offset", "anchor")
 # les cotes d'une étape (:class:`Measure`) : comme sa place, ce qu'on montre sur le dessin, pas ce
 # qu'est la structure - ni le versionnage, ni les différences d'étiquettes ne les comptent
 LABEL_DRAWING_KEYS = (*LABEL_PLACE_KEYS, "measures")
-MAX_MEASURES = 6
 # les étapes d'après où une même cote peut être suivie (Measure.also)
 MAX_FOLLOWED_STEPS = 40
 # le plus loin d'un point de cote du bord du domaine (nm) : une géométrie tient bien en deçà
@@ -1204,6 +1220,9 @@ class Measure(BaseModel):
             raise ValueError("point de cote hors de la géométrie")
         x, y = (round(v, 1) for v in point)
         return (x, y)
+
+
+SubstrateSpec.model_rebuild()
 
 
 class LayerLabel(BaseModel):

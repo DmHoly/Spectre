@@ -159,3 +159,40 @@ def test_a_measure_names_the_later_steps_it_follows_by_their_ids():
     assert Measure(direction="width", point=(0, 0), also=["st_00000002", "st_00000002"]).also == ["st_00000002"]
     with pytest.raises(ValidationError):
         Measure(direction="width", point=(0, 0), also=["étape 2"])
+
+
+def _substrate_with(measures: list[dict]) -> dict:
+    return {**substrate("Sapphire", width_nm=400, thickness_nm=100), "measures": measures}
+
+
+def test_a_substrate_measure_is_drawn_on_the_first_image_and_followed_like_a_layers(client):
+    from support.structures import fixed_step_id, identified
+
+    signup(client, "measure-substrate@example.com")
+    planarize = {"kind": "planarization", "name": "Planarisation", "target_level": {"value": 300, "unit": "nm"}}
+    steps = identified([deposition("GaN", "GaN", recipe="MOCVD Epitaxial", thickness_nm=400), CLEAN, planarize])
+    measure = {"direction": "thickness", "point": [100, -50], "also": [fixed_step_id(3)]}
+    response = simulate(client, {"substrate": _substrate_with([measure]), "steps": steps})
+    assert response.status_code == 200, response.text
+    frames = response.json()["frames"]
+    # sur l'image de départ : l'épaisseur du substrat, étape -1
+    assert re.findall(r'class="sp-measure" data-direction="(\w+)" data-step="(-1)" data-measure="0" data-length="([^"]+)"', frames[0]["svg"]) == [("thickness", "-1", "100")]
+    # pas sur celles d'après, sauf où elle est suivie : après la planarisation, toujours 100 nm
+    assert all("sp-measure" not in frames[k]["svg"] for k in (1, 2))
+    assert re.findall(r'data-step="(-?\d+)" data-measure="\d+" data-at="(\d+)" data-length="([^"]+)"', frames[3]["svg"]) == [("-1", "2", "100")]
+    assert "100 nm (=)" in frames[3]["svg"]
+
+
+def test_substrate_measures_neither_change_the_version_nor_the_simulation():
+    from spectre.plugins.experiments.versioning import classify_process_change, structure_signature
+    from spectre.plugins.structures import simulation
+
+    plain = simulation.SubstrateSpec.model_validate(substrate("Sapphire", width_nm=400, thickness_nm=100))
+    measured = simulation.SubstrateSpec.model_validate(_substrate_with([{"direction": "width", "point": [1.234, -2]}]))
+    # un substrat sans cote s'enregistre comme avant ; avec, sa cote est gardée
+    assert "measures" not in plain.model_dump(mode="json")
+    assert measured.model_dump(mode="json")["measures"] == [{"direction": "width", "point": [1.2, -2.0], "scope": "material"}]
+    process = lambda spec: {"structureforge_process": simulation.process_metadata(spec, [], {}, None)}
+    assert classify_process_change(structure_signature(process(plain)), structure_signature(process(measured))) == "none"
+    # la simulation (sa clé de reprise) ne voit pas non plus les cotes
+    assert simulation._checkpoint_keys(plain, [], simulation.RecipeLibrary()) == simulation._checkpoint_keys(measured, [], simulation.RecipeLibrary())

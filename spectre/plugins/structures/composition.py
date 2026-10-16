@@ -80,7 +80,7 @@ class _Source:
         déclarés et son étiquette (sans sa place sur le dessin) - deux sources de même signature ont
         la même étape."""
         if position is None:
-            return json.dumps(self.process.substrate.model_dump(mode="json"), sort_keys=True)
+            return json.dumps(self.process.substrate.model_dump(mode="json", exclude={"measures"}), sort_keys=True)
         label = self.process.layer_labels.get(str(position))
         return json.dumps(
             [

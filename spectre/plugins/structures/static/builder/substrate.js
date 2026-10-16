@@ -22,6 +22,9 @@ function setSubstrateFields(substrate) {
     document.getElementById("substrate-lattice-wires").value = lattice.wires;
   }
   syncLatticeUi();
+  // les cotes du substrat (measures.js) : pas de champ, elles se posent sur le dessin
+  state.substrateMeasures = (substrate.measures || []).map((m) => ({ ...m, point: [...m.point] }));
+  if (typeof refreshMeasuresList === "function") refreshMeasuresList();
 }
 
 // Le réseau du formulaire, null sans réseau (ou un pas illisible).
@@ -41,6 +44,7 @@ function substrateSpec() {
     thickness: lengthValue("substrate-thickness"),
   };
   if (lattice) spec.lattice = lattice;
+  if (state.substrateMeasures && state.substrateMeasures.length) spec.measures = state.substrateMeasures;
   return spec;
 }
 

@@ -849,7 +849,7 @@ def followed_measure_line(
     traversée au même endroit - même x ; à la même hauteur dans la couche, comptée depuis son dessous
     (depuis son dessus si la plaque a été retournée entre-temps). ``reference`` : sa longueur sur
     l'image de son étape. ``None`` : la couche n'y est plus (gravée), ou rien à mesurer."""
-    if not 0 <= step < at < len(frames) - 1:
+    if not -1 <= step < at < len(frames) - 1:  # -1 : une cote du substrat
         return None
     first = _measured(frames[step + 1], Point(measure.point), measure.direction, measure.scope)
     if first is None:
@@ -972,6 +972,7 @@ def frames_payload(
     bricks: list[ProcessBrick] | None = None,
     frame_keys: tuple[str, ...] | list[str] | None = None,
     step_ids: list[str] | None = None,
+    substrate: Any = None,
 ) -> dict[str, Any]:
     """Each frame as the builder shows it: its SVG (layers tagged ``data-layer-index``, the labels
     of ``labels`` drawn on the layers they name, grouped by ``bricks``), its materials and its
@@ -982,7 +983,9 @@ def frames_payload(
     ``frame_keys``: the key of each frame's simulated state (:attr:`~.simulation.SimulationResult.frame_keys`)
     - with them, a frame drawn the same way as before (same state, same labels) is not drawn again
     (:func:`_cached_svg`). ``step_ids``: the id of each step, which a measure followed at later steps
-    names them by (:attr:`~.simulation.Measure.also`)."""
+    names them by (:attr:`~.simulation.Measure.also`). ``substrate``: the process's substrate, whose
+    measures (:attr:`~.simulation.SubstrateSpec.measures`) are drawn on the first frame, like a step's
+    on its own, and followed likewise."""
     material_colors = {m.name: m.color for m in materials}
 
     def origins_of(k: int) -> list[int | None]:
@@ -1004,14 +1007,18 @@ def frames_payload(
         annotations = [replace(a, anchor_bounds=final.get(a.step)) if a.step is not None else a for a in annotations]
         flipped_later = any(later.step_kind == "flip" for later in frames[k + 1 :])
         # les cotes d'une étape ne paraissent que sur son image (frames[k] : après l'étape k - 1)
-        measured = (labels or {}).get(k - 1) if k > 0 else None
+        # (celles du substrat, sur l'image de départ : l'« étape » -1)
+        measured = (labels or {}).get(k - 1) if k > 0 else substrate
         measures = measure_lines(frame, measured, k - 1) if measured is not None and measured.measures else ()
         # et celles d'étapes d'avant, suivies jusqu'à celle-ci (Measure.also)
         here = step_ids[k - 1] if step_ids and 0 < k <= len(step_ids) else None
         if here is not None and origins is not None and steps:
+            sources = sorted((labels or {}).items())
+            if substrate is not None:
+                sources.insert(0, (-1, substrate))
             followed = (
                 followed_measure_line(frames, origins, steps, measure, i, m, k - 1)
-                for i, label in sorted((labels or {}).items())
+                for i, label in sources
                 if i < k - 1
                 for m, measure in enumerate(label.measures)
                 if here in measure.also

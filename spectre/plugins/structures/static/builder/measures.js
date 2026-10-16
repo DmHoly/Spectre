@@ -24,12 +24,17 @@ function stepMeasures(step) {
   return (step && step.layerLabel && step.layerLabel.measures) || [];
 }
 
+// Les cotes de l'étape d'index `index` ; le substrat (-1) porte les siennes, hors de toute étiquette.
+function measuresOf(index) {
+  return index < 0 ? state.substrateMeasures || [] : stepMeasures(state.steps[index]);
+}
+
 function measuresSectionHtml(kind) {
-  if (!LABELLED_STEP_KINDS.has(kind)) return "";
-  const measures = (state.formLayerLabel && state.formLayerLabel.measures) || [];
+  if (kind !== "substrate" && !LABELLED_STEP_KINDS.has(kind)) return "";
+  const measures = kind === "substrate" ? state.substrateMeasures || [] : (state.formLayerLabel && state.formLayerLabel.measures) || [];
   // ouverte aussi sur une étape qui reprend la cote d'une étape d'avant
   const current = state.steps[state.selectedIndex];
-  const followedHere = Boolean(current && current.id) && state.steps.some((source, i) => i < state.selectedIndex && stepMeasures(source).some((m) => (m.also || []).includes(current.id)));
+  const followedHere = Boolean(current && current.id) && [-1, ...state.steps.keys()].some((i) => i < state.selectedIndex && measuresOf(i).some((m) => (m.also || []).includes(current.id)));
   return `
     <details class="sb-declared" id="measures-section" ${measures.length || followedHere ? "open" : ""}>
       <summary class="sb-declared__summary">Coter sur le dessin <span class="sb-declared__count" id="measures-count">${measures.length ? measures.length : "optionnel"}</span></summary>
@@ -75,6 +80,7 @@ function measureChangeText(followed) {
 const openFollowLists = new Set();
 
 function stepTitle(index) {
+  if (index < 0) return "Substrat";
   const step = state.steps[index];
   return `Étape ${index + 1} · ${step ? step.name : ""}`;
 }
@@ -104,14 +110,16 @@ function followedHereHtml(index) {
   const step = state.steps[index];
   if (!step || !step.id) return "";
   const rows = [];
-  state.steps.forEach((source, i) => {
+  [-1, ...state.steps.keys()].forEach((i) => {
     if (i >= index) return;
-    stepMeasures(source).forEach((measure, k) => {
+    const source = i < 0 ? null : state.steps[i];
+    measuresOf(i).forEach((measure, k) => {
       if (!(measure.also || []).includes(step.id)) return;
       const followed = followedLength(i, k, index);
       const what = followed ? `<strong>${escapeHtml(measureChangeText(followed))}</strong>` : "<em>couche absente ici</em>";
+      const origin = source ? `de l'étape ${i + 1} (${escapeHtml(source.name)})` : "du substrat";
       rows.push(`<div class="sb-measures__row">
-          <span>${escapeHtml(MEASURE_DIRECTIONS[measure.direction].label)} de l'étape ${i + 1} (${escapeHtml(source.name)}) · ${what}</span>
+          <span>${escapeHtml(MEASURE_DIRECTIONS[measure.direction].label)} ${origin} · ${what}</span>
           <button type="button" class="btn btn-line js-measure-unfollow" data-step="${i}" data-measure="${k}" aria-label="Ne plus la suivre ici" title="Ne plus la suivre ici">✕</button>
         </div>`);
     });
@@ -121,7 +129,7 @@ function followedHereHtml(index) {
 
 // Suit (on) ou ne suit plus la cote k de l'étape index à l'étape d'id stepId.
 function setMeasureFollowed(index, k, stepId, on) {
-  const measures = stepMeasures(state.steps[index]).map((measure, j) => {
+  const measures = measuresOf(index).map((measure, j) => {
     if (j !== k) return measure;
     const also = (measure.also || []).filter((id) => id !== stepId);
     if (on) also.push(stepId);
@@ -142,7 +150,7 @@ function refreshMeasuresList() {
   const box = document.getElementById("measures-list");
   if (!box) return;
   const index = state.selectedIndex;
-  const measures = (state.formLayerLabel && state.formLayerLabel.measures) || [];
+  const measures = index < 0 ? state.substrateMeasures || [] : (state.formLayerLabel && state.formLayerLabel.measures) || [];
   document.getElementById("measures-count").textContent = measures.length ? String(measures.length) : "optionnel";
   box.innerHTML = measures
     .map((measure, k) => {
@@ -163,6 +171,14 @@ function refreshMeasuresList() {
 // Pose les cotes de l'étape stepIndex : sur son étiquette (créée « seulement cotée » s'il n'y en a pas,
 // retirée si elle n'avait que ses cotes), et dans le formulaire ouvert.
 function setStepMeasures(stepIndex, measures) {
+  if (stepIndex < 0) {
+    // le substrat : ses cotes vivent sur sa spécification (substrateSpec), pas sur une étiquette
+    state.substrateMeasures = measures;
+    refreshMeasuresList();
+    captureHistory();
+    scheduleSimulate(0);
+    return;
+  }
   const step = state.steps[stepIndex];
   if (!step) return;
   const withMeasures = (label) => {
@@ -183,7 +199,7 @@ function setStepMeasures(stepIndex, measures) {
 
 function startMeasuring(direction) {
   const index = state.selectedIndex;
-  if (index == null || index < 0) return;
+  if (index == null) return;
   measuring = { direction, scope: document.getElementById("measure-layer-only").checked ? "layer" : "material", step: index };
   // la cote se pose sur l'image de l'étape : on la montre
   state.previewMode = "step";
@@ -230,8 +246,8 @@ measureCanvas.addEventListener(
     const point = geometryPointOf(event);
     const { direction, scope, step } = measuring;
     stopMeasuring();
-    if (!point || !state.steps[step]) return;
-    setStepMeasures(step, [...stepMeasures(state.steps[step]), { direction, point, scope }]);
+    if (!point || (step >= 0 && !state.steps[step])) return;
+    setStepMeasures(step, [...measuresOf(step), { direction, point, scope }]);
   },
   true
 );
@@ -240,7 +256,24 @@ document.addEventListener("keydown", (event) => {
   if (measuring && event.key === "Escape") stopMeasuring();
 });
 
-document.getElementById("step-form-section").addEventListener("click", (event) => {
+// La section des cotes vit dans l'inspecteur d'une étape et dans celui du substrat.
+const MEASURE_HOSTS = ["step-form-section", "substrate-section"].map((id) => document.getElementById(id));
+
+// Le substrat n'a pas de formulaire de type d'étape qui rende la section : on la monte dans son
+// inspecteur (et on la retire de celui de l'étape, pour qu'un seul porte ses ids), et inversement.
+function mountSubstrateMeasures() {
+  const slot = document.getElementById("substrate-measures-slot");
+  const stale = document.querySelector("#step-form-section #measures-section");
+  if (stale) stale.remove();
+  if (!slot.firstElementChild) slot.innerHTML = measuresSectionHtml("substrate");
+  refreshMeasuresList();
+}
+
+function unmountSubstrateMeasures() {
+  document.getElementById("substrate-measures-slot").innerHTML = "";
+}
+
+MEASURE_HOSTS.forEach((host) => host.addEventListener("click", (event) => {
   const start = event.target.closest(".js-measure-start");
   if (start) {
     startMeasuring(start.dataset.direction);
@@ -259,19 +292,19 @@ document.getElementById("step-form-section").addEventListener("click", (event) =
   const remove = event.target.closest(".js-measure-remove");
   if (remove) {
     openFollowLists.clear();
-    const measures = stepMeasures(state.steps[state.selectedIndex]).filter((_m, k) => k !== Number(remove.dataset.measure));
+    const measures = measuresOf(state.selectedIndex).filter((_m, k) => k !== Number(remove.dataset.measure));
     setStepMeasures(state.selectedIndex, measures);
   }
-});
+}));
 
-document.getElementById("step-form-section").addEventListener("change", (event) => {
+MEASURE_HOSTS.forEach((host) => host.addEventListener("change", (event) => {
   const box = event.target.closest(".js-measure-follow");
   if (!box || !box.value) return;
   setMeasureFollowed(state.selectedIndex, Number(box.dataset.measure), box.value, box.checked);
-});
+}));
 
 // ouvrir ou fermer « Suivre aux étapes » : gardé tel quel quand la liste se redessine
-document.getElementById("step-form-section").addEventListener(
+MEASURE_HOSTS.forEach((host) => host.addEventListener(
   "toggle",
   (event) => {
     const details = event.target;
@@ -281,4 +314,4 @@ document.getElementById("step-form-section").addEventListener(
     else openFollowLists.delete(k);
   },
   true
-);
+));
