@@ -95,13 +95,15 @@ def _timed_into(phases: dict[str, dict[str, Any]], name: str, what: str, fn: Cal
 
 
 def read_lookup_frames(lasermarks: list[str], run: Runner) -> LookupFrames:
-    """Retrouver des plaques d'un coup : la fiche Gozer (``wafer_record``) et l'historique MES
+    """Retrouver des plaques d'un coup : la fiche Gozer (``wafer_record``), leurs runs d'épitaxie
+    (``wafer_epitaxy`` : leurs noms de run, les noms courants des plaques) et l'historique MES
     (``wafer_mes_history``) de toutes, en une lecture chacun - pas de renommages ni de FDL ici, un
     résumé suffit pour dire « la base la connaît »."""
     names = _case_variants([lm.strip() for lm in lasermarks if lm.strip()])
     frames = LookupFrames()
     what = f"recherche de {len(lasermarks)} plaque(s)"
     frames.record = _timed_into(frames.phases, "record", what, lambda: run("wafer_record", {"wafer_names": names}))
+    frames.epitaxy = _timed_into(frames.phases, "epitaxy", what, lambda: run("wafer_epitaxy", {"wafer_names": [n.upper() for n in names]}))
     frames.mes = _timed_into(frames.phases, "mes", what, lambda: run("wafer_mes_history", {"wafer_names": names}))
     return frames
 
@@ -282,6 +284,7 @@ class DemoSource:
         frames = LookupFrames(
             record=pd.concat([t["wafer_record"] for t in tables], ignore_index=True) if tables else pd.DataFrame(),
             mes=pd.concat(mes, ignore_index=True) if mes else pd.DataFrame(),
+            epitaxy=pd.concat([t["wafer_epitaxy"] for t in tables], ignore_index=True) if tables else pd.DataFrame(),
             phases={"record": {"ok": True, "rows": len(tables), "seconds": 0, "error": None}},
         )
         return lookup_summaries(frames, lasermarks)
@@ -336,6 +339,8 @@ class DemoSource:
                     "test_request_number": f"FDL-{200 + k}", "epi_task_code": "EPI-PT2", "jira_platform": "PT2",
                 }
             )
+        if scenario == "waiting":  # une reprise d'épi : un second run, plus récent - la plaque a deux noms
+            epi_rows.append({**epi_rows[0], "Run_Name": f"RUN-{2400 + seed % 100}R", "start_date": now - timedelta(days=30, hours=9), "end_date": now - timedelta(days=30)})
         epitaxy = pd.DataFrame(epi_rows)
         closed = {"old": now - timedelta(days=35), "waiting": now - timedelta(days=20)}.get(scenario)
         fdl_request = f"FDL-{300 + seed % 100}"

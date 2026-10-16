@@ -69,6 +69,7 @@ class LookupFrames:
 
     record: pd.DataFrame = field(default_factory=_empty)
     mes: pd.DataFrame = field(default_factory=_empty)
+    epitaxy: pd.DataFrame = field(default_factory=_empty)
     phases: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @property
@@ -655,6 +656,7 @@ def build(frames: TrackingFrames, now: datetime | None = None) -> dict[str, Any]
     cited = {t["request"] for t in rec["tickets"]} | {e["request"] for e in rec["epitaxy"]} | set(bw_req) | set(test_req)
     rec["fdls"] = {r: f for r, f in build_fdl_flows(frames.fdl_steps, now).items() if r in cited}
     rec["fdl_numbers"] = plate_fdls(rec)
+    rec["run_names"] = plate_runs(rec["epitaxy"])
     rec["renames"] = renames(steps)
     rec["last_movement"] = last_movement(rec)
     rec["phases"] = frames.phases
@@ -674,6 +676,15 @@ def plate_fdls(rec: dict[str, Any]) -> list[str]:
         if number:
             found.setdefault(number, None)
     return list(found)
+
+
+def plate_runs(epitaxy: list[dict[str, Any]]) -> list[str]:
+    """Les noms de run d'épitaxie de la plaque (Gozer, ``Run_Name``), le plus récent d'abord - c'est
+    son nom courant (« la VA1725 »), le principal ; ses runs d'avant la désignent aussi. Chaque nom
+    une fois ; un run sans nom (lu dans la MES seule) n'en est pas un ; un run sans date passe après
+    les autres."""
+    dated = sorted(((e.get("start") or e.get("end") or "", -i, e["run"]) for i, e in enumerate(epitaxy) if e.get("run")), reverse=True)
+    return list(dict.fromkeys(run for _date, _i, run in dated))
 
 
 def renames(steps: pd.DataFrame) -> list[dict[str, Any]]:
@@ -721,10 +732,12 @@ def _matching(df: pd.DataFrame, columns: tuple[str, ...], key: str) -> pd.DataFr
 def lookup_summaries(frames: LookupFrames, lasermarks: Iterable[str]) -> dict[str, dict[str, Any] | None]:
     """Par clé de plaque demandée, ce que la base en dit en quelques mots - ``None`` quand ni la
     fiche Gozer ni la MES ne la connaissent : ``wafer_name``, ``substrate``, ``supplier``,
-    ``diameter_mm``, ``created`` (Gozer, ``gozer`` vrai) ; ``lot``, ``product``, ``last_step``,
-    ``last_movement``, ``n_steps`` (MES, ``mes`` vrai). C'est le résumé qu'une fiche de plaque garde."""
+    ``diameter_mm``, ``created`` (Gozer, ``gozer`` vrai) ; ``runs`` (ses noms de run d'épitaxie, le
+    plus récent - le principal - d'abord) ; ``lot``, ``product``, ``last_step``, ``last_movement``,
+    ``n_steps`` (MES, ``mes`` vrai). C'est le résumé qu'une fiche de plaque garde."""
     record = _lower(frames.record) if not frames.record.empty else frames.record
     mes = _lower(frames.mes) if not frames.mes.empty else frames.mes
+    epitaxy = _lower(frames.epitaxy) if not frames.epitaxy.empty else frames.epitaxy
     out: dict[str, dict[str, Any] | None] = {}
     for lasermark in lasermarks:
         key = compact(lasermark)
@@ -742,6 +755,11 @@ def lookup_summaries(frames: LookupFrames, lasermarks: Iterable[str]) -> dict[st
                 diameter_mm=_int(r.get("diameter_mm")),
                 created=_ts_loose(r.get("creation_date")),
             )
+        rows = _matching(epitaxy, ("substrat_lasermark", "wafer_name"), key) if not epitaxy.empty else epitaxy
+        if not rows.empty:
+            runs = plate_runs(_aggregate_epitaxy(rows)[0])
+            if runs:
+                summary["runs"] = runs
         rows = _matching(mes, ("physical_item_id", "physical_item_id_out"), key) if not mes.empty else mes
         if not rows.empty:
             if "last_update" in rows.columns:

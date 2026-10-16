@@ -103,9 +103,12 @@ function latestHtml(wafer) {
 // une plaque qui a changé de nom : « trouvée par XX » quand c'est son autre nom qui a répondu,
 // sinon ses autres noms
 function aliasHtml(wafer) {
-  if (wafer.matched_alias) return `<span class="wafer-index__alias">trouvée par son autre nom <span class="mono">${escapeHtml(wafer.matched_alias)}</span></span>`;
+  const runs = wafer.run_names || [];
+  const run = runs.length ? `<span class="wafer-index__alias">run <strong class="mono">${escapeHtml(runs[0])}</strong>${runs.length > 1 ? `, aussi ${runs.slice(1).map((r) => `<span class="mono">${escapeHtml(r)}</span>`).join(", ")}` : ""}</span>` : "";
+  if (wafer.matched_alias && runs.includes(wafer.matched_alias)) return `${run}<span class="wafer-index__alias">trouvée par son run <span class="mono">${escapeHtml(wafer.matched_alias)}</span></span>`;
+  if (wafer.matched_alias) return `${run}<span class="wafer-index__alias">trouvée par son autre nom <span class="mono">${escapeHtml(wafer.matched_alias)}</span></span>`;
   const names = wafer.aliases || [];
-  return names.length ? `<span class="wafer-index__alias">aussi ${names.map((n) => `<span class="mono">${escapeHtml(n)}</span>`).join(", ")}</span>` : "";
+  return run + (names.length ? `<span class="wafer-index__alias">aussi ${names.map((n) => `<span class="mono">${escapeHtml(n)}</span>`).join(", ")}</span>` : "");
 }
 
 function rowHtml(wafer) {
@@ -126,7 +129,7 @@ function rowHtml(wafer) {
 // la page propose de les chercher dans la base.
 function missingTerms() {
   const wanted = terms(state.query).filter((t) => !looksLikeAnFdl(t) || terms(state.query).length === 1);
-  const keys = state.wafers.flatMap((w) => [w.key, ...(w.aliases || []).map(waferKey)]);
+  const keys = state.wafers.flatMap((w) => [w.key, ...(w.aliases || []).map(waferKey), ...(w.run_names || []).map(waferKey)]);
   return wanted.filter((t) => {
     const key = waferKey(t);
     return key && !keys.some((k) => k.includes(key));

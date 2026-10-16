@@ -53,7 +53,7 @@ def list_wafers(
         records=None if scope else records.all_records(),
         line=tracking.line_facts(),
         aliases=links.aliases(),
-    )
+    )  # chercher « VA1725 » trouve la plaque dont c'est un run d'épitaxie (le principal ou un autre)
 
 
 @router.get("/wafers/lookup")
@@ -73,6 +73,8 @@ def get_wafer(wafer_key: str, user: User = Depends(current_user)) -> dict:
     key = service.wafer_key(wafer_key)
     passport = service.passport(wafer_key, service.occurrences(user, keys=[wafer_key]), records.get(wafer_key), tracking.line_facts([key]).get(key))
     passport["links"] = links.chain(wafer_key)
+    # « /plaques/VA1725 » : un nom de run d'épitaxie mène aux plaques qui le portent
+    passport["run_of"] = service.run_of(wafer_key, tracking.line_facts(), records.all_records())
     passport["structure"] = structures.get(wafer_key)
     return passport
 

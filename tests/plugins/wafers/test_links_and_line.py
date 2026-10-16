@@ -147,3 +147,30 @@ def test_a_library_structure_is_attached_to_a_plate_without_a_microproject(clien
     assert client.delete("/api/wafers/W-STRUCT/structure").status_code == 204
     assert get_wafer(client, "W-STRUCT")["structure"] is None
     assert client.put("/api/wafers/W-STRUCT/structure", json={"kind": "saved", "source_id": "nope"}).status_code == 404
+
+
+# --- runs d'épitaxie : les noms courants d'une plaque ----------------------------------------------
+
+
+def test_the_most_recent_run_is_the_principal_and_every_run_is_kept():
+    epitaxy = [{"run": "VA1801", "start": "2026-03-01 08:00"}, {"run": None, "start": "2025-01-01 08:00"}, {"run": "VA1725", "start": "2026-01-06 08:00"}, {"run": "VA1725", "start": "2026-01-06 08:00"}]
+    assert tracking_model.plate_runs(epitaxy) == ["VA1801", "VA1725"]
+    assert tracking_model.plate_runs([{"run": "M105_0819", "start": "2026-07-27 00:00"}]) == ["M105_0819"]  # un seul run : c'est lui
+
+
+def test_a_plate_with_two_runs_is_found_by_either_and_its_run_page_leads_to_it(client, demo):
+    signup(client, "runs@example.com")
+    lm = _lasermark("waiting")  # la démo lui donne une reprise d'épi : deux runs
+    record = create_records(client, [lm])["items"][0]
+    principal, other = record["summary"]["runs"]  # la fiche les garde dès sa création, le plus récent d'abord
+    assert principal == f"{other}R"  # la reprise d'épi, plus récente
+    assert get_wafer(client, lm)["run_names"] == [principal, other]
+    for name in (principal, other):
+        found = list_wafers(client, q=name)
+        assert [w["lasermark"] for w in found] == [lm] and found[0]["matched_alias"] == name
+    fiche = get_tracking(client, lm).json()  # la vie en ligne les relit
+    assert fiche["run_names"] == [principal, other]
+    page = get_wafer(client, other)  # « /plaques/<run> » : ce n'est pas une plaque, c'est son run
+    assert page["occurrences"] == [] and page["record"] is None
+    assert page["run_of"] == [{"key": record["key"], "lasermark": lm, "principal": False}]
+    assert get_wafer(client, principal)["run_of"][0]["principal"] is True

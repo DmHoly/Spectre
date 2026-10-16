@@ -235,6 +235,12 @@ def latest_members(found: Iterable[Occurrence]) -> dict[str, Occurrence]:
     return latest
 
 
+def run_names(line: dict[str, Any] | None, record: dict[str, Any] | None) -> list[str]:
+    """Les noms de run d'épitaxie d'une plaque, le plus récent - le principal - d'abord : ceux de sa
+    vie en ligne, sinon ceux que la base disait le jour de sa fiche."""
+    return list((line or {}).get("run_names") or ((record or {}).get("summary") or {}).get("runs") or [])
+
+
 def _wafer_payload(
     key: str, found: list[Occurrence], record: dict[str, Any] | None, line: dict[str, Any] | None = None, names: list[str] | None = None
 ) -> dict[str, Any]:
@@ -252,6 +258,7 @@ def _wafer_payload(
         "line_fdl": list(line.get("fdls") or []),  # les FDL que la vie en ligne lui connaît (tracking)
         "lot_name": line.get("lot_name"),  # son lot JIRA, lu en ligne
         "aliases": list(names or []),  # ses autres noms (links : XX devenue YY)
+        "run_names": run_names(line, record),  # ses noms de run d'épitaxie, le principal d'abord
     }
 
 
@@ -304,7 +311,8 @@ def wafers(
     """Les plaques de ces occurrences et des fiches ``records``, une par clé (chacune avec ses
     études, la plus récente d'abord) - celles dont le lasermark correspond à ``q`` (un texte, ou
     plusieurs lasermarks ; le lasermark exact d'abord, puis les plaques dont un autre nom -
-    ``aliases``, une plaque renommée - correspond : ``matched_alias``), qui portent une FDL
+    ``aliases``, une plaque renommée, ou l'un de ses noms de run d'épitaxie - correspond :
+    ``matched_alias``), qui portent une FDL
     correspondant à ``fdl`` (celles des études chez les membres seulement, et celles que la vie en
     ligne lui connaît - ``line``, publique comme sa page), ou toutes."""
     line = line or {}
@@ -318,12 +326,13 @@ def wafers(
         by_key.setdefault(key, [])
     ranked = []
     for key, group in by_key.items():
-        q_rank, matched = _alias_rank(queries, key, aliases.get(key, [])) if queries else (0, None)
         facts = line.get(key) or {}
+        record = (records or {}).get(key)
+        q_rank, matched = _alias_rank(queries, key, aliases.get(key, []) + run_names(facts, record)) if queries else (0, None)
         values = [value for o in group if o.member for value in o.entry["fdl"]] + list(facts.get("fdls") or [])
         fdl_rank = fdls.best_rank(fdl, values) if fdl.strip() else 0
         if q_rank is not None and fdl_rank is not None:
-            payload = _wafer_payload(key, _latest_first(group), (records or {}).get(key), facts, aliases.get(key))
+            payload = _wafer_payload(key, _latest_first(group), record, facts, aliases.get(key))
             payload["matched_alias"] = matched
             ranked.append(((q_rank, fdl_rank, key), payload))
     return [payload for _rank, payload in sorted(ranked, key=lambda item: item[0])]
@@ -348,4 +357,19 @@ def passport(
         "record": record,
         "line_fdl": list((line or {}).get("fdls") or []),  # les FDL que la vie en ligne lui connaît
         "lot_name": (line or {}).get("lot_name"),
+        "run_names": run_names(line, record),  # ses noms de run d'épitaxie, le principal d'abord
     }
+
+
+def run_of(name: str, line: dict[str, dict[str, Any]], records: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Les plaques dont ``name`` est l'un des noms de run d'épitaxie (``{key, lasermark, principal}``
+    - ``principal`` : c'est son premier run) : la page « /plaques/VA1725 » mène à la plaque."""
+    wanted = wafer_key(name)
+    found = []
+    for key in sorted(set(line) | set(records)):
+        runs = [wafer_key(r) for r in run_names(line.get(key), records.get(key))]
+        if wanted and wanted in runs and key != wanted:
+            record = records.get(key)
+            lasermark = record["lasermark"] if record else (line.get(key) or {}).get("lasermark") or key
+            found.append({"key": key, "lasermark": lasermark, "principal": runs[0] == wanted})
+    return found
