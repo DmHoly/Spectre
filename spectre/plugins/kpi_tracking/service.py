@@ -44,6 +44,7 @@ log = logging.getLogger(__name__)
 MAX_KPIS = 30  # des boîtes à moustaches : au-delà, la page n'est plus lisible
 MAX_LABEL = 80
 MAX_FILTERS = 8  # par KPI suivi
+MAX_VALUES = 200  # valeurs distinctes proposées pour un filtre
 MAX_OUTLIERS = 50  # par plaque et par KPI : de quoi les montrer, sans faire grossir la réponse d'un wafer très dispersé
 
 # Les colonnes d'un type de données qui sont de l'identification ou de la position, pas une mesure.
@@ -126,6 +127,19 @@ class KpiDistribution:
     hook_title: str = ""
     message: str = ""
     groups: list[WaferDistribution] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ColumnValues:
+    """Les valeurs d'une colonne sur les plaques du projet, pour choisir un filtre dans une liste."""
+
+    kind: str  # text | bool | number | empty (aucune valeur comparable)
+    values: list[dict[str, Any]]  # [{value, count}], les plus fréquentes d'abord (les nombres : par valeur)
+    distinct: int  # combien de valeurs distinctes, au-delà de ``MAX_VALUES`` comprises
+    minimum: float | None = None
+    maximum: float | None = None
+    wafers: int = 0  # les plaques du projet sur lesquelles on a lu la colonne
+    source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -533,4 +547,49 @@ def distributions(area: ManagementArea, user: User, *, refresh: bool = False) ->
         source=sorted(sources)[0] if len(sources) == 1 else ("mixed" if sources else None),
         wafers=list(wafers.values()),
         kpis=results,
+    )
+
+
+def column_values(area: ManagementArea, user: User, hook: str, column: str) -> ColumnValues:
+    """Les valeurs distinctes de ``column`` (une colonne filtrable de ``hook``) sur les lignes des plaques du projet
+    - ce que la requête PRISM, lue dans le cache par plaque, renvoie pour elles. Une cellule vide ou en courbe
+    n'en est pas une. Sans plaque suivie, rien à lire : ``kind`` vaut ``empty``."""
+    if not any(k.hook == hook and column in k.filter_columns for k in catalog()):
+        raise InvalidInput(f"« {column} » n'est pas une colonne filtrable de « {hook} ».", code="unknown_filter_column")
+    wafers = tracked_wafers(area, user)
+    if not wafers:
+        return ColumnValues("empty", [], 0)
+    source, columns, rows = _query_hook(hook, [w["wafer"] for w in wafers.values()], False)
+    if column not in columns:
+        return ColumnValues("empty", [], 0, wafers=len(wafers), source=source)
+    at = columns.index(column)
+    counts: dict[Any, int] = {}
+    for row in rows:
+        cell = row[at]
+        if cell is None or isinstance(cell, (list, tuple, dict)) or (isinstance(cell, float) and not math.isfinite(cell)):
+            continue
+        counts[cell] = counts.get(cell, 0) + 1
+    if not counts:
+        return ColumnValues("empty", [], 0, wafers=len(wafers), source=source)
+    if all(isinstance(v, bool) for v in counts):
+        kind = "bool"
+    elif all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in counts):
+        kind = "number"
+    else:
+        kind = "text"
+        spelled: dict[str, str] = {}  # « 450nm » et « 450NM » : la même valeur, comme le filtre la compare
+        merged: dict[str, int] = {}
+        for value, count in counts.items():
+            text = str(value).strip()
+            key = spelled.setdefault(text.casefold(), text)
+            merged[key] = merged.get(key, 0) + count
+        counts = {k: v for k, v in merged.items() if k}
+    if kind == "number":
+        ordered = sorted(counts.items())
+    else:
+        ordered = sorted(counts.items(), key=lambda item: (-item[1], str(item[0]).casefold()))
+    shown = [{"value": ("true" if v else "false") if kind == "bool" else v, "count": n} for v, n in ordered[:MAX_VALUES]]
+    numbers = [float(v) for v in counts] if kind == "number" else []
+    return ColumnValues(
+        kind, shown, len(ordered), min(numbers) if numbers else None, max(numbers) if numbers else None, len(wafers), source
     )

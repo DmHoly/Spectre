@@ -263,3 +263,32 @@ def test_a_wafer_measured_on_two_dates_gets_a_box_per_date(client, monkeypatch):
     assert [(g["wafer"], g["date"], g["stats"]["n"], g["stats"]["median"]) for g in groups] == [
         ("W1", "2026-09-01", 2, 1.5), ("W1", "2026-09-20", 2, 11.0), ("W2", "2026-09-05", 1, 5.0),
     ]
+
+
+def test_the_distinct_values_of_a_column_are_offered_as_a_list(client):
+    signup(client, "boss@example.com")
+    url = f"{BASE.format(AREA)}/values"
+    assert client.get(url, params={"hook": "pl", "column": "X"}).json()["kind"] == "empty"  # aucune plaque suivie
+
+    slug = create_microproject(client, "Suivi KPI", area=AREA)["slug"]
+    launch(client, slug, title="Essai", intent="x", entities=[{"sample_id": "W1"}, {"sample_id": "W2"}])
+
+    leds = client.get(url, params={"hook": "eqe", "column": "Led_Name"}).json()
+    assert leds["kind"] == "text" and leds["wafers"] == 2 and leds["source"] == "demo"
+    assert leds["distinct"] == len(leds["values"]) > 100 and leds["values"][0]["count"] == 2  # chaque LED sur les deux plaques
+
+    lit = client.get(url, params={"hook": "eqe", "column": "is_lit"}).json()
+    assert lit["kind"] == "bool" and sorted(v["value"] for v in lit["values"]) == ["false", "true"]
+
+    x = client.get(url, params={"hook": "pl", "column": "X"}).json()
+    assert x["kind"] == "number" and x["minimum"] == -40 and x["maximum"] == 40
+    assert [v["value"] for v in x["values"]] == sorted(v["value"] for v in x["values"])  # les nombres par valeur
+
+    curve = client.get(url, params={"hook": "eqe", "column": "EQE"}).json()  # une courbe n'est pas une valeur
+    assert curve["kind"] == "empty"
+
+    assert client.get(url, params={"hook": "pl", "column": "inconnue"}).status_code == 422
+    assert client.get(url, params={"hook": "pl", "column": "wafername"}).status_code == 422
+    signup(client, "reader@example.com")
+    login(client, "reader@example.com")
+    assert client.get(url, params={"hook": "pl", "column": "X"}).status_code == 403

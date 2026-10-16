@@ -108,6 +108,14 @@ def untrack_kpi(area_slug: str, kpi_id: int, user: User = Depends(current_user))
     return Response(status_code=204)
 
 
+@router.get("/values")
+def get_column_values(area_slug: str, hook: str, column: str, user: User = Depends(current_user)) -> dict:
+    """Les valeurs distinctes d'une colonne filtrable sur les plaques du projet, pour proposer une liste plutôt
+    qu'une saisie libre ; gérer le projet (c'est une lecture de PRISM par plaque, comme ``distributions``)."""
+    result = service.column_values(_managed(area_slug, user), user, hook, column)
+    return asdict(result)
+
+
 @router.get("/distributions")
 def get_distributions(area_slug: str, refresh: bool = False, user: User = Depends(current_user)) -> dict:
     """Une boîte à moustaches par plaque du projet et par KPI suivi, calculée à la demande."""

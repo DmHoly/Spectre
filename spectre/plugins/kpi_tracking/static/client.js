@@ -23,6 +23,11 @@ const kpiTrackingApi = {
   untrack(areaSlug, kpiId) {
     return api.del(`/api/areas/${encodeURIComponent(areaSlug)}/kpi-tracking/kpis/${encodeURIComponent(kpiId)}`);
   },
+  // les valeurs distinctes d'une colonne filtrable sur les plaques du projet (gérer le projet), pour un filtre à
+  // choisir dans une liste : {kind: text|bool|number|empty, values: [{value, count}], distinct, minimum, maximum, wafers, source}
+  values(areaSlug, hook, column) {
+    return api.get(api.withQuery(`/api/areas/${encodeURIComponent(areaSlug)}/kpi-tracking/values`, { hook, column }));
+  },
   // les boîtes à moustaches : {source, wafers, kpis: [{..., status, message, groups: [{wafer, date, microprojects, studies, stats, outliers}]}]} ;
   // refresh : retaper la base de PRISM plutôt que lire son cache (gérer le projet)
   distributions(areaSlug, { refresh = false } = {}) {
