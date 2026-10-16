@@ -50,7 +50,9 @@ def simulate(
     bricks = simulation.checked_bricks(body.bricks, len(body.steps))
     result = simulation.simulate_process(body.substrate, body.steps, declared_params or None, body.recipes or None, run, body.lattice_anchors)
     return {
-        **rendering.frames_payload(result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels, bricks),
+        **rendering.frames_payload(
+            result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels, bricks, result.frame_keys
+        ),
         "step_ids": simulation.settle_step_ids(body.step_ids),
     }
 

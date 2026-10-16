@@ -40,6 +40,9 @@ function attachLayerLabels(steps, labels) {
     LABEL_PLACES.forEach(({ key }) => {
       if (Array.isArray(label[key])) layerLabel[key] = [...label[key]];
     });
+    // ses cotes (measures.js), et une étape seulement cotée : pas d'étiquette affichée
+    if (Array.isArray(label.measures) && label.measures.length) layerLabel.measures = label.measures.map((m) => ({ ...m, point: [...m.point] }));
+    if (label.shown === false) layerLabel.shown = false;
     return { ...step, layerLabel };
   });
 }
@@ -65,7 +68,8 @@ function layerLabelOptions(step) {
 
 function layerLabelSectionHtml(kind) {
   if (!LABELLED_STEP_KINDS.has(kind)) return "";
-  const label = state.formLayerLabel;
+  // une étape seulement cotée (measures.js) n'a pas d'étiquette affichée
+  const label = state.formLayerLabel && state.formLayerLabel.shown !== false ? state.formLayerLabel : null;
   const mark = INTERFACE_STEP_KINDS.has(kind);
   const help = mark
     ? "Cette étape ne laisse pas de couche : sa marque pointe, en pointillé, la surface où elle a eu lieu - entre les couches d'avant et celles d'après. Enregistrée avec la version, sans compter comme un changement de structure."
@@ -121,9 +125,11 @@ function refreshLayerLabelValues(step) {
 function readLayerLabelFromForm(step) {
   const on = document.getElementById("layer-label-on");
   if (!on || !LABELLED_STEP_KINDS.has(step.kind)) return null;
+  // les cotes de l'étape (measures.js) ne sont pas dans le formulaire : gardées, avec ou sans étiquette
+  const measures = (state.formLayerLabel && state.formLayerLabel.measures) || [];
   if (!on.checked) {
-    state.formLayerLabel = null;
-    return null;
+    state.formLayerLabel = measures.length ? { text: "", values: [], shown: false, measures } : null;
+    return state.formLayerLabel;
   }
   const available = new Set(layerLabelOptions(step).map((o) => o.key));
   const values = [...document.querySelectorAll("#layer-label-values .js-layer-label-value:checked")].map((box) => box.value).filter((v) => available.has(v));
@@ -133,7 +139,7 @@ function readLayerLabelFromForm(step) {
   LABEL_PLACES.forEach(({ key }) => {
     if (state.formLayerLabel && state.formLayerLabel[key]) place[key] = state.formLayerLabel[key];
   });
-  state.formLayerLabel = { text: document.getElementById("layer-label-text").value.trim(), values, ...place };
+  state.formLayerLabel = { text: document.getElementById("layer-label-text").value.trim(), values, ...place, ...(measures.length ? { measures } : {}) };
   return state.formLayerLabel;
 }
 

@@ -20,15 +20,20 @@ tokens with their value as fallback, so it reads the same in a screenshot or in 
 
 from __future__ import annotations
 
+import hashlib
 import html
 import itertools
 import re
+import threading
 import unicodedata
+from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
 import shapely
 from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry.base import BaseGeometry
 from shapely.ops import nearest_points, unary_union
 from structureforge.adapters.follow_adapter import ProcessStructure
 from structureforge.core.materials import MaterialLibrary
@@ -113,7 +118,9 @@ class LayerAnnotation:
     (:attr:`~.simulation.LayerLabel.anchor` - never for a brick, whose bracket is its point);
     ``anchor_bounds``: that frame (``(min_x, min_y, max_x, max_y)`` in the geometry) when it is not
     this drawing's own - the final structure's, for every frame of a simulation
-    (:func:`frames_payload`), so that a point put on one frame lands at the same place on all."""
+    (:func:`frames_payload`), so that a point put on one frame lands at the same place on all.
+    ``flipped``: an interface mark whose step was followed by an odd number of flips before this
+    drawing - its surface is then the underside of the layers made before it."""
 
     title: str
     lines: tuple[str, ...]
@@ -126,6 +133,7 @@ class LayerAnnotation:
     offset: tuple[float, float] | None = None
     anchor: tuple[float, float] | None = None
     anchor_bounds: tuple[float, float, float, float] | None = None
+    flipped: bool = False
 
 
 def length_text(nm: float) -> str:
@@ -207,6 +215,7 @@ def annotations_for(
     labels: dict[int, LayerLabel],
     origins: list[int | None],
     bricks: list[ProcessBrick] | None = None,
+    through: int | None = None,
 ) -> list[LayerAnnotation]:
     """The labels of a drawing whose layers were created by the steps ``origins`` names (one
     position per layer of ``frame.layers``, :data:`SUBSTRATE_ORIGIN` or ``None`` for the
@@ -215,9 +224,14 @@ def annotations_for(
     brick's label instead, one line per step that has a layer in the drawing. A labelled step that
     creates no layer (:data:`~.simulation.INTERFACE_STEP_KINDS`) is an interface mark of its own,
     never grouped: between the layers made before it (the substrate among them) and those made
-    after it."""
-    marks = {index: label for index, label in labels.items() if 0 <= index < len(steps) and steps[index].kind in INTERFACE_STEP_KINDS}
-    labelled = {index: label for index, label in labels.items() if 0 <= index < len(steps) and index not in marks}
+    after it. ``through``: how many steps the drawing has seen (the final structure's: all of them) -
+    an interface mark turned over by the flips between its step and the drawing is ``flipped``."""
+    through = len(steps) if through is None else through
+    # une étape seulement cotée (LayerLabel.shown faux) n'a pas d'étiquette : ses cotes, à part
+    labels = {index: label for index, label in labels.items() if label.shown}
+    # une marque ne paraît qu'une fois son étape passée (une couche, elle, n'est là qu'après la sienne)
+    marks = {index: label for index, label in labels.items() if 0 <= index < min(len(steps), through) and steps[index].kind in INTERFACE_STEP_KINDS}
+    labelled = {index: label for index, label in labels.items() if 0 <= index < len(steps) and steps[index].kind not in INTERFACE_STEP_KINDS}
     groups = grouped_labels(bricks or [], labelled)
     in_group = {index for _brick, members in groups for index in members}
 
@@ -234,7 +248,10 @@ def annotations_for(
         if not before:
             continue
         title, lines = label_text(steps[index], declared.get(index, []), marks[index])
-        mark = LayerAnnotation(title, lines, before, interface=True, after=after, step=index, offset=marks[index].offset, anchor=marks[index].anchor)
+        flipped = sum(1 for step in steps[index + 1 : through] if step.kind == "flip") % 2 == 1
+        mark = LayerAnnotation(
+            title, lines, before, interface=True, after=after, step=index, offset=marks[index].offset, anchor=marks[index].anchor, flipped=flipped
+        )
         ordered.append((index, mark))
     for index in sorted(labelled):
         layers = layers_of({index})
@@ -290,15 +307,28 @@ _FONT = "var(--font-ui, 'DM Sans', 'Helvetica Neue', Arial, sans-serif)"
 _VIEWBOX_RE = re.compile(r'viewBox="([^"]+)"')
 
 
+def _valid(polygon: Any) -> Any:
+    # ``buffer(0)`` ne répare qu'un contour invalide - sur un contour valide il ne change rien, mais
+    # coûte cher (des secondes sur les couches d'un réseau de fils, à chaque image) : on l'évite
+    return polygon if polygon.is_valid else polygon.buffer(0)
+
+
 def _shape(rings: list[dict]) -> Any:
-    polygons = [Polygon(ring["exterior"], ring.get("holes") or []).buffer(0) for ring in rings if len(ring.get("exterior") or []) >= 3]
+    polygons = [_valid(Polygon(ring["exterior"], ring.get("holes") or [])) for ring in rings if len(ring.get("exterior") or []) >= 3]
     return unary_union(polygons) if polygons else None
 
 
-def _anchor(rings: list[dict]) -> tuple[float, float] | None:
+def _layer_shape(layer: Any) -> Any:
+    """La forme d'une couche (``None`` si vide) : le polygone du moteur lui-même quand il est là (une
+    image simulée), sinon refaite de ses contours (une structure enregistrée, :class:`_RenderableLayer`)."""
+    polygon = getattr(layer, "polygon", None)
+    shape = _valid(polygon) if isinstance(polygon, BaseGeometry) else _shape(layer.rings())
+    return None if shape is None or shape.is_empty else shape
+
+
+def _anchor(shape: Any) -> tuple[float, float] | None:
     """A point inside the layer, towards its right edge (the labels are on the right) - on the
     horizontal line through a point surely inside it."""
-    shape = _shape(rings)
     if shape is None or shape.is_empty:
         return None
     inside = shape.representative_point()
@@ -320,7 +350,7 @@ _UNION_GRID = 1e-6
 
 
 def _union(frame: Frame, layers: tuple[int, ...]) -> Any:
-    shapes = [shape for k in layers if k < len(frame.layers) for shape in [_shape(frame.layers[k].rings())] if shape is not None and not shape.is_empty]
+    shapes = [shape for k in layers if k < len(frame.layers) for shape in [_layer_shape(frame.layers[k])] if shape is not None]
     return shapely.union_all(shapes, grid_size=_UNION_GRID) if shapes else None
 
 
@@ -329,10 +359,11 @@ def _union(frame: Frame, layers: tuple[int, ...]) -> Any:
 _INTERFACE_SAMPLES = (0.92, 0.85, 0.75, 0.65, 0.5, 0.35, 0.2, 0.08)
 
 
-def _interface_anchor(frame: Frame, before: tuple[int, ...], after: tuple[int, ...]) -> tuple[float, float] | None:
+def _interface_anchor(frame: Frame, before: tuple[int, ...], after: tuple[int, ...], flipped: bool = False) -> tuple[float, float] | None:
     """A point on the surface a step that made no layer left behind: the top of the layers made
-    before it (``before``), where a layer made after it (``after``) lies on it - the interface -,
-    else where that surface is bare; towards the right edge, like the labels."""
+    before it (``before``) - their underside once the wafer has been turned over since (``flipped``) -,
+    where a layer made after it (``after``) lies on it - the interface -, else where that surface is
+    bare; towards the right edge, like the labels."""
     below = _union(frame, before)
     if below is None:
         return None
@@ -345,10 +376,10 @@ def _interface_anchor(frame: Frame, before: tuple[int, ...], after: tuple[int, .
         crossing = below.intersection(LineString([(x, min_y - 1), (x, max_y + 1)]))
         if crossing.is_empty:
             continue
-        top = crossing.bounds[3]
-        if above is None or above.distance(Point(x, top)) <= tolerance:
-            return x, top
-        bare = bare or (x, top)
+        surface = crossing.bounds[1] if flipped else crossing.bounds[3]
+        if above is None or above.distance(Point(x, surface)) <= tolerance:
+            return x, surface
+        bare = bare or (x, surface)
     return bare
 
 
@@ -493,7 +524,13 @@ def _bracket_columns(brackets: list[tuple[float, float] | None]) -> list[int | N
 
 
 def labelled_svg(
-    frame: Frame, material_colors: dict[str, str], annotations: list[LayerAnnotation], *, tag_layers: bool = False, anchors: bool = True
+    frame: Frame,
+    material_colors: dict[str, str],
+    annotations: list[LayerAnnotation],
+    *,
+    tag_layers: bool = False,
+    anchors: bool = True,
+    measures: list[MeasureLine] | tuple[MeasureLine, ...] = (),
 ) -> str:
     """StructureForge's drawing of ``frame`` (:func:`frame_svg`), with ``annotations`` stacked on
     its right - unchanged when there is none. The drawing becomes a nested ``<svg>`` fitted in a
@@ -501,11 +538,12 @@ def labelled_svg(
     labels (a page hides ``.sp-layer-labels`` and switches to it). Every text is escaped.
     ``anchors=False``: the points put by hand are not honoured, nor can any be put (no
     ``data-anchor-box``) - a frame before a flip, which the final structure's frame of reference
-    (:attr:`LayerAnnotation.anchor_bounds`) does not fit."""
+    (:attr:`LayerAnnotation.anchor_bounds`) does not fit. ``measures``: the dimension lines drawn
+    over the structure (:func:`measure_line`), kept when a page hides the labels."""
     base = frame_svg(frame, material_colors)
     if tag_layers:
         base = _tag_layer_indices(base)
-    if not annotations:
+    if not annotations and not measures:
         return base
     view = _VIEWBOX_RE.search(base)
     inner = base[base.index(">") + 1 : base.rindex("</svg>")]
@@ -526,9 +564,7 @@ def labelled_svg(
     marks_at: list[tuple[float, float]] = []
     for annotation in annotations:
         bracket = None
-        rings_by_layer = [frame.layers[k].rings() for k in annotation.layers if k < len(frame.layers)]
-        candidates = [(rings, _shape(rings)) for rings in rings_by_layer]
-        candidates = [(rings, shape) for rings, shape in candidates if shape is not None and not shape.is_empty]
+        candidates = [shape for k in annotation.layers if k < len(frame.layers) for shape in [_layer_shape(frame.layers[k])] if shape is not None]
         if not candidates:
             continue
         # ce que désigne le point d'accroche (les couches de l'étape ; d'une marque d'interface, celles
@@ -540,7 +576,7 @@ def labelled_svg(
         reference = (annotation.anchor_bounds or designated.bounds) if anchors and designated is not None else None
         placed = _at_fractions(reference, annotation.anchor) if reference is not None and annotation.anchor else None
         if annotation.interface:
-            point = _interface_anchor(frame, annotation.layers, annotation.after)
+            point = _interface_anchor(frame, annotation.layers, annotation.after, annotation.flipped)
             if point is None or designated is None:
                 continue
             anchor = to_svg(*point)
@@ -554,7 +590,7 @@ def labelled_svg(
             marks_at.append(anchor)
         elif annotation.grouped:
             # une accolade sur toute la hauteur des couches de la brique (jamais plus fine qu'un trait lisible)
-            _min_x, min_y, _max_x, max_y = unary_union([shape for _rings, shape in candidates]).bounds
+            _min_x, min_y, _max_x, max_y = unary_union(candidates).bounds
             top, bottom = to_svg(0, max_y)[1], to_svg(0, min_y)[1]
             middle = (top + bottom) / 2
             half = max((bottom - top) / 2, BRACKET_MIN_HEIGHT / 2)
@@ -562,7 +598,7 @@ def labelled_svg(
             anchor = (bracket_x, middle)  # x : au bout de l'accolade, selon sa colonne (plus bas)
             auto_y = middle
         else:
-            point = _anchor(max(candidates, key=lambda c: c[1].area)[0])
+            point = _anchor(max(candidates, key=lambda shape: shape.area))
             if point is None:
                 continue
             anchor = to_svg(*point)
@@ -593,8 +629,16 @@ def labelled_svg(
                 "placed": annotation.anchor if placed is not None else None,
             }
         )
-    if not blocks:
+    measure_parts, measure_boxes = _measure_marks(measures, to_svg)
+    if not blocks and not measure_parts:
         return base
+    bare = f"0 0 {_n(PAD + sw + PAD)} {_n(PAD + sh + PAD)}"
+    if not blocks:
+        min_x = min([0.0] + [box[0] - PAD for box in measure_boxes])
+        min_y = min([0.0] + [box[1] - PAD for box in measure_boxes])
+        max_x = max([PAD + sw + PAD] + [box[2] + PAD for box in measure_boxes])
+        max_y = max([PAD + sh + PAD] + [box[3] + PAD for box in measure_boxes])
+        return _outer_svg(min_x, min_y, max_x - min_x, max_y - min_y, bare, sw, sh, view, inner, [], measure_parts)
     columns = _bracket_columns([b["bracket"] for b in blocks])
     for block, column in zip(blocks, columns):
         if column is not None:
@@ -616,8 +660,11 @@ def labelled_svg(
     min_y = min([0.0] + [top - PAD for top in tops])
     max_x = max([column_x + column_w + PAD] + [x + b["width"] + PAD for x, b in zip(lefts, blocks)])
     max_y = max([PAD + sh + PAD] + [top + b["height"] + PAD for top, b in zip(tops, blocks)])
+    min_x = min([min_x] + [box[0] - PAD for box in measure_boxes])
+    min_y = min([min_y] + [box[1] - PAD for box in measure_boxes])
+    max_x = max([max_x] + [box[2] + PAD for box in measure_boxes])
+    max_y = max([max_y] + [box[3] + PAD for box in measure_boxes])
     width, height = max_x - min_x, max_y - min_y
-    bare = f"0 0 {_n(PAD + sw + PAD)} {_n(PAD + sh + PAD)}"
 
     parts = []
     for block, block_top, text_x in zip(blocks, tops, lefts):
@@ -676,13 +723,146 @@ def labelled_svg(
             + f'<g class="sp-layer-label__text">{"".join(texts)}</g>'
             + "</g>"
         )
+    return _outer_svg(min_x, min_y, width, height, bare, sw, sh, view, inner, parts, measure_parts)
+
+
+def _outer_svg(
+    min_x: float, min_y: float, width: float, height: float, bare: str, sw: float, sh: float, view: Any, inner: str, parts: list[str], measure_parts: list[str]
+) -> str:
+    """Le dessin de StructureForge (``inner``, dans un carré ``sw`` × ``sh``) et ce que Spectre y
+    ajoute : ses cotes par-dessus, ses étiquettes à droite (``.sp-layer-labels``, qu'une page peut
+    cacher : ``data-bare-viewbox``)."""
+    measures = f'<g class="sp-measures" style="font-family:{_FONT}">{"".join(measure_parts)}</g>' if measure_parts else ""
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{_n(min_x)} {_n(min_y)} {_n(width)} {_n(height)}" width="{_n(width)}" height="{_n(height)}" '
         f'class="sp-labelled-structure" data-bare-viewbox="{bare}">'
         f'<svg x="{_n(PAD)}" y="{_n(PAD)}" width="{_n(sw)}" height="{_n(sh)}" viewBox="{view.group(1) if view else "0 0 1 1"}">{inner}</svg>'
-        f'<g class="sp-layer-labels" style="font-family:{_FONT}">{"".join(parts)}</g>'
+        + measures
+        + f'<g class="sp-layer-labels" style="font-family:{_FONT}">{"".join(parts)}</g>'
         "</svg>"
     )
+
+
+# -- les cotes ---------------------------------------------------------------------------------------
+#
+# Une cote (:class:`~.simulation.Measure`) mesure ce qui est sous un point de l'image d'une étape :
+# la traversée verticale (une épaisseur) ou horizontale (une largeur) de la couche sous le point - ou
+# de toute la matière d'un seul tenant autour de lui. Le moteur donne les contours ; la mesure est
+# celle du dessin, au dixième de nm.
+
+MEASURE_TICK = 5.0  # la demi-longueur des traits d'extrémité (unités du dessin)
+MEASURE_ARROW = 5.0
+MEASURE_TEXT_GAP = 5.0
+
+
+@dataclass(frozen=True)
+class MeasureLine:
+    """Une cote calculée : son segment ``(x1, y1)``-``(x2, y2)`` dans la géométrie (nm, y vers le
+    haut), sa longueur (nm), le matériau mesuré, et d'où elle vient - l'étape (``step``) et sa
+    place parmi les cotes de l'étape (``index``)."""
+
+    direction: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    length: float
+    material: str
+    step: int | None = None
+    index: int = 0
+
+
+def _segments(geometry: Any) -> list[Any]:
+    lines = [g for g in getattr(geometry, "geoms", [geometry]) if g.geom_type in ("LineString", "MultiLineString") and not g.is_empty]
+    if not lines:
+        return []
+    merged = shapely.line_merge(unary_union(lines))
+    return [g for g in getattr(merged, "geoms", [merged]) if g.geom_type == "LineString" and not g.is_empty]
+
+
+def measure_line(frame: Frame, measure: Any, step: int | None = None, index: int = 0) -> MeasureLine | None:
+    """La cote ``measure`` (:class:`~.simulation.Measure`) sur ``frame`` : la couche sous son point
+    (la plus haute dans l'empilement ; à défaut, la plus proche), ou toute la matière d'un seul tenant
+    de son matériau (``scope`` ``"material"``), traversée à la verticale du point (une épaisseur) ou à
+    son horizontale (une largeur) - le morceau de la traversée qui passe par le point. ``None`` : rien
+    à mesurer (une image vide)."""
+    point = Point(measure.point)
+    shapes = [(layer, shape) for layer in frame.layers for shape in [_layer_shape(layer)] if shape is not None]
+    if not shapes:
+        return None
+    under = [(layer, shape) for layer, shape in shapes if shape.covers(point)]
+    layer, shape = under[-1] if under else min(shapes, key=lambda item: item[1].distance(point))
+    if measure.scope == "material":
+        same = [other for other_layer, other in shapes if other_layer.material == layer.material]
+        union = shapely.union_all(same, grid_size=_UNION_GRID)
+        parts = [g for g in getattr(union, "geoms", [union]) if not g.is_empty]
+        shape = min(parts, key=lambda part: part.distance(point)) if parts else shape
+    min_x, min_y, max_x, max_y = shape.bounds
+    if measure.direction == "thickness":
+        x = min(max(point.x, min_x), max_x)
+        across = LineString([(x, min_y - 1), (x, max_y + 1)])
+    else:
+        y = min(max(point.y, min_y), max_y)
+        across = LineString([(min_x - 1, y), (max_x + 1, y)])
+    segments = _segments(shape.intersection(across))
+    if not segments:
+        return None
+    segment = min(segments, key=lambda g: g.distance(point))
+    (x1, y1), (x2, y2) = segment.coords[0], segment.coords[-1]
+    if (measure.direction == "thickness" and y1 < y2) or (measure.direction == "width" and x1 > x2):
+        (x1, y1), (x2, y2) = (x2, y2), (x1, y1)  # du haut vers le bas, de gauche à droite
+    return MeasureLine(measure.direction, x1, y1, x2, y2, round(segment.length, 1), layer.material, step, index)
+
+
+def measure_lines(frame: Frame, label: Any, step: int | None) -> tuple[MeasureLine, ...]:
+    """Les cotes d'une étiquette (:attr:`~.simulation.LayerLabel.measures`) sur ``frame``, l'image
+    de son étape."""
+    lines = (measure_line(frame, measure, step, k) for k, measure in enumerate(getattr(label, "measures", None) or []))
+    return tuple(line for line in lines if line is not None)
+
+
+def _measure_marks(measures: Any, to_svg: Callable[[float, float], tuple[float, float]]) -> tuple[list[str], list[tuple[float, float, float, float]]]:
+    """Le dessin des cotes (des flèches entre deux traits d'extrémité, la longueur à côté, sur un
+    halo pour se lire sur toutes les couches) et le cadre de chacune (unités du dessin), que le
+    dessin agrandi contient."""
+    parts: list[str] = []
+    boxes: list[tuple[float, float, float, float]] = []
+    for line in measures:
+        (ax, ay), (bx, by) = to_svg(line.x1, line.y1), to_svg(line.x2, line.y2)
+        text = length_text(line.length)
+        text_w = _text_width(text, VALUE_SIZE)
+        if line.direction == "thickness":
+            tick = f"M{_n(ax - MEASURE_TICK)},{_n(ay)} H{_n(ax + MEASURE_TICK)} M{_n(bx - MEASURE_TICK)},{_n(by)} H{_n(bx + MEASURE_TICK)}"
+            size = min(MEASURE_ARROW, abs(by - ay) / 2)
+            arrows = (
+                f"M{_n(ax)},{_n(ay)} l{_n(-size / 2)},{_n(size)} h{_n(size)} Z "
+                f"M{_n(bx)},{_n(by)} l{_n(-size / 2)},{_n(-size)} h{_n(size)} Z"
+            )
+            tx, ty, anchor = ax + MEASURE_TICK + MEASURE_TEXT_GAP, (ay + by) / 2 + VALUE_SIZE / 3, "start"
+            box = (min(ax, bx) - MEASURE_TICK, min(ay, by), tx + text_w, max(ay, by))
+        else:
+            tick = f"M{_n(ax)},{_n(ay - MEASURE_TICK)} V{_n(ay + MEASURE_TICK)} M{_n(bx)},{_n(by - MEASURE_TICK)} V{_n(by + MEASURE_TICK)}"
+            size = min(MEASURE_ARROW, abs(bx - ax) / 2)
+            arrows = (
+                f"M{_n(ax)},{_n(ay)} l{_n(size)},{_n(-size / 2)} v{_n(size)} Z "
+                f"M{_n(bx)},{_n(by)} l{_n(-size)},{_n(-size / 2)} v{_n(size)} Z"
+            )
+            tx, ty, anchor = (ax + bx) / 2, ay - MEASURE_TICK - MEASURE_TEXT_GAP, "middle"
+            box = (min(tx - text_w / 2, ax), ty - VALUE_SIZE, max(tx + text_w / 2, bx), ay + MEASURE_TICK)
+        step = f' data-step="{line.step}"' if line.step is not None else ""
+        segment = f"M{_n(ax)},{_n(ay)} L{_n(bx)},{_n(by)} {tick}"
+        parts.append(
+            f'<g class="sp-measure" data-direction="{line.direction}"{step} data-measure="{line.index}" data-length="{_n(line.length)}" '
+            f'data-material="{html.escape(line.material)}">'
+            f'<path d="{segment}" fill="none" stroke-width="3.4" stroke-linecap="round" style="stroke:{_SURFACE}"/>'
+            f'<path d="{segment}" fill="none" stroke-width="1.3" stroke-linecap="round" style="stroke:{_TEXT}"/>'
+            f'<path d="{arrows}" style="fill:{_TEXT}"/>'
+            f'<text x="{_n(tx)}" y="{_n(ty)}" text-anchor="{anchor}" font-size="{_n(VALUE_SIZE)}" font-weight="600" '
+            f'stroke-width="3.5" stroke-linejoin="round" paint-order="stroke" style="fill:{_TEXT};stroke:{_SURFACE}">{html.escape(text)}</text>'
+            "</g>"
+        )
+        boxes.append(box)
+    return parts, boxes
 
 
 def _anchor_mark(ax: float, ay: float, marker: str) -> str:
@@ -715,13 +895,17 @@ def frames_payload(
     declared: dict[int, list[DeclaredParam]] | None = None,
     labels: dict[int, LayerLabel] | None = None,
     bricks: list[ProcessBrick] | None = None,
+    frame_keys: tuple[str, ...] | list[str] | None = None,
 ) -> dict[str, Any]:
     """Each frame as the builder shows it: its SVG (layers tagged ``data-layer-index``, the labels
     of ``labels`` drawn on the layers they name, grouped by ``bricks``), its materials and its
     layers - each with the position of the step that created it (``step_index``, ``-1`` for the
     substrate), from the simulation's own provenance (``origins``). A point put by hand
     (:attr:`~.simulation.LayerLabel.anchor`) is in the final structure's frame of reference on every
-    frame (:attr:`LayerAnnotation.anchor_bounds`), and neither honoured nor movable before a flip."""
+    frame (:attr:`LayerAnnotation.anchor_bounds`), and neither honoured nor movable before a flip.
+    ``frame_keys``: the key of each frame's simulated state (:attr:`~.simulation.SimulationResult.frame_keys`)
+    - with them, a frame drawn the same way as before (same state, same labels) is not drawn again
+    (:func:`_cached_svg`)."""
     material_colors = {m.name: m.color for m in materials}
 
     def origins_of(k: int) -> list[int | None]:
@@ -739,15 +923,22 @@ def frames_payload(
     payload = []
     for k, frame in enumerate(frames):
         frame_origins = origins_of(k)
-        annotations = annotations_for(steps or [], declared or {}, labels or {}, frame_origins, bricks) if labels else []
+        annotations = annotations_for(steps or [], declared or {}, labels or {}, frame_origins, bricks, through=k) if labels else []
         annotations = [replace(a, anchor_bounds=final.get(a.step)) if a.step is not None else a for a in annotations]
         flipped_later = any(later.step_kind == "flip" for later in frames[k + 1 :])
+        # les cotes d'une étape ne paraissent que sur son image (frames[k] : après l'étape k - 1)
+        measured = (labels or {}).get(k - 1) if k > 0 else None
+        measures = measure_lines(frame, measured, k - 1) if measured is not None and measured.measures else ()
         payload.append(
             {
                 "step_index": frame.step_index,
                 "step_kind": frame.step_kind,
                 "step_name": frame.step_name,
-                "svg": labelled_svg(frame, material_colors, annotations, tag_layers=True, anchors=not flipped_later),
+                "svg": _cached_svg(
+                    frame_keys[k] if frame_keys and k < len(frame_keys) else None,
+                    (frame.step_name, annotations, measures, not flipped_later, sorted(material_colors.items())),
+                    lambda: labelled_svg(frame, material_colors, annotations, tag_layers=True, anchors=not flipped_later, measures=measures),
+                ),
                 # only the materials this particular frame actually shows - material_colors below
                 # is the whole library (40+ entries), which would make a poor legend on its own.
                 "materials": sorted({layer.material for layer in frame.layers}),
@@ -765,6 +956,31 @@ def frames_payload(
             }
         )
     return {"frames": payload, "material_colors": material_colors}
+
+
+# Le dessin d'une image, gardé sous la clé de son état simulé et ce qui s'y dessine (ses étiquettes,
+# les couleurs) : déplacer une étiquette ne redessine que les images où elle paraît - le dessin des
+# étiquettes (unions de couches, surfaces) coûte bien plus que la reprise de la simulation, gardée.
+MAX_CACHED_SVGS = 512
+_svg_cache: OrderedDict[str, str] = OrderedDict()
+_svg_cache_lock = threading.Lock()
+
+
+def _cached_svg(state_key: str | None, drawn: Any, draw: Callable[[], str]) -> str:
+    if state_key is None:
+        return draw()
+    key = hashlib.sha256(f"{state_key}|{drawn!r}".encode()).hexdigest()
+    with _svg_cache_lock:
+        svg = _svg_cache.get(key)
+        if svg is not None:
+            _svg_cache.move_to_end(key)
+            return svg
+    svg = draw()
+    with _svg_cache_lock:
+        _svg_cache[key] = svg
+        while len(_svg_cache) > MAX_CACHED_SVGS:
+            _svg_cache.popitem(last=False)
+    return svg
 
 
 class _RenderableLayer:

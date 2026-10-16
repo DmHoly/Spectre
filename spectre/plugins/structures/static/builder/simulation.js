@@ -329,6 +329,7 @@ async function simulateNow() {
     state.layerOrigins = layerOriginsOf(state.frames);
     clearSimulationError();
     renderFrame();
+    refreshMeasuresList(); // les longueurs mesurées des cotes de l'étape ouverte (measures.js)
     syncStepReport(); // les étapes neuves viennent de recevoir leur id
     if (colorsChanged) renderRail(); // pastilles de matériau des puces, aux couleurs du dessin
   } catch (err) {

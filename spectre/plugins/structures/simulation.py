@@ -477,6 +477,9 @@ class SimulationResult(NamedTuple):
     frames: list[Frame]
     materials: MaterialLibrary
     layer_origins: list[list[int]]
+    # la clé de l'état de chaque image (:func:`_checkpoint_keys`) : ce qui l'a produite, rien d'autre -
+    # deux images de même clé ont les mêmes couches (le dessin d'une image se garde sous elle)
+    frame_keys: tuple[str, ...] = ()
 
 
 # -- la reprise d'une simulation -------------------------------------------------------------------
@@ -889,7 +892,7 @@ def _simulate_tracking(
     recipes: RecipeLibrary,
     run_id: str | None = None,
     anchors: dict[int, LatticeOpening] | None = None,
-) -> tuple[Geometry, list[Frame], list[list[int]]]:
+) -> tuple[Geometry, list[Frame], list[list[int]], list[str]]:
     """``structureforge.process.simulate.simulate``, une étape à la fois - mêmes images, mêmes
     erreurs - pour savoir quelle étape a créé chaque couche. StructureForge ne le dit que pour une
     croissance (``LayerProvenance``, sans la position de l'étape) : on suit donc les couches de la
@@ -944,7 +947,7 @@ def _simulate_tracking(
         origins.append([origin[id(layer)] for layer in geometry.frame_layers()])
         _keep(keys[index + 1], geometry, origin, frames[-1], origins[-1])
         _note_run(run_id, done=index + 1)
-    return geometry, frames, origins
+    return geometry, frames, origins, keys
 
 
 def _apply_declared_params(
@@ -1006,7 +1009,7 @@ def simulate_process(
     _start_run(run_id, len(steps))
     state = "failed"
     try:
-        geometry, frames, origins = _simulate_tracking(substrate, steps, materials, recipe_library, run_id, lattice_anchors)
+        geometry, frames, origins, keys = _simulate_tracking(substrate, steps, materials, recipe_library, run_id, lattice_anchors)
         state = "done"
     except SimulationError as exc:
         raise SimulationFailedError(str(exc)) from exc
@@ -1014,7 +1017,7 @@ def simulate_process(
         _note_run(run_id, state=state, step_index=None, step_name=None, ended=time.monotonic())
     if declared_params:
         _apply_declared_params(frames, origins, declared_params, steps)
-    return SimulationResult(geometry, frames, materials, origins)
+    return SimulationResult(geometry, frames, materials, origins, tuple(keys))
 
 
 def run_simulation(
@@ -1142,10 +1145,40 @@ MAX_LABEL_OFFSET = 2000.0
 # ce qui, d'une étiquette, n'est que sa place sur le dessin (texte déplacé, point d'accroche posé à
 # la main) : ni le versionnage, ni les différences d'étiquettes, ni un préset ne le comptent
 LABEL_PLACE_KEYS = ("offset", "anchor")
+# les cotes d'une étape (:class:`Measure`) : comme sa place, ce qu'on montre sur le dessin, pas ce
+# qu'est la structure - ni le versionnage, ni les différences d'étiquettes ne les comptent
+LABEL_DRAWING_KEYS = (*LABEL_PLACE_KEYS, "measures")
+MAX_MEASURES = 6
+# le plus loin d'un point de cote du bord du domaine (nm) : une géométrie tient bien en deçà
+MAX_MEASURE_COORDINATE = 1e7
 # les étapes qui ne créent pas de couche (un nettoyage, une gravure, un etch back...) : leur étiquette
 # est une marque d'interface, reliée à la surface telle qu'elle était quand l'étape a eu lieu - entre
 # les couches d'avant et celles d'après (spectre.plugins.structures.rendering)
 INTERFACE_STEP_KINDS = frozenset({"etch", "planarization", "chemical", "resist_strip"})
+
+
+class Measure(BaseModel):
+    """Une cote posée sur le dessin d'une étape : la taille de ce qui est sous ``point`` (``(x, y)``,
+    en nm dans la géométrie de l'image après l'étape - y vers le haut) - son épaisseur (``direction``
+    ``"thickness"`` : la traversée verticale) ou sa largeur (``"width"`` : horizontale, le diamètre
+    apparent d'un fil). ``scope`` : ``"material"``, toute la matière d'un seul tenant autour du point
+    (les couches touchées du même matériau, le cœur d'un fil et sa première coquille de GaN) ;
+    ``"layer"``, la seule couche cliquée (une coquille). La cote ne paraît que sur l'image de son étape
+    (spectre.plugins.structures.rendering) : une information d'un moment, pas de toute la suite."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    direction: Literal["thickness", "width"]
+    point: tuple[float, float]
+    scope: Literal["material", "layer"] = "material"
+
+    @field_validator("point")
+    @classmethod
+    def _finite_point(cls, point: tuple[float, float]) -> tuple[float, float]:
+        if not all(math.isfinite(v) and abs(v) <= MAX_MEASURE_COORDINATE for v in point):
+            raise ValueError("point de cote hors de la géométrie")
+        x, y = (round(v, 1) for v in point)
+        return (x, y)
 
 
 class LayerLabel(BaseModel):
@@ -1162,7 +1195,10 @@ class LayerLabel(BaseModel):
     d'avant elle), de gauche à droite et de haut en bas : le point suit la couche quand elle change
     (une épaisseur, une variante), et ramené sur elle s'il en sort - sur la surface pour une marque
     d'interface. ``None`` (et absent de l'enregistrement) : le point automatique. L'étiquette d'une
-    brique (une accolade) n'en a pas. Ni l'un ni l'autre ne change la version (:data:`LABEL_PLACE_KEYS`)."""
+    brique (une accolade) n'en a pas. Ni l'un ni l'autre ne change la version (:data:`LABEL_PLACE_KEYS`).
+    ``measures`` : les cotes de l'étape (:class:`Measure`), dessinées sur son image seulement ;
+    ``shown`` : ``False`` pour une étape cotée sans étiquette (seules ses cotes se dessinent). Ni
+    l'un ni l'autre ne change la version (:data:`LABEL_DRAWING_KEYS`)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1170,6 +1206,8 @@ class LayerLabel(BaseModel):
     values: list[str] = Field(default_factory=list, max_length=MAX_LABEL_VALUES)
     offset: tuple[float, float] | None = None
     anchor: tuple[float, float] | None = None
+    measures: list[Measure] = Field(default_factory=list, max_length=MAX_MEASURES)
+    shown: bool = True
 
     @field_validator("offset")
     @classmethod
@@ -1198,6 +1236,10 @@ class LayerLabel(BaseModel):
         for key in LABEL_PLACE_KEYS:
             if data.get(key) is None:
                 data.pop(key, None)
+        if not data.get("measures"):
+            data.pop("measures", None)
+        if data.get("shown", True):
+            data.pop("shown", None)
         return data
 
     @field_validator("text")
@@ -1236,9 +1278,14 @@ def layer_labels_json(labels: dict[int, LayerLabel] | None) -> dict[str, dict[st
 
 
 def label_without_place(label: Any) -> Any:
-    """Une étiquette enregistrée (``{text, values, ...}``) sans sa place sur le dessin
-    (:data:`LABEL_PLACE_KEYS`) : ce qui compte pour dire si elle a changé - le reste tel quel."""
-    return {k: v for k, v in label.items() if k not in LABEL_PLACE_KEYS} if isinstance(label, dict) else label
+    """Une étiquette enregistrée (``{text, values, ...}``) sans sa place sur le dessin ni ses cotes
+    (:data:`LABEL_DRAWING_KEYS`) : ce qui compte pour dire si elle a changé - le reste tel quel ;
+    ``None`` pour une étape seulement cotée (``shown`` faux) : comme sans étiquette."""
+    if not isinstance(label, dict):
+        return label
+    if label.get("shown", True) is False:
+        return None
+    return {k: v for k, v in label.items() if k not in LABEL_DRAWING_KEYS}
 
 
 # -- l'appartenance des étapes aux briques ----------------------------------------------------------

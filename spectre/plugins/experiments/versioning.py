@@ -145,8 +145,10 @@ def structure_signature(metadata: dict[str, Any]) -> dict[str, Any] | None:
             return process
         if isinstance(labels, dict):
             # la place d'une étiquette sur le dessin (texte déplacé, point d'accroche posé à la main)
-            # ne change pas la version
-            labels = {sid: label_without_place(label) for sid, label in labels.items()}
+            # et ses cotes ne changent pas la version ; une étape seulement cotée n'a pas d'étiquette
+            labels = {sid: kept for sid, label in labels.items() for kept in [label_without_place(label)] if kept is not None}
+            if not labels:
+                return process
         groups = _label_groups(metadata, labels) if isinstance(labels, dict) else []
         return {**process, "layer_labels": labels, **({"label_groups": groups} if groups else {})}
     revision = metadata.get("structure_image_revision")

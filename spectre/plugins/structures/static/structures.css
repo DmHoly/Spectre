@@ -1109,8 +1109,9 @@
 .sb-chip__badge--label {
   top: auto;
   bottom: -9px;
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   padding: 0 5px;
   color: var(--navy);
 }
@@ -3409,4 +3410,54 @@
 }
 .sb-samples__witness .help {
   margin: 0;
+}
+
+/* « Coter sur le dessin » (measures.js) : les cotes de l'étape, leurs longueurs, et l'attente du clic
+   sur le dessin - la vue prend un curseur en croix, les cotes déjà dessinées laissent passer le clic */
+.sb-measures {
+  display: grid;
+  gap: 6px;
+}
+.sb-measures__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.sb-measures__row .btn {
+  padding: 2px 8px;
+}
+.sb-measures__scope {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+.sb-measures__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+.sb-measures__pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px dashed var(--navy);
+  border-radius: var(--radius-sm);
+}
+.sb-measures__pending[hidden] {
+  display: none;
+}
+#svg-viewport.is-measuring,
+#svg-viewport.is-measuring * {
+  cursor: crosshair !important;
+}
+.sb-canvas__svg .sp-measure {
+  pointer-events: none;
 }

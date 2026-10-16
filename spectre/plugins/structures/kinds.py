@@ -568,7 +568,9 @@ class _Record:
         self.order = list(ids)
         self.step_names = {sid: _step_name(step, i) for i, (sid, step) in enumerate(zip(ids, steps))}
         # sans leur place (texte déplacé, point d'accroche posé) : une étiquette seulement déplacée n'a pas changé
-        self.labels = {rename[sid]: label_without_place(label) for sid, label in raw.items() if sid in rename and isinstance(label, dict)}
+        self.labels = {
+            rename[sid]: kept for sid, label in raw.items() if sid in rename and isinstance(label, dict) for kept in [label_without_place(label)] if kept is not None
+        }
         self.label_names: dict[str, str] = {}
         for sid, step in zip(ids, steps):
             if sid in self.labels:
