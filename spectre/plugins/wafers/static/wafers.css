@@ -1111,3 +1111,225 @@
 .wafer-attach__places legend { font-size: 12.5px; font-weight: 600; color: var(--text-soft); padding: 0 4px; }
 .wafer-attach__place { display: flex; align-items: center; gap: 8px; padding: 5px 2px; font-size: 13.5px; cursor: pointer; }
 .wafer-attach__place .help { margin: 0; font-size: 12px; }
+
+/* -- Détail cliquable de la vie en ligne (tracking.js : TrackingDetail) ------------------------ */
+
+.plate-fdl-bar__step {
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: transform 150ms ease, filter 150ms ease;
+}
+.plate-fdl-bar__step:hover {
+  filter: brightness(0.9);
+  transform: scaleY(1.25);
+}
+.plate-fdl-bar__step:focus-visible,
+.plate-fdl-steps__row:focus-visible,
+.plate-ticket__more:focus-visible,
+.plate-action__open:focus-visible,
+.plate-ws__item:focus-visible,
+.btn-link:focus-visible,
+.plate-links__remove:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-sm);
+}
+.plate-fdl-steps {
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+.plate-fdl-steps > summary {
+  cursor: pointer;
+  color: var(--text-soft, var(--text-faint));
+}
+.plate-fdl-steps__list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border-soft);
+}
+.plate-fdl-steps__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 4px;
+  border: none;
+  border-bottom: 1px solid var(--border-soft);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+.plate-fdl-steps__row:hover {
+  background: var(--accent-tint);
+}
+.plate-fdl-steps__dot {
+  flex: 0 0 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.plate-fdl-steps__stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.plate-fdl-steps__when {
+  color: var(--text-faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.plate-ticket__more,
+.plate-action__open,
+.btn-link,
+.plate-links__remove {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-dark);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.plate-ticket__more {
+  font-size: 12px;
+  margin-left: auto;
+}
+.plate-action__open {
+  color: inherit;
+  text-decoration-color: var(--border);
+}
+.plate-action__open:hover,
+.plate-ticket__more:hover,
+.btn-link:hover {
+  text-decoration-color: currentColor;
+}
+.plate-detail__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.plate-detail__close {
+  flex: 0 0 auto;
+  min-width: 36px;
+  padding: 0 10px;
+}
+.plate-detail__tags {
+  margin: 0 0 10px;
+}
+.plate-detail__text {
+  margin-top: 14px;
+}
+.plate-detail__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+.plate-detail__text p {
+  margin: 0;
+  white-space: pre-line;
+  line-height: 1.55;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+/* -- Structure attachée à la plaque (plate-structure.js) -------------------------------------- */
+
+.plate-structure__actions {
+  display: block;
+  margin-top: 4px;
+}
+.plate-ws__tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 12px;
+}
+.plate-ws__list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.plate-ws__list > li.help {
+  padding: 10px;
+  margin: 0;
+}
+.plate-ws__item {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: none;
+  border-bottom: 1px solid var(--border-soft);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+.plate-ws__item:hover {
+  background: var(--accent-tint);
+}
+.plate-ws__item[aria-pressed="true"] {
+  background: var(--accent-tint);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.plate-ws__desc {
+  display: block;
+  color: var(--text-faint);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.plate-ws__preview {
+  margin-top: 10px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+}
+.plate-ws__preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* -- Autres noms d'une plaque (plate-links.js) ------------------------------------------------ */
+
+.plate-links__banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.plate-links__banner svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.plate-links__item {
+  display: block;
+}
+.plate-links__remove {
+  font-size: 11.5px;
+}
+.wafer-index__alias {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}

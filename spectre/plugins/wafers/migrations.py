@@ -1,10 +1,15 @@
 """Les tables du plugin wafers : l'index des plaques se lit dans les études elles-mêmes ; ici, les
 plaques des FDL saisies à la main (:mod:`.fdl_source`, la base locale), la vie de chaque plaque en
 ligne telle qu'elle a été lue en dernier (:mod:`.tracking`) et les fiches de plaque - les plaques
-enregistrées pour elles-mêmes, avant toute étude (:mod:`.records`)."""
+enregistrées pour elles-mêmes, avant toute étude (:mod:`.records`) -, les noms successifs d'une
+plaque (:mod:`.links`) et la structure attachée à une plaque sans étude (:mod:`.structures`)."""
 
 from __future__ import annotations
 
+import json
+import sqlite3
+
+from ...kernel.db import column_names
 from ...kernel.plugin import Migration
 
 SCHEMA = """
@@ -52,8 +57,75 @@ CREATE TABLE IF NOT EXISTS wafer_records (
 );
 """
 
+
+
+def _line_facts(conn: sqlite3.Connection) -> None:
+    """Ce que la vie en ligne dit de la plaque, lisible sans relire la fiche entière : ses FDL
+    (``fdls``, JSON, normalisées) et son nom de lot JIRA (``lot_name``) - la page de la plaque, la
+    recherche par FDL et les lots détectés les lisent ; recalculés depuis les fiches déjà gardées."""
+    columns = column_names(conn, "wafer_tracking")
+    if "fdls" not in columns:
+        conn.execute("ALTER TABLE wafer_tracking ADD COLUMN fdls TEXT NOT NULL DEFAULT '[]'")
+    if "lot_name" not in columns:
+        conn.execute("ALTER TABLE wafer_tracking ADD COLUMN lot_name TEXT")
+    from .tracking_model import plate_fdls
+
+    for row in conn.execute("SELECT wafer_key, payload FROM wafer_tracking").fetchall():
+        try:
+            payload = json.loads(row[1])
+        except ValueError:
+            continue
+        conn.execute(
+            "UPDATE wafer_tracking SET fdls = ?, lot_name = ? WHERE wafer_key = ?",
+            (json.dumps(plate_fdls(payload)), payload.get("lot_name"), row[0]),
+        )
+
+
+LINKS = """
+-- Une plaque qui change de nom (spectre.plugins.wafers.links) : d'abord XX, puis YY après un
+-- collage. Une ligne par passage d'un nom au suivant, vue dans la MES (source 'mes' : une étape
+-- entrée sous un identifiant, sortie sous un autre) ou déclarée à la main ('manual').
+CREATE TABLE IF NOT EXISTS wafer_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_key TEXT NOT NULL,
+    from_lasermark TEXT NOT NULL,
+    to_key TEXT NOT NULL,
+    to_lasermark TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('mes', 'manual')),
+    note TEXT NOT NULL DEFAULT '',
+    happened_at TEXT,
+    created_by TEXT NOT NULL,
+    created_by_id INTEGER,
+    created_at TEXT NOT NULL,
+    UNIQUE (from_key, to_key)
+);
+CREATE INDEX IF NOT EXISTS idx_wafer_links_to ON wafer_links(to_key);
+"""
+
+STRUCTURES = """
+-- La structure attachée à une plaque elle-même (spectre.plugins.wafers.structures), sans étude ni
+-- µprojet : une version de référence ou une structure de la bibliothèque, avec son dessin (SVG)
+-- calculé le jour où elle a été attachée. Une plaque n'en a qu'une.
+CREATE TABLE IF NOT EXISTS wafer_structures (
+    wafer_key TEXT PRIMARY KEY,
+    lasermark TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('reference', 'saved')),
+    source_id TEXT NOT NULL,
+    version TEXT,
+    label TEXT NOT NULL,
+    svg TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    attached_by TEXT NOT NULL,
+    attached_by_id INTEGER,
+    attached_at TEXT NOT NULL
+);
+"""
+
 MIGRATIONS = (
     Migration("0001_fdl_wafers", SCHEMA),
     Migration("0002_wafer_tracking", TRACKING),
     Migration("0003_wafer_records", RECORDS),
+    Migration("0004_tracking_line_facts", _line_facts),
+    Migration("0005_wafer_links", LINKS),
+    Migration("0006_wafer_structures", STRUCTURES),
 )

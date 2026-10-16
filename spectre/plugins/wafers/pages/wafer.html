@@ -28,6 +28,7 @@
   <div class="page" style="max-width:1080px;">
     <p style="color:var(--text-faint);margin-bottom:16px;"><a href="/">Projets</a> / Plaques / <span id="plate-crumb"></span></p>
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+    <div id="plate-links-banner"></div>
 
     <div class="plate-layout">
     <aside class="card plate-structure" id="plate-structure" hidden aria-labelledby="plate-structure-title">
@@ -47,11 +48,18 @@
         <div><dt style="text-transform:none;letter-spacing:0.04em;">µprojets</dt><dd id="plate-microprojects">—</dd></div>
         <div><dt>Lot</dt><dd id="plate-lots">—</dd></div>
         <div id="plate-record-fact" hidden><dt>Fiche</dt><dd id="plate-record">—</dd></div>
+        <div id="plate-names-fact" hidden><dt>Autres noms</dt><dd id="plate-names">—</dd></div>
       </dl>
       <div class="plate-hero__actions">
         <a class="btn btn-line" id="plate-compare" href="/comparateur" hidden title="Ouvrir le comparateur sur la structure qu'a vue cette plaque, pour la comparer à d'autres">Comparer sa structure</a>
         <button type="button" class="btn btn-line" id="plate-attach" title="Faire entrer cette plaque dans une étude existante : elle y prend une place, en reçoit la structure, ses données se saisissent dans le cahier de l'étude">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Rattacher à une étude
+        </button>
+        <button type="button" class="btn btn-line" id="plate-structure-attach" title="Donner une structure à cette plaque sans passer par une étude : une version de référence ou une structure de la bibliothèque">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>Attacher une structure
+        </button>
+        <button type="button" class="btn btn-line" id="plate-link-add" title="Cette plaque a changé de nom (collage, report) : lier ses deux noms">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h11"/><path d="m12 3 4 4-4 4"/><path d="M20 17H9"/><path d="m12 21-4-4 4-4"/></svg>Autre nom
         </button>
         <button type="button" class="btn btn-line" id="plate-record-delete" hidden title="Retirer la fiche de plaque (les études qui la suivent restent)">Retirer la fiche</button>
         <div class="js-db-link"></div>
@@ -96,6 +104,10 @@
   <script src="/static/microprojects/client.js"></script>
   <script src="/static/wafers/records.js"></script>
   <script src="/static/wafers/attach.js"></script>
+  <script src="/static/references/client.js"></script>
+  <script src="/static/process_library/client.js"></script>
+  <script src="/static/wafers/plate-structure.js"></script>
+  <script src="/static/wafers/plate-links.js"></script>
   <script src="/static/structures/structure-zoom.js"></script>
   <script src="/static/wafers/tracking.js"></script>
   <script src="/static/wafers/wafer.js"></script>

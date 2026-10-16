@@ -235,8 +235,11 @@ def latest_members(found: Iterable[Occurrence]) -> dict[str, Occurrence]:
     return latest
 
 
-def _wafer_payload(key: str, found: list[Occurrence], record: dict[str, Any] | None) -> dict[str, Any]:
+def _wafer_payload(
+    key: str, found: list[Occurrence], record: dict[str, Any] | None, line: dict[str, Any] | None = None, names: list[str] | None = None
+) -> dict[str, Any]:
     members = [o for o in found if o.member]
+    line = line or {}
     return {
         "key": key,
         "lasermark": found[0].entry["sample_id"] if found else record["lasermark"],
@@ -246,6 +249,9 @@ def _wafer_payload(key: str, found: list[Occurrence], record: dict[str, Any] | N
         "fdl": _unique(value for o in members for value in o.entry["fdl"]),
         "locations": _unique(o.entry["location"] for o in members),
         "record": record,  # sa fiche de plaque (records), ou None
+        "line_fdl": list(line.get("fdls") or []),  # les FDL que la vie en ligne lui connaît (tracking)
+        "lot_name": line.get("lot_name"),  # son lot JIRA, lu en ligne
+        "aliases": list(names or []),  # ses autres noms (links : XX devenue YY)
     }
 
 
@@ -253,6 +259,20 @@ def _queries(q: str | Iterable[str]) -> list[str]:
     """Les textes cherchés : un seul, ou plusieurs lasermarks à la fois - sans les vides."""
     values = [q] if isinstance(q, str) else list(q)
     return [value for value in values if value.strip()]
+
+
+def _alias_rank(queries: list[str], key: str, names: list[str]) -> tuple[int | None, str | None]:
+    """Le rang d'une plaque pour ``queries`` : par sa clé, sinon - juste après - par l'un de ses
+    autres noms (celui qui a répondu est rendu)."""
+    direct = _q_rank(queries, key)
+    if direct is not None:
+        return 2 * direct, None
+    best: tuple[int | None, str | None] = (None, None)
+    for name in names:
+        rank = _q_rank(queries, wafer_key(name))
+        if rank is not None and (best[0] is None or 2 * rank + 1 < best[0]):
+            best = (2 * rank + 1, name)
+    return best
 
 
 def _q_rank(queries: list[str], key: str) -> int | None:
@@ -273,12 +293,22 @@ def _q_rank(queries: list[str], key: str) -> int | None:
 
 
 def wafers(
-    found: Iterable[Occurrence], *, q: str | Iterable[str] = "", fdl: str = "", records: dict[str, dict[str, Any]] | None = None
+    found: Iterable[Occurrence],
+    *,
+    q: str | Iterable[str] = "",
+    fdl: str = "",
+    records: dict[str, dict[str, Any]] | None = None,
+    line: dict[str, dict[str, Any]] | None = None,
+    aliases: dict[str, list[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Les plaques de ces occurrences et des fiches ``records``, une par clé (chacune avec ses
     études, la plus récente d'abord) - celles dont le lasermark correspond à ``q`` (un texte, ou
-    plusieurs lasermarks ; le lasermark exact d'abord), qui portent une FDL correspondant à ``fdl``
-    (lue chez les membres seulement), ou toutes."""
+    plusieurs lasermarks ; le lasermark exact d'abord, puis les plaques dont un autre nom -
+    ``aliases``, une plaque renommée - correspond : ``matched_alias``), qui portent une FDL
+    correspondant à ``fdl`` (celles des études chez les membres seulement, et celles que la vie en
+    ligne lui connaît - ``line``, publique comme sa page), ou toutes."""
+    line = line or {}
+    aliases = aliases or {}
     queries = _queries(q)
     by_key: dict[str, list[Occurrence]] = {}
     for occurrence in found:
@@ -288,14 +318,20 @@ def wafers(
         by_key.setdefault(key, [])
     ranked = []
     for key, group in by_key.items():
-        q_rank = _q_rank(queries, key) if queries else 0
-        fdl_rank = fdls.best_rank(fdl, (value for o in group if o.member for value in o.entry["fdl"])) if fdl.strip() else 0
+        q_rank, matched = _alias_rank(queries, key, aliases.get(key, [])) if queries else (0, None)
+        facts = line.get(key) or {}
+        values = [value for o in group if o.member for value in o.entry["fdl"]] + list(facts.get("fdls") or [])
+        fdl_rank = fdls.best_rank(fdl, values) if fdl.strip() else 0
         if q_rank is not None and fdl_rank is not None:
-            ranked.append(((q_rank, fdl_rank, key), _wafer_payload(key, _latest_first(group), (records or {}).get(key))))
+            payload = _wafer_payload(key, _latest_first(group), (records or {}).get(key), facts, aliases.get(key))
+            payload["matched_alias"] = matched
+            ranked.append(((q_rank, fdl_rank, key), payload))
     return [payload for _rank, payload in sorted(ranked, key=lambda item: item[0])]
 
 
-def passport(lasermark: str, found: Iterable[Occurrence], record: dict[str, Any] | None = None) -> dict[str, Any]:
+def passport(
+    lasermark: str, found: Iterable[Occurrence], record: dict[str, Any] | None = None, line: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Tout ce qu'on sait d'une plaque : chaque étude qui la suit (la plus récente d'abord), où elle
     a été rangée et ses FDL (chez les membres), sa fiche de plaque s'il y en a une - ce que montre
     sa page. Une plaque qu'aucune étude ne suit (encore) n'est pas une erreur : la page l'explique."""
@@ -310,4 +346,6 @@ def passport(lasermark: str, found: Iterable[Occurrence], record: dict[str, Any]
         "microprojects": _unique(microproject_ref(o.microproject) for o in group),
         "last_location": next((o.entry["location"] for o in members if o.entry["location"]), None),
         "record": record,
+        "line_fdl": list((line or {}).get("fdls") or []),  # les FDL que la vie en ligne lui connaît
+        "lot_name": (line or {}).get("lot_name"),
     }

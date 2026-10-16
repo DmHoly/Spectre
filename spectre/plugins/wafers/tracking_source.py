@@ -24,6 +24,7 @@ import hashlib
 import logging
 import os
 import random
+import re
 import time
 from datetime import datetime, timedelta
 from typing import Any, Callable, Protocol
@@ -307,7 +308,9 @@ class DemoSource:
         rng = random.Random(seed)
         key = lm.upper()
         lot = f"E26{seed % 90 + 10:02d}00{seed % 9 + 1}"
-        lot_name = f"QMDE{seed % 40 + 1:02d}"
+        # une plaque d'un lot de démo importé (QMDE03-W05, lots.jira.DemoSource) est de ce lot
+        named = re.match(r"^(QMDE\d{2})-W\d+$", key)
+        lot_name = named.group(1) if named else f"QMDE{seed % 40 + 1:02d}"
         alias = f"{key}-B" if scenario == "alias" else None
         mes = pd.DataFrame() if scenario == "missing" else pd.DataFrame(self._steps(key, lot, rng, scenario, alias, now))
 
@@ -455,6 +458,20 @@ class DemoSource:
                     }
                 )
         return rows
+
+
+def run_prism_hook(hook: str, params: dict[str, Any]) -> pd.DataFrame:
+    """Un hook PRISM de la ligne lu tel quel, pour un autre plugin (les lots JIRA) : 503 sans
+    configuration, 502 quand la base ne répond pas - ce module reste le seul à importer ``prism``."""
+    import prism
+
+    os.environ.setdefault("PRISM_DATA_DIR", str(data_dir() / "prism"))
+    try:
+        return prism.run_hook(hook, **params)
+    except prism.ConfigError as exc:
+        raise Unavailable(f"configuration de connexion PRISM incomplète : {exc}") from exc
+    except prism.PrismError as exc:
+        raise UpstreamError(f"la base de la ligne ne répond pas : {exc}") from exc
 
 
 _PRISM = PrismSource()

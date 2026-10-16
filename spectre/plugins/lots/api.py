@@ -15,8 +15,9 @@ from fastapi import APIRouter, Depends, Header, Query, Response
 from ...kernel.http import created, etag, if_match_version
 from ..accounts.deps import current_user
 from ..accounts.service import User
+from . import jira
 from . import service as lots
-from .schemas import LotCreate, LotPatch, LotThematics, LotWafersAdd
+from .schemas import JiraLotImport, LotCreate, LotPatch, LotThematics, LotWafersAdd
 from .service import Lot
 from .views import Context, lot_payload, summary_payload
 
@@ -113,3 +114,17 @@ def set_thematics(lot_id: int, body: LotThematics, response: Response, user: Use
     """Les thématiques déclarées « visées » (ids de ``GET /api/thematics``), remplacées en bloc."""
     lots.set_thematics(lot_id, body.thematic_ids)
     return _respond(response, lots.get(lot_id), user)
+
+
+@router.get("/jira-lots")
+def list_jira_lots(q: str = Query("", max_length=40), user: User = Depends(current_user)) -> dict:
+    """Les lots cités par les FDL JIRA (``jira_nom_lots``, hook PRISM ``jira_lots``) : ``{source,
+    items: [{name, raw, n_fdl, first, last, spectre}]}`` - ``spectre`` : le lot du même nom ici."""
+    return jira.available(q)
+
+
+@router.post("/jira-lots/import")
+def import_jira_lot(body: JiraLotImport, user: User = Depends(current_user)) -> dict:
+    """Importe un lot JIRA : le lot (créé, ou complété s'il existe), toutes ses plaques et leurs
+    fiches de plaque."""
+    return jira.import_lot(user, body.name)

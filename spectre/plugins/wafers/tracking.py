@@ -25,14 +25,16 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable, Iterable
 
 from ...kernel.db import get_conn
 from ...kernel.errors import DomainError
 from ...kernel.locks import keyed_lock
-from . import tracking_model
+from . import links, tracking_model
 from .service import wafer_key
+from .tracking_model import lot_names  # noqa: F401 - lu par les lots JIRA
 from .tracking_source import current_source
+from .tracking_source import run_prism_hook as run_line_hook  # noqa: F401 - lu par les lots JIRA
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,46 @@ DORMANT_AFTER = timedelta(days=30)
 AGING_AFTER = timedelta(days=7)
 
 _MOVEMENT_FORMAT = "%Y-%m-%d %H:%M"
+
+# Ceux qui veulent savoir qu'une plaque vient d'être relue (le plugin lots : le lot JIRA détecté) -
+# chacun reçoit (clé, lasermark, fiche assemblée) ; une erreur de l'un n'empêche pas la page.
+TrackingListener = Callable[[str, str, dict[str, Any]], None]
+_LISTENERS: list[TrackingListener] = []
+
+
+def on_tracking_read(listener: TrackingListener) -> TrackingListener:
+    """Inscrit ``listener`` (une fois) : appelé après chaque lecture des bases d'une plaque."""
+    if listener not in _LISTENERS:
+        _LISTENERS.append(listener)
+    return listener
+
+
+def _notify(key: str, lasermark: str, payload: dict[str, Any]) -> None:
+    try:
+        links.record_renames(payload.get("renames") or [])
+    except Exception:  # noqa: BLE001 - un lien en moins ne casse pas la page
+        logger.exception("suivi de la plaque %s : renommages MES non enregistrés", lasermark)
+    for listener in list(_LISTENERS):
+        try:
+            listener(key, lasermark, payload)
+        except Exception:  # noqa: BLE001
+            logger.exception("suivi de la plaque %s : l'observateur %s a échoué", lasermark, getattr(listener, "__name__", listener))
+
+
+def line_facts(keys: Iterable[str] | None = None) -> dict[str, dict[str, Any]]:
+    """Par clé de plaque déjà lue en ligne : ses FDL (``fdls``, normalisées) et son nom de lot JIRA
+    (``lot_name``) - sans relire les bases ni la fiche entière."""
+    wanted = None if keys is None else sorted({wafer_key(k) for k in keys} - {""})
+    if wanted == []:
+        return {}
+    sql = "SELECT wafer_key, fdls, lot_name FROM wafer_tracking"
+    params: tuple = ()
+    if wanted is not None:
+        sql += f" WHERE wafer_key IN ({','.join('?' * len(wanted))})"
+        params = tuple(wanted)
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return {row["wafer_key"]: {"fdls": json.loads(row["fdls"] or "[]"), "lot_name": row["lot_name"]} for row in rows}
 
 
 def _utcnow() -> datetime:
@@ -56,12 +98,15 @@ def _row(key: str) -> dict[str, Any] | None:
 def _save(key: str, lasermark: str, source: str, payload: dict[str, Any], fetched_at: datetime, error: str | None) -> None:
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO wafer_tracking (wafer_key, lasermark, source, fetched_at, last_movement, payload, error)
-               VALUES (?, ?, ?, ?, ?, ?, ?)
+            """INSERT INTO wafer_tracking (wafer_key, lasermark, source, fetched_at, last_movement, payload, error, fdls, lot_name)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(wafer_key) DO UPDATE SET lasermark = excluded.lasermark, source = excluded.source,
                    fetched_at = excluded.fetched_at, last_movement = excluded.last_movement,
-                   payload = excluded.payload, error = excluded.error""",
-            (key, lasermark, source, fetched_at.isoformat(), payload.get("last_movement"), json.dumps(payload, ensure_ascii=False), error),
+                   payload = excluded.payload, error = excluded.error, fdls = excluded.fdls, lot_name = excluded.lot_name""",
+            (
+                key, lasermark, source, fetched_at.isoformat(), payload.get("last_movement"), json.dumps(payload, ensure_ascii=False), error,
+                json.dumps(payload.get("fdl_numbers") or []), payload.get("lot_name"),
+            ),
         )
 
 
@@ -111,6 +156,7 @@ def _fetch(key: str, lasermark: str, now: datetime) -> dict[str, Any]:
     frames = source.fetch(lasermark)
     payload = tracking_model.build(frames, now=now.astimezone().replace(tzinfo=None))
     _save(key, lasermark, source.name, payload, now, None)
+    _notify(key, lasermark, payload)
     return {"wafer_key": key, "lasermark": lasermark, "source": source.name, "fetched_at": now.isoformat(), "last_movement": payload.get("last_movement"), "payload": json.dumps(payload, ensure_ascii=False), "error": None}
 
 

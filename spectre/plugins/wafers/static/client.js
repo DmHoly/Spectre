@@ -35,6 +35,20 @@ const wafersApi = {
   refreshTracking(waferKey) {
     return api.post(`/api/wafers/${encodeURIComponent(waferKey)}/tracking/refresh`, {});
   },
+  // attache une structure à la plaque, sans étude : {kind: "reference"|"saved", source_id, version}
+  setStructure(waferKey, body) {
+    return api.put(`/api/wafers/${encodeURIComponent(waferKey)}/structure`, body);
+  },
+  removeStructure(waferKey) {
+    return api.del(`/api/wafers/${encodeURIComponent(waferKey)}/structure`);
+  },
+  // une plaque qui change de nom : {from_lasermark, to_lasermark, note, happened_at}
+  createLink(body) {
+    return api.post("/api/wafer-links", body);
+  },
+  deleteLink(linkId) {
+    return api.del(`/api/wafer-links/${encodeURIComponent(linkId)}`);
+  },
   // les plaques d'une FDL - {fdl, source, editable, known, wafers: [{lasermark, slot}]}
   fdl(fdl) {
     return api.get(`/api/fdls/${encodeURIComponent(fdl)}`);
