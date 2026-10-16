@@ -13,11 +13,10 @@
   const SCOPE_LABELS = { builtin: "intégrée", shared: "partagée", microproject: "du µprojet" };
   const LEVEL_TEXT = { initial: "première version", major: "changement majeur", minor: "changement mineur", patch: "retouche", none: "sans changement" };
   const STATUS_LABELS = { draft: "brouillon", running: "en cours", hold: "en pause", concluded: "conclue", continued: "continuée", abandoned: "abandonnée" };
-  const WORK_MICROPROJECT_KEY = "spectre.libWorkMicroproject";
   // le substrat d'aperçu d'une brique sans substrat propre
   const PREVIEW_SUBSTRATE = { material: "GaN", domain_width: { value: 400, unit: "nm" }, thickness: { value: 50, unit: "nm" } };
 
-  const state = { brick: null, usages: [], workSlug: null };
+  const state = { brick: null, usages: [] };
 
   function showError(err) {
     errorBox.textContent = err ? err.message || String(err) : "";
@@ -49,9 +48,7 @@
   // -- en-tête ---------------------------------------------------------------------------------
 
   function editorHref() {
-    const slug = state.brick.microproject || state.workSlug;
-    if (!slug) return null;
-    return `/microprojets/${encodeURIComponent(slug)}/briques-technologiques/bibliotheque/${encodeURIComponent(state.brick.id)}?retour=brique`;
+    return `/bibliotheque/briques/${encodeURIComponent(state.brick.id)}?retour=brique`;
   }
 
   function renderHead() {
@@ -184,22 +181,6 @@
 
   // -- amorce ----------------------------------------------------------------------------------
 
-  async function workMicroproject() {
-    try {
-      const microprojects = await microprojectsApi.list();
-      let remembered = null;
-      try {
-        remembered = localStorage.getItem(WORK_MICROPROJECT_KEY);
-      } catch {
-        remembered = null;
-      }
-      const found = microprojects.find((m) => m.slug === remembered) || microprojects[0];
-      return found ? found.slug : null;
-    } catch {
-      return null;
-    }
-  }
-
   async function init() {
     try {
       state.brick = await processLibraryApi.techBrick(brickId);
@@ -209,9 +190,8 @@
       return;
     }
     const filters = state.brick.microproject ? { microproject: state.brick.microproject } : {};
-    const [usages, workSlug] = await Promise.all([processLibraryApi.techBrickUsages(filters).catch(() => ({})), state.brick.microproject ? null : workMicroproject()]);
+    const usages = await processLibraryApi.techBrickUsages(filters).catch(() => ({}));
     state.usages = usages[state.brick.id] || [];
-    state.workSlug = workSlug;
     renderHead();
     renderVersions();
     renderSteps();

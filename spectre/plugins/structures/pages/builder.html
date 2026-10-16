@@ -31,7 +31,6 @@
         <!-- Mode bibliothèque : un nom + partage, enregistrer/enregistrer sous à droite. -->
         <div class="sb-header__fields" id="library-header" hidden>
           <input class="sb-title-input" id="library-name" placeholder="Nom de la structure (ex : Épitaxie PGaN standard)" aria-label="Nom de la structure" autocomplete="off">
-          <label class="sb-check"><input type="checkbox" id="library-shared-checkbox"> Partagée avec tous les µprojets</label>
           <span class="sb-header__note" id="library-derived-note" hidden></span>
         </div>
 
@@ -41,7 +40,6 @@
           <input class="sb-title-input" id="brick-name" placeholder="Nom de la brique (ex : Masque + gravure RIE)" aria-label="Nom de la brique" autocomplete="off" maxlength="120">
           <input class="field sb-notes-input" id="brick-notes" placeholder="Notes : à quoi sert cette brique, quand l'utiliser…" aria-label="Notes de la brique (optionnel)">
           <label class="sb-check" title="Le substrat (et son réseau de fils) est enregistré avec la brique : posée dans une structure vide, elle l'apporte"><input type="checkbox" id="brick-start-checkbox"> Brique de départ</label>
-          <label class="sb-check"><input type="checkbox" id="brick-shared-checkbox"> Partagée</label>
           <input class="field sb-notes-input" id="brick-note" placeholder="Pourquoi cette version ? (une brique de référence l'exige)" aria-label="Pourquoi cette version" maxlength="2000" hidden>
           <span class="sb-header__note" id="brick-version" hidden></span>
         </div>
@@ -50,8 +48,13 @@
         <div class="sb-header__fields" id="preset-header" hidden>
           <input class="sb-title-input" id="preset-name" placeholder="Nom du préset (ex : Gravure sélective Al2O3)" aria-label="Nom du préset" autocomplete="off" maxlength="200">
           <input class="field sb-notes-input" id="preset-notes" placeholder="Notes : à quoi sert ce préset, quand l'utiliser…" aria-label="Notes du préset (optionnel)">
-          <label class="sb-check"><input type="checkbox" id="preset-shared-checkbox"> Partagé</label>
           <span class="sb-header__note" id="preset-version" hidden></span>
+        </div>
+
+        <!-- Un élément partagé que l'on modifie : son propriétaire (et son équipe), et qui peut le modifier. -->
+        <div class="sb-header__fields" id="item-access" hidden>
+          <span id="item-access-badges"></span>
+          <button class="btn btn-line" id="item-access-btn" type="button" style="padding:3px 10px;font-size:12px;" hidden>Accès</button>
         </div>
 
         <!-- Mode expérience : les trois étapes du lancement, pilotables directement. -->
@@ -315,7 +318,7 @@
                 <label for="group-brick-name">Grouper en brique technologique</label>
                 <input class="field" id="group-brick-name" placeholder="Nom de la nouvelle brique" maxlength="120">
                 <label class="sb-check" id="group-brick-start-wrap" hidden title="Le substrat (et son réseau de fils) est enregistré avec la brique : posée dans une structure vide, elle l'apporte"><input type="checkbox" id="group-brick-start"> Garder le substrat (brique de départ)</label>
-                <div class="help" id="group-brick-help">La brique est enregistrée dans la bibliothèque du µprojet et reste réutilisable ailleurs. Les étapes doivent être consécutives.</div>
+                <div class="help" id="group-brick-help">La brique est enregistrée dans la bibliothèque du µprojet et reste réutilisable ailleurs (dans une expérience, la bibliothèque commune se compose depuis /bibliotheque). Les étapes doivent être consécutives.</div>
                 <button class="btn btn-primary btn-block" id="group-brick-btn" type="button">Grouper en brique</button>
               </div>
               <button class="btn btn-danger btn-block" id="delete-selection-btn" type="button">Supprimer ces étapes</button>
@@ -481,6 +484,9 @@
   <script src="/static/wafers/client.js"></script>
   <script src="/static/structures/client.js"></script>
   <script src="/static/process_library/client.js"></script>
+  <script src="/static/teams/client.js"></script>
+  <script src="/static/microprojects/roles.js"></script>
+  <script src="/static/process_library/access.js"></script>
   <script src="/static/experiments/client.js"></script>
   <script src="/static/references/client.js"></script>
   <script src="/static/intent_forms/client.js"></script>

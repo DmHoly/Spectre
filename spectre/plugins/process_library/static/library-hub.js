@@ -1,8 +1,7 @@
 /* Page /bibliotheque : hub global (commun à tous les µprojets). Liste les structures, présets et
-   briques intégrés et partagés - sans µprojet - et permet à leur auteur (ou à un administrateur) de
-   renommer ou supprimer un élément partagé. Composer une structure ou une brique passe par le
-   constructeur, qui vit sous un µprojet (simulation) : d'où le sélecteur "µprojet de travail",
-   mémorisé en local, qui ne sert qu'à ouvrir ces éditeurs. */
+   briques intégrés et partagés, avec leur propriétaire (et son équipe), et permet de les composer
+   dans le constructeur - sans µprojet - et à leur auteur (ou à un administrateur) de les renommer,
+   les supprimer ou de donner la main à d'autres comptes et équipes. */
 
 
 // le type de l'étape d'un préset, comme dans la palette du constructeur
@@ -19,8 +18,6 @@ const PRESET_KIND_LABELS = {
   flip: "Retournement",
 };
 
-const WORK_MICROPROJECT_KEY = "spectre.libWorkMicroproject";
-
 const SCOPE_LABELS = { builtin: "intégré", shared: "partagé" };
 
 const COLLECTIONS = [
@@ -28,32 +25,34 @@ const COLLECTIONS = [
     listId: "shared-structures",
     noun: "la structure",
     list: () => processLibraryApi.savedStructures(),
+    setEditors: (id, body) => processLibraryApi.setStructureEditors(id, body),
     update: (id, changes) => processLibraryApi.updateSavedStructure(id, changes),
     remove: (id) => processLibraryApi.deleteSavedStructure(id),
     summary: (item) => `${item.steps.length} étape(s)${usageText(`structure:${item.id}`)}`,
-    editorHref: (s, item) => `/microprojets/${s}/structures/bibliotheque/${encodeURIComponent(item.id)}?retour=bibliotheque`,
+    editorHref: (item) => `/bibliotheque/structures/${encodeURIComponent(item.id)}?retour=bibliotheque`,
   },
   {
     listId: "shared-presets",
     noun: "le préset",
     list: () => processLibraryApi.stepPresets(),
+    setEditors: (id, body) => processLibraryApi.setPresetEditors(id, body),
     update: (id, changes) => processLibraryApi.updateStepPreset(id, changes),
     remove: (id) => processLibraryApi.deleteStepPreset(id),
     summary: (item) => `${PRESET_KIND_LABELS[item.step.kind] || item.step.kind} · v${item.version || 1}`,
-    editorHref: (s, item) => `/microprojets/${s}/presets-etapes/bibliotheque/${encodeURIComponent(item.id)}?retour=bibliotheque`,
+    editorHref: (item) => `/bibliotheque/presets/${encodeURIComponent(item.id)}?retour=bibliotheque`,
   },
   {
     listId: "shared-bricks",
     noun: "la brique",
     list: () => processLibraryApi.techBricks(),
+    setEditors: (id, body) => processLibraryApi.setBrickEditors(id, body),
     update: (id, changes) => processLibraryApi.updateTechBrick(id, changes),
     remove: (id) => processLibraryApi.deleteTechBrick(id),
     summary: (item) => `${item.reference ? "brique de référence · " : ""}${item.substrate ? "brique de départ · " : ""}${item.steps.length} étape(s) · v${item.version || "1.0"}${usageText(item.id)}`,
-    editorHref: (s, item) => `/microprojets/${s}/briques-technologiques/bibliotheque/${encodeURIComponent(item.id)}?retour=bibliotheque`,
+    editorHref: (item) => `/bibliotheque/briques/${encodeURIComponent(item.id)}?retour=bibliotheque`,
   },
 ];
 
-let workSlug = null;
 const loaded = new Map(); // listId -> éléments affichés
 let usages = {}; // id de brique, ou `structure:<id>` -> les études qui en ont une copie (GET /api/tech-brick-usages)
 
@@ -73,23 +72,22 @@ function clearError() {
   errorBox.style.display = "none";
 }
 
-function rememberedMicroproject() {
-  try {
-    return localStorage.getItem(WORK_MICROPROJECT_KEY);
-  } catch {
-    return null;
-  }
-}
-
 function itemRow(collection, item) {
   const author = item.created_by && item.created_by.name ? ` · par ${escapeHtml(item.created_by.name)}` : "";
-  const s = workSlug ? encodeURIComponent(workSlug) : null;
   const actions = [];
-  if (s && item.can_edit) {
-    actions.push(`<a class="btn btn-line" href="${collection.editorHref(s, item)}" style="padding:5px 10px;font-size:12px;">Modifier</a>`);
+  const href = collection.editorHref(item);
+  if (item.can_edit) {
+    actions.push(`<a class="btn btn-line" href="${href}" style="padding:5px 10px;font-size:12px;">Modifier</a>`);
+  } else {
+    actions.push(`<a class="btn btn-line" href="${href}&dupliquer=1" style="padding:5px 10px;font-size:12px;">Dupliquer</a>`);
+  }
+  if (item.can_manage_access) {
+    actions.push(`<button class="btn btn-line js-access" data-id="${escapeHtml(item.id)}" type="button" style="padding:5px 10px;font-size:12px;">Accès</button>`);
   }
   if (item.can_edit) {
     actions.push(`<button class="btn btn-line js-rename" data-id="${escapeHtml(item.id)}" type="button" style="padding:5px 10px;font-size:12px;">Renommer</button>`);
+  }
+  if (item.can_manage_access) {
     actions.push(
       `<button class="btn btn-line js-remove" data-id="${escapeHtml(item.id)}" type="button" style="padding:5px 10px;font-size:12px;color:var(--danger);">Supprimer</button>`
     );
@@ -99,6 +97,7 @@ function itemRow(collection, item) {
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:600;">${escapeHtml(item.name)}
           <span style="font-weight:400;font-size:11px;color:var(--text-faint);">· ${SCOPE_LABELS[item.scope] || escapeHtml(item.scope)}${author}</span>
+          ${LibraryAccess.badgesHtml(item)}
         </div>
         <div style="font-size:12px;color:var(--text-faint);">${escapeHtml(collection.summary(item))}</div>
       </div>
@@ -117,6 +116,16 @@ function renderCollection(collection) {
       const name = item && window.prompt(`Nouveau nom pour ${collection.noun} « ${item.name} » :`, item.name);
       if (!name || !name.trim() || name.trim() === item.name) return;
       await changeCollection(collection, () => collection.update(item.id, { name: name.trim() }));
+    });
+  });
+  host.querySelectorAll(".js-access").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const item = find(btn.dataset.id);
+      if (!item) return;
+      LibraryAccess.open(item, {
+        save: (body) => collection.setEditors(item.id, body),
+        onSaved: () => loadCollection(collection),
+      });
     });
   });
   host.querySelectorAll(".js-remove").forEach((btn) => {
@@ -145,57 +154,10 @@ async function changeCollection(collection, change) {
   }
 }
 
-function applyMicroproject(microproject) {
-  // microproject = { slug, role } ou null : seulement pour ouvrir le constructeur et la page des présets
-  workSlug = microproject ? microproject.slug : null;
-  document.querySelectorAll(".js-needs-microproject").forEach((el) => (el.style.display = microproject ? "" : "none"));
-  COLLECTIONS.forEach(renderCollection);
-  if (!microproject) return;
-  try {
-    localStorage.setItem(WORK_MICROPROJECT_KEY, microproject.slug);
-  } catch {
-    /* mode privé : on continue sans mémoriser */
-  }
-  const s = encodeURIComponent(microproject.slug);
-  const set = (id, href) => {
-    const el = document.getElementById(id);
-    if (el) el.href = href;
-  };
-  set("new-structure-link", `/microprojets/${s}/structures/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
-  set("presets-link", `/microprojets/${s}/presets-etapes?partagee=1`);
-  set("new-brick-link", `/microprojets/${s}/briques-technologiques/bibliotheque/nouvelle?retour=bibliotheque&partagee=1`);
-  set("bricks-link", `/microprojets/${s}/briques-technologiques`);
-}
-
-async function initWorkMicroproject() {
-  const microprojects = await microprojectsApi.list();
-  if (microprojects.length === 0) {
-    document.getElementById("no-microproject-msg").style.display = "";
-    applyMicroproject(null);
-    return;
-  }
-  const select = document.getElementById("work-microproject");
-  select.innerHTML = microprojects.map((p) => `<option value="${escapeHtml(p.slug)}">${escapeHtml(p.name)}</option>`).join("");
-  const remembered = rememberedMicroproject();
-  const initial = microprojects.find((p) => p.slug === remembered) || microprojects[0];
-  select.value = initial.slug;
-  document.getElementById("work-microproject-row").style.display = microprojects.length > 1 ? "" : "none";
-  applyMicroproject(initial);
-  select.addEventListener("change", () => {
-    const chosen = microprojects.find((p) => p.slug === select.value);
-    if (chosen) applyMicroproject(chosen);
-  });
-}
-
 async function init() {
   try {
     usages = await processLibraryApi.techBrickUsages({}).catch(() => ({})); // un renseignement : la page s'en passe
     await Promise.all(COLLECTIONS.map(loadCollection));
-  } catch (err) {
-    showError(err);
-  }
-  try {
-    await initWorkMicroproject();
   } catch (err) {
     showError(err);
   }

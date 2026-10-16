@@ -13,3 +13,7 @@ class LibraryItem(BaseModel):
     created_by: int | None = None  # id du compte ; None pour un élément intégré ou antérieur à cette trace
     updated_by: int | None = None
     created_at: str
+    # qui d'autre modifie un élément partagé (en plus de son auteur et des administrateurs) : des comptes
+    # et des équipes, donnés par son auteur ; ils voyagent avec l'élément
+    editors: list[int] = []
+    editor_teams: list[int] = []

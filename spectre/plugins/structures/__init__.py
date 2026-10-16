@@ -10,6 +10,10 @@ PLUGIN = Plugin(
     depends_on=("accounts", "library", "attachments"),
     router=router,
     pages=(
+        # la bibliothèque se compose sans µprojet ; les routes sous un µprojet restent (anciens liens)
+        Page("/bibliotheque/structures/{structure_id}", "builder.html"),
+        Page("/bibliotheque/briques/{brick_id}", "builder.html"),
+        Page("/bibliotheque/presets/{preset_id}", "builder.html"),
         Page("/microprojets/{slug}/briques-technologiques/bibliotheque/nouvelle", "builder.html"),
         Page("/microprojets/{slug}/briques-technologiques/bibliotheque/{brick_id}", "builder.html"),
         Page("/microprojets/{slug}/presets-etapes/bibliotheque/nouvelle", "builder.html"),

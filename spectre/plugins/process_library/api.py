@@ -41,7 +41,7 @@ class _InlineLatticeAnchors(BaseModel):
 
 class _NewItem(BaseModel):
     name: str
-    scope: WritableScope
+    scope: WritableScope = "shared"  # ranger dans un µprojet n'est plus qu'un reste d'avant la bibliothèque commune
     microproject: str | None = None
 
 
@@ -148,6 +148,15 @@ def _list(collection: Collection, user: User, microproject: str | None, scope: s
     return [serialize(entry) for entry in service.list_items(collection, user, microproject_slug=microproject, scope=scope)]
 
 
+class EditorsBody(BaseModel):
+    emails: list[str] = []
+    team_slugs: list[str] = []
+
+
+def _put_editors(collection: Collection, item_id: str, body: EditorsBody, user: User) -> service.Entry:
+    return service.set_editors(collection, user, item_id, emails=body.emails, team_slugs=body.team_slugs)
+
+
 def _create(collection: Collection, body: _NewItem, user: User, response: Response) -> dict[str, Any]:
     entry = service.create_item(collection, user, _content(body), scope=body.scope, microproject_slug=body.microproject)
     response.headers["Location"] = f"/api/{collection.key}/{entry.item.id}"
@@ -177,6 +186,12 @@ def update_saved_structure(structure_id: str, body: SavedStructureChanges, user:
     return _Serializer(user)(service.update_item(SAVED_STRUCTURES, user, structure_id, _changes(body)))
 
 
+@router.put("/saved-structures/{structure_id}/editors")
+def put_saved_structure_editors(structure_id: str, body: EditorsBody, user: User = Depends(current_user)) -> dict[str, Any]:
+    """Qui d'autre que l'auteur modifie cette structure partagée : des comptes et des équipes."""
+    return _Serializer(user)(_put_editors(SAVED_STRUCTURES, structure_id, body, user))
+
+
 @router.delete("/saved-structures/{structure_id}", status_code=204, response_class=Response)
 def delete_saved_structure(structure_id: str, user: User = Depends(current_user)) -> None:
     service.delete_item(SAVED_STRUCTURES, user, structure_id)
@@ -203,6 +218,11 @@ def get_step_preset(preset_id: str, user: User = Depends(current_user)) -> dict[
 @router.patch("/step-presets/{preset_id}")
 def update_step_preset(preset_id: str, body: StepPresetChanges, user: User = Depends(current_user)) -> dict[str, Any]:
     return _Serializer(user)(service.update_item(STEP_PRESETS, user, preset_id, _changes(body)))
+
+
+@router.put("/step-presets/{preset_id}/editors")
+def put_step_preset_editors(preset_id: str, body: EditorsBody, user: User = Depends(current_user)) -> dict[str, Any]:
+    return _Serializer(user)(_put_editors(STEP_PRESETS, preset_id, body, user))
 
 
 @router.delete("/step-presets/{preset_id}", status_code=204, response_class=Response)
@@ -249,6 +269,11 @@ def update_tech_brick(brick_id: str, body: TechBrickChanges, user: User = Depend
     """Modifier une brique : un changement de contenu fait une version (``note`` : pourquoi, exigée
     d'une brique de référence - 422 ``brick_note_required`` sinon)."""
     return brick_payload(service.update_item(TECH_BRICKS, user, brick_id, _changes(body)), user, detail=True)
+
+
+@router.put("/tech-bricks/{brick_id}/editors")
+def put_tech_brick_editors(brick_id: str, body: EditorsBody, user: User = Depends(current_user)) -> dict[str, Any]:
+    return brick_payload(_put_editors(TECH_BRICKS, brick_id, body, user), user, detail=True)
 
 
 @router.delete("/tech-bricks/{brick_id}/reference")

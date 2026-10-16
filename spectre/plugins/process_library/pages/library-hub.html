@@ -33,13 +33,6 @@
 
     <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
 
-    <div id="work-microproject-row" class="card card-pad" style="max-width:900px;margin-bottom:22px;display:none;">
-      <label for="work-microproject" style="font-size:12px;">µprojet de travail</label>
-      <select class="field" id="work-microproject" style="margin-top:4px;max-width:360px;"></select>
-      <p class="help" style="margin:8px 0 0;">Les présets, briques et structures créés en « partagé » sont visibles depuis tous vos µprojets. Ce choix sert seulement à ouvrir le constructeur (la simulation a besoin d'un µprojet).</p>
-    </div>
-    <p id="no-microproject-msg" class="help" style="display:none;margin-bottom:22px;">Créez d'abord un µprojet pour composer de nouveaux éléments dans le constructeur.</p>
-
     <div class="docs-hub-grid">
       <div class="card card-pad" style="display:flex;flex-direction:column;gap:10px;border-left:3px solid var(--gold);">
         <div style="font-size:15.5px;font-weight:700;">Références de structure</div>
@@ -61,7 +54,7 @@
           point de départ d'une nouvelle expérience.
         </div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
-          <a id="new-structure-link" href="#" class="js-needs-microproject" style="color:var(--accent-dark);">+ Nouvelle structure</a>
+          <a id="new-structure-link" href="/bibliotheque/structures/nouvelle?retour=bibliotheque" style="color:var(--accent-dark);">+ Nouvelle structure</a>
         </div>
       </div>
 
@@ -72,7 +65,7 @@
           la retrouver en un clic dans le formulaire d'étape.
         </div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
-          <a id="presets-link" href="#" class="js-needs-microproject" style="color:var(--accent-dark);">Gérer / créer un préset &rarr;</a>
+          <a id="new-preset-link" href="/bibliotheque/presets/nouvelle?retour=bibliotheque" style="color:var(--accent-dark);">+ Nouveau préset</a>
         </div>
       </div>
 
@@ -85,8 +78,7 @@
           que tout le monde reprend.
         </div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;">
-          <a id="new-brick-link" href="#" class="js-needs-microproject" style="color:var(--accent-dark);">+ Nouvelle brique</a>
-          <a id="bricks-link" href="#" class="js-needs-microproject" style="color:var(--accent-dark);">Toutes les briques du µprojet &rarr;</a>
+          <a id="new-brick-link" href="/bibliotheque/briques/nouvelle?retour=bibliotheque" style="color:var(--accent-dark);">+ Nouvelle brique</a>
           <a href="/briques" style="color:var(--accent-dark);">Briques de référence &rarr;</a>
         </div>
       </div>
@@ -95,8 +87,8 @@
 
     <div class="section-title" style="margin:28px 0 10px;">Éléments intégrés et partagés</div>
     <p style="color:var(--text-soft);font-size:13.5px;margin-bottom:14px;max-width:64ch;">
-      Visibles depuis tous les µprojets. Un élément partagé ne se renomme, ne se modifie et ne se
-      supprime que par son auteur ou un administrateur ; un élément intégré se change dans les
+      Visibles par tous. Un élément partagé se modifie par son auteur, un administrateur ou ceux à qui
+      l'auteur a donné la main (le badge dit à qui il est) ; seul l'auteur le supprime ; un élément intégré se change dans les
       fichiers YAML ci-dessous.
     </p>
     <div class="card card-pad" style="margin-bottom:14px;">
@@ -151,8 +143,11 @@
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/accounts/client.js"></script>
   <script src="/static/microprojects/client.js"></script>
+  <script src="/static/microprojects/roles.js"></script>
+  <script src="/static/teams/client.js"></script>
   <script src="/static/library/client.js"></script>
   <script src="/static/process_library/client.js"></script>
+  <script src="/static/process_library/access.js"></script>
   <script src="/static/kernel/vendor/codemirror.min.js"></script>
   <script src="/static/kernel/vendor/codemirror-yaml.min.js"></script>
   <script src="/static/process_library/library-hub.js"></script>

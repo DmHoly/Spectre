@@ -17,6 +17,16 @@ const processLibraryApi = {
   updateSavedStructure(structureId, changes) {
     return api.patch(`/api/saved-structures/${encodeURIComponent(structureId)}`, changes);
   },
+  // {emails, team_slugs} : qui d'autre que l'auteur modifie un élément partagé ; rend l'élément à jour
+  setStructureEditors(structureId, body) {
+    return api.put(`/api/saved-structures/${encodeURIComponent(structureId)}/editors`, body);
+  },
+  setPresetEditors(presetId, body) {
+    return api.put(`/api/step-presets/${encodeURIComponent(presetId)}/editors`, body);
+  },
+  setBrickEditors(brickId, body) {
+    return api.put(`/api/tech-bricks/${encodeURIComponent(brickId)}/editors`, body);
+  },
   deleteSavedStructure(structureId) {
     return api.del(`/api/saved-structures/${encodeURIComponent(structureId)}`);
   },

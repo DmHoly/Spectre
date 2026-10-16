@@ -1,5 +1,5 @@
 /* Mode bibliothèque : choisir une structure enregistrée pour démarrer une expérience, et
-   enregistrer/dupliquer une structure dans la bibliothèque (projet ou partagée). */
+   enregistrer/dupliquer une structure dans la bibliothèque (partagée). */
 
 async function loadChosenStructureForExperience() {
   if (!chosenStructureId) return;
@@ -40,20 +40,19 @@ async function saveLibraryStructure(forceNew) {
     lattice_openings: latticeOpeningsPayload(state.steps),
     bricks: bricksPayload(state.steps),
     ...(typeof StepReport !== "undefined" && pluginEnabled("step_report") ? { step_comments: StepReport.commentsPayload(state.steps) } : {}),
-    scope: document.getElementById("library-shared-checkbox").checked ? "shared" : "microproject",
-    microproject: slug,
+    ...newItemScope(),
   };
   try {
     const saved =
       !forceNew && state.editingLibraryId
-        ? await processLibraryApi.updateSavedStructure(state.editingLibraryId, payload)
+        ? await processLibraryApi.updateSavedStructure(state.editingLibraryId, withoutScope(payload))
         : await processLibraryApi.createSavedStructure({ ...payload, derived_from: state.derivedFrom || null });
     if (returnTo === "nouvelle-experience") {
       window.location.href = `/microprojets/${slug}/structures/nouvelle?structure=${encodeURIComponent(saved.id)}`;
     } else if (returnTo === "bibliotheque") {
       window.location.href = "/bibliotheque";
     } else {
-      window.location.href = `/microprojets/${slug}#structures`;
+      window.location.href = slug ? `/microprojets/${slug}#structures` : "/bibliotheque";
     }
   } catch (err) {
     showError(err);
@@ -63,10 +62,6 @@ async function saveLibraryStructure(forceNew) {
 async function initLibraryMode() {
   document.getElementById("library-header").hidden = false;
   document.getElementById("library-save-btn").hidden = false;
-  // Arrivée depuis le hub /bibliotheque (?partagee=1) : la structure sera par défaut "partagée
-  // avec tous les µprojets", pas propre au µprojet de travail choisi pour ouvrir l'éditeur.
-  if (queryParams.get("partagee") === "1") document.getElementById("library-shared-checkbox").checked = true;
-
   if (!libraryStructureId) {
     setPageTitle("Nouvelle structure");
     document.getElementById("library-name").focus();
@@ -91,7 +86,7 @@ async function initLibraryMode() {
     } else {
       setPageTitle("Modifier la structure");
       document.getElementById("library-name").value = found.name;
-      document.getElementById("library-shared-checkbox").checked = found.scope === "shared";
+      showItemAccess(found, processLibraryApi.setStructureEditors);
       state.derivedFrom = found.derived_from || null;
       state.editingLibraryId = found.id;
       document.getElementById("library-save-as-btn").hidden = false;

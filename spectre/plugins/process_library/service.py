@@ -31,10 +31,12 @@ from ...kernel.db import data_dir
 from ...kernel.errors import Conflict, Forbidden, InvalidInput, NotFound
 from ...kernel.json_store import ItemStore
 from ...kernel.locks import keyed_lock
+from ..accounts import service as accounts
 from ..accounts.service import User
 from ..microprojects import service as microprojects
 from ..microprojects.service import ROLE_ORDER, Microproject
 from ..structures import simulation
+from ..teams import service as teams
 from .models import LibraryItem
 from .step_presets import StepPreset, default_step_presets, revised
 from .structure_library import SavedStructure, default_structure_presets
@@ -101,12 +103,26 @@ def can_read(entry: Entry, user: User) -> bool:
     return entry.microproject is None or _role(entry.microproject, user) >= ROLE_ORDER["viewer"]
 
 
+def _is_owner(entry: Entry, user: User) -> bool:
+    return user.is_admin or (entry.item.created_by is not None and entry.item.created_by == user.id)
+
+
 def can_edit(entry: Entry, user: User) -> bool:
     if entry.scope == "builtin":
         return False
     if entry.scope == "shared":
-        return user.is_admin or (entry.item.created_by is not None and entry.item.created_by == user.id)
+        item = entry.item
+        return (
+            _is_owner(entry, user)
+            or user.id in item.editors
+            or bool(item.editor_teams and set(item.editor_teams) & set(teams.roles_of(user.id)))
+        )
     return _role(entry.microproject, user) >= ROLE_ORDER["editor"]
+
+
+def can_manage_access(entry: Entry, user: User) -> bool:
+    """Qui donne ou retire le droit de modifier un élément partagé : son auteur, un administrateur."""
+    return entry.scope == "shared" and _is_owner(entry, user)
 
 
 def _require_edit(entry: Entry, user: User) -> None:
@@ -114,8 +130,14 @@ def _require_edit(entry: Entry, user: User) -> None:
         raise Forbidden("Un élément intégré se modifie dans les fichiers de la bibliothèque (réservé aux administrateurs).")
     if not can_edit(entry, user):
         if entry.scope == "shared":
-            raise Forbidden("Seul son auteur ou un administrateur peut modifier ou supprimer un élément partagé.")
+            raise Forbidden("Seuls son auteur, un administrateur ou ceux à qui l'auteur a donné la main modifient un élément partagé.")
         raise Forbidden("Il faut être éditeur de ce µprojet pour modifier ou supprimer cet élément.")
+
+
+def _require_delete(entry: Entry, user: User) -> None:
+    _require_edit(entry, user)
+    if entry.scope == "shared" and not _is_owner(entry, user):
+        raise Forbidden("Seul son auteur ou un administrateur supprime un élément partagé.")
 
 
 def _microproject(slug: str) -> Microproject:
@@ -281,9 +303,39 @@ def update_item(collection: Collection[ItemT], user: User, item_id: str, changes
 def delete_item(collection: Collection, user: User, item_id: str) -> None:
     with _lock(collection):
         entry = get_item(collection, user, item_id)
-        _require_edit(entry, user)
+        _require_delete(entry, user)
         with collection.store(entry.microproject).edit() as items:
             items[:] = [raw for raw in items if raw.get("id") != item_id]
+
+
+def set_editors(
+    collection: Collection[ItemT], user: User, item_id: str, *, emails: list[str], team_slugs: list[str]
+) -> Entry[ItemT]:
+    """Remplace ceux à qui l'auteur de l'élément partagé ``item_id`` donne la main : des comptes
+    (par leur adresse) et des équipes (par leur identifiant)."""
+    editors: list[int] = []
+    for email in emails:
+        account = accounts.get_by_email(email.strip())
+        if account is None:
+            raise NotFound(f"Aucun compte pour {email.strip()!r}.", code="no_account")
+        if account.id not in editors:
+            editors.append(account.id)
+    editor_teams: list[int] = []
+    for slug in team_slugs:
+        try:
+            team = teams.get_by_slug(slug)
+        except teams.TeamNotFoundError as exc:
+            raise NotFound(f"Équipe {slug!r} introuvable.") from exc
+        if team.id not in editor_teams:
+            editor_teams.append(team.id)
+    with _lock(collection):
+        entry = get_item(collection, user, item_id)
+        if not can_manage_access(entry, user):
+            raise Forbidden("Seul l'auteur d'un élément partagé (ou un administrateur) choisit qui peut le modifier.")
+        item = entry.item.model_copy(update={"editors": [i for i in editors if i != entry.item.created_by], "editor_teams": editor_teams})
+        with collection.store(None).edit() as items:
+            items[:] = [item.model_dump(mode="json") if raw.get("id") == item.id else raw for raw in items]
+    return Entry(item, "shared")
 
 
 # -- les briques de référence ----------------------------------------------------------------------

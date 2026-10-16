@@ -3,11 +3,14 @@
    Chargé en premier - tous les autres modules lisent `state` et utilisent `showError`/`clearError`. */
 
 // Les routes du constructeur (spectre/plugins/structures/__init__.py) ; « nouvelle » tient lieu de l'id.
-const libraryRoute = routeParams("/microprojets/{slug}/structures/bibliotheque/{structure_id}");
-const brickRoute = routeParams("/microprojets/{slug}/briques-technologiques/bibliotheque/{brick_id}");
-const presetRoute = routeParams("/microprojets/{slug}/presets-etapes/bibliotheque/{preset_id}");
+// La bibliothèque se compose sans µprojet (/bibliotheque/...) ; les routes sous un µprojet (anciens
+// liens, et retour vers une nouvelle expérience) servent la même page.
+const libraryRoute = routeParams(["/bibliotheque/structures/{structure_id}", "/microprojets/{slug}/structures/bibliotheque/{structure_id}"]);
+const brickRoute = routeParams(["/bibliotheque/briques/{brick_id}", "/microprojets/{slug}/briques-technologiques/bibliotheque/{brick_id}"]);
+const presetRoute = routeParams(["/bibliotheque/presets/{preset_id}", "/microprojets/{slug}/presets-etapes/bibliotheque/{preset_id}"]);
 const evolveRoute = routeParams("/microprojets/{slug}/experiences/{experiment_id}/evoluer");
-const { slug } = libraryRoute || brickRoute || presetRoute || evolveRoute || routeParams("/microprojets/{slug}/structures/nouvelle");
+// le µprojet de l'adresse : null dans la bibliothèque (sans µprojet)
+const slug = (libraryRoute || brickRoute || presetRoute || evolveRoute || routeParams("/microprojets/{slug}/structures/nouvelle") || {}).slug || null;
 const isLibraryMode = Boolean(libraryRoute);
 const libraryStructureId = isLibraryMode && libraryRoute.structure_id !== "nouvelle" ? libraryRoute.structure_id : null;
 // Mode brique : réutilise ce même constructeur pour composer/éditer une brique technologique (une
@@ -162,8 +165,47 @@ function setPageTitle(text) {
   document.title = `${text} — Spectre`;
   const crumb = document.getElementById("crumb");
   if (crumb) {
-    crumb.innerHTML = `/ <a href="/microprojets/${encodeURIComponent(slug)}">${escapeHtml(slug)}</a> / ${escapeHtml(text)}`;
+    crumb.innerHTML = slug
+      ? `/ <a href="/microprojets/${encodeURIComponent(slug)}">${escapeHtml(slug)}</a> / ${escapeHtml(text)}`
+      : `/ <a href="/bibliotheque">Bibliothèque</a> / ${escapeHtml(text)}`;
   }
+}
+
+// Où ranger un élément de bibliothèque que l'on crée : partagé (lisible par tous, son auteur le
+// donne à modifier à qui il veut), sauf une brique ou un préset créé depuis une expérience, qui reste
+// d'abord propre à son µprojet.
+function newItemScope({ shared = false } = {}) {
+  const inLibrary = isLibraryMode || isBrickMode || isPresetMode;
+  return shared || inLibrary || !slug ? { scope: "shared", microproject: null } : { scope: "microproject", microproject: slug };
+}
+
+// Une modification sur place garde la portée de l'élément (un reste rangé dans un µprojet y reste).
+function withoutScope({ scope, microproject, ...rest }) {
+  return rest;
+}
+
+// Le badge du propriétaire (et de ses équipes), et « Accès » pour qui donne la main (auteur, admin),
+// à côté du nom d'un élément partagé que l'on modifie. `item` : l'élément rendu par l'API ;
+// `setEditors` : la fonction du client qui enregistre les accès de ce type d'élément.
+function showItemAccess(item, setEditors) {
+  const host = document.getElementById("item-access");
+  if (!host) return;
+  if (!item || item.scope !== "shared") {
+    host.hidden = true;
+    return;
+  }
+  host.hidden = false;
+  document.getElementById("item-access-badges").innerHTML = LibraryAccess.badgesHtml(item);
+  const button = document.getElementById("item-access-btn");
+  button.hidden = !item.can_manage_access;
+  button.onclick = () =>
+    LibraryAccess.open(item, {
+      save: (body) => setEditors(item.id, body),
+      onSaved: (updated) => {
+        item = { ...item, ...updated };
+        document.getElementById("item-access-badges").innerHTML = LibraryAccess.badgesHtml(item);
+      },
+    });
 }
 
 function lengthValue(id) {

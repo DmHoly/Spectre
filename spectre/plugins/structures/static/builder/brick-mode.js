@@ -53,17 +53,16 @@ async function saveTechBrick(forceNew) {
     bricks: bricksPayload(steps),
     substrate: document.getElementById("brick-start-checkbox").checked ? substrateSpec() : null,
     notes: document.getElementById("brick-notes").value.trim() || null,
-    scope: document.getElementById("brick-shared-checkbox").checked ? "shared" : "microproject",
-    microproject: slug,
+    ...newItemScope(),
   };
   try {
     if (!forceNew && state.editingBrickId) {
-      await processLibraryApi.updateTechBrick(state.editingBrickId, payload);
+      await processLibraryApi.updateTechBrick(state.editingBrickId, withoutScope(payload));
     } else {
       await processLibraryApi.createTechBrick(payload);
     }
     window.location.href =
-      returnTo === "bibliotheque" ? "/bibliotheque" : returnTo === "brique" && state.editingBrickId ? `/briques/${encodeURIComponent(state.editingBrickId)}` : `/microprojets/${slug}/briques-technologiques`;
+      returnTo === "bibliotheque" ? "/bibliotheque" : returnTo === "brique" && state.editingBrickId ? `/briques/${encodeURIComponent(state.editingBrickId)}` : "/bibliotheque";
   } catch (err) {
     showError(err);
   }
@@ -74,9 +73,6 @@ async function initBrickMode() {
   document.getElementById("brick-save-btn").hidden = false;
   document.getElementById("brick-preview-note").hidden = false;
   syncBrickStartNote();
-  // Arrivée depuis le hub /bibliotheque (?partagee=1) : brique partagée par défaut.
-  if (queryParams.get("partagee") === "1") document.getElementById("brick-shared-checkbox").checked = true;
-
   if (!brickId) {
     setPageTitle("Nouvelle brique technologique");
     document.getElementById("brick-name").focus();
@@ -102,7 +98,7 @@ async function initBrickMode() {
     } else {
       setPageTitle(found.reference ? "Modifier la brique de référence" : "Modifier la brique");
       document.getElementById("brick-name").value = found.name;
-      document.getElementById("brick-shared-checkbox").checked = found.scope === "shared";
+      showItemAccess(found, processLibraryApi.setBrickEditors);
       document.getElementById("brick-notes").value = found.notes || "";
       state.editingBrickId = found.id;
       state.editingBrickIsReference = Boolean(found.reference);
