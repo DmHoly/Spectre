@@ -96,10 +96,19 @@ def _auto_close(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE lots ADD COLUMN status_set_at TEXT")
 
 
+def _stopped_reason(conn: sqlite3.Connection) -> None:
+    """Pourquoi la règle a clos le lot (``stopped_reason``) : ``idle`` (plaques à l'arrêt) ou ``fdl``
+    (toutes ses FDL closes). Un lot déjà clos par la règle l'a été par l'arrêt de ses plaques."""
+    if "stopped_reason" not in column_names(conn, "lots"):
+        conn.execute("ALTER TABLE lots ADD COLUMN stopped_reason TEXT")
+        conn.execute("UPDATE lots SET stopped_reason = 'idle' WHERE stopped_since IS NOT NULL")
+
+
 MIGRATIONS = (
     Migration("0001_initial", _initial),
     # la table des étapes de cette toute première version n'est plus lue
     Migration("0002_drop_lot_steps", "DROP TABLE IF EXISTS lot_steps;"),
     Migration("0003_source_and_version", _source_and_version),
     Migration("0004_auto_close", _auto_close),
+    Migration("0005_stopped_reason", _stopped_reason),
 )

@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Header, Query, Response
 from ...kernel.http import created, etag, if_match_version
 from ..accounts.deps import current_user
 from ..accounts.service import User
+from ..wafers import tracking
 from . import auto_close, jira
 from . import service as lots
 from .schemas import JiraLotImport, LotCreate, LotPatch, LotThematics, LotWafersAdd
@@ -103,6 +104,17 @@ def add_wafers(lot_id: int, body: LotWafersAdd, response: Response, user: User =
     if not lots.add_wafers(lot_id, body.lasermarks):
         response.status_code = 200
     return _respond(response, lots.get(lot_id), user)
+
+
+@router.post("/lots/{lot_id}/refresh")
+def refresh_lot(lot_id: int, response: Response, user: User = Depends(current_user)) -> dict:
+    """Relit d'un coup la vie en ligne de tous les wafers du lot (MES, Gozer, JIRA), puis applique les
+    règles de clôture (toutes les FDL closes, plaques à l'arrêt) : ``{lot, refreshed, failed:
+    [{lasermark, error}]}``. Une plaque dont la relecture échoue garde sa fiche précédente."""
+    lot = lots.get(lot_id)
+    result = tracking.refresh_many(wafer.lasermark for wafer in lots.wafers_of([lot.id])[lot.id])
+    auto_close.sweep_quietly([lot.id])
+    return {"lot": _respond(response, lots.get(lot.id), user), **result}
 
 
 @router.delete("/lots/{lot_id}/wafers/{wafer_key}", status_code=204)

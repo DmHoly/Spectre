@@ -107,7 +107,8 @@ def summary_payload(lot: Lot, ctx: Context) -> dict:
         "source": lot.source,
         "forecast_exit_on": lot.forecast_exit_on,
         "exited_on": lot.exited_on,
-        "stopped_since": lot.stopped_since,  # clos tout seul : ses plaques à l'arrêt depuis ce mouvement
+        "stopped_since": lot.stopped_since,  # clos tout seul : ses plaques à l'arrêt depuis ce mouvement, ou sa dernière FDL close
+        "stopped_reason": lot.stopped_reason,  # "idle" (plaques à l'arrêt) ou "fdl" (toutes ses FDL closes)
         "wafers": [_wafer_ref(wafer) for wafer in ctx.wafers[lot.id]],
     }
 

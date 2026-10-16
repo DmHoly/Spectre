@@ -39,6 +39,10 @@ const lotsApi = {
   removeWafer(lotId, waferKey) {
     return api.del(`/api/lots/${encodeURIComponent(lotId)}/wafers/${encodeURIComponent(waferKey)}`);
   },
+  // relit la vie en ligne de tous les wafers du lot, applique les règles de clôture - {lot, refreshed, failed: [{lasermark, error}]}
+  refreshWafers(lotId) {
+    return api.post(`/api/lots/${encodeURIComponent(lotId)}/refresh`);
+  },
   setThematics(lotId, body) {
     return api.put(`/api/lots/${encodeURIComponent(lotId)}/thematics`, body);
   },

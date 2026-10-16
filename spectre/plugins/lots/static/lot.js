@@ -41,7 +41,12 @@ function renderHead() {
   document.getElementById("declare-end-btn").style.display = lot.is_active ? "" : "none";
   const banners = [];
   if (lot.stopped_since && lot.status === "done") {
-    banners.push(`<div class="lot-banner lot-banner--stopped">Clos automatiquement : toutes ses plaques sont à l'arrêt depuis le ${escapeHtml(lotDateLabel(lot.stopped_since.slice(0, 10)))} (${escapeHtml(lot.stopped_since.slice(11))}) - plus d'une semaine sans mouvement. Il se rouvrira tout seul si l'une d'elles repart.</div>`);
+    const day = escapeHtml(lotDateLabel(lot.stopped_since.slice(0, 10)));
+    banners.push(
+      lot.stopped_reason === "fdl"
+        ? `<div class="lot-banner lot-banner--stopped">Clos automatiquement : toutes ses FDL sont closes (la dernière le ${day}). Il se rouvrira tout seul si une FDL se rouvre ou si une nouvelle plaque arrive.</div>`
+        : `<div class="lot-banner lot-banner--stopped">Clos automatiquement : toutes ses plaques sont à l'arrêt depuis le ${day} (${escapeHtml(lot.stopped_since.slice(11))}) - plus d'une semaine sans mouvement. Il se rouvrira tout seul si l'une d'elles repart.</div>`
+    );
   }
   if (lot.status === "hold") {
     banners.push(`<div class="lot-banner lot-banner--hold">Lot en pause${lot.hold_reason ? ` · <span>${escapeHtml(lot.hold_reason)}</span>` : ""}</div>`);
@@ -271,6 +276,32 @@ document.getElementById("wafers").addEventListener("click", (event) => {
     await lotsApi.removeWafer(lot.id, button.dataset.remove);
     return lotsApi.get(lot.id);
   }, `${lasermark} retiré du lot.`);
+});
+
+// « Rafraîchir tous les wafers » : relit la vie en ligne de chaque plaque (lent : la MES et Gozer
+// répondent en quelques secondes par plaque), puis le serveur applique la clôture (toutes les FDL closes).
+const refreshButton = document.getElementById("refresh-wafers-btn");
+refreshButton.addEventListener("click", async () => {
+  if (!lot || refreshButton.disabled) return;
+  const label = refreshButton.textContent;
+  refreshButton.disabled = true;
+  refreshButton.textContent = "Lecture en cours…";
+  try {
+    const result = await lotsApi.refreshWafers(lot.id);
+    render(result.lot);
+    const n = result.refreshed;
+    const base = `${n} wafer${n > 1 ? "s" : ""} rafraîchi${n > 1 ? "s" : ""}.`;
+    if (result.failed.length) {
+      showError(new Error(`${base} Relecture impossible pour ${result.failed.map((f) => f.lasermark).join(", ")} (fiche précédente gardée) : ${result.failed[0].error}`));
+    } else {
+      flash(result.lot.status === "done" && result.lot.stopped_reason === "fdl" ? `${base} Toutes les FDL sont closes : le lot est fini.` : base);
+    }
+  } catch (err) {
+    showError(err);
+  } finally {
+    refreshButton.disabled = false;
+    refreshButton.textContent = label;
+  }
 });
 
 // --- thématiques visées --------------------------------------------------------------------------

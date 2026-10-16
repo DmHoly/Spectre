@@ -96,6 +96,21 @@ def _run_names(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE wafer_tracking SET run_names = ? WHERE wafer_key = ?", (json.dumps(plate_runs(payload.get("epitaxy") or [])), row[0]))
 
 
+def _fdl_closures(conn: sqlite3.Connection) -> None:
+    """Où en est chacune des FDL de la plaque (``fdl_closures``, JSON ``{numéro: {closed, at}}``) :
+    la clôture automatique d'un lot la lit sans relire les fiches ; recalculée des fiches déjà gardées."""
+    if "fdl_closures" not in column_names(conn, "wafer_tracking"):
+        conn.execute("ALTER TABLE wafer_tracking ADD COLUMN fdl_closures TEXT NOT NULL DEFAULT '{}'")
+    from .tracking_model import fdl_closures
+
+    for row in conn.execute("SELECT wafer_key, payload FROM wafer_tracking").fetchall():
+        try:
+            payload = json.loads(row[1])
+        except ValueError:
+            continue
+        conn.execute("UPDATE wafer_tracking SET fdl_closures = ? WHERE wafer_key = ?", (json.dumps(fdl_closures(payload)), row[0]))
+
+
 LINKS = """
 -- Une plaque qui change de nom (spectre.plugins.wafers.links) : d'abord XX, puis YY après un
 -- collage. Une ligne par passage d'un nom au suivant, vue dans la MES (source 'mes' : une étape
@@ -160,4 +175,5 @@ MIGRATIONS = (
     Migration("0006_wafer_structures", STRUCTURES),
     Migration("0007_tracking_run_names", _run_names),
     Migration("0008_wafer_notes", NOTES),
+    Migration("0009_tracking_fdl_closures", _fdl_closures),
 )

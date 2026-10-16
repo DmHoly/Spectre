@@ -656,6 +656,7 @@ def build(frames: TrackingFrames, now: datetime | None = None) -> dict[str, Any]
     cited = {t["request"] for t in rec["tickets"]} | {e["request"] for e in rec["epitaxy"]} | set(bw_req) | set(test_req)
     rec["fdls"] = {r: f for r, f in build_fdl_flows(frames.fdl_steps, now).items() if r in cited}
     rec["fdl_numbers"] = plate_fdls(rec)
+    rec["fdl_closures"] = fdl_closures(rec)
     rec["run_names"] = plate_runs(rec["epitaxy"])
     rec["renames"] = renames(steps)
     rec["last_movement"] = last_movement(rec)
@@ -676,6 +677,30 @@ def plate_fdls(rec: dict[str, Any]) -> list[str]:
         if number:
             found.setdefault(number, None)
     return list(found)
+
+
+def fdl_closures(rec: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Où en est chacune des FDL de la plaque (:func:`plate_fdls`) : ``{numéro: {closed, at}}``. Une FDL
+    est close quand son ticket JIRA l'est (``at`` : sa date de clôture) ; sans ticket lu, quand toutes
+    ses étapes sont faites ou écartées (au moins une faite), à la date de la dernière. Une FDL dont on
+    ne sait rien de plus que le numéro n'est pas close : le doute garde le lot ouvert
+    (:mod:`spectre.plugins.lots.auto_close`)."""
+    tickets: dict[str, dict[str, Any]] = {}
+    for ticket in rec.get("tickets", []):
+        number = normalize_fdl(ticket.get("request"))
+        if number and (number not in tickets or (ticket.get("closed") and not tickets[number].get("closed"))):
+            tickets[number] = ticket
+    flows = {normalize_fdl(request): flow for request, flow in (rec.get("fdls") or {}).items()}
+    out: dict[str, dict[str, Any]] = {}
+    for number in plate_fdls(rec):
+        ticket, flow = tickets.get(number), flows.get(number)
+        if ticket is not None:
+            out[number] = {"closed": bool(ticket.get("closed")), "at": ticket.get("closed")}
+        elif flow and flow.get("n_done") and not (flow.get("n_todo") or flow.get("n_running") or flow.get("n_hold")):
+            out[number] = {"closed": True, "at": (flow.get("last_done") or {}).get("closed")}
+        else:
+            out[number] = {"closed": False, "at": None}
+    return out
 
 
 def plate_runs(epitaxy: list[dict[str, Any]]) -> list[str]:

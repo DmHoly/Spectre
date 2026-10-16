@@ -81,6 +81,17 @@ def last_movements(keys: Iterable[str]) -> dict[str, str | None]:
     return {row["wafer_key"]: row["last_movement"] for row in rows}
 
 
+def fdl_closures(keys: Iterable[str]) -> dict[str, dict[str, dict[str, Any]]]:
+    """Par clé de plaque déjà lue en ligne, l'état de chacune de ses FDL (``{numéro: {closed, at}}``,
+    voir :func:`tracking_model.fdl_closures`) - une plaque jamais lue n'y est pas."""
+    wanted = sorted({wafer_key(k) for k in keys} - {""})
+    if not wanted:
+        return {}
+    with get_conn() as conn:
+        rows = conn.execute(f"SELECT wafer_key, fdl_closures FROM wafer_tracking WHERE wafer_key IN ({','.join('?' * len(wanted))})", wanted).fetchall()
+    return {row["wafer_key"]: json.loads(row["fdl_closures"] or "{}") for row in rows}
+
+
 def line_facts(keys: Iterable[str] | None = None) -> dict[str, dict[str, Any]]:
     """Par clé de plaque déjà lue en ligne : ses FDL (``fdls``, normalisées), son nom de lot JIRA
     (``lot_name``) et ses noms de run d'épitaxie (``run_names``, le principal d'abord) - sans relire
@@ -114,15 +125,16 @@ def _row(key: str) -> dict[str, Any] | None:
 def _save(key: str, lasermark: str, source: str, payload: dict[str, Any], fetched_at: datetime, error: str | None) -> None:
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO wafer_tracking (wafer_key, lasermark, source, fetched_at, last_movement, payload, error, fdls, lot_name, run_names)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """INSERT INTO wafer_tracking (wafer_key, lasermark, source, fetched_at, last_movement, payload, error, fdls, lot_name, run_names, fdl_closures)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(wafer_key) DO UPDATE SET lasermark = excluded.lasermark, source = excluded.source,
                    fetched_at = excluded.fetched_at, last_movement = excluded.last_movement,
                    payload = excluded.payload, error = excluded.error, fdls = excluded.fdls, lot_name = excluded.lot_name,
-                   run_names = excluded.run_names""",
+                   run_names = excluded.run_names, fdl_closures = excluded.fdl_closures""",
             (
                 key, lasermark, source, fetched_at.isoformat(), payload.get("last_movement"), json.dumps(payload, ensure_ascii=False), error,
                 json.dumps(payload.get("fdl_numbers") or []), payload.get("lot_name"), json.dumps(payload.get("run_names") or []),
+                json.dumps(payload.get("fdl_closures") or {}),
             ),
         )
 
@@ -232,3 +244,25 @@ def prefetch(lasermarks: Iterable[str]) -> int:
 
     with ThreadPoolExecutor(max_workers=min(PREFETCH_WORKERS, len(todo))) as pool:
         return sum(pool.map(one, todo))
+
+
+def refresh_many(lasermarks: Iterable[str]) -> dict[str, Any]:
+    """Relit les bases pour chacune de ces plaques, quoi qu'il arrive (le bouton « tout rafraîchir »
+    d'un lot) - plusieurs à la fois, un échec n'en arrête pas une autre. Rend ``{refreshed, failed:
+    [{lasermark, error}]}`` ; une plaque dont la relecture échoue garde sa fiche précédente."""
+    marks = list(dict.fromkeys(lm for lm in lasermarks if wafer_key(lm)))
+    if not marks:
+        return {"refreshed": 0, "failed": []}
+
+    def one(lasermark: str) -> str | None:
+        try:
+            error = read(lasermark, refresh=True)["meta"].get("error")
+            return str(error) if error else None
+        except Exception as exc:  # noqa: BLE001 - sans fiche gardée, l'échec remonte : on le rapporte
+            logger.warning("suivi de la plaque %s : relecture en échec", lasermark, exc_info=True)
+            return str(exc)
+
+    with ThreadPoolExecutor(max_workers=min(PREFETCH_WORKERS, len(marks))) as pool:
+        errors = list(pool.map(one, marks))
+    failed = [{"lasermark": lm, "error": err} for lm, err in zip(marks, errors) if err]
+    return {"refreshed": len(marks) - len(failed), "failed": failed}

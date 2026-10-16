@@ -201,6 +201,7 @@ def test_the_summary_view_is_light(client):
         "forecast_exit_on": None,
         "exited_on": None,
         "stopped_since": None,
+        "stopped_reason": None,
         "wafers": [{"key": "W1", "lasermark": "W1"}],
     }
 

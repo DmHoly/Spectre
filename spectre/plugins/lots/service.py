@@ -60,6 +60,7 @@ class Lot:
     created_at: str
     updated_at: str  # sa version : la précondition If-Match d'une modification
     stopped_since: str | None = None  # clos par la règle d'arrêt (auto_close) : le dernier mouvement de ses plaques
+    stopped_reason: str | None = None  # pourquoi : "idle" (plaques à l'arrêt) ou "fdl" (toutes ses FDL closes)
     status_set_at: str | None = None  # quand quelqu'un a choisi son statut (ou sa fin) à la main
 
     @property
@@ -507,7 +508,7 @@ def update(lot_id: int, changes: dict, *, expected_version: str | None = None) -
                 raise _code_taken(after.code) from exc
             if (after.status, after.exited_on) != (lot.status, lot.exited_on):
                 # une décision humaine : la règle d'arrêt (auto_close) ne revient pas dessus
-                conn.execute("UPDATE lots SET status_set_at = ?, stopped_since = NULL WHERE id = ?", (_now(), lot_id))
+                conn.execute("UPDATE lots SET status_set_at = ?, stopped_since = NULL, stopped_reason = NULL WHERE id = ?", (_now(), lot_id))
     return get(lot_id)
 
 

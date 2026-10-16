@@ -117,3 +117,85 @@ def test_a_lot_reopened_by_hand_is_not_closed_again_and_a_planned_one_waits(clie
     assert reopen.status_code == 200 and reopen.json()["status"] == "wip"
     assert auto_close.sweep(now=datetime(2026, 10, 30)) == []  # décidé à la main après le dernier mouvement
     assert client.get(f"/api/lots/{planned['id']}").json()["status"] == "planned"
+
+
+# --- clôture d'un lot dont toutes les FDL sont closes ----------------------------------------------
+
+
+def test_the_state_of_the_plate_fdls_follows_their_ticket_or_their_steps():
+    from spectre.plugins.wafers import tracking_model
+
+    rec = {
+        "tickets": [
+            {"request": "FDL-0012", "via": "wafer", "closed": "2026-10-02 10:00"},
+            {"request": "FDL-13", "via": "wafer", "closed": None},
+        ],
+        "epitaxy": [{"request": "FDL-20"}, {"request": "FDL-21"}, {"request": "FDL-22"}],
+        "fdls": {
+            "FDL-13": {"n": 2, "n_done": 2, "n_todo": 0, "n_running": 0, "n_hold": 0, "last_done": {"closed": "2026-10-05 08:00"}},  # son ticket l'emporte : ouverte
+            "FDL-20": {"n": 3, "n_done": 2, "n_skipped": 1, "n_todo": 0, "n_running": 0, "n_hold": 0, "last_done": {"closed": "2026-10-04 09:30"}},
+            "FDL-21": {"n": 2, "n_done": 1, "n_todo": 1, "n_running": 0, "n_hold": 0, "last_done": None},
+        },
+    }
+    assert tracking_model.fdl_closures(rec) == {
+        "FDL-12": {"closed": True, "at": "2026-10-02 10:00"},
+        "FDL-13": {"closed": False, "at": None},
+        "FDL-20": {"closed": True, "at": "2026-10-04 09:30"},
+        "FDL-21": {"closed": False, "at": None},
+        "FDL-22": {"closed": False, "at": None},  # rien d'autre que son numéro : le doute garde le lot ouvert
+    }
+
+
+def _keep(lasermark, closures):
+    from datetime import timezone
+
+    from spectre.plugins.wafers import tracking
+    from spectre.plugins.wafers.service import wafer_key
+
+    tracking._save(wafer_key(lasermark), lasermark, "demo", {"fdl_closures": closures, "last_movement": "2026-10-14 08:00"}, datetime(2026, 10, 15, tzinfo=timezone.utc), None)
+
+
+def test_a_lot_whose_fdls_are_all_closed_is_finished_and_reopens_when_one_opens(client, monkeypatch):
+    from spectre.plugins.lots import auto_close
+
+    signup(client, "fdlclose@example.com")
+    lot = client.post("/api/lots", json={"code": "FDLC1", "started_on": "2026-09-01", "wafers": ["C1", "C2"]}).json()
+    now = datetime(2026, 10, 15, 9, 0)
+    _moves(monkeypatch, {"C1": "2026-10-14 08:00", "C2": "2026-10-14 08:00"})  # rien n'est à l'arrêt : seule la règle des FDL joue
+    closed = {"closed": True, "at": "2026-10-12 16:00"}
+    _keep("C1", {"FDL-1": closed, "FDL-2": {"closed": True, "at": "2026-10-09 10:00"}})
+    assert auto_close.sweep(now=now) == []  # C2 jamais lue en ligne : ses FDL sont inconnues
+    _keep("C2", {"FDL-3": {"closed": False, "at": None}})
+    assert auto_close.sweep(now=now) == []  # une FDL ouverte
+    _keep("C2", {"FDL-3": closed})
+    assert auto_close.sweep(now=now) == [lot["id"]]
+    done = client.get(f"/api/lots/{lot['id']}").json()
+    assert (done["status"], done["exited_on"], done["stopped_since"], done["stopped_reason"]) == ("done", "2026-10-12", "2026-10-12 16:00", "fdl")
+    assert auto_close.sweep(now=datetime(2026, 11, 30)) == []  # stable
+    _keep("C2", {"FDL-3": closed, "FDL-4": {"closed": False, "at": None}})  # une nouvelle FDL s'ouvre
+    assert auto_close.sweep(now=now) == [lot["id"]]
+    reopened = client.get(f"/api/lots/{lot['id']}").json()
+    assert (reopened["status"], reopened["exited_on"], reopened["stopped_since"], reopened["stopped_reason"]) == ("wip", None, None, None)
+
+
+def test_a_plate_without_any_fdl_does_not_finish_the_lot_alone(client, monkeypatch):
+    from spectre.plugins.lots import auto_close
+
+    signup(client, "nofdl@example.com")
+    lot = client.post("/api/lots", json={"code": "FDLC2", "started_on": "2026-09-01", "wafers": ["D1"]}).json()
+    _moves(monkeypatch, {"D1": "2026-10-14 08:00"})
+    _keep("D1", {})
+    assert auto_close.sweep(now=datetime(2026, 10, 15, 9, 0)) == []
+    assert client.get(f"/api/lots/{lot['id']}").json()["status"] == "wip"
+
+
+def test_refreshing_all_the_wafers_of_a_lot_reads_them_again_and_applies_the_rules(client, demo):
+    signup(client, "refresh@example.com")
+    get_tracking(client, "T001"), get_tracking(client, "T002")  # lues une première fois
+    lot = client.post("/api/lots", json={"code": "REFR1", "wafers": ["T001", "T002"]}).json()
+    response = client.post(f"/api/lots/{lot['id']}/refresh")
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["refreshed"] == 2 and result["failed"] == []
+    assert get_tracking(client, "T001").json()["meta"]["age_hours"] == 0  # relue à l'instant
+    assert client.post("/api/lots/99999/refresh").status_code == 404
