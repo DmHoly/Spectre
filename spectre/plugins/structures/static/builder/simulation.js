@@ -224,9 +224,10 @@ document.getElementById("zoom-reset-btn").addEventListener("click", () => setZoo
 svgViewport.addEventListener(
   "wheel",
   (event) => {
-    if (!event.ctrlKey && !event.metaKey) return;
+    // la molette zoome directement sur le point visé (le pincement d'un pavé tactile aussi)
     event.preventDefault();
-    setZoom(state.zoom * (event.deltaY < 0 ? 1.15 : 1 / 1.15), event.clientX, event.clientY);
+    const delta = event.deltaMode === 1 ? event.deltaY * 33 : event.deltaY;
+    setZoom(state.zoom * Math.exp(-Math.max(-150, Math.min(150, delta)) * 0.0015), event.clientX, event.clientY);
   },
   { passive: false }
 );
