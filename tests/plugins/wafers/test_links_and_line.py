@@ -72,10 +72,10 @@ def test_renames_are_read_in_the_mes_in_order_and_once():
 def test_the_line_fdls_reach_the_passport_and_the_fdl_search(client, demo):
     signup(client, "fdl@example.com")
     lm = _lasermark("running")
-    create_records(client, [lm])
-    assert get_wafer(client, lm)["line_fdl"] == []  # jamais lue en ligne
+    create_records(client, [lm])  # la fiche créée lit tout de suite la vie en ligne de la plaque
     fiche = get_tracking(client, lm).json()
     assert fiche["fdl_numbers"] and fiche["lot_name"]
+    assert fiche["meta"]["refreshed"] is False  # déjà gardée : la page n'a pas relu les bases
     plate = get_wafer(client, lm)
     assert plate["line_fdl"] == fiche["fdl_numbers"] and plate["lot_name"] == fiche["lot_name"]
     number = fiche["fdl_numbers"][0]

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable
 
@@ -207,3 +208,27 @@ def read(lasermark: str, *, refresh: bool = False, now: datetime | None = None) 
     payload = json.loads(row["payload"])
     payload["meta"] = _meta(row, now, refreshed=refreshed)
     return payload
+
+
+PREFETCH_WORKERS = 6
+
+
+def prefetch(lasermarks: Iterable[str]) -> int:
+    """Première lecture en ligne des plaques qui n'ont encore aucune fiche gardée (un lot ou des
+    plaques qu'on vient d'importer : plus besoin d'ouvrir chaque plaque une à une). Les plaques déjà
+    gardées sont laissées à leur rythme (24 h) ; un échec n'en empêche pas une autre. Rend le nombre
+    de plaques lues."""
+    todo = [lm for lm in dict.fromkeys(lasermarks) if _row(wafer_key(lm)) is None]
+    if not todo:
+        return 0
+
+    def one(lasermark: str) -> bool:
+        try:
+            read(lasermark)
+            return True
+        except Exception:  # noqa: BLE001 - la base peut être injoignable : la page de la plaque réessaiera
+            logger.warning("suivi de la plaque %s : première lecture en échec", lasermark, exc_info=True)
+            return False
+
+    with ThreadPoolExecutor(max_workers=min(PREFETCH_WORKERS, len(todo))) as pool:
+        return sum(pool.map(one, todo))

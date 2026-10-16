@@ -23,7 +23,7 @@ from typing import Any, Iterable
 from ...kernel.db import get_conn
 from ...kernel.errors import DomainError, Forbidden, InvalidInput, NotFound
 from ..accounts.service import User
-from . import service
+from . import service, tracking
 from .service import wafer_key
 from .tracking_source import current_source
 
@@ -137,6 +137,8 @@ def create(user: User, lasermarks: list[str]) -> dict[str, Any]:
             items.append(
                 {"key": key, "lasermark": lasermark, "source": source if summary else "manual", "summary": summary or {}, "created_by": user.name, "created_by_id": user.id, "created_at": now, "created": True}
             )
+    # plaques nouvelles : leur vie en ligne (et le lot JIRA qui en découle) est lue tout de suite
+    tracking.prefetch([item["lasermark"] for item in items if item["created"]])
     return {"items": items, "source": source, "base_error": error}
 
 
