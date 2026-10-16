@@ -3486,3 +3486,68 @@
   font-weight: 600;
   color: var(--text-soft);
 }
+/* zones d'un pixel (builder/zones.js) : un carré en pointillé par zone sur le dessin, une pastille pour
+   l'ouvrir ; dans le formulaire d'une étape, le sélecteur de la zone réglée */
+.sb-canvas__svg .sb-zone__frame {
+  fill: none;
+  stroke: var(--text-soft);
+  stroke-width: 1.4;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.sb-canvas__svg .sb-zone.is-selected .sb-zone__frame {
+  fill: var(--accent-tint);
+  fill-opacity: 0.35;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.sb-canvas__svg .sb-zone__tab {
+  fill: var(--surface, #fff);
+  stroke: var(--text-soft);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  pointer-events: all;
+}
+.sb-canvas__svg .sb-zone.is-selected .sb-zone__tab {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+.sb-canvas__svg .sb-zone__label {
+  fill: var(--text-soft);
+  cursor: pointer;
+  pointer-events: all;
+  font-family: var(--font-ui, sans-serif);
+  user-select: none;
+}
+.sb-canvas__svg .sb-zone.is-selected .sb-zone__label {
+  fill: #fff;
+}
+.sb-zone-selector {
+  margin: 0 0 10px;
+}
+.sb-zone-selector__picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0;
+}
+.sb-zone-pick {
+  border: 1px dashed var(--text-soft);
+  background: var(--surface, #fff);
+  color: var(--text-soft);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sb-zone-pick.is-active {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.sb-zone-pick.has-own::after {
+  content: " •";
+}

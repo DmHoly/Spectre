@@ -86,3 +86,77 @@ def test_a_campaign_varies_the_distance_between_sub_pixels(client):
 
     preview = preview_campaign(client, {"substrate": substrate(), "steps": zone_steps(), "plan": plan})
     assert preview.status_code == 200 and len(preview.json()["svgs"]) == 2
+
+
+def overridden_steps(thickness_by_zone: dict[int, float]) -> list[dict]:
+    """Le procédé des sous-pixels, et une couche d'oxyde dont l'épaisseur diffère selon la zone."""
+    steps = zone_steps(zones=[{"wires": 1, "pitch": 400, "diameter": 100}] * 3)
+    layer = {**deposition("Couche", "SiO2", thickness_nm=10), "zone_overrides": {str(zone): {"thickness": length(nm)} for zone, nm in thickness_by_zone.items()}}
+    return steps[:2] + [steps[2] | layer]
+
+
+def top_of(frame, x_nm: float) -> float:
+    """Le haut de la matière sous la verticale ``x_nm``, toutes couches confondues."""
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+
+    solid = unary_union([layer.polygon for layer in frame.layers])
+    cut = solid.intersection(LineString([(x_nm, -1000), (x_nm, 1000)]))
+    return cut.bounds[3]
+
+
+def test_a_step_takes_its_own_values_in_a_zone():
+    body = ProcessInput.model_validate({"substrate": substrate(), "steps": overridden_steps({1: 60})})
+    assert body.lattice_anchors[1].overrides_by_step() == {2: {1: {"thickness": length(60)}}}
+    result = simulation.simulate_process(body.substrate, body.steps, lattice_anchors=body.lattice_anchors)
+    width = body.substrate.domain_width.to_nm()
+    assert width == 3 * 400 + 3 * 400 and len(result.frames) == 4
+    assert all(f.domain_width_nm == width for f in result.frames)
+    assert [len(o) for o in result.layer_origins] == [len(f.layers) for f in result.frames]
+    assert len(set(result.frame_keys)) == 4
+    last = result.frames[-1]
+    # zones de 800 nm : leurs centres à 400, 1200, 2000 - le trou de chacune est à son centre, l'oxyde sur le masque à côté
+    mask_top = [top_of(last, x) for x in (50, 850, 1650)]
+    assert mask_top[0] == mask_top[2]  # les zones sans valeur propre se ressemblent
+    assert mask_top[1] > mask_top[0] + 40  # celle qui a 60 nm d'oxyde au lieu de 10 monte plus haut
+
+
+def test_zones_without_overrides_simulate_as_one_block():
+    steps = overridden_steps({})
+    body = ProcessInput.model_validate({"substrate": substrate(), "steps": steps})
+    assert body.lattice_anchors[1].step_overrides is None
+    assert simulation._zone_plan(body.steps, body.lattice_anchors) is None
+
+
+def test_overrides_ride_on_the_stored_process_and_come_back():
+    body = ProcessInput.model_validate({"substrate": substrate(), "steps": overridden_steps({0: 30, 2: 5})})
+    stored = simulation.process_metadata(body.substrate, body.steps, lattice_anchors=body.lattice_anchors)
+    assert "step_overrides" not in stored["steps"][1]["lattice_opening"]
+    assert stored["steps"][2]["zone_overrides"] == {"0": {"thickness": length(30)}, "2": {"thickness": length(5)}}
+    again = simulation.lattice_anchors_in(stored["steps"])
+    assert again[1].overrides_by_step() == body.lattice_anchors[1].overrides_by_step()
+
+
+def test_a_refused_value_names_the_step_and_the_zone(client):
+    signup_with_microproject(client, "zones-bad@example.com", "Salle blanche")
+    steps = overridden_steps({1: 60})
+    steps[2]["zone_overrides"]["1"] = {"thickness": {"value": "beaucoup", "unit": "nm"}}
+    response = simulate(client, {"substrate": substrate(), "steps": steps})
+    assert response.status_code == 422 and "zone 2" in response.json()["detail"]
+    steps[2]["zone_overrides"]["1"] = {"thickness": length(60)}
+    assert simulate(client, {"substrate": substrate(), "steps": steps}).status_code == 200
+
+
+def test_a_study_keeps_the_values_of_each_zone(client):
+    from support.experiments import conclude, evolve, launch, process, versions
+
+    slug = signup_with_microproject(client, "zones-study@example.com", "Salle blanche")
+    study = launch(client, slug, substrate=substrate(), steps=overridden_steps({1: 60}))
+    conclude(client, slug, study["id"], summary="Trois zones", decision="promote")
+    editable = process(client, slug, study["id"])
+    assert editable["steps"][2]["zone_overrides"] == {"1": {"thickness": length(60)}}
+    assert editable["steps"][1]["lattice_opening"]["mode"] == "zones" and "step_overrides" not in editable["steps"][1]["lattice_opening"]
+
+    # une autre valeur dans la zone : une autre structure
+    evolve(client, slug, study["id"], title="Essai", intent="Verifier", substrate=substrate(), steps=overridden_steps({1: 90}))
+    assert versions(client, slug, study["id"])[-1]["change_level"] != "none"

@@ -35,7 +35,7 @@ from typing import Any
 from ...kernel.errors import InvalidInput
 
 from .schemas import ProcessInput
-from .simulation import LATTICE_OPENING_KEY, label_without_place
+from .simulation import LATTICE_OPENING_KEY, ZONE_OVERRIDES_KEY, label_without_place
 
 SUBSTRATE_ROW = "substrat"  # la clé de la ligne du substrat
 MIN_SOURCES = 2
@@ -258,7 +258,12 @@ def compose(processes: list[ProcessInput], choices: list[Any] | None = None) -> 
         step = dict(source.steps[position])
         anchor = source.process.lattice_anchors.get(position)
         if anchor is not None:
-            step[LATTICE_OPENING_KEY] = anchor.model_dump(mode="json")  # ancrée au réseau (simulation.LatticeOpening)
+            step[LATTICE_OPENING_KEY] = anchor.without_overrides().model_dump(mode="json")  # ancrée au réseau (simulation.LatticeOpening)
+        # ce que cette étape prend de propre dans une zone de la lithographie en sous-pixels d'avant, sur l'étape
+        for zoned in source.process.lattice_anchors.values():
+            own = zoned.overrides_by_step().get(position)
+            if own:
+                step[ZONE_OVERRIDES_KEY] = {str(zone): fields for zone, fields in sorted(own.items())}
         if own_id:
             step = {"id": own_id, **step}
         at = str(len(steps))

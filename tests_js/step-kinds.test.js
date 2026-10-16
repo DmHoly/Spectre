@@ -301,3 +301,19 @@ test("subPixelLayout lays zones side by side, a half gap on each edge", () => {
   assert.equal(subPixelLayout({ gap: 0, zones: [{ wires: 1, pitch: 400, diameter: 400 }] }), null);
   assert.equal(subPixelLayout({ gap: 400, zones: [] }), null);
 });
+
+test("a zone keeps only what differs from the common values of a step", () => {
+  globalThis.state = globalThis.state || {}; // zones.js y pose la zone ouverte ; context.js, lui, a besoin de la page
+  const { stepWithZoneValues, stepInZone } = loadStructureBuilder(["zones.js"], ["stepWithZoneValues", "stepInZone"]);
+  const common = { kind: "deposition", name: "Dépôt", material: "SiO2", recipe: "CVD", thickness: { value: 20, unit: "nm" } };
+  // la zone 1 passe l'épaisseur à 120 (le nom, lui, vaut pour toutes les zones)
+  const edited = stepWithZoneValues({ ...common, name: "Oxyde", thickness: { value: 120, unit: "nm" } }, common, 1);
+  assert.equal(edited.name, "Oxyde");
+  assert.deepEqual(edited.thickness, { value: 20, unit: "nm" });
+  assert.deepEqual(edited.zone_overrides, { 1: { thickness: { value: 120, unit: "nm" } } });
+  assert.equal(stepInZone(edited, 1).thickness.value, 120);
+  assert.equal(stepInZone(edited, 0).thickness.value, 20);
+  // revenir à la valeur commune retire la valeur propre
+  const back = stepWithZoneValues({ ...edited, thickness: { value: 20, unit: "nm" } }, edited, 1);
+  assert.equal(back.zone_overrides, undefined);
+});

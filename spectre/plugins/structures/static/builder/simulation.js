@@ -100,6 +100,7 @@ function renderFrame() {
   document.getElementById("preview-step-btn").classList.toggle("active", state.previewMode === "step");
   document.getElementById("preview-final-btn").classList.toggle("active", state.previewMode === "final");
   highlightSelectedLayer();
+  drawZoneOverlay(); // zones.js : les carrés en pointillé des sous-pixels
   applyZoom();
 }
 

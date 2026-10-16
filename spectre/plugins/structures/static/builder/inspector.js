@@ -89,7 +89,7 @@ function defaultStepOfKind(kind) {
 function renderStepInspector() {
   showInspectorSection("step-form-section");
   unmountSubstrateMeasures(); // measures.js
-  fillKindFields(state.steps[state.selectedIndex]);
+  fillKindFields(stepInZone(state.steps[state.selectedIndex], activeZone())); // zones.js : celles de la zone ouverte
   updateStepInspectorHeader();
   renderPresetPanel();
   syncStepReport();
@@ -132,6 +132,10 @@ function livePreviewFromForm() {
   // Éditer une étape groupée ne doit pas la dissocier silencieusement de sa brique ; ni lui
   // faire perdre son identité (son id, voir withoutStepId dans step-list.js).
   const previous = state.steps[i];
+  // une zone ouverte (zones.js) : le formulaire en règle les valeurs propres, le commun ne bouge pas
+  const zone = activeZone(i);
+  if (zone != null) step = stepWithZoneValues(step, previous, zone);
+  else if (previous.zone_overrides) step.zone_overrides = previous.zone_overrides;
   if (previous.id) step.id = previous.id;
   if (previous.comment) step.comment = previous.comment; // son commentaire (plugin step_report), pas un champ du formulaire
   if (previous.presetOrigin) step.presetOrigin = previous.presetOrigin; // sa trace, pas un lien : l'étape garde ses modifications

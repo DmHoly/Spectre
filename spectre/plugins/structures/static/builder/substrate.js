@@ -114,15 +114,34 @@ function subPixelLayout(opening) {
   return { width: roundNm(x - gap / 2), openings };
 }
 
-// La lithographie en sous-pixels du procédé, s'il y en a une : c'est elle qui fixe la largeur du domaine.
-function zonesLayoutInSteps(steps = state.steps) {
-  for (const step of steps) {
+// La part du domaine de chaque sous-pixel (même calcul que simulation.subpixel_windows) : elles se
+// touchent, chaque frontière au milieu du vide entre deux zones.
+function subPixelWindows(opening) {
+  let start = 0;
+  return opening.zones.map((zone) => {
+    const end = start + zone.wires * zone.pitch + opening.gap;
+    const window = [roundNm(start), roundNm(end)];
+    start = end;
+    return window;
+  });
+}
+
+// La lithographie en sous-pixels du procédé, s'il y en a une : {index, opening, layout, windows} - c'est
+// elle qui fixe la largeur du domaine, et dont les zones peuvent régler chacune à sa façon les étapes d'après.
+function zonesAnchor(steps = state.steps) {
+  for (let index = 0; index < steps.length; index++) {
+    const step = steps[index];
     if (step.kind === "lithography" && step.lattice_opening && step.lattice_opening.mode === "zones") {
       const layout = subPixelLayout(step.lattice_opening);
-      if (layout) return layout;
+      if (layout) return { index, opening: step.lattice_opening, layout, windows: subPixelWindows(step.lattice_opening) };
     }
   }
   return null;
+}
+
+function zonesLayoutInSteps(steps = state.steps) {
+  const anchor = zonesAnchor(steps);
+  return anchor ? anchor.layout : null;
 }
 
 // Recalcule les ouvertures des lithographies ancrées au réseau (sans réseau : elles gardent les
@@ -153,15 +172,35 @@ function latticeOpeningsPayload(steps) {
   steps.forEach((step, i) => {
     if (step.kind === "lithography" && step.lattice_opening) out[i] = step.lattice_opening;
   });
+  // les valeurs propres à une zone, portées par les étapes d'après (`zone_overrides`), se rangent avec
+  // l'ancrage de la lithographie en sous-pixels, par position d'étape (LatticeOpening.step_overrides)
+  const zoned = steps.findIndex((step) => step.kind === "lithography" && step.lattice_opening && step.lattice_opening.mode === "zones");
+  if (zoned >= 0) {
+    const stepOverrides = {};
+    steps.forEach((step, i) => {
+      if (i > zoned && step.zone_overrides && Object.keys(step.zone_overrides).length) stepOverrides[i] = step.zone_overrides;
+    });
+    out[zoned] = Object.keys(stepOverrides).length ? { ...out[zoned], step_overrides: stepOverrides } : out[zoned];
+  }
   return out;
 }
 
 function attachLatticeOpenings(steps, openings) {
   if (!openings) return steps;
-  return steps.map((step, i) => {
+  const attached = steps.map((step, i) => {
     const opening = openings[i] || openings[String(i)];
-    return opening && step.kind === "lithography" ? { ...step, lattice_opening: { ...opening } } : step;
+    if (!opening || step.kind !== "lithography") return step;
+    const { step_overrides: _carried, ...anchor } = opening;
+    return { ...step, lattice_opening: { ...anchor } };
   });
+  // ...et reviennent sur les étapes, où le constructeur les tient
+  Object.values(openings).forEach((opening) => {
+    Object.entries((opening && opening.step_overrides) || {}).forEach(([position, byZone]) => {
+      const i = Number(position);
+      if (attached[i]) attached[i] = { ...attached[i], zone_overrides: JSON.parse(JSON.stringify(byZone)) };
+    });
+  });
+  return attached;
 }
 
 // Largeur du domaine figée (et tenue à jour) quand le réseau la fixe ; l'outil « fils » du dessin.

@@ -27,6 +27,7 @@ import shapely
 import structureforge
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 from shapely.affinity import translate
+from shapely.geometry import Polygon, box
 from structureforge.core.materials import Material, MaterialLibrary, aluminum_gan, default_library, indium_gan
 from structureforge.core.recipes import DepositionMode, DepositionRecipe, EtchMode, EtchRecipe, RecipeLibrary, default_recipes
 from structureforge.core.traced import Traced
@@ -91,6 +92,11 @@ class LatticeOpening(BaseModel):
     margin: float | None = Field(None, ge=0, le=1_000_000)
     gap: float | None = Field(None, ge=0, le=1_000_000)
     zones: list[SubPixelZone] | None = Field(None, min_length=1, max_length=MAX_SUBPIXEL_ZONES)
+    # les valeurs que des étapes d'après (leur position dans la liste qui porte cette lithographie)
+    # prennent dans une zone : ``{"<étape>": {"<zone>": {"<champ>": valeur}}}`` - voir
+    # :func:`overrides_by_step`. Une bibliothèque les range ici, un procédé d'étude sur les étapes
+    # elles-mêmes (``"zone_overrides"``, :data:`ZONE_OVERRIDES_KEY`)
+    step_overrides: dict[str, dict[str, dict[str, Any]]] | None = None
 
     @model_validator(mode="after")
     def _sized_for_its_mode(self) -> "LatticeOpening":
@@ -99,6 +105,10 @@ class LatticeOpening(BaseModel):
             raise ValueError(f"une lithographie ancrée « {self.mode} » se règle par {size}")
         if (self.mode == "zones") != (self.zones is not None):
             raise ValueError("seule une lithographie en sous-pixels (« zones ») porte des zones, et elle en porte")
+        if self.step_overrides is not None:
+            if self.mode != "zones":
+                raise ValueError("seule une lithographie en sous-pixels porte des valeurs par zone")
+            self.step_overrides = _checked_overrides(self.step_overrides, len(self.zones)) or None
         for other in set(LATTICE_OPENING_SIZES.values()) - {size}:
             setattr(self, other, None)
         return self
@@ -117,8 +127,37 @@ class LatticeOpening(BaseModel):
     def with_size(self, value: float) -> "LatticeOpening":
         return LatticeOpening.model_validate({**self.model_dump(), LATTICE_OPENING_SIZES[self.mode]: value})
 
+    def without_overrides(self) -> "LatticeOpening":
+        return self.model_copy(update={"step_overrides": None}) if self.step_overrides else self
+
+    def overrides_by_step(self) -> dict[int, dict[int, dict[str, Any]]]:
+        """Les valeurs par zone, par position d'étape puis par zone (des entiers)."""
+        return {int(step): {int(zone): dict(fields) for zone, fields in zones.items()} for step, zones in (self.step_overrides or {}).items()}
+
 
 LATTICE_OPENING_KEY = "lattice_opening"
+# sur une étape d'après une lithographie en sous-pixels : ``{"<zone>": {"<champ>": valeur}}``, ce que
+# l'étape prend de propre dans une zone (le reste est commun) - un champ d'un ``ProcessStep``, tel qu'il
+# s'écrit dans le procédé ; qu'un ``ProcessStep`` ignore, comme son ancrage
+ZONE_OVERRIDES_KEY = "zone_overrides"
+# un champ qu'une zone ne règle pas : l'identité de l'étape, ce qui ne se simule pas
+ZONE_NON_OVERRIDABLE = frozenset({"kind", "name"})
+
+
+def _checked_overrides(raw: dict[str, dict[str, dict[str, Any]]], zones: int) -> dict[str, dict[str, dict[str, Any]]]:
+    """Les valeurs par zone, nettoyées : des positions d'étape et des zones entières (la zone existe), des
+    champs réglables ; ce qui est vide s'en va. :class:`ValueError` pour une clé qui n'est pas un entier."""
+    checked: dict[str, dict[str, dict[str, Any]]] = {}
+    for step, by_zone in raw.items():
+        for zone, fields in by_zone.items():
+            if not (step.isdigit() and zone.isdigit()):
+                raise ValueError(f"valeurs par zone : l'étape et la zone se désignent par leur position ({step!r}, {zone!r})")
+            if int(zone) >= zones:
+                raise ValueError(f"valeurs par zone : la zone {int(zone) + 1} n'existe pas ({zones} zones)")
+            kept = {name: value for name, value in fields.items() if name not in ZONE_NON_OVERRIDABLE}
+            if kept:
+                checked.setdefault(str(int(step)), {})[str(int(zone))] = kept
+    return checked
 
 
 MAX_MEASURES = 6  # les cotes d'une étape, ou du substrat
@@ -461,6 +500,19 @@ def subpixel_layout(opening: LatticeOpening) -> tuple[float, list[tuple[float, f
     return round(x - opening.gap / 2, 3), pieces
 
 
+def subpixel_windows(opening: LatticeOpening) -> list[tuple[float, float]]:
+    """La part du domaine de chaque sous-pixel : elles se touchent et couvrent tout le domaine, chaque
+    frontière au milieu du vide entre deux zones (:func:`subpixel_layout`). Simulée seule, une zone voit
+    ses bords en miroir - le vide du milieu y est symétrique, donc la zone ne dépend pas de sa voisine."""
+    windows: list[tuple[float, float]] = []
+    start = 0.0
+    for zone in opening.zones:
+        end = start + zone.wires * zone.pitch + opening.gap
+        windows.append((round(start, 3), round(end, 3)))
+        start = end
+    return windows
+
+
 def resolve_lattice(
     substrate: SubstrateSpec, steps: list[ProcessStep], anchors: dict[int, LatticeOpening]
 ) -> tuple[SubstrateSpec, list[ProcessStep]]:
@@ -512,13 +564,27 @@ def lattice_anchors_in(raw_steps: Any) -> dict[int, LatticeOpening]:
     procédé enregistré) : la clé ``"lattice_opening"`` de l'étape, qu'un ``ProcessStep`` ignore. Un
     ancrage illisible est laissé de côté (l'étape garde ses ouvertures)."""
     anchors: dict[int, LatticeOpening] = {}
-    for index, step in enumerate(raw_steps if isinstance(raw_steps, list) else []):
+    steps = raw_steps if isinstance(raw_steps, list) else []
+    for index, step in enumerate(steps):
         raw = step.get(LATTICE_OPENING_KEY) if isinstance(step, dict) and step.get("kind") == "lithography" else None
         if isinstance(raw, dict):
             try:
                 anchors[index] = LatticeOpening.model_validate(raw)
             except ValueError:
                 continue
+    # les valeurs par zone des étapes d'après (leur clé ``zone_overrides``) rejoignent l'ancrage de la
+    # première lithographie en sous-pixels : c'est lui que la simulation et les bibliothèques lisent
+    zoned = next((index for index, anchor in sorted(anchors.items()) if anchor.mode == "zones"), None)
+    if zoned is not None:
+        carried = dict(anchors[zoned].step_overrides or {})
+        for index, step in enumerate(steps):
+            raw = step.get(ZONE_OVERRIDES_KEY) if isinstance(step, dict) and index > zoned else None
+            if isinstance(raw, dict) and raw:
+                carried[str(index)] = {str(zone): fields for zone, fields in raw.items() if isinstance(fields, dict)}
+        try:
+            anchors[zoned] = LatticeOpening.model_validate({**anchors[zoned].model_dump(), "step_overrides": carried or None})
+        except ValueError:
+            pass
     return anchors
 
 
@@ -1003,26 +1069,139 @@ def _simulate_tracking(
     _note_run(run_id, done=len(frames) - 1, **({} if tiled else {"resumed": len(frames) - 1}))
     for index in range(len(frames) - 1, len(steps)):
         step = steps[index]
-        before = list(geometry.layers)
         _note_run(run_id, step_index=index, step_name=step.name)
-        try:
-            frame = simulate(geometry, [step], materials, recipes)[-1]
-        except SimulationError as exc:
-            raise SimulationError(index + 1, step, exc.original) from exc.original
-        if isinstance(step, Flip):
-            # les couches retournées, dans l'ordre inverse (moins celles devenues vides)
-            survivors = [layer for layer in reversed(before) if not layer.polygon.is_empty]
-            if len(survivors) == len(geometry.layers):
-                for old, new in zip(survivors, geometry.layers):
-                    origin.setdefault(id(new), origin.get(id(old), index))
-        for layer in geometry.layers:
-            origin.setdefault(id(layer), index)
-        alive.extend(geometry.layers)
-        frames.append(Frame(index + 1, frame.step_kind, frame.step_name, frame.layers, frame.domain_width_nm))
-        origins.append([origin[id(layer)] for layer in geometry.frame_layers()])
+        frame, frame_origins = _advance(geometry, origin, alive, step, index, materials, recipes)
+        frames.append(frame)
+        origins.append(frame_origins)
         _keep(keys[index + 1], geometry, origin, frames[-1], origins[-1])
         _note_run(run_id, done=index + 1)
     return geometry, frames, origins, keys
+
+
+def _advance(
+    geometry: Geometry, origin: dict[int, int], alive: list[Any], step: ProcessStep, index: int, materials: MaterialLibrary, recipes: RecipeLibrary
+) -> tuple[Frame, list[int]]:
+    """Applique l'étape ``index`` à ``geometry`` : son image, et l'étape d'origine de chacune de ses
+    couches (``origin``, par id de couche ; ``alive`` garde chaque couche vue vivante)."""
+    before = list(geometry.layers)
+    try:
+        frame = simulate(geometry, [step], materials, recipes)[-1]
+    except SimulationError as exc:
+        raise SimulationError(index + 1, step, exc.original) from exc.original
+    if isinstance(step, Flip):
+        # les couches retournées, dans l'ordre inverse (moins celles devenues vides)
+        survivors = [layer for layer in reversed(before) if not layer.polygon.is_empty]
+        if len(survivors) == len(geometry.layers):
+            for old, new in zip(survivors, geometry.layers):
+                origin.setdefault(id(new), origin.get(id(old), index))
+    for layer in geometry.layers:
+        origin.setdefault(id(layer), index)
+    alive.extend(geometry.layers)
+    return Frame(index + 1, frame.step_kind, frame.step_name, frame.layers, frame.domain_width_nm), [origin[id(layer)] for layer in geometry.frame_layers()]
+
+
+# -- les valeurs propres à une zone -----------------------------------------------------------------
+#
+# Une lithographie en sous-pixels (:class:`LatticeOpening` ``zones``) découpe le domaine en zones que des
+# étapes d'après peuvent régler chacune à sa façon (``step_overrides``). Les zones ne se voient pas : une
+# zone simulée seule a ses bords en miroir (:func:`subpixel_windows`), le vide qui la sépare de sa
+# voisine étant symétrique. On simule donc d'un bloc tout ce qui est commun (jusqu'à la première étape
+# aux valeurs propres, caches compris), puis chaque zone seule - son morceau de l'état commun, les étapes
+# d'après avec ses valeurs - et on recolle les images, zone après zone. Sans valeur propre, rien de cela :
+# le procédé se simule d'un bloc, comme avant.
+
+_ZONE_FLOOR = -1e7  # nm - sous toute géométrie : la fenêtre d'une zone coupe en largeur seulement
+
+
+def _zone_plan(steps: list[ProcessStep], anchors: dict[int, LatticeOpening] | None) -> tuple[int, LatticeOpening, dict[int, dict[int, dict[str, Any]]]] | None:
+    """La lithographie en sous-pixels qui donne des valeurs propres à des zones, sa position, et ces
+    valeurs - par étape d'après elle (celles d'avant ou hors du procédé sont laissées de côté) ; ``None``
+    s'il n'y en a pas."""
+    for index, opening in sorted((anchors or {}).items()):
+        if opening.mode != "zones" or not opening.step_overrides:
+            continue
+        by_step = {step: zones for step, zones in opening.overrides_by_step().items() if index < step < len(steps) and zones}
+        if by_step:
+            return index, opening, by_step
+    return None
+
+
+def _step_in_zone(step: ProcessStep, fields: dict[str, Any], zone: int, position: int) -> ProcessStep:
+    """L'étape ``position`` avec les valeurs propres de la zone ``zone`` (un champ de l'étape, tel qu'il
+    s'écrit dans le procédé)."""
+    if not fields:
+        return step
+    try:
+        return type(step).model_validate({**step.model_dump(mode="json"), **fields})
+    except ValueError as exc:
+        raise SimulationFailedError(f"Étape {position + 1} ({step.name}), zone {zone + 1} : valeur refusée - {exc}") from exc
+
+
+def _polygonal(geometry: Any) -> Any:
+    """Ce qui reste de surface d'un résultat de découpe (une ligne ou un point sur la frontière s'en va)."""
+    if geometry.is_empty or geometry.geom_type in ("Polygon", "MultiPolygon"):
+        return geometry
+    parts = [part for part in getattr(geometry, "geoms", ()) if part.geom_type in ("Polygon", "MultiPolygon") and not part.is_empty]
+    return shapely.union_all(parts) if parts else Polygon()
+
+
+def _simulate_zoned(
+    substrate: SubstrateSpec,
+    steps: list[ProcessStep],
+    materials: MaterialLibrary,
+    recipes: RecipeLibrary,
+    run_id: str | None,
+    plan: tuple[int, LatticeOpening, dict[int, dict[int, dict[str, Any]]]],
+) -> tuple[Geometry, list[Frame], list[list[int]], list[str]]:
+    """:func:`_simulate_tracking` d'un procédé aux valeurs propres à des zones (voir plus haut) : mêmes
+    images, une par étape, celles d'après la première étape aux valeurs propres recollées zone après zone."""
+    _litho, opening, by_step = plan
+    first = min(by_step)
+    geometry, frames, origins, keys = _simulate_tracking(substrate, steps[:first], materials, recipes, run_id)
+    width = substrate.domain_width.to_nm()
+    windows = subpixel_windows(opening)
+    last_layers = geometry.frame_layers()
+    zone_frames: list[list[Frame]] = []
+    zone_origins: list[list[list[int]]] = []
+    for zone, (start, end) in enumerate(windows):
+        window = box(start, _ZONE_FLOOR, end, -_ZONE_FLOOR)
+        layers: list[Layer] = []
+        origin: dict[int, int] = {}
+        for layer, layer_origin in zip(last_layers, origins[-1]):
+            piece = _polygonal(layer.polygon.intersection(window))
+            if piece.is_empty:
+                continue
+            kept = Layer(layer.material, translate(piece, xoff=-start), layer.provenance)
+            layers.append(kept)
+            origin[id(kept)] = layer_origin
+        part = Geometry(round(end - start, 6), layers)
+        part.floor_nm = geometry.floor_nm
+        alive: list[Any] = list(layers)
+        zone_frames.append([])
+        zone_origins.append([])
+        for index in range(first, len(steps)):
+            step = _step_in_zone(steps[index], by_step.get(index, {}).get(zone, {}), zone, index)
+            try:
+                frame, frame_origins = _advance(part, origin, alive, step, index, materials, recipes)
+            except SimulationError as exc:
+                raise SimulationError(index + 1, steps[index], RuntimeError(f"zone {zone + 1} : {exc.original}")) from exc.original
+            zone_frames[zone].append(frame)
+            zone_origins[zone].append(frame_origins)
+    for index in range(first, len(steps)):
+        _note_run(run_id, step_index=index, step_name=steps[index].name)
+        merged: list[Layer] = []
+        merged_origins: list[int] = []
+        for zone, (start, _end) in enumerate(windows):
+            for layer, layer_origin in zip(zone_frames[zone][index - first].layers, zone_origins[zone][index - first]):
+                merged.append(Layer(layer.material, translate(layer.polygon, xoff=start), layer.provenance))
+                merged_origins.append(layer_origin)
+        frames.append(Frame(index + 1, steps[index].kind, steps[index].name, merged, width))
+        origins.append(merged_origins)
+        keys.append(hashlib.sha256((keys[-1] + json.dumps([steps[index].model_dump(mode="json"), by_step.get(index, {})], sort_keys=True, default=str)).encode()).hexdigest())
+        _note_run(run_id, done=index + 1)
+    final = Geometry(width, [Layer(layer.material, layer.polygon, layer.provenance) for layer in frames[-1].layers])
+    final.floor_nm = geometry.floor_nm
+    return final, frames, origins, keys
 
 
 def _apply_declared_params(
@@ -1084,7 +1263,11 @@ def simulate_process(
     _start_run(run_id, len(steps))
     state = "failed"
     try:
-        geometry, frames, origins, keys = _simulate_tracking(substrate, steps, materials, recipe_library, run_id, lattice_anchors)
+        plan = _zone_plan(steps, lattice_anchors)
+        if plan is not None:
+            geometry, frames, origins, keys = _simulate_zoned(substrate, steps, materials, recipe_library, run_id, plan)
+        else:
+            geometry, frames, origins, keys = _simulate_tracking(substrate, steps, materials, recipe_library, run_id, lattice_anchors)
         state = "done"
     except SimulationError as exc:
         raise SimulationFailedError(str(exc)) from exc
@@ -1176,7 +1359,11 @@ def process_metadata(
     steps_json = [step.model_dump(mode="json") for step in steps]
     for index, anchor in (lattice_anchors or {}).items():
         if 0 <= index < len(steps_json) and steps_json[index].get("kind") == "lithography":
-            steps_json[index][LATTICE_OPENING_KEY] = anchor.model_dump(mode="json")
+            steps_json[index][LATTICE_OPENING_KEY] = anchor.without_overrides().model_dump(mode="json")
+            # ce que des étapes d'après prennent de propre dans une zone se range sur ces étapes
+            for step_index, by_zone in sorted(anchor.overrides_by_step().items()):
+                if 0 <= step_index < len(steps_json):
+                    steps_json[step_index][ZONE_OVERRIDES_KEY] = {str(zone): fields for zone, fields in sorted(by_zone.items())}
     process: dict[str, Any] = {
         "substrate": substrate.model_dump(mode="json"),
         "steps": steps_json,
