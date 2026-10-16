@@ -5,7 +5,11 @@
    Elle vit sur l'étiquette de l'étape (step.layerLabel.measures, une étiquette « seulement cotée »
    quand elle n'est pas affichée : shown faux) et voyage avec elle ; c'est le serveur qui mesure et
    dessine (spectre.plugins.structures.rendering.measure_line). Le point est en nm, dans la géométrie
-   de l'image : il suit la couche quand une épaisseur change, tant qu'il reste dedans. */
+   de l'image : il suit la couche quand une épaisseur change, tant qu'il reste dedans.
+   Une cote peut être suivie à des étapes d'après (« Suivre aux étapes », measure.also : leurs ids) :
+   la même couche y est mesurée au même endroit, avec l'écart à sa valeur d'origine - le dépôt de
+   400 nm que la planarisation suivante amincit. L'inspecteur de ces étapes dit les cotes qu'elles
+   reprennent. */
 
 const MEASURE_DIRECTIONS = {
   thickness: { label: "Épaisseur", action: "Mesurer une épaisseur", hint: "la traversée verticale" },
@@ -23,11 +27,15 @@ function stepMeasures(step) {
 function measuresSectionHtml(kind) {
   if (!LABELLED_STEP_KINDS.has(kind)) return "";
   const measures = (state.formLayerLabel && state.formLayerLabel.measures) || [];
+  // ouverte aussi sur une étape qui reprend la cote d'une étape d'avant
+  const current = state.steps[state.selectedIndex];
+  const followedHere = Boolean(current && current.id) && state.steps.some((source, i) => i < state.selectedIndex && stepMeasures(source).some((m) => (m.also || []).includes(current.id)));
   return `
-    <details class="sb-declared" id="measures-section" ${measures.length ? "open" : ""}>
+    <details class="sb-declared" id="measures-section" ${measures.length || followedHere ? "open" : ""}>
       <summary class="sb-declared__summary">Coter sur le dessin <span class="sb-declared__count" id="measures-count">${measures.length ? measures.length : "optionnel"}</span></summary>
       <div class="sb-declared__body">
         <div id="measures-list" class="sb-measures"></div>
+        <div id="measures-followed-here" class="sb-measures"></div>
         <div class="sb-measures__actions">
           ${Object.entries(MEASURE_DIRECTIONS)
             .map(([direction, d]) => `<button type="button" class="btn btn-line js-measure-start" data-direction="${direction}">${d.action}</button>`)
@@ -38,7 +46,7 @@ function measuresSectionHtml(kind) {
           <span id="measure-pending-text"></span>
           <button type="button" class="btn btn-line" id="measure-cancel-btn">Annuler</button>
         </div>
-        <div class="help" style="margin:8px 0 0;">Cliquez ensuite sur le dessin de cette étape : la cote mesure ce qui est sous le point - l'épaisseur du substrat après une planarisation, la largeur d'un fil après sa croissance. Elle ne paraît que sur l'image de cette étape (et dans son rapport), pas sur la suite. Enregistrée avec la version, sans compter comme un changement de structure.</div>
+        <div class="help" style="margin:8px 0 0;">Cliquez ensuite sur le dessin de cette étape : la cote mesure ce qui est sous le point - l'épaisseur du substrat après une planarisation, la largeur d'un fil après sa croissance. Elle paraît sur l'image de cette étape (et dans son rapport) ; « Suivre aux étapes » la reprend sur celles d'après que vous cochez, avec l'écart à sa valeur d'ici (une planarisation qui amincit le dépôt). Enregistrée avec la version, sans compter comme un changement de structure.</div>
       </div>
     </details>`;
 }
@@ -48,6 +56,81 @@ function measuredLength(stepIndex, k) {
   const frame = state.frames && state.frames[stepIndex + 1];
   const match = frame && frame.svg.match(new RegExp(`<g class="sp-measure"[^>]*data-step="${stepIndex}" data-measure="${k}" data-length="([^"]+)" data-material="([^"]*)"`));
   return match ? { length: Number(match[1]), material: match[2] } : null;
+}
+
+// Sa longueur sur l'image d'une étape d'après où elle est suivie (data-at), et sa longueur d'origine.
+function followedLength(stepIndex, k, at) {
+  const frame = state.frames && state.frames[at + 1];
+  const match = frame && frame.svg.match(new RegExp(`<g class="sp-measure"[^>]*data-step="${stepIndex}" data-measure="${k}" data-at="${at}" data-length="([^"]+)"[^>]*data-reference="([^"]+)"`));
+  return match ? { length: Number(match[1]), reference: Number(match[2]) } : null;
+}
+
+function measureChangeText(followed) {
+  const change = Math.round((followed.length - followed.reference) * 10) / 10;
+  if (Math.abs(change) < 0.05) return `${measureLengthText(followed.length)} (=)`;
+  return `${measureLengthText(followed.length)} (${change > 0 ? "+" : "−"}${measureLengthText(Math.abs(change))})`;
+}
+
+// Les « Suivre aux étapes » ouverts (par numéro de cote), gardés ouverts quand la liste se redessine.
+const openFollowLists = new Set();
+
+function stepTitle(index) {
+  const step = state.steps[index];
+  return `Étape ${index + 1} · ${step ? step.name : ""}`;
+}
+
+// Les étapes d'après où la cote k de l'étape index peut être suivie : une case chacune (une étape
+// neuve reçoit son id à la simulation suivante - d'ici là, pas de case).
+function followListHtml(index, k, measure) {
+  const also = new Set(measure.also || []);
+  const later = state.steps.map((step, j) => ({ step, j })).filter(({ j }) => j > index);
+  if (!later.length) return "";
+  const rows = later
+    .map(({ step, j }) => {
+      const followed = step.id && also.has(step.id) ? followedLength(index, k, j) : null;
+      const value = followed ? ` - <strong>${escapeHtml(measureChangeText(followed))}</strong>` : "";
+      return `<label class="sb-check"><input type="checkbox" class="js-measure-follow" data-measure="${k}" value="${escapeHtml(step.id || "")}" ${step.id ? "" : "disabled"} ${step.id && also.has(step.id) ? "checked" : ""}> ${escapeHtml(stepTitle(j))}${value}</label>`;
+    })
+    .join("");
+  const count = later.filter(({ step }) => step.id && also.has(step.id)).length;
+  return `<details class="sb-measures__follow" data-measure="${k}" ${openFollowLists.has(k) ? "open" : ""}>
+      <summary>Suivre aux étapes${count ? ` (${count})` : ""}</summary>
+      <div class="sb-measures__follow-list">${rows}</div>
+    </details>`;
+}
+
+// Les cotes d'étapes d'avant que l'étape ouverte reprend, avec leur longueur ici et leur écart.
+function followedHereHtml(index) {
+  const step = state.steps[index];
+  if (!step || !step.id) return "";
+  const rows = [];
+  state.steps.forEach((source, i) => {
+    if (i >= index) return;
+    stepMeasures(source).forEach((measure, k) => {
+      if (!(measure.also || []).includes(step.id)) return;
+      const followed = followedLength(i, k, index);
+      const what = followed ? `<strong>${escapeHtml(measureChangeText(followed))}</strong>` : "<em>couche absente ici</em>";
+      rows.push(`<div class="sb-measures__row">
+          <span>${escapeHtml(MEASURE_DIRECTIONS[measure.direction].label)} de l'étape ${i + 1} (${escapeHtml(source.name)}) · ${what}</span>
+          <button type="button" class="btn btn-line js-measure-unfollow" data-step="${i}" data-measure="${k}" aria-label="Ne plus la suivre ici" title="Ne plus la suivre ici">✕</button>
+        </div>`);
+    });
+  });
+  return rows.length ? `<div class="sb-measures__here">Reprises ici</div>${rows.join("")}` : "";
+}
+
+// Suit (on) ou ne suit plus la cote k de l'étape index à l'étape d'id stepId.
+function setMeasureFollowed(index, k, stepId, on) {
+  const measures = stepMeasures(state.steps[index]).map((measure, j) => {
+    if (j !== k) return measure;
+    const also = (measure.also || []).filter((id) => id !== stepId);
+    if (on) also.push(stepId);
+    const next = { ...measure, also };
+    if (!also.length) delete next.also;
+    return next;
+  });
+  setStepMeasures(index, measures);
+  if (index !== state.selectedIndex) refreshMeasuresList(); // l'étape ouverte reprenait cette cote
 }
 
 function measureLengthText(nm) {
@@ -66,12 +149,14 @@ function refreshMeasuresList() {
       const measured = measuredLength(index, k);
       const what = measured ? `${escapeHtml(measured.material)} · <strong>${escapeHtml(measureLengthText(measured.length))}</strong>` : "<em>hors de la structure</em>";
       const scope = measure.scope === "layer" ? "couche seule" : "matière";
-      return `<div class="sb-measures__row">
+      return `<div class="sb-measures__item"><div class="sb-measures__row">
           <span>${escapeHtml(MEASURE_DIRECTIONS[measure.direction].label)} · ${what} <span class="sb-measures__scope">(${scope})</span></span>
           <button type="button" class="btn btn-line js-measure-remove" data-measure="${k}" aria-label="Retirer cette cote" title="Retirer cette cote">✕</button>
-        </div>`;
+        </div>${followListHtml(index, k, measure)}</div>`;
     })
     .join("");
+  const here = document.getElementById("measures-followed-here");
+  if (here) here.innerHTML = followedHereHtml(index);
   document.querySelectorAll(".js-measure-start").forEach((button) => (button.disabled = measures.length >= MAX_MEASURES));
 }
 
@@ -165,9 +250,35 @@ document.getElementById("step-form-section").addEventListener("click", (event) =
     stopMeasuring();
     return;
   }
+  const unfollow = event.target.closest(".js-measure-unfollow");
+  if (unfollow) {
+    const step = state.steps[state.selectedIndex];
+    if (step && step.id) setMeasureFollowed(Number(unfollow.dataset.step), Number(unfollow.dataset.measure), step.id, false);
+    return;
+  }
   const remove = event.target.closest(".js-measure-remove");
   if (remove) {
+    openFollowLists.clear();
     const measures = stepMeasures(state.steps[state.selectedIndex]).filter((_m, k) => k !== Number(remove.dataset.measure));
     setStepMeasures(state.selectedIndex, measures);
   }
 });
+
+document.getElementById("step-form-section").addEventListener("change", (event) => {
+  const box = event.target.closest(".js-measure-follow");
+  if (!box || !box.value) return;
+  setMeasureFollowed(state.selectedIndex, Number(box.dataset.measure), box.value, box.checked);
+});
+
+// ouvrir ou fermer « Suivre aux étapes » : gardé tel quel quand la liste se redessine
+document.getElementById("step-form-section").addEventListener(
+  "toggle",
+  (event) => {
+    const details = event.target;
+    if (!details.classList || !details.classList.contains("sb-measures__follow")) return;
+    const k = Number(details.dataset.measure);
+    if (details.open) openFollowLists.add(k);
+    else openFollowLists.delete(k);
+  },
+  true
+);

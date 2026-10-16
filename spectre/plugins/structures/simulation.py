@@ -1149,6 +1149,8 @@ LABEL_PLACE_KEYS = ("offset", "anchor")
 # qu'est la structure - ni le versionnage, ni les différences d'étiquettes ne les comptent
 LABEL_DRAWING_KEYS = (*LABEL_PLACE_KEYS, "measures")
 MAX_MEASURES = 6
+# les étapes d'après où une même cote peut être suivie (Measure.also)
+MAX_FOLLOWED_STEPS = 40
 # le plus loin d'un point de cote du bord du domaine (nm) : une géométrie tient bien en deçà
 MAX_MEASURE_COORDINATE = 1e7
 # les étapes qui ne créent pas de couche (un nettoyage, une gravure, un etch back...) : leur étiquette
@@ -1163,14 +1165,37 @@ class Measure(BaseModel):
     ``"thickness"`` : la traversée verticale) ou sa largeur (``"width"`` : horizontale, le diamètre
     apparent d'un fil). ``scope`` : ``"material"``, toute la matière d'un seul tenant autour du point
     (les couches touchées du même matériau, le cœur d'un fil et sa première coquille de GaN) ;
-    ``"layer"``, la seule couche cliquée (une coquille). La cote ne paraît que sur l'image de son étape
-    (spectre.plugins.structures.rendering) : une information d'un moment, pas de toute la suite."""
+    ``"layer"``, la seule couche cliquée (une coquille). La cote paraît sur l'image de son étape
+    (spectre.plugins.structures.rendering) : une information d'un moment, pas de toute la suite - et,
+    suivie, sur celles des étapes d'après qu'``also`` nomme (leurs ids, ``st_<8 hex>``) : la même
+    couche, mesurée au même endroit, avec l'écart à sa valeur d'origine (une planarisation qui
+    amincit le dépôt). Une étape nommée qui n'est plus là, ou d'avant la cote, est ignorée."""
 
     model_config = ConfigDict(extra="forbid")
 
     direction: Literal["thickness", "width"]
     point: tuple[float, float]
     scope: Literal["material", "layer"] = "material"
+    also: list[str] = Field(default_factory=list, max_length=MAX_FOLLOWED_STEPS)
+
+    @field_validator("also")
+    @classmethod
+    def _step_ids(cls, also: list[str]) -> list[str]:
+        kept: list[str] = []
+        for step_id in also:
+            if not STEP_ID_RE.fullmatch(step_id):
+                raise ValueError(f"étape suivie inconnue : {step_id!r} (un id d'étape, st_<8 hex>)")
+            if step_id not in kept:
+                kept.append(step_id)
+        return kept
+
+    @model_serializer(mode="wrap")
+    def _without_empty_also(self, handler: Any) -> dict[str, Any]:
+        # une cote qui n'est suivie nulle part s'enregistre comme avant le suivi
+        data = handler(self)
+        if not data.get("also"):
+            data.pop("also", None)
+        return data
 
     @field_validator("point")
     @classmethod
