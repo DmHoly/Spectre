@@ -114,3 +114,48 @@ def test_moving_a_label_redraws_only_the_images_it_is_on(monkeypatch):
     moved = payload((10, 20))
     # l'AlN n'est que sur la dernière image : elle seule est redessinée, les autres sont reprises
     assert drawn == [3] and 'data-offset="10 20"' in moved["frames"][3]["svg"]
+
+
+def _followed(svg: str) -> list[tuple[int, int, float, float]]:
+    """Les cotes suivies d'une image : (étape de la cote, étape de l'image, longueur, longueur d'origine)."""
+    found = re.findall(r'class="sp-measure"[^>]*data-step="(\d+)" data-measure="\d+" data-at="(\d+)" data-length="([^"]+)"[^>]*data-reference="([^"]+)"', svg)
+    return [(int(step), int(at), float(length), float(reference)) for step, at, length, reference in found]
+
+
+def test_a_measure_followed_at_a_later_step_measures_the_same_layer_there_with_its_change(client):
+    from support.structures import fixed_step_id, identified
+
+    signup(client, "measure-followed@example.com")
+    planarize = {"kind": "planarization", "name": "Planarisation", "target_level": {"value": 300, "unit": "nm"}}
+    steps = identified([deposition("GaN", "GaN", recipe="MOCVD Epitaxial", thickness_nm=400), CLEAN, planarize])
+    measure = {"direction": "thickness", "point": [100, 200], "also": [fixed_step_id(3), "st_ffffffff"]}
+    frames = _frames(client, steps=steps, layer_labels={"0": {"shown": False, "measures": [measure]}})
+    assert _measured(frames[1]["svg"]) == [("thickness", 0, 400.0)]
+    # pas sur l'image du nettoyage (non suivie) ; après la planarisation à 300 nm : 300 nm, 100 nm de moins
+    assert "sp-measure" not in frames[2]["svg"]
+    assert _followed(frames[3]["svg"]) == [(0, 2, 300.0, 400.0)]
+    assert "300 nm (−100 nm)" in frames[3]["svg"]
+
+
+def test_a_followed_measure_finds_its_layer_again_after_a_flip():
+    from spectre.plugins.structures import rendering, simulation
+
+    steps, result = _simulated([*STACK, FLIP])
+    measure = simulation.Measure(direction="thickness", point=(100, 100), scope="layer")
+    line = rendering.followed_measure_line(result.frames, result.layer_origins, steps, measure, 0, 0, 3)
+    (gan,) = [layer for layer, origin in zip(result.frames[-1].layers, result.layer_origins[-1]) if origin == 0]
+    # le GaN retourné : toujours 200 nm, mesuré là où il est maintenant
+    assert line is not None and line.length == 200.0 and line.reference == 200.0
+    assert gan.polygon.bounds[1] - 1e-6 <= min(line.y1, line.y2) and max(line.y1, line.y2) <= gan.polygon.bounds[3] + 1e-6
+
+
+def test_a_measure_names_the_later_steps_it_follows_by_their_ids():
+    import pytest
+    from pydantic import ValidationError
+
+    from spectre.plugins.structures.simulation import Measure
+
+    assert Measure(direction="width", point=(0, 0)).model_dump(mode="json") == {"direction": "width", "point": [0.0, 0.0], "scope": "material"}
+    assert Measure(direction="width", point=(0, 0), also=["st_00000002", "st_00000002"]).also == ["st_00000002"]
+    with pytest.raises(ValidationError):
+        Measure(direction="width", point=(0, 0), also=["étape 2"])

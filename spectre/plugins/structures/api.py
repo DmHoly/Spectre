@@ -49,11 +49,12 @@ def simulate(
     labels = simulation.layer_labels_by_index(body.layer_labels, len(body.steps))
     bricks = simulation.checked_bricks(body.bricks, len(body.steps))
     result = simulation.simulate_process(body.substrate, body.steps, declared_params or None, body.recipes or None, run, body.lattice_anchors)
+    step_ids = simulation.settle_step_ids(body.step_ids)
     return {
         **rendering.frames_payload(
-            result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels, bricks, result.frame_keys
+            result.frames, result.materials, result.layer_origins, body.steps, declared_params, labels, bricks, result.frame_keys, step_ids
         ),
-        "step_ids": simulation.settle_step_ids(body.step_ids),
+        "step_ids": step_ids,
     }
 
 

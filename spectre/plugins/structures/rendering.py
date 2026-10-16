@@ -770,6 +770,10 @@ class MeasureLine:
     material: str
     step: int | None = None
     index: int = 0
+    # une cote suivie (Measure.also) : l'étape de l'image où elle est reprise, et sa longueur sur
+    # l'image de sa propre étape - l'écart s'écrit à côté
+    at: int | None = None
+    reference: float | None = None
 
 
 def _segments(geometry: Any) -> list[Any]:
@@ -780,38 +784,106 @@ def _segments(geometry: Any) -> list[Any]:
     return [g for g in getattr(merged, "geoms", [merged]) if g.geom_type == "LineString" and not g.is_empty]
 
 
-def measure_line(frame: Frame, measure: Any, step: int | None = None, index: int = 0) -> MeasureLine | None:
-    """La cote ``measure`` (:class:`~.simulation.Measure`) sur ``frame`` : la couche sous son point
-    (la plus haute dans l'empilement ; à défaut, la plus proche), ou toute la matière d'un seul tenant
-    de son matériau (``scope`` ``"material"``), traversée à la verticale du point (une épaisseur) ou à
-    son horizontale (une largeur) - le morceau de la traversée qui passe par le point. ``None`` : rien
-    à mesurer (une image vide)."""
-    point = Point(measure.point)
-    shapes = [(layer, shape) for layer in frame.layers for shape in [_layer_shape(layer)] if shape is not None]
+def _measured(
+    frame: Frame, point: Point, direction: str, scope: str, among: set[int] | None = None
+) -> tuple[tuple[float, float, float, float, float], int, Any] | None:
+    """La traversée de ``frame`` par ``point`` : ``((x1, y1, x2, y2, longueur), la couche mesurée,
+    sa forme)`` - la couche sous le point (la plus haute ; à défaut la plus proche), ou, ``among``
+    donné, la plus proche du point parmi ces couches-là ; avec, ``scope`` ``"material"``, toute la
+    matière d'un seul tenant de son matériau autour d'elle. ``None`` : rien à mesurer."""
+    shapes = [(k, layer, shape) for k, layer in enumerate(frame.layers) for shape in [_layer_shape(layer)] if shape is not None]
     if not shapes:
         return None
-    under = [(layer, shape) for layer, shape in shapes if shape.covers(point)]
-    layer, shape = under[-1] if under else min(shapes, key=lambda item: item[1].distance(point))
-    if measure.scope == "material":
-        same = [other for other_layer, other in shapes if other_layer.material == layer.material]
+    if among is not None:
+        chosen = [item for item in shapes if item[0] in among]
+        if not chosen:
+            return None
+        k, layer, shape = min(chosen, key=lambda item: item[2].distance(point))
+    else:
+        under = [item for item in shapes if item[2].covers(point)]
+        k, layer, shape = under[-1] if under else min(shapes, key=lambda item: item[2].distance(point))
+    own = shape
+    if scope == "material":
+        same = [other for _j, other_layer, other in shapes if other_layer.material == layer.material]
         union = shapely.union_all(same, grid_size=_UNION_GRID)
         parts = [g for g in getattr(union, "geoms", [union]) if not g.is_empty]
-        shape = min(parts, key=lambda part: part.distance(point)) if parts else shape
+        shape = min(parts, key=lambda part: part.distance(own)) if parts else shape
     min_x, min_y, max_x, max_y = shape.bounds
-    if measure.direction == "thickness":
+    if direction == "thickness":
         x = min(max(point.x, min_x), max_x)
         across = LineString([(x, min_y - 1), (x, max_y + 1)])
     else:
         y = min(max(point.y, min_y), max_y)
         across = LineString([(min_x - 1, y), (max_x + 1, y)])
     segments = _segments(shape.intersection(across))
+    if among is not None:
+        # la traversée de la couche suivie (pas celle d'une autre partie de sa matière)
+        segments = [g for g in segments if g.intersects(own.buffer(1e-3))] or segments
     if not segments:
         return None
     segment = min(segments, key=lambda g: g.distance(point))
     (x1, y1), (x2, y2) = segment.coords[0], segment.coords[-1]
-    if (measure.direction == "thickness" and y1 < y2) or (measure.direction == "width" and x1 > x2):
+    if (direction == "thickness" and y1 < y2) or (direction == "width" and x1 > x2):
         (x1, y1), (x2, y2) = (x2, y2), (x1, y1)  # du haut vers le bas, de gauche à droite
-    return MeasureLine(measure.direction, x1, y1, x2, y2, round(segment.length, 1), layer.material, step, index)
+    return (x1, y1, x2, y2, round(segment.length, 1)), k, own
+
+
+def measure_line(frame: Frame, measure: Any, step: int | None = None, index: int = 0) -> MeasureLine | None:
+    """La cote ``measure`` (:class:`~.simulation.Measure`) sur ``frame`` : la couche sous son point
+    (la plus haute dans l'empilement ; à défaut, la plus proche), ou toute la matière d'un seul tenant
+    de son matériau (``scope`` ``"material"``), traversée à la verticale du point (une épaisseur) ou à
+    son horizontale (une largeur) - le morceau de la traversée qui passe par le point. ``None`` : rien
+    à mesurer (une image vide)."""
+    found = _measured(frame, Point(measure.point), measure.direction, measure.scope)
+    if found is None:
+        return None
+    (x1, y1, x2, y2, length), k, _shape = found
+    return MeasureLine(measure.direction, x1, y1, x2, y2, length, frame.layers[k].material, step, index)
+
+
+def followed_measure_line(
+    frames: list[Frame], origins: list[list[int | None]], steps: list[ProcessStep], measure: Any, step: int, index: int, at: int
+) -> MeasureLine | None:
+    """La cote ``measure`` de l'étape ``step``, reprise sur l'image de l'étape ``at`` (plus loin) :
+    la couche qu'elle mesure sur l'image de son étape (celle de la même étape d'origine, ``origins``),
+    traversée au même endroit - même x ; à la même hauteur dans la couche, comptée depuis son dessous
+    (depuis son dessus si la plaque a été retournée entre-temps). ``reference`` : sa longueur sur
+    l'image de son étape. ``None`` : la couche n'y est plus (gravée), ou rien à mesurer."""
+    if not 0 <= step < at < len(frames) - 1:
+        return None
+    first = _measured(frames[step + 1], Point(measure.point), measure.direction, measure.scope)
+    if first is None:
+        return None
+    (_x1, _y1, _x2, _y2, reference), k0, shape0 = first
+    origin, material = origins[step + 1][k0], frames[step + 1].layers[k0].material
+    frame = frames[at + 1]
+    among = {k for k, (layer, o) in enumerate(zip(frame.layers, origins[at + 1])) if o == origin and layer.material == material}
+    shapes = [shape for k in among for shape in [_layer_shape(frame.layers[k])] if shape is not None]
+    if not shapes:
+        return None
+    _bx, b0_min, _bx2, b0_max = shape0.bounds
+    _cx, b1_min, _cx2, b1_max = unary_union(shapes).bounds
+    x, y = measure.point
+    height = b0_max - b0_min
+    fraction = min(1.0, max(0.0, (y - b0_min) / height)) if height > 0 else 0.5
+    flipped = sum(1 for later in steps[step + 1 : at + 1] if later.kind == "flip") % 2 == 1
+    mapped = b1_max - fraction * (b1_max - b1_min) if flipped else b1_min + fraction * (b1_max - b1_min)
+    found = _measured(frame, Point(x, mapped), measure.direction, measure.scope, among)
+    if found is None:
+        return None
+    (x1, y1, x2, y2, length), k, _shape = found
+    return MeasureLine(measure.direction, x1, y1, x2, y2, length, frame.layers[k].material, step, index, at=at, reference=reference)
+
+
+def _length_with_change(line: MeasureLine) -> str:
+    """La longueur d'une cote ; d'une cote suivie, avec son écart à sa valeur d'origine."""
+    text = length_text(line.length)
+    if line.reference is None:
+        return text
+    change = round(line.length - line.reference, 1)
+    if abs(change) < 0.05:
+        return f"{text} (=)"
+    return f"{text} ({'+' if change > 0 else '−'}{length_text(abs(change))})"
 
 
 def measure_lines(frame: Frame, label: Any, step: int | None) -> tuple[MeasureLine, ...]:
@@ -829,7 +901,7 @@ def _measure_marks(measures: Any, to_svg: Callable[[float, float], tuple[float, 
     boxes: list[tuple[float, float, float, float]] = []
     for line in measures:
         (ax, ay), (bx, by) = to_svg(line.x1, line.y1), to_svg(line.x2, line.y2)
-        text = length_text(line.length)
+        text = _length_with_change(line)
         text_w = _text_width(text, VALUE_SIZE)
         if line.direction == "thickness":
             tick = f"M{_n(ax - MEASURE_TICK)},{_n(ay)} H{_n(ax + MEASURE_TICK)} M{_n(bx - MEASURE_TICK)},{_n(by)} H{_n(bx + MEASURE_TICK)}"
@@ -850,10 +922,13 @@ def _measure_marks(measures: Any, to_svg: Callable[[float, float], tuple[float, 
             tx, ty, anchor = (ax + bx) / 2, ay - MEASURE_TICK - MEASURE_TEXT_GAP, "middle"
             box = (min(tx - text_w / 2, ax), ty - VALUE_SIZE, max(tx + text_w / 2, bx), ay + MEASURE_TICK)
         step = f' data-step="{line.step}"' if line.step is not None else ""
+        # une cote suivie : l'étape de l'image où elle est reprise, et sa longueur d'origine
+        followed = f' data-at="{line.at}"' if line.at is not None else ""
+        reference = f' data-reference="{_n(line.reference)}"' if line.reference is not None else ""
         segment = f"M{_n(ax)},{_n(ay)} L{_n(bx)},{_n(by)} {tick}"
         parts.append(
-            f'<g class="sp-measure" data-direction="{line.direction}"{step} data-measure="{line.index}" data-length="{_n(line.length)}" '
-            f'data-material="{html.escape(line.material)}">'
+            f'<g class="sp-measure" data-direction="{line.direction}"{step} data-measure="{line.index}"{followed} data-length="{_n(line.length)}" '
+            f'data-material="{html.escape(line.material)}"{reference}>'
             f'<path d="{segment}" fill="none" stroke-width="3.4" stroke-linecap="round" style="stroke:{_SURFACE}"/>'
             f'<path d="{segment}" fill="none" stroke-width="1.3" stroke-linecap="round" style="stroke:{_TEXT}"/>'
             f'<path d="{arrows}" style="fill:{_TEXT}"/>'
@@ -896,6 +971,7 @@ def frames_payload(
     labels: dict[int, LayerLabel] | None = None,
     bricks: list[ProcessBrick] | None = None,
     frame_keys: tuple[str, ...] | list[str] | None = None,
+    step_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Each frame as the builder shows it: its SVG (layers tagged ``data-layer-index``, the labels
     of ``labels`` drawn on the layers they name, grouped by ``bricks``), its materials and its
@@ -905,7 +981,8 @@ def frames_payload(
     frame (:attr:`LayerAnnotation.anchor_bounds`), and neither honoured nor movable before a flip.
     ``frame_keys``: the key of each frame's simulated state (:attr:`~.simulation.SimulationResult.frame_keys`)
     - with them, a frame drawn the same way as before (same state, same labels) is not drawn again
-    (:func:`_cached_svg`)."""
+    (:func:`_cached_svg`). ``step_ids``: the id of each step, which a measure followed at later steps
+    names them by (:attr:`~.simulation.Measure.also`)."""
     material_colors = {m.name: m.color for m in materials}
 
     def origins_of(k: int) -> list[int | None]:
@@ -929,6 +1006,17 @@ def frames_payload(
         # les cotes d'une étape ne paraissent que sur son image (frames[k] : après l'étape k - 1)
         measured = (labels or {}).get(k - 1) if k > 0 else None
         measures = measure_lines(frame, measured, k - 1) if measured is not None and measured.measures else ()
+        # et celles d'étapes d'avant, suivies jusqu'à celle-ci (Measure.also)
+        here = step_ids[k - 1] if step_ids and 0 < k <= len(step_ids) else None
+        if here is not None and origins is not None and steps:
+            followed = (
+                followed_measure_line(frames, origins, steps, measure, i, m, k - 1)
+                for i, label in sorted((labels or {}).items())
+                if i < k - 1
+                for m, measure in enumerate(label.measures)
+                if here in measure.also
+            )
+            measures = (*measures, *(line for line in followed if line is not None))
         payload.append(
             {
                 "step_index": frame.step_index,
