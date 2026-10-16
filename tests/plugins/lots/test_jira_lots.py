@@ -74,3 +74,46 @@ def test_reading_a_plate_online_makes_its_jira_lot_exist(client, demo):
     assert [lot["code"] for lot in lots] == [fiche["lot_name"]] and lots[0]["source"] == "prism"
     get_tracking(client, "T002")
     assert client.get("/api/lots", params={"code": fiche["lot_name"]}).json()  # toujours un seul lot de ce nom
+
+
+# --- clôture automatique d'un lot arrêté ----------------------------------------------------------
+
+
+def _moves(monkeypatch, moves):
+    from spectre.plugins.lots import auto_close
+
+    monkeypatch.setattr(auto_close.tracking, "last_movements", lambda keys: {k: v for k, v in moves.items() if k in set(keys)})
+
+
+def test_a_lot_whose_plates_all_stopped_a_week_ago_closes_and_reopens_when_one_moves(client, monkeypatch):
+    from spectre.plugins.lots import auto_close
+
+    signup(client, "stop@example.com")
+    lot = client.post("/api/lots", json={"code": "STOP1", "started_on": "2026-09-01", "wafers": ["A1", "A2"]}).json()
+    now = datetime(2026, 10, 15, 9, 0)
+    _moves(monkeypatch, {"A1": "2026-10-01 10:00"})  # A2 jamais lue : arrêt inconnu, le lot reste
+    assert auto_close.sweep(now=now) == []
+    _moves(monkeypatch, {"A1": "2026-10-01 10:00", "A2": "2026-10-10 14:30"})  # A2 a bougé il y a 5 jours
+    assert auto_close.sweep(now=now) == []
+    assert auto_close.sweep(now=datetime(2026, 10, 17, 15, 0)) == [lot["id"]]  # une semaine sans rien
+    closed = client.get(f"/api/lots/{lot['id']}").json()
+    assert (closed["status"], closed["exited_on"], closed["stopped_since"]) == ("done", "2026-10-10", "2026-10-10 14:30")
+    _moves(monkeypatch, {"A1": "2026-10-20 08:00", "A2": "2026-10-10 14:30"})  # A1 repart
+    assert auto_close.sweep(now=datetime(2026, 10, 20, 9, 0)) == [lot["id"]]
+    reopened = client.get(f"/api/lots/{lot['id']}").json()
+    assert (reopened["status"], reopened["exited_on"], reopened["stopped_since"]) == ("wip", None, None)
+
+
+def test_a_lot_reopened_by_hand_is_not_closed_again_and_a_planned_one_waits(client, monkeypatch):
+    from spectre.plugins.lots import auto_close
+
+    signup(client, "manual@example.com")
+    planned = client.post("/api/lots", json={"code": "PLAN1", "wafers": ["B1"]}).json()  # déclaratif, pas commencé
+    started = client.post("/api/lots", json={"code": "RUN1", "started_on": "2026-09-01", "wafers": ["B2"]}).json()
+    _moves(monkeypatch, {"B1": "2026-09-01 10:00", "B2": "2026-09-01 10:00"})
+    assert auto_close.sweep(now=datetime(2026, 10, 15)) == [started["id"]]
+    response = client.get(f"/api/lots/{started['id']}")
+    reopen = client.patch(f"/api/lots/{started['id']}", json={"status": "wip"}, headers={"If-Match": response.headers["ETag"]})
+    assert reopen.status_code == 200 and reopen.json()["status"] == "wip"
+    assert auto_close.sweep(now=datetime(2026, 10, 30)) == []  # décidé à la main après le dernier mouvement
+    assert client.get(f"/api/lots/{planned['id']}").json()["status"] == "planned"

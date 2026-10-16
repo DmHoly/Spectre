@@ -69,20 +69,35 @@ def _notify(key: str, lasermark: str, payload: dict[str, Any]) -> None:
             logger.exception("suivi de la plaque %s : l'observateur %s a échoué", lasermark, getattr(listener, "__name__", listener))
 
 
+def last_movements(keys: Iterable[str]) -> dict[str, str | None]:
+    """Par clé de plaque déjà lue en ligne, son dernier mouvement connu ('YYYY-MM-DD HH:MM', toutes
+    sources) - une plaque jamais lue n'y est pas."""
+    wanted = sorted({wafer_key(k) for k in keys} - {""})
+    if not wanted:
+        return {}
+    with get_conn() as conn:
+        rows = conn.execute(f"SELECT wafer_key, last_movement FROM wafer_tracking WHERE wafer_key IN ({','.join('?' * len(wanted))})", wanted).fetchall()
+    return {row["wafer_key"]: row["last_movement"] for row in rows}
+
+
 def line_facts(keys: Iterable[str] | None = None) -> dict[str, dict[str, Any]]:
-    """Par clé de plaque déjà lue en ligne : ses FDL (``fdls``, normalisées) et son nom de lot JIRA
-    (``lot_name``) - sans relire les bases ni la fiche entière."""
+    """Par clé de plaque déjà lue en ligne : ses FDL (``fdls``, normalisées), son nom de lot JIRA
+    (``lot_name``) et ses noms de run d'épitaxie (``run_names``, le principal d'abord) - sans relire
+    les bases ni la fiche entière."""
     wanted = None if keys is None else sorted({wafer_key(k) for k in keys} - {""})
     if wanted == []:
         return {}
-    sql = "SELECT wafer_key, fdls, lot_name FROM wafer_tracking"
+    sql = "SELECT wafer_key, lasermark, fdls, lot_name, run_names FROM wafer_tracking"
     params: tuple = ()
     if wanted is not None:
         sql += f" WHERE wafer_key IN ({','.join('?' * len(wanted))})"
         params = tuple(wanted)
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
-    return {row["wafer_key"]: {"fdls": json.loads(row["fdls"] or "[]"), "lot_name": row["lot_name"]} for row in rows}
+    return {
+        row["wafer_key"]: {"lasermark": row["lasermark"], "fdls": json.loads(row["fdls"] or "[]"), "lot_name": row["lot_name"], "run_names": json.loads(row["run_names"] or "[]")}
+        for row in rows
+    }
 
 
 def _utcnow() -> datetime:
@@ -98,14 +113,15 @@ def _row(key: str) -> dict[str, Any] | None:
 def _save(key: str, lasermark: str, source: str, payload: dict[str, Any], fetched_at: datetime, error: str | None) -> None:
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO wafer_tracking (wafer_key, lasermark, source, fetched_at, last_movement, payload, error, fdls, lot_name)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """INSERT INTO wafer_tracking (wafer_key, lasermark, source, fetched_at, last_movement, payload, error, fdls, lot_name, run_names)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(wafer_key) DO UPDATE SET lasermark = excluded.lasermark, source = excluded.source,
                    fetched_at = excluded.fetched_at, last_movement = excluded.last_movement,
-                   payload = excluded.payload, error = excluded.error, fdls = excluded.fdls, lot_name = excluded.lot_name""",
+                   payload = excluded.payload, error = excluded.error, fdls = excluded.fdls, lot_name = excluded.lot_name,
+                   run_names = excluded.run_names""",
             (
                 key, lasermark, source, fetched_at.isoformat(), payload.get("last_movement"), json.dumps(payload, ensure_ascii=False), error,
-                json.dumps(payload.get("fdl_numbers") or []), payload.get("lot_name"),
+                json.dumps(payload.get("fdl_numbers") or []), payload.get("lot_name"), json.dumps(payload.get("run_names") or []),
             ),
         )
 

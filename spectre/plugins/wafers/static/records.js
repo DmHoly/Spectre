@@ -30,6 +30,7 @@ const WaferRecords = (() => {
   function summaryHtml(summary) {
     if (!summary) return "";
     const parts = [];
+    if (summary.runs && summary.runs.length) parts.push(`run <strong class="mono">${escapeHtml(summary.runs[0])}</strong>${summary.runs.length > 1 ? ` (aussi ${summary.runs.slice(1).map(escapeHtml).join(", ")})` : ""}`);
     if (summary.lot) parts.push(`lot <strong class="mono">${escapeHtml(summary.lot)}</strong>`);
     if (summary.product) parts.push(escapeHtml(summary.product));
     if (summary.last_step) parts.push(`dernière étape ${escapeHtml(summary.last_step)}${summary.last_movement ? ` (${escapeHtml(summary.last_movement.slice(0, 10))})` : ""}`);

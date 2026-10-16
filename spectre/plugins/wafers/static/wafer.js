@@ -10,7 +10,9 @@
    Sans étude, une plaque peut aussi porter sa propre structure (« Attacher une structure »,
    plate-structure.js : une version de référence ou une structure de la bibliothèque). Ses FDL et son
    lot JIRA viennent aussi de sa vie en ligne (repris dans l'en-tête dès qu'elle est lue), et une
-   plaque qui a changé de nom (XX devenue YY après un collage) montre sa lignée (plate-links.js). */
+   plaque qui a changé de nom (XX devenue YY après un collage) montre sa lignée (plate-links.js).
+   Son nom courant est son run d'épitaxie (« la VA1725 ») : le plus récent est le principal, ses
+   runs d'avant la désignent aussi - tous la retrouvent, et /plaques/VA1725 mène à elle. */
 
 const { lasermark } = routeParams("/plaques/{lasermark}");
 
@@ -217,8 +219,35 @@ function renderLots(lots, lotName) {
   el.innerHTML = badges.length ? badges.join(" ") : "—";
 }
 
+// Ses noms de run d'épitaxie sous le lasermark : le principal (le plus récent) en avant, ses runs
+// d'avant ensuite
+function renderRuns(names) {
+  const el = document.getElementById("plate-runs");
+  el.hidden = !names.length;
+  if (!names.length) return;
+  el.innerHTML = `<span class="plate-hero__run-label">Run</span> <strong class="mono" title="Son run d'épitaxie principal (le plus récent) : le nom sous lequel on la désigne">${escapeHtml(names[0])}</strong>${
+    names.length > 1 ? ` <span class="plate-hero__run-more">aussi ${names.slice(1).map((n) => `<span class="mono" title="Un run d'épitaxie d'avant">${escapeHtml(n)}</span>`).join(", ")}</span>` : ""
+  }`;
+}
+
+// « /plaques/VA1725 » : ce nom n'est pas une plaque mais le run d'épitaxie d'une (ou de plusieurs)
+// - on va à elle s'il n'y en a qu'une, sinon on les liste.
+function followRun(plate) {
+  const runOf = plate.run_of || [];
+  const known = plate.occurrences.length || plate.record || plate.structure || (plate.links && plate.links.links.length);
+  if (!runOf.length || known) return false;
+  if (runOf.length === 1) {
+    window.location.replace(`${plateUrl(runOf[0].lasermark)}?run=${encodeURIComponent(plate.lasermark)}`);
+    return true;
+  }
+  plate.runBanner = `<div class="plate-banner plate-banner--info">« ${escapeHtml(plate.lasermark)} » est le run d'épitaxie de ${runOf.length} plaques : ${runOf
+    .map((p) => `<a class="mono" href="${plateUrl(p.lasermark)}">${escapeHtml(p.lasermark)}</a>${p.principal ? "" : " (run d'avant)"}`)
+    .join(", ")}.</div>`;
+  return false;
+}
+
 function renderLinks(plate, user) {
-  document.getElementById("plate-links-banner").innerHTML = WaferLinks.bannerHtml(plate);
+  document.getElementById("plate-links-banner").innerHTML = (plate.runBanner || "") + WaferLinks.bannerHtml(plate);
   const fact = document.getElementById("plate-names-fact");
   const html = WaferLinks.factHtml(plate, user);
   fact.hidden = !html;
@@ -247,8 +276,11 @@ async function init() {
       lotsOn ? lotsApi.list({ wafer: lasermark, view: "summary" }) : [],
       accountsApi.me().catch(() => null),
     ]);
+    if (followRun(plate)) return;
     const n = plate.occurrences.length;
     document.getElementById("plate-lasermark").textContent = plate.lasermark;
+    renderRuns(plate.run_names || []);
+    const viaRun = new URLSearchParams(window.location.search).get("run");
     document.getElementById("plate-summary").textContent = n
       ? `Suivie dans ${n} étude${n > 1 ? "s" : ""}${plate.microprojects.length > 1 ? `, sur ${plate.microprojects.length} µprojets` : ""}.`
       : plate.record
@@ -259,6 +291,8 @@ async function init() {
     document.getElementById("plate-structure-attach").addEventListener("click", () => openStructurePicker(plate));
     document.getElementById("plate-link-add").addEventListener("click", () => WaferLinks.open({ lasermark: plate.lasermark, onDone: () => window.location.reload() }));
     renderLinks(plate, user);
+    PlateContext.render(document.getElementById("plate-context"), plate);
+    if (viaRun) document.getElementById("plate-links-banner").insertAdjacentHTML("afterbegin", `<div class="plate-banner plate-banner--info">Arrivé par le run <strong class="mono">${escapeHtml(viaRun)}</strong> : c'est un run d'épitaxie de cette plaque.</div>`);
     document.getElementById("plate-location").textContent = plate.last_location || "—";
     renderFdl(plate.fdl, plate.line_fdl);
     document.getElementById("plate-microprojects").innerHTML = plate.microprojects.length
@@ -284,6 +318,7 @@ async function init() {
     let linksSeen = (plate.links && plate.links.links.length) || 0;
     initWaferTracking(document.getElementById("plate-life"), plate.lasermark, async (data) => {
       renderFdl(plate.fdl, data.fdl_numbers || plate.line_fdl);
+      if (data.run_names) renderRuns(data.run_names);
       let current = lots;
       if (lotsOn && data.lot_name && !lots.some((l) => l.code.toUpperCase() === data.lot_name.toUpperCase())) {
         current = await lotsApi.list({ wafer: lasermark, view: "summary" }).catch(() => lots);

@@ -60,7 +60,7 @@ def test_prism_is_asked_once_per_hook_for_all_the_wafers(monkeypatch):
 
     monkeypatch.setattr(PrismSource, "_run", staticmethod(run))
     out = PrismSource().lookup(["A1", "B2"])
-    assert [hook for hook, _ in calls] == ["wafer_record", "wafer_mes_history"]
+    assert [hook for hook, _ in calls] == ["wafer_record", "wafer_epitaxy", "wafer_mes_history"]
     assert set(calls[0][1]) >= {"A1", "a1", "B2", "b2"}  # la MES garde la casse : on tente les variantes
     assert out == {"A1": {"gozer": True, "wafer_name": "WX", "substrate": None, "supplier": None, "diameter_mm": None, "created": None}, "B2": None}
 

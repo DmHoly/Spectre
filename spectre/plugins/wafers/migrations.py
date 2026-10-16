@@ -81,6 +81,21 @@ def _line_facts(conn: sqlite3.Connection) -> None:
         )
 
 
+def _run_names(conn: sqlite3.Connection) -> None:
+    """Les noms de run d'épitaxie de la plaque (``run_names``, JSON, le plus récent - le principal -
+    d'abord) : ses noms courants, par lesquels on la cherche ; recalculés des fiches déjà gardées."""
+    if "run_names" not in column_names(conn, "wafer_tracking"):
+        conn.execute("ALTER TABLE wafer_tracking ADD COLUMN run_names TEXT NOT NULL DEFAULT '[]'")
+    from .tracking_model import plate_runs
+
+    for row in conn.execute("SELECT wafer_key, payload FROM wafer_tracking").fetchall():
+        try:
+            payload = json.loads(row[1])
+        except ValueError:
+            continue
+        conn.execute("UPDATE wafer_tracking SET run_names = ? WHERE wafer_key = ?", (json.dumps(plate_runs(payload.get("epitaxy") or [])), row[0]))
+
+
 LINKS = """
 -- Une plaque qui change de nom (spectre.plugins.wafers.links) : d'abord XX, puis YY après un
 -- collage. Une ligne par passage d'un nom au suivant, vue dans la MES (source 'mes' : une étape
@@ -121,6 +136,21 @@ CREATE TABLE IF NOT EXISTS wafer_structures (
 );
 """
 
+NOTES = """
+-- Le contexte d'une plaque écrit sur sa page (spectre.plugins.wafers.notes) : pourquoi elle est là,
+-- ce qu'on voulait voir, ce qu'on a compris grâce à elle - quand aucune étude ne le dit pour elle.
+CREATE TABLE IF NOT EXISTS wafer_notes (
+    wafer_key TEXT PRIMARY KEY,
+    lasermark TEXT NOT NULL,
+    context TEXT,
+    hypothesis TEXT,
+    learnings TEXT,
+    updated_by TEXT NOT NULL,
+    updated_by_id INTEGER,
+    updated_at TEXT NOT NULL
+);
+"""
+
 MIGRATIONS = (
     Migration("0001_fdl_wafers", SCHEMA),
     Migration("0002_wafer_tracking", TRACKING),
@@ -128,4 +158,6 @@ MIGRATIONS = (
     Migration("0004_tracking_line_facts", _line_facts),
     Migration("0005_wafer_links", LINKS),
     Migration("0006_wafer_structures", STRUCTURES),
+    Migration("0007_tracking_run_names", _run_names),
+    Migration("0008_wafer_notes", NOTES),
 )

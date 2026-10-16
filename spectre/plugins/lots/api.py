@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Header, Query, Response
 from ...kernel.http import created, etag, if_match_version
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from . import jira
+from . import auto_close, jira
 from . import service as lots
 from .schemas import JiraLotImport, LotCreate, LotPatch, LotThematics, LotWafersAdd
 from .service import Lot
@@ -47,6 +47,7 @@ def list_lots(
     ``status`` : des statuts séparés par des virgules (tous par défaut) ; ``wafer`` : des clés de
     wafer séparées par des virgules (les lots qui contiennent l'une d'elles) ; ``code`` : le code
     exact (sans la casse) ; ``view=summary`` : sans expériences ni thématiques."""
+    auto_close.sweep_quietly()  # un lot dont toutes les plaques sont à l'arrêt depuis une semaine se clôt
     statuses = lots.check_statuses(_csv(status)) or None
     filters: dict[str, Any] = {"statuses": statuses, "code": code}
     if wafer:
@@ -78,6 +79,7 @@ def create_lot(body: LotCreate, response: Response, user: User = Depends(current
 
 @router.get("/lots/{lot_id}")
 def get_lot(lot_id: int, response: Response, user: User = Depends(current_user)) -> dict:
+    auto_close.sweep_quietly([lot_id])
     return _respond(response, lots.get(lot_id), user)
 
 

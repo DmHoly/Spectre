@@ -40,6 +40,9 @@ function renderHead() {
   document.getElementById("delete-lot-btn").style.display = lot.can_delete ? "" : "none";
   document.getElementById("declare-end-btn").style.display = lot.is_active ? "" : "none";
   const banners = [];
+  if (lot.stopped_since && lot.status === "done") {
+    banners.push(`<div class="lot-banner lot-banner--stopped">Clos automatiquement : toutes ses plaques sont à l'arrêt depuis le ${escapeHtml(lotDateLabel(lot.stopped_since.slice(0, 10)))} (${escapeHtml(lot.stopped_since.slice(11))}) - plus d'une semaine sans mouvement. Il se rouvrira tout seul si l'une d'elles repart.</div>`);
+  }
   if (lot.status === "hold") {
     banners.push(`<div class="lot-banner lot-banner--hold">Lot en pause${lot.hold_reason ? ` · <span>${escapeHtml(lot.hold_reason)}</span>` : ""}</div>`);
   }

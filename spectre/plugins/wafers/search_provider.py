@@ -11,7 +11,7 @@ from urllib.parse import quote
 
 from ..accounts.service import User
 from ..search.service import SearchHit, SearchProvider, register_provider
-from . import fdl, records, service
+from . import fdl, links, records, service, tracking
 
 WAFER_LIMIT = 6
 FDL_LIMIT = 8
@@ -25,13 +25,17 @@ def _wafers(query: str, user: User) -> list[SearchHit]:
     if len(service.wafer_key(query)) < 2:
         return []
     hits = []
-    for wafer in service.wafers(service.occurrences(user), q=query, records=records.all_records())[:WAFER_LIMIT]:
+    line = tracking.line_facts()
+    found = service.wafers(service.occurrences(user), q=query, records=records.all_records(), line=line, aliases=links.aliases(), lots=service.lot_names_index(line))
+    for wafer in found[:WAFER_LIMIT]:
         latest = wafer["latest"]
         codes = [m["code"] or m["name"] for m in wafer["microprojects"]]
+        runs = wafer["run_names"]
         hits.append(
             SearchHit(
                 label=wafer["lasermark"],
-                detail=f"{wafer['count']} études" if wafer["count"] > 1 else latest["experiment"].get("title", "") if latest else "Fiche de plaque, sans étude",
+                detail=(f"run {runs[0]} · " if runs else "")
+                + (f"{wafer['count']} études" if wafer["count"] > 1 else latest["experiment"].get("title", "") if latest else "Fiche de plaque, sans étude"),
                 badge=", ".join(codes[:2]) + ("…" if len(codes) > 2 else "") if codes else "fiche",
                 url=wafer_url(wafer["lasermark"]),
             )

@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..experiments.entities import MAX_TRACKED_ENTITIES
-from . import fdl_source, links, records, service, structures, tracking
+from . import fdl_source, links, notes, records, service, structures, tracking
 
 router = APIRouter(prefix="/api", tags=["wafers"])
 
@@ -51,9 +51,10 @@ def list_wafers(
         q=queries,
         fdl=fdl,
         records=None if scope else records.all_records(),
-        line=tracking.line_facts(),
+        line=(line := tracking.line_facts()),
         aliases=links.aliases(),
-    )
+        lots=service.lot_names_index(line),
+    )  # chercher « VA1725 » trouve la plaque dont c'est un run d'épitaxie (le principal ou un autre)
 
 
 @router.get("/wafers/lookup")
@@ -73,7 +74,10 @@ def get_wafer(wafer_key: str, user: User = Depends(current_user)) -> dict:
     key = service.wafer_key(wafer_key)
     passport = service.passport(wafer_key, service.occurrences(user, keys=[wafer_key]), records.get(wafer_key), tracking.line_facts([key]).get(key))
     passport["links"] = links.chain(wafer_key)
+    # « /plaques/VA1725 » : un nom de run d'épitaxie mène aux plaques qui le portent
+    passport["run_of"] = service.run_of(wafer_key, tracking.line_facts(), records.all_records())
     passport["structure"] = structures.get(wafer_key)
+    passport["notes"] = notes.get(wafer_key)  # son contexte écrit sur sa page
     return passport
 
 
@@ -96,6 +100,20 @@ def delete_wafer_link(link_id: int, user: User = Depends(current_user)) -> None:
     """Retire un lien entre deux noms : un lien déclaré, par son auteur ou un administrateur ; un
     lien vu dans la MES, par un administrateur."""
     links.delete(user, link_id)
+
+
+class WaferNotesRequest(BaseModel):
+    context: str | None = Field(None, max_length=notes.MAX_TEXT)
+    hypothesis: str | None = Field(None, max_length=notes.MAX_TEXT)
+    learnings: str | None = Field(None, max_length=notes.MAX_TEXT)
+
+
+@router.put("/wafers/{wafer_key}/notes")
+def put_wafer_notes(wafer_key: str, body: WaferNotesRequest, user: User = Depends(current_user)) -> dict | None:
+    """Le contexte de la plaque écrit sur sa page : ``context`` (pourquoi elle est là),
+    ``hypothesis`` (ce qu'on voulait voir), ``learnings`` (ce qu'on a compris grâce à elle) - les
+    champs envoyés seulement ; tous vides, les notes disparaissent (``null``)."""
+    return notes.save(user, wafer_key, body.model_dump(exclude_unset=True))
 
 
 class WaferStructureRequest(BaseModel):

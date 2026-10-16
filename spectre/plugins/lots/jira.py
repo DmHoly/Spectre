@@ -33,6 +33,7 @@ from ...kernel import plugin_states
 from ...kernel.errors import InvalidInput, NotFound
 from ..accounts.service import User
 from ..wafers import records, tracking
+from ..wafers import service as wafer_index
 from . import service as lots
 
 logger = logging.getLogger(__name__)
@@ -192,3 +193,11 @@ def detect(key: str, lasermark: str, payload: dict[str, Any]) -> None:
 
 
 tracking.on_tracking_read(detect)
+
+
+def _lot_names() -> dict[str, list[str]]:
+    return lots.lot_codes_by_wafer() if plugin_states.is_enabled("lots") else {}
+
+
+# chercher une plaque par le nom de son lot (/plaques, barre du haut)
+wafer_index.register_lot_names(_lot_names)

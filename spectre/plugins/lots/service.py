@@ -59,6 +59,8 @@ class Lot:
     created_by: int | None
     created_at: str
     updated_at: str  # sa version : la précondition If-Match d'une modification
+    stopped_since: str | None = None  # clos par la règle d'arrêt (auto_close) : le dernier mouvement de ses plaques
+    status_set_at: str | None = None  # quand quelqu'un a choisi son statut (ou sa fin) à la main
 
     @property
     def is_active(self) -> bool:
@@ -75,10 +77,16 @@ def _lot_from_row(row: sqlite3.Row) -> Lot:
     return Lot(**{name: row[name] for name in Lot.__dataclass_fields__})
 
 
+lot_from_row = _lot_from_row
+
+
 def _now() -> str:
     """La date d'une écriture, à la microseconde : deux écritures successives d'un lot n'ont jamais
     la même version."""
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+now_iso = _now
 
 
 def priority_rank(priority: str) -> tuple[int, str]:
@@ -497,6 +505,9 @@ def update(lot_id: int, changes: dict, *, expected_version: str | None = None) -
                 )
             except sqlite3.IntegrityError as exc:
                 raise _code_taken(after.code) from exc
+            if (after.status, after.exited_on) != (lot.status, lot.exited_on):
+                # une décision humaine : la règle d'arrêt (auto_close) ne revient pas dessus
+                conn.execute("UPDATE lots SET status_set_at = ?, stopped_since = NULL WHERE id = ?", (_now(), lot_id))
     return get(lot_id)
 
 
@@ -547,3 +558,14 @@ def delete(lot_id: int, *, user_id: int, is_admin: bool) -> None:
         raise Forbidden("Seule la personne qui a créé le lot (ou un admin) peut le supprimer.")
     with get_conn() as conn:
         conn.execute("DELETE FROM lots WHERE id = ?", (lot_id,))
+
+
+def lot_codes_by_wafer() -> dict[str, list[str]]:
+    """Par clé de plaque, les codes des lots qui la contiennent - la recherche des plaques par nom de
+    lot (:func:`spectre.plugins.wafers.service.register_lot_names`)."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT w.lasermark_key, l.code FROM lot_wafers w JOIN lots l ON l.id = w.lot_id ORDER BY l.code").fetchall()
+    found: dict[str, list[str]] = {}
+    for row in rows:
+        found.setdefault(row["lasermark_key"], []).append(row["code"])
+    return found

@@ -147,3 +147,73 @@ def test_a_library_structure_is_attached_to_a_plate_without_a_microproject(clien
     assert client.delete("/api/wafers/W-STRUCT/structure").status_code == 204
     assert get_wafer(client, "W-STRUCT")["structure"] is None
     assert client.put("/api/wafers/W-STRUCT/structure", json={"kind": "saved", "source_id": "nope"}).status_code == 404
+
+
+# --- runs d'épitaxie : les noms courants d'une plaque ----------------------------------------------
+
+
+def test_the_most_recent_run_is_the_principal_and_every_run_is_kept():
+    epitaxy = [{"run": "VA1801", "start": "2026-03-01 08:00"}, {"run": None, "start": "2025-01-01 08:00"}, {"run": "VA1725", "start": "2026-01-06 08:00"}, {"run": "VA1725", "start": "2026-01-06 08:00"}]
+    assert tracking_model.plate_runs(epitaxy) == ["VA1801", "VA1725"]
+    assert tracking_model.plate_runs([{"run": "M105_0819", "start": "2026-07-27 00:00"}]) == ["M105_0819"]  # un seul run : c'est lui
+
+
+def test_a_plate_with_two_runs_is_found_by_either_and_its_run_page_leads_to_it(client, demo):
+    signup(client, "runs@example.com")
+    lm = _lasermark("waiting")  # la démo lui donne une reprise d'épi : deux runs
+    record = create_records(client, [lm])["items"][0]
+    principal, other = record["summary"]["runs"]  # la fiche les garde dès sa création, le plus récent d'abord
+    assert principal == f"{other}R"  # la reprise d'épi, plus récente
+    assert get_wafer(client, lm)["run_names"] == [principal, other]
+    for name in (principal, other):
+        found = list_wafers(client, q=name)
+        assert [w["lasermark"] for w in found] == [lm] and found[0]["matched_alias"] == name
+    fiche = get_tracking(client, lm).json()  # la vie en ligne les relit
+    assert fiche["run_names"] == [principal, other]
+    page = get_wafer(client, other)  # « /plaques/<run> » : ce n'est pas une plaque, c'est son run
+    assert page["occurrences"] == [] and page["record"] is None
+    assert page["run_of"] == [{"key": record["key"], "lasermark": lm, "principal": False}]
+    assert get_wafer(client, principal)["run_of"][0]["principal"] is True
+
+
+# --- son contexte : les études de ses µprojets, et ses notes -------------------------------------
+
+
+def test_the_plate_page_tells_why_each_study_follows_it_to_members_only(client):
+    from support.experiments import conclude, launch
+    from support.microprojects import signup_with_microproject
+
+    slug = signup_with_microproject(client, "ctx@example.com", "Contexte")
+    study = launch(client, slug, title="Dopage", intent="Montrer l'effet du Mg", hypothesis="Plus de Mg, moins de Vf", context="Suite du run W40", entities=[{"sample_id": "W-CTX"}])
+    conclude(client, slug, study["id"], decision="promote", summary="Le Mg baisse la Vf de 0,2 V", next_steps="Refaire sur 200 mm", objective_results=[])
+    story = get_wafer(client, "W-CTX")["occurrences"][0]["experiment"]["story"]
+    assert story["context"] == "Suite du run W40" and story["intent"] == "Montrer l'effet du Mg" and story["hypothesis"] == "Plus de Mg, moins de Vf"
+    assert story["conclusion"]["summary"] == "Le Mg baisse la Vf de 0,2 V" and story["conclusion"]["decision"] == "promote" and story["conclusion"]["next_steps"] == "Refaire sur 200 mm"
+    signup(client, "outsider@example.com")
+    assert "story" not in get_wafer(client, "W-CTX")["occurrences"][0]["experiment"]  # pas membre : ni titre ni contexte
+
+
+def test_notes_are_written_on_the_plate_page_and_erased_when_empty(client):
+    signup(client, "notes@example.com")
+    create_records(client, ["W-NOTE"])
+    assert get_wafer(client, "W-NOTE")["notes"] is None
+    saved = client.put("/api/wafers/w note/notes", json={"context": "Plaque témoin du lot QMDE10", "learnings": "  "})
+    assert saved.status_code == 200, saved.text
+    notes = get_wafer(client, "W-NOTE")["notes"]
+    assert notes["context"] == "Plaque témoin du lot QMDE10" and notes["learnings"] is None and notes["updated_by"]
+    client.put("/api/wafers/W-NOTE/notes", json={"hypothesis": "Le recuit long abîme le contact"})  # un champ seul : les autres restent
+    assert get_wafer(client, "W-NOTE")["notes"]["context"] == "Plaque témoin du lot QMDE10"
+    assert client.put("/api/wafers/W-NOTE/notes", json={"context": "", "hypothesis": None}).json() is None
+    assert get_wafer(client, "W-NOTE")["notes"] is None
+
+
+# --- recherche par lot ----------------------------------------------------------------------------
+
+
+def test_a_lot_name_finds_its_plates(client):
+    signup(client, "lotsearch@example.com")
+    create_records(client, ["W-L1", "W-L2", "W-OTHER"])
+    assert client.post("/api/lots", json={"code": "QT112", "wafers": ["W-L1", "W-L2"]}).status_code == 201
+    found = list_wafers(client, q="qt 112")
+    assert sorted(w["lasermark"] for w in found) == ["W-L1", "W-L2"]
+    assert {w["matched_kind"] for w in found} == {"lot"} and found[0]["lots"] == ["QT112"]
