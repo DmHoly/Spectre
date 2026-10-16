@@ -260,9 +260,22 @@ def test_a_wafer_measured_on_two_dates_gets_a_box_per_date(client, monkeypatch):
     monkeypatch.setattr(characterization, "query", lambda key, parameters, *, refresh=False: QueryResult(source="prism", columns=columns, rows=rows))
 
     groups = distribution_of(client, "na_current_a")["groups"]
+    # chronologique : l'ordre de l'axe du temps (W2 se place entre les deux mesures de W1)
     assert [(g["wafer"], g["date"], g["stats"]["n"], g["stats"]["median"]) for g in groups] == [
-        ("W1", "2026-09-01", 2, 1.5), ("W1", "2026-09-20", 2, 11.0), ("W2", "2026-09-05", 1, 5.0),
+        ("W1", "2026-09-01", 2, 1.5), ("W2", "2026-09-05", 1, 5.0), ("W1", "2026-09-20", 2, 11.0),
     ]
+    assert [(g["sort_date"], g["dated"]) for g in groups] == [("2026-09-01", True), ("2026-09-05", True), ("2026-09-20", True)]
+
+
+def test_a_type_without_dates_is_placed_on_the_day_a_study_started_following_the_wafer(client):
+    from datetime import date
+
+    signup(client, "boss@example.com")
+    slug = create_microproject(client, "Suivi KPI", area=AREA)["slug"]
+    launch(client, slug, title="Essai", intent="x", entities=[{"sample_id": "W1"}])
+    track(client, AREA, "eqe", "max_EQE")  # l'EQE n'a pas de colonne de date
+    group = distribution_of(client, "max_EQE")["groups"][0]
+    assert group["date"] is None and group["dated"] is False and group["sort_date"] == date.today().isoformat()
 
 
 def test_the_distinct_values_of_a_column_are_offered_as_a_list(client):

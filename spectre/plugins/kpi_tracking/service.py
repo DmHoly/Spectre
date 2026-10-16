@@ -116,6 +116,10 @@ class WaferDistribution:
     stats: BoxStats | None  # None : aucune mesure de ce KPI sur cette plaque
     outliers: list[float] = field(default_factory=list)
     date: str | None = None  # le jour de mesure, quand la plaque a été mesurée à plusieurs dates : une boîte par date
+    # Où la boîte se place sur l'axe du temps : le jour de mesure s'il y en a un (``dated``), sinon le jour où une
+    # étude a commencé à suivre la plaque (un type de données sans colonne de date, comme l'EQE).
+    sort_date: str | None = None
+    dated: bool = False
 
 
 @dataclass(frozen=True)
@@ -403,6 +407,8 @@ def tracked_wafers(area: ManagementArea, user: User) -> dict[str, dict[str, Any]
                 if ref not in found["microprojects"]:
                     found["microprojects"].append(ref)
                 study = {"microproject": microproject.slug, "experiment_id": tip.branch, "title": tip.title if readable else None}
+                since = tip.created_at.date().isoformat()
+                found["since"] = min(found.get("since", since), since)  # la plus ancienne étude qui la suit
                 if study not in found["studies"]:
                     found["studies"].append(study)
     return wafers
@@ -540,8 +546,10 @@ def distributions(area: ManagementArea, user: User, *, refresh: bool = False) ->
                     WaferDistribution(
                         wafer["wafer"], wafer["microprojects"], wafer["studies"],
                         computed[0] if computed else None, computed[1] if computed else [], day,
+                        sort_date=day or wafer.get("since"), dated=day is not None,
                     )
                 )
+        groups.sort(key=lambda g: (g.sort_date or "9999", g.wafer))  # chronologique : l'axe du temps de la page
         results.append(KpiDistribution(kpi, "ok", entry.unit, entry.description, entry.hook_title, groups=groups))
     return Distributions(
         source=sorted(sources)[0] if len(sources) == 1 else ("mixed" if sources else None),

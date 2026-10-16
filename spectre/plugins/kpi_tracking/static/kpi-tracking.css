@@ -398,3 +398,91 @@
 select[multiple].field {
   padding: 4px;
 }
+
+/* -- fenêtre de temps (time-window.js) --------------------------------------------------- */
+
+.kt-window {
+  margin: 8px 0 14px;
+  padding: 8px 12px 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+  user-select: none;
+}
+.kt-window__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.kt-window__head .section-title {
+  margin: 0;
+}
+.kt-window__label {
+  flex: 1;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--navy);
+}
+.kt-window__all {
+  min-height: 28px;
+  padding: 2px 10px;
+  font-size: 11px;
+}
+.kt-window__track {
+  position: relative;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: repeating-linear-gradient(-45deg, var(--surface-2) 0 2px, var(--surface) 2px 9px);
+  touch-action: none;
+}
+.kt-window__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.kt-window__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(55, 128, 63, 0.16);
+  border-left: 2px solid var(--viz-3);
+  border-right: 2px solid var(--viz-3);
+  cursor: grab;
+}
+.kt-window__handle {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 24px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid var(--text-soft);
+  border-radius: 3px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  cursor: ew-resize;
+  z-index: 2;
+}
+.kt-window__handle:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+.kt-window__ticks {
+  position: relative;
+  height: 18px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.kt-window__tick {
+  position: absolute;
+  top: 3px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}

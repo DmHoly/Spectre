@@ -1,5 +1,9 @@
 /* L'onglet d'un KPI suivi dans le bloc « Évolution des KPI » de la page d'un projet (kpis/static/kpi-trend.js :
-   un KPI à `render`) : une boîte à moustaches par plaque des µprojets du projet, colorées par µprojet.
+   un KPI à `render`) : une boîte à moustaches par plaque des µprojets du projet (et par date de mesure),
+   colorées par µprojet, dans l'ordre du temps, sous une fenêtre de temps (time-window.js) qui ne garde que les
+   boîtes de la période choisie - par défaut le dernier mois des données, « Tout » pour tout l'historique. La
+   fenêtre est la même pour tous les onglets du projet.
+
    Les distributions de tous les KPI suivis viennent d'un seul appel, fait à la première ouverture d'un
    onglet puis gardé (un type PRISM lent ne se requête qu'une fois). */
 
@@ -10,12 +14,19 @@ const KpiDistributionTabs = (function () {
   async function kpisFor(areaSlug) {
     const tracked = await kpiTrackingApi.list(areaSlug);
     let loading = null;
+    let timeline = null; // {min, max, from, to} : l'étendue des boîtes de tous les KPI et la fenêtre choisie
     const load = (refresh) => {
       if (refresh || !loading) {
-        loading = kpiTrackingApi.distributions(areaSlug, { refresh }).catch((err) => {
-          loading = null;
-          throw err;
-        });
+        loading = kpiTrackingApi
+          .distributions(areaSlug, { refresh })
+          .then((result) => {
+            timeline = timelineOf(result, timeline);
+            return result;
+          })
+          .catch((err) => {
+            loading = null;
+            throw err;
+          });
       }
       return loading;
     };
@@ -25,8 +36,11 @@ const KpiDistributionTabs = (function () {
       async render(panel) {
         const result = await load(false);
         const kpi = result.kpis.find((d) => d.id === k.id);
-        panel.innerHTML = kpi ? cardHtml(kpi, result) : `<div class="error">Ce KPI n'est plus suivi.</div>`;
-        if (!kpi) return;
+        if (!kpi) {
+          panel.innerHTML = `<div class="error">Ce KPI n'est plus suivi.</div>`;
+          return;
+        }
+        draw(panel, kpi, result, timeline);
         // un clic (ou Entrée) sur une boîte ouvre le récapitulatif de sa plaque
         const openGroup = (event) => {
           const target = event.target.closest("[data-group]");
@@ -41,6 +55,18 @@ const KpiDistributionTabs = (function () {
         };
       },
     }));
+  }
+
+  // L'axe du temps du projet : de la première à la dernière boîte, tous KPI confondus. La fenêtre choisie est
+  // gardée d'un onglet à l'autre ; la première fois, c'est le dernier mois des données.
+  function timelineOf(result, previous) {
+    const days = result.kpis.flatMap((d) => d.groups.map((g) => g.sort_date)).filter(Boolean).map(KpiTimeWindow.dayMs);
+    if (!days.length) return null;
+    const min = Math.min(...days);
+    const max = Math.max(...days);
+    if (min === max) return null;
+    if (previous && previous.min === min && previous.max === max) return previous;
+    return { min, max, ...KpiTimeWindow.defaultWindow(min, max, days) };
   }
 
   function colorsOf(result) {
@@ -60,25 +86,60 @@ const KpiDistributionTabs = (function () {
       .join("")}</div>`;
   }
 
-  function cardHtml(kpi, result) {
+  function inWindow(group, timeline) {
+    if (!timeline || !group.sort_date) return true;
+    const t = KpiTimeWindow.dayMs(group.sort_date);
+    return t >= timeline.from && t <= timeline.to;
+  }
+
+  // La carte d'un KPI : l'en-tête, la fenêtre de temps, puis le dessin (`.kt-plot-slot`) qui se refait seul quand
+  // la fenêtre bouge - la fenêtre, elle, n'est pas redessinée pendant qu'on la glisse.
+  function draw(panel, kpi, result, timeline) {
     const colors = colorsOf(result);
-    const wafers = result.wafers.length;
-    const meta = `${escapeHtml(kpi.hook_title)} · ${escapeHtml(kpi.column)}`;
     const head = `<div class="kt-box__head">
         <div>${kpi.unit ? `<span class="kt-box__unit" style="margin-left:0;">${escapeHtml(kpi.unit)}</span>` : ""}</div>
-        <span class="kt-box__meta">${meta}${result.source ? ` · ${escapeHtml(SOURCE_LABELS[result.source] || "")}` : ""}</span>
+        <span class="kt-box__meta">${escapeHtml(kpi.hook_title)} · ${escapeHtml(kpi.column)}${result.source ? ` · ${escapeHtml(SOURCE_LABELS[result.source] || "")}` : ""}</span>
       </div>${kpi.description ? `<p class="kt-box__desc">${escapeHtml(kpi.description)}</p>` : ""}`;
     const filters = kpi.summary ? `<p class="kt-filters-line">Filtres : ${escapeHtml(kpi.summary)}</p>` : "";
-    if (kpi.status !== "ok") return `${head}${filters}<div class="kt-box__error">${escapeHtml(kpi.message || "Calcul impossible.")}</div>`;
-    const svg = kpiBoxplotSvg(kpi.groups, {
-      label: `${kpi.title} : une boîte à moustaches par plaque`,
-      colorOf: (group) => (colors.get(group.microprojects[0] && group.microprojects[0].slug) || { color: kpiBoxplotColor(0) }).color,
-    });
-    const body = svg
-      ? `<div class="kt-box__plot">${svg}</div>`
-      : `<p class="help">${wafers ? "Aucune mesure de ce KPI sur les plaques suivies pour l'instant." : "Aucune plaque suivie par les µprojets de ce projet."}</p>`;
-    const count = `<p class="kt-box__meta" style="margin:8px 0 0;">${wafers} plaque${wafers > 1 ? "s" : ""} suivie${wafers > 1 ? "s" : ""} · une boîte par plaque (et par date de mesure), sur toutes ses lignes gardées</p>`;
-    return `${head}${filters}${legendHtml(colors)}${body}${count}`;
+    if (kpi.status !== "ok") {
+      panel.innerHTML = `${head}${filters}<div class="kt-box__error">${escapeHtml(kpi.message || "Calcul impossible.")}</div>`;
+      return;
+    }
+    panel.innerHTML = `${head}${filters}${legendHtml(colors)}<div class="kt-window-slot"></div><div class="kt-plot-slot"></div>`;
+    const slot = panel.querySelector(".kt-plot-slot");
+    const drawPlot = () => {
+      const shown = kpi.groups.map((g, index) => ({ ...g, index })).filter((g) => inWindow(g, timeline));
+      const svg = kpiBoxplotSvg(shown, {
+        label: `${kpi.title} : une boîte à moustaches par plaque, dans l'ordre du temps`,
+        colorOf: (group) => (colors.get(group.microprojects[0] && group.microprojects[0].slug) || { color: kpiBoxplotColor(0) }).color,
+      });
+      const wafers = result.wafers.length;
+      let body;
+      if (svg) body = `<div class="kt-box__plot">${svg}</div>`;
+      else if (!wafers) body = `<p class="help">Aucune plaque suivie par les µprojets de ce projet.</p>`;
+      else if (shown.length < kpi.groups.length) body = `<p class="help">Aucune boîte dans cette fenêtre : élargissez-la, ou « Tout ».</p>`;
+      else body = `<p class="help">Aucune mesure de ce KPI sur les plaques suivies pour l'instant.</p>`;
+      const undated = shown.filter((g) => g.stats && !g.dated).length;
+      slot.innerHTML = `${body}<p class="kt-box__meta" style="margin:8px 0 0;">${shown.length} boîte${shown.length > 1 ? "s" : ""}${
+        shown.length < kpi.groups.length ? ` sur ${kpi.groups.length}` : ""
+      } · une par plaque (et par date de mesure), dans l'ordre du temps${undated ? ` · ${undated} placée${undated > 1 ? "s" : ""} à la date où une étude a commencé à suivre la plaque (pas de date de mesure)` : ""}</p>`;
+    };
+    if (timeline) {
+      const days = kpi.groups.map((g) => g.sort_date).filter(Boolean).map(KpiTimeWindow.dayMs);
+      KpiTimeWindow.mount(panel.querySelector(".kt-window-slot"), {
+        min: timeline.min,
+        max: timeline.max,
+        from: timeline.from,
+        to: timeline.to,
+        days,
+        onChange(from, to) {
+          timeline.from = from;
+          timeline.to = to;
+          drawPlot();
+        },
+      });
+    }
+    drawPlot();
   }
 
   return { kpisFor };

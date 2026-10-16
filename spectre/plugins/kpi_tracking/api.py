@@ -139,6 +139,8 @@ def get_distributions(area_slug: str, refresh: bool = False, user: User = Depend
                         "microprojects": g.microprojects,
                         "studies": g.studies,
                         "date": g.date,
+                        "sort_date": g.sort_date,
+                        "dated": g.dated,
                         "stats": asdict(g.stats) if g.stats else None,
                         "outliers": g.outliers,
                     }

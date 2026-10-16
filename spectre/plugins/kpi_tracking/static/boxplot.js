@@ -33,7 +33,7 @@ function kpiNiceTicks(low, high, count = 5) {
   return { ticks, low: start, high: end };
 }
 
-/* groups : [{wafer, studies, stats|null, outliers}] ; options.colorOf(group, index) -> couleur CSS,
+/* groups : [{wafer, studies, stats|null, outliers, index?}] (index : sa place dans la liste complète, quand on n'en montre qu'une partie) ; options.colorOf(group, index) -> couleur CSS,
    options.label : le titre accessible du dessin. Renvoie une chaîne SVG. */
 function kpiBoxplotSvg(groups, options = {}) {
   const esc = escapeHtml;
@@ -63,7 +63,7 @@ function kpiBoxplotSvg(groups, options = {}) {
       g.date ? `<text class="kt-plot-tick" x="${cx}" y="${baseline + 29}" text-anchor="middle">${esc(g.date)}</text>` : ""
     }`;
     const rows = g.date ? 13 : 0;
-    const open = `<g class="kt-plot-group" data-group="${i}" tabindex="0" role="button" aria-label="${esc(`Récapitulatif de la plaque ${g.wafer}${g.date ? ` du ${g.date}` : ""}`)}">`;
+    const open = `<g class="kt-plot-group" data-group="${g.index ?? i}" tabindex="0" role="button" aria-label="${esc(`Récapitulatif de la plaque ${g.wafer}${g.date ? ` du ${g.date}` : ""}`)}">`;
     if (!g.stats) {
       marks += `${open}${caption}<text class="kt-plot-empty" x="${cx}" y="${baseline - 8}" text-anchor="middle">aucune mesure</text>
         <title>${esc(`${g.wafer}${g.date ? ` · ${g.date}` : ""} · aucune mesure · ${studies}`)}</title></g>`;
@@ -89,5 +89,5 @@ function kpiBoxplotSvg(groups, options = {}) {
       <text class="kt-plot-tick" x="${cx}" y="${baseline + 43 + rows}" text-anchor="middle">méd. ${esc(kpiFormatNumber(s.median))}</text>
       <rect x="${cx - band / 2}" y="${frame.top}" width="${band}" height="${frame.height + 50 + rows}" fill="transparent"/></g>`;
   });
-  return `<svg viewBox="0 0 ${width} ${height}" style="width:${width}px;max-width:100%;height:auto" role="img" aria-label="${esc(options.label || "Boîtes à moustaches par plaque")}">${marks}</svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" style="width:${width}px;max-width:none;height:auto" role="img" aria-label="${esc(options.label || "Boîtes à moustaches par plaque")}">${marks}</svg>`;
 }
