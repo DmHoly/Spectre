@@ -36,3 +36,7 @@ class LotWafersAdd(BaseModel):
 
 class LotThematics(BaseModel):
     thematic_ids: list[int]
+
+
+class JiraLotImport(BaseModel):
+    name: str

@@ -100,13 +100,23 @@ function latestHtml(wafer) {
     <div class="help wafer-index__date">fiche du ${escapeHtml(formatDate(record.created_at))} · ${escapeHtml(record.created_by)}</div>`;
 }
 
+// une plaque qui a changé de nom : « trouvée par XX » quand c'est son autre nom qui a répondu,
+// sinon ses autres noms
+function aliasHtml(wafer) {
+  if (wafer.matched_alias) return `<span class="wafer-index__alias">trouvée par son autre nom <span class="mono">${escapeHtml(wafer.matched_alias)}</span></span>`;
+  const names = wafer.aliases || [];
+  return names.length ? `<span class="wafer-index__alias">aussi ${names.map((n) => `<span class="mono">${escapeHtml(n)}</span>`).join(", ")}</span>` : "";
+}
+
 function rowHtml(wafer) {
   return `
     <tr${wafer.latest ? "" : ' class="wafer-index__row--record"'}>
-      <td><a class="wafer-index__lasermark mono" href="${plateUrl(wafer.lasermark)}">${escapeHtml(wafer.lasermark)}</a>${wafer.latest && wafer.record ? ` ${WaferRecords.chipHtml(wafer.record)}` : ""}</td>
+      <td><a class="wafer-index__lasermark mono" href="${plateUrl(wafer.lasermark)}">${escapeHtml(wafer.lasermark)}</a>${wafer.latest && wafer.record ? ` ${WaferRecords.chipHtml(wafer.record)}` : ""}${
+        wafer.lot_name ? ` <span class="plate-tag plate-tag--mute" title="Lot JIRA">${escapeHtml(wafer.lot_name)}</span>` : ""
+      }${aliasHtml(wafer)}</td>
       <td>${microprojectsHtml(wafer) || '<span class="help">—</span>'}</td>
       <td class="mono">${wafer.count || '<span class="help">—</span>'}</td>
-      <td>${fdlChipsHtml(wafer.fdl, { label: false }) || '<span class="help">—</span>'}</td>
+      <td>${fdlChipsHtml([...wafer.fdl, ...(wafer.line_fdl || []).filter((f) => !wafer.fdl.includes(f))], { label: false }) || '<span class="help">—</span>'}</td>
       <td>${wafer.locations.length ? escapeHtml(wafer.locations[0]) : '<span class="help">—</span>'}</td>
       <td>${latestHtml(wafer)}</td>
     </tr>`;
@@ -116,7 +126,7 @@ function rowHtml(wafer) {
 // la page propose de les chercher dans la base.
 function missingTerms() {
   const wanted = terms(state.query).filter((t) => !looksLikeAnFdl(t) || terms(state.query).length === 1);
-  const keys = state.wafers.map((w) => w.key);
+  const keys = state.wafers.flatMap((w) => [w.key, ...(w.aliases || []).map(waferKey)]);
   return wanted.filter((t) => {
     const key = waferKey(t);
     return key && !keys.some((k) => k.includes(key));

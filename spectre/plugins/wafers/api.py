@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..experiments.entities import MAX_TRACKED_ENTITIES
-from . import fdl_source, records, service, tracking
+from . import fdl_source, links, records, service, structures, tracking
 
 router = APIRouter(prefix="/api", tags=["wafers"])
 
@@ -46,7 +46,14 @@ def list_wafers(
     ``latest`` ``None``), sauf dans un µprojet."""
     scope = service.microproject_for(user, microproject) if microproject else None
     queries = [value[:records.MAX_LASERMARK] for value in q]
-    return service.wafers(service.occurrences(user, microproject=scope), q=queries, fdl=fdl, records=None if scope else records.all_records())
+    return service.wafers(
+        service.occurrences(user, microproject=scope),
+        q=queries,
+        fdl=fdl,
+        records=None if scope else records.all_records(),
+        line=tracking.line_facts(),
+        aliases=links.aliases(),
+    )
 
 
 @router.get("/wafers/lookup")
@@ -63,7 +70,52 @@ def get_wafer(wafer_key: str, user: User = Depends(current_user)) -> dict:
     """Le passeport d'une plaque (``wafer_key``, ou son lasermark tel qu'écrit : il est comparé
     sans casse ni séparateurs) et sa fiche de plaque (``record``) - vide (aucune étude, pas de
     fiche) plutôt qu'une 404, la page l'explique."""
-    return service.passport(wafer_key, service.occurrences(user, keys=[wafer_key]), records.get(wafer_key))
+    key = service.wafer_key(wafer_key)
+    passport = service.passport(wafer_key, service.occurrences(user, keys=[wafer_key]), records.get(wafer_key), tracking.line_facts([key]).get(key))
+    passport["links"] = links.chain(wafer_key)
+    passport["structure"] = structures.get(wafer_key)
+    return passport
+
+
+class WaferLinkRequest(BaseModel):
+    from_lasermark: str = Field(..., max_length=80)
+    to_lasermark: str = Field(..., max_length=80)
+    note: str = Field("", max_length=links.MAX_NOTE)
+    happened_at: str | None = Field(None, max_length=20)
+
+
+@router.post("/wafer-links", status_code=201)
+def create_wafer_link(body: WaferLinkRequest, user: User = Depends(current_user)) -> dict:
+    """Déclare qu'une plaque a changé de nom (``from`` est devenue ``to`` : un collage, un report) -
+    chercher l'un mène à l'autre. 409 ``wafer_link_exists`` si elles sont déjà reliées."""
+    return links.create(user, body.from_lasermark, body.to_lasermark, note=body.note, happened_at=body.happened_at)
+
+
+@router.delete("/wafer-links/{link_id}", status_code=204)
+def delete_wafer_link(link_id: int, user: User = Depends(current_user)) -> None:
+    """Retire un lien entre deux noms : un lien déclaré, par son auteur ou un administrateur ; un
+    lien vu dans la MES, par un administrateur."""
+    links.delete(user, link_id)
+
+
+class WaferStructureRequest(BaseModel):
+    kind: str = Field(..., pattern="^(reference|saved)$")
+    source_id: str = Field(..., min_length=1, max_length=120)
+    version: str | None = Field(None, max_length=20)
+    note: str = Field("", max_length=300)
+
+
+@router.put("/wafers/{wafer_key}/structure")
+def put_wafer_structure(wafer_key: str, body: WaferStructureRequest, user: User = Depends(current_user)) -> dict:
+    """Attache à la plaque une structure, sans étude ni µprojet : une version de référence
+    (``kind`` ``reference``, ``source_id`` son slug, ``version`` - la dernière sinon) ou une structure
+    de la bibliothèque (``saved``, ``source_id`` son id). Remplace celle qu'elle avait."""
+    return structures.attach(user, wafer_key, kind=body.kind, source_id=body.source_id, version=body.version, note=body.note)  # type: ignore[arg-type]
+
+
+@router.delete("/wafers/{wafer_key}/structure", status_code=204)
+def delete_wafer_structure(wafer_key: str, user: User = Depends(current_user)) -> None:
+    structures.detach(wafer_key)
 
 
 class WaferRecordsRequest(BaseModel):

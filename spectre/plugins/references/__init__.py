@@ -5,6 +5,7 @@ des références et l'évolution d'une référence."""
 from ...kernel.plugin import NavEntry, Page, Plugin
 from . import (
     comparison_source,  # noqa: F401 - déclare les versions de référence au comparateur
+    structure_source,  # noqa: F401 - déclare les versions de référence comme structures nommées (une plaque en porte une)
 )
 from .api import router
 from .migrations import MIGRATIONS

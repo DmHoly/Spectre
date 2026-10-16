@@ -4,6 +4,7 @@ la fiche d'une brique (``/briques/{id}`` : ses versions, où elle sert)."""
 
 from ...kernel.plugin import NavEntry, Page, Plugin
 from . import library_files  # noqa: F401 - déclare presets.yml et briques.yml à la bibliothèque
+from . import structure_source  # noqa: F401 - déclare les structures enregistrées comme structures nommées (une plaque en porte une)
 from .api import router
 from .migrations import MIGRATIONS
 

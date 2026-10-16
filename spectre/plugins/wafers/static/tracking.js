@@ -3,7 +3,55 @@
    statut et son étape courante, son lot, son épitaxie, ses FDL et leur avancement, ses tests, son
    parcours MES étape par étape et sa fiche Gozer. Un bandeau de fraîcheur dit de quand datent les
    données (vert : moins de 24 h ; ambre : moins de 7 j ; rouge : au-delà), si la plaque est
-   immobile (plus de 30 j sans mouvement : plus de relecture automatique) et laisse rafraîchir. */
+   immobile (plus de 30 j sans mouvement : plus de relecture automatique) et laisse rafraîchir.
+   Tout se clique : une étape JIRA d'une FDL (sa case dans la barre, ou sa ligne dans la liste des
+   étapes), un ticket, une action MES - une fenêtre (TrackingDetail) en montre tout le détail, la
+   description de l'étape JIRA comprise. */
+
+const STEP_CATEGORY_LABELS = { done: "faite", running: "en cours", hold: "en pause", todo: "à faire", skipped: "annulée / écartée" };
+const STEP_CATEGORY_TAGS = { done: "plate-tag--done", running: "plate-tag--run", hold: "plate-tag--warn", todo: "plate-tag--mute", skipped: "plate-tag--mute" };
+
+/* La fenêtre de détail : un seul <dialog>, rempli à chaque clic (titre, sous-titre, corps HTML). */
+const TrackingDetail = (() => {
+  let dialog = null;
+  function build() {
+    dialog = document.createElement("dialog");
+    dialog.className = "wafer-dialog wafer-dialog--narrow plate-detail";
+    dialog.setAttribute("aria-labelledby", "plate-detail-title");
+    dialog.innerHTML = `
+      <div class="card-pad wafer-dialog__inner">
+        <div class="plate-detail__head">
+          <div>
+            <div class="page-eyebrow js-detail-sub"></div>
+            <h2 class="wafer-dialog__title" id="plate-detail-title"></h2>
+          </div>
+          <button type="button" class="btn btn-line plate-detail__close js-detail-close" aria-label="Fermer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <div class="plate-detail__body js-detail-body"></div>
+      </div>`;
+    document.body.appendChild(dialog);
+    dialog.querySelector(".js-detail-close").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close(); // clic sur le fond
+    });
+  }
+  function open({ title, sub, body }) {
+    if (!dialog) build();
+    dialog.querySelector("#plate-detail-title").textContent = title || "";
+    dialog.querySelector(".js-detail-sub").textContent = sub || "";
+    dialog.querySelector(".js-detail-body").innerHTML = body || "";
+    if (!dialog.open) dialog.showModal();
+  }
+  return { open };
+})();
+
+// un texte long (description JIRA) : ses lignes gardées, échappé
+function longTextHtml(label, text) {
+  if (!text) return "";
+  return `<div class="plate-detail__text"><div class="plate-detail__label">${escapeHtml(label)}</div><p>${escapeHtml(text)}</p></div>`;
+}
 
 const TRACKING_STATUS = {
   "en cours": { cls: "badge-running", label: "En cours" },
@@ -54,15 +102,100 @@ function freshnessHtml(meta) {
 function fdlBarHtml(flow) {
   if (!flow || !flow.steps.length) return "";
   const segments = flow.steps
-    .map((s) => {
+    .map((s, index) => {
       const title = `${s.stage || s.key} · ${s.status || "?"}${s.assignee ? ` · ${s.assignee}` : ""}${s.closed ? ` · clos le ${trackingDate(s.closed)}` : s.estimated ? ` · prévu le ${trackingDate(s.estimated)}` : ""}`;
-      return `<span class="plate-fdl-bar__step plate-fdl-bar__step--${s.category}${s.late ? " is-late" : ""}" title="${escapeHtml(title)}"></span>`;
+      return `<button type="button" class="plate-fdl-bar__step plate-fdl-bar__step--${s.category}${s.late ? " is-late" : ""}" data-detail="fdl-step" data-request="${escapeHtml(flow.request)}" data-index="${index}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)} - voir le détail"></button>`;
     })
     .join("");
   const now = flow.running.length ? `En cours : ${escapeHtml(flow.running.join(", "))}` : flow.next.length ? `Prochaine : ${escapeHtml(flow.next.join(", "))}` : flow.pct === 100 ? "Toutes les étapes faites" : "";
   return `
     <div class="plate-fdl-bar" role="img" aria-label="${flow.n_done} étapes faites sur ${flow.n - flow.n_skipped}">${segments}</div>
-    <div class="plate-fdl-bar__meta"><strong>${flow.pct === null ? "—" : `${flow.pct} %`}</strong> · ${flow.n_done}/${flow.n - flow.n_skipped} étapes${flow.n_hold ? ` · ${flow.n_hold} en pause` : ""}${flow.n_late ? ` · <span class="plate-late">${flow.n_late} en retard</span>` : ""}${now ? ` · ${now}` : ""}</div>`;
+    <div class="plate-fdl-bar__meta"><strong>${flow.pct === null ? "—" : `${flow.pct} %`}</strong> · ${flow.n_done}/${flow.n - flow.n_skipped} étapes${flow.n_hold ? ` · ${flow.n_hold} en pause` : ""}${flow.n_late ? ` · <span class="plate-late">${flow.n_late} en retard</span>` : ""}${now ? ` · ${now}` : ""}</div>
+    <details class="plate-fdl-steps">
+      <summary>Les ${flow.steps.length} étapes JIRA <span class="help" style="display:inline;margin:0;">- cliquez une étape pour sa description</span></summary>
+      <ol class="plate-fdl-steps__list">${flow.steps.map((s, index) => fdlStepRowHtml(flow, s, index)).join("")}</ol>
+    </details>`;
+}
+
+function fdlStepRowHtml(flow, s, index) {
+  const when = s.closed ? `close le ${trackingDate(s.closed)}` : s.estimated ? `prévue le ${trackingDate(s.estimated)}` : "";
+  return `
+    <li>
+      <button type="button" class="plate-fdl-steps__row" data-detail="fdl-step" data-request="${escapeHtml(flow.request)}" data-index="${index}">
+        <span class="plate-fdl-steps__dot plate-fdl-bar__step--${s.category}" aria-hidden="true"></span>
+        <span class="plate-fdl-steps__stage">${escapeHtml(s.stage || s.key || "?")}</span>
+        <span class="plate-tag ${STEP_CATEGORY_TAGS[s.category] || "plate-tag--mute"}">${escapeHtml(s.status || STEP_CATEGORY_LABELS[s.category])}</span>
+        ${s.late ? `<span class="plate-tag plate-tag--warn">en retard</span>` : ""}
+        <span class="plate-fdl-steps__when">${when}${s.assignee ? ` · ${escapeHtml(s.assignee)}` : ""}</span>
+      </button>
+    </li>`;
+}
+
+// Le détail d'une étape JIRA : statut, atelier, assigné, dates, enchaînement et sa description
+function fdlStepDetail(flow, s) {
+  const byKey = Object.fromEntries(flow.steps.filter((x) => x.key).map((x) => [x.key, x]));
+  const neighbour = (key) =>
+    key ? `${escapeHtml((byKey[key] && byKey[key].stage) || key)}${byKey[key] ? ` <span class="mono help" style="display:inline;margin:0;">${escapeHtml(key)}</span>` : ""}` : null;
+  return {
+    title: s.stage || s.key || "Étape",
+    sub: `${flow.request} · étape JIRA${s.key ? ` ${s.key}` : ""}`,
+    body: `
+      <p class="plate-detail__tags"><span class="plate-tag ${STEP_CATEGORY_TAGS[s.category] || "plate-tag--mute"}">${escapeHtml(s.status || STEP_CATEGORY_LABELS[s.category])}</span>${s.late ? ` <span class="plate-tag plate-tag--warn">en retard</span>` : ""}</p>
+      ${kvHtml([
+        ["Atelier", s.type],
+        ["Assignée à", s.assignee],
+        ["Créée", trackingDate(s.created), true],
+        ["Échéance estimée", trackingDate(s.estimated), true],
+        ["Close", trackingDate(s.closed), true],
+        ["Durée estimée", s.days !== null && s.days !== undefined ? `${s.days} j` : null],
+        ["Étape précédente", neighbour(s.previous), true],
+        ["Étape suivante", neighbour(s.next), true],
+      ])}
+      ${longTextHtml("Description", s.description) || `<p class="help" style="margin:12px 0 0;">Pas de description dans JIRA.</p>`}`,
+  };
+}
+
+function ticketDetail(ticket, flow) {
+  return {
+    title: ticket.request || "Ticket",
+    sub: `FDL JIRA${ticket.jira_key ? ` ${ticket.jira_key}` : ""}${ticket.via === "lot" ? " · posée sur le lot" : ""}`,
+    body: `
+      <p class="plate-detail__tags"><span class="plate-tag ${ticket.state === "clos" ? "plate-tag--done" : "plate-tag--open"}">${ticket.state === "clos" ? "close" : "ouverte"}</span>${ticket.task_code ? ` <span class="plate-tag plate-tag--mute">${escapeHtml(ticket.task_code)}</span>` : ""}</p>
+      ${kvHtml([
+        ["Demandeur", ticket.requester],
+        ["Créée", trackingDate(ticket.created), true],
+        ["Close", trackingDate(ticket.closed), true],
+        ["Étiquettes", ticket.labels],
+        ["Lots cités", [...(ticket.lots_jira || []), ...(ticket.lots_raw || [])].join(", ")],
+        ["Avancement", flow ? `${flow.pct === null ? "—" : `${flow.pct} %`} · ${flow.n_done}/${flow.n - flow.n_skipped} étapes` : null],
+      ])}
+      ${longTextHtml("Objectif", ticket.objective)}
+      ${longTextHtml("Description", ticket.description)}`,
+  };
+}
+
+// Le détail d'une action MES : tout ce que la MES en dit
+function actionDetail(s) {
+  const duration = s.start && s.end_effective ? formatDuration(new Date(s.end_effective.replace(" ", "T")) - new Date(s.start.replace(" ", "T"))) : "";
+  const end = s.start && !s.end_effective ? "en cours" : s.unclosed ? `≈ ${trackingDate(s.end_effective)} (jamais clôturée dans la MES)` : trackingDate(s.end);
+  return {
+    title: stepLabel(s.step).action,
+    sub: `Action MES · étape ${stepLabel(s.step).step}`,
+    body: kvHtml([
+      ["Nom MES", s.step],
+      ["Route", [s.route, s.route_version ? `v${s.route_version}` : ""].filter(Boolean).join(" ")],
+      ["Ordre / cycle", [s.order, s.cycle].filter((x) => x !== null && x !== undefined).join(" / ")],
+      ["Équipement", s.equipment],
+      ["Recette", s.recipe],
+      ["Porteur", s.carrier],
+      ["Capability", s.capability],
+      ["Lot", s.lot_out && s.lot && s.lot_out !== s.lot ? `${s.lot} → ${s.lot_out}` : s.lot || s.lot_out],
+      ["Statut entrée → sortie", [s.status_in, s.status_out].filter(Boolean).join(" → ")],
+      ["Début", trackingDate(s.start), true],
+      ["Fin", end, true],
+      ["Durée", duration],
+    ]),
+  };
 }
 
 function ticketHtml(ticket, flow) {
@@ -70,6 +203,7 @@ function ticketHtml(ticket, flow) {
     <li class="plate-ticket">
       <div class="plate-ticket__head">
         ${fdlChipsHtml([ticket.request], { label: false })}
+        <button type="button" class="plate-ticket__more" data-detail="ticket" data-request="${escapeHtml(ticket.request || "")}">Détail du ticket</button>
         <span class="plate-tag ${ticket.state === "clos" ? "plate-tag--done" : "plate-tag--open"}">${ticket.state === "clos" ? "close" : "ouverte"}</span>
         ${ticket.via === "lot" ? `<span class="plate-tag plate-tag--mute" title="Ticket posé sur le lot entier, pas sur cette plaque">via le lot</span>` : ""}
         ${ticket.task_code ? `<span class="mono plate-ticket__code">${escapeHtml(ticket.task_code)}</span>` : ""}
@@ -136,12 +270,13 @@ function groupSteps(rows) {
 }
 
 function actionHtml(s) {
+  const index = s._index;
   const open = s.start && !s.end_effective;
   const duration = s.start && s.end_effective ? formatDuration(new Date(s.end_effective.replace(" ", "T")) - new Date(s.start.replace(" ", "T"))) : "";
   return `
     <li class="plate-action${open ? " is-running" : ""}${s.cycle > 1 ? " is-rework" : ""}">
       <span class="plate-action__dot" aria-hidden="true"></span>
-      <div class="plate-action__title"><span class="mono">${escapeHtml(stepLabel(s.step).action)}</span>${s.cycle > 1 ? ` <span class="plate-tag plate-tag--warn">reprise ${s.cycle}</span>` : ""}${s.unclosed ? ` <span class="plate-tag plate-tag--mute" title="Jamais clôturée dans la MES, mais suivie d'une autre action">non clôturée</span>` : ""}${open ? ` <span class="plate-tag plate-tag--run">en cours</span>` : ""}</div>
+      <div class="plate-action__title"><button type="button" class="plate-action__open mono" data-detail="action" data-index="${index}" title="Détail de l'action MES">${escapeHtml(stepLabel(s.step).action)}</button>${s.cycle > 1 ? ` <span class="plate-tag plate-tag--warn">reprise ${s.cycle}</span>` : ""}${s.unclosed ? ` <span class="plate-tag plate-tag--mute" title="Jamais clôturée dans la MES, mais suivie d'une autre action">non clôturée</span>` : ""}${open ? ` <span class="plate-tag plate-tag--run">en cours</span>` : ""}</div>
       <div class="plate-action__meta">${[s.equipment, s.recipe, s.carrier ? `porteur ${s.carrier}` : ""].filter(Boolean).map(escapeHtml).join(" · ")}</div>
       <div class="plate-action__time">${trackingDate(s.start)}${s.end_effective ? ` → ${trackingDate(s.end_effective)}` : ""}${duration ? ` · ${duration}` : ""}${s.lot_out && s.lot_out !== s.lot ? ` · lot → ${escapeHtml(s.lot_out)}` : ""}</div>
     </li>`;
@@ -299,17 +434,45 @@ function trackingHtml(data) {
     </details>`;
 }
 
-// host : la section de la page ; waferKey : la plaque. Lit, affiche, et branche « Rafraîchir ».
-async function initWaferTracking(host, waferKey) {
+// Les clics « détail » du corps : une étape JIRA, un ticket, une action MES (data-detail) - lus
+// dans la dernière fiche affichée (current()).
+function bindTrackingDetails(body, current) {
+  body.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-detail]");
+    const data = current();
+    if (!target || !data || !body.contains(target)) return;
+    const kind = target.dataset.detail;
+    if (kind === "fdl-step") {
+      const flow = data.fdls[target.dataset.request];
+      const step = flow && flow.steps[Number(target.dataset.index)];
+      if (step) TrackingDetail.open(fdlStepDetail(flow, step));
+    } else if (kind === "ticket") {
+      const ticket = data.tickets.find((t) => (t.request || "") === target.dataset.request);
+      if (ticket) TrackingDetail.open(ticketDetail(ticket, data.fdls[ticket.request]));
+    } else if (kind === "action") {
+      const row = data.steps[Number(target.dataset.index)];
+      if (row) TrackingDetail.open(actionDetail(row));
+    }
+  });
+}
+
+// host : la section de la page ; waferKey : la plaque ; onData : appelé à chaque fiche lue (la page
+// en reprend les FDL, le lot et les autres noms dans son en-tête). Lit, affiche, branche « Rafraîchir ».
+async function initWaferTracking(host, waferKey, onData) {
   const body = host.querySelector(".js-life-body");
   const fresh = host.querySelector(".js-life-fresh");
   const button = host.querySelector(".js-life-refresh");
   let busy = false;
+  let current = null;
+  bindTrackingDetails(body, () => current);
 
   function show(data) {
+    data.steps.forEach((row, index) => Object.defineProperty(row, "_index", { value: index, enumerable: false, configurable: true }));
+    current = data;
     fresh.innerHTML = freshnessHtml(data.meta);
     body.innerHTML = trackingHtml(data);
     bindJourneySearch(body.querySelector(".js-journey"), data.steps);
+    if (onData) onData(data);
   }
 
   async function load(refresh) {
