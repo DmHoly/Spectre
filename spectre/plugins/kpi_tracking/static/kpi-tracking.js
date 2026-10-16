@@ -12,7 +12,6 @@ const SOURCE_LABELS = { prism: "Données PRISM", demo: "Données de démonstrati
 
 let canEdit = false;
 let tracked = [];
-let catalog = [];
 let distributionsLoaded = false;
 let activeTab = "distributions";
 
@@ -41,119 +40,6 @@ function setTab(name) {
   history.replaceState(null, "", name === "configuration" ? "#configuration" : location.pathname);
   if (name === "distributions" && !distributionsLoaded) loadDistributions();
 }
-
-/* -- configuration ------------------------------------------------------------------------ */
-
-function renderTracked() {
-  const box = document.getElementById("kt-tracked");
-  if (!tracked.length) {
-    box.innerHTML = `<p class="help">Aucun KPI suivi pour l'instant${canEdit ? " : choisissez-en dans la liste ci-dessous." : "."}</p>`;
-    return;
-  }
-  box.innerHTML = tracked
-    .map(
-      (k) => `<div class="kt-row" data-id="${k.id}">
-        <div>
-          <div class="kt-row__name">${escapeHtml(k.title)}</div>
-          <div class="kt-row__meta">${escapeHtml(k.hook_title)} · ${escapeHtml(k.column)}${k.unit ? ` · ${escapeHtml(k.unit)}` : ""}${k.available ? "" : ' · <span class="kt-row__missing">n\'est plus dans PRISM</span>'}</div>
-        </div>
-        <div>${canEdit ? `<input type="text" class="field" data-rename="${k.id}" value="${escapeHtml(k.label)}" maxlength="80" placeholder="Nom affiché (par défaut : ${escapeHtml(k.column)})" aria-label="Nom affiché de ${escapeHtml(k.title)}">` : ""}</div>
-        <div>${canEdit ? `<button class="btn btn-line" type="button" data-untrack="${k.id}">Ne plus suivre</button>` : ""}</div>
-      </div>`
-    )
-    .join("");
-}
-
-function renderCatalog() {
-  const box = document.getElementById("kt-catalog");
-  if (!catalog.length) {
-    box.innerHTML = `<p class="help">PRISM ne propose aucun KPI par plaque pour l'instant.</p>`;
-    return;
-  }
-  const followed = new Set(tracked.map((k) => `${k.hook}:${k.column}`));
-  const byHook = new Map();
-  for (const k of catalog) {
-    if (!byHook.has(k.hook)) byHook.set(k.hook, { title: k.hook_title, items: [] });
-    byHook.get(k.hook).items.push(k);
-  }
-  box.innerHTML = [...byHook.entries()]
-    .map(
-      ([hook, group]) => `<div class="kt-group">
-        <div class="kt-group__title">${escapeHtml(group.title)}<span class="kt-group__hook">${escapeHtml(hook)}</span></div>
-        ${group.items
-          .map(
-            (k) => `<div class="kt-row kt-row--catalog">
-              <div class="kt-row__name">${escapeHtml(k.column)}${k.unit ? ` <span class="kt-row__meta">${escapeHtml(k.unit)}</span>` : ""}</div>
-              <div class="kt-row__desc">${escapeHtml(k.description || "")}</div>
-              <div>${
-                followed.has(k.key)
-                  ? '<span class="badge badge-concluded"><span class="dot"></span>Suivi</span>'
-                  : canEdit
-                    ? `<button class="btn btn-tint" type="button" data-track="${escapeHtml(k.key)}">Suivre</button>`
-                    : ""
-              }</div>
-            </div>`
-          )
-          .join("")}
-      </div>`
-    )
-    .join("");
-}
-
-async function run(action) {
-  clearError();
-  try {
-    await action();
-  } catch (err) {
-    showError(err);
-  }
-}
-
-async function reloadTracked() {
-  tracked = await kpiTrackingApi.list(slug);
-  distributionsLoaded = false; // le choix a changé : les boîtes sont à refaire
-  renderTracked();
-  renderCatalog();
-}
-
-document.getElementById("kt-catalog").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-track]");
-  if (!button) return;
-  const entry = catalog.find((k) => k.key === button.dataset.track);
-  if (!entry) return;
-  button.disabled = true;
-  run(async () => {
-    try {
-      await kpiTrackingApi.track(slug, { hook: entry.hook, column: entry.column });
-    } finally {
-      await reloadTracked();
-    }
-  });
-});
-
-document.getElementById("kt-tracked").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-untrack]");
-  if (!button) return;
-  button.disabled = true;
-  run(async () => {
-    try {
-      await kpiTrackingApi.untrack(slug, button.dataset.untrack);
-    } finally {
-      await reloadTracked();
-    }
-  });
-});
-
-document.getElementById("kt-tracked").addEventListener("change", (event) => {
-  const input = event.target.closest("[data-rename]");
-  if (!input) return;
-  run(async () => {
-    const updated = await kpiTrackingApi.rename(slug, input.dataset.rename, input.value);
-    tracked = tracked.map((k) => (k.id === updated.id ? updated : k));
-    distributionsLoaded = false;
-    renderTracked();
-  });
-});
 
 /* -- distributions ------------------------------------------------------------------------ */
 
@@ -235,10 +121,21 @@ for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click
     ]);
     canEdit = !!microproject.can_edit;
     tracked = trackedList;
-    catalog = catalogList;
     document.getElementById("crumb").textContent = "/ " + microproject.name;
-    renderTracked();
-    renderCatalog();
+    mountKpiConfig({
+      slug,
+      canEdit,
+      catalog: catalogList,
+      tracked,
+      trackedEl: document.getElementById("kt-tracked"),
+      catalogEl: document.getElementById("kt-catalog"),
+      showError,
+      clearError,
+      onChange(list) {
+        tracked = list;
+        distributionsLoaded = false; // le choix a changé : les boîtes sont à refaire
+      },
+    });
     setTab(location.hash === "#configuration" ? "configuration" : "distributions");
   } catch (err) {
     document.getElementById("kt-boxes").innerHTML = "";
