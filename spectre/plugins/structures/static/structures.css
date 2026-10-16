@@ -3507,7 +3507,7 @@
   stroke: var(--text-soft);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
-  cursor: pointer;
+  cursor: grab;
   pointer-events: all;
 }
 .sb-canvas__svg .sb-zone.is-selected .sb-zone__tab {
@@ -3516,7 +3516,7 @@
 }
 .sb-canvas__svg .sb-zone__label {
   fill: var(--text-soft);
-  cursor: pointer;
+  cursor: grab;
   pointer-events: all;
   font-family: var(--font-ui, sans-serif);
   user-select: none;

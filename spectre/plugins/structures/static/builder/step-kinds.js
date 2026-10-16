@@ -190,7 +190,8 @@ const STEP_KIND_DEFS = {
       document.getElementById("f-litho-zone-add-btn").addEventListener("click", () => {
         const zones = readZoneRows();
         if (zones.length >= MAX_SUBPIXEL_ZONES) return;
-        setZoneRows([...zones, { ...(zones[zones.length - 1] || DEFAULT_SUBPIXEL_ZONES[0]) }]);
+        const { name: _name, offset: _offset, ...copy } = zones[zones.length - 1] || DEFAULT_SUBPIXEL_ZONES[0]; // une zone de plus : mêmes dimensions, sans nom ni place
+        setZoneRows([...zones, copy]);
         updateLithoPlacement();
         livePreviewFromForm();
       });
@@ -661,11 +662,12 @@ function setZoneRows(zones) {
   document.getElementById("f-litho-zones-rows").innerHTML = zones
     .map(
       (zone, i) => `
-      <div class="sb-litho-zone" style="margin:6px 0;">
+      <div class="sb-litho-zone" style="margin:6px 0;" data-offset="${zone.offset ? escapeHtml(JSON.stringify(zone.offset)) : ""}">
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;">
           <span>Sous-pixel ${i + 1}</span>
           <button class="btn btn-line" type="button" data-zone-remove="${i}" ${zones.length <= 1 ? "disabled" : ""} title="Retirer ce sous-pixel">Retirer</button>
         </div>
+        <div><label>Nom (affiché sur le dessin)</label><input class="field" data-zone="name" type="text" maxlength="30" placeholder="Zone ${i + 1}" value="${escapeHtml(zone.name || "")}"></div>
         <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
           <div><label>Fils</label><input class="field" data-zone="wires" type="number" min="1" max="${MAX_LATTICE_WIRES}" value="${zone.wires}"></div>
           <div><label>Pas (nm)</label><input class="field" data-zone="pitch" type="number" min="0" value="${zone.pitch}"></div>
@@ -680,7 +682,12 @@ function setZoneRows(zones) {
 function readZoneRows() {
   return [...document.querySelectorAll("#f-litho-zones-rows .sb-litho-zone")].map((row) => {
     const read = (key) => parseFloat(row.querySelector(`[data-zone="${key}"]`).value);
-    return { wires: Math.min(MAX_LATTICE_WIRES, parseInt(read("wires"), 10) || 0), pitch: read("pitch"), diameter: read("diameter") };
+    const zone = { wires: Math.min(MAX_LATTICE_WIRES, parseInt(read("wires"), 10) || 0), pitch: read("pitch"), diameter: read("diameter") };
+    const name = row.querySelector('[data-zone="name"]').value.trim();
+    if (name) zone.name = name;
+    // la place de sa pastille sur le dessin (zones.js, qui la déplace) : portée par la ligne, pas un champ
+    if (row.dataset.offset) zone.offset = JSON.parse(row.dataset.offset);
+    return zone;
   });
 }
 

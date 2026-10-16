@@ -64,6 +64,7 @@ class Lattice(BaseModel):
 #   ouverture, séparés par ``gap`` - ils portent leur propre pas, le réseau du substrat n'y est pour rien.
 LATTICE_OPENING_SIZES = {"wires": "diameter", "between": "width", "pixel": "margin", "zones": "gap"}
 MAX_SUBPIXEL_ZONES = 8
+MAX_ZONE_NAME = 30
 
 
 class SubPixelZone(BaseModel):
@@ -75,6 +76,34 @@ class SubPixelZone(BaseModel):
     wires: int = Field(1, ge=1, le=MAX_LATTICE_WIRES)
     pitch: float = Field(gt=0, le=1_000_000)
     diameter: float = Field(gt=0, le=1_000_000)
+    # son nom sur le dessin (vide : « Zone n ») et le décalage de sa pastille (nm, dans la géométrie de
+    # l'image) : ce qu'on montre, pas ce qu'est la structure - le versionnage ne les compte pas
+    name: str = Field("", max_length=MAX_ZONE_NAME)
+    offset: tuple[float, float] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _stripped_name(cls, name: str) -> str:
+        return name.strip()
+
+    @field_validator("offset")
+    @classmethod
+    def _finite_offset(cls, offset: tuple[float, float] | None) -> tuple[float, float] | None:
+        if offset is None:
+            return None
+        if not all(math.isfinite(v) and abs(v) <= 1e7 for v in offset):
+            raise ValueError("décalage de pastille hors du dessin")
+        return (round(offset[0], 1), round(offset[1], 1)) if any(offset) else None
+
+    @model_serializer(mode="wrap")
+    def _compact(self, handler: Any) -> dict[str, Any]:
+        # une zone sans nom ni décalage s'écrit comme avant
+        data = handler(self)
+        if not data.get("name"):
+            data.pop("name", None)
+        if data.get("offset") is None:
+            data.pop("offset", None)
+        return data
 
 
 class LatticeOpening(BaseModel):
@@ -588,12 +617,32 @@ def lattice_anchors_in(raw_steps: Any) -> dict[int, LatticeOpening]:
     return anchors
 
 
+def _without_zone_labels(process: dict[str, Any]) -> dict[str, Any]:
+    """``process`` sans le nom ni le décalage de pastille des zones de ses lithographies en sous-pixels."""
+    steps = process.get("steps")
+    if not isinstance(steps, list):
+        return process
+    changed = False
+    neutral = []
+    for step in steps:
+        anchor = step.get(LATTICE_OPENING_KEY) if isinstance(step, dict) else None
+        zones = anchor.get("zones") if isinstance(anchor, dict) else None
+        if isinstance(zones, list) and any(isinstance(z, dict) and ("name" in z or "offset" in z) for z in zones):
+            bare = [{key: value for key, value in z.items() if key not in ("name", "offset")} if isinstance(z, dict) else z for z in zones]
+            step = {**step, LATTICE_OPENING_KEY: {**anchor, "zones": bare}}
+            changed = True
+        neutral.append(step)
+    return {**process, "steps": neutral} if changed else process
+
+
 def view_neutral_process(process: Any) -> Any:
     """Ce que le versionnage compare d'un procédé à réseau : sans ce qui ne dépend que du nombre de
     fils vus (la largeur du domaine, ``wires``, les ouvertures des lithographies ancrées) - passer
-    d'un fil à un pixel de six ne change pas la structure. Un procédé sans réseau est rendu tel quel."""
+    d'un fil à un pixel de six ne change pas la structure. Sans réseau, le procédé est rendu tel quel -
+    au nom et au décalage près des zones d'une lithographie en sous-pixels, que le dessin seul porte."""
     if not isinstance(process, dict):
         return process
+    process = _without_zone_labels(process)
     substrate = process.get("substrate")
     if not isinstance(substrate, dict) or not isinstance(substrate.get("lattice"), dict):
         return process

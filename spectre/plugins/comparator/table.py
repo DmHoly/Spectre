@@ -255,7 +255,8 @@ def _step(raw: dict[str, Any], position: int, step_id: str | None, declared: Any
         if isinstance(zones, list) and zones:
             shown = " | ".join(f"{z.get('wires')} × {z.get('pitch'):g} · Ø{z.get('diameter'):g}" for z in zones if isinstance(z, dict) and isinstance(z.get("pitch"), (int, float)) and isinstance(z.get("diameter"), (int, float)))
             labels["sub_pixels"] = _FIELD_LABELS["sub_pixels"]
-            values["sub_pixels"] = _Value(("text", json.dumps(zones, sort_keys=True)), shown)
+            bare = [{key: z.get(key) for key in ("wires", "pitch", "diameter")} for z in zones if isinstance(z, dict)]  # sans nom ni pastille
+            values["sub_pixels"] = _Value(("text", json.dumps(bare, sort_keys=True)), shown)
     elif kind == "lithography":
         labels["openings"] = _FIELD_LABELS["openings"]
         openings = _openings(raw.get("openings"))

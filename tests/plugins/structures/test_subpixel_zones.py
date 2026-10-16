@@ -160,3 +160,20 @@ def test_a_study_keeps_the_values_of_each_zone(client):
     # une autre valeur dans la zone : une autre structure
     evolve(client, slug, study["id"], title="Essai", intent="Verifier", substrate=substrate(), steps=overridden_steps({1: 90}))
     assert versions(client, slug, study["id"])[-1]["change_level"] != "none"
+
+
+def test_a_zone_can_be_named_and_its_label_moved_without_changing_the_structure():
+    named = [{**ZONES[0], "name": "Rouge", "offset": [120.0, -40.0]}, {**ZONES[1], "name": "  Vert "}, ZONES[2]]
+    opening = simulation.LatticeOpening.model_validate({"mode": "zones", "gap": 400, "zones": named})
+    dumped = opening.model_dump(mode="json")["zones"]
+    assert dumped == [{**ZONES[0], "name": "Rouge", "offset": [120.0, -40.0]}, {**ZONES[1], "name": "Vert"}, ZONES[2]]  # sans nom ni décalage : la forme d'avant
+    assert simulation.subpixel_layout(opening) == simulation.subpixel_layout(simulation.LatticeOpening.model_validate({"mode": "zones", "gap": 400, "zones": ZONES}))
+
+    def process(zones: list[dict]) -> dict:
+        steps = zone_steps(zones=zones)
+        body = ProcessInput.model_validate({"substrate": substrate(), "steps": steps})
+        return simulation.process_metadata(body.substrate, body.steps, lattice_anchors=body.lattice_anchors)
+
+    assert simulation.view_neutral_process(process(named)) == simulation.view_neutral_process(process(ZONES))
+    with pytest.raises(ValueError):
+        simulation.LatticeOpening.model_validate({"mode": "zones", "gap": 400, "zones": [{**ZONES[0], "offset": [float("inf"), 0]}]})

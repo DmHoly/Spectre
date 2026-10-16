@@ -56,12 +56,17 @@ function stepWithZoneValues(built, common, zone) {
 }
 
 // Les champs que chaque zone règle à sa façon sur cette étape, pour l'écrire sous le sélecteur.
-function zoneOwnSummary(step, fieldLabel) {
+function zoneOwnSummary(step, fieldLabel, nameOf = (zone) => `zone ${zone + 1}`) {
   const overrides = step.zone_overrides || {};
   return Object.keys(overrides)
     .sort((a, b) => a - b)
-    .map((zone) => `zone ${Number(zone) + 1} : ${Object.keys(overrides[zone]).map(fieldLabel).join(", ")}`)
+    .map((zone) => `${nameOf(Number(zone))} : ${Object.keys(overrides[zone]).map(fieldLabel).join(", ")}`)
     .join(" · ");
+}
+
+// Le nom d'une zone : celui qu'on lui a donné, sinon « Zone n ».
+function zoneName(anchor, zone) {
+  return (anchor.opening.zones[zone] && anchor.opening.zones[zone].name) || `Zone ${zone + 1}`;
 }
 
 // Le sélecteur de zone en tête du formulaire d'une étape d'après la lithographie en sous-pixels.
@@ -71,12 +76,12 @@ function zoneSelectorHtml(index) {
   const zone = activeZone(index);
   const step = state.steps[index] || {};
   const buttons = [`<button type="button" class="sb-zone-pick${zone == null ? " is-active" : ""}" data-zone="">Toutes</button>`]
-    .concat(anchor.windows.map((_w, z) => `<button type="button" class="sb-zone-pick${zone === z ? " is-active" : ""}${step.zone_overrides && step.zone_overrides[z] ? " has-own" : ""}" data-zone="${z}">Zone ${z + 1}</button>`))
+    .concat(anchor.windows.map((_w, z) => `<button type="button" class="sb-zone-pick${zone === z ? " is-active" : ""}${step.zone_overrides && step.zone_overrides[z] ? " has-own" : ""}" data-zone="${z}">${escapeHtml(zoneName(anchor, z))}</button>`))
     .join("");
-  const own = zoneOwnSummary(step, (key) => PARAM_FIELD_LABELS[key] || key);
+  const own = zoneOwnSummary(step, (key) => PARAM_FIELD_LABELS[key] || key, (z) => zoneName(anchor, z));
   const help = zone == null
     ? "Les valeurs ci-dessous valent pour toutes les zones, sauf celles qu'une zone règle en propre."
-    : `Vous réglez la zone ${zone + 1} : ce qui diffère des valeurs communes lui devient propre ; remettre la valeur commune la lui retire.`;
+    : `Vous réglez ${escapeHtml(zoneName(anchor, zone))} : ce qui diffère des valeurs communes lui devient propre ; remettre la valeur commune la lui retire.`;
   return `
     <div class="sb-zone-selector" id="zone-selector">
       <label>Zones du pixel</label>
@@ -101,10 +106,28 @@ document.getElementById("step-form-section").addEventListener("click", (event) =
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+// Pose la place de la pastille de la zone `zone` (nm, décalage depuis sa place d'origine) sur la
+// lithographie en sous-pixels - et sur la ligne de son formulaire si elle est ouverte, qui la relit sinon
+// à l'ancienne. Ce qu'on montre, pas la structure : rien n'est resimulé.
+function setZoneOffset(zone, offset) {
+  const anchor = zonesAnchor();
+  if (!anchor) return;
+  const next = offset && (offset[0] || offset[1]) ? [Math.round(offset[0] * 10) / 10, Math.round(offset[1] * 10) / 10] : null;
+  const zones = anchor.opening.zones.map((z, k) => {
+    if (k !== zone) return z;
+    const { offset: _old, ...rest } = z;
+    return next ? { ...rest, offset: next } : rest;
+  });
+  state.steps[anchor.index] = { ...state.steps[anchor.index], lattice_opening: { ...anchor.opening, zones } };
+  const row = document.querySelectorAll("#f-litho-zones-rows .sb-litho-zone")[zone];
+  if (row) row.dataset.offset = next ? JSON.stringify(next) : "";
+  captureHistory();
+}
+
 // Un carré en pointillé par zone sur l'image d'après la lithographie en sous-pixels : le dessin de
 // StructureForge (le <svg> imbriqué quand l'image porte des étiquettes) a la géométrie pour viewBox, en nm,
-// y retourné - le carré va d'un bord à l'autre de la zone, sur toute la hauteur de l'image. Un clic sur sa
-// pastille ouvre la zone dans le formulaire de l'étape.
+// y retourné - le carré va d'un bord à l'autre de la zone, sur toute la hauteur de l'image. Sa pastille
+// porte le nom de la zone : un clic ouvre la zone dans le formulaire de l'étape, la glisser la déplace.
 function drawZoneOverlay() {
   const container = document.getElementById("svg-container");
   container.querySelectorAll(".sb-zone-box").forEach((node) => node.remove());
@@ -130,30 +153,68 @@ function drawZoneOverlay() {
     rect.setAttribute("width", String(right - left));
     rect.setAttribute("height", String(view.height));
     rect.setAttribute("class", "sb-zone__frame");
+    const name = zoneName(anchor, zone);
+    const textWidth = Math.max(chip * 2.6, name.length * chip * 0.5 + chip * 0.8);
+    const offset = anchor.opening.zones[zone].offset || [0, 0];
+    // la pastille : un rectangle et son nom, déplacés ensemble ; (x, y) d'origine en haut à gauche de la zone
+    const pill = document.createElementNS(SVG_NS, "g");
+    pill.setAttribute("class", "sb-zone__pill");
+    pill.setAttribute("transform", `translate(${offset[0]} ${-offset[1]})`); // y du dessin retourné
     const tab = document.createElementNS(SVG_NS, "rect");
     tab.setAttribute("x", String(left + chip * 0.2));
     tab.setAttribute("y", String(view.y + chip * 0.2));
-    tab.setAttribute("width", String(chip * 2.6));
+    tab.setAttribute("width", String(textWidth));
     tab.setAttribute("height", String(chip * 1.2));
     tab.setAttribute("rx", String(chip * 0.25));
     tab.setAttribute("class", "sb-zone__tab");
     const label = document.createElementNS(SVG_NS, "text");
-    label.setAttribute("x", String(left + chip * 1.5));
+    label.setAttribute("x", String(left + chip * 0.2 + textWidth / 2));
     label.setAttribute("y", String(view.y + chip * 1.0));
     label.setAttribute("font-size", String(chip * 0.8));
     label.setAttribute("text-anchor", "middle");
     label.setAttribute("class", "sb-zone__label");
-    label.textContent = `Zone ${zone + 1}`;
-    tab.addEventListener("click", (event) => {
-      event.stopPropagation();
-      selectZone(selected === zone ? null : zone);
-    });
-    label.addEventListener("click", (event) => {
-      event.stopPropagation();
-      selectZone(selected === zone ? null : zone);
-    });
-    box.append(rect, tab, label);
+    label.textContent = name;
+    pill.append(tab, label);
+    wireZonePill(pill, svg, zone, offset);
+    box.append(rect, pill);
     group.append(box);
   });
   svg.append(group);
+}
+
+// La pastille d'une zone : un clic (sans déplacement) ouvre ou referme la zone, la glisser la déplace.
+// Pendant le glissement elle suit la souris sans rien redessiner ; au lâcher, sa place est gardée.
+function wireZonePill(pill, svg, zone, offset) {
+  let drag = null;
+  let dragged = false;
+  pill.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    event.stopPropagation(); // ni déplacement de la vue, ni sélection d'une couche
+    event.preventDefault();
+    const start = svgPointOf(svg, event); // layer-label.js
+    drag = { start, client: [event.clientX, event.clientY] };
+    dragged = false;
+    const move = (e) => {
+      if (Math.hypot(e.clientX - drag.client[0], e.clientY - drag.client[1]) > 3) dragged = true;
+      if (!dragged) return;
+      const p = svgPointOf(svg, e);
+      pill.setAttribute("transform", `translate(${offset[0] + p.x - start.x} ${-offset[1] + p.y - start.y})`);
+      drag.last = p;
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      if (dragged && drag.last) setZoneOffset(zone, [offset[0] + drag.last.x - start.x, offset[1] - (drag.last.y - start.y)]);
+      drag = null;
+      setTimeout(() => (dragged = false), 0); // le clic qui suit le lâcher n'est pas une sélection
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+  pill.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (dragged) return;
+    const selected = activeZone(Math.max(state.selectedIndex, (zonesAnchor() || { index: 0 }).index + 1));
+    selectZone(selected === zone ? null : zone);
+  });
 }
