@@ -165,8 +165,7 @@ GitHub, et PRISM depuis gitlab-it.aledia.com : il faut être sur le réseau Aled
 
 1. Cloner le dépôt : `git clone https://github.com/DmHoly/Spectre.git` puis `cd Spectre`.
 2. **`install.bat`** crée `.venv` et y installe Spectre en mode éditable avec ses dépendances de
-   développement (`pip install -e ".[dev]"`). Il signale si `%USERPROFILE%\.prism\connections.yml`
-   manque.
+   développement (`pip install -e ".[dev]"`).
 3. **`start.bat`** lance le serveur dans une nouvelle fenêtre (`spectre --port 8000`) et ouvre
    `http://127.0.0.1:8000/`. Les données vont dans `data\` du dépôt, sauf si `SPECTRE_DATA_DIR` est
    déjà défini. Fermer la fenêtre (ou `Ctrl+C`) arrête le serveur.
@@ -201,11 +200,12 @@ et laisse les variables SMTP en commentaire. Sans compose :
 
 ```bash
 docker build -t spectre .
-docker run -d -p 8000:8000 -v spectre-data:/data --name spectre spectre
+docker run -d -p 8000:8000 -v spectre-data:/data --env-file .env --name spectre spectre
 ```
 
-PRISM se configure au lancement, pas dans l'image : monter un `connections.yml`, pointer
-`PRISM_CONNECTIONS_FILE` dessus et passer les identifiants par variables d'environnement.
+L'image embarque `config/connections.yml` (hôtes et bases, sans secret) ; le mot de passe PRISM n'est jamais
+dans l'image : `docker compose` lit le `.env` voisin, et sans compose on ajoute `--env-file .env` au
+`docker run`. `build-docker.bat` dépose `dist\.env.example` à côté du `.tar` pour l'IT.
 
 Il n'y a pas d'intégration continue : lancer les tests et construire l'image avant de déployer
 reste manuel.
@@ -242,18 +242,16 @@ Variables lues par PRISM lui-même (voir sa documentation) :
 ## Données de caractérisation (PRISM)
 
 La page **PRISM** (menu Data, réservée aux administrateurs : `/prism/donnees`) et l'onglet « Données » des fiches interrogent les bases via PRISM.
-La configuration se fait une fois par poste, **hors du dépôt** (aucun secret n'y est commité) :
+La configuration tient en un fichier : les hôtes et bases sont dans `config/connections.yml` (versionné,
+sans secret, désigné à PRISM au démarrage), le compte de lecture dans le **`.env` à la racine du projet**
+(ignoré par git) :
 
-1. copier le modèle `config/connections.example.yml` du dépôt PRISM en `~/.prism/connections.yml`
-   (`%USERPROFILE%\.prism\connections.yml` sous Windows) : hôtes et bases, sans mot de passe ;
-2. créer `~/.prism/credentials.ini` avec le compte de lecture :
-   ```ini
-   [DEFAULT]
-   user = ...
-   password = ...
-   ```
-   ou définir `PRISM_USER` / `PRISM_PASSWORD`. Les anciens noms (`[DB_CREDENTIALS]`,
-   `DB_LUMIERE_USER` / `DB_LUMIERE_PASSWORD`) restent acceptés ;
+1. copier `.env.example` en `.env` et y renseigner `PRISM_USER` / `PRISM_PASSWORD` (ou
+   `PRISM_<PROFIL>_USER` / `PRISM_<PROFIL>_PASSWORD` pour un compte propre à un profil). Chargé au démarrage
+   de Spectre ; une variable déjà définie dans l'environnement l'emporte ; `SPECTRE_ENV_FILE` désigne un
+   autre fichier ;
+2. aucun `~/.prism/credentials.ini` ni `~/.prism/connections.yml` n'est nécessaire. Pour utiliser ses propres
+   profils, définir `PRISM_CONNECTIONS_FILE` (ou `PRISM_CONFIG_DIR`) ;
 3. vérifier, sans connexion à une base : `prism doctor`.
 
 Sans cette configuration, Spectre fonctionne ; seule une requête de données répond 503

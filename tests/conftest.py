@@ -21,6 +21,8 @@ def isolated_environment(tmp_path, monkeypatch):
     for name in list(os.environ):
         if name.startswith("SPECTRE_SMTP_"):
             monkeypatch.delenv(name)
+    # le .env du développeur (mot de passe PRISM...) ne se charge jamais depuis un test
+    monkeypatch.setenv("SPECTRE_ENV_FILE", str(tmp_path / "absent.env"))
     monkeypatch.delenv("SPECTRE_DEMO_DATA", raising=False)
     monkeypatch.delenv("SPECTRE_BASE_URL", raising=False)
     # les plaques d'une FDL se lisent dans PRISM par défaut : un test ne parle jamais à la ligne

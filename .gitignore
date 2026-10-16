@@ -16,4 +16,13 @@ uv.lock
 # PRISM (données de caractérisation) : sa configuration vit dans ~/.prism, jamais dans ce dépôt.
 credentials.ini
 connections.yml
+!/config/connections.yml
 /.claude/
+
+# Secrets de poste (mot de passe PRISM, SMTP) : voir .env.example
+.env
+.env.*
+!.env.example
+
+# Export de l'image Docker (build-docker.bat)
+dist/

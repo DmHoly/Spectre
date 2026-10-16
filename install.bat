@@ -54,11 +54,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if not exist "%USERPROFILE%\.prism\connections.yml" (
+if not exist ".env" (
     echo.
-    echo [A FAIRE] PRISM n'est pas encore configure : la page Data ne pourra pas interroger les bases.
-    echo Creez %USERPROFILE%\.prism\connections.yml et credentials.ini - voir la section
-    echo "Donnees de caracterisation - PRISM" du README. La commande "prism doctor" verifie tout.
+    echo [A FAIRE] Copiez .env.example en .env et renseignez PRISM_USER / PRISM_PASSWORD :
+    echo sans cela la page Data ne pourra pas interroger les bases. La commande "prism doctor" verifie tout.
 )
 
 echo.

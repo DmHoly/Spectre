@@ -20,6 +20,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from . import plugin_states
+from .env import load_env
 from .db import run_migrations
 from .errors import install_error_handlers
 from .pages import KERNEL_STATIC_DIR, nav_entries_for, page_handler, plugin_dir, render_topbar_parts, resolve_page
@@ -96,6 +97,7 @@ def _install_observers(app: FastAPI, states: PluginStates, plugins: Sequence[Plu
 
 
 def create_app(plugins: Sequence[Plugin] | None = None) -> FastAPI:
+    load_env()
     if plugins is None:
         # La racine de composition : le seul endroit du noyau qui lit la liste des plugins.
         from ..plugins import PLUGINS

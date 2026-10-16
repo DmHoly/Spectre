@@ -7,6 +7,10 @@ services:
     build: .
     ports:
       - "8000:8000"
+    # Mot de passe PRISM (PRISM_USER / PRISM_PASSWORD) : le .env à côté de ce fichier, absent = ignoré.
+    env_file:
+      - path: .env
+        required: false
     environment:
       # URL publique utilisée dans les liens des e-mails envoyés (invitation, réinitialisation).
       SPECTRE_BASE_URL: "http://localhost:8000"

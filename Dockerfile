@@ -5,9 +5,9 @@
 # cette image nécessite donc un accès réseau sortant vers GitHub et vers le GitLab interne. Rien
 # d'autre à compiler (pas d'extension C) - une seule étape suffit.
 #
-# PRISM se configure au lancement, pas dans l'image : monter un connections.yml et fournir les
-# identifiants par variables d'environnement (PRISM_USER / PRISM_PASSWORD, ou PRISM_<PROFIL>_*),
-# avec PRISM_CONNECTIONS_FILE pointé sur le fichier monté.
+# PRISM : les profils de connexion (hôtes et bases, sans secret) sont embarqués (config/connections.yml).
+# Le mot de passe, lui, n'est JAMAIS dans l'image (le .tar part chez l'IT) : il se fournit au
+# lancement, par `--env-file .env` (PRISM_USER / PRISM_PASSWORD, ou PRISM_<PROFIL>_*).
 
 FROM python:3.11-slim
 
@@ -22,12 +22,18 @@ WORKDIR /app
 # n'est reconstruite que si pyproject.toml change, pas à chaque modification du code.
 COPY pyproject.toml README.md ./
 COPY spectre ./spectre
+COPY config ./config
 
 RUN pip install --no-cache-dir .
 
 # Les données (comptes, projets, dépôts d'expériences Follow, recettes) sont écrites ici - monter
 # un volume sur ce chemin pour les faire survivre à un redémarrage du conteneur.
-ENV SPECTRE_DATA_DIR=/data     PRISM_DATA_DIR=/data/prism
+ENV SPECTRE_DATA_DIR=/data     PRISM_DATA_DIR=/data/prism     PRISM_CONNECTIONS_FILE=/app/config/connections.yml
+
+# Derriere le reverse proxy de l'IT : uvicorn ne fait confiance aux en-tetes X-Forwarded-* que de
+# 127.0.0.1 par defaut ; le proxy arrive d'une autre adresse, on les accepte donc de partout (le
+# port 8000 n'est joignable que par le proxy).
+ENV FORWARDED_ALLOW_IPS=*
 RUN mkdir -p /data
 
 # Utilisateur non privilégié : l'image ne tourne jamais en root.

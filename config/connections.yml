@@ -1,0 +1,36 @@
+# Profils de connexion PRISM de Spectre : hôtes et bases, AUCUN mot de passe (fichier versionné).
+# Spectre le désigne à PRISM au démarrage (PRISM_CONNECTIONS_FILE, voir spectre/kernel/env.py) ;
+# une variable PRISM_CONNECTIONS_FILE déjà définie l'emporte.
+# Les identifiants viennent du fichier .env à la racine du projet (PRISM_USER / PRISM_PASSWORD,
+# ou PRISM_<PROFIL>_USER / PRISM_<PROFIL>_PASSWORD pour un compte propre à un profil).
+
+# Le profil utilisé par un hook qui n'en déclare pas.
+default: carac
+
+profiles:
+
+  carac:
+    driver: postgresql
+    host: INF49
+    database: testcarac
+    port: 5432
+    description: >
+      Base de caractérisation : mesures électro-optiques par device (EQE, PL, NCEL, EL).
+      C'est la base historique de quick_report et de Spectre.
+
+  gozer:
+    driver: postgresql
+    host: INF10
+    database: GOZER
+    port: 5432
+    description: >
+      Historique MES / exécution de route : passage des lots par les étapes, équipements,
+      recettes, durées (schema_sherlock.v_route_execution_history).
+
+  # Un fichier DuckDB local — pour rejouer un hook hors réseau, ou pour les données déjà
+  # figées en parquet. Aucun identifiant demandé.
+  local:
+    driver: duckdb
+    database: ~/.prism/data/local.duckdb
+    credentials: none
+    description: "Base locale DuckDB (travail hors-ligne, jeux de données figés)."

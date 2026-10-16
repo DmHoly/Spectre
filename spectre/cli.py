@@ -17,6 +17,9 @@ def _cmd_start(args: argparse.Namespace) -> int:
 
 
 def _cmd_admin(args: argparse.Namespace) -> int:
+    from .kernel.env import load_env
+
+    load_env()
     from .kernel.db import run_migrations
     from .kernel.errors import DomainError
     from .plugins import PLUGINS
