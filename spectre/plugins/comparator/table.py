@@ -69,11 +69,12 @@ _FIELD_LABELS = {
     "m_plane": "Plan M",
     "openings": "Ouvertures",
     "lattice_anchor": "Ancrage au réseau",
+    "sub_pixels": "Sous-pixels (fils · pas · ouverture)",
     "substrate.pitch": "Pas du réseau",
 }
 _UNITS = {"semi_polar_angle_deg": "°", "angle_deg": "°", "rate_c": "× réf.", "rate_m": "× réf.", "rate_sp": "× réf.", "rate_sp_inv": "× réf."}
 _ORIENTATIONS = {"c_plane": "Plan C", "m_plane": "Plan M", "semi_polar": "Semi-polaire"}
-_ANCHOR_MODES = {"wires": "un trou par fil", "between": "entre les fils", "pixel": "pixel entier"}
+_ANCHOR_MODES = {"wires": "un trou par fil", "between": "entre les fils", "pixel": "pixel entier", "zones": "sous-pixels"}
 _RECIPE_KINDS = {"deposition": "deposition", "etch": "etch"}
 # des champs qu'une colonne ne montre pas : l'identité de l'étape, son nom (l'en-tête), et ce
 # qu'une colonne dédiée dit autrement (ouvertures, ancrage, paramètres d'une étape chimique)
@@ -250,6 +251,11 @@ def _step(raw: dict[str, Any], position: int, step_id: str | None, declared: Any
             key = f"openings.{size}"
             labels[key] = _FIELD_LABELS.get(key, size)
             values[key] = _Value(("length", _number(anchor[size])), length_text(float(anchor[size])))
+        zones = anchor.get("zones") if mode == "zones" else None
+        if isinstance(zones, list) and zones:
+            shown = " | ".join(f"{z.get('wires')} × {z.get('pitch'):g} · Ø{z.get('diameter'):g}" for z in zones if isinstance(z, dict) and isinstance(z.get("pitch"), (int, float)) and isinstance(z.get("diameter"), (int, float)))
+            labels["sub_pixels"] = _FIELD_LABELS["sub_pixels"]
+            values["sub_pixels"] = _Value(("text", json.dumps(zones, sort_keys=True)), shown)
     elif kind == "lithography":
         labels["openings"] = _FIELD_LABELS["openings"]
         openings = _openings(raw.get("openings"))

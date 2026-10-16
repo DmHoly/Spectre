@@ -58,6 +58,7 @@ CAMPAIGN_FIELD_LABELS = {
     "openings.diameter": "Diamètre d'ouverture",
     "openings.width": "Largeur entre les fils",
     "openings.margin": "Marge du pixel",
+    "openings.gap": "Distance entre sous-pixels",
 }
 
 # Plafond d'entités d'une campagne : chaque variante est re-simulée (près d'une seconde chacune) à
@@ -290,13 +291,21 @@ def _factor_label(factor: VariantFactor, index: int, steps: list[ProcessStep]) -
 
 
 # la taille d'une lithographie ancrée, par facteur (voir simulation.LATTICE_OPENING_SIZES)
-ANCHOR_SIZE_FIELDS = {"openings.diameter": "diameter", "openings.width": "width", "openings.margin": "margin"}
+ANCHOR_SIZE_FIELDS = {"openings.diameter": "diameter", "openings.width": "width", "openings.margin": "margin", "openings.gap": "gap"}
 
 
 def _on_lattice(substrate: SubstrateSpec, anchors: dict[int, LatticeOpening] | None, index: int, field: str) -> bool:
     """Si le facteur ``field`` de l'étape ``index`` règle le réseau de fils plutôt que des ouvertures
-    en nm : le pas ou la taille d'une lithographie ancrée, le substrat ayant un réseau."""
-    return substrate.lattice is not None and index in (anchors or {}) and (field == "openings.pitch" or field in ANCHOR_SIZE_FIELDS)
+    en nm : le pas ou la taille d'une lithographie ancrée, le substrat ayant un réseau - ou la
+    distance entre sous-pixels d'une lithographie en zones, qui n'a pas besoin de réseau."""
+    anchor = (anchors or {}).get(index)
+    if anchor is None or not (field == "openings.pitch" or field in ANCHOR_SIZE_FIELDS):
+        return False
+    return substrate.lattice is not None or anchor.mode == "zones"
+
+
+def _resolves_anchors(substrate: SubstrateSpec, anchors: dict[int, LatticeOpening] | None) -> bool:
+    return substrate.lattice is not None or any(anchor.mode == "zones" for anchor in (anchors or {}).values())
 
 
 def combination_anchors(
@@ -341,13 +350,15 @@ def apply_combination(
             varied_declared = _declared_with_value(varied_declared, index, factor.field[len(DECLARED_FIELD_PREFIX) :], value)
         elif _on_lattice(substrate, anchors, index, factor.field):
             if factor.field == "openings.pitch":
+                if varied_substrate.lattice is None:
+                    raise SimulationFailedError("le pas d'une lithographie en sous-pixels se règle zone par zone, pas par une campagne")
                 lattice = varied_substrate.lattice.model_copy(update={"pitch": _numeric(value, factor.field)})
                 varied_substrate = varied_substrate.model_copy(update={"lattice": lattice})
         else:
             domain_nm = varied_substrate.domain_width.to_nm()
             varied_steps[index] = _step_with_value(varied_steps[index], factor.field, value, domain_nm)
-    if varied_substrate.lattice is not None:
-        if varied_substrate.lattice.pitch <= 0:
+    if _resolves_anchors(varied_substrate, anchors):
+        if varied_substrate.lattice is not None and varied_substrate.lattice.pitch <= 0:
             raise SimulationFailedError("le pas du réseau doit être positif")
         varied_substrate, varied_steps = resolve_lattice(varied_substrate, varied_steps, combination_anchors(substrate, anchors, plan, indexes, combo))
     return varied_substrate, varied_steps, varied_declared

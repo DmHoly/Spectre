@@ -55,6 +55,7 @@ const StepReportCore = (() => {
     wires: { label: "Sur chaque fil (un trou par fil)", size: "diameter", sizeLabel: "Diamètre d'ouverture" },
     between: { label: "Entre les fils", size: "width", sizeLabel: "Largeur entre les fils" },
     pixel: { label: "Pixel entier (avec marge)", size: "margin", sizeLabel: "Marge du pixel" },
+    zones: { label: "Sous-pixels", size: "gap", sizeLabel: "Distance entre sous-pixels" },
   };
   // ce qui n'est pas un paramètre de l'étape : son identité, sa brique, sa trace de préset, ses ajouts de la page
   const NOT_PARAMS = new Set([
@@ -112,6 +113,9 @@ const StepReportCore = (() => {
       const mode = LATTICE_MODES[step.lattice_opening.mode || "wires"] || LATTICE_MODES.wires;
       rows.push({ label: "Ouvertures", value: mode.label, declared: false });
       if (typeof step.lattice_opening[mode.size] === "number") rows.push({ label: mode.sizeLabel, value: `${step.lattice_opening[mode.size]} nm`, declared: false });
+      (step.lattice_opening.zones || []).forEach((zone, i) => {
+        rows.push({ label: `Zone ${i + 1}`, value: `${zone.wires} fil${zone.wires > 1 ? "s" : ""} · pas ${zone.pitch} nm · Ø${zone.diameter} nm`, declared: false });
+      });
     } else if (Array.isArray(step.openings) && step.openings.length) {
       rows.push({ label: "Ouvertures", value: openingsText(step.openings), declared: false });
     }

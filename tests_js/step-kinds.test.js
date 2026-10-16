@@ -284,3 +284,20 @@ test("facetedGrowthTipHint: flat top when rate_sp > rate_c·cos θ, as the engin
   assert.match(facetedGrowthTipHint(1, 0, 30), /pointe aiguë/);
   assert.equal(facetedGrowthTipHint(0, 0, 30), "");
 });
+
+test("subPixelLayout lays zones side by side, a half gap on each edge", () => {
+  const { subPixelLayout } = loadStructureBuilder(["substrate.js"], ["subPixelLayout"]);
+  const layout = subPixelLayout({
+    gap: 400,
+    zones: [
+      { wires: 3, pitch: 400, diameter: 100 },
+      { wires: 4, pitch: 500, diameter: 150 },
+      { wires: 3, pitch: 600, diameter: 200 },
+    ],
+  });
+  assert.equal(layout.width, 5000 + 3 * 400);
+  assert.equal(layout.openings.length, 10);
+  assert.deepEqual(layout.openings[0], [350, 450]);
+  assert.equal(subPixelLayout({ gap: 0, zones: [{ wires: 1, pitch: 400, diameter: 400 }] }), null);
+  assert.equal(subPixelLayout({ gap: 400, zones: [] }), null);
+});

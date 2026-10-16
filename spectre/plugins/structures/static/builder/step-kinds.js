@@ -148,8 +148,15 @@ const STEP_KIND_DEFS = {
         <option value="wires">Sur chaque fil (un trou par fil)</option>
         <option value="between">Entre les fils</option>
         <option value="pixel">Pixel entier (avec marge)</option>
+        <option value="zones">Sous-pixels (zones à pas et ouverture propres)</option>
         <option value="free">Libres (en nm)</option>
       </select></div>
+      <div id="f-litho-zones-wrap" class="sb-insp__card" hidden>
+        <div><label for="f-litho-zones-gap">Distance entre sous-pixels (nm)</label><input class="field" id="f-litho-zones-gap" type="number" min="0" value="400"></div>
+        <div id="f-litho-zones-rows"></div>
+        <button class="btn btn-line btn-block" id="f-litho-zone-add-btn" type="button">Ajouter une zone</button>
+        <div class="help" id="f-litho-zones-status"></div>
+      </div>
       <div id="f-litho-lattice-wrap" class="sb-insp__card">
         <div><label for="f-litho-lattice-size" id="f-litho-lattice-size-label">Diamètre d'ouverture (nm)</label><input class="field" id="f-litho-lattice-size" type="number" min="0" value="100"></div>
         <div class="help sb-litho-anchor" id="f-litho-lattice-status"></div>
@@ -178,6 +185,24 @@ const STEP_KIND_DEFS = {
       updateLithoPlacement();
       document.getElementById("f-litho-placement").addEventListener("change", updateLithoPlacement);
       document.getElementById("f-openings").addEventListener("input", updateLithoPlacement);
+      setZoneRows(DEFAULT_SUBPIXEL_ZONES);
+      document.getElementById("f-litho-zones-wrap").addEventListener("input", updateLithoPlacement);
+      document.getElementById("f-litho-zone-add-btn").addEventListener("click", () => {
+        const zones = readZoneRows();
+        if (zones.length >= MAX_SUBPIXEL_ZONES) return;
+        setZoneRows([...zones, { ...(zones[zones.length - 1] || DEFAULT_SUBPIXEL_ZONES[0]) }]);
+        updateLithoPlacement();
+        livePreviewFromForm();
+      });
+      document.getElementById("f-litho-zones-rows").addEventListener("click", (e) => {
+        const remove = e.target.closest("[data-zone-remove]");
+        const zones = readZoneRows();
+        if (!remove || zones.length <= 1) return;
+        zones.splice(parseInt(remove.dataset.zoneRemove, 10), 1);
+        setZoneRows(zones);
+        updateLithoPlacement();
+        livePreviewFromForm();
+      });
       document.getElementById("f-litho-lattice-create-btn").addEventListener("click", () => {
         const size = parseFloat(document.getElementById("f-litho-lattice-size").value) || 100;
         setSubstrateLattice({ pitch: Math.max(400, Math.ceil((size * 2) / 100) * 100), wires: 1 });
@@ -220,7 +245,15 @@ const STEP_KIND_DEFS = {
         openings: parseOpenings(document.getElementById("f-openings").value),
       };
       const mode = document.getElementById("f-litho-placement").value;
-      if (LATTICE_OPENING_MODES[mode]) {
+      if (mode === "zones") {
+        const gap = parseFloat(document.getElementById("f-litho-zones-gap").value);
+        const opening = { mode, gap, zones: readZoneRows() };
+        const layout = subPixelLayout(opening);
+        if (layout) {
+          step.lattice_opening = opening;
+          step.openings = layout.openings;
+        }
+      } else if (LATTICE_OPENING_MODES[mode]) {
         const size = parseFloat(document.getElementById("f-litho-lattice-size").value);
         if (size > 0 || (mode === "pixel" && size === 0)) {
           // un trou par fil s'écrit sans son mode (la forme d'avant)
@@ -237,7 +270,12 @@ const STEP_KIND_DEFS = {
       ensureSelectValue("f-thickness-unit", step.thickness.unit, "");
       document.getElementById("f-openings").value = step.openings.map((pair) => pair.join("-")).join(", ");
       document.getElementById("f-litho-placement").value = step.lattice_opening ? latticeOpeningMode(step.lattice_opening) : "free";
-      if (step.lattice_opening) document.getElementById("f-litho-lattice-size").value = latticeOpeningSize(step.lattice_opening);
+      if (step.lattice_opening && step.lattice_opening.mode === "zones") {
+        document.getElementById("f-litho-zones-gap").value = step.lattice_opening.gap;
+        setZoneRows(step.lattice_opening.zones);
+      } else if (step.lattice_opening) {
+        document.getElementById("f-litho-lattice-size").value = latticeOpeningSize(step.lattice_opening);
+      }
       updateLithoPlacement();
     },
     summary: (step) =>
@@ -606,7 +644,44 @@ function latticeOpeningSummary(opening) {
   const size = latticeOpeningSize(opening);
   if (mode === "between") return `entre les fils, ${size} nm`;
   if (mode === "pixel") return `pixel, marge ${size} nm`;
+  if (mode === "zones") return `${opening.zones.length} sous-pixel${opening.zones.length > 1 ? "s" : ""} (${opening.zones.map((z) => z.wires).join("+")} fils), distance ${size} nm`;
   return `réseau Ø${size} nm`;
+}
+
+// Les zones d'une lithographie en sous-pixels : une ligne par zone (fils, pas, ouverture), relue telle
+// quelle par buildFromForm - une valeur vide ou illisible reste vide (subPixelLayout refuse la zone).
+const MAX_SUBPIXEL_ZONES = 8; // comme simulation.MAX_SUBPIXEL_ZONES
+const DEFAULT_SUBPIXEL_ZONES = [
+  { wires: 3, pitch: 400, diameter: 100 },
+  { wires: 3, pitch: 400, diameter: 100 },
+  { wires: 3, pitch: 400, diameter: 100 },
+];
+
+function setZoneRows(zones) {
+  document.getElementById("f-litho-zones-rows").innerHTML = zones
+    .map(
+      (zone, i) => `
+      <div class="sb-litho-zone" style="margin:6px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;">
+          <span>Sous-pixel ${i + 1}</span>
+          <button class="btn btn-line" type="button" data-zone-remove="${i}" ${zones.length <= 1 ? "disabled" : ""} title="Retirer ce sous-pixel">Retirer</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
+          <div><label>Fils</label><input class="field" data-zone="wires" type="number" min="1" max="${MAX_LATTICE_WIRES}" value="${zone.wires}"></div>
+          <div><label>Pas (nm)</label><input class="field" data-zone="pitch" type="number" min="0" value="${zone.pitch}"></div>
+          <div><label title="Diamètre d'ouverture">Ø ouv. (nm)</label><input class="field" data-zone="diameter" type="number" min="0" value="${zone.diameter}"></div>
+        </div>
+      </div>`
+    )
+    .join("");
+  document.getElementById("f-litho-zone-add-btn").disabled = zones.length >= MAX_SUBPIXEL_ZONES;
+}
+
+function readZoneRows() {
+  return [...document.querySelectorAll("#f-litho-zones-rows .sb-litho-zone")].map((row) => {
+    const read = (key) => parseFloat(row.querySelector(`[data-zone="${key}"]`).value);
+    return { wires: Math.min(MAX_LATTICE_WIRES, parseInt(read("wires"), 10) || 0), pitch: read("pitch"), diameter: read("diameter") };
+  });
 }
 
 // Le formulaire de lithographie selon son placement : sur le réseau (diamètre, état du réseau) ou
@@ -614,10 +689,18 @@ function latticeOpeningSummary(opening) {
 function updateLithoPlacement() {
   const placement = document.getElementById("f-litho-placement");
   if (!placement) return;
-  const onLattice = Boolean(LATTICE_OPENING_MODES[placement.value]);
+  const zoned = placement.value === "zones";
+  const onLattice = !zoned && Boolean(LATTICE_OPENING_MODES[placement.value]);
   if (onLattice) document.getElementById("f-litho-lattice-size-label").textContent = LATTICE_OPENING_MODES[placement.value].sizeLabel;
   document.getElementById("f-litho-lattice-wrap").hidden = !onLattice;
-  document.getElementById("f-litho-free-wrap").hidden = onLattice;
+  document.getElementById("f-litho-free-wrap").hidden = onLattice || zoned;
+  document.getElementById("f-litho-zones-wrap").hidden = !zoned;
+  if (zoned) {
+    const layout = subPixelLayout({ gap: parseFloat(document.getElementById("f-litho-zones-gap").value), zones: readZoneRows() });
+    document.getElementById("f-litho-zones-status").textContent = layout
+      ? `Domaine de ${layout.width} nm (réglé par les sous-pixels), ${layout.openings.length} ouverture${layout.openings.length > 1 ? "s" : ""}. Chaque zone : ses fils au centre de leur maille ; la distance sépare deux zones, une demi-distance borde le pixel.`
+      : "Ouvertures impossibles : chaque diamètre doit être positif et plus petit que le pas de sa zone.";
+  }
   const lattice = substrateLattice();
   document.getElementById("f-litho-lattice-create-btn").hidden = !onLattice || Boolean(lattice);
   document.getElementById("f-litho-lattice-status").textContent = lattice

@@ -58,28 +58,47 @@ class Lattice(BaseModel):
 # - ``wires`` : un trou de ``diameter`` centré sur chaque fil (le gabarit SAG, un contact sur le fil) ;
 # - ``between`` : une ouverture de ``width`` centrée entre deux fils voisins - aux bords du domaine, une
 #   demi-ouverture (le réseau est périodique) ;
-# - ``pixel`` : une seule ouverture sur tout le pixel, moins ``margin`` de chaque côté.
-LATTICE_OPENING_SIZES = {"wires": "diameter", "between": "width", "pixel": "margin"}
+# - ``pixel`` : une seule ouverture sur tout le pixel, moins ``margin`` de chaque côté ;
+# - ``zones`` : des sous-pixels côte à côte (:class:`SubPixelZone`), chacun avec ses fils, son pas et son
+#   ouverture, séparés par ``gap`` - ils portent leur propre pas, le réseau du substrat n'y est pour rien.
+LATTICE_OPENING_SIZES = {"wires": "diameter", "between": "width", "pixel": "margin", "zones": "gap"}
+MAX_SUBPIXEL_ZONES = 8
+
+
+class SubPixelZone(BaseModel):
+    """Une zone d'une lithographie en sous-pixels : ``wires`` fils au pas ``pitch`` (nm), chacun au
+    centre de sa maille, percé d'un trou de ``diameter`` (nm)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    wires: int = Field(1, ge=1, le=MAX_LATTICE_WIRES)
+    pitch: float = Field(gt=0, le=1_000_000)
+    diameter: float = Field(gt=0, le=1_000_000)
 
 
 class LatticeOpening(BaseModel):
     """Une lithographie ancrée au réseau du substrat (:class:`Lattice`) : ses ouvertures suivent le
     pas et le nombre de fils (:data:`LATTICE_OPENING_SIZES`), recalculées à chaque simulation.
     Rangée sur l'étape elle-même (``"lattice_opening"``), à côté de ses ouvertures résolues ; un
-    trou par fil (``mode`` ``wires``) s'écrit sans son mode, la forme d'avant."""
+    trou par fil (``mode`` ``wires``) s'écrit sans son mode, la forme d'avant. En ``zones``, la
+    lithographie porte sa propre disposition (:func:`subpixel_layout`) et fixe la largeur du domaine."""
 
     model_config = ConfigDict(extra="forbid")
 
-    mode: Literal["wires", "between", "pixel"] = "wires"
+    mode: Literal["wires", "between", "pixel", "zones"] = "wires"
     diameter: float | None = Field(None, gt=0, le=1_000_000)
     width: float | None = Field(None, gt=0, le=1_000_000)
     margin: float | None = Field(None, ge=0, le=1_000_000)
+    gap: float | None = Field(None, ge=0, le=1_000_000)
+    zones: list[SubPixelZone] | None = Field(None, min_length=1, max_length=MAX_SUBPIXEL_ZONES)
 
     @model_validator(mode="after")
     def _sized_for_its_mode(self) -> "LatticeOpening":
         size = LATTICE_OPENING_SIZES[self.mode]
         if getattr(self, size) is None:
             raise ValueError(f"une lithographie ancrée « {self.mode} » se règle par {size}")
+        if (self.mode == "zones") != (self.zones is not None):
+            raise ValueError("seule une lithographie en sous-pixels (« zones ») porte des zones, et elle en porte")
         for other in set(LATTICE_OPENING_SIZES.values()) - {size}:
             setattr(self, other, None)
         return self
@@ -96,7 +115,7 @@ class LatticeOpening(BaseModel):
         return getattr(self, LATTICE_OPENING_SIZES[self.mode])
 
     def with_size(self, value: float) -> "LatticeOpening":
-        return LatticeOpening(mode=self.mode, **{LATTICE_OPENING_SIZES[self.mode]: value})
+        return LatticeOpening.model_validate({**self.model_dump(), LATTICE_OPENING_SIZES[self.mode]: value})
 
 
 LATTICE_OPENING_KEY = "lattice_opening"
@@ -425,18 +444,57 @@ def lattice_openings(lattice: Lattice, opening: LatticeOpening) -> list[tuple[fl
     return [(round(a, 3), round(b, 3)) for a, b in pieces if b > a]
 
 
+def subpixel_layout(opening: LatticeOpening) -> tuple[float, list[tuple[float, float]]]:
+    """Une lithographie en sous-pixels (``zones``) : la largeur du domaine et ses ouvertures. Les zones se
+    suivent de gauche à droite, chacune de ``wires * pitch`` de large, ses fils au centre de leur maille ;
+    ``gap`` les sépare, et une demi-distance borde le pixel de chaque côté - répété, le pixel garde donc
+    la même distance entre sous-pixels partout. :class:`ValueError` pour un trou aussi large que le pas."""
+    x = opening.gap / 2
+    pieces: list[tuple[float, float]] = []
+    for number, zone in enumerate(opening.zones, start=1):
+        if zone.diameter >= zone.pitch:
+            raise ValueError(f"le diamètre d'ouverture de la zone {number} ({zone.diameter:g} nm) doit être plus petit que son pas ({zone.pitch:g} nm)")
+        for wire in range(zone.wires):
+            center = x + (wire + 0.5) * zone.pitch
+            pieces.append((round(center - zone.diameter / 2, 3), round(center + zone.diameter / 2, 3)))
+        x += zone.wires * zone.pitch + opening.gap
+    return round(x - opening.gap / 2, 3), pieces
+
+
 def resolve_lattice(
     substrate: SubstrateSpec, steps: list[ProcessStep], anchors: dict[int, LatticeOpening]
 ) -> tuple[SubstrateSpec, list[ProcessStep]]:
     """Le substrat et les étapes, le réseau appliqué : le domaine fait ``wires * pitch``, chaque
     lithographie ancrée (``anchors``, par position d'étape) a un trou par fil. Sans réseau, rien ne
-    change (une lithographie ancrée garde ses ouvertures). :class:`SimulationFailedError` pour un
-    trou plus large que le pas."""
+    change (une lithographie ancrée garde ses ouvertures). Une lithographie en sous-pixels porte sa
+    propre disposition : elle fixe la largeur du domaine, réseau ou non - plusieurs doivent s'accorder,
+    et aucune ne se mêle à une ancrée au réseau. :class:`SimulationFailedError` pour un trou plus large
+    que le pas."""
     lattice = substrate.lattice
-    if lattice is None:
+    zoned = {index: opening for index, opening in anchors.items() if opening.mode == "zones"}
+    if lattice is None and not zoned:
         return substrate, steps
-    substrate = substrate.model_copy(update={"domain_width": Length(value=round(lattice.pitch * lattice.wires, 3), unit="nm")})
     resolved = list(steps)
+    if zoned:
+        if len(zoned) != len(anchors):
+            raise SimulationFailedError("Une lithographie en sous-pixels fixe sa propre largeur de domaine : elle ne se mêle pas à une lithographie ancrée au réseau de fils.")
+        width = None
+        for index, opening in sorted(zoned.items()):
+            step = resolved[index] if 0 <= index < len(resolved) else None
+            if not isinstance(step, Lithography):
+                continue
+            try:
+                layout_width, openings = subpixel_layout(opening)
+            except ValueError as exc:
+                raise SimulationFailedError(f"Étape {index + 1} ({step.name}) : {exc}.") from exc
+            if width is not None and abs(layout_width - width) > 1e-3:
+                raise SimulationFailedError(f"Étape {index + 1} ({step.name}) : ses sous-pixels font {layout_width:g} nm de large, ceux d'une étape précédente {width:g} nm - un seul domaine pour tout le procédé.")
+            width = layout_width
+            resolved[index] = step.model_copy(update={"openings": openings})
+        if width is not None:
+            substrate = substrate.model_copy(update={"domain_width": Length(value=width, unit="nm")})
+        return substrate, resolved
+    substrate = substrate.model_copy(update={"domain_width": Length(value=round(lattice.pitch * lattice.wires, 3), unit="nm")})
     for index, opening in sorted(anchors.items()):
         step = resolved[index] if 0 <= index < len(resolved) else None
         if not isinstance(step, Lithography):

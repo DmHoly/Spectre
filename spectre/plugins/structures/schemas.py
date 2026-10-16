@@ -52,7 +52,7 @@ class ProcessInput(BaseModel):
         if isinstance(raw, list):
             model._step_ids = [step.get("id") if isinstance(step, dict) and isinstance(step.get("id"), str) else None for step in raw]
             model._lattice_anchors = lattice_anchors_in(raw)
-        if model.substrate.lattice is not None:
+        if model.substrate.lattice is not None or any(anchor.mode == "zones" for anchor in model._lattice_anchors.values()):
             model.substrate, model.steps = resolve_lattice(model.substrate, model.steps, model._lattice_anchors)
         return model
 

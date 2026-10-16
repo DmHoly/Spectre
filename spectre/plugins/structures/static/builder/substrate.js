@@ -38,9 +38,10 @@ function substrateLattice() {
 
 function substrateSpec() {
   const lattice = substrateLattice();
+  const zones = zonesLayoutInSteps(); // des sous-pixels fixent la largeur, avant le réseau
   const spec = {
     material: document.getElementById("substrate-material").value,
-    domain_width: lattice ? { value: roundNm(lattice.pitch * lattice.wires), unit: "nm" } : lengthValue("substrate-width"),
+    domain_width: zones ? { value: zones.width, unit: "nm" } : lattice ? { value: roundNm(lattice.pitch * lattice.wires), unit: "nm" } : lengthValue("substrate-width"),
     thickness: lengthValue("substrate-thickness"),
   };
   if (lattice) spec.lattice = lattice;
@@ -60,6 +61,9 @@ const LATTICE_OPENING_MODES = {
   wires: { size: "diameter", label: "Sur chaque fil (un trou par fil)", sizeLabel: "Diamètre d'ouverture (nm)", field: "openings.diameter", fieldLabel: "Diamètre d'ouverture" },
   between: { size: "width", label: "Entre les fils", sizeLabel: "Largeur de l'ouverture (nm)", field: "openings.width", fieldLabel: "Largeur entre les fils" },
   pixel: { size: "margin", label: "Pixel entier (avec marge)", sizeLabel: "Marge de chaque côté (nm)", field: "openings.margin", fieldLabel: "Marge du pixel" },
+  // des sous-pixels côte à côte, chacun avec ses fils, son pas et son ouverture (`zones`), séparés par `gap` :
+  // ils portent leur propre pas, le réseau du substrat n'y est pour rien (subPixelLayout)
+  zones: { size: "gap", label: "Sous-pixels (zones)", sizeLabel: "Distance entre sous-pixels (nm)", field: "openings.gap", fieldLabel: "Distance entre sous-pixels" },
 };
 
 function latticeOpeningMode(opening) {
@@ -89,20 +93,55 @@ function latticeOpenings(lattice, opening) {
     .map(([a, b]) => [roundNm(a), roundNm(b)]);
 }
 
+// La disposition d'une lithographie en sous-pixels (même calcul que simulation.subpixel_layout) : les zones
+// se suivent, chacune de `wires × pitch` de large, ses fils au centre de leur maille ; `gap` les sépare et
+// une demi-distance borde le pixel de chaque côté - répété, il garde la même distance partout. null si
+// elle ne tient pas (un trou aussi large que le pas, une valeur illisible).
+function subPixelLayout(opening) {
+  const gap = opening && opening.gap;
+  const zones = opening && opening.zones;
+  if (!(gap >= 0) || !Array.isArray(zones) || !zones.length) return null;
+  let x = gap / 2;
+  const openings = [];
+  for (const zone of zones) {
+    if (!(zone.wires >= 1) || !(zone.pitch > 0) || !(zone.diameter > 0) || zone.diameter >= zone.pitch) return null;
+    for (let wire = 0; wire < zone.wires; wire++) {
+      const center = x + (wire + 0.5) * zone.pitch;
+      openings.push([roundNm(center - zone.diameter / 2), roundNm(center + zone.diameter / 2)]);
+    }
+    x += zone.wires * zone.pitch + gap;
+  }
+  return { width: roundNm(x - gap / 2), openings };
+}
+
+// La lithographie en sous-pixels du procédé, s'il y en a une : c'est elle qui fixe la largeur du domaine.
+function zonesLayoutInSteps(steps = state.steps) {
+  for (const step of steps) {
+    if (step.kind === "lithography" && step.lattice_opening && step.lattice_opening.mode === "zones") {
+      const layout = subPixelLayout(step.lattice_opening);
+      if (layout) return layout;
+    }
+  }
+  return null;
+}
+
 // Recalcule les ouvertures des lithographies ancrées au réseau (sans réseau : elles gardent les
-// leurs). Renvoie vrai si une étape a changé.
+// leurs) ou en sous-pixels (sans réseau non plus). Renvoie vrai si une étape a changé.
 function applyLatticeToSteps(steps = state.steps) {
   const lattice = substrateLattice();
-  if (!lattice) return false;
   let changed = false;
   steps.forEach((step) => {
     if (step.kind !== "lithography" || !step.lattice_opening || !(latticeOpeningSize(step.lattice_opening) >= 0)) return;
-    const openings = latticeOpenings(lattice, step.lattice_opening);
+    const zoned = step.lattice_opening.mode === "zones";
+    if (!zoned && !lattice) return;
+    const layout = zoned ? subPixelLayout(step.lattice_opening) : null;
+    const openings = zoned ? (layout ? layout.openings : step.openings) : latticeOpenings(lattice, step.lattice_opening);
     if (JSON.stringify(openings) !== JSON.stringify(step.openings)) {
       step.openings = openings;
       changed = true;
     }
   });
+  syncLatticeUi();
   return changed;
 }
 
@@ -132,11 +171,12 @@ function syncLatticeUi() {
   const width = document.getElementById("substrate-width");
   const widthUnit = document.getElementById("substrate-width-unit");
   const lattice = substrateLattice();
-  width.disabled = Boolean(lattice);
-  widthUnit.disabled = Boolean(lattice);
-  width.title = lattice ? "Fixée par le réseau de fils : pas × fils" : "";
-  if (lattice) {
-    width.value = roundNm(lattice.pitch * lattice.wires);
+  const zones = zonesLayoutInSteps();
+  width.disabled = Boolean(lattice || zones);
+  widthUnit.disabled = Boolean(lattice || zones);
+  width.title = zones ? "Fixée par les sous-pixels de la lithographie" : lattice ? "Fixée par le réseau de fils : pas × fils" : "";
+  if (zones || lattice) {
+    width.value = zones ? zones.width : roundNm(lattice.pitch * lattice.wires);
     widthUnit.value = "nm";
   }
   const tool = document.getElementById("sb-wires");

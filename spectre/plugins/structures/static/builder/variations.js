@@ -117,7 +117,7 @@ function variableParams(stepIndex) {
     return [
       { field: "thickness", label: "Épaisseur", type: "number", unit: unitLabel(substrate.thickness.unit), current: substrate.thickness.value },
       // avec un réseau de fils, la largeur suit le pas (à faire varier sur la lithographie ancrée)
-      ...(substrate.lattice ? [] : [{ field: "domain_width", label: "Largeur du domaine", type: "number", unit: unitLabel(substrate.domain_width.unit), current: substrate.domain_width.value }]),
+      ...(substrate.lattice || zonesLayoutInSteps() ? [] : [{ field: "domain_width", label: "Largeur du domaine", type: "number", unit: unitLabel(substrate.domain_width.unit), current: substrate.domain_width.value }]),
       { field: "material", label: "Matériau", type: "choice", choices: materialChoices(substrate.material), current: substrate.material },
     ];
   }
@@ -161,7 +161,11 @@ function variableParams(stepIndex) {
   if (step.kind === "lithography" && step.openings && step.openings.length) {
     // ancrée au réseau : le pas du réseau (même avec un seul fil) et la taille de son ancrage
     const lattice = step.lattice_opening ? substrateLattice() : null;
-    if (lattice) {
+    if (step.lattice_opening && step.lattice_opening.mode === "zones") {
+      // des sous-pixels : leur pas et leur ouverture se règlent zone par zone, la campagne fait varier leur distance
+      const mode = LATTICE_OPENING_MODES.zones;
+      params.push({ field: mode.field, label: mode.fieldLabel, type: "number", unit: "nm", current: step.lattice_opening.gap });
+    } else if (lattice) {
       const mode = LATTICE_OPENING_MODES[latticeOpeningMode(step.lattice_opening)];
       params.push({ field: "openings.pitch", label: "Pas du réseau", type: "number", unit: "nm", current: lattice.pitch });
       params.push({ field: mode.field, label: mode.fieldLabel, type: "number", unit: "nm", current: latticeOpeningSize(step.lattice_opening) });
