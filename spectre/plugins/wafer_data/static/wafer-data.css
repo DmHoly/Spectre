@@ -1,0 +1,557 @@
+/* La fiche data des plaques (plugin wafer_data) : l'onglet « Data » de la page d'une plaque (plate-data.js, charts.js)
+   et la page de configuration /fiche-data (config.js). Tokens de kernel.css uniquement ; échelle séquentielle
+   --viz-seq-* pour les cartographies. */
+
+/* -- les onglets de la page d'une plaque -------------------------------------------------------- */
+
+.plate-tabs {
+  margin: 22px 0 4px;
+}
+
+/* -- l'en-tête d'un projet -------------------------------------------------------------------- */
+
+.wd-area-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 4px 0 14px;
+}
+.wd-area-head__text {
+  flex: 1 1 320px;
+  margin: 0;
+}
+.wd-area-toggle {
+  flex: 0 0 auto;
+}
+
+.wd-empty__title {
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: var(--navy);
+}
+
+/* -- les valeurs ------------------------------------------------------------------------------ */
+
+.wd-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.wd-tile {
+  padding: 14px 16px 12px;
+  border-top: 2px solid var(--gold);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.wd-tile__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wd-tile__value {
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--navy);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.wd-tile__unit {
+  font-size: 13px;
+  color: var(--text-faint);
+  margin-left: 6px;
+  font-weight: 400;
+}
+.wd-tile__rank p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.wd-strip {
+  width: 100%;
+  height: 34px;
+  display: block;
+}
+.wd-strip__bar {
+  fill: var(--viz-empty);
+}
+.wd-strip__mine {
+  fill: var(--navy);
+}
+.wd-strip__ends {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.wd-source {
+  margin: auto 0 0;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+.wd-state {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+.wd-state--error {
+  color: var(--danger);
+}
+
+/* -- les graphiques --------------------------------------------------------------------------- */
+
+.wd-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+@media (max-width: 520px) {
+  .wd-charts {
+    grid-template-columns: 1fr;
+  }
+}
+.wd-chart {
+  margin: 0;
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.wd-chart__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.wd-chart__title {
+  font-weight: 600;
+  color: var(--navy);
+  font-size: 14px;
+}
+.wd-chart__kind {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-left: auto;
+}
+.wd-chart__figure {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wd-chart__caption {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.wd-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.wd-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.wd-grid {
+  stroke: var(--border-soft);
+  stroke-width: 1;
+}
+.wd-tick {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.wd-bar {
+  fill: var(--viz-1);
+}
+.wd-bar:hover {
+  fill: var(--navy);
+}
+.wd-median {
+  stroke: var(--gold-dark);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.wd-line {
+  fill: none;
+  stroke: var(--navy);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.wd-band {
+  fill: var(--accent-tint-strong);
+  stroke: none;
+}
+.wd-key {
+  display: inline-block;
+  width: 16px;
+  height: 8px;
+  margin: 0 6px 0 2px;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+.wd-key--line {
+  height: 2px;
+  background: var(--navy);
+}
+.wd-key--band {
+  margin-left: 14px;
+  background: var(--accent-tint-strong);
+}
+
+.wd-map {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.wd-map__grid {
+  max-width: calc(100% - 72px);
+  height: auto;
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+.wd-map__grid rect:hover {
+  stroke: var(--navy);
+  stroke-width: 1;
+}
+.wd-map__legend {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+/* -- les images ------------------------------------------------------------------------------- */
+
+.wd-images {
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.wd-images__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+}
+.wd-image {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  background: var(--surface-2);
+  color: var(--text-soft);
+  text-decoration: none;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.wd-image:hover,
+.wd-image:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+.wd-image img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: var(--surface);
+  border-radius: 4px;
+}
+.wd-image__name {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -- la généalogie ---------------------------------------------------------------------------- */
+
+.wd-names {
+  margin-bottom: 12px;
+}
+.wd-names__chain {
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.wd-names__arrow {
+  color: var(--text-faint);
+}
+.wd-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.wd-name--current {
+  color: var(--navy);
+  border-bottom: 2px solid var(--gold);
+}
+.wd-tree {
+  margin-bottom: 12px;
+}
+.wd-tree__summary {
+  margin: 0 0 6px;
+}
+.wd-tree__scroll {
+  overflow-x: auto;
+}
+.wd-tree__svg {
+  display: block;
+  margin: 0 auto;
+}
+.wd-tree__edge {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.4;
+}
+.wd-tree__edge--attached {
+  stroke-dasharray: 4 3;
+}
+.wd-tree__node {
+  cursor: pointer;
+}
+.wd-tree__node:focus-visible {
+  outline: none;
+}
+.wd-tree__node:focus-visible .lineage-halo {
+  visibility: visible;
+}
+.wd-tree__label {
+  font-size: 10.5px;
+  fill: var(--text-soft);
+}
+.wd-tree__node--mine .wd-tree__label {
+  fill: var(--navy);
+  font-weight: 600;
+}
+.wd-tree__node:hover .wd-tree__label {
+  fill: var(--link);
+  text-decoration: underline;
+}
+.wd-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.wd-legend__mine {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* -- la page de configuration /fiche-data ---------------------------------------------------- */
+
+.wd-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.wd-subtitle {
+  color: var(--text-soft);
+  max-width: 760px;
+  margin: 6px 0 0;
+}
+.wd-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) minmax(180px, 260px) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-soft);
+}
+.wd-row:first-child {
+  border-top: none;
+}
+@media (max-width: 760px) {
+  .wd-row {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+}
+.wd-row__kind {
+  justify-self: start;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-tint);
+  border-radius: var(--radius-pill);
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.wd-row__name {
+  font-weight: 600;
+  color: var(--navy);
+}
+.wd-row__meta {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+.wd-row__meta .mono {
+  word-break: break-all;
+}
+.wd-row__missing {
+  color: var(--danger);
+}
+.wd-row__actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.wd-icon-btn {
+  min-width: 36px;
+  padding: 0 8px;
+}
+
+.wd-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.wd-kind {
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.wd-kind:hover {
+  border-color: var(--accent);
+}
+.wd-kind[aria-pressed="true"] {
+  border-color: var(--navy);
+  background: var(--accent-tint);
+  box-shadow: inset 0 -2px 0 var(--gold);
+}
+.wd-kind__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--navy);
+}
+.wd-kind__desc {
+  display: block;
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 4px;
+  line-height: 1.35;
+}
+.wd-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 16px;
+  align-items: end;
+}
+.wd-form label {
+  display: block;
+  margin-bottom: 6px;
+}
+.wd-form__wide {
+  grid-column: 1 / -1;
+}
+.wd-form__checks {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: 36px;
+}
+.wd-form__checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 400;
+}
+.wd-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.wd-filter-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 120px minmax(120px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+@media (max-width: 620px) {
+  .wd-filter-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.wd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-radius: var(--radius-pill);
+  padding: 3px 4px 3px 10px;
+}
+.wd-chip__x {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 6px;
+  min-height: 24px;
+}
+.wd-progress {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--viz-empty);
+  overflow: hidden;
+  margin: 10px 0 6px;
+}
+.wd-progress__bar {
+  height: 100%;
+  width: 0;
+  background: var(--navy);
+  transition: width 0.2s var(--ease);
+}
+.wd-storage {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}

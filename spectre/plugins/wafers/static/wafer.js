@@ -313,6 +313,8 @@ async function init() {
     }
     if (n && pluginEnabled("characterization")) renderWaferDbLinks(document.querySelectorAll(".js-db-link"), [plate.lasermark]);
     renderStructure(plate);
+    // l'onglet « Data » (plugin wafer_data) : une plaque qu'une étude suit est rattachée à un projet corporate
+    if (n && typeof PlateData !== "undefined" && pluginEnabled("wafer_data")) PlateData.mount(plate);
     // la vie en ligne : ses FDL et son lot JIRA rejoignent l'en-tête (la lecture vient peut-être de
     // créer le lot détecté, ou des liens de renommage vus dans la MES : on les relit alors)
     let linksSeen = (plate.links && plate.links.links.length) || 0;

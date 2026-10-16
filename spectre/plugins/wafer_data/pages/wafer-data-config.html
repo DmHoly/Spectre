@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fiche data des plaques — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/wafer_data/wafer-data.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Fiche data" -->
+
+  <!-- La fiche data des plaques (spectre.plugins.wafer_data) : un projet corporate choisit ce que l'onglet « Data »
+       de chacune de ses plaques montre - des blocs (valeur, histogramme, cartographie, courbe, images) - et peut
+       calculer d'avance les fiches de toutes ses plaques (config.js). -->
+  <div class="page">
+    <div class="wd-head">
+      <div>
+        <h1 style="font-size:22px;">Fiche data des plaques</h1>
+        <p class="wd-subtitle">Ce que montre l'onglet « Data » de chaque plaque d'un projet corporate : ses données principales, lues dans PRISM et gardées résumées. Une valeur se situe parmi les plaques du projet déjà calculées.</p>
+      </div>
+    </div>
+
+    <div id="error" class="error" style="display:none;margin-bottom:16px;"></div>
+
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <label for="wd-area" style="margin-bottom:6px;">Projet corporate</label>
+      <select id="wd-area" class="field" style="max-width:420px;" disabled><option>Chargement…</option></select>
+      <p id="wd-readonly" class="help" style="margin-top:8px;display:none;">Vous pouvez lire cette fiche, pas la modifier (administrateur ou manager d'une équipe du projet).</p>
+    </div>
+
+    <div id="wd-panels" style="display:none;">
+      <div class="card card-pad" style="margin-bottom:20px;">
+        <div class="section-title" style="margin-bottom:8px;">Blocs de la fiche, dans l'ordre de l'onglet</div>
+        <div id="wd-blocks"></div>
+      </div>
+      <div class="card card-pad" id="wd-add-card" style="margin-bottom:20px;">
+        <div class="section-title" style="margin-bottom:10px;">Ajouter un bloc</div>
+        <div id="wd-add"></div>
+      </div>
+      <div class="card card-pad" id="wd-compute-card">
+        <div class="section-title" style="margin-bottom:8px;">Calculer les fiches du projet</div>
+        <p class="help">Une fiche se calcule à sa première ouverture. La calculer d'avance pour toutes les plaques du projet situe chaque valeur parmi toutes les autres - et rend l'onglet immédiat. Seules les fiches qui manquent sont calculées.</p>
+        <div id="wd-compute"></div>
+        <div id="wd-storage"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/areas/client.js"></script>
+  <script src="/static/kpi_tracking/kpi-config.js"></script>
+  <script src="/static/wafer_data/client.js"></script>
+  <script src="/static/wafer_data/config.js"></script>
+</body>
+</html>
