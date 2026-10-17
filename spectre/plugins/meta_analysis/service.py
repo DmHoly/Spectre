@@ -1,6 +1,6 @@
 """Les analyses de plaques : une question posée à quelques plaques, quelle que soit l'étude qui les suit -
 une plaque de référence et celles qu'on lui compare -, et ce qu'on en a conclu. L'analyse ne garde que
-son cadre (titre, question, plaques, conclusion) : structures, contexte et données se relisent à chaque
+son cadre (titre, question, plaques, conclusion, KPI comparés et blocs libres) : structures, contexte et données se relisent à chaque
 ouverture chez les plugins qui les possèdent, et ce que chaque plaque a appris s'écrit dans ses notes
 (plugin wafers), qui la suivent sur sa page.
 
@@ -18,6 +18,7 @@ from ...kernel.db import get_conn
 from ...kernel.errors import Forbidden, InvalidInput, NotFound
 from ..accounts.service import User
 from ..kpi_tracking import service as kpi_tracking
+from ..wafer_data import blocks as wafer_blocks
 from ..wafers.service import wafer_key
 
 MAX_TITLE = 160
@@ -26,6 +27,7 @@ MAX_LASERMARK = 80
 # Les plaques d'une analyse se montrent côte à côte : au-delà, ni les structures ni les boîtes ne se lisent.
 MAX_WAFERS = 16
 MAX_KPIS = 12  # une boîte à moustaches chacun
+MAX_BLOCKS = 12  # les blocs libres : une figure par plaque chacun
 BETTER = ("high", "low")  # le sens d'un écart à la référence qui est un progrès
 
 
@@ -70,21 +72,41 @@ def kpi_title(kpi: dict[str, Any]) -> str:
     return f"{kpi['column']} ({filters})" if filters else kpi["column"]
 
 
+def column_catalog() -> dict[str, dict[str, Any]]:
+    """Toute donnée de PRISM qu'une analyse peut comparer comme un KPI, par ``hook:colonne`` : ``{entry, type,
+    sure}``. Les colonnes de KPI des types de données par plaque d'abord, puis leurs colonnes brutes et celles que la
+    fiche data (wafer_data) a vues dans les vraies lignes - avec leur type (``sure`` : choisi ou observé). ``entry`` est un :class:`kpi_tracking.CatalogKpi` (filtres, unité, titre du type)."""
+    found: dict[str, dict[str, Any]] = {k.key: {"entry": k, "type": None, "sure": False} for k in kpi_tracking.catalog(all_columns=True)}
+    for hook in wafer_blocks.catalog():
+        for column in hook.columns:
+            key = f"{hook.hook}:{column['name']}"
+            if key not in found:
+                if column["name"].lower() in kpi_tracking.NOT_A_KPI:
+                    continue
+                entry = kpi_tracking.CatalogKpi(hook.hook, column["name"], hook.title, column["unit"], column["description"], hook.names, kpi=False)
+                found[key] = {"entry": entry, "type": None, "sure": False}
+            found[key].update(type=column["type"], sure=column["sure"])
+    return found
+
+
 def clean_kpis(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Les KPI de l'analyse, vérifiés : une colonne de KPI du catalogue PRISM (422 ``unknown_kpi``), ses filtres au
+    """Les KPI de l'analyse, vérifiés : une colonne d'un type de données PRISM par plaque (:func:`column_catalog`,
+    422 ``unknown_kpi`` ; ``not_a_number`` pour une colonne brute qu'on sait n'être pas un scalaire), ses filtres au
     vocabulaire des KPI suivis (:func:`kpi_tracking.clean_filters`), un nom libre, un sens de progrès ; un même KPI
     aux mêmes filtres n'entre qu'une fois."""
     if len(values) > MAX_KPIS:
         raise InvalidInput(f"Une analyse compare {MAX_KPIS} KPI au plus.", code="too_many_kpis")
-    catalogue = {k.key: k for k in kpi_tracking.catalog()} if values else {}
+    catalogue = column_catalog() if values else {}
     cleaned: list[dict[str, Any]] = []
     seen: set[str] = set()
     for raw in values:
         hook, column = str(raw.get("hook") or ""), str(raw.get("column") or "")
-        entry = catalogue.get(f"{hook}:{column}")
-        if entry is None:
-            raise InvalidInput(f"« {column} » n'est pas une colonne de KPI de « {hook} » dans le catalogue PRISM.", code="unknown_kpi")
-        filters = kpi_tracking.clean_filters(entry, raw.get("filters"))
+        found = catalogue.get(f"{hook}:{column}")
+        if found is None:
+            raise InvalidInput(f"« {column} » n'est pas une colonne de « {hook} » dans le catalogue PRISM.", code="unknown_kpi")
+        if found["sure"] and found["type"] != "number" and not found["entry"].kpi:
+            raise InvalidInput(f"« {column} » n'est pas un scalaire : montrez-la dans un bloc libre (courbes, images…).", code="not_a_number")
+        filters = kpi_tracking.clean_filters(found["entry"], raw.get("filters"))
         signature = json.dumps([hook, column, filters], sort_keys=True)
         if signature in seen:
             continue
@@ -100,6 +122,33 @@ def clean_kpis(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return cleaned
+
+
+def clean_blocks(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Les blocs libres de l'analyse - comme ceux de la fiche data d'un projet (:mod:`wafer_data.blocks`, mêmes
+    genres, mêmes vérifications : 422 ``unknown_hook``, ``wrong_column_type``...) mais choisis ici, sur n'importe
+    quel type de données PRISM par plaque."""
+    if len(values) > MAX_BLOCKS:
+        raise InvalidInput(f"Une analyse montre {MAX_BLOCKS} blocs libres au plus.", code="too_many_blocks")
+    cleaned = []
+    for raw in values:
+        kind = str(raw.get("kind") or "")
+        hook, config = wafer_blocks.clean_config(kind, str(raw.get("hook") or ""), raw.get("config"))
+        label = " ".join(str(raw.get("label") or "").split())[: wafer_blocks.MAX_LABEL]
+        cleaned.append({"kind": kind, "hook": hook, "config": config, "label": label})
+    return cleaned
+
+
+def _blocks(raw: str) -> list[dict[str, Any]]:
+    """Les blocs libres gardés, avec leur nom (celui qu'on leur a donné, sinon ce qu'ils montrent) et leur genre."""
+    return [
+        {
+            **b,
+            "title": wafer_blocks.Block(i, wafer_blocks.FREE_AREA, b["kind"], b["hook"], b["config"], b["label"], i, "").title,
+            "kind_label": wafer_blocks.KINDS.get(b["kind"], b["kind"]),
+        }
+        for i, b in enumerate(json.loads(raw or "[]"))
+    ]
 
 
 def _members(conn: Any, ids: list[int]) -> dict[int, list[dict[str, str]]]:
@@ -123,6 +172,7 @@ def _payload(row: Any, wafers: list[dict[str, str]]) -> dict[str, Any]:
         "question": row["question"],
         "conclusion": row["conclusion"],
         "kpis": [{**kpi, "title": kpi_title(kpi)} for kpi in json.loads(row["kpis"])],
+        "blocks": _blocks(row["blocks"]),
         "reference": wafers[0] if wafers else None,
         "wafers": wafers,  # la référence d'abord
         "created_by": row["created_by"],
@@ -182,7 +232,8 @@ def create(user: User, title: str, lasermarks: Iterable[str], question: str | No
 
 def update(user: User, analysis_id: int, values: dict[str, Any]) -> dict[str, Any]:
     """Change ce que ``values`` donne : ``title``, ``question``, ``conclusion``, ``wafers`` (toutes les plaques,
-    dans l'ordre : la première est la référence) et ``kpis`` (tous les KPI comparés, dans l'ordre)."""
+    dans l'ordre : la première est la référence), ``kpis`` (tous les KPI comparés, dans l'ordre) et ``blocks``
+    (tous les blocs libres, dans l'ordre)."""
     get(analysis_id)  # 404 avant toute validation
     fields: dict[str, str] = {}
     if "title" in values:
@@ -192,6 +243,8 @@ def update(user: User, analysis_id: int, values: dict[str, Any]) -> dict[str, An
             fields[name] = _text(values[name])
     if values.get("kpis") is not None:
         fields["kpis"] = json.dumps(clean_kpis(values["kpis"]))
+    if values.get("blocks") is not None:
+        fields["blocks"] = json.dumps(clean_blocks(values["blocks"]), ensure_ascii=False)
     wafers = _wafers(values["wafers"]) if values.get("wafers") is not None else None
     with get_conn() as conn:
         fields.update(updated_by=user.name, updated_by_id=user.id, updated_at=_now())

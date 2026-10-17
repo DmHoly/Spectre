@@ -19,8 +19,9 @@ const metaAnalysisApi = {
   create(body) {
     return api.post("/api/analyses", body);
   },
-  // body : les champs à changer parmi {title, question, conclusion, wafers, kpis} ; wafers remplace toutes les plaques,
-  // kpis tous les KPI comparés ([{hook, column, label, filters, better}])
+  // body : les champs à changer parmi {title, question, conclusion, wafers, kpis, blocks} ; wafers remplace toutes les
+  // plaques, kpis tous les KPI comparés ([{hook, column, label, filters, better}]), blocks tous les blocs libres
+  // ([{kind, hook, config, label}], comme les blocs de la fiche data)
   update(analysisId, body) {
     return api.patch(`/api/analyses/${encodeURIComponent(analysisId)}`, body);
   },
@@ -29,10 +30,15 @@ const metaAnalysisApi = {
   kpis(analysisId, { refresh = false } = {}) {
     return api.get(api.withQuery(`/api/analyses/${encodeURIComponent(analysisId)}/kpis`, { refresh: refresh || undefined }));
   },
-  // ce qu'on peut comparer : {catalog: [{key, hook, column, hook_title, unit, ...}], suggested: [{hook, column, label,
-  // filters, better, title, area}]} - les KPI suivis par les projets des plaques d'abord
+  // ce qu'on peut comparer : {catalog: [{key, hook, column, hook_title, unit, kpi, type, sure, ...}], suggested: [{hook,
+  // column, label, filters, better, title, area}]} - toute colonne PRISM par plaque, les colonnes de KPI d'abord
   kpiChoices(analysisId) {
     return api.get(`/api/analyses/${encodeURIComponent(analysisId)}/kpi-choices`);
+  },
+  // les blocs libres calculés sur chaque plaque - {source, blocks: [{index, kind, kind_label, title, label,
+  // hook, hook_title, unit, units, config, available, wafers: [{key, lasermark, status, message, computed_at, data}]}]}
+  blocks(analysisId, { refresh = false } = {}) {
+    return api.get(api.withQuery(`/api/analyses/${encodeURIComponent(analysisId)}/blocks`, { refresh: refresh || undefined }));
   },
   remove(analysisId) {
     return api.del(`/api/analyses/${encodeURIComponent(analysisId)}`);

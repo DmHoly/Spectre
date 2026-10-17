@@ -23,6 +23,9 @@ palette catégorielle de la charte). Tous filtrent les lignes (même vocabulaire
 :func:`kpi_tracking.service.clean_filters`) et, quand le type est daté, ne gardent que la mesure la plus
 récente (``date`` ``latest``, par défaut) ou toutes.
 
+Un bloc peut aussi être **libre** (:data:`FREE_AREA`) : choisi ailleurs que dans la fiche d'un projet - dans une
+analyse de plaques (plugin meta_analysis), qui garde sa config et le fait calculer par :func:`.service.gather`.
+
 Le projet ne garde que ce choix ; ce qu'un bloc calcule sur une plaque se garde, résumé, dans :mod:`.store`,
 sous la **signature** du bloc (:attr:`Block.sig`, son projet, son genre, son type et sa config - pas son nom) :
 changer la config d'un bloc fait oublier ce qu'il avait calculé.
@@ -66,6 +69,7 @@ MAX_IMAGES = 200  # d'une colonne de liens
 MAX_PATTERN_IMAGES = 24  # d'un modèle de chemin (un dossier parcouru à chaque fois)
 MAX_CAPTION = 3
 PLACEHOLDERS = ("lasermark", "lot", "run", "fdl")
+FREE_AREA = 0  # le « projet » d'un bloc libre, hors de toute fiche (une analyse de plaques : service.free_block)
 
 TYPE_PHRASES = {
     "number": "un scalaire",

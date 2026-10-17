@@ -32,6 +32,7 @@ function report(overrides = {}) {
     ],
     differences: [{ lasermark: "B12", color: "var(--viz-1)", comparable: true, items: [{ kind: "changed", step: "Oxyde", parameter: "Épaisseur", from: "20 nm", to: "35 nm" }], kpis: [{ title: "EQE max", text: "▲ +0,003 (+14 %)", verdict: "better" }] }],
     kpis: [{ title: "EQE max", source: "EQE · %", better: "high", status: "ok", message: "", svg: SVG, rows: [{ lasermark: "W-REF", color: "var(--navy)", isRef: true, n: "109", median: "0,021", delta: "référence", verdict: "", date: "—" }] }],
+    blocks: [{ title: "EQE en fonction de V", kind: "Courbes", figure: SVG }],
     sheets: [{ title: "PL", kind: "Cartographie", figure: SVG }],
     ...overrides,
   };
@@ -49,7 +50,7 @@ test("the report is one self-contained page that escapes every text", () => {
 
 test("the report has the wafers, what differs and moves, the KPIs, the data sheet, the context and the conclusion", () => {
   const html = AnalysisReport.build(report());
-  for (const title of ["Les plaques côte à côte", "Ce qui diffère de la référence, ce qui bouge", "KPI face à la référence", "Fiche data des plaques", "Contexte et enseignements de chaque plaque", "Ce qu'on a compris"]) {
+  for (const title of ["Les plaques côte à côte", "Ce qui diffère de la référence, ce qui bouge", "KPI face à la référence", "Données choisies pour l'analyse", "EQE en fonction de V", "Fiche data des plaques", "Contexte et enseignements de chaque plaque", "Ce qu'on a compris"]) {
     assert.ok(html.includes(title), title);
   }
   assert.ok(html.includes("<span class=\"mono\">20 nm</span> → <span class=\"mono\">35 nm</span>"));
@@ -59,8 +60,8 @@ test("the report has the wafers, what differs and moves, the KPIs, the data shee
 });
 
 test("empty parts are left out, and a missing conclusion is said", () => {
-  const html = AnalysisReport.build(report({ differences: [], kpis: [], sheets: [], conclusion: "", wafers: [report().wafers[1]] }));
-  assert.ok(!html.includes("KPI face à la référence") && !html.includes("Fiche data des plaques") && !html.includes("ce qui bouge"));
+  const html = AnalysisReport.build(report({ differences: [], kpis: [], blocks: [], sheets: [], conclusion: "", wafers: [report().wafers[1]] }));
+  assert.ok(!html.includes("KPI face à la référence") && !html.includes("Données choisies") && !html.includes("Fiche data des plaques") && !html.includes("ce qui bouge"));
   assert.ok(!html.includes("Contexte et enseignements"), "no notes, no studies: no context section");
   assert.ok(html.includes("Pas encore de conclusion."));
 });

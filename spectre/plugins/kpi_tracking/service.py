@@ -73,6 +73,7 @@ class CatalogKpi:
     unit: str = ""
     description: str = ""
     filter_columns: tuple[str, ...] = ()  # les colonnes du même type de données qu'un filtre peut porter
+    kpi: bool = True  # une colonne de KPI de la fiche PRISM (sinon une colonne brute : catalog(all_columns=True))
 
     @property
     def key(self) -> str:
@@ -173,10 +174,11 @@ def _column_names(declared: str) -> list[str]:
     return [name.strip() for name in declared.split(" / ") if name.strip()]
 
 
-def catalog() -> list[CatalogKpi]:
+def catalog(*, all_columns: bool = False) -> list[CatalogKpi]:
     """Les KPI disponibles : les colonnes de KPI des types de données implémentés qui se requêtent
     par plaque (et par plaque seulement - un type qui demande autre chose, un numéro de FDL, ne se
-    rattache pas aux plaques d'un projet)."""
+    rattache pas aux plaques d'un projet). ``all_columns`` : aussi leurs colonnes brutes (``kpi`` faux),
+    après les colonnes de KPI de chaque type - de quoi comparer n'importe quelle donnée (une analyse de plaques)."""
     kpis: list[CatalogKpi] = []
     for data_type in characterization.list_types(status="implemented", by_wafer=True):
         if tuple(data_type.parameters) != (characterization.WAFER_PARAMETER,):
@@ -190,7 +192,8 @@ def catalog() -> list[CatalogKpi]:
                 if name.lower() not in WAFER_COLUMNS
             )
         )
-        for column in data_type.kpi_columns:
+        columns = [(c, True) for c in data_type.kpi_columns] + ([(c, False) for c in data_type.raw_columns] if all_columns else [])
+        for column, is_kpi in columns:
             for name in _column_names(str(column.get("name") or "")):
                 if name.lower() in NOT_A_KPI or name in seen:
                     continue
@@ -203,6 +206,7 @@ def catalog() -> list[CatalogKpi]:
                         unit=str(column.get("unit") or ""),
                         description=str(column.get("description") or ""),
                         filter_columns=filterable,
+                        kpi=is_kpi,
                     )
                 )
     return kpis

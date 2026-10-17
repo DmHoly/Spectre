@@ -40,4 +40,9 @@ CREATE INDEX IF NOT EXISTS idx_wafer_analysis_wafers_key ON wafer_analysis_wafer
 # ou null) dit quel sens d'écart à la référence est un progrès. Les valeurs se recalculent à chaque lecture.
 KPIS = "ALTER TABLE wafer_analyses ADD COLUMN kpis TEXT NOT NULL DEFAULT '[]';"
 
-MIGRATIONS = (Migration("0001_initial", SCHEMA), Migration("0002_kpis", KPIS))
+# Les blocs libres de l'analyse (JSON : [{kind, hook, config, label}], '[]' sans bloc) - les blocs de la fiche data
+# (plugin wafer_data), choisis ici sur n'importe quel type de données PRISM par plaque et montrés plaque contre
+# plaque. Leurs résumés se gardent dans le magasin de wafer_data, sous la signature du bloc.
+BLOCKS = "ALTER TABLE wafer_analyses ADD COLUMN blocks TEXT NOT NULL DEFAULT '[]';"
+
+MIGRATIONS = (Migration("0001_initial", SCHEMA), Migration("0002_kpis", KPIS), Migration("0003_blocks", BLOCKS))

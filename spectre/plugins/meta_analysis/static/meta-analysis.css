@@ -794,3 +794,71 @@ section.ma-plates,
 .ma-chips[hidden] {
   display: none;
 }
+
+/* -- les blocs libres de l'analyse : la liste, le formulaire (wafer_data/block-form.js), les dessins -- */
+
+.ma-free {
+  margin-top: var(--space-5);
+}
+.ma-free__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+.ma-free__head .ma-subtitle {
+  margin: 0;
+}
+.ma-free__head .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ma-free__intro {
+  margin: 4px 0 var(--space-3);
+  max-width: 760px;
+}
+.ma-free__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ma-free__list:empty {
+  display: none;
+}
+.ma-free__form {
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  box-shadow: none;
+}
+.ma-free__form .section-title {
+  margin: 0 0 var(--space-3);
+}
+.ma-free__form .error {
+  margin-top: var(--space-3);
+}
+
+.ma-image-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ma-image-row__who {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px var(--space-2);
+  font-size: 12.5px;
+}
+.ma-image-row__more {
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 12.5px;
+}
+.ma-image-row__thumbs {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+/* une ligne de bloc libre : genre, ce qu'il lit, ses boutons (pas de champ de nom : il se renomme dans le formulaire) */
+.ma-free__row {
+  grid-template-columns: 112px minmax(0, 1fr) auto;
+}

@@ -8,6 +8,8 @@
 - ``/api/wafers/{wafer_key}/data`` : la fiche data d'une plaque, bloc par bloc, pour chaque projet de ses
   µprojets (:func:`.service.sheet`) ; ``?refresh=true`` retape les bases ; ses images se lisent une à une
   (``.../data/images/{block_id}/{index}``) ;
+- ``/api/wafer-data/catalog`` : le même catalogue hors de tout projet (les blocs libres d'une analyse de plaques),
+  et ``.../catalog/{hook}/probe`` qui en lit les vraies colonnes sur une plaque donnée - tout compte connecté ;
 - ``/api/wafer-data/storage`` : ce que pèse le magasin des résumés (administrateurs).
 """
 
@@ -81,12 +83,7 @@ def _hook(entry: blocks.CatalogHook) -> dict:
     return {**asdict(entry), "columns": list(entry.columns)}
 
 
-@router.get("/areas/{area_slug}/wafer-data/catalog")
-def get_catalog(area_slug: str, user: User = Depends(current_user)) -> dict:
-    """Ce qu'un bloc peut lire : les types de données PRISM par plaque et leurs colonnes typées (``type`` :
-    choisi, sinon observé sur de vraies lignes, sinon deviné sur la fiche PRISM), les types de colonnes et ce
-    que chaque usage accepte, les genres de bloc, les agrégats d'une valeur, les repères d'un modèle de chemin."""
-    areas.get_by_slug(area_slug)
+def _catalog() -> dict:
     return {
         "hooks": [_hook(h) for h in blocks.catalog()],
         "types": [{"key": k, "label": v} for k, v in columns.TYPES.items()],
@@ -97,6 +94,29 @@ def get_catalog(area_slug: str, user: User = Depends(current_user)) -> dict:
         "placeholders": list(blocks.PLACEHOLDERS),
         "limits": {"images": blocks.MAX_IMAGES, "pattern_images": blocks.MAX_PATTERN_IMAGES, "caption": blocks.MAX_CAPTION, "colors": blocks.COLORS},
     }
+
+
+@router.get("/areas/{area_slug}/wafer-data/catalog")
+def get_catalog(area_slug: str, user: User = Depends(current_user)) -> dict:
+    """Ce qu'un bloc peut lire : les types de données PRISM par plaque et leurs colonnes typées (``type`` :
+    choisi, sinon observé sur de vraies lignes, sinon deviné sur la fiche PRISM), les types de colonnes et ce
+    que chaque usage accepte, les genres de bloc, les agrégats d'une valeur, les repères d'un modèle de chemin."""
+    areas.get_by_slug(area_slug)
+    return _catalog()
+
+
+@router.get("/wafer-data/catalog")
+def get_free_catalog(user: User = Depends(current_user)) -> dict:
+    """Le même catalogue, hors de tout projet : pour les blocs libres d'une analyse de plaques."""
+    return _catalog()
+
+
+@router.post("/wafer-data/catalog/{hook}/probe")
+def probe_free(hook: str, body: ProbeRequest, user: User = Depends(current_user)) -> dict:
+    """Lit ``hook`` sur la plaque ``lasermark`` (requise) pour en observer les vraies colonnes ; rend le type à jour."""
+    if not (body.lasermark or "").strip():
+        raise InvalidInput("Indiquez une plaque sur laquelle lire les colonnes.", code="no_wafer_to_probe")
+    return _hook(service.probe(None, user, hook, lasermark=body.lasermark))
 
 
 @router.post("/areas/{area_slug}/wafer-data/catalog/{hook}/probe")

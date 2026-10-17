@@ -98,3 +98,50 @@ def test_the_kpis_tracked_by_the_wafers_projects_are_suggested_first(client):
     update_analysis(client, analysis["id"], kpis=[{"hook": "eqe", "column": "max_EQE"}])
     left = assert_ok(client.get(f"/api/analyses/{analysis['id']}/kpi-choices"))["suggested"]
     assert [s["column"] for s in left] == ["Integrated PL (a.u.)"]  # déjà comparé : plus proposé
+
+
+def test_any_prism_column_is_compared_like_a_kpi(client):
+    signup(client, "analyse-colonnes@example.com")
+    analysis = create_analysis(client, "Colonnes", ["W1", "W2"])
+
+    choices = {k["key"]: k for k in assert_ok(client.get(f"/api/analyses/{analysis['id']}/kpi-choices"))["catalog"]}
+    assert choices["eqe:max_EQE"]["kpi"] and not choices["eqe:Lambda_Dominant"]["kpi"]  # les colonnes brutes aussi
+    assert assert_ok(update_analysis(client, analysis["id"], kpis=[{"hook": "eqe", "column": "Lambda_Dominant"}]))["kpis"][0]["column"] == "Lambda_Dominant"
+
+    # une fois les vraies lignes lues (ici par un bloc libre), une colonne qu'on sait vectorielle n'est plus proposée
+    assert "eqe:EQE" in choices
+    update_analysis(client, analysis["id"], blocks=[{"kind": "curve", "hook": "eqe", "config": {"x": "V", "y": "EQE"}}])
+    assert_ok(client.get(f"/api/analyses/{analysis['id']}/blocks"))
+    choices = {k["key"]: k for k in assert_ok(client.get(f"/api/analyses/{analysis['id']}/kpi-choices"))["catalog"]}
+    assert "eqe:EQE" not in choices and choices["eqe:pitch_nm"]["type"] == "number"
+    vector = update_analysis(client, analysis["id"], kpis=[{"hook": "eqe", "column": "EQE"}])
+    assert vector.status_code == 422 and vector.json()["code"] == "not_a_number"
+
+
+def test_free_blocks_are_computed_on_every_wafer_of_the_analysis(client):
+    signup(client, "analyse-blocs@example.com")
+    analysis = create_analysis(client, "Blocs", ["W2", "W1"])  # aucune n'est suivie par un projet : pas de fiche data
+    blocks = [
+        {"kind": "value", "hook": "eqe", "config": {"column": "max_EQE"}, "label": "  EQE   max "},
+        {"kind": "wafermap", "hook": "pl", "config": {"column": "Dominant WL(nm)"}},
+        {"kind": "boxplot", "hook": "pl", "config": {"column": "FWHM (nm)"}},
+    ]
+    saved = assert_ok(update_analysis(client, analysis["id"], blocks=blocks))
+    assert [(b["kind"], b["title"]) for b in saved["blocks"]] == [("value", "EQE max"), ("wafermap", "Dominant WL(nm)"), ("boxplot", "FWHM (nm)")]
+    assert saved["blocks"][1]["config"]["x"] == "X" and saved["blocks"][0]["config"]["aggregate"] == "median"
+
+    result = assert_ok(client.get(f"/api/analyses/{analysis['id']}/blocks"))
+    assert result["source"] == "demo"
+    value, wafermap, boxplot = result["blocks"]
+    assert [w["lasermark"] for w in value["wafers"]] == ["W2", "W1"]  # la référence d'abord
+    assert all(w["status"] == "ok" for b in result["blocks"] for w in b["wafers"])
+    assert isinstance(value["wafers"][0]["data"]["value"], float) and "population" not in value["wafers"][0]
+    assert wafermap["wafers"][0]["data"]["median"] > 300
+    assert boxplot["wafers"][1]["data"]["boxes"][0]["n"] > 10
+
+    wrong = update_analysis(client, analysis["id"], blocks=[{"kind": "curve", "hook": "pl", "config": {"x": "Nope", "y": "FWHM (nm)"}}])
+    assert wrong.status_code == 422 and wrong.json()["code"] == "unknown_column"
+    assert update_analysis(client, analysis["id"], blocks=[blocks[0]] * 13).status_code == 422
+    assert assert_ok(update_analysis(client, analysis["id"], blocks=[]))["blocks"] == []
+    assert assert_ok(client.get(f"/api/analyses/{analysis['id']}/blocks"))["blocks"] == []
+    assert client.get(f"/api/analyses/{analysis['id']}/blocks/0/images/W1/0").status_code == 404

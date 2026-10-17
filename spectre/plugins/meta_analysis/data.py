@@ -4,8 +4,12 @@ référence. Calcul à la demande, jamais gardé : les lignes viennent du cache 
 suivis d'un projet (:mod:`spectre.plugins.kpi_tracking.service`), dont ce module reprend la lecture et les
 statistiques.
 
-Ce qu'on propose de comparer : le catalogue des KPI de PRISM et, d'abord, les KPI que suivent déjà les projets
-corporate des plaques de l'analyse.
+Ce qu'on propose de comparer : n'importe quelle colonne d'un type de données PRISM par plaque (ses colonnes de
+KPI d'abord) et, d'abord, les KPI que suivent déjà les projets corporate des plaques de l'analyse.
+
+Les blocs libres de l'analyse (:func:`blocks`) : les blocs de la fiche data (plugin wafer_data) choisis dans
+l'analyse, calculés sur chacune de ses plaques - par :func:`wafer_data.service.gather`, qui relit ou calcule
+leurs résumés comme pour la fiche d'une plaque.
 """
 
 from __future__ import annotations
@@ -14,12 +18,14 @@ import logging
 from dataclasses import asdict
 from typing import Any
 
-from ...kernel.errors import DomainError, InvalidInput
+from ...kernel.errors import DomainError, InvalidInput, NotFound
 from ..accounts.service import User
 from ..areas import service as areas
 from ..kpi_tracking import service as kpi_tracking
+from ..wafer_data import blocks as wafer_blocks
+from ..wafer_data import service as wafer_data
 from ..wafers import service as wafers
-from .service import kpi_title
+from .service import column_catalog, kpi_title
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +65,7 @@ def _groups(analysis: dict[str, Any], by_wafer: dict[str, dict[str | None, list[
 def kpis(analysis: dict[str, Any], *, refresh: bool = False) -> dict[str, Any]:
     """``{source, kpis: [{hook, column, title, unit, hook_title, better, filters, status, message, groups}]}`` ;
     ``status`` : ok, error (la base n'a pas répondu, une colonne a disparu) ou unavailable (plus au catalogue)."""
-    catalogue = {k.key: k for k in kpi_tracking.catalog()} if analysis["kpis"] else {}
+    catalogue = {key: found["entry"] for key, found in column_catalog().items()} if analysis["kpis"] else {}
     lasermarks = [w["lasermark"] for w in analysis["wafers"]]
     queries: dict[str, tuple[str, list[str], list[list[Any]]] | Exception] = {}
     sources: set[str] = set()
@@ -77,7 +83,7 @@ def kpis(analysis: dict[str, Any], *, refresh: bool = False) -> dict[str, Any]:
         }
         results.append(result)
         if entry is None:
-            result.update(status="unavailable", message="Ce KPI n'est plus au catalogue PRISM.")
+            result.update(status="unavailable", message="Cette colonne n'est plus au catalogue PRISM.")
             continue
         if kpi["hook"] not in queries:
             try:
@@ -103,10 +109,15 @@ def kpis(analysis: dict[str, Any], *, refresh: bool = False) -> dict[str, Any]:
 
 
 def kpi_choices(user: User, analysis: dict[str, Any]) -> dict[str, Any]:
-    """Ce qu'on peut comparer : ``catalog`` (toutes les colonnes de KPI de PRISM, par type de données) et
-    ``suggested`` - les KPI que suivent les projets corporate des plaques de l'analyse (``area`` : le projet),
-    sans ceux que l'analyse compare déjà."""
-    catalog = [{**asdict(k), "key": k.key} for k in kpi_tracking.catalog()]
+    """Ce qu'on peut comparer : ``catalog`` (toutes les colonnes des types de données PRISM par plaque - ``kpi``
+    vrai pour les colonnes de KPI, ``type`` quand la fiche data le connaît -, sans celles qu'on sait n'être pas des
+    scalaires) et ``suggested`` - les KPI que suivent les projets corporate des plaques de l'analyse (``area`` : le
+    projet), sans ceux que l'analyse compare déjà."""
+    catalog = [
+        {**asdict(found["entry"]), "key": key, "type": found["type"], "sure": found["sure"]}
+        for key, found in column_catalog().items()
+        if found["entry"].kpi or not found["sure"] or found["type"] == "number"
+    ]
     found = wafers.occurrences(user, keys=[w["key"] for w in analysis["wafers"]])
     area_ids = list(dict.fromkeys(o.microproject.management_area_id for o in found if o.microproject.management_area_id))
     chosen = {(k["hook"], k["column"], repr(k["filters"])) for k in analysis["kpis"]}
@@ -129,3 +140,43 @@ def kpi_choices(user: User, analysis: dict[str, Any]) -> dict[str, Any]:
                 }
             )
     return {"catalog": catalog, "suggested": suggested}
+
+
+def blocks(user: User, analysis: dict[str, Any], *, refresh: bool = False) -> dict[str, Any]:
+    """Les blocs libres de l'analyse, chacun calculé sur chaque plaque, dans l'ordre de l'analyse : ``{source,
+    blocks: [{index, kind, kind_label, title, label, hook, hook_title, unit, units, config, available, wafers: [{key,
+    lasermark, status, message, computed_at, data}]}]}``. Les images se lisent une à une par :func:`block_image`."""
+    if not analysis["blocks"]:
+        return {"source": None, "blocks": []}
+    entries = {h.hook: h for h in wafer_blocks.catalog()}
+    chosen = [wafer_data.free_block(i, b["kind"], b["hook"], b["config"], b["label"]) for i, b in enumerate(analysis["blocks"])]
+    live = [b for b in chosen if b.from_pattern or b.hook in entries]
+    pairs = [(w["key"], w["lasermark"]) for w in analysis["wafers"]]
+    stored, sources = wafer_data.gather(pairs, live, refresh=refresh)
+    out = []
+    for block in chosen:
+        available = block in live
+        per_wafer = []
+        for key, lasermark in pairs:
+            found = stored[key].get(block.sig) if available else {"status": "error", "message": "Ce type de données n'est plus dans PRISM.", "payload": None}
+            url = lambda n, key=key, index=block.id: f"/api/analyses/{analysis['id']}/blocks/{index}/images/{key}/{n}"
+            shown = wafer_data.block_payload(block, found, wafer=key, entries=entries, image_url=url)
+            per_wafer.append({"key": key, "lasermark": lasermark, **{name: shown[name] for name in ("status", "message", "computed_at", "data")}})
+        shown = wafer_data.block_payload(block, None, wafer="", entries=entries)
+        out.append(
+            {
+                "index": block.id,
+                **{name: shown[name] for name in ("kind", "kind_label", "title", "label", "hook", "hook_title", "unit", "units", "config")},
+                "available": available,
+                "wafers": per_wafer,
+            }
+        )
+    return {"source": wafer_data.source_of(sources), "blocks": out}
+
+
+def block_image(analysis: dict[str, Any], index: int, wafer_key: str, image: int):
+    """Le fichier de la ``image``-ième image du bloc libre ``index`` sur une plaque de l'analyse (404 sinon)."""
+    if not 0 <= index < len(analysis["blocks"]) or wafer_key not in {w["key"] for w in analysis["wafers"]}:
+        raise NotFound("Image inconnue pour cette analyse.")
+    b = analysis["blocks"][index]
+    return wafer_data.stored_image(wafer_data.free_block(index, b["kind"], b["hook"], b["config"], b["label"]), wafer_key, image)

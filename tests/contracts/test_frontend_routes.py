@@ -28,6 +28,11 @@ DYNAMIC_CALLS: dict[tuple[str, str, str], tuple[str, ...]] = {
         "/api/microprojects/{microproject_slug}/attachments/{attachment_id}/content",
         "/api/microprojects/{microproject_slug}/experiments/{experiment_id}/notebook-entries/{entry_id}/external-images/{index}",
     ),
+    # le rapport d'une analyse embarque, réduites, les images de ses blocs libres et des fiches data des plaques
+    ("plugins/meta_analysis/static/analysis-data.js", "GET", "url"): (
+        "/api/analyses/{analysis_id}/blocks/{index}/images/{wafer_key}/{image}",
+        "/api/wafers/{wafer_key}/data/images/{block_id}/{index}",
+    ),
 }
 
 # Appels dynamiques qui ne visent pas une route de Spectre.

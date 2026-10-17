@@ -1,5 +1,6 @@
 /* Client de l'API du plugin wafer_data : les blocs de la fiche data d'un projet corporate, la fiche data d'une
-   plaque, le calcul d'avance des fiches d'un projet et ce que pèse leur magasin. */
+   plaque, le catalogue hors projet (blocs libres), le calcul d'avance des fiches d'un projet et ce que pèse leur
+   magasin. */
 
 const waferDataApi = {
   // {hooks: [{hook, title, category, columns: [{name, unit, description, type, sure, chosen, observed_type, guessed,
@@ -10,6 +11,14 @@ const waferDataApi = {
   // lit le type de données sur une plaque (ou quelques plaques suivies du projet) : rend le type à jour
   probe(areaSlug, hook, lasermark = null) {
     return api.post(`/api/areas/${encodeURIComponent(areaSlug)}/wafer-data/catalog/${encodeURIComponent(hook)}/probe`, lasermark ? { lasermark } : {});
+  },
+  // le même catalogue hors de tout projet (les blocs libres d'une analyse de plaques)
+  freeCatalog() {
+    return api.get("/api/wafer-data/catalog");
+  },
+  // lit le type de données sur une plaque donnée (requise) : rend le type à jour
+  probeFree(hook, lasermark) {
+    return api.post(`/api/wafer-data/catalog/${encodeURIComponent(hook)}/probe`, { lasermark });
   },
   // type null : revenir au type observé ou deviné ; vaut pour tous les projets
   setColumnType(areaSlug, hook, column, type) {

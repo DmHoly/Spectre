@@ -46,6 +46,8 @@ PUBLIC_EXTRA: dict[str, set[str]] = {
     # autres noms d'une plaque (le sélecteur de plaques d'une analyse la retrouve par l'un d'eux)
     "wafers": {"records", "tracking", "links"},
     "process_library": {"tech_bricks"},
+    # les blocs de la fiche data et leur catalogue typé : les blocs libres d'une analyse de plaques
+    "wafer_data": {"blocks"},
 }
 
 # (module qui importe, module importé) -> ce qui supprimera l'import.

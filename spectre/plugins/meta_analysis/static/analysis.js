@@ -401,7 +401,7 @@
     const cached = await Promise.all(a.wafers.map(plateOf));
     const plates = a.wafers.map((w, i) => fresh[i] || (cached[i].error ? null : cached[i]));
     const structures = await Promise.all(a.wafers.map((w, i) => (cached[i].error ? null : structureFor(w, cached[i]))));
-    const snap = data ? data.snapshot() : { kpis: [], sheets: [], moves: {} };
+    const snap = data ? await data.snapshot() : { kpis: [], blocks: [], sheets: [], moves: {} };
     const comparison = state.comparison || { keys: [], result: null };
     const refRow = comparison.keys.indexOf(a.wafers[0].key);
     const wafers = a.wafers.map((w, i) => ({
@@ -435,6 +435,7 @@
       wafers,
       differences,
       kpis: snap.kpis,
+      blocks: snap.blocks,
       sheets: snap.sheets,
     };
   }

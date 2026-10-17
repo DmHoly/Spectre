@@ -11,7 +11,9 @@
        differences: [{lasermark, color, comparable, items: [{kind, step, parameter, from, to}],
                       kpis: [{title, text, verdict}]}],             // une entrée par plaque comparée (pas la référence)
        kpis: [{title, source, better, status, message, svg, rows: [{lasermark, color, isRef, n, median, delta, verdict, date}]}],
-       sheets: [{title, kind, figure}],                             // figure : le dessin déjà rendu (SVG / HTML)
+       blocks: [{title, kind, figure}],                             // les blocs libres de l'analyse, comme sheets
+       sheets: [{title, kind, figure}],                             // figure : le dessin déjà rendu (SVG / HTML, les
+                                                                    // images déjà réduites en data: URL)
      }
 
    AnalysisReport.differences(result, row) : ce qui distingue une ligne d'un tableau du comparateur de sa base
@@ -209,6 +211,18 @@ h4{margin:0 0 6px;font-family:var(--font-mono);font-size:11px;font-weight:600;le
 .grid tr.is-ref{background:var(--gold-tint)}
 .sheet__figure{display:flex;flex-direction:column;gap:8px}
 .sheet__figure .wd-svg{max-width:720px}
+.wd-axis-title{font-family:var(--font-mono);font-size:10px;fill:var(--text-soft)}
+.wd-box__body{fill-opacity:.2;stroke-width:1.5}
+.wd-box__median{stroke:var(--navy);stroke-width:2.5}
+.wd-whisker{stroke-width:1.4}
+.wd-outlier{fill:var(--surface);stroke-width:1.3}
+.wd-dot{fill-opacity:.72}
+.ma-image-rows{display:flex;flex-direction:column;gap:12px}
+.ma-image-row__who{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.wd-images__grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:4px}
+.wd-image{display:flex;flex-direction:column;gap:3px;border:1px solid var(--border-soft);border-radius:6px;padding:4px;background:var(--surface-2)}
+.wd-image img{width:100%;aspect-ratio:4/3;object-fit:contain;background:var(--surface)}
+.wd-image__name{font-family:var(--font-mono);font-size:10px;color:var(--text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .field{margin-top:10px}
 .field p{margin:0 0 6px;font-size:14px}
 .studies li p{margin:4px 0 0;font-size:13.5px}
@@ -247,6 +261,14 @@ footer{margin-top:40px;font-size:12px;color:var(--text-faint);border-top:1px sol
 @media print{body{background:#fff}.top{-webkit-print-color-adjust:exact;print-color-adjust:exact}main{max-width:none;padding:16px 0}h2{break-after:avoid}}
 `;
 
+  // Une section de dessins déjà rendus (blocs libres, fiche data) ; rien sans dessin. title : un texte de la page.
+  function figures(title, list) {
+    if (!(list || []).length) return "";
+    return `<h2>${title}</h2><div class="stack">${list
+      .map((s) => `<article class="card"><header class="kpi__head"><h3>${esc(s.title)}</h3><span class="kpi__source">${esc(s.kind)}</span></header><div class="sheet__figure">${s.figure}</div></article>`)
+      .join("")}</div>`;
+  }
+
   function build(report) {
     const wafers = report.wafers || [];
     const ref = wafers.find((w) => w.isRef);
@@ -258,11 +280,8 @@ footer{margin-top:40px;font-size:12px;color:var(--text-faint);border-top:1px sol
         ? `<h2>Ce qui diffère de la référence, ce qui bouge</h2><div class="stack">${report.differences.map(differenceCard).join("")}</div>`
         : "",
       (report.kpis || []).length ? `<h2>KPI face à la référence</h2><div class="stack">${report.kpis.map(kpiCard).join("")}</div>` : "",
-      (report.sheets || []).length
-        ? `<h2>Fiche data des plaques</h2><div class="stack">${report.sheets
-            .map((s) => `<article class="card"><header class="kpi__head"><h3>${esc(s.title)}</h3><span class="kpi__source">${esc(s.kind)}</span></header><div class="sheet__figure">${s.figure}</div></article>`)
-            .join("")}</div>`
-        : "",
+      figures("Données choisies pour l'analyse", report.blocks),
+      figures("Fiche data des plaques", report.sheets),
       contexts.length ? `<h2>Contexte et enseignements de chaque plaque</h2><div class="stack">${contexts.join("")}</div>` : "",
       `<h2>Ce qu'on a compris</h2><div class="card conclusion">${report.conclusion ? `<p>${paragraphs(report.conclusion)}</p>` : `<p class="empty">Pas encore de conclusion.</p>`}</div>`,
     ];

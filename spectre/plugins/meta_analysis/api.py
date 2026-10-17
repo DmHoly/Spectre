@@ -1,13 +1,15 @@
 """Analyses de plaques (``/api/analyses``) : leur liste (``?wafer=`` : celles où paraît une plaque), une
 analyse, la créer, la changer (titre, question, conclusion, plaques - la première est la référence -, KPI
-comparés), la supprimer (son auteur ou un administrateur). Voir :mod:`.service`. Ses données face à la
-référence (``/kpis``) et ce qu'on peut y comparer (``/kpi-choices``) : :mod:`.data`."""
+comparés, blocs libres), la supprimer (son auteur ou un administrateur). Voir :mod:`.service`. Ses données face
+à la référence (``/kpis``), ce qu'on peut y comparer (``/kpi-choices``) et ses blocs libres calculés sur chaque
+plaque (``/blocks``, leurs images ``/blocks/{i}/images/...``) : :mod:`.data`."""
 
 from __future__ import annotations
 
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from ..accounts.deps import current_user
@@ -34,12 +36,23 @@ class KpiInput(BaseModel):
     better: Literal["high", "low"] | None = None
 
 
+class BlockInput(BaseModel):
+    """Un bloc libre : comme un bloc de la fiche data d'un projet (plugin wafer_data) - un genre, un type de données
+    PRISM par plaque (vide pour des images cherchées d'après un modèle de chemin), sa config, un nom libre."""
+
+    kind: Literal["value", "histogram", "boxplot", "scatter", "wafermap", "curve", "images"]
+    hook: str = Field("", max_length=120)
+    config: dict[str, Any] = {}
+    label: str = Field("", max_length=200)
+
+
 class UpdateAnalysisRequest(BaseModel):
     title: str | None = Field(None, max_length=service.MAX_TITLE)
     question: str | None = Field(None, max_length=service.MAX_TEXT)
     conclusion: str | None = Field(None, max_length=service.MAX_TEXT)
     wafers: list[str] | None = Field(None, max_length=service.MAX_WAFERS)
     kpis: list[KpiInput] | None = Field(None, max_length=service.MAX_KPIS)
+    blocks: list[BlockInput] | None = Field(None, max_length=service.MAX_BLOCKS)
 
 
 @router.get("")
@@ -72,7 +85,8 @@ def get_analysis(analysis_id: int, user: User = Depends(current_user)) -> dict:
 @router.patch("/{analysis_id}")
 def update_analysis(analysis_id: int, body: UpdateAnalysisRequest, user: User = Depends(current_user)) -> dict:
     """Les champs envoyés seulement ; ``wafers`` remplace toutes les plaques (la première devient la référence),
-    ``kpis`` tous les KPI comparés (422 ``unknown_kpi``, ``unknown_filter_column``, ``too_many_kpis``...)."""
+    ``kpis`` tous les KPI comparés (422 ``unknown_kpi``, ``not_a_number``, ``unknown_filter_column``...),
+    ``blocks`` tous les blocs libres (422 comme un bloc de la fiche data : ``unknown_hook``, ``wrong_column_type``...)."""
     return service.update(user, analysis_id, body.model_dump(exclude_unset=True))
 
 
@@ -89,6 +103,18 @@ def get_kpi_choices(analysis_id: int, user: User = Depends(current_user)) -> dic
     """Ce qu'on peut comparer : ``catalog`` (les colonnes de KPI de PRISM) et ``suggested`` (les KPI que suivent
     les projets corporate de ses plaques, sans ceux déjà comparés)."""
     return data.kpi_choices(user, service.get(analysis_id))
+
+
+@router.get("/{analysis_id}/blocks")
+def get_analysis_blocks(analysis_id: int, refresh: bool = False, user: User = Depends(current_user)) -> dict:
+    """Ses blocs libres, chacun calculé sur chaque plaque : ``{source, blocks: [{index, kind, title, ...,
+    wafers: [{key, lasermark, status, message, data}]}]}`` ; ``refresh`` retape les bases."""
+    return data.blocks(user, service.get(analysis_id), refresh=refresh)
+
+
+@router.get("/{analysis_id}/blocks/{index}/images/{wafer_key}/{image}")
+def get_analysis_block_image(analysis_id: int, index: int, wafer_key: str, image: int, user: User = Depends(current_user)) -> FileResponse:
+    return FileResponse(data.block_image(service.get(analysis_id), index, wafer_key, image), headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.delete("/{analysis_id}", status_code=204)
