@@ -14,7 +14,7 @@
 
 (() => {
   const { analysis_id: analysisId } = routeParams("/analyses/{analysis_id}");
-  const state = { analysis: null, user: null, plates: new Map(), structures: new Map(), options: [], active: -1, comparison: null };
+  const state = { analysis: null, user: null, plates: new Map(), structures: new Map(), comparison: null };
   const errorEl = document.getElementById("error");
   const columnsEl = document.getElementById("columns");
   const chipsEl = document.getElementById("chips");
@@ -128,10 +128,10 @@
     input.disabled = wafers.length >= MAX_WAFERS;
   }
 
-  async function saveWafers(lasermarks) {
+  async function saveWafers(lasermarks, { keepError = false } = {}) {
     try {
       state.analysis = await metaAnalysisApi.update(analysisId, { wafers: lasermarks });
-      showError(null);
+      if (!keepError) showError(null);
       renderHero();
       renderChips();
       await renderPlates();
@@ -155,88 +155,20 @@
     }
   });
 
-  // -- ajouter une plaque (combobox) --------------------------------------------------------------
+  // -- ajouter des plaques : par lasermark, run d'épitaxie, lot, µprojet ou FDL (wafer-picker.js) -----------
 
-  function closeOptions() {
-    listbox.hidden = true;
-    listbox.innerHTML = "";
-    input.setAttribute("aria-expanded", "false");
-    input.removeAttribute("aria-activedescendant");
-    state.options = [];
-    state.active = -1;
-  }
-
-  function renderOptions() {
-    listbox.innerHTML = state.options
-      .map((option, index) => {
-        const added = state.analysis.wafers.some((w) => w.key === option.key);
-        return `
-          <li class="cmp-option${added ? " is-added" : ""}" role="option" id="picker-option-${index}" data-index="${index}" aria-selected="${index === state.active}">
-            <span class="cmp-option__label mono">${escapeHtml(option.lasermark)}${added ? ` <span class="help" style="margin:0;">· déjà dans l'analyse</span>` : ""}</span>
-            ${option.sublabel ? `<span class="cmp-option__sub">${escapeHtml(option.sublabel)}</span>` : ""}
-          </li>`;
-      })
-      .join("");
-    listbox.hidden = false;
-    input.setAttribute("aria-expanded", "true");
-    if (state.active >= 0) input.setAttribute("aria-activedescendant", `picker-option-${state.active}`);
-  }
-
-  function waferOption(w) {
-    const exp = w.latest && w.latest.experiment;
-    const sublabel = exp && exp.member ? [exp.title, exp.microproject.name].filter(Boolean).join(" · ") : w.record ? "fiche de plaque, sans étude" : exp ? exp.microproject.name : "";
-    return { key: w.key, lasermark: w.lasermark, sublabel };
-  }
-
-  function addWafer(option) {
-    input.value = "";
-    closeOptions();
-    if (state.analysis.wafers.some((w) => w.key === option.key)) return;
-    saveWafers([...state.analysis.wafers.map((w) => w.lasermark), option.lasermark]);
-  }
-
-  let timer = null;
-  let searchTicket = 0;
-  input.addEventListener("input", () => {
-    clearTimeout(timer);
-    const query = input.value.trim();
-    if (!query) return closeOptions();
-    timer = setTimeout(async () => {
-      const ticket = ++searchTicket;
-      try {
-        const found = await wafersApi.list({ q: query });
-        if (ticket !== searchTicket || input.value.trim() !== query) return;
-        state.options = found.slice(0, 8).map(waferOption);
-        // une plaque que Spectre ne connaît pas encore s'ajoute quand même, telle qu'écrite
-        if (!found.length) {
-          state.options.push({ key: query.replace(/[^0-9a-z]/gi, "").toUpperCase(), lasermark: query, sublabel: "Ajouter telle qu'écrite - Spectre ne la connaît pas encore" });
-        }
-        state.active = 0;
-        renderOptions();
-      } catch (err) {
-        showError(err);
-      }
-    }, 200);
+  WaferPicker.mount({
+    input,
+    listbox,
+    has: (key) => state.analysis.wafers.some((w) => w.key === key),
+    onPick: (lasermarks) => {
+      const current = state.analysis.wafers.map((w) => w.lasermark);
+      const room = MAX_WAFERS - current.length;
+      const capped = lasermarks.length > room;
+      if (room > 0) saveWafers([...current, ...lasermarks.slice(0, room)], { keepError: capped });
+      if (capped) showError(`Une analyse compare ${MAX_WAFERS} plaques au plus : ${room ? `${room} ajoutée${room > 1 ? "s" : ""} sur ${lasermarks.length}` : "retirez-en pour en ajouter"}.`);
+    },
   });
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") return closeOptions();
-    if (listbox.hidden || !state.options.length) return;
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      state.active = (state.active + (event.key === "ArrowDown" ? 1 : -1) + state.options.length) % state.options.length;
-      renderOptions();
-      document.getElementById(`picker-option-${state.active}`)?.scrollIntoView({ block: "nearest" });
-    } else if (event.key === "Enter" && state.active >= 0) {
-      event.preventDefault();
-      addWafer(state.options[state.active]);
-    }
-  });
-  listbox.addEventListener("mousedown", (event) => event.preventDefault()); // garder le focus dans le champ
-  listbox.addEventListener("click", (event) => {
-    const option = event.target.closest(".cmp-option");
-    if (option) addWafer(state.options[Number(option.dataset.index)]);
-  });
-  input.addEventListener("blur", () => setTimeout(closeOptions, 120));
 
   // -- côte à côte ---------------------------------------------------------------------------------
 

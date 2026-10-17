@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from . import data, service
+from . import data, picker, service
 
 router = APIRouter(prefix="/api/analyses", tags=["meta_analysis"])
 
@@ -46,6 +46,14 @@ class UpdateAnalysisRequest(BaseModel):
 def list_analyses(wafer: str | None = Query(None, max_length=service.MAX_LASERMARK), user: User = Depends(current_user)) -> list[dict]:
     """Les analyses, la plus récemment modifiée d'abord ; ``wafer`` : seulement celles où paraît cette plaque."""
     return service.list_all(wafer)
+
+
+@router.get("/wafer-search")
+def search_wafers(q: str = Query("", max_length=80), user: User = Depends(current_user)) -> dict:
+    """Les plaques à ajouter à une analyse, cherchées comme dans la barre du haut - lasermark, run d'épitaxie, lot,
+    µprojet, FDL : ``{groups: [{kind, label, detail, total, wafers: [{key, lasermark, detail}]}]}`` (voir
+    :mod:`.picker`)."""
+    return picker.search(user, q)
 
 
 @router.post("", status_code=201)

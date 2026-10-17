@@ -6,6 +6,7 @@
   <title>Analyses de plaques — Spectre</title>
   <link rel="stylesheet" href="/static/kernel/kernel.css">
   <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/comparator/comparator.css">
   <link rel="stylesheet" href="/static/meta_analysis/meta-analysis.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,8 +17,8 @@
 
   <!-- Les analyses de plaques (plugin meta_analysis) : une question posée à une plaque de référence et à celles
        qu'on lui compare, d'une étude ou d'une autre. La liste vient de GET /api/analyses (?wafer= : celles d'une
-       plaque, depuis sa page) ; « Nouvelle analyse » la crée (POST /api/analyses), prérempli par ?ref=&plaques=
-       quand on arrive d'une plaque. -->
+       plaque, depuis sa page) ; « Nouvelle analyse » la crée (POST /api/analyses), ses plaques choisies comme
+       dans la barre de recherche (wafer-picker.js) - prérempli par ?ref=&plaques= quand on arrive d'une plaque. -->
   <div class="page" style="max-width:1080px;">
     <header class="ma-head">
       <div>
@@ -40,17 +41,18 @@
         <span class="ma-field__label">La question posée <span class="help" style="margin:0;">(facultatif)</span></span>
         <textarea class="field" name="question" rows="2" maxlength="8000" placeholder="Ce qu'on veut comprendre en mettant ces plaques côte à côte…"></textarea>
       </label>
-      <div class="ma-new__grid">
-        <label class="ma-field">
-          <span class="ma-field__label">Plaque de référence</span>
-          <input class="field mono" name="ref" maxlength="80" required autocomplete="off" spellcheck="false" placeholder="Lasermark">
-        </label>
-        <label class="ma-field">
-          <span class="ma-field__label">Plaques à lui comparer</span>
-          <textarea class="field mono" name="others" rows="2" spellcheck="false" placeholder="Lasermarks, séparés par des virgules ou des retours à la ligne"></textarea>
-        </label>
+      <div class="ma-field">
+        <span class="ma-field__label" id="new-wafers-label">Plaques - la première est la référence</span>
+        <ul class="ma-chips ma-chips--edit" id="new-chips" aria-labelledby="new-wafers-label"></ul>
+        <div class="cmp-picker ma-picker">
+          <label for="new-picker" class="visually-hidden">Chercher des plaques</label>
+          <input class="field" id="new-picker" type="search" autocomplete="off" spellcheck="false" maxlength="400"
+                 placeholder="Lasermark, run d'épitaxie, lot, µprojet, FDL…"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="new-picker-options">
+          <ul class="cmp-options" id="new-picker-options" role="listbox" aria-label="Plaques trouvées" hidden></ul>
+        </div>
       </div>
-      <p class="help" style="margin:0;">Seize plaques au plus. On en ajoute, en retire et change la référence ensuite, sur la page de l'analyse.</p>
+      <p class="help" style="margin:0;">Tapez ce que vous savez des plaques : un lot ou un µprojet propose toutes ses plaques d'un coup. Seize plaques au plus ; on en ajoute, en retire et change la référence ensuite aussi, sur la page de l'analyse.</p>
       <div class="ma-new__actions">
         <button type="button" class="btn btn-line" id="new-cancel">Annuler</button>
         <button type="submit" class="btn btn-primary">Créer l'analyse</button>
@@ -71,6 +73,7 @@
   <script src="/static/search/client.js"></script>
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/meta_analysis/client.js"></script>
+  <script src="/static/meta_analysis/wafer-picker.js"></script>
   <script src="/static/meta_analysis/analyses.js"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 /* Page /analyses : la liste des analyses de plaques (la plus récemment modifiée d'abord) et la création d'une
-   analyse. ?plaque=<lasermark> : seulement celles où paraît cette plaque (le lien de sa page) ;
+   analyse - ses plaques se cherchent comme dans la barre du haut (WaferPicker : lasermark, run, lot, µprojet, FDL). ?plaque=<lasermark> : seulement celles où paraît cette plaque (le lien de sa page) ;
    ?ref=<lasermark>&plaques=a,b : ouvre le formulaire prérempli (« Nouvelle analyse » depuis une plaque). */
 
 (() => {
@@ -22,10 +22,46 @@
       .filter(Boolean);
   }
 
+  // -- les plaques de la nouvelle analyse : la première est la référence ---------------------------
+  const MAX_WAFERS = 16; // meta_analysis.service.MAX_WAFERS
+  const chosen = [];
+  const chipsEl = document.getElementById("new-chips");
+  const pickerInput = document.getElementById("new-picker");
+  const has = (key) => chosen.some((l) => WaferPicker.keyOf(l) === key);
+
+  function renderChosen() {
+    chipsEl.innerHTML = chosen
+      .map(
+        (l, i) => `<li class="ma-chip${i === 0 ? " is-ref" : ""}">${i === 0 ? `<span class="ma-chip__ref">Réf.</span>` : ""}<span class="mono">${escapeHtml(l)}</span>
+          ${i ? `<button type="button" class="ma-chip__btn js-make-ref" data-index="${i}" aria-label="Prendre ${escapeHtml(l)} comme référence" title="Prendre comme référence"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16"/><path d="M20 12H9"/><path d="m13 8-4 4 4 4"/></svg></button>` : ""}
+          <button type="button" class="ma-chip__btn ma-chip__remove js-remove" data-index="${i}" aria-label="Retirer ${escapeHtml(l)}" title="Retirer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></li>`
+      )
+      .join("");
+    chipsEl.hidden = !chosen.length;
+    pickerInput.disabled = chosen.length >= MAX_WAFERS;
+  }
+
+  function add(lasermarks) {
+    const fresh = lasermarks.filter((l) => !has(WaferPicker.keyOf(l)));
+    const room = MAX_WAFERS - chosen.length;
+    chosen.push(...fresh.slice(0, room));
+    showError(fresh.length > room ? new Error(`Une analyse compare ${MAX_WAFERS} plaques au plus : ${room} ajoutée${room > 1 ? "s" : ""} sur ${fresh.length}.`) : null);
+    renderChosen();
+  }
+
+  WaferPicker.mount({ input: pickerInput, listbox: document.getElementById("new-picker-options"), has, onPick: add });
+  chipsEl.addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    const [lasermark] = chosen.splice(Number(button.dataset.index), 1);
+    if (button.classList.contains("js-make-ref")) chosen.unshift(lasermark);
+    renderChosen();
+  });
+
   function openForm(open) {
     form.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
-    if (open) form.elements[form.elements.ref.value ? "title" : "ref"].focus();
+    if (open) (chosen.length ? form.elements.title : pickerInput).focus();
   }
 
   function chipsHtml(analysis) {
@@ -84,7 +120,7 @@
       const analysis = await metaAnalysisApi.create({
         title: form.elements.title.value,
         question: form.elements.question.value,
-        wafers: [form.elements.ref.value.trim(), ...splitLasermarks(form.elements.others.value)],
+        wafers: chosen,
       });
       location.href = `/analyses/${encodeURIComponent(analysis.id)}`;
     } catch (err) {
@@ -94,9 +130,9 @@
   });
 
   const ref = (params.get("ref") || "").trim();
+  renderChosen();
   if (ref) {
-    form.elements.ref.value = ref;
-    form.elements.others.value = splitLasermarks(params.get("plaques")).join("\n");
+    add([ref, ...splitLasermarks(params.get("plaques"))]);
     openForm(true);
   }
   load();

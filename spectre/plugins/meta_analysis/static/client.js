@@ -10,6 +10,11 @@ const metaAnalysisApi = {
   get(analysisId) {
     return api.get(`/api/analyses/${encodeURIComponent(analysisId)}`);
   },
+  // les plaques à ajouter, cherchées comme dans la barre du haut (lasermark, run, lot, µprojet, FDL) - {groups:
+  // [{kind: wafer|run|lot|name|microproject|fdl, label, detail, total, wafers: [{key, lasermark, detail}]}]}
+  searchWafers(q) {
+    return api.get(api.withQuery("/api/analyses/wafer-search", { q }));
+  },
   // body : {title, question, wafers: [lasermark]} - la première plaque est la référence
   create(body) {
     return api.post("/api/analyses", body);

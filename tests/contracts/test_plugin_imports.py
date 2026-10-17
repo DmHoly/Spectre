@@ -42,8 +42,9 @@ PUBLIC_EXTRA: dict[str, set[str]] = {
     "experiments": {"repository", "lineage", "entities", "insights", "plans", "versioning"},
     "structures": {"kinds", "campaigns", "simulation", "rendering", "library_files", "sources"},
     # les fiches de plaque (un lot JIRA importé crée celles de ses plaques) et la vie en ligne (le
-    # lot JIRA détecté quand une plaque est lue, les hooks de la ligne lus par son adaptateur)
-    "wafers": {"records", "tracking"},
+    # lot JIRA détecté quand une plaque est lue, les hooks de la ligne lus par son adaptateur) ; les
+    # autres noms d'une plaque (le sélecteur de plaques d'une analyse la retrouve par l'un d'eux)
+    "wafers": {"records", "tracking", "links"},
     "process_library": {"tech_bricks"},
 }
 

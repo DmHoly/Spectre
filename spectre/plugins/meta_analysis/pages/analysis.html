@@ -69,9 +69,9 @@
       </div>
       <ul class="ma-chips ma-chips--edit" id="chips" aria-label="Plaques de l'analyse"></ul>
       <div class="cmp-picker ma-picker">
-        <label for="picker-input" class="visually-hidden">Ajouter une plaque</label>
-        <input class="field mono" id="picker-input" type="search" autocomplete="off" spellcheck="false" maxlength="80"
-               placeholder="Ajouter une plaque : lasermark, FDL, run…"
+        <label for="picker-input" class="visually-hidden">Ajouter des plaques</label>
+        <input class="field" id="picker-input" type="search" autocomplete="off" spellcheck="false" maxlength="400"
+               placeholder="Ajouter des plaques : lasermark, run d'épitaxie, lot, µprojet, FDL…"
                role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="picker-options">
         <ul class="cmp-options" id="picker-options" role="listbox" aria-label="Plaques trouvées" hidden></ul>
       </div>
@@ -133,6 +133,7 @@
   <script src="/static/wafer_data/client.js"></script>
   <script src="/static/wafer_data/charts.js"></script>
   <script src="/static/meta_analysis/client.js"></script>
+  <script src="/static/meta_analysis/wafer-picker.js"></script>
   <script src="/static/meta_analysis/analysis-data.js"></script>
   <script src="/static/meta_analysis/report-html.js"></script>
   <script src="/static/meta_analysis/analysis.js"></script>

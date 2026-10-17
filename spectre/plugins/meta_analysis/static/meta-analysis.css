@@ -719,3 +719,78 @@ section.ma-plates,
 .ma-figure .wd-svg {
   max-width: 720px;
 }
+
+/* -- le sélecteur de plaques (wafer-picker.js) : un groupe par réponse, puis ses plaques ----------- */
+
+.ma-picker .cmp-options {
+  max-height: 420px;
+}
+.ma-pick-group {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border-top: 1px solid var(--border-soft);
+  cursor: pointer;
+}
+.ma-pick-group:first-child {
+  margin-top: 0;
+}
+.ma-pick-group[aria-selected="true"],
+.ma-pick-group:hover {
+  background: var(--accent-tint);
+}
+.ma-pick-group__kind {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.ma-pick-group__label {
+  font-weight: 600;
+  color: var(--navy);
+  overflow-wrap: anywhere;
+}
+.ma-pick-group__add {
+  grid-column: 3;
+  grid-row: 1;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--link);
+  white-space: nowrap;
+}
+.ma-pick-group.is-added .ma-pick-group__add {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+.ma-pick-group__detail {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.ma-pick-wafer {
+  padding-left: 22px;
+}
+.ma-pick-more {
+  padding: 4px 10px 6px 22px;
+  font-size: 12px;
+  color: var(--text-faint);
+  list-style: none;
+}
+.ma-new .ma-chips:not(:empty) {
+  margin-bottom: var(--space-2);
+}
+.ma-new .ma-picker {
+  margin-top: 0;
+  max-width: 560px;
+}
+
+.ma-chips[hidden] {
+  display: none;
+}
