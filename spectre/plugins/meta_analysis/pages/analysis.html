@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analyse de plaques — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/experiments/experiments.css">
+  <link rel="stylesheet" href="/static/wafers/wafers.css">
+  <link rel="stylesheet" href="/static/comparator/comparator.css">
+  <link rel="stylesheet" href="/static/structures/structures.css">
+  <link rel="stylesheet" href="/static/meta_analysis/meta-analysis.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Analyses" -->
+
+  <!-- Une analyse de plaques (plugin meta_analysis) : la plaque de référence et celles qu'on lui compare, côte à
+       côte - la structure qu'a vue chacune (celle de la dernière étude de vos µprojets qui la suit, ou celle
+       attachée à la plaque), ce qu'on sait d'elle, son contexte (ses études et ses notes, qu'on enrichit d'ici :
+       PUT /api/wafers/{key}/notes, plugin wafers) -, le tableau du comparateur face à la référence, et la
+       conclusion de l'analyse. L'analyse vient de GET /api/analyses/{id} ; chaque plaque de son passeport
+       (GET /api/wafers/{key}) ; le tableau de GET /api/comparisons (plugin comparator). -->
+  <div class="page" style="max-width:1320px;">
+    <p class="ma-crumb"><a href="/analyses">Analyses</a> / <span id="title-crumb"></span></p>
+    <div id="error" class="error" role="alert" hidden style="margin-bottom:16px;"></div>
+
+    <header class="card ma-hero" id="hero">
+      <div class="ma-hero__main js-hero-view">
+        <div class="page-eyebrow">Analyse de plaques</div>
+        <h1 class="ma-hero__title" id="title"><span class="skeleton" style="display:inline-block;width:320px;height:28px;"></span></h1>
+        <p class="ma-hero__question" id="question"></p>
+        <p class="help ma-hero__meta" id="meta"></p>
+      </div>
+      <form class="ma-hero__main ma-hero__form js-hero-form" hidden>
+        <label class="ma-field">
+          <span class="ma-field__label">Titre</span>
+          <input class="field" name="title" maxlength="160" required>
+        </label>
+        <label class="ma-field">
+          <span class="ma-field__label">La question posée</span>
+          <textarea class="field" name="question" rows="3" maxlength="8000" placeholder="Ce qu'on veut comprendre en mettant ces plaques côte à côte…"></textarea>
+        </label>
+        <div class="ma-new__actions">
+          <button type="button" class="btn btn-line js-hero-cancel">Annuler</button>
+          <button type="submit" class="btn btn-primary">Enregistrer</button>
+        </div>
+      </form>
+      <div class="ma-hero__actions">
+        <button type="button" class="btn btn-line" id="edit">Modifier</button>
+        <a class="btn btn-line" id="open-comparator" href="/comparateur" hidden>Ouvrir dans le comparateur</a>
+        <button type="button" class="btn btn-line" id="copy-link">Copier le lien</button>
+        <button type="button" class="btn btn-line ma-danger" id="delete" hidden>Supprimer</button>
+      </div>
+    </header>
+
+    <!-- Les plaques de l'analyse : la référence d'abord ; ajouter, retirer, prendre comme référence -->
+    <section class="card card-pad ma-plates" aria-labelledby="plates-title">
+      <div class="ma-section-head">
+        <h2 class="section-title" id="plates-title">Plaques</h2>
+        <span class="help" id="plates-count" style="margin:0;"></span>
+      </div>
+      <ul class="ma-chips ma-chips--edit" id="chips" aria-label="Plaques de l'analyse"></ul>
+      <div class="cmp-picker ma-picker">
+        <label for="picker-input" class="visually-hidden">Ajouter une plaque</label>
+        <input class="field mono" id="picker-input" type="search" autocomplete="off" spellcheck="false" maxlength="80"
+               placeholder="Ajouter une plaque : lasermark, FDL, run…"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="picker-options">
+        <ul class="cmp-options" id="picker-options" role="listbox" aria-label="Plaques trouvées" hidden></ul>
+      </div>
+    </section>
+
+    <!-- Côte à côte : une colonne par plaque, la référence collée à gauche quand on fait défiler -->
+    <section aria-labelledby="columns-title">
+      <div class="ma-section-head">
+        <h2 class="section-title" id="columns-title">Côte à côte - structure, identité, contexte</h2>
+        <span class="help" style="margin:0;">Cliquez une structure pour l'agrandir et passer de l'une à l'autre (← →).</span>
+      </div>
+      <div class="ma-columns" id="columns" tabindex="0" aria-label="Les plaques côte à côte, défilement horizontal"></div>
+    </section>
+
+    <!-- Le tableau du comparateur, la référence en base -->
+    <section class="card card-pad ma-table" aria-labelledby="table-title">
+      <div class="ma-section-head">
+        <h2 class="section-title" id="table-title">Tableau des structures - face à la référence</h2>
+      </div>
+      <p class="help ma-table__note" id="comparison-note" hidden></p>
+      <div id="comparison"></div>
+    </section>
+
+    <!-- La conclusion de l'analyse ; ce que chaque plaque a appris va dans ses notes, au-dessus -->
+    <section class="card card-pad ma-conclusion" aria-labelledby="conclusion-title">
+      <div class="ma-section-head">
+        <h2 class="section-title" id="conclusion-title">Ce qu'on a compris</h2>
+        <span class="help" id="conclusion-meta" style="margin:0;"></span>
+      </div>
+      <form id="conclusion-form">
+        <label for="conclusion" class="visually-hidden">Conclusion de l'analyse</label>
+        <textarea class="field" id="conclusion" rows="6" maxlength="8000" placeholder="Ce que la comparaison montre, ce qui explique les écarts, ce qu'il reste à vérifier… Ce qu'une plaque a appris elle-même s'écrit plutôt dans ses notes, au-dessus : il la suit sur sa page."></textarea>
+        <div class="ma-new__actions">
+          <span class="help js-conclusion-state" aria-live="polite" style="margin:0;"></span>
+          <button type="submit" class="btn btn-primary" disabled>Enregistrer la conclusion</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/experiments/client.js"></script>
+  <script src="/static/experiments/status.js"></script>
+  <script src="/static/wafers/client.js"></script>
+  <script src="/static/wafers/plate-context.js"></script>
+  <script src="/static/comparator/client.js"></script>
+  <script src="/static/comparator/comparator-table.js"></script>
+  <script src="/static/structures/structure-zoom.js"></script>
+  <script src="/static/meta_analysis/client.js"></script>
+  <script src="/static/meta_analysis/analysis.js"></script>
+</body>
+</html>

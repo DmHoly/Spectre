@@ -30,6 +30,21 @@
     const url = state.items.length ? Comparator.pageUrl(state.items, state.baseline) : "/comparateur";
     history.replaceState(null, "", url);
     copyBtn.hidden = clearBtn.hidden = !state.items.length;
+    syncAnalyse();
+  }
+
+  // « Analyser ces plaques » (plugin meta_analysis) : une nouvelle analyse des plaques du tableau, la base en
+  // référence (la première plaque si la base n'en est pas une)
+  const analyseLink = document.getElementById("analyse");
+  function syncAnalyse() {
+    if (!pluginEnabled("meta_analysis")) return;
+    const wafer = (item) => (item && item.startsWith("wafer:") ? item.slice("wafer:".length) : null);
+    const lasermarks = state.items.map(wafer).filter(Boolean);
+    const base = wafer(state.items[state.baseline]) || lasermarks[0];
+    analyseLink.hidden = !base;
+    if (!base) return;
+    const others = lasermarks.filter((l) => l !== base);
+    analyseLink.href = `/analyses?${new URLSearchParams({ ref: base, plaques: others.join(",") })}`;
   }
 
   function showError(message) {

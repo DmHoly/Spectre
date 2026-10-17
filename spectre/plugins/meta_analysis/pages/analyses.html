@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analyses de plaques — Spectre</title>
+  <link rel="stylesheet" href="/static/kernel/kernel.css">
+  <link rel="stylesheet" href="/static/search/search.css">
+  <link rel="stylesheet" href="/static/meta_analysis/meta-analysis.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
+</head>
+<body>
+  <!-- spectre:topbar crumb-id="crumb" crumb-text="/ Analyses" -->
+
+  <!-- Les analyses de plaques (plugin meta_analysis) : une question posée à une plaque de référence et à celles
+       qu'on lui compare, d'une étude ou d'une autre. La liste vient de GET /api/analyses (?wafer= : celles d'une
+       plaque, depuis sa page) ; « Nouvelle analyse » la crée (POST /api/analyses), prérempli par ?ref=&plaques=
+       quand on arrive d'une plaque. -->
+  <div class="page" style="max-width:1080px;">
+    <header class="ma-head">
+      <div>
+        <div class="page-eyebrow">Data</div>
+        <h1>Analyses de plaques</h1>
+        <p class="ma-lead">Une plaque de référence et celles qu'on lui compare, quelle que soit l'étude qui les suit : leurs structures côte à côte, le tableau du comparateur, le contexte de chacune et ce qu'on en a compris. Ce que chaque plaque apprend s'écrit dans ses notes et la suit sur sa page.</p>
+      </div>
+      <button type="button" class="btn btn-primary" id="new-toggle" aria-expanded="false" aria-controls="new-analysis">Nouvelle analyse</button>
+    </header>
+
+    <div id="error" class="error" role="alert" hidden style="margin-bottom:16px;"></div>
+
+    <form class="card card-pad ma-new" id="new-analysis" hidden aria-labelledby="new-title">
+      <h2 class="ma-new__title" id="new-title">Nouvelle analyse</h2>
+      <label class="ma-field">
+        <span class="ma-field__label">Titre</span>
+        <input class="field" name="title" maxlength="160" required placeholder="Pourquoi B12 sort plus d'EQE que la référence ?">
+      </label>
+      <label class="ma-field">
+        <span class="ma-field__label">La question posée <span class="help" style="margin:0;">(facultatif)</span></span>
+        <textarea class="field" name="question" rows="2" maxlength="8000" placeholder="Ce qu'on veut comprendre en mettant ces plaques côte à côte…"></textarea>
+      </label>
+      <div class="ma-new__grid">
+        <label class="ma-field">
+          <span class="ma-field__label">Plaque de référence</span>
+          <input class="field mono" name="ref" maxlength="80" required autocomplete="off" spellcheck="false" placeholder="Lasermark">
+        </label>
+        <label class="ma-field">
+          <span class="ma-field__label">Plaques à lui comparer</span>
+          <textarea class="field mono" name="others" rows="2" spellcheck="false" placeholder="Lasermarks, séparés par des virgules ou des retours à la ligne"></textarea>
+        </label>
+      </div>
+      <p class="help" style="margin:0;">Seize plaques au plus. On en ajoute, en retire et change la référence ensuite, sur la page de l'analyse.</p>
+      <div class="ma-new__actions">
+        <button type="button" class="btn btn-line" id="new-cancel">Annuler</button>
+        <button type="submit" class="btn btn-primary">Créer l'analyse</button>
+      </div>
+    </form>
+
+    <div class="ma-filter" id="filter" hidden></div>
+    <div id="list" class="ma-list" aria-live="polite">
+      <div class="skeleton" style="height:96px;"></div>
+    </div>
+  </div>
+
+  <script src="/static/kernel/api.js"></script>
+  <script src="/static/kernel/ui.js"></script>
+  <script src="/static/kernel/shell.js"></script>
+  <script src="/static/accounts/client.js"></script>
+  <script src="/static/accounts/session.js"></script>
+  <script src="/static/search/client.js"></script>
+  <script src="/static/search/topbar-search.js"></script>
+  <script src="/static/meta_analysis/client.js"></script>
+  <script src="/static/meta_analysis/analyses.js"></script>
+</body>
+</html>

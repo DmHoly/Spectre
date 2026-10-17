@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/static/characterization/characterization.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="stylesheet" href="/static/wafer_data/wafer-data.css">
+  <link rel="stylesheet" href="/static/meta_analysis/meta-analysis.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -85,6 +86,10 @@
       <div class="plate-context__list js-context-list"></div>
     </section>
 
+    <!-- Les analyses où elle paraît, et « Nouvelle analyse » en partant d'elle (plate-analyses.js, plugin
+         meta_analysis : la section reste cachée sans lui) -->
+    <section class="plate-analyses" id="plate-analyses" hidden></section>
+
     <section aria-labelledby="plate-trail-title">
       <h2 class="section-title" id="plate-trail-title" style="margin:22px 0 10px;">Parcours - les études qui la suivent</h2>
       <ol class="plate-trail" id="plate-trail"></ol>
@@ -153,6 +158,8 @@
   <script src="/static/wafer_data/client.js"></script>
   <script src="/static/wafer_data/charts.js"></script>
   <script src="/static/wafer_data/plate-data.js"></script>
+  <script src="/static/meta_analysis/client.js"></script>
+  <script src="/static/meta_analysis/plate-analyses.js"></script>
   <script src="/static/wafers/wafer.js"></script>
 </body>
 </html>

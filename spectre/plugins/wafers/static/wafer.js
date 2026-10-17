@@ -292,6 +292,8 @@ async function init() {
     document.getElementById("plate-link-add").addEventListener("click", () => WaferLinks.open({ lasermark: plate.lasermark, onDone: () => window.location.reload() }));
     renderLinks(plate, user);
     PlateContext.render(document.getElementById("plate-context"), plate);
+    // les analyses où elle paraît (plugin meta_analysis)
+    if (typeof PlateAnalyses !== "undefined" && pluginEnabled("meta_analysis")) PlateAnalyses.mount(document.getElementById("plate-analyses"), plate);
     if (viaRun) document.getElementById("plate-links-banner").insertAdjacentHTML("afterbegin", `<div class="plate-banner plate-banner--info">Arrivé par le run <strong class="mono">${escapeHtml(viaRun)}</strong> : c'est un run d'épitaxie de cette plaque.</div>`);
     document.getElementById("plate-location").textContent = plate.last_location || "—";
     renderFdl(plate.fdl, plate.line_fdl);
