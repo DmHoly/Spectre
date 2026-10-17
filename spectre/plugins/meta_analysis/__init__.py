@@ -12,7 +12,7 @@ LENS_GLYPH = '<circle cx="7" cy="8" r="4"/><circle cx="17" cy="8" r="4"/><circle
 
 PLUGIN = Plugin(
     name="meta_analysis",
-    depends_on=("accounts", "experiments", "comparator", "wafers"),
+    depends_on=("accounts", "areas", "experiments", "comparator", "wafers", "kpi_tracking"),
     router=router,
     pages=(Page("/analyses", "analyses.html"), Page("/analyses/{analysis_id}", "analysis.html")),
     nav=(NavEntry("Analyses", "/analyses", order=44, match=r"^/analyses", group="data", glyph=LENS_GLYPH),),

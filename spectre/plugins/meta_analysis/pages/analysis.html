@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="/static/wafers/wafers.css">
   <link rel="stylesheet" href="/static/comparator/comparator.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
+  <link rel="stylesheet" href="/static/kpi_tracking/kpi-tracking.css">
+  <link rel="stylesheet" href="/static/wafer_data/wafer-data.css">
   <link rel="stylesheet" href="/static/meta_analysis/meta-analysis.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,8 +24,9 @@
        côte - la structure qu'a vue chacune (celle de la dernière étude de vos µprojets qui la suit, ou celle
        attachée à la plaque), ce qu'on sait d'elle, son contexte (ses études et ses notes, qu'on enrichit d'ici :
        PUT /api/wafers/{key}/notes, plugin wafers) -, le tableau du comparateur face à la référence, et la
-       conclusion de l'analyse. L'analyse vient de GET /api/analyses/{id} ; chaque plaque de son passeport
-       (GET /api/wafers/{key}) ; le tableau de GET /api/comparisons (plugin comparator). -->
+       données face à la référence (KPI comparés, fiche data de chaque plaque) et conclusion de l'analyse.
+       L'analyse vient de GET /api/analyses/{id} ; chaque plaque de son passeport (GET /api/wafers/{key}) ; le
+       tableau de GET /api/comparisons (plugin comparator) ; les données, de analysis-data.js. -->
   <div class="page" style="max-width:1320px;">
     <p class="ma-crumb"><a href="/analyses">Analyses</a> / <span id="title-crumb"></span></p>
     <div id="error" class="error" role="alert" hidden style="margin-bottom:16px;"></div>
@@ -91,6 +94,9 @@
       <div id="comparison"></div>
     </section>
 
+    <!-- Les données face à la référence : KPI comparés (boîtes, écarts) et fiche data de chaque plaque (analysis-data.js) -->
+    <section class="card card-pad ma-data" id="data"></section>
+
     <!-- La conclusion de l'analyse ; ce que chaque plaque a appris va dans ses notes, au-dessus -->
     <section class="card card-pad ma-conclusion" aria-labelledby="conclusion-title">
       <div class="ma-section-head">
@@ -122,7 +128,11 @@
   <script src="/static/comparator/client.js"></script>
   <script src="/static/comparator/comparator-table.js"></script>
   <script src="/static/structures/structure-zoom.js"></script>
+  <script src="/static/kpi_tracking/boxplot.js"></script>
+  <script src="/static/wafer_data/client.js"></script>
+  <script src="/static/wafer_data/charts.js"></script>
   <script src="/static/meta_analysis/client.js"></script>
+  <script src="/static/meta_analysis/analysis-data.js"></script>
   <script src="/static/meta_analysis/analysis.js"></script>
 </body>
 </html>

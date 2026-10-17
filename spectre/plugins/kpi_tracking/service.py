@@ -510,7 +510,7 @@ def _failed(kpi: TrackedKpi, entry: CatalogKpi | None, status: str, message: str
     )
 
 
-def _query_hook(hook: str, wafers: list[str], refresh: bool) -> tuple[str, list[str], list[list[Any]]]:
+def query_hook(hook: str, wafers: list[str], refresh: bool) -> tuple[str, list[str], list[list[Any]]]:
     """Tous les résultats du type de données ``hook`` pour ``wafers`` (par paquets du plafond d'une requête)."""
     source, columns, rows = "", [], []
     for start in range(0, len(wafers), characterization.MAX_WAFERS):
@@ -562,7 +562,7 @@ def _date_column(columns: list[str]) -> int | None:
     return next((i for i, name in enumerate(columns) if "date" in name.lower()), None)
 
 
-def _values_by_wafer(
+def values_by_wafer(
     columns: list[str], rows: list[list[Any]], column: str, filters: tuple[dict[str, Any], ...] = ()
 ) -> dict[str, dict[str | None, list[float]]]:
     """Les valeurs de ``column`` par plaque puis par jour de mesure (``None`` : pas de date), sur les lignes qui
@@ -608,7 +608,7 @@ def distributions(area: ManagementArea, user: User, *, refresh: bool = False) ->
             continue
         if kpi.hook not in queries:
             try:
-                queries[kpi.hook] = _query_hook(kpi.hook, [w["wafer"] for w in wafers.values()], refresh)
+                queries[kpi.hook] = query_hook(kpi.hook, [w["wafer"] for w in wafers.values()], refresh)
             except Exception as exc:  # une base injoignable ne prive pas des autres types de données
                 queries[kpi.hook] = exc
         outcome = queries[kpi.hook]
@@ -623,7 +623,7 @@ def distributions(area: ManagementArea, user: User, *, refresh: bool = False) ->
         source, columns, rows = outcome
         sources.add(source)
         try:
-            by_wafer = _values_by_wafer(columns, rows, kpi.column, kpi.filters)
+            by_wafer = values_by_wafer(columns, rows, kpi.column, kpi.filters)
         except InvalidInput as exc:
             results.append(_failed(kpi, entry, "error", str(exc)))
             continue
@@ -659,7 +659,7 @@ def column_values(area: ManagementArea, user: User, hook: str, column: str) -> C
     wafers = tracked_wafers(area, user)
     if not wafers:
         return ColumnValues("empty", [], 0)
-    source, columns, rows = _query_hook(hook, [w["wafer"] for w in wafers.values()], False)
+    source, columns, rows = query_hook(hook, [w["wafer"] for w in wafers.values()], False)
     if column not in columns:
         return ColumnValues("empty", [], 0, wafers=len(wafers), source=source)
     at = columns.index(column)

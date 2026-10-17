@@ -1,15 +1,18 @@
 """Analyses de plaques (``/api/analyses``) : leur liste (``?wafer=`` : celles où paraît une plaque), une
-analyse, la créer, la changer (titre, question, conclusion, plaques - la première est la référence), la
-supprimer (son auteur ou un administrateur). Voir :mod:`.service`."""
+analyse, la créer, la changer (titre, question, conclusion, plaques - la première est la référence -, KPI
+comparés), la supprimer (son auteur ou un administrateur). Voir :mod:`.service`. Ses données face à la
+référence (``/kpis``) et ce qu'on peut y comparer (``/kpi-choices``) : :mod:`.data`."""
 
 from __future__ import annotations
+
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from . import service
+from . import data, service
 
 router = APIRouter(prefix="/api/analyses", tags=["meta_analysis"])
 
@@ -20,11 +23,23 @@ class CreateAnalysisRequest(BaseModel):
     wafers: list[str] = Field(..., max_length=service.MAX_WAFERS)  # des lasermarks : la référence d'abord
 
 
+class KpiInput(BaseModel):
+    """Une colonne de KPI d'un type de données PRISM par plaque, ses filtres (vocabulaire des KPI suivis :
+    ``{column, op, value}``), un nom libre et le sens d'un écart qui est un progrès."""
+
+    hook: str = Field(..., max_length=120)
+    column: str = Field(..., max_length=200)
+    label: str = Field("", max_length=200)
+    filters: list[dict[str, Any]] = []
+    better: Literal["high", "low"] | None = None
+
+
 class UpdateAnalysisRequest(BaseModel):
     title: str | None = Field(None, max_length=service.MAX_TITLE)
     question: str | None = Field(None, max_length=service.MAX_TEXT)
     conclusion: str | None = Field(None, max_length=service.MAX_TEXT)
     wafers: list[str] | None = Field(None, max_length=service.MAX_WAFERS)
+    kpis: list[KpiInput] | None = Field(None, max_length=service.MAX_KPIS)
 
 
 @router.get("")
@@ -48,8 +63,24 @@ def get_analysis(analysis_id: int, user: User = Depends(current_user)) -> dict:
 
 @router.patch("/{analysis_id}")
 def update_analysis(analysis_id: int, body: UpdateAnalysisRequest, user: User = Depends(current_user)) -> dict:
-    """Les champs envoyés seulement ; ``wafers`` remplace toutes les plaques (la première devient la référence)."""
+    """Les champs envoyés seulement ; ``wafers`` remplace toutes les plaques (la première devient la référence),
+    ``kpis`` tous les KPI comparés (422 ``unknown_kpi``, ``unknown_filter_column``, ``too_many_kpis``...)."""
     return service.update(user, analysis_id, body.model_dump(exclude_unset=True))
+
+
+@router.get("/{analysis_id}/kpis")
+def get_analysis_kpis(analysis_id: int, refresh: bool = False, user: User = Depends(current_user)) -> dict:
+    """Pour chaque KPI comparé, une boîte à moustaches par plaque (sa mesure la plus récente) et l'écart de sa
+    médiane à la référence : ``{source, kpis: [{..., status, message, groups: [{key, wafer, date, dates, stats,
+    outliers, delta: {absolute, relative}}]}]}`` - calculé à la demande ; ``refresh`` retape la base."""
+    return data.kpis(service.get(analysis_id), refresh=refresh)
+
+
+@router.get("/{analysis_id}/kpi-choices")
+def get_kpi_choices(analysis_id: int, user: User = Depends(current_user)) -> dict:
+    """Ce qu'on peut comparer : ``catalog`` (les colonnes de KPI de PRISM) et ``suggested`` (les KPI que suivent
+    les projets corporate de ses plaques, sans ceux déjà comparés)."""
+    return data.kpi_choices(user, service.get(analysis_id))
 
 
 @router.delete("/{analysis_id}", status_code=204)

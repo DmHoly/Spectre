@@ -10,12 +10,14 @@ gardés) ; la supprimer revient à son auteur ou à un administrateur.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from ...kernel.db import get_conn
 from ...kernel.errors import Forbidden, InvalidInput, NotFound
 from ..accounts.service import User
+from ..kpi_tracking import service as kpi_tracking
 from ..wafers.service import wafer_key
 
 MAX_TITLE = 160
@@ -23,6 +25,8 @@ MAX_TEXT = 8000
 MAX_LASERMARK = 80
 # Les plaques d'une analyse se montrent côte à côte : au-delà, ni les structures ni les boîtes ne se lisent.
 MAX_WAFERS = 16
+MAX_KPIS = 12  # une boîte à moustaches chacun
+BETTER = ("high", "low")  # le sens d'un écart à la référence qui est un progrès
 
 
 def _now() -> str:
@@ -58,6 +62,46 @@ def _wafers(lasermarks: Iterable[str]) -> list[tuple[str, str]]:
     return found
 
 
+def kpi_title(kpi: dict[str, Any]) -> str:
+    """Le nom d'un KPI de l'analyse : celui qu'on lui a donné, sinon sa colonne suivie de ses filtres."""
+    if kpi["label"]:
+        return kpi["label"]
+    filters = " · ".join(kpi_tracking.describe_filter(f) for f in kpi["filters"])
+    return f"{kpi['column']} ({filters})" if filters else kpi["column"]
+
+
+def clean_kpis(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Les KPI de l'analyse, vérifiés : une colonne de KPI du catalogue PRISM (422 ``unknown_kpi``), ses filtres au
+    vocabulaire des KPI suivis (:func:`kpi_tracking.clean_filters`), un nom libre, un sens de progrès ; un même KPI
+    aux mêmes filtres n'entre qu'une fois."""
+    if len(values) > MAX_KPIS:
+        raise InvalidInput(f"Une analyse compare {MAX_KPIS} KPI au plus.", code="too_many_kpis")
+    catalogue = {k.key: k for k in kpi_tracking.catalog()} if values else {}
+    cleaned: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in values:
+        hook, column = str(raw.get("hook") or ""), str(raw.get("column") or "")
+        entry = catalogue.get(f"{hook}:{column}")
+        if entry is None:
+            raise InvalidInput(f"« {column} » n'est pas une colonne de KPI de « {hook} » dans le catalogue PRISM.", code="unknown_kpi")
+        filters = kpi_tracking.clean_filters(entry, raw.get("filters"))
+        signature = json.dumps([hook, column, filters], sort_keys=True)
+        if signature in seen:
+            continue
+        seen.add(signature)
+        better = raw.get("better")
+        cleaned.append(
+            {
+                "hook": hook,
+                "column": column,
+                "label": " ".join(str(raw.get("label") or "").split())[: kpi_tracking.MAX_LABEL],
+                "filters": filters,
+                "better": better if better in BETTER else None,
+            }
+        )
+    return cleaned
+
+
 def _members(conn: Any, ids: list[int]) -> dict[int, list[dict[str, str]]]:
     members: dict[int, list[dict[str, str]]] = {i: [] for i in ids}
     if not ids:
@@ -78,6 +122,7 @@ def _payload(row: Any, wafers: list[dict[str, str]]) -> dict[str, Any]:
         "title": row["title"],
         "question": row["question"],
         "conclusion": row["conclusion"],
+        "kpis": [{**kpi, "title": kpi_title(kpi)} for kpi in json.loads(row["kpis"])],
         "reference": wafers[0] if wafers else None,
         "wafers": wafers,  # la référence d'abord
         "created_by": row["created_by"],
@@ -136,8 +181,8 @@ def create(user: User, title: str, lasermarks: Iterable[str], question: str | No
 
 
 def update(user: User, analysis_id: int, values: dict[str, Any]) -> dict[str, Any]:
-    """Change ce que ``values`` donne : ``title``, ``question``, ``conclusion`` et ``wafers`` (toutes les
-    plaques, dans l'ordre : la première est la référence)."""
+    """Change ce que ``values`` donne : ``title``, ``question``, ``conclusion``, ``wafers`` (toutes les plaques,
+    dans l'ordre : la première est la référence) et ``kpis`` (tous les KPI comparés, dans l'ordre)."""
     get(analysis_id)  # 404 avant toute validation
     fields: dict[str, str] = {}
     if "title" in values:
@@ -145,6 +190,8 @@ def update(user: User, analysis_id: int, values: dict[str, Any]) -> dict[str, An
     for name in ("question", "conclusion"):
         if name in values:
             fields[name] = _text(values[name])
+    if values.get("kpis") is not None:
+        fields["kpis"] = json.dumps(clean_kpis(values["kpis"]))
     wafers = _wafers(values["wafers"]) if values.get("wafers") is not None else None
     with get_conn() as conn:
         fields.update(updated_by=user.name, updated_by_id=user.id, updated_at=_now())

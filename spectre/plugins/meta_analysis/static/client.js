@@ -14,9 +14,20 @@ const metaAnalysisApi = {
   create(body) {
     return api.post("/api/analyses", body);
   },
-  // body : les champs à changer parmi {title, question, conclusion, wafers} ; wafers remplace toutes les plaques
+  // body : les champs à changer parmi {title, question, conclusion, wafers, kpis} ; wafers remplace toutes les plaques,
+  // kpis tous les KPI comparés ([{hook, column, label, filters, better}])
   update(analysisId, body) {
     return api.patch(`/api/analyses/${encodeURIComponent(analysisId)}`, body);
+  },
+  // pour chaque KPI comparé, une boîte par plaque et l'écart de sa médiane à la référence - {source, kpis: [{hook, column,
+  // title, unit, hook_title, better, status, message, groups: [{key, wafer, date, dates, stats, outliers, delta}]}]}
+  kpis(analysisId, { refresh = false } = {}) {
+    return api.get(api.withQuery(`/api/analyses/${encodeURIComponent(analysisId)}/kpis`, { refresh: refresh || undefined }));
+  },
+  // ce qu'on peut comparer : {catalog: [{key, hook, column, hook_title, unit, ...}], suggested: [{hook, column, label,
+  // filters, better, title, area}]} - les KPI suivis par les projets des plaques d'abord
+  kpiChoices(analysisId) {
+    return api.get(`/api/analyses/${encodeURIComponent(analysisId)}/kpi-choices`);
   },
   remove(analysisId) {
     return api.del(`/api/analyses/${encodeURIComponent(analysisId)}`);

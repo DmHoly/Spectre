@@ -464,3 +464,258 @@ section.ma-plates,
 .ma-plate-item__role.is-ref {
   color: var(--gold-dark);
 }
+
+/* -- le bloc « Données » : KPI face à la référence, fiche data rapprochée (analysis-data.js) ------- */
+
+.ma-data {
+  margin-bottom: var(--space-5);
+}
+.ma-data__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+/* la pastille d'une plaque : la même couleur sur ses pastilles, sa colonne et tous les graphiques */
+.ma-dot {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.ma-subtitle {
+  margin: var(--space-5) 0 var(--space-3);
+  font-size: 15px;
+  color: var(--navy);
+}
+.ma-empty-data {
+  padding: var(--space-4);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-soft);
+}
+.ma-empty-data p {
+  margin: 0;
+  max-width: 80ch;
+}
+
+.ma-kpi-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--gold);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.ma-kpi-editor[hidden] {
+  display: none;
+}
+.ma-kpi-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ma-kpi-list__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 4px 6px 4px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.ma-kpi-list__title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ma-kpi-list__better {
+  width: auto;
+  min-height: 32px;
+  font-size: 13px;
+}
+.ma-kpi-suggest {
+  min-height: 32px;
+  font-size: 13px;
+}
+.ma-kpi-editor__suggested .ma-chips {
+  margin-top: 6px;
+}
+.ma-kpi-editor__add {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.ma-kpi-editor__add .ma-field {
+  flex: 1 1 280px;
+}
+.ma-kpi-editor__add select {
+  width: auto;
+}
+
+.ma-kpis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ma-kpi {
+  padding: var(--space-4);
+  box-shadow: none;
+}
+.ma-kpi__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.ma-kpi__title {
+  margin: 0;
+  font-size: 15px;
+  color: var(--navy);
+}
+.ma-kpi__source {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.ma-kpi__better {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gold-dark);
+  background: var(--gold-tint);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+}
+/* le dessin garde sa largeur : il défile dans la carte, jamais la page */
+.ma-kpi__plot {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.ma-kpi__table-wrap {
+  overflow-x: auto;
+}
+.ma-kpi__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.ma-kpi__table th,
+.ma-kpi__table td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+.ma-kpi__table thead th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.ma-kpi__table tbody th {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ma-kpi__table tr.is-ref {
+  background: var(--gold-tint);
+}
+.ma-values tbody th {
+  white-space: normal;
+  min-width: 160px;
+}
+.ma-delta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text-soft);
+}
+.ma-delta--better {
+  color: var(--done);
+  font-weight: 600;
+}
+.ma-delta--worse {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.ma-sheets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.ma-sheet {
+  padding: var(--space-4);
+  box-shadow: none;
+  margin: 0;
+}
+.ma-curve {
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-opacity: 0.9;
+}
+.ma-curve--ref {
+  stroke-width: 3;
+  stroke-opacity: 1;
+}
+.ma-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-4);
+  margin: var(--space-2) 0 0;
+  font-size: 12.5px;
+}
+.ma-small-multiples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.ma-multiple {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ma-multiple--wide {
+  flex: 1 1 260px;
+  max-width: 360px;
+}
+.ma-multiple figcaption {
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ma-multiple figcaption .ma-dot {
+  margin-right: 2px;
+}
+
+@media (max-width: 760px) {
+  .ma-data__actions {
+    margin-left: 0;
+  }
+}
+/* le dessin, puis sa légende et sa phrase, l'un sous l'autre */
+.ma-figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ma-figure .wd-svg {
+  max-width: 720px;
+}

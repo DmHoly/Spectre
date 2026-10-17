@@ -69,16 +69,23 @@ const WaferDataCharts = (() => {
     </svg>`;
   }
 
-  // La cartographie : une case par position mesurée ; l'échelle va des moustaches basses aux hautes (Q1 - 1,5 IQR,
-  // Q3 + 1,5 IQR, dans [min ; max]) - une case au-delà prend la couleur du bout, son infobulle dit sa vraie valeur.
-  function wafermap(d, unit) {
+  // Les bornes de l'échelle d'une cartographie : ses moustaches (Q1 - 1,5 IQR, Q3 + 1,5 IQR), dans [min ; max].
+  function mapScale(d) {
+    const spread = 1.5 * (d.q3 - d.q1);
+    return { lo: Math.max(d.minimum, d.q1 - spread), hi: Math.min(d.maximum, d.q3 + spread) };
+  }
+
+  // La cartographie : une case par position mesurée ; l'échelle va des moustaches basses aux hautes - une case
+  // au-delà prend la couleur du bout, son infobulle dit sa vraie valeur. options : {lo, hi} une échelle imposée
+  // (plusieurs cartes comparées sur la même), size le côté du dessin (300 px).
+  function wafermap(d, unit, options = {}) {
     const nx = d.xs.length, ny = d.ys.length;
-    const size = 300;
+    const size = options.size || 300;
     const cell = Math.max(2, Math.floor(size / Math.max(nx, ny)));
     const w = cell * nx, h = cell * ny;
-    const spread = 1.5 * (d.q3 - d.q1);
-    const lo = Math.max(d.minimum, d.q1 - spread);
-    const hi = Math.min(d.maximum, d.q3 + spread);
+    const own = mapScale(d);
+    const lo = options.lo ?? own.lo;
+    const hi = options.hi ?? own.hi;
     const t = (v) => (hi > lo ? (v - lo) / (hi - lo) : 0.5);
     let cells = "";
     for (let j = 0; j < ny; j++) {
@@ -161,5 +168,5 @@ const WaferDataCharts = (() => {
     return `Au-dessus de ${Math.round((below / others) * 100)} % ${of}`;
   }
 
-  return { fmt, histogram, wafermap, curve, strip, rankText };
+  return { fmt, histogram, wafermap, mapScale, curve, strip, rankText };
 })();

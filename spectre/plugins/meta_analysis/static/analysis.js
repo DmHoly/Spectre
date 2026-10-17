@@ -1,7 +1,9 @@
 /* Page /analyses/{id} : une analyse de plaques. La plaque de référence et celles qu'on lui compare, côte à côte -
    une colonne par plaque : la structure qu'elle a vue, ce qu'on sait d'elle (µprojet, statut, lot, FDL, runs) et
    son contexte (PlateContext, plugin wafers : les études qui la suivent et ses notes, qu'on écrit d'ici) -, puis
-   le tableau du comparateur (la référence en base) et la conclusion de l'analyse.
+   le tableau du comparateur (la référence en base), les données face à la référence (analysis-data.js : KPI
+   comparés, fiche data de chaque plaque) et la conclusion de l'analyse. Une couleur par plaque, la même partout
+   (pastille des plaques, colonnes, graphiques).
 
    La structure d'une plaque est celle de la page de la plaque : la dernière étude de vos µprojets qui la suit
    (son dessin, ou sa première image), sinon la structure attachée à la plaque. Seules les plaques qu'une étude
@@ -107,6 +109,7 @@
       .map(
         (w, i) => `
         <li class="ma-chip${i === 0 ? " is-ref" : ""}">
+          <span class="ma-dot" style="background:${AnalysisData.colorOf(i)}" aria-hidden="true"></span>
           ${i === 0 ? `<span class="ma-chip__ref">Réf.</span>` : ""}
           <a class="mono" href="${plateUrl(w.lasermark)}">${escapeHtml(w.lasermark)}</a>
           ${
@@ -132,6 +135,7 @@
       renderHero();
       renderChips();
       await renderPlates();
+      data?.reload();
     } catch (err) {
       showError(err);
     }
@@ -281,6 +285,7 @@
     return `
       <article class="card ma-col${index === 0 ? " is-ref" : ""}" data-key="${escapeHtml(wafer.key)}" aria-label="${index === 0 ? "Référence" : "Plaque"} ${escapeHtml(wafer.lasermark)}">
         <header class="ma-col__head">
+          <span class="ma-dot" style="background:${AnalysisData.colorOf(index)}" aria-hidden="true"></span>
           ${index === 0 ? `<span class="ma-col__badge">Référence</span>` : `<span class="ma-col__rank mono">${index}</span>`}
           <a class="ma-col__lasermark mono" href="${plateUrl(wafer.lasermark)}">${escapeHtml(wafer.lasermark)}</a>
         </header>
@@ -413,6 +418,8 @@
     if (state.analysis && dirty()) event.preventDefault();
   });
 
+  let data = null; // le bloc « Données » (analysis-data.js), monté au chargement
+
   // -- au chargement ------------------------------------------------------------------------------
 
   async function init() {
@@ -423,6 +430,15 @@
       renderHero();
       renderChips();
       renderConclusion();
+      data = AnalysisData.mount(document.getElementById("data"), {
+        analysisId,
+        getAnalysis: () => state.analysis,
+        onAnalysis: (analysis) => {
+          state.analysis = analysis;
+          renderHero();
+        },
+      });
+      data.reload();
       await renderPlates();
     } catch (err) {
       showError(err);

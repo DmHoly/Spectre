@@ -35,4 +35,9 @@ CREATE TABLE IF NOT EXISTS wafer_analysis_wafers (
 CREATE INDEX IF NOT EXISTS idx_wafer_analysis_wafers_key ON wafer_analysis_wafers(wafer_key);
 """
 
-MIGRATIONS = (Migration("0001_initial", SCHEMA),)
+# Les KPI que l'analyse compare (JSON : [{hook, column, label, filters, better}], '[]' sans KPI) - une colonne d'un
+# type de données PRISM par plaque, comme les KPI suivis d'un projet (plugin kpi_tracking) ; ``better`` (high, low
+# ou null) dit quel sens d'écart à la référence est un progrès. Les valeurs se recalculent à chaque lecture.
+KPIS = "ALTER TABLE wafer_analyses ADD COLUMN kpis TEXT NOT NULL DEFAULT '[]';"
+
+MIGRATIONS = (Migration("0001_initial", SCHEMA), Migration("0002_kpis", KPIS))
