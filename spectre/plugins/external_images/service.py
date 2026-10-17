@@ -71,6 +71,20 @@ def _resolve(raw: str) -> Path:
     return resolved
 
 
+def allowed(raw: str) -> bool:
+    """Le chemin serait-il servi : absolu, sous une racine autorisée (ou local, sans racines) - sans toucher au
+    disque, de quoi trier une longue liste de liens. :func:`readable_file` revérifie à chaque lecture."""
+    if not raw or "\x00" in raw:
+        return False
+    path = Path(os.path.normpath(raw))
+    if not path.is_absolute():
+        return False
+    allowed_roots = roots()
+    if allowed_roots is None:
+        return not path.drive.startswith(("\\\\", "//"))
+    return _inside(path, allowed_roots)
+
+
 def image_status(raw: str) -> str:
     """``ok``, ``missing`` (déplacée ou supprimée), ``unsupported`` (format que le navigateur
     n'affiche pas) ou ``forbidden`` (hors des dossiers autorisés) - pour une image référencée."""

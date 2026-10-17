@@ -4,8 +4,9 @@
    Deux onglets au-dessus des sections de la page : « Fiche » (ce qui y était déjà) et « Data » (gardé dans
    l'adresse, #data), chargé au premier affichage seulement - le calcul peut lire PRISM :
    - les données principales de la plaque, bloc par bloc, telles que le projet corporate les a configurées
-     (/fiche-data) : valeurs (situées parmi les plaques du projet déjà calculées), histogrammes, cartographies,
-     courbes, images. Une plaque de deux projets : une bascule entre eux. GET /api/wafers/{lasermark}/data ;
+     (/fiche-data) : valeurs (situées parmi les plaques du projet déjà calculées), histogrammes, boîtes à
+     moustaches, nuages de points, cartographies, courbes (charts.js), galeries d'images (vignettes, puis la
+     visionneuse : viewer.js). Une plaque de deux projets : une bascule entre eux. GET /api/wafers/{lasermark}/data ;
      « Rafraîchir » relit les bases (?refresh=true) ;
    - sa généalogie : par µprojet dont on est membre, la partie de son arbre d'études qui la concerne - les études
      qui la suivent (halo), celles d'où elles viennent et celles qui les ont reprises (GET .../lineage,
@@ -17,6 +18,8 @@ const PlateData = (() => {
   let loaded = false;
   let sheet = null;
   let areaIndex = 0;
+  const imageFilter = new Map(); // bloc d'images -> groupe montré (null : tous)
+  const GALLERY = 12; // vignettes montrées dans la carte ; la visionneuse les a toutes
 
   const icon = (path) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
   const REFRESH = '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>';
@@ -117,7 +120,7 @@ const PlateData = (() => {
       </div>`;
     } else {
       const values = current.blocks.filter((b) => b.kind === "value");
-      const charts = current.blocks.filter((b) => ["histogram", "wafermap", "curve"].includes(b.kind));
+      const charts = current.blocks.filter((b) => ["histogram", "boxplot", "scatter", "wafermap", "curve"].includes(b.kind));
       const images = current.blocks.filter((b) => b.kind === "images");
       body.innerHTML = `${head}
         ${values.length ? `<div class="wd-values">${values.map(valueHtml).join("")}</div>` : ""}
@@ -132,19 +135,41 @@ const PlateData = (() => {
     );
   }
 
+  // la galerie : un groupe choisi (puce), une vignette ouverte dans la visionneuse
+  document.addEventListener("click", (event) => {
+    const host = event.target.closest("#plate-tab-data .wd-images[data-block]");
+    if (!host || !sheet) return;
+    const block = sheet.areas[areaIndex].blocks.find((b) => String(b.id) === host.dataset.block);
+    if (!block) return;
+    const chip = event.target.closest("[data-image-group]");
+    const thumb = event.target.closest("[data-image]");
+    const all = event.target.closest("[data-images-all]");
+    if (chip) {
+      imageFilter.set(block.id, chip.dataset.imageGroup === "" ? null : Number(chip.dataset.imageGroup));
+      host.outerHTML = imagesHtml(block);
+    } else if (thumb || all) {
+      const group = imageFilter.has(block.id) ? imageFilter.get(block.id) : null;
+      WaferDataViewer.open({ title: block.title, images: block.data.images, groups: block.data.groups || [], index: thumb ? Number(thumb.dataset.image) : shown(block)[0], group });
+    }
+  });
+
   function statusHtml(block) {
     if (block.status === "error") return `<p class="wd-state wd-state--error">${escapeHtml(block.message || "Calcul impossible.")}</p>`;
     if (block.status === "empty") {
-      const why = block.data && block.data.reason === "not_vectors" ? "Ces colonnes ne portent pas de courbes (une valeur par ligne, pas une série)." : block.message || "Pas encore de mesure pour cette plaque.";
+      const why = block.data && block.data.reason === "not_vectors" ? "Ces colonnes ne portent pas de courbes (une valeur par ligne, pas une série) : choisissez deux colonnes de type vecteur." : block.message || "Pas encore de mesure pour cette plaque.";
       return `<p class="wd-state">${escapeHtml(why)}</p>`;
     }
     return "";
   }
 
+  const COUNTED = { curve: ["courbe", "courbes"], images: ["image", "images"], boxplot: ["valeur", "valeurs"] };
+
   function sourceLine(block) {
     const d = block.data || {};
-    const parts = [escapeHtml(block.hook_title)];
-    if (d.n) parts.push(`${d.n} ${block.kind === "curve" ? "courbe" : "point"}${d.n > 1 ? "s" : ""}`);
+    const parts = [escapeHtml(block.hook_title || "Fichiers")];
+    const [one, many] = COUNTED[block.kind] || ["point", "points"];
+    const n = block.kind === "images" ? d.total : d.n;
+    if (n) parts.push(`${n} ${n > 1 ? many : one}`);
     if (d.date) parts.push(`mesure du ${escapeHtml(formatDate(d.date))}${d.dates && d.dates.length > 1 ? ` (${d.dates.length} dates)` : ""}`);
     (block.config.filters || []).forEach((f) => parts.push(escapeHtml(typeof kpiFilterText === "function" ? kpiFilterText(f) : `${f.column} ${f.op} ${f.value}`)));
     return `<p class="wd-source">${parts.join(" · ")}</p>`;
@@ -164,41 +189,87 @@ const PlateData = (() => {
 
   function chartHtml(block) {
     const d = block.data;
+    const c = block.config;
+    const units = block.units || {};
     let figure = statusHtml(block);
     let caption = "";
+    let keys = "";
     if (block.status === "ok") {
       if (block.kind === "histogram") {
-        figure = C.histogram(d, block.unit);
+        figure = C.histogram(d, block.unit, { color: c.color, xLabel: C.label(c.column, block.unit) });
+        keys = C.legend(d.groups, C.groupColors(d.groups), c.color_by);
         caption = `Médiane <strong>${C.fmt(d.median)}</strong> · Q1 ${C.fmt(d.q1)} · Q3 ${C.fmt(d.q3)} · moyenne ${C.fmt(d.mean)}`;
+      } else if (block.kind === "boxplot") {
+        figure = C.boxplot(d, block.unit, { color: c.color, yLabel: C.label(c.column, block.unit) });
+        const one = d.boxes.length === 1 ? d.boxes[0] : null;
+        caption = one
+          ? `Médiane <strong>${C.fmt(one.median)}</strong> · Q1 ${C.fmt(one.q1)} · Q3 ${C.fmt(one.q3)} · ${one.outliers.length} valeur${one.outliers.length > 1 ? "s" : ""} hors des moustaches`
+          : `Une boîte par ${escapeHtml(c.group_by)} · moustaches à 1,5 × l'écart interquartile`;
+      } else if (block.kind === "scatter") {
+        figure = C.scatter(d, { color: c.color, xLabel: C.label(c.x, units.x), yLabel: C.label(c.y, units.y) });
+        keys = C.legend(d.groups, C.groupColors(d.groups), c.color_by);
+        caption = d.shown < d.n ? `${d.shown} points montrés sur ${d.n}, pris à pas réguliers` : "";
       } else if (block.kind === "wafermap") {
         figure = C.wafermap(d, block.unit);
         caption = `Médiane <strong>${C.fmt(d.median)}</strong> · de ${C.fmt(d.minimum)} à ${C.fmt(d.maximum)}${block.unit ? " " + escapeHtml(block.unit) : ""} · échelle bornée aux moustaches`;
       } else {
-        figure = C.curve(d, block.unit);
-        caption = `<span class="wd-key wd-key--line"></span>médiane <span class="wd-key wd-key--band"></span>10 - 90 % des courbes`;
+        figure = C.curve(d, block.unit, { color: c.color, xLabel: C.label(c.x, units.x), yLabel: C.label(c.y, units.y) });
+        keys = C.legend(d.groups, C.groupColors(d.groups), c.color_by);
+        const tint = d.series ? "var(--text-soft)" : C.single(c.color);
+        if (d.curves) caption = `${d.curves.length} courbe${d.curves.length > 1 ? "s" : ""} montrée${d.curves.length > 1 ? "s" : ""}${d.curves.length < d.n ? ` sur ${d.n}` : ""} · <span class="wd-key wd-key--overall"></span>médiane de toutes`;
+        else caption = `<span class="wd-key wd-key--line" style="background:${tint}"></span>médiane <span class="wd-key wd-key--band" style="background:${tint}"></span>10 - 90 % des courbes${d.series ? " de chaque groupe" : ""}`;
       }
     }
     return `<figure class="card wd-chart wd-chart--${block.kind}">
       <figcaption class="wd-chart__head"><span class="wd-chart__title">${escapeHtml(block.title)}</span><span class="wd-chart__kind">${escapeHtml(block.kind_label)}</span></figcaption>
       <div class="wd-chart__figure">${figure}</div>
+      ${keys}
       ${caption ? `<p class="wd-chart__caption">${caption}</p>` : ""}
       ${sourceLine(block)}
     </figure>`;
   }
 
+  // les indices des images du groupe choisi dans la galerie d'un bloc
+  function shown(block) {
+    const group = imageFilter.has(block.id) ? imageFilter.get(block.id) : null;
+    return (block.data.images || []).map((_, i) => i).filter((i) => group === null || block.data.images[i].g === group);
+  }
+
   function imagesHtml(block) {
     const d = block.data || {};
-    const list = (d.images || [])
-      .map(
-        (img) => `<a class="wd-image" href="${escapeHtml(img.url)}" target="_blank" rel="noopener" title="Ouvrir ${escapeHtml(img.name)}">
-          <img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.name)}" loading="lazy">
-          <span class="wd-image__name">${escapeHtml(img.name)}</span></a>`
-      )
+    const head = `<div class="wd-chart__head"><span class="wd-chart__title">${escapeHtml(block.title)}</span><span class="wd-chart__kind">${escapeHtml(block.kind_label)}</span></div>`;
+    if (block.status !== "ok") return `<section class="card wd-images" data-block="${block.id}">${head}${statusHtml(block)}${block.hook ? sourceLine(block) : ""}</section>`;
+    const images = d.images || [];
+    const groups = d.groups || [];
+    const group = imageFilter.has(block.id) ? imageFilter.get(block.id) : null;
+    const chips = groups.length
+      ? `<div class="wd-images__groups" role="group" aria-label="Groupes d'images">${[["", "Toutes", d.total], ...groups.map((g, i) => [String(i), g, (d.counts || [])[i]])]
+          .map(([key, name, n]) => {
+            const on = (key === "" && group === null) || Number(key) === group;
+            return `<button type="button" class="wd-viewer__chip" data-image-group="${key}" aria-pressed="${on}">${escapeHtml(name)} <span>${n ?? ""}</span></button>`;
+          })
+          .join("")}</div>`
+      : "";
+    const list = shown(block);
+    const thumbs = list
+      .slice(0, GALLERY)
+      .map((i) => {
+        const img = images[i];
+        const caption = Object.values(img.meta || {}).join(" · ") || img.name;
+        return `<button type="button" class="wd-image" data-image="${i}" title="${escapeHtml(img.name)}" aria-label="Agrandir ${escapeHtml(img.name)}">
+          <img src="${escapeHtml(img.url)}" alt="" loading="lazy">
+          <span class="wd-image__name">${escapeHtml(caption)}</span></button>`;
+      })
       .join("");
-    const more = d.total > (d.images || []).length ? `<p class="help">${d.total - d.images.length} autre${d.total - d.images.length > 1 ? "s" : ""} image${d.total - d.images.length > 1 ? "s" : ""} dans <span class="mono">${escapeHtml(d.directory)}</span>.</p>` : "";
-    return `<section class="card wd-images">
-      <div class="wd-chart__head"><span class="wd-chart__title">${escapeHtml(block.title)}</span><span class="wd-chart__kind">${escapeHtml(block.kind_label)}</span></div>
-      ${block.status === "ok" ? `<div class="wd-images__grid">${list}</div>${more}` : statusHtml(block)}
+    const kept = d.total - images.length;
+    const notes = [];
+    if (list.length > GALLERY) notes.push(`<button type="button" class="btn btn-line" data-images-all>Voir les ${list.length} images</button>`);
+    if (kept > 0) notes.push(`<span class="help">${images.length} images gardées sur ${d.total}${d.directory ? ` dans <span class="mono">${escapeHtml(d.directory)}</span>` : ""}${block.hook && groups.length ? ", prises tour à tour dans chaque groupe" : ""}.</span>`);
+    if (d.blocked) notes.push(`<span class="help">${d.blocked} hors des dossiers autorisés : elles ne s'afficheront pas.</span>`);
+    return `<section class="card wd-images" data-block="${block.id}">${head}${chips}
+      <div class="wd-images__grid">${thumbs}</div>
+      ${notes.length ? `<div class="wd-images__more">${notes.join("")}</div>` : ""}
+      ${block.hook ? sourceLine(block) : ""}
     </section>`;
   }
 

@@ -2,7 +2,9 @@
 
 - ``/api/areas/{area_slug}/wafer-data/...`` : les blocs qu'un projet corporate montre sur ses plaques
   (:mod:`.blocks`) - lire est ouvert à tout compte connecté, les changer et calculer d'avance les fiches du
-  projet (``POST .../compute``) demandent de pouvoir gérer le projet ;
+  projet (``POST .../compute``) demandent de pouvoir gérer le projet ; de même pour lire les vraies colonnes
+  d'un type de données sur ses plaques (``POST .../catalog/{hook}/probe``) et choisir le type d'une colonne
+  (``PUT .../catalog/{hook}/columns``, qui vaut pour tous les projets : :mod:`.columns`) ;
 - ``/api/wafers/{wafer_key}/data`` : la fiche data d'une plaque, bloc par bloc, pour chaque projet de ses
   µprojets (:func:`.service.sheet`) ; ``?refresh=true`` retape les bases ; ses images se lisent une à une
   (``.../data/images/{block_id}/{index}``) ;
@@ -19,17 +21,17 @@ from fastapi import APIRouter, Depends, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from ...kernel.errors import Forbidden
+from ...kernel.errors import Forbidden, InvalidInput, NotFound
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..areas import service as areas
-from . import blocks, service, store
+from . import blocks, columns, service, store
 
 router = APIRouter(prefix="/api", tags=["wafer_data"])
 
 
 class BlockRequest(BaseModel):
-    kind: Literal["value", "histogram", "wafermap", "curve", "images"]
+    kind: Literal["value", "histogram", "boxplot", "scatter", "wafermap", "curve", "images"]
     hook: str = Field("", max_length=80)
     config: dict[str, Any] = {}
     label: str | None = None
@@ -41,48 +43,89 @@ class UpdateBlockRequest(BaseModel):
     move: Literal["up", "down"] | None = None
 
 
+class ColumnTypeRequest(BaseModel):
+    column: str = Field(..., min_length=1, max_length=200)
+    type: str | None = None  # None : revenir au type observé ou deviné
+
+
+class ProbeRequest(BaseModel):
+    lasermark: str | None = Field(None, max_length=80)  # sinon : quelques plaques suivies du projet
+
+
 def _managed(area_slug: str, user: User) -> areas.ManagementArea:
     area = areas.get_by_slug(area_slug)
     areas.require_manage(user, area)
     return area
 
 
-def _payload(block: blocks.Block, titles: dict[str, str] | None = None) -> dict:
-    titles = titles if titles is not None else {h.hook: h.title for h in blocks.catalog()}
+def _payload(block: blocks.Block, entries: dict[str, blocks.CatalogHook] | None = None) -> dict:
+    entries = entries if entries is not None else {h.hook: h for h in blocks.catalog()}
+    entry = entries.get(block.hook)
     return {
         "id": block.id,
         "kind": block.kind,
         "kind_label": blocks.KINDS[block.kind],
         "hook": block.hook,
-        "hook_title": titles.get(block.hook, block.hook),
-        "available": block.kind == "images" or block.hook in titles,
+        "hook_title": entry.title if entry else block.hook,
+        "available": block.from_pattern or entry is not None,
         "config": block.config,
         "label": block.label,
         "title": block.title,
-        "unit": block.unit,
+        "unit": block.unit(entry),
         "position": block.position,
         "created_at": block.created_at,
     }
 
 
+def _hook(entry: blocks.CatalogHook) -> dict:
+    return {**asdict(entry), "columns": list(entry.columns)}
+
+
 @router.get("/areas/{area_slug}/wafer-data/catalog")
 def get_catalog(area_slug: str, user: User = Depends(current_user)) -> dict:
-    """Ce qu'un bloc peut lire : les types de données PRISM par plaque et leurs colonnes, les genres de bloc,
-    les agrégats d'une valeur et les repères d'un modèle de chemin d'images."""
+    """Ce qu'un bloc peut lire : les types de données PRISM par plaque et leurs colonnes typées (``type`` :
+    choisi, sinon observé sur de vraies lignes, sinon deviné sur la fiche PRISM), les types de colonnes et ce
+    que chaque usage accepte, les genres de bloc, les agrégats d'une valeur, les repères d'un modèle de chemin."""
     areas.get_by_slug(area_slug)
     return {
-        "hooks": [{**asdict(h), "columns": list(h.columns)} for h in blocks.catalog()],
+        "hooks": [_hook(h) for h in blocks.catalog()],
+        "types": [{"key": k, "label": v} for k, v in columns.TYPES.items()],
+        "roles": {k: list(v) for k, v in columns.ROLES.items()},
         "kinds": [{"key": k, "label": v} for k, v in blocks.KINDS.items()],
         "aggregates": [{"key": k, "label": v} for k, v in blocks.AGGREGATE_LABELS.items()],
+        "curve_modes": [{"key": k, "label": v} for k, v in blocks.CURVE_MODES.items()],
         "placeholders": list(blocks.PLACEHOLDERS),
+        "limits": {"images": blocks.MAX_IMAGES, "pattern_images": blocks.MAX_PATTERN_IMAGES, "caption": blocks.MAX_CAPTION, "colors": blocks.COLORS},
     }
+
+
+@router.post("/areas/{area_slug}/wafer-data/catalog/{hook}/probe")
+def probe_hook(area_slug: str, hook: str, body: ProbeRequest | None = None, user: User = Depends(current_user)) -> dict:
+    """Lit ``hook`` sur une plaque (``lasermark``) ou quelques plaques suivies du projet pour en observer les
+    vraies colonnes et leurs types ; rend le type de données à jour, comme dans le catalogue."""
+    area = _managed(area_slug, user)
+    return _hook(service.probe(area, user, hook, lasermark=body.lasermark if body else None))
+
+
+@router.put("/areas/{area_slug}/wafer-data/catalog/{hook}/columns")
+def set_column_type(area_slug: str, hook: str, body: ColumnTypeRequest, user: User = Depends(current_user)) -> dict:
+    """Choisit le type d'une colonne (``type`` null : revenir au type observé ou deviné) - pour tous les
+    projets ; rend le type de données à jour."""
+    _managed(area_slug, user)
+    entry = blocks.catalog_entry(hook)
+    if entry is None:
+        raise NotFound(f"« {hook} » n'est pas un type de données PRISM par plaque.")
+    if body.column not in entry.names:
+        raise InvalidInput(f"« {body.column} » n'est pas une colonne de « {entry.title} ».", code="unknown_column")
+    columns.set_type(hook, body.column, body.type, user.id)
+    return _hook(blocks.catalog_entry(hook))
 
 
 @router.get("/areas/{area_slug}/wafer-data/blocks")
 def list_blocks(area_slug: str, user: User = Depends(current_user)) -> list[dict]:
     area = areas.get_by_slug(area_slug)
-    titles = {h.hook: h.title for h in blocks.catalog()}
-    return [_payload(b, titles) for b in blocks.list_blocks(area)]
+    entries = {h.hook: h for h in blocks.catalog()}
+    return [_payload(b, entries) for b in blocks.list_blocks(area)]
 
 
 @router.post("/areas/{area_slug}/wafer-data/blocks", status_code=201)
