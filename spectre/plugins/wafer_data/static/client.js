@@ -2,9 +2,18 @@
    plaque, le calcul d'avance des fiches d'un projet et ce que pèse leur magasin. */
 
 const waferDataApi = {
-  // {hooks: [{hook, title, category, columns: [{name, unit, description}], x, y, dated}], kinds, aggregates, placeholders}
+  // {hooks: [{hook, title, category, columns: [{name, unit, description, type, sure, chosen, observed_type, guessed,
+  //  example}], x, y, dated, representative, observed_at}], types, roles, kinds, aggregates, curve_modes, placeholders, limits}
   catalog(areaSlug) {
     return api.get(`/api/areas/${encodeURIComponent(areaSlug)}/wafer-data/catalog`);
+  },
+  // lit le type de données sur une plaque (ou quelques plaques suivies du projet) : rend le type à jour
+  probe(areaSlug, hook, lasermark = null) {
+    return api.post(`/api/areas/${encodeURIComponent(areaSlug)}/wafer-data/catalog/${encodeURIComponent(hook)}/probe`, lasermark ? { lasermark } : {});
+  },
+  // type null : revenir au type observé ou deviné ; vaut pour tous les projets
+  setColumnType(areaSlug, hook, column, type) {
+    return api.put(`/api/areas/${encodeURIComponent(areaSlug)}/wafer-data/catalog/${encodeURIComponent(hook)}/columns`, { column, type });
   },
   // [{id, kind, kind_label, hook, hook_title, available, config, label, title, unit, position}]
   blocks(areaSlug) {

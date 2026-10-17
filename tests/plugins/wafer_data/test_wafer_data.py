@@ -40,7 +40,7 @@ def test_the_catalog_lists_per_wafer_types_with_their_columns(client):
     assert (pl["x"], pl["y"], pl["dated"]) == ("X", "Y", True)
     names = [c["name"] for c in pl["columns"]]
     assert "Dominant WL(nm)" in names and not [n for n in names if n.lower() in ("wafername", "wafer name")]
-    assert [k["key"] for k in catalog["kinds"]] == ["value", "histogram", "wafermap", "curve", "images"]
+    assert [k["key"] for k in catalog["kinds"]] == ["value", "histogram", "boxplot", "scatter", "wafermap", "curve", "images"]
     assert_handler_404(client.get(f"{BASE.format('inconnu')}/catalog"))
 
 
@@ -256,3 +256,133 @@ def test_digest_helpers():
     _, big, _ = digest.wafermap(columns, many, {"column": "v", "x": "X", "y": "Y", "filters": [], "date": "all"})
     assert len(big["xs"]) == digest.MAX_GRID  # une cartographie fine est ramenée à la grille
     assert digest.round4(123456.789) == 123500.0
+
+
+def _columns(client, hook, slug=AREA):
+    entry = next(h for h in client.get(f"{BASE.format(slug)}/catalog").json()["hooks"] if h["hook"] == hook)
+    return {c["name"]: c for c in entry["columns"]}
+
+
+def test_columns_are_typed_from_the_rows_actually_read(client):
+    signup(client, "boss@example.com")
+    before = _columns(client, "eqe")
+    assert before["EQE"]["type"] == "vector" and not before["EQE"]["sure"]  # deviné sur la fiche PRISM
+    assert before["pitch_nm"]["type"] == "category"  # mal deviné sur l'exemple « 800 / 400 / 1 » : les lignes le corrigent
+
+    follow(client, "W1")
+    probed = client.post(f"{BASE.format(AREA)}/catalog/eqe/probe", json={}).json()
+    columns = {c["name"]: c for c in probed["columns"]}
+    assert probed["observed_at"]
+    assert {n: columns[n]["type"] for n in ("EQE", "V", "max_EQE", "is_lit", "Led_Name", "pitch_nm")} == {
+        "EQE": "vector", "V": "vector", "max_EQE": "number", "is_lit": "flag", "Led_Name": "category", "pitch_nm": "number",
+    }
+    assert columns["EQE"]["sure"] and columns["EQE"]["observed"] and "valeurs" in columns["EQE"]["example"]
+    assert "wafername" not in columns
+
+    refused = add(client, "histogram", "eqe", column="EQE").json()
+    assert refused["code"] == "wrong_column_type" and "vecteur" in refused["detail"]
+    assert add(client, "curve", "eqe", x="Led_Name", y="max_EQE").json()["code"] == "wrong_column_type"
+    assert add(client, "value", "eqe", column="is_lit", aggregate="median").json()["code"] == "invalid_aggregate"
+    assert add(client, "value", "eqe", column="is_lit").json()["config"]["aggregate"] == "share"
+
+
+def test_a_column_type_is_chosen_by_hand_for_every_project(client):
+    signup(client, "boss@example.com")
+    follow(client, "W1")
+    client.post(f"{BASE.format(AREA)}/catalog/eqe/probe", json={})
+    url = f"{BASE.format(AREA)}/catalog/eqe/columns"
+    chosen = client.put(url, json={"column": "pitch_nm", "type": "category"}).json()
+    pitch = next(c for c in chosen["columns"] if c["name"] == "pitch_nm")
+    assert (pitch["type"], pitch["chosen"], pitch["observed_type"]) == ("category", "category", "number")
+    other = client.post("/api/areas", json={"name": "Autre projet"}).json()["slug"]
+    assert _columns(client, "eqe", slug=other)["pitch_nm"]["type"] == "category"  # une propriété de la donnée
+    assert add(client, "histogram", "eqe", column="pitch_nm").json()["code"] == "wrong_column_type"
+    assert client.put(url, json={"column": "pitch_nm", "type": "pixel"}).json()["code"] == "unknown_column_type"
+    assert client.put(url, json={"column": "nope", "type": "number"}).json()["code"] == "unknown_column"
+    reset = client.put(url, json={"column": "pitch_nm", "type": None}).json()
+    assert next(c for c in reset["columns"] if c["name"] == "pitch_nm")["type"] == "number"
+
+    signup(client, "user@example.com")
+    login(client, "user@example.com")
+    assert client.put(url, json={"column": "pitch_nm", "type": "category"}).status_code == 403
+
+
+def test_probe_needs_a_wafer(client):
+    signup(client, "boss@example.com")
+    assert client.post(f"{BASE.format(AREA)}/catalog/eqe/probe", json={}).json()["code"] == "no_wafer_to_probe"
+    assert client.post(f"{BASE.format(AREA)}/catalog/eqe/probe", json={"lasermark": "W9"}).json()["observed_at"]
+    assert_handler_404(client.post(f"{BASE.format(AREA)}/catalog/inconnu/probe", json={"lasermark": "W9"}))
+
+
+def test_curves_boxes_and_scatter_take_colours(client):
+    signup(client, "boss@example.com")
+    follow(client, "W1")
+    client.post(f"{BASE.format(AREA)}/catalog/eqe/probe", json={})
+    eqe_v = add(client, "curve", "eqe", x="V", y="EQE", color_by="pitch_nm", log_y=True).json()
+    each = add(client, "curve", "eqe", x="V", y="EQE", mode="curves", color_by="Led_Name", label="Chaque courbe").json()
+    box = add(client, "boxplot", "eqe", column="max_EQE", group_by="pitch_nm").json()
+    cloud = add(client, "scatter", "eqe", x="J_at_MaxEQE", y="max_EQE", color_by="is_lit", color=3).json()
+    hist = add(client, "histogram", "eqe", column="max_EQE", color_by="pitch_nm").json()
+    assert eqe_v["title"] == "EQE en fonction de V" and box["title"] == "max_EQE par pitch_nm" and cloud["config"]["color"] == 3
+
+    blocks = {b["id"]: b for b in client.get("/api/wafers/W1/data").json()["areas"][0]["blocks"]}
+    curve = blocks[eqe_v["id"]]
+    assert curve["status"] == "ok" and curve["data"]["n"] > 50  # les NaN en tête des vecteurs ne font plus rejeter les courbes
+    assert [s["label"] for s in curve["data"]["series"]] == ["600", "800", "1000"] and min(curve["data"]["low"]) > 0
+    assert set(curve["units"]) == {"x", "y"}
+    many = blocks[each["id"]]["data"]
+    assert len(many["groups"]) == 8 and many["groups"][-1] == "Autres"  # plus de 8 devices : les autres regroupés
+    assert 0 < len(many["curves"]) <= digest.MAX_CURVES and all(len(c["x"]) == len(c["y"]) for c in many["curves"])
+    assert {c["g"] for c in many["curves"]} == set(range(8))  # chaque groupe a ses courbes
+    boxes = blocks[box["id"]]["data"]["boxes"]
+    assert [b["label"] for b in boxes] == ["600", "800", "1000"] and all(b["q1"] <= b["median"] <= b["q3"] for b in boxes)
+    points = blocks[cloud["id"]]["data"]
+    assert points["groups"] == ["faux", "vrai"] and len(points["points"]) == points["shown"] <= digest.MAX_POINTS
+    histogram = blocks[hist["id"]]["data"]
+    assert len(histogram["series"]) == 3 and sum(map(sum, histogram["series"])) == histogram["n"]
+
+
+def test_images_from_a_column_of_links(client, monkeypatch, tmp_path):
+    el_root = tmp_path / "el"
+    monkeypatch.setenv("PRISM_EL_ROOT", str(el_root))
+    signup(client, "boss@example.com")
+    follow(client, "W1")
+    probed = {c["name"]: c for c in client.post(f"{BASE.format(AREA)}/catalog/el_pattern/probe", json={}).json()["columns"]}
+    assert probed["full_path"]["type"] == "image" and probed["name"]["type"] == "image" and probed["type"]["type"] == "category"
+    assert add(client, "images", "el_pattern", column="led_name").json()["code"] == "wrong_column_type"
+    block = add(client, "images", "el_pattern", column="full_path", group_by="type", caption=["led_name", "image_number"], max=3).json()
+    assert block["title"] == "Images · full_path" and block["config"]["max"] == 3
+
+    monkeypatch.setenv("SPECTRE_EXTERNAL_IMAGE_ROOTS", str(tmp_path / "ailleurs"))
+    blocked = client.get("/api/wafers/W1/data").json()["areas"][0]["blocks"][0]
+    assert blocked["status"] == "error" and "hors des dossiers autorisés" in blocked["message"]
+
+    monkeypatch.setenv("SPECTRE_EXTERNAL_IMAGE_ROOTS", str(tmp_path))
+    data = client.get("/api/wafers/W1/data").json()["areas"][0]["blocks"][0]["data"]
+    assert data["groups"] == ["LightImage", "LIVSweepImages"] and data["counts"] == [8, 12] and data["total"] == 20
+    assert [i["g"] for i in data["images"]] == [0, 0, 1]  # tour à tour dans chaque groupe
+    first = data["images"][0]
+    assert set(first["meta"]) == {"led_name", "image_number"} and "path" not in first
+    file = el_root / "W1" / "EL_Pattern" / first["name"]
+    file.parent.mkdir(parents=True)
+    file.write_bytes(b"\x89PNG el")
+    assert client.get(first["url"]).content == b"\x89PNG el"
+
+
+def test_curve_digest_skips_missing_points():
+    columns = ["wafername", "V", "EQE", "kind"]
+    rows = [["W", [0.0, 1.0, 2.0, 3.0], [None, None, 0.1 * k, 0.2 * k], "a" if k < 3 else "b"] for k in range(1, 6)]
+    status, payload, _ = digest.curve(columns, rows, {"x": "V", "y": "EQE", "color_by": "kind", "filters": [], "date": "all"})
+    assert status == "ok" and payload["n"] == 5 and payload["x"][0] == 2.0
+    assert [(s["label"], s["n"]) for s in payload["series"]] == [("a", 2), ("b", 3)]
+    status, _, _ = digest.curve(columns, [["W", [0.0, 1.0], [None, None], "a"]], {"x": "V", "y": "EQE", "filters": [], "date": "all"})
+    assert status == "empty"
+
+
+def test_spread_shares_the_rows_between_groups():
+    alternating = [0, 1, 2] * 30  # un pas fixe de 3 ne verrait que le groupe 0
+    chosen = digest.spread(alternating, 12)
+    assert len(chosen) == 12 and [alternating[i] for i in chosen].count(0) == 4
+    assert digest.spread([0, 0, 1], 5) == [0, 1, 2]
+    lopsided = digest.spread([0] * 100 + [1] * 2, 10)
+    assert len(lopsided) == 10 and {100, 101} <= set(lopsided)

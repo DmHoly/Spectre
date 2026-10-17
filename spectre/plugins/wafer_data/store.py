@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS scalars (
     PRIMARY KEY (block_sig, wafer_key)
 );
 CREATE INDEX IF NOT EXISTS idx_scalars_value ON scalars(block_sig, value);
+
+-- Les colonnes réellement rendues par un type de données, telles qu'observées à sa dernière lecture
+-- (spectre.plugins.wafer_data.columns.profile) : leur type, un exemple, leur ordre.
+CREATE TABLE IF NOT EXISTS column_profiles (
+    hook TEXT NOT NULL,
+    column_name TEXT NOT NULL,
+    type TEXT,
+    example TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL,
+    observed_at TEXT NOT NULL,
+    PRIMARY KEY (hook, column_name)
+);
 """
 
 _lock = threading.Lock()
@@ -205,6 +217,36 @@ def population(sig: str, value: float, *, bins: int = 24) -> dict[str, Any] | No
         else:
             counts[0] = count
     return {"count": count, "below": below, "equal": equal, "minimum": low, "maximum": high, "bins": counts}
+
+
+def observe(hook: str, found: list[tuple[str, str | None, str]]) -> None:
+    """Garde le profil des colonnes d'une lecture de ``hook`` (:func:`.columns.profile`). Une colonne vide
+    cette fois-ci (type ``None``) garde le type observé avant ; une colonne qui n'est plus rendue est oubliée."""
+    if not found:  # une réponse sans colonnes ne dit rien du type de données
+        return
+    now = _now()
+    with _conn() as conn:
+        conn.executemany(
+            """INSERT INTO column_profiles (hook, column_name, type, example, position, observed_at) VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT (hook, column_name) DO UPDATE SET type = COALESCE(excluded.type, type),
+               example = CASE WHEN excluded.type IS NULL THEN example ELSE excluded.example END,
+               position = excluded.position, observed_at = excluded.observed_at""",
+            [(hook, name, kind, example, i, now) for i, (name, kind, example) in enumerate(found)],
+        )
+        names = [name for name, _, _ in found]
+        conn.execute(f"DELETE FROM column_profiles WHERE hook = ? AND column_name NOT IN ({','.join('?' * len(names))})", (hook, *names))
+
+
+def observed(hook: str | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Les profils gardés : ``{hook: [{name, type, example, observed_at}]}`` dans l'ordre de la réponse."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM column_profiles" + (" WHERE hook = ?" if hook else "") + " ORDER BY hook, position", (hook,) if hook else ()
+        ).fetchall()
+    found: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        found.setdefault(row["hook"], []).append({"name": row["column_name"], "type": row["type"], "example": row["example"], "observed_at": row["observed_at"]})
+    return found
 
 
 def stats() -> dict[str, Any]:
