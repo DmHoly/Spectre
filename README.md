@@ -238,6 +238,7 @@ Variables lues par PRISM lui-même (voir sa documentation) :
 | `PRISM_USER` / `PRISM_PASSWORD` | Compte de lecture commun à tous les profils | (aucun) |
 | `PRISM_<PROFIL>_USER` / `PRISM_<PROFIL>_PASSWORD` | Compte propre à un profil (prioritaire) | (aucun) |
 | `PRISM_HOOKS_DIR` | Jeu de hooks à utiliser à la place de celui du paquet | hooks du paquet installé |
+| `PRISM_SEM_ROOT` | Partage des images MEB du G4 (plugin sem_images, hook `meb_g4`), lu sur place sans copie | `N:\ME-MEB101\Datas` |
 
 ## Données de caractérisation (PRISM)
 

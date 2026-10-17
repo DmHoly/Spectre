@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="stylesheet" href="/static/wafer_data/wafer-data.css">
   <link rel="stylesheet" href="/static/meta_analysis/meta-analysis.css">
+  <link rel="stylesheet" href="/static/sem_images/sem-images.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -106,6 +107,10 @@
       </div>
       <div class="js-life-body"></div>
     </section>
+
+    <!-- Ses images MEB du G4 : retrouvées sur le partage par PRISM (ses FDL, l'index des dossiers), affichées sans
+         copie (plate-sem.js, plugin sem_images : la section reste cachée sans lui) -->
+    <section class="plate-sem" id="plate-sem" hidden aria-labelledby="plate-sem-title"></section>
     </div>
 
     <!-- L'onglet « Data » : ses données principales, configurées par le projet corporate (/fiche-data), et sa
@@ -160,6 +165,8 @@
   <script src="/static/wafer_data/plate-data.js"></script>
   <script src="/static/meta_analysis/client.js"></script>
   <script src="/static/meta_analysis/plate-analyses.js"></script>
+  <script src="/static/sem_images/client.js"></script>
+  <script src="/static/sem_images/plate-sem.js"></script>
   <script src="/static/wafers/wafer.js"></script>
 </body>
 </html>

@@ -320,8 +320,11 @@ async function init() {
     // la vie en ligne : ses FDL et son lot JIRA rejoignent l'en-tête (la lecture vient peut-être de
     // créer le lot détecté, ou des liens de renommage vus dans la MES : on les relit alors)
     let linksSeen = (plate.links && plate.links.links.length) || 0;
+    // ses images MEB du G4 (plugin sem_images), cherchées par ses FDL : celles que la vie en ligne découvre relancent la recherche
+    const sem = typeof PlateSem !== "undefined" && pluginEnabled("sem_images") ? PlateSem.mount(document.getElementById("plate-sem"), plate.lasermark) : null;
     initWaferTracking(document.getElementById("plate-life"), plate.lasermark, async (data) => {
       renderFdl(plate.fdl, data.fdl_numbers || plate.line_fdl);
+      if (sem) sem.fdlsChanged(data.fdl_numbers);
       if (data.run_names) renderRuns(data.run_names);
       let current = lots;
       if (lotsOn && data.lot_name && !lots.some((l) => l.code.toUpperCase() === data.lot_name.toUpperCase())) {

@@ -30,6 +30,7 @@ from .process_library import PLUGIN as process_library
 from .promotion import PLUGIN as promotion
 from .references import PLUGIN as references
 from .search import PLUGIN as search
+from .sem_images import PLUGIN as sem_images
 from .settings import PLUGIN as settings
 from .simulation_progress import PLUGIN as simulation_progress
 from .step_report import PLUGIN as step_report
@@ -75,5 +76,6 @@ PLUGINS = (
     kpi_tracking,
     wafer_data,
     meta_analysis,
+    sem_images,
     docs,
 )

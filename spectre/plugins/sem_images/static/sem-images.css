@@ -1,0 +1,447 @@
+/* Les images MEB du G4 d'une plaque (plate-sem.js) : une carte par acquisition, une grille de vignettes, et la
+   visionneuse plein écran (SemViewer) - fond navy profond pour l'image, fiche du défaut à droite. */
+
+.plate-sem {
+  margin-top: 26px;
+}
+.sem-meta {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-soft);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sem-refresh {
+  margin-left: auto;
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+.sem-refresh.is-busy svg {
+  animation: plate-spin 0.9s linear infinite;
+}
+
+/* -- une acquisition ------------------------------------------------------------------------ */
+.sem-group {
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.sem-group__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 14px 8px 8px;
+}
+.sem-group__toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  flex: 1 1 320px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+.sem-group__toggle:hover {
+  background: var(--surface-2);
+}
+.sem-group__toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.sem-group__chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform var(--dur) var(--ease);
+}
+.sem-group.is-open .sem-group__chevron {
+  transform: rotate(90deg);
+}
+.sem-group__step {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--navy);
+  overflow-wrap: anywhere;
+}
+.sem-group__facts {
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+.sem-group__area {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.sem-group__rounds {
+  flex: none;
+}
+.sem-group__rounds .view-toggle__btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* -- les vignettes -------------------------------------------------------------------------- */
+.sem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 8px;
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 12px;
+}
+.sem-thumb {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  aspect-ratio: 1;
+  background: var(--navy-900);
+  cursor: zoom-in;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.sem-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: linear-gradient(90deg, var(--navy-900) 0%, var(--navy-700) 40%, var(--navy-900) 80%) 0 0 / 200% 100%;
+  animation: skeleton-shimmer 1.4s linear infinite;
+}
+.sem-thumb img.is-loaded {
+  animation: none;
+}
+.sem-thumb:hover {
+  border-color: var(--gold);
+  box-shadow: var(--shadow-lift);
+}
+.sem-thumb:focus-visible {
+  outline: none;
+  border-color: var(--navy);
+  box-shadow: var(--ring);
+}
+.sem-thumb__label {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(6, 14, 34, 0.78);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+/* -- sans image, chercher avec une FDL ------------------------------------------------------ */
+.sem-empty__title {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+.sem-empty .help {
+  margin: 0 0 6px;
+}
+.sem-empty__building::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--running);
+  animation: sem-pulse 1.2s var(--ease) infinite alternate;
+}
+@keyframes sem-pulse {
+  to {
+    opacity: 0.3;
+  }
+}
+.sem-search {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-top: 12px;
+}
+.sem-search label {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.sem-search input {
+  width: 150px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+}
+.sem-search input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.sem-search--compact {
+  margin-top: 4px;
+  justify-content: flex-end;
+}
+.sem-search--compact label {
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+/* -- la visionneuse ------------------------------------------------------------------------- */
+.sem-viewer {
+  width: min(1280px, calc(100vw - 32px));
+  height: min(860px, calc(100vh - 32px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+}
+.sem-viewer::backdrop {
+  background: rgba(6, 14, 34, 0.72);
+}
+.sem-viewer__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  height: 100%;
+}
+.sem-viewer__stage {
+  position: relative;
+  overflow: hidden;
+  background: var(--navy-950);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.sem-viewer__stage:focus-visible {
+  outline: 2px solid var(--gold-light);
+  outline-offset: -2px;
+}
+.sem-viewer__stage.is-dragging {
+  cursor: grabbing;
+}
+.sem-viewer__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform-origin: center;
+  image-rendering: auto;
+  transition: opacity var(--dur) var(--ease);
+}
+.sem-viewer__img.is-loading {
+  opacity: 0.35;
+}
+.sem-viewer__loading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: rgba(6, 14, 34, 0.8);
+  color: #fff;
+  font-size: 12.5px;
+}
+.sem-viewer__tools {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+.sem-viewer__frames,
+.sem-viewer__zoom {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: rgba(6, 14, 34, 0.78);
+  pointer-events: auto;
+}
+.sem-viewer__zoom {
+  margin-left: auto;
+}
+.sem-viewer__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.sem-viewer__tool:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.sem-viewer__tool.active {
+  background: var(--gold-light);
+  color: var(--navy);
+  font-weight: 600;
+}
+.sem-viewer__tool:focus-visible,
+.sem-viewer__nav:focus-visible {
+  outline: 2px solid var(--gold-light);
+  outline-offset: 1px;
+}
+.sem-viewer__scale {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(6, 14, 34, 0.78);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  pointer-events: none;
+}
+.sem-viewer__scale-bar {
+  display: block;
+  height: 4px;
+  border: 1px solid #fff;
+  border-top: 0;
+  background: var(--gold-light);
+}
+.sem-viewer__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 56px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: rgba(6, 14, 34, 0.6);
+  color: #fff;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+.sem-viewer__nav:hover {
+  background: rgba(6, 14, 34, 0.9);
+}
+.sem-viewer__nav--prev {
+  left: 10px;
+}
+.sem-viewer__nav--next {
+  right: 10px;
+}
+.sem-viewer__side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-left: 3px solid var(--gold);
+  overflow-y: auto;
+}
+.sem-viewer__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.sem-viewer__title {
+  margin: 2px 0 0;
+  font-size: 20px;
+  color: var(--navy);
+}
+.sem-viewer__count {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.sem-viewer__close {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0;
+  justify-content: center;
+}
+.sem-viewer__facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+.sem-viewer__facts dt,
+.sem-viewer__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sem-viewer__facts dd {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.sem-viewer__hint {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.sem-viewer__file {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+.sem-viewer__file p {
+  margin: 4px 0 8px;
+  font-size: 11.5px;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 860px) {
+  .sem-viewer {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+  .sem-viewer__layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .sem-viewer__side {
+    max-height: 40vh;
+    border-left: 0;
+    border-top: 3px solid var(--gold);
+  }
+  .sem-grid {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  }
+}
