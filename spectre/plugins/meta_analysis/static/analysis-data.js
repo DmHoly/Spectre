@@ -23,17 +23,24 @@ const AnalysisData = (() => {
   const REFRESH = '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>';
   const dot = (index) => `<span class="ma-dot" style="background:${colorOf(index)}" aria-hidden="true"></span>`;
 
-  // L'écart à la référence, en mots et en signe : « ▲ +12,3 (+4,5 %) · mieux » - la couleur ne fait que doubler le mot.
-  function deltaHtml(delta, better) {
-    if (!delta) return `<span class="help" style="margin:0;">—</span>`;
+  // L'écart à la référence en signe et en chiffres (« ▲ +12,3 (+4,5 %) ») et, quand un sens de progrès est choisi,
+  // son verdict (better / worse) - null sans écart calculable.
+  function deltaText(delta, better) {
+    if (!delta) return null;
     const { absolute, relative } = delta;
-    if (!absolute) return `<span class="ma-delta">= réf.</span>`;
+    if (!absolute) return { text: "= réf.", verdict: "" };
     const up = absolute > 0;
     const sign = up ? "+" : "−";
     const pct = relative === null || relative === undefined ? "" : ` (${sign}${fmt(Math.abs(relative) * 100)} %)`;
-    const verdict = better ? ((better === "high") === up ? "better" : "worse") : "";
-    const word = verdict === "better" ? " · mieux" : verdict === "worse" ? " · moins bien" : "";
-    return `<span class="ma-delta${verdict ? ` ma-delta--${verdict}` : ""}">${up ? "▲" : "▼"} ${sign}${fmt(Math.abs(absolute))}${pct}${word}</span>`;
+    return { text: `${up ? "▲" : "▼"} ${sign}${fmt(Math.abs(absolute))}${pct}`, verdict: better ? ((better === "high") === up ? "better" : "worse") : "" };
+  }
+
+  // Le même écart à l'écran : le verdict dit en mots - la couleur ne fait que doubler le mot.
+  function deltaHtml(delta, better) {
+    const d = deltaText(delta, better);
+    if (!d) return `<span class="help" style="margin:0;">—</span>`;
+    const word = d.verdict === "better" ? " · mieux" : d.verdict === "worse" ? " · moins bien" : "";
+    return `<span class="ma-delta${d.verdict ? ` ma-delta--${d.verdict}` : ""}">${d.text}${word}</span>`;
   }
 
   // -- les courbes superposées : une médiane par plaque, l'enveloppe 10-90 % de la référence derrière --------------
@@ -367,7 +374,41 @@ const AnalysisData = (() => {
     }
     refreshBtn.addEventListener("click", () => reload({ refresh: true }));
 
+    // Ce que le bloc montre, pour le rapport (report-html.js) : les KPI (dessin, tableau), ce qui bouge pour chaque
+    // plaque (par clé : [{title, text, verdict}]) et les dessins de la fiche data tels qu'ils sont rendus.
+    function snapshot() {
+      const wafers = getAnalysis().wafers;
+      const moves = Object.fromEntries(wafers.map((w) => [w.key, []]));
+      const kpis = (state.kpis ? state.kpis.kpis : []).map((kpi) => {
+        const source = `${kpi.hook_title}${kpi.unit ? ` · ${kpi.unit}` : ""}`;
+        if (kpi.status !== "ok") return { title: kpi.title, source, better: kpi.better, status: kpi.status, message: kpi.message, svg: "", rows: [] };
+        const groups = kpi.groups.map((g, i) => ({ ...g, studies: [], index: i }));
+        const rows = kpi.groups.map((g, i) => {
+          const d = i === 0 ? null : deltaText(g.delta, kpi.better);
+          if (i > 0 && d && moves[g.key]) moves[g.key].push({ title: kpi.title, text: d.text, verdict: d.verdict });
+          return {
+            lasermark: g.wafer,
+            color: colorOf(i),
+            isRef: i === 0,
+            n: g.stats ? String(g.stats.n) : "—",
+            median: g.stats ? fmt(g.stats.median) : "aucune mesure",
+            delta: i === 0 ? "référence" : d ? d.text : "—",
+            verdict: d ? d.verdict : "",
+            date: g.date || "—",
+          };
+        });
+        return { title: kpi.title, source, better: kpi.better, status: "ok", message: "", svg: kpiBoxplotSvg(groups, { colorOf: (g) => colorOf(g.index), label: kpi.title }), rows };
+      });
+      const sheets = [...sheetsEl.querySelectorAll(".ma-sheet")].map((el) => ({
+        title: el.querySelector(".wd-chart__title")?.textContent || "",
+        kind: el.querySelector(".wd-chart__kind")?.textContent || "",
+        figure: (el.querySelector(".ma-figure") || el.querySelector(".ma-kpi__table-wrap"))?.innerHTML || "",
+      }));
+      return { kpis, sheets, moves };
+    }
+
     return {
+      snapshot,
       reload: () => {
         state.choices = null;
         renderEditor();

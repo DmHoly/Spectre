@@ -14,7 +14,7 @@
 
 (() => {
   const { analysis_id: analysisId } = routeParams("/analyses/{analysis_id}");
-  const state = { analysis: null, user: null, plates: new Map(), structures: new Map(), options: [], active: -1 };
+  const state = { analysis: null, user: null, plates: new Map(), structures: new Map(), options: [], active: -1, comparison: null };
   const errorEl = document.getElementById("error");
   const columnsEl = document.getElementById("columns");
   const chipsEl = document.getElementById("chips");
@@ -369,6 +369,7 @@
       .join(" ");
     note.hidden = !note.innerHTML;
     const items = comparable.map((w) => Comparator.waferItem(w.lasermark));
+    state.comparison = { keys: comparable.map((w) => w.key), result: null };
     const link = document.getElementById("open-comparator");
     link.hidden = !items.length;
     if (!items.length) return table.update(EMPTY_COMPARISON);
@@ -376,7 +377,10 @@
     const ticket = ++comparisonTicket;
     try {
       const result = await comparatorApi.compare(items, 0);
-      if (ticket === comparisonTicket) table.update(result);
+      if (ticket === comparisonTicket) {
+        table.update(result);
+        state.comparison.result = result;
+      }
     } catch (err) {
       if (ticket === comparisonTicket) {
         table.update(EMPTY_COMPARISON);
@@ -419,6 +423,116 @@
   });
 
   let data = null; // le bloc « Données » (analysis-data.js), monté au chargement
+
+  // -- le rapport ---------------------------------------------------------------------------------
+  // Un instantané de ce que montre la page, en un fichier HTML autonome (report-html.js) : les plaques et leurs
+  // structures, ce qui diffère de la référence et ce qui bouge, les KPI, la fiche data, le contexte de chaque
+  // plaque (relu : ses notes ont pu changer d'ici) et la conclusion.
+
+  const textOf = (html) => {
+    const el = document.createElement("div");
+    el.innerHTML = html || "";
+    return el.textContent.trim();
+  };
+
+  function factsText(plate) {
+    const latest = latestStudy(plate);
+    const fdl = plate.fdl.length ? plate.fdl : plate.line_fdl || [];
+    return [
+      { label: "Statut", value: latest ? (STATUS_LABELS[latest.experiment.status] || {}).label || latest.experiment.status : plate.record ? "fiche de plaque, sans étude" : "—" },
+      { label: "µprojets", value: plate.microprojects.map((m) => m.code || m.name).join(", ") || "—" },
+      { label: "Lot", value: plate.lot_name || "—" },
+      { label: "FDL", value: fdl.join(", ") || "—" },
+      { label: "Runs d'épi.", value: (plate.run_names || []).join(", ") || "—" },
+    ];
+  }
+
+  function studiesOf(plate) {
+    const seen = new Set();
+    return plate.occurrences
+      .filter((o) => o.experiment.member && !seen.has(o.experiment.id) && seen.add(o.experiment.id))
+      .map((o) => {
+        const conclusion = (o.experiment.story || {}).conclusion || {};
+        return { title: o.experiment.title, status: (STATUS_LABELS[o.experiment.status] || {}).label || "", conclusion: conclusion.summary || "", next: conclusion.next_steps || "" };
+      });
+  }
+
+  let logoPromise = null;
+  function loadLogo() {
+    if (!logoPromise) logoPromise = fetch("/static/kernel/img/aledia-logo.svg").then((r) => (r.ok ? r.text() : "")).catch(() => "");
+    return logoPromise;
+  }
+
+  async function buildReport() {
+    const a = state.analysis;
+    const [fresh, logoSvg] = await Promise.all([Promise.all(a.wafers.map((w) => wafersApi.get(w.lasermark).catch(() => null))), loadLogo()]);
+    const cached = await Promise.all(a.wafers.map(plateOf));
+    const plates = a.wafers.map((w, i) => fresh[i] || (cached[i].error ? null : cached[i]));
+    const structures = await Promise.all(a.wafers.map((w, i) => (cached[i].error ? null : structureFor(w, cached[i]))));
+    const snap = data ? data.snapshot() : { kpis: [], sheets: [], moves: {} };
+    const comparison = state.comparison || { keys: [], result: null };
+    const refRow = comparison.keys.indexOf(a.wafers[0].key);
+    const wafers = a.wafers.map((w, i) => ({
+      lasermark: w.lasermark,
+      color: AnalysisData.colorOf(i),
+      isRef: i === 0,
+      structure: structures[i] ? { svg: structures[i].html, caption: textOf(structures[i].caption) } : null,
+      facts: plates[i] ? factsText(plates[i]) : [],
+      notes: plates[i] ? plates[i].notes : null,
+      studies: plates[i] ? studiesOf(plates[i]) : [],
+    }));
+    const differences = a.wafers.slice(1).map((w, j) => {
+      const row = comparison.keys.indexOf(w.key);
+      const comparable = !!comparison.result && refRow === 0 && row > 0;
+      return {
+        lasermark: w.lasermark,
+        color: AnalysisData.colorOf(j + 1),
+        comparable,
+        items: comparable ? AnalysisReport.differences(comparison.result, row) : [],
+        kpis: snap.moves[w.key] || [],
+      };
+    });
+    const updated = a.updated_at !== a.created_at ? ` · modifiée par ${a.updated_by} le ${formatDate(a.updated_at)}` : "";
+    return {
+      title: a.title,
+      question: a.question,
+      conclusion: a.conclusion,
+      date: new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }),
+      byline: `Créée par ${a.created_by} le ${formatDate(a.created_at)}${updated}`,
+      logoSvg,
+      wafers,
+      differences,
+      kpis: snap.kpis,
+      sheets: snap.sheets,
+    };
+  }
+
+  function fileName(title) {
+    const base = title.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+    return `analyse-${base || analysisId}.html`;
+  }
+
+  const reportBtn = document.getElementById("report");
+  reportBtn.addEventListener("click", async () => {
+    reportBtn.disabled = true;
+    reportBtn.textContent = "Rapport en cours…";
+    try {
+      const html = AnalysisReport.build(await buildReport());
+      const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName(state.analysis.title);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      showError(err);
+    } finally {
+      reportBtn.disabled = false;
+      reportBtn.textContent = "Rapport";
+    }
+  });
 
   // -- au chargement ------------------------------------------------------------------------------
 
