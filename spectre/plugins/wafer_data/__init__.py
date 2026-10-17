@@ -19,6 +19,6 @@ PLUGIN = Plugin(
     nav=(NavEntry("Fiche data", "/fiche-data", order=43, match=r"^/fiche-data", group="data", glyph=SHEET_GLYPH),),
     migrations=MIGRATIONS,
     title="Fiche data des plaques",
-    description="Un onglet « Data » sur la page d'une plaque suivie : ses données principales (valeurs, histogrammes, cartographies, courbes, images), configurées par projet corporate, et sa généalogie.",
+    description="Un onglet « Data » sur la page d'une plaque suivie : ses données principales (valeurs, histogrammes, boîtes, nuages, cartographies, courbes, galeries d'images), aux colonnes typées, configurées par projet corporate, et sa généalogie.",
     icon="chart",
 )

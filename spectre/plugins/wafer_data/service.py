@@ -9,10 +9,12 @@ Ce qu'un bloc a calculé sur une plaque se garde, résumé (:mod:`.store`) ; on 
 - jamais calculé (ou oublié par le budget) : calculé, sur le cache par plaque de PRISM ;
 - calculé **sans mesure** (``empty``) il y a plus de :data:`RETRY_EMPTY` : recalculé en retapant la base -
   une plaque pas encore mesurée l'est peut-être depuis (le cache de PRISM, lui, garde un vide pour toujours) ;
-- des images listées il y a plus de :data:`RETRY_EMPTY` : relistées (un fichier a pu arriver) ;
+- des images d'un modèle de chemin listées il y a plus de :data:`RETRY_EMPTY` : relistées (un fichier a pu arriver) ;
 - ``refresh`` (le bouton « Rafraîchir ») : tout est recalculé en retapant la base.
 
-Chaque type de données n'est interrogé qu'une fois pour tous les blocs qui le lisent, d'un projet à l'autre.
+Chaque type de données n'est interrogé qu'une fois pour tous les blocs qui le lisent, d'un projet à l'autre ;
+chaque lecture garde au passage le profil de ses colonnes (:func:`.columns.profile`) - ce qui type les colonnes
+du catalogue d'après les vraies lignes. :func:`probe` lit un type sur des plaques du projet pour ça seulement.
 Un type en échec (base injoignable) ne prive pas des autres : ses blocs portent l'erreur, rien n'est gardé.
 :func:`compute_area` calcule d'avance les fiches de toutes les plaques d'un projet, par paquets - de quoi
 situer chaque valeur parmi toutes les plaques du projet.
@@ -37,9 +39,12 @@ from ..kpi_tracking.service import tracked_wafers
 from ..wafers import service as wafers
 from ..wafers import tracking
 from . import blocks as blocks_mod
+from . import columns as col_types
 from . import store
-from .blocks import Block
+from .blocks import Block, CatalogHook
 from .digest import COMPUTE, WAFER_COLUMNS, round4
+
+PROBE_WAFERS = 3
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +62,7 @@ def _age(computed_at: str) -> timedelta:
 def _stale(found: dict[str, Any] | None, block: Block) -> bool:
     if found is None:
         return True
-    if found["status"] == "empty" or block.kind == "images":
+    if found["status"] == "empty" or block.from_pattern:
         return _age(found["computed_at"]) > RETRY_EMPTY
     return False
 
@@ -78,12 +83,17 @@ def _rows_by_wafer(columns: list[str], rows: list[list[Any]]) -> dict[str, list[
 
 
 def _query(hook: str, lasermarks: list[str], refresh: bool) -> tuple[str, list[str], dict[str, list[list[Any]]]]:
-    source, columns, by_wafer = "", [], {}
+    source, columns, by_wafer, sample = "", [], {}, []
     for start in range(0, len(lasermarks), BATCH):
         result = characterization.query(hook, {characterization.WAFER_PARAMETER: lasermarks[start : start + BATCH]}, refresh=refresh)
         source, columns = result.source, result.columns
+        sample.extend(result.rows[: col_types.SAMPLE_ROWS - len(sample)])
         for key, rows in _rows_by_wafer(result.columns, result.rows).items():
             by_wafer.setdefault(key, []).extend(rows)
+    try:
+        store.observe(hook, col_types.profile(columns, sample))
+    except Exception:  # le profil n'est qu'un indice pour le catalogue : jamais au prix de la fiche
+        log.exception("fiche data : profil des colonnes de %s non gardé", hook)
     return source, columns, by_wafer
 
 
@@ -128,6 +138,19 @@ def _images(block: Block, lasermark: str, line: dict[str, Any] | None) -> tuple[
     return ("ok" if images else "empty"), {"images": images, "directory": directory, "total": len(matched)}, ""
 
 
+def _served(status: str, payload: dict[str, Any]) -> tuple[str, str]:
+    """Les images d'une colonne : celles qu'on ne servira pas (hors des dossiers autorisés) sont comptées ;
+    si aucune ne l'est, le bloc est en erreur (rien n'est gardé : la règle peut changer)."""
+    if status != "ok":
+        return status, ""
+    blocked = sum(1 for image in payload["images"] if not external_images.allowed(image["path"]))
+    payload["blocked"] = blocked
+    if blocked and blocked == len(payload["images"]):
+        folder = payload["images"][0]["path"].replace("\\", "/").rpartition("/")[0]
+        return "error", f"Ces images sont hors des dossiers autorisés pour les images externes (SPECTRE_EXTERNAL_IMAGE_ROOTS) : {folder}"
+    return status, ""
+
+
 def compute(
     pending: list[tuple[str, str, Block]], *, refresh: bool, line: dict[str, dict[str, Any]], retry: set[tuple[str, str]] = frozenset()
 ) -> tuple[dict[tuple[str, str], dict[str, Any]], set[str]]:
@@ -138,7 +161,7 @@ def compute(
     sources: set[str] = set()
     by_hook: dict[tuple[str, bool], list[tuple[str, str, Block]]] = {}
     for key, lasermark, block in pending:
-        if block.kind == "images":
+        if block.from_pattern:
             status, payload, message = _images(block, lasermark, line.get(key))
             computed_at = store.write(key, block.sig, status, payload) if status != "error" else None
             results[(key, block.sig)] = {"status": status, "payload": payload, "computed_at": computed_at, "message": message}
@@ -161,6 +184,11 @@ def compute(
             except InvalidInput as exc:
                 results[(key, block.sig)] = {"status": "error", "payload": None, "computed_at": None, "message": str(exc)}
                 continue
+            if block.kind == "images":
+                status, message = _served(status, payload)
+                if status == "error":
+                    results[(key, block.sig)] = {"status": "error", "payload": None, "computed_at": None, "message": message}
+                    continue
             payload["source"] = source
             computed_at = store.write(key, block.sig, status, payload, scalar=None if scalar is None else round4(scalar))
             results[(key, block.sig)] = {"status": status, "payload": payload, "computed_at": computed_at, "message": ""}
@@ -195,9 +223,10 @@ def wafer_areas(user: User, lasermark: str) -> tuple[str, list[tuple[ManagementA
     return name.strip(), out
 
 
-def _block_payload(block: Block, found: dict[str, Any] | None, *, wafer: str, hook_titles: dict[str, str]) -> dict[str, Any]:
+def _block_payload(block: Block, found: dict[str, Any] | None, *, wafer: str, entries: dict[str, CatalogHook]) -> dict[str, Any]:
     payload = (found or {}).get("payload")
     status = found["status"] if found else "pending"
+    entry = entries.get(block.hook)
     out = {
         "id": block.id,
         "kind": block.kind,
@@ -205,8 +234,9 @@ def _block_payload(block: Block, found: dict[str, Any] | None, *, wafer: str, ho
         "title": block.title,
         "label": block.label,
         "hook": block.hook,
-        "hook_title": hook_titles.get(block.hook, block.hook),
-        "unit": block.unit,
+        "hook_title": entry.title if entry else block.hook,
+        "unit": block.unit(entry),
+        "units": {key: (entry.column(name) or {}).get("unit", "") for key in ("x", "y") if entry and (name := block.config.get(key))},
         "config": block.config,
         "status": status,
         "message": (found or {}).get("message", ""),
@@ -217,7 +247,13 @@ def _block_payload(block: Block, found: dict[str, Any] | None, *, wafer: str, ho
         out["data"] = {
             **{k: v for k, v in payload.items() if k != "images"},
             "images": [
-                {"name": image["name"], "url": f"/api/wafers/{wafer}/data/images/{block.id}/{i}"} for i, image in enumerate(payload.get("images", []))
+                {
+                    "name": image["name"],
+                    "url": f"/api/wafers/{wafer}/data/images/{block.id}/{i}",
+                    "meta": image.get("meta", {}),
+                    "g": image.get("g", 0),
+                }
+                for i, image in enumerate(payload.get("images", []))
             ],
         }
     if block.kind == "value" and payload and status == "ok":
@@ -235,14 +271,14 @@ def sheet(user: User, lasermark: str, *, refresh: bool = False) -> dict[str, Any
     stale = [b for b in every if refresh or _stale(stored.get(b.sig), b)]
     retry = {(key, b.sig) for b in stale if stored.get(b.sig, {}).get("status") == "empty"}
     unique = {b.sig: b for b in stale}
-    line = tracking.line_facts([key]) if any(b.kind == "images" for b in unique.values()) else {}
+    line = tracking.line_facts([key]) if any(b.from_pattern for b in unique.values()) else {}
     computed, sources = compute([(key, name, b) for b in unique.values()], refresh=refresh, line=line, retry=retry) if unique else ({}, set())
     for (_, sig), result in computed.items():
         stored[sig] = result
     for found in stored.values():
         if found.get("payload") and found["payload"].get("source"):
             sources.add(found["payload"]["source"])
-    hook_titles = {h.hook: h.title for h in blocks_mod.catalog()} if every else {}
+    entries = {h.hook: h for h in blocks_mod.catalog()} if every else {}
     return {
         "wafer": {"key": key, "lasermark": name},
         "source": sorted(sources)[0] if len(sources) == 1 else ("mixed" if sources else None),
@@ -251,7 +287,7 @@ def sheet(user: User, lasermark: str, *, refresh: bool = False) -> dict[str, Any
                 "area": {"slug": area.slug, "name": area.name},
                 "can_manage": areas.can_manage(user, area),
                 "microprojects": refs,
-                "blocks": [_block_payload(b, stored.get(b.sig), wafer=key, hook_titles=hook_titles) for b in by_area.get(area.id, [])],
+                "blocks": [_block_payload(b, stored.get(b.sig), wafer=key, entries=entries) for b in by_area.get(area.id, [])],
             }
             for area, refs in found_areas
         ],
@@ -281,7 +317,7 @@ def compute_area(area: ManagementArea, user: User, *, offset: int = 0, refresh: 
     manquent, ou toutes avec ``refresh``. La page enchaîne les paquets (``next_offset``) en montrant l'avancée."""
     all_wafers = list(tracked_wafers(area, user).items())
     chunk = all_wafers[offset : offset + BATCH]
-    area_blocks = [b for b in blocks_mod.list_blocks(area) if b.kind != "images"]
+    area_blocks = [b for b in blocks_mod.list_blocks(area) if not b.from_pattern]
     pending, retry = [], set()
     for key, wafer in chunk:
         stored = store.read(key, [b.sig for b in area_blocks])
@@ -301,3 +337,22 @@ def compute_area(area: ManagementArea, user: User, *, offset: int = 0, refresh: 
         "errors": errors[:5],
         "source": sorted(sources)[0] if len(sources) == 1 else ("mixed" if sources else None),
     }
+
+
+# --- les colonnes d'un type de données ----------------------------------------------------------------
+
+
+def probe(area: ManagementArea, user: User, hook: str, *, lasermark: str | None = None) -> CatalogHook:
+    """Lit ``hook`` sur une plaque donnée ou sur quelques plaques du projet (:data:`PROBE_WAFERS`, celles
+    que suivent ses µprojets) pour en observer les vraies colonnes et leurs types ; rend l'entrée du catalogue
+    à jour. Passe par le cache de PRISM : une plaque déjà lue ne retape pas la base."""
+    if blocks_mod.catalog_entry(hook) is None:
+        raise NotFound(f"« {hook} » n'est pas un type de données PRISM par plaque.")
+    if lasermark:
+        names = [lasermark.strip()]
+    else:
+        names = [w["wafer"] for w in tracked_wafers(area, user).values()][:PROBE_WAFERS]
+    if not names:
+        raise InvalidInput("Aucune plaque suivie dans ce projet : indiquez une plaque sur laquelle lire les colonnes.", code="no_wafer_to_probe")
+    _query(hook, names, False)
+    return blocks_mod.catalog_entry(hook)

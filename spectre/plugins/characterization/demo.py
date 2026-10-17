@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import random
 from datetime import date, timedelta
 from typing import Any
@@ -38,7 +39,7 @@ def _logspace(a: float, b: float, n: int) -> list[float]:
 def _eqe(wafers: list[str]) -> tuple[list[str], list[list[Any]]]:
     columns = [
         "wafername", "X", "Y", "Led_Name", "I", "V", "EQE", "max_EQE", "J_at_MaxEQE", "V at Max EQE",
-        "yield_per_wafer", "area_cm2", "is_lit", "Lambda_Peak", "FWHM", "EQE_25A_cm2",
+        "yield_per_wafer", "area_cm2", "is_lit", "Lambda_Peak", "FWHM", "EQE_25A_cm2", "pitch_nm",
     ]
     rows = []
     for wafer in wafers:
@@ -62,15 +63,20 @@ def _eqe(wafers: list[str]) -> tuple[list[str], list[list[Any]]]:
                 eqe.append(round(eqe_max * 2 * math.sqrt(j / j0) / (1 + j / j0), 6))
             volt = [round(2.6 + 0.09 * math.log(amp / 1e-6) + amp * rng.uniform(55, 80), 4) for amp in current]
             best = max(range(len(eqe)), key=lambda k: eqe[k])
+            peak = max(eqe)
+            # comme PRISM : sous le seuil de détection, l'EQE (et la longueur d'onde) d'un point n'est pas mesurée (NaN)
+            measured = [amp >= 2e-5 for amp in current]
             lam = [round(lam0 + 6 * r - 1.5 * math.log10(amp / 1e-6) + rng.uniform(-0.6, 0.6), 2) for amp in current]
             j25 = 25.0
             eqe25 = eqe_max * 2 * math.sqrt(j25 / j0) / (1 + j25 / j0)
             lit.append(not dead)
             wafer_rows.append(
                 [
-                    wafer, x + 7, y + 7, f"MONO2-118x118-{5800 + i}-R", [round(a, 9) for a in current], volt, eqe,
-                    round(max(eqe), 6), round(current[best] / area, 3), volt[best], None, area, not dead, lam,
-                    [round(rng.uniform(18, 24), 2)] * len(current), round(eqe25, 6),
+                    wafer, x + 7, y + 7, f"MONO2-118x118-{5800 + i}-R", [round(a, 9) for a in current], volt,
+                    [e if ok else None for e, ok in zip(eqe, measured)],
+                    round(peak, 6), round(current[best] / area, 3), volt[best], None, area, not dead,
+                    [v if ok else None for v, ok in zip(lam, measured)],
+                    [round(rng.uniform(18, 24), 2)] * len(current), round(eqe25, 6), float((600, 800, 1000)[i % 3]),
                 ]
             )
         yield_pct = round(100 * sum(lit) / len(lit), 1)
@@ -129,7 +135,24 @@ def _waferlist(wafers: list[str]) -> tuple[list[str], list[list[Any]]]:
     return columns, rows
 
 
-GENERATORS = {"eqe": _eqe, "pl": _pl, "ncel": _ncel, "waferlist": _waferlist}
+def _el_pattern(wafers: list[str]) -> tuple[list[str], list[list[Any]]]:
+    """Le catalogue des images EL, comme le loader de PRISM le lit sur le partage réseau : une ligne par image,
+    son chemin sous ``PRISM_EL_ROOT`` (les fichiers n'existent pas : seuls les chemins sont de démonstration)."""
+    columns = ["X", "Y", "led_name", "image_number", "type", "name", "full_path", "wafername"]
+    root = os.environ.get("PRISM_EL_ROOT") or r"O:\00-Mesure\DBFiles"
+    rows = []
+    for wafer in wafers:
+        rng = _rng("el_pattern", wafer)
+        devices = [(rng.randint(0, 9), rng.randint(0, 9), f"CST-NR-A-{size}x{size}-{100 + k}") for k, size in enumerate((5, 5, 10, 10, 20, 20, 50, 50))]
+        for k, (x, y, led) in enumerate(devices):
+            shots = [("LightImage", 0)] + ([("LIVSweepImages", n) for n in range(4)] if k < 3 else [])
+            for kind, number in shots:
+                name = f"{kind},{x},{y},{led}_Image_{number}.png"
+                rows.append([str(x), str(y), led, str(number), kind, name, os.path.join(root, wafer, "EL_Pattern", name), wafer])
+    return columns, rows
+
+
+GENERATORS = {"eqe": _eqe, "pl": _pl, "ncel": _ncel, "waferlist": _waferlist, "el_pattern": _el_pattern}
 
 
 class DemoSource:
