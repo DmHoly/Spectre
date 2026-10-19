@@ -25,6 +25,9 @@ from urllib.parse import quote
 
 from ...kernel import plugin_states
 from ...kernel.errors import NotFound, Unavailable
+from ..accounts.service import User
+from ..wafers import tracking
+from ..wafers import service as wafers_service
 from ..wafers.service import wafer_key
 from . import source
 
@@ -40,6 +43,41 @@ _lock = threading.Lock()
 # clé de plaque -> (lue à, liste rendue, {chemin relatif: chemin absolu})
 _listings: dict[str, tuple[float, dict[str, Any], dict[str, str]]] = {}
 _job: dict[str, Any] = {"running": False, "full": False, "started_at": None, "error": None}
+
+
+MAX_FDLS = 12
+
+
+def known_fdls(user: User, lasermark: str, extra: Iterable[str] = ()) -> list[str]:
+    """Les FDL où chercher : celles que la vie en ligne connaît à la plaque, celles de ses études (vues par
+    ``user``), puis ``extra`` - :data:`MAX_FDLS` au plus."""
+    key = wafer_key(lasermark)
+    line = tracking.line_facts([key]).get(key) or {}
+    studies = [value for o in wafers_service.occurrences(user, keys=[lasermark]) for value in o.entry.get("fdl") or []]
+    return clean_fdls([*(line.get("fdls") or []), *studies, *extra])[:MAX_FDLS]
+
+
+def timeline_events(user: User, lasermark: str) -> list[dict[str, Any]]:
+    """Pour la frise d'une plaque (``wafers.timeline``) : une acquisition MEB du G4 = un événement « données »
+    à la date de ses derniers fichiers. Rien si le partage n'est pas là (la frise se dessine sans)."""
+    try:
+        found = listing(lasermark, known_fdls(user, lasermark))
+    except Exception as exc:  # noqa: BLE001 - partage absent, PRISM trop ancien : pas d'événement
+        logger.info("frise de %s : images MEB non lues (%s)", lasermark, exc)
+        return []
+    out = []
+    for group in found.get("groups") or []:
+        when = group.get("last") or group.get("first")
+        if not when:
+            continue
+        where = " · ".join(str(v) for v in (group.get("step"), group.get("fdl"), group.get("process")) if v)
+        out.append({
+            "kind": "data", "at": when, "end": None, "precision": "minute",
+            "label": f"MEB G4 · {group['count']} image{'s' if group['count'] > 1 else ''}" + (f" · {group['step']}" if group.get("step") else ""),
+            "detail": where, "source": "PRISM meb_g4",
+            "ref": {"detail": "data", "hook": source.HOOK, "folder": group.get("folder"), "rows": group["count"]},
+        })
+    return out
 
 
 def clean_fdls(values: Iterable[str | None]) -> list[str]:

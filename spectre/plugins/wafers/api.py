@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from ..accounts.deps import current_user
 from ..accounts.service import User
 from ..experiments.entities import MAX_TRACKED_ENTITIES
-from . import fdl_source, links, notes, records, service, structures, tracking
+from . import fdl_source, links, notes, records, service, structures, timeline, tracking
 
 router = APIRouter(prefix="/api", tags=["wafers"])
 
@@ -161,6 +161,14 @@ def get_wafer_tracking(wafer_key: str, user: User = Depends(current_user)) -> di
     ``dormant``, ``auto_refresh``, ``error``). Lue des bases si jamais lue ou plus vieille que 24 h -
     sauf plaque immobile depuis 30 jours - sinon rendue telle que gardée."""
     return tracking.read(wafer_key)
+
+
+@router.get("/wafers/{wafer_key}/timeline")
+def get_wafer_timeline(wafer_key: str, user: User = Depends(current_user)) -> dict:
+    """La frise de la plaque (:mod:`.timeline`) : ``events`` (fabrication et mesures MES, tests, étapes JIRA
+    faites, données déclarées par les autres plugins), ``counts`` par genre et ``svg``, le dessin tel que la
+    page et le rapport le montrent (une marque cliquable par événement)."""
+    return timeline.frieze(user, wafer_key)
 
 
 @router.post("/wafers/{wafer_key}/tracking/refresh")

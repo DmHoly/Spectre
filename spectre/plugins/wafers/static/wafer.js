@@ -310,6 +310,16 @@ const PlateTabs = (() => {
     if (wired && current === name) fn();
   }
 
+  // un lien « voir dans Data » posé ailleurs sur la page (la frise, une fenêtre de détail)
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("[data-tab-link]");
+    if (!link || !wired) return;
+    event.preventDefault();
+    document.querySelector("dialog[open]")?.close();
+    select(link.dataset.tabLink);
+    document.getElementById("plate-tabs").scrollIntoView({ block: "start", behavior: "smooth" });
+  });
+
   return { show, select, onShow, shown: () => wired };
 })();
 

@@ -31,6 +31,10 @@ const wafersApi = {
   tracking(waferKey) {
     return api.get(`/api/wafers/${encodeURIComponent(waferKey)}/tracking`);
   },
+  // la frise de la plaque : {events: [{index, kind, at, end, label, detail, source, ref}], counts, svg}
+  timeline(waferKey) {
+    return api.get(`/api/wafers/${encodeURIComponent(waferKey)}/timeline`);
+  },
   // relit les bases quoi qu'il arrive (le bouton « Rafraîchir »)
   refreshTracking(waferKey) {
     return api.post(`/api/wafers/${encodeURIComponent(waferKey)}/tracking/refresh`, {});

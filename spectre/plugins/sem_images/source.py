@@ -39,7 +39,10 @@ def root() -> Path:
 
 
 def require_root() -> Path:
-    """La racine, si le partage est monté ; :class:`Unavailable` sinon."""
+    """La racine, si le partage est monté ; :class:`Unavailable` sinon - et toujours en démonstration
+    (``SPECTRE_DEMO_DATA=1`` : aucune donnée réelle n'est lue, le partage non plus)."""
+    if os.environ.get("SPECTRE_DEMO_DATA") == "1":
+        raise Unavailable("Pas d'images MEB en démonstration : le partage n'est pas lu.", code="sem_demo")
     base = root()
     if not base.exists():
         raise Unavailable(f"Le partage des images MEB n'est pas accessible ({base}) : lecteur réseau non monté ?", code="sem_root_missing")

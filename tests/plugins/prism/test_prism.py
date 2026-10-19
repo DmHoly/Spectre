@@ -38,7 +38,7 @@ def test_the_data_menu_groups_prism_for_admins_and_the_plate_index(client):
     nav = _nav(client.get("/").text)
     assert nav.count("topbar__group-btn") >= 1 and "<span>Data</span>" in nav
     menu = re.search(r'id="nav-menu-data".*?</div>', nav, re.DOTALL).group(0)
-    assert re.findall(r'href="([^"]+)"', menu) == ["/prism/donnees", "/plaques", "/kpi", "/fiche-data", "/analyses"]
+    assert re.findall(r'href="([^"]+)"', menu) == ["/prism/donnees", "/lots", "/plaques", "/kpi", "/fiche-data", "/analyses", "/lumiere"]  # Lots et Rapports (lumiere) ont rejoint le menu Data
     prism_link = re.search(r'<a[^>]*href="/prism/donnees"[^>]*>', menu).group(0)
     assert "data-admin-only" in prism_link  # révélée par la session d'un administrateur seulement
     assert "data-admin-only" not in re.search(r'<a[^>]*href="/plaques"[^>]*>', menu).group(0)
@@ -50,7 +50,7 @@ def test_the_old_data_page_is_gone_and_prism_off_hides_its_entry(client):
     assert client.patch("/api/plugins/prism", json={"enabled": False}).json()["active"] is False
     assert client.get("/prism/donnees").status_code == 404
     menu = re.search(r'id="nav-menu-data".*?</div>', _nav(client.get("/").text), re.DOTALL).group(0)
-    assert re.findall(r'href="([^"]+)"', menu) == ["/plaques", "/kpi", "/fiche-data", "/analyses"]
+    assert re.findall(r'href="([^"]+)"', menu) == ["/lots", "/plaques", "/kpi", "/fiche-data", "/analyses", "/lumiere"]
     assert "prism" in plugins_off(client.get("/").text)
     experiment_page = client.get("/microprojets/x/experiences/y").text
     assert "prism" in plugins_off(experiment_page)  # le menu « Données en base » ne s'ouvre plus sur PRISM

@@ -45,7 +45,8 @@ PUBLIC_EXTRA: dict[str, set[str]] = {
     # lot JIRA détecté quand une plaque est lue, les hooks de la ligne lus par son adaptateur) ; les
     # autres noms d'une plaque (le sélecteur de plaques d'une analyse la retrouve par l'un d'eux)
     # (le rapport Lumière d'une plaque lit aussi ses notes)
-    "wafers": {"records", "tracking", "links", "notes"},
+    # (la frise d'une plaque : les autres plugins y déclarent ce qu'ils savent dater, le rapport Lumière la dessine)
+    "wafers": {"records", "tracking", "links", "notes", "timeline"},
     # le rendu des TIF du G4 (vignettes incorporées au rapport Lumière d'une plaque)
     "sem_images": {"render"},
     "process_library": {"tech_bricks"},

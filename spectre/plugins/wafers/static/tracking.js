@@ -8,7 +8,9 @@
    étapes), un ticket, une action MES - une fenêtre (TrackingDetail) en montre tout le détail, la
    description de l'étape JIRA comprise. Les étapes JIRA annulées / écartées ne sont pas montrées (comptées à
    part) ; dans le parcours MES, les actions de mesure (MEASUREMENT_DEV, Mesure PL, METRO...) sont marquées
-   « mesure » : on voit quand la plaque a été caractérisée entre deux étapes de fabrication. */
+   « mesure » : on voit quand la plaque a été caractérisée entre deux étapes de fabrication - et la frise des
+   mesures (GET .../timeline, dessinée par le serveur : fabrication, mesures MES, tests, données, étapes JIRA
+   faites sur un seul axe) ouvre le parcours MES ; chaque marque ouvre son détail. */
 
 const STEP_CATEGORY_LABELS = { done: "faite", running: "en cours", hold: "en pause", todo: "à faire", skipped: "annulée / écartée" };
 const STEP_CATEGORY_TAGS = { done: "plate-tag--done", running: "plate-tag--run", hold: "plate-tag--warn", todo: "plate-tag--mute", skipped: "plate-tag--mute" };
@@ -437,7 +439,10 @@ function trackingHtml(data) {
     </div>
     <details class="card plate-life__details js-journey" ${data.status === "en cours" ? "open" : ""}>
       <summary>Parcours MES <span class="help" style="display:inline;margin:0;">${groupSteps(data.steps).reduce((n, r) => n + r.steps.length, 0)} étapes · ${data.n_steps} action${data.n_steps > 1 ? "s" : ""}${data.n_measurements ? ` · ${data.n_measurements} mesure${data.n_measurements > 1 ? "s" : ""}` : ""}</span></summary>
-      <div class="plate-life__details-body">${stepsHtml(data.steps)}</div>
+      <div class="plate-life__details-body">
+        <div class="plate-timeline js-timeline"><p class="help" style="margin:0 0 8px;">Frise des mesures : chargement…</p></div>
+        ${stepsHtml(data.steps)}
+      </div>
     </details>
     <details class="card plate-life__details">
       <summary>Fiche wafer Gozer <span class="help" style="display:inline;margin:0;">${record.length} champ${record.length > 1 ? "s" : ""}</span></summary>
@@ -463,8 +468,74 @@ function bindTrackingDetails(body, current) {
     } else if (kind === "action") {
       const row = data.steps[Number(target.dataset.index)];
       if (row) TrackingDetail.open(actionDetail(row));
+    } else if (kind === "test") {
+      const test = data.tests[Number(target.dataset.index)];
+      if (test) TrackingDetail.open(testDetail(test));
+    } else if (kind === "timeline") {
+      const ev = data.timeline && data.timeline.events[Number(target.dataset.index)];
+      if (ev) openTimelineEvent(data, ev);
     }
   });
+  body.addEventListener("keydown", (event) => {
+    if ((event.key === "Enter" || event.key === " ") && event.target.closest && event.target.closest("[data-detail=timeline]")) {
+      event.preventDefault();
+      event.target.closest("[data-detail=timeline]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }
+  });
+}
+
+// Un événement de la frise ouvre ce qu'il désigne : l'action MES, l'étape JIRA, le test ; une donnée dit où elle est
+function openTimelineEvent(data, ev) {
+  const ref = ev.ref || {};
+  if (ref.detail === "action" && data.steps[ref.index]) return TrackingDetail.open(actionDetail(data.steps[ref.index]));
+  if (ref.detail === "fdl-step" && data.fdls[ref.request] && data.fdls[ref.request].steps[ref.index]) return TrackingDetail.open(fdlStepDetail(data.fdls[ref.request], data.fdls[ref.request].steps[ref.index]));
+  if (ref.detail === "test" && data.tests[ref.index]) return TrackingDetail.open(testDetail(data.tests[ref.index]));
+  return TrackingDetail.open({
+    title: ev.label,
+    sub: ev.source || "données",
+    body: `${kvHtml([
+      ["Quand", `${trackingDate(ev.at)}${ev.end ? ` → ${trackingDate(ev.end)}` : ""}`],
+      ["Détail", ev.detail],
+      ["Lignes", ref.rows],
+      ["Type de données", ref.hook],
+    ])}<p class="help" style="margin:12px 0 0;">Ces données se regardent dans l'onglet <a href="#data" data-tab-link="data">Data</a> de la plaque.</p>`,
+  });
+}
+
+// Le détail d'un test PRISM
+function testDetail(test) {
+  return {
+    title: test.type || "Test",
+    sub: `Test PRISM${test.id ? ` · ${test.id}` : ""}`,
+    body: kvHtml([
+      ["Début", test.start ? trackingDate(test.start) : trackingDate(test.date)],
+      ["Fin", test.end ? trackingDate(test.end) : null],
+      ["Capteur", test.sensor],
+      ["Opérateur", test.operator],
+      ["Prober", test.prober],
+      ["Température", test.temperature],
+      ["Lot", test.lot],
+      ["FDL", test.request],
+      ["Description", test.description],
+      ["Rapport", test.report ? `<a href="${escapeHtml(test.report)}" target="_blank" rel="noopener">ouvrir</a>` : null, true],
+    ]),
+  };
+}
+
+// La frise de la plaque (wafersApi.timeline) dans le parcours MES : dessinée par le serveur, cliquable ici
+async function loadTimeline(body, waferKey, data) {
+  const host = body.querySelector(".js-timeline");
+  if (!host) return;
+  try {
+    const frieze = await wafersApi.timeline(waferKey);
+    if (!host.isConnected) return;
+    data.timeline = frieze;
+    const c = frieze.counts || {};
+    const said = [c.measure ? `${c.measure} mesure${c.measure > 1 ? "s" : ""} MES` : "", c.test ? `${c.test} test${c.test > 1 ? "s" : ""}` : "", c.data ? `${c.data} jour${c.data > 1 ? "s" : ""} de données` : "", c.jira ? `${c.jira} étape${c.jira > 1 ? "s" : ""} JIRA faite${c.jira > 1 ? "s" : ""}` : ""].filter(Boolean);
+    host.innerHTML = `<div class="plate-timeline__head"><strong>Frise des mesures</strong><span class="help" style="display:inline;margin:0;">${said.length ? escapeHtml(said.join(" · ")) : "quand la plaque a été mesurée, entre deux étapes"} - cliquez une marque</span></div>${frieze.svg}`;
+  } catch (err) {
+    host.innerHTML = `<p class="help" style="margin:0 0 8px;">Frise indisponible : ${escapeHtml(err.message || String(err))}</p>`;
+  }
 }
 
 // host : la section de la page ; waferKey : la plaque ; onData : appelé à chaque fiche lue (la page
@@ -483,6 +554,7 @@ async function initWaferTracking(host, waferKey, onData) {
     fresh.innerHTML = freshnessHtml(data.meta);
     body.innerHTML = trackingHtml(data);
     bindJourneySearch(body.querySelector(".js-journey"), data.steps);
+    loadTimeline(body, waferKey, data);
     if (onData) onData(data);
   }
 

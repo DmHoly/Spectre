@@ -5,8 +5,13 @@ montre la fiche se configure par projet corporate (page ``/fiche-data`` du menu 
 ce qu'elle calcule se garde résumé, hors de la base de Spectre (:mod:`.store`)."""
 
 from ...kernel.plugin import NavEntry, Page, Plugin
+from ..wafers import timeline
+from . import timeline_source
 from .api import router
 from .migrations import MIGRATIONS
+
+# La frise d'une plaque : les jours où chaque type de données PRISM l'a mesurée.
+timeline.register_source("wafer_data", timeline_source.data_events)
 
 # Une fiche à quatre cases (24x24, à trait), devant « Fiche data » dans le menu Data.
 SHEET_GLYPH = '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><path d="M14 20l2.5-3 2 2L21 15"/>'

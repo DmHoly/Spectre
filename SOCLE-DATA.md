@@ -348,7 +348,9 @@ Ils ne partagent rien, ne savent pas faire de Plotly, et chaque nouvelle donnée
 
 **Ce qui est fait le 2026-10-19 (dans ce dépôt, non commité)** : dans le parcours MES de la page plaque, les actions de mesure (`MEASUREMENT_DEV`, `Mesure PL`, `METRO_*`, `INSPECTION`…) portent la marque « mesure » et sont comptées (`tracking_model.is_measurement`, `n_measurements`) ; les étapes JIRA annulées / écartées ne sont plus montrées (comptées à part).
 
-**Ce qui reste à faire : une seule chronologie.** Aujourd'hui la page montre quatre listes séparées : les étapes MES, les FDL JIRA, les tests PRISM (`wafer_tests`) et, ailleurs, les mesures des hooks (eqe, pl, el_pattern, meb_g4). La frise les pose sur **un seul axe de temps**, par plaque :
+**Fait le 2026-10-19 (F1, première version)** : `wafers.timeline` (événements de la vie en ligne + sources déclarées par `register_source` : les jours de mesure de chaque type daté par wafer_data, les acquisitions du G4 par sem_images), dessiné en SVG autonome par le serveur (`GET /api/wafers/{key}/timeline`), montré en tête du parcours MES (chaque marque ouvre son détail) et en slide « Frise des mesures » du rapport Lumière. Reste : le composant Lumière *montable* (L0), le clic qui ouvre le composant de la session, la précision à la minute (T1).
+
+**Ce qui restait à faire : une seule chronologie.** La page montrait quatre listes séparées : les étapes MES, les FDL JIRA, les tests PRISM (`wafer_tests`) et, ailleurs, les mesures des hooks (eqe, pl, el_pattern, meb_g4). La frise les pose sur **un seul axe de temps**, par plaque :
 
 | Rang | Source | Événement | Date |
 |---|---|---|---|

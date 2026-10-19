@@ -6,12 +6,15 @@ rangées par acquisition (FDL, procédé, étape) et affichées sans rien copier
 
 from ...kernel.plugin import Plugin
 from ..wafer_data import service as wafer_data
+from ..wafers import timeline
 from . import service, source
 from .api import router
 
 # Les blocs « images » de la fiche data et des analyses lus dans le type de données meb_g4 sont servis par ce plugin
 # (vignette JPEG, PNG entier d'un TIF), pas par les images externes.
 wafer_data.register_image_server(source.HOOK, service.image_urls)
+# La frise d'une plaque : ses acquisitions MEB du G4, datées.
+timeline.register_source("sem_images", service.timeline_events)
 
 PLUGIN = Plugin(
     name="sem_images",

@@ -35,7 +35,7 @@ TEMPLATES: dict[str, Template] = {
         description="Tout ce que Spectre sait d'une plaque, en slides : son contexte (études, notes), sa vie en ligne (MES, FDL JIRA, tests), ses données de caractérisation par type (cartes et distributions), ses images MEB du G4.",
         context="wafer",
         build=wafer_report.build,
-        slides=("Titre", "Contexte", "Vie en ligne", "Données par type (cartes, boîtes)", "Images MEB - G4", "Sommaire"),
+        slides=("Titre", "Contexte", "Frise des mesures", "Vie en ligne", "Données par type (cartes, boîtes)", "Images MEB - G4", "Sommaire"),
     ),
 }
 

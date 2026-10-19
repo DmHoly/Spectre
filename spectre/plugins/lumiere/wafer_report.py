@@ -1,6 +1,7 @@
 """Le modèle « Fiche plaque » : le rapport Lumière d'une plaque, construit avec ce que Spectre sait d'elle.
 
 Slide par slide : le titre ; son **contexte** (les études qui la suivent, ses notes, ses FDL, son lot, ses runs) ;
+sa **frise des mesures** (``wafers.timeline`` : fabrication, mesures MES, tests, données, étapes JIRA faites) ;
 sa **vie en ligne** (le bloc de suivi de Lumière, ``WaferTrackingBlock``, nourri des mêmes tables que la page de la
 plaque : MES, Gozer, FDL JIRA, tests - et, si ce bloc échoue, un tableau du parcours MES) ; ses **données** : pour
 chaque type de données PRISM par plaque qui a des positions (eqe, pl...), une ``WaferMaps`` de ses colonnes
@@ -23,7 +24,7 @@ from ..characterization import service as characterization
 from ..sem_images import render as sem_render
 from ..sem_images import service as sem_images
 from ..wafer_data import blocks as wafer_data_blocks
-from ..wafers import notes, records, tracking
+from ..wafers import notes, records, timeline, tracking
 from ..wafers import service as wafers
 from . import engine
 
@@ -260,6 +261,17 @@ def build(user: User, lasermark: str) -> Any:
     context = lumiere.Slide("Contexte")
     context.add(engine.html_block(CSS + _facts(passport, notes.get(lasermark), life), title="Contexte", subtitle="études, notes, identifiants"))
     slides.append(context)
+
+    frieze = lumiere.Slide("Frise des mesures")
+    try:
+        found = timeline.events(user, name)
+        counts = {k: sum(1 for e in found if e["kind"] == k) for k in timeline.KINDS}
+        said = " · ".join(f"{n} {timeline.KINDS[k].lower()}" for k, n in counts.items() if n)
+        frieze.add(engine.html_block(CSS + timeline.svg(found, title=f"Frise de {name}"), title="Frise des mesures", subtitle=said or "aucun événement daté"))
+    except Exception as exc:  # noqa: BLE001 - la frise ne fait pas échouer le rapport
+        log.info("rapport de %s : frise non dessinée (%s)", name, exc)
+        frieze.add(engine.html_block(CSS + "<p><em>Frise indisponible.</em></p>", title="Frise des mesures"))
+    slides.append(frieze)
 
     online = lumiere.Slide("Vie en ligne")
     try:

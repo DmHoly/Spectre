@@ -19,21 +19,16 @@ from fastapi.responses import JSONResponse
 from ...kernel.errors import Forbidden
 from ..accounts.deps import current_user
 from ..accounts.service import User
-from ..wafers import service as wafers_service
-from ..wafers import tracking
 from . import render, service
 
 router = APIRouter(prefix="/api", tags=["sem-images"])
 
-MAX_FDLS = 12
+MAX_FDLS = service.MAX_FDLS
 
 
 def _fdls(user: User, lasermark: str, extra: list[str]) -> list[str]:
     """Les FDL où chercher : celles que la vie en ligne connaît à la plaque, celles de ses études, puis ``extra``."""
-    key = wafers_service.wafer_key(lasermark)
-    line = tracking.line_facts([key]).get(key) or {}
-    studies = [value for o in wafers_service.occurrences(user, keys=[lasermark]) for value in o.entry.get("fdl") or []]
-    return service.clean_fdls([*(line.get("fdls") or []), *studies, *extra])[:MAX_FDLS]
+    return service.known_fdls(user, lasermark, extra)
 
 
 @router.get("/wafers/{wafer_key}/sem-images")
