@@ -20,6 +20,7 @@ from .kpis_demo import PLUGIN as kpis_demo
 from .library import PLUGIN as library
 from .links import PLUGIN as links
 from .lots import PLUGIN as lots
+from .lumiere import PLUGIN as lumiere
 from .materials import PLUGIN as materials
 from .meta_analysis import PLUGIN as meta_analysis
 from .microprojects import PLUGIN as microprojects
@@ -77,5 +78,6 @@ PLUGINS = (
     wafer_data,
     meta_analysis,
     sem_images,
+    lumiere,
     docs,
 )

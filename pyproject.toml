@@ -14,6 +14,9 @@ dependencies = [
     # PRISM : le dictionnaire de données de caractérisation (hooks, connexions, cache, KPI).
     # [postgres] amène psycopg2, [charts] le rendu des graphiques de la page /donnees.
     "prism-aledia-datahook[postgres,charts] @ git+https://gitlab-it.aledia.com/sda/tools/soft/prism.git@master",
+    # Lumière : le moteur de rapports HTML (blocs Plotly, wafer maps, suivi de plaques) - plugin « lumiere ».
+    # Il déclare PRISM par la même URL que ci-dessus : une seule installation de PRISM, partagée.
+    "lumiere-report-engine @ git+https://gitlab-it.aledia.com/sda/analysis/report/lumiere_report_engine.git",
     "pandas>=2.0",
     "scipy>=1.11",
     "matplotlib>=3.8",

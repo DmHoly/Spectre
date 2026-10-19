@@ -1,0 +1,133 @@
+/* Plugin lumiere : la page « Rapports » et la fenêtre « Rapport » de la page d'une plaque. */
+
+.lm-page__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.lm-page__head p {
+  max-width: 760px;
+}
+.lm-subtitle {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+  margin: 18px 0 8px;
+}
+
+/* -- la liste des rapports ------------------------------------------------------------------- */
+.lm-reports {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lm-report {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.lm-report.is-busy {
+  border-style: dashed;
+}
+.lm-report__main {
+  min-width: 0;
+}
+.lm-report__title {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lm-report__meta {
+  font-size: 12.5px;
+  color: var(--text-soft);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.lm-report__message {
+  color: var(--hold);
+}
+.lm-report__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.lm-report__wait {
+  display: inline-block;
+  width: 86px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+}
+
+/* -- les modèles ----------------------------------------------------------------------------- */
+.lm-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.lm-template {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.lm-template:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.lm-template input {
+  margin-top: 3px;
+}
+.lm-template__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.lm-template__name {
+  font-weight: 600;
+}
+.lm-template__desc {
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+.lm-template__slides {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.lm-template__slides span {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--draft-tint);
+  color: var(--draft);
+}
+.lm-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+.lm-dialog .lm-reports {
+  max-height: 260px;
+  overflow: auto;
+}

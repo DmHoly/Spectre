@@ -69,6 +69,12 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+pip install --upgrade --force-reinstall --no-deps "lumiere-report-engine @ git+https://gitlab-it.aledia.com/sda/analysis/report/lumiere_report_engine.git"
+if errorlevel 1 (
+    echo [ERREUR] La mise a jour de Lumiere ^(moteur de rapports^) a echoue - voir le message ci-dessus.
+    pause
+    exit /b 1
+)
 
 echo.
 echo === Mise a jour terminee ===
