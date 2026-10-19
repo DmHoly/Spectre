@@ -38,9 +38,9 @@ def html_of(client, made):
 def test_every_context_has_its_builtin_template_and_blocks(client):
     signup(client, "boss@example.com")
     data = client.get("/api/lumiere/templates").json()
-    by_context = {t["context"]: t for t in data["templates"] if t["builtin"]}
-    assert set(by_context) == {"wafer", "analysis", "study", "microproject", "lot"} and set(data["contexts"]) == set(context.CONTEXTS)
-    assert "KPI comparés" in by_context["analysis"]["outline"] and "Structure" in by_context["study"]["outline"]
+    builtin = {t["key"]: t for t in data["templates"] if t["builtin"]}
+    assert {t["context"] for t in builtin.values()} == {"wafer", "analysis", "study", "microproject", "lot"} and set(data["contexts"]) == set(context.CONTEXTS)
+    assert "KPI comparés" in builtin["analyse"]["outline"] and "Structure" in builtin["etude"]["outline"] and "Cahier" in builtin["cahier"]["outline"]
     for kind in context.CONTEXTS:
         keys = {b["key"] for b in client.get("/api/lumiere/blocks", params={"context": kind}).json()["blocks"]}
         assert {"text", "context.facts", "wafer.timeline", "wafer.tracking", "data.maps", "data.boxes", "sem.gallery"} <= keys
@@ -114,3 +114,37 @@ def test_a_slide_of_another_context_is_previewed_on_it(client):
     slides = [{"kind": "grid", "title": "Le lot", "nrows": 1, "ncols": 1, "cells": [{"r": 0, "c": 0, "block": {"type": "context.facts", "options": {}}}]}]
     html = client.post("/api/lumiere/preview", json={"context": "lot", "slides": slides, "index": 0, "key": "QRO10"}).json()["html"]
     assert "QRO10" in html and "spectre-facts" in html
+
+
+def test_the_notebook_of_a_study_is_one_slide_per_entry(client):
+    from support.notebook import add_entry, add_manual, take_snapshot, update_entry
+
+    signup(client, "boss@example.com")
+    slug = create_microproject(client, "Projet cahier", area=AREA)["slug"]
+    study = launch(client, slug, title="Cahier test", intent="Mesurer", entities=[{"sample_id": "T001"}, {"sample_id": "T002"}])
+    snapshot = take_snapshot(client, slug, "eqe", ["T001", "T002"])
+    add_entry(client, slug, study["id"], snapshot["snapshot_id"], title="EQE après gravure", note="Première mesure")
+    add_manual(client, slug, study["id"], "Rugosité AFM", measurements=[{"value": {"number": 1.25, "unit": "nm", "name": "rugosite_rms"}, "text": "Mesure au centre", "table": {"columns": ["point", "rms"], "rows": [["centre", 1.25], ["bord", 1.4]]}}], interpretation="Lisse.")
+    hidden = add_manual(client, slug, study["id"], "Brouillon caché", measurements=[{"text": "pas dans le rapport"}])
+    update_entry(client, slug, study["id"], hidden["id"], in_report=False)
+
+    blocks_api = {b["key"]: b for b in client.get("/api/lumiere/blocks", params={"context": "study"}).json()["blocks"]}
+    assert blocks_api["study.notebook"]["expands"] is True and blocks_api["context.facts"]["expands"] is False
+
+    made = report(client, "cahier", "study", f"{slug}/{study['id']}")
+    html = html_of(client, made)
+    assert "EQE après gravure" in html and "Première mesure" in html
+    assert "Rugosité AFM" in html and "1.25" in html and "rugosite_rms" in html and "Mesure au centre" in html and "Lisse." in html
+    assert "Brouillon caché" not in html and "pas dans le rapport" not in html
+    assert html.count("cahier de mesures</span>") >= 2 or html.count("cahier de mesures") >= 2  # une slide par entrée
+    assert "figé du cahier" in html  # les distributions de l'instantané (SummaryBoxPlots)
+
+    everything = client.post("/api/lumiere/preview", json={
+        "context": "study", "key": f"{slug}/{study['id']}", "index": 0,
+        "slides": [{"kind": "grid", "title": "Tout le cahier", "nrows": 1, "ncols": 1, "cells": [{"r": 0, "c": 0, "block": {"type": "study.notebook", "options": {"all_entries": True}}}]}],
+    }).json()["html"]
+    assert "Brouillon caché" in everything and "Rugosité AFM" in everything
+
+    empty = launch(client, slug, title="Sans cahier", intent="rien", entities=[{"sample_id": "T001"}])
+    html = html_of(client, report(client, "cahier", "study", f"{slug}/{empty['id']}"))
+    assert "Le cahier de cette étude est vide" in html

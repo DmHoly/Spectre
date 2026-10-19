@@ -22,12 +22,6 @@ from contracts.frontend_calls import matching_route, openapi_routes, scan, scan_
 # Les URL de l'API sont littérales dans les client.js : il ne reste que l'URL d'une ressource que la
 # page a déjà affichée.
 DYNAMIC_CALLS: dict[tuple[str, str, str], tuple[str, ...]] = {
-    # le rapport embarque ses images : l'`url` que portent celles d'une structure en images, les
-    # fichiers du cahier et ses images externes
-    ("plugins/experiments/static/report.js", "GET", "src"): (
-        "/api/microprojects/{microproject_slug}/attachments/{attachment_id}/content",
-        "/api/microprojects/{microproject_slug}/experiments/{experiment_id}/notebook-entries/{entry_id}/external-images/{index}",
-    ),
     # le rapport d'une analyse embarque, réduites, les images de ses blocs libres et des fiches data des plaques
     ("plugins/meta_analysis/static/analysis-data.js", "GET", "url"): (
         "/api/analyses/{analysis_id}/blocks/{index}/images/{wafer_key}/{image}",
@@ -38,7 +32,6 @@ DYNAMIC_CALLS: dict[tuple[str, str, str], tuple[str, ...]] = {
 # Appels dynamiques qui ne visent pas une route de Spectre.
 NOT_ROUTE_CALLS: dict[tuple[str, str, str], str] = {
     ("kernel/static/api.js", "GET", "path"): "le client HTTP lui-même : chaque client.js est vérifié là où il l'appelle",
-    ("plugins/experiments/static/report.js", "GET", "link.href"): "le rapport embarque les feuilles de style de la page",
 }
 
 

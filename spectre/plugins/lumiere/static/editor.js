@@ -169,7 +169,7 @@ const LumiereEditor = (() => {
     catalog.blocks.forEach((b) => (groups[b.group] = groups[b.group] || []).push(b));
     const picker = Object.entries(groups)
       .map(([g, list]) => `<div class="lm-picker__group"><div class="lm-subtitle" style="margin:8px 0 4px;">${escapeHtml(g)}</div>${list
-        .map((b) => `<button type="button" class="lm-picker__item${found && found.block.type === b.key ? " is-on" : ""}" data-block="${escapeHtml(b.key)}" title="${escapeHtml(b.description)}"><strong>${escapeHtml(b.label)}</strong><span>${escapeHtml(b.description)}</span>${b.needs ? `<em>${escapeHtml(b.needs)}</em>` : ""}</button>`)
+        .map((b) => `<button type="button" class="lm-picker__item${found && found.block.type === b.key ? " is-on" : ""}" data-block="${escapeHtml(b.key)}" title="${escapeHtml(b.description)}"><strong>${escapeHtml(b.label)}</strong><span>${escapeHtml(b.description)}</span>${b.needs ? `<em>${escapeHtml(b.needs)}</em>` : ""}${b.expands ? `<em>seul sur sa slide : une slide par élément</em>` : ""}</button>`)
         .join("")}</div>`)
       .join("");
     const block = found ? blockOf(found.block.type) : null;

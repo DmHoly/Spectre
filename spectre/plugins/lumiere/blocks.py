@@ -21,7 +21,7 @@ from ..sem_images import render as sem_render
 from ..sem_images import service as sem_images
 from ..wafer_data import blocks as wafer_data_blocks
 from ..wafers import timeline, tracking
-from . import engine
+from . import engine, notebook_block
 from .context import CONTEXTS, ReportContext
 
 log = logging.getLogger(__name__)
@@ -80,9 +80,12 @@ class BlockType:
     options: tuple[OptionSpec, ...] = ()
     group: str = "Plaques"
     needs: str = ""  # ce qu'il faut pour qu'il montre quelque chose
+    # un bloc qui se *déplie* : seul sur sa slide, il en fait une par élément - expand(ctx, options, lumiere) ->
+    # [(titre, [blocs])] (le cahier de mesures : une slide par entrée)
+    expand: Callable[[Any, dict[str, Any], Any], list[tuple[str, list[Any]]]] | None = None
 
     def payload(self, ctx_kind: str) -> dict[str, Any]:
-        return {"key": self.key, "label": self.label, "description": self.description, "group": self.group, "needs": self.needs, "options": [o.payload(ctx_kind) for o in self.options]}
+        return {"key": self.key, "label": self.label, "description": self.description, "group": self.group, "needs": self.needs, "expands": self.expand is not None, "options": [o.payload(ctx_kind) for o in self.options]}
 
     def clean_options(self, raw: dict[str, Any] | None) -> dict[str, Any]:
         """Les options telles que le modèle les garde : vérifiées, réduites à celles du bloc (422 sinon)."""
@@ -391,6 +394,8 @@ BLOCKS: dict[str, BlockType] = {
                   (OptionSpec("max", "Vignettes au plus", "number", 24, min=1, max=MAX_IMAGES), OptionSpec("step", "Étape (filtre)", "text", "", "Ne garder que les acquisitions dont l'étape contient ce texte (ARC_POST_STRIP…)")), group="Images"),
         BlockType("analysis.kpis", "KPI comparés", "Les KPI de l'analyse : médiane et quartiles de chaque plaque, écart à la référence, mieux / moins bien.", ("analysis",), _analysis_kpis, group="Analyse"),
         BlockType("study.structure", "Structure de l'étude", "Le dessin de la structure de l'étude (sa version actuelle), tel que la fiche le montre.", ("study",), _structure, group="Étude"),
+        BlockType("study.notebook", "Cahier de mesures", "Les entrées du cahier de l'étude (celles reprises dans le rapport) : objectif, note, mesures - instantanés PRISM et leurs distributions, valeurs, textes, tableaux, images -, interprétation. Seul sur sa slide : une slide par entrée.", ("study",), notebook_block.render,
+                  (OptionSpec("all_entries", "Toutes les entrées, même celles hors rapport", "bool", False),), group="Étude", expand=notebook_block.expand),
         BlockType("microproject.studies", "Études du µprojet", "Le tableau des études du µprojet : statut, date, plaques, conclusion.", ("microproject",), _studies, group="µprojet"),
     )
 }

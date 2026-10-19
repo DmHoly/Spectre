@@ -15,7 +15,7 @@ REPORT_GLYPH = '<path d="M14 3v5h5"/><path d="M6 3h8l5 5v13H6z"/><path d="M9 13h
 
 PLUGIN = Plugin(
     name="lumiere",
-    depends_on=("accounts", "wafers", "characterization", "wafer_data", "sem_images", "meta_analysis", "experiments", "microprojects", "structures", "lots"),
+    depends_on=("accounts", "wafers", "characterization", "wafer_data", "sem_images", "meta_analysis", "experiments", "microprojects", "structures", "lots", "notebook", "attachments", "external_images"),
     router=router,
     pages=(Page("/lumiere", "lumiere.html"),),
     nav=(NavEntry("Rapports", "/lumiere", order=46, match=r"^/lumiere", group="data", glyph=REPORT_GLYPH),),

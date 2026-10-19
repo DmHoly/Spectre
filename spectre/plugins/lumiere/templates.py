@@ -120,6 +120,20 @@ BUILTIN: dict[str, Template] = {
             grid("Structure", [(0, 0, "study.structure", {})]),
             grid("Frises des mesures", [(0, 0, "wafer.timeline", {})]),
             grid("EQE - cartes et distributions", [(0, 0, "data.maps", {"hook": "eqe", "max_columns": 8}), (0, 1, "data.boxes", {"hook": "eqe", "max_columns": 6})], ncols=2, col_widths=["1.4fr", "1fr"]),
+            grid("Cahier de mesures", [(0, 0, "study.notebook", {"all_entries": False})]),
+            {"kind": "summary"},
+        ),
+    ),
+    "cahier": Template(
+        key="cahier",
+        name="Cahier de mesures",
+        description="Le cahier de mesures d'une étude : ce qu'elle est, puis une slide par entrée du cahier - objectif, note, mesures (instantanés PRISM et leurs distributions, valeurs, textes, tableaux, images), interprétation - et sa conclusion.",
+        context="study",
+        builtin=True,
+        slides=(
+            {"kind": "title"},
+            grid("L'étude", [(0, 0, "context.facts", {"studies": True, "notes": False})]),
+            grid("Cahier", [(0, 0, "study.notebook", {"all_entries": False})]),
             {"kind": "summary"},
         ),
     ),
@@ -339,6 +353,26 @@ def delete(user: User, key: str) -> None:
 # --- le rendu ------------------------------------------------------------------------------------------------
 
 
+def _slides(lumiere: Any, ctx: Any, slide: dict[str, Any]) -> list[Any]:
+    """Les slides Lumière d'une slide du modèle : une, ou plusieurs quand son seul bloc se déplie."""
+    if slide["kind"] == "grid" and len(slide["cells"]) == 1:
+        cell = slide["cells"][0]
+        block = block_types.get(cell["block"]["type"])
+        if block.expand is not None:
+            try:
+                items = block.expand(ctx, block.clean_options(cell["block"].get("options")), lumiere)
+            except Exception as exc:  # noqa: BLE001 - le bloc qui casse le dit sur sa slide
+                items = [(slide["title"], [engine.html_block(f"<p><em>Bloc « {block_types.esc(block.label)} » : {block_types.esc(str(exc))}</em></p>", title=block.label)])]
+            out = []
+            for title, blocks in items:
+                made = lumiere.Slide(f"{slide['title']} · {title}" if title and title != slide["title"] else slide["title"])
+                for b in blocks:
+                    made.add(b)
+                out.append(made)
+            return out
+    return [_slide(lumiere, ctx, slide)]
+
+
 def _slide(lumiere: Any, ctx: Any, slide: dict[str, Any]) -> Any:
     kind = slide["kind"]
     if kind == "title":
@@ -369,7 +403,7 @@ def build(user: User, template: Template, context_key: str, *, only: int | None 
     if not template.slides:
         raise InvalidInput("Ce modèle n'a aucune slide.", code="no_slides")
     chosen = list(template.slides) if only is None else [template.slides[only]]
-    report.add(lumiere.SlideView([_slide(lumiere, ctx, s) for s in chosen]))
+    report.add(lumiere.SlideView([made for s in chosen for made in _slides(lumiere, ctx, s)]))
     return report
 
 
