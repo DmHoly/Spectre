@@ -49,7 +49,7 @@ def test_disabling_a_plugin_hides_its_routes_pages_navigation_and_assets(client)
 
     home = client.get("/").text
     assert 'href="/lots"' not in home
-    assert plugins_off(home) == {"kpis_demo", "lots", "planning"}  # kpis_demo : indisponible sans SPECTRE_DEMO_DATA
+    assert plugins_off(home) == {"kpis_demo", "lots", "planning", "lumiere"}  # kpis_demo : indisponible sans SPECTRE_DEMO_DATA ; lumiere et planning dépendent de lots
     experiment_page = client.get("/microprojets/x/experiences/y").text
     assert "/static/lots/" not in experiment_page and "/static/notebook/" in experiment_page
     assert client.get("/static/lots/client.js").status_code == 200  # les statiques restent servis
