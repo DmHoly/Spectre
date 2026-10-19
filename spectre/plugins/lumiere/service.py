@@ -115,8 +115,7 @@ def _run(report_id: int, user: User) -> None:
     try:
         row = _row(report_id)
         template = templates.get(row["template"])
-        report = template.build(user, row["context_key"])
-        html = report.render()
+        html = templates.build(user, template, row["context_key"]).render()
         path = reports_dir() / f"{report_id}.html"
         path.write_text(html, encoding="utf-8")
         _set(report_id, status="done", file=path.name, bytes=path.stat().st_size, finished_at=_now(), message="")

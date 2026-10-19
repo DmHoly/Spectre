@@ -62,7 +62,7 @@ const PlateReport = (() => {
           <span class="lm-template__body">
             <span class="lm-template__name">${escapeHtml(t.name)}</span>
             <span class="lm-template__desc">${escapeHtml(t.description)}</span>
-            <span class="lm-template__slides">${t.slides.map((s) => `<span>${escapeHtml(s)}</span>`).join("")}</span>
+            <span class="lm-template__slides">${t.outline.map((s) => `<span>${escapeHtml(s)}</span>`).join("")}</span>
           </span>
         </label>`
       )

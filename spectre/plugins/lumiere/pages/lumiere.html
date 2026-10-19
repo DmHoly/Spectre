@@ -17,7 +17,7 @@
   <!-- Les rapports générés par Lumière (plugin lumiere, lumiere.js) : les vôtres - tous pour un administrateur -
        avec leur état (en attente, en cours, prêt, en échec), à télécharger ou à retirer ; et les modèles de rapport
        disponibles. Un rapport se lance depuis la page de son contexte (le bouton « Rapport » d'une plaque). -->
-  <div class="page" style="max-width:1100px;">
+  <div class="page" style="max-width:1240px;">
     <header class="lm-page__head">
       <div>
         <div class="page-eyebrow">Data</div>
@@ -37,8 +37,15 @@
     <h2 class="lm-subtitle">Rapports générés</h2>
     <ul class="lm-reports" id="lm-list"><li class="help">Chargement…</li></ul>
 
-    <h2 class="lm-subtitle" style="margin-top:28px;">Modèles de rapport</h2>
-    <p class="help" style="margin:0 0 10px;">Un modèle dit ce que le rapport contient, slide par slide. Ils se composeront bientôt ici ; pour l'instant, Spectre en livre un.</p>
+    <div class="lm-page__head" style="margin:28px 0 8px;align-items:center;">
+      <div>
+        <h2 class="lm-subtitle" style="margin:0;">Modèles de rapport</h2>
+        <p class="help" style="margin:4px 0 0;">Un modèle dit ce que le rapport contient, slide par slide : une grille par slide, un bloc par cellule. Les modèles livrés avec Spectre se copient ; les vôtres se modifient ici, comme dans un petit PowerPoint.</p>
+      </div>
+      <button type="button" class="btn btn-primary" id="lm-new-template">Nouveau modèle</button>
+    </div>
+    <!-- L'éditeur slide par slide (editor.js), ouvert sur « Modifier », « Copier » ou « Nouveau modèle » -->
+    <section class="card lm-editor" id="lm-editor" aria-label="Éditeur de modèle" hidden></section>
     <div class="lm-template-grid" id="lm-templates"></div>
   </div>
 
@@ -51,6 +58,7 @@
   <script src="/static/search/topbar-search.js"></script>
   <script src="/static/lumiere/client.js"></script>
   <script src="/static/lumiere/lumiere-ui.js"></script>
+  <script src="/static/lumiere/editor.js"></script>
   <script src="/static/lumiere/lumiere.js"></script>
 </body>
 </html>

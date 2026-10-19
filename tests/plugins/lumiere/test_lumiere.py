@@ -26,7 +26,7 @@ def test_the_templates_say_what_they_contain_and_for_what(client):
     keys = [t["key"] for t in data["templates"]]
     assert "fiche-plaque" in keys and data["contexts"]["wafer"] == "une plaque"
     fiche = next(t for t in data["templates"] if t["key"] == "fiche-plaque")
-    assert fiche["context"] == "wafer" and "Vie en ligne" in fiche["slides"] and "Images MEB - G4" in fiche["slides"]
+    assert fiche["context"] == "wafer" and "Vie en ligne" in fiche["outline"] and "Images MEB - G4" in fiche["outline"] and fiche["builtin"]
     assert client.get("/api/lumiere/templates", params={"context": "lot"}).json()["templates"] == []
     with pytest.raises(Exception):
         templates.get("inconnu")
@@ -87,11 +87,11 @@ def test_a_report_belongs_to_who_asked_it_and_the_context_is_checked(client):
 def test_a_failing_build_is_an_error_report_not_a_crash(client, monkeypatch):
     signup(client, "boss@example.com")
 
-    def boom(user, key):
+    def boom(user, template, key, **kwargs):
         raise RuntimeError("plus de Plotly")
 
-    monkeypatch.setitem(templates.TEMPLATES, "casse", templates.Template("casse", "Cassé", "", "wafer", boom, ("x",)))
-    report = client.post("/api/lumiere/reports", json={"template": "casse", "context": {"kind": "wafer", "key": LASERMARK}}).json()
+    monkeypatch.setattr(templates, "build", boom)
+    report = client.post("/api/lumiere/reports", json={"template": "fiche-plaque", "context": {"kind": "wafer", "key": LASERMARK}}).json()
     assert report["status"] == "error" and "RuntimeError" in report["message"] and report["file_url"] is None
     assert client.get(f"/api/lumiere/reports/{report['id']}/file").json()["code"] == "report_not_ready"
 
