@@ -30,6 +30,11 @@ RUN pip install --no-cache-dir .
 # un volume sur ce chemin pour les faire survivre à un redémarrage du conteneur.
 ENV SPECTRE_DATA_DIR=/data     PRISM_DATA_DIR=/data/prism     PRISM_CONNECTIONS_FILE=/app/config/connections.yml
 
+# Premier démarrage sur un /data vide : crée le compte administrateur « admin » / « admin » (identifiant
+# puis mot de passe) qui doit changer son mot de passe à sa première connexion. Sans effet dès qu'un
+# compte existe ; à surcharger (docker-compose.yml) pour un autre identifiant initial.
+ENV SPECTRE_INITIAL_ADMIN=admin:admin
+
 # Derriere le reverse proxy de l'IT : uvicorn ne fait confiance aux en-tetes X-Forwarded-* que de
 # 127.0.0.1 par defaut ; le proxy arrive d'une autre adresse, on les accepte donc de partout (le
 # port 8000 n'est joignable que par le proxy).

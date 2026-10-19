@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from ...kernel import mail
 from ...kernel.errors import Forbidden, InvalidInput, Unauthorized
 from ...kernel.http import created
-from ..accounts.deps import current_user
+from ..accounts.deps import current_user, current_user_unrestricted
 from ..accounts.service import User
 from ..areas import service as areas
 from ..teams import service as teams
@@ -291,7 +291,7 @@ def microproject_by_code(code: str, request: Request) -> RedirectResponse:
     """Raccourci à partager : /p/Nat_0004 (ou /p/Nat4) -> la page de ce µprojet. Hors session : la
     connexion d'abord - un anonyme n'apprend pas quels numéros existent."""
     try:
-        current_user(request)
+        current_user_unrestricted(request)
     except Unauthorized:
         return RedirectResponse(f"/connexion?suite={quote(request.url.path)}", status_code=302)
     try:

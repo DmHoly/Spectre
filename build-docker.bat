@@ -50,16 +50,15 @@ if errorlevel 1 (
 )
 
 copy /y ".env.example" "dist\.env.example" >nul
+copy /y "docker-compose.yml" "dist\docker-compose.yml" >nul
 
 echo.
 echo === Termine ===
 for %%f in ("%TAR%") do echo Fichier : %%~ff ^(%%~zf octets^)
 if defined VERSION echo Version : %VERSION%
 echo.
-echo Installation sur le serveur cible :
-echo   1. copier dist\.env.example en .env et y mettre PRISM_USER / PRISM_PASSWORD
-echo      ^(le mot de passe n'est jamais dans l'image^)
-echo   2. docker load -i spectre-image.tar
-echo   3. docker run -d --name spectre --restart unless-stopped -p 8000:8000 -v spectre-data:/data --env-file .env -e SPECTRE_BASE_URL=https://URL_PUBLIQUE spectre:latest
+echo Installation sur le serveur cible : voir DEPLOIEMENT.md
+echo   Copier dans un meme dossier : spectre-image.tar, docker-compose.yml, .env.example
+echo   puis : docker load -i spectre-image.tar  ^&^&  docker compose up -d   ^(port 8000^)
 echo.
 pause

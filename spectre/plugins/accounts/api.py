@@ -13,7 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from pydantic import BaseModel
 
 from . import service as accounts
-from .deps import current_user
+from .deps import current_user_unrestricted, require_admin
 from .security import SESSION_COOKIE, SESSION_LIFETIME, session_cookie_secure
 
 router = APIRouter(prefix="/api", tags=["accounts"])
@@ -52,7 +52,7 @@ class PasswordResetCompletion(BaseModel):
 
 
 def _user_payload(user: accounts.User) -> dict:
-    return {"id": user.id, "email": user.email, "name": user.name, "is_admin": user.is_admin}
+    return {"id": user.id, "email": user.email, "name": user.name, "is_admin": user.is_admin, "must_change_password": user.must_change_password}
 
 
 def _open_session(response: Response, user: accounts.User) -> str:
@@ -109,19 +109,19 @@ def delete_current_session(request: Request) -> Response:
 
 
 @router.get("/users/me")
-def get_me(user: accounts.User = Depends(current_user)) -> dict:
+def get_me(user: accounts.User = Depends(current_user_unrestricted)) -> dict:
     return _user_payload(user)
 
 
 @router.patch("/users/me")
-def update_me(body: UpdateMeRequest, user: accounts.User = Depends(current_user)) -> dict:
+def update_me(body: UpdateMeRequest, user: accounts.User = Depends(current_user_unrestricted)) -> dict:
     if body.name is not None:
         user = accounts.update_name(user.id, body.name)
     return _user_payload(user)
 
 
 @router.put("/users/me/password", status_code=204)
-def change_password(body: ChangePasswordRequest, user: accounts.User = Depends(current_user)) -> Response:
+def change_password(body: ChangePasswordRequest, user: accounts.User = Depends(current_user_unrestricted)) -> Response:
     accounts.change_password(user.id, body.current_password, body.new_password)
     # change_password() already deleted every session for this user, including the one making
     # this request - clear the now-dead cookie so the browser doesn't keep sending it.
@@ -144,3 +144,17 @@ def request_password_reset(body: PasswordResetRequest, background: BackgroundTas
 def complete_password_reset(body: PasswordResetCompletion) -> Response:
     accounts.reset_password(body.token, body.password)
     return Response(status_code=204)
+
+
+@router.get("/users")
+def list_users(_admin: accounts.User = Depends(require_admin)) -> list[dict]:
+    """Every account - administrators only (Paramètres > Utilisateurs)."""
+    return [_user_payload(user) for user in accounts.list_users()]
+
+
+@router.post("/users/{user_id}/password-resets", status_code=201)
+def reset_user_password(user_id: int, admin: accounts.User = Depends(require_admin)) -> dict:
+    """An administrator resets a forgotten password: ``{user, temporary_password}`` (shown once). The
+    account is signed out everywhere and must choose a new password at its next sign-in."""
+    user, temporary = accounts.admin_reset_password(user_id, admin.id)
+    return {"user": _user_payload(user), "temporary_password": temporary}

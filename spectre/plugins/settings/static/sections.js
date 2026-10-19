@@ -4,6 +4,7 @@
 
 const SETTINGS_SECTIONS = [
   { href: "/parametres/plugins", label: "Plugins", icon: "puzzle" },
+  { href: "/parametres/utilisateurs", label: "Utilisateurs", icon: "users" },
   { href: "/parametres/base-de-donnees", label: "Base de données", icon: "database" },
   { href: "/parametres/utilisation", label: "Utilisation", icon: "activity", plugin: "usage" },
 ];

@@ -14,6 +14,17 @@ const settingsApi = {
     return api.patch(`/api/plugins/${encodeURIComponent(pluginName)}`, body);
   },
 
+  // -- utilisateurs (plugin accounts) --
+  // [{id, email, name, is_admin, must_change_password}]
+  users() {
+    return api.get("/api/users");
+  },
+  // {user, temporary_password} : le mot de passe provisoire n'est montré qu'une fois ; le compte est
+  // déconnecté partout et devra en choisir un nouveau à sa prochaine connexion
+  resetUserPassword(userId) {
+    return api.post(`/api/users/${encodeURIComponent(userId)}/password-resets`);
+  },
+
   // -- base de données (kernel/database.py) --
   // {data_dir, database_bytes, files, files_bytes} : ce que la sauvegarde emportera
   databaseSummary() {

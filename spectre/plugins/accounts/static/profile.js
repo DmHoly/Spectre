@@ -42,4 +42,8 @@ document.getElementById("password-form").addEventListener("submit", async (event
   }
 });
 
+if (new URLSearchParams(window.location.search).has("changement")) {
+  document.getElementById("must-change").style.display = "block";
+}
+
 loadProfile();

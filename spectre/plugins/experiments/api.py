@@ -22,7 +22,7 @@ from starlette.convertors import Convertor, register_url_convertor
 
 from ...kernel.errors import Forbidden, InvalidInput, NotFound, Unauthorized
 from ...kernel.http import created, etag, if_match_version
-from ..accounts.deps import current_user
+from ..accounts.deps import current_user, current_user_unrestricted
 from ..accounts.service import User
 from ..microprojects import service as microprojects
 from ..microprojects.deps import get_microproject, require_role
@@ -613,7 +613,7 @@ def legacy_version_page(slug: str, version_id: str, request: Request) -> Redirec
     """Un ancien lien vers la page d'une étude portait l'id d'une version : redirigé vers la page de
     sa piste (``?version=`` quand ce n'est pas la dernière). Hors session : la connexion d'abord."""
     try:
-        user = current_user(request)
+        user = current_user_unrestricted(request)
     except Unauthorized:
         return RedirectResponse(f"/connexion?suite={quote(request.url.path)}", status_code=302)
     try:

@@ -60,6 +60,11 @@ const api = {
     }
 
     if (!response.ok) {
+      // mot de passe réinitialisé par un administrateur : tout est fermé jusqu'à ce qu'il soit changé
+      if (response.status === 403 && data && data.code === "password_change_required" && window.location.pathname !== "/profil") {
+        window.location.href = "/profil?changement=1";
+        return new Promise(() => {});
+      }
       const error = new Error(apiErrorMessage(data));
       error.status = response.status;
       error.data = data;

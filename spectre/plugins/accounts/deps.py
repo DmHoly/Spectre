@@ -13,9 +13,20 @@ from .security import SESSION_COOKIE
 from .service import User
 
 
-def current_user(request: Request) -> User:
-    """The signed-in user - 401 otherwise, the one status reserved for « no session »."""
+def current_user_unrestricted(request: Request) -> User:
+    """The signed-in user, even one who still has to choose a new password - for the few routes that
+    let them do exactly that (read their profile, change the password), and for a redirect route
+    that only needs to know whether there is a session."""
     user, _expires_at = accounts.session(request.cookies.get(SESSION_COOKIE))
+    return user
+
+
+def current_user(user: User = Depends(current_user_unrestricted)) -> User:
+    """The signed-in user - 401 otherwise, the one status reserved for « no session ». An account
+    whose password was reset by an administrator gets 403 ``password_change_required`` everywhere
+    until it has chosen a new one (the front sends it to its profile)."""
+    if user.must_change_password:
+        raise Forbidden("vous devez choisir un nouveau mot de passe", code="password_change_required")
     return user
 
 

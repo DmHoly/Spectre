@@ -21,11 +21,12 @@ PLUGIN = Plugin(
     page_router=page_router,  # /parametres -> sa première section
     pages=(
         Page("/parametres/plugins", "plugins.html"),
+        Page("/parametres/utilisateurs", "users.html"),
         Page("/parametres/base-de-donnees", "database.html"),
     ),
     nav=(NavEntry("Paramètres", "/parametres/plugins", order=90, match=r"^/parametres", admin=True, icon=GEAR_ICON),),
     title="Paramètres",
-    description="Les réglages de l'application réservés aux administrateurs : plugins, base de données.",
+    description="Les réglages de l'application réservés aux administrateurs : plugins, utilisateurs, base de données.",
     icon="settings",
     required=True,
 )

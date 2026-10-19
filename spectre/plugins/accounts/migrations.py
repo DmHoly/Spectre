@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 
 from ...kernel.db import column_names, execute_script
 from ...kernel.plugin import Migration
-from .security import hash_token
+from .security import hash_password, hash_token
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -65,8 +66,33 @@ def _hash_tokens(conn: sqlite3.Connection) -> None:
             conn.execute(f"UPDATE {table} SET token_hash = ? WHERE token_hash = ?", (hash_token(token), token))
 
 
+def _must_change_password(conn: sqlite3.Connection) -> None:
+    """Un compte dont l'administrateur a réinitialisé le mot de passe (ou le compte initial) doit en
+    choisir un nouveau à sa prochaine connexion."""
+    conn.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+
+
+def _bootstrap_admin(conn: sqlite3.Connection) -> None:
+    """Sur une base neuve, le compte administrateur initial décrit par ``SPECTRE_INITIAL_ADMIN``
+    (``identifiant:mot de passe``, posé par l'image Docker) : il n'y a sinon aucun moyen d'ouvrir la
+    gestion des utilisateurs. Son mot de passe est à changer à la première connexion. Une seule
+    fois, et seulement si aucun compte n'existe."""
+    raw = os.environ.get("SPECTRE_INITIAL_ADMIN", "")
+    login, _, password = raw.partition(":")
+    login = login.strip().lower()
+    if not login or not password or conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None:
+        return
+    password_hash, salt = hash_password(password)
+    conn.execute(
+        "INSERT INTO users (email, name, password_hash, salt, is_admin, must_change_password) VALUES (?, ?, ?, ?, 1, 1)",
+        (login, login, password_hash, salt),
+    )
+
+
 MIGRATIONS = (
     Migration("0001_initial", _initial),
     Migration("0002_first_admin", _promote_first_admin),
     Migration("0003_hashed_tokens", _hash_tokens),
+    Migration("0004_must_change_password", _must_change_password),
+    Migration("0005_bootstrap_admin", _bootstrap_admin),
 )

@@ -10,6 +10,7 @@ clear token, and hash it themselves.
 
 from __future__ import annotations
 
+import secrets
 import sqlite3
 from dataclasses import dataclass
 
@@ -27,6 +28,7 @@ class User:
     email: str
     name: str
     is_admin: bool = False
+    must_change_password: bool = False
 
 
 def _user_from_row(row: sqlite3.Row) -> User:
@@ -36,6 +38,7 @@ def _user_from_row(row: sqlite3.Row) -> User:
         email=row["email"],
         name=row["name"],
         is_admin=bool(row["is_admin"]) if "is_admin" in keys else False,
+        must_change_password=bool(row["must_change_password"]) if "must_change_password" in keys else False,
     )
 
 
@@ -159,7 +162,9 @@ def change_password(user_id: int, current_password: str, new_password: str) -> N
         if row is None or not security.verify_password(current_password, row["password_hash"], row["salt"]):
             raise InvalidInput("mot de passe actuel incorrect", code="invalid_current_password")
         password_hash, salt = security.hash_password(new_password)
-        conn.execute("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?", (password_hash, salt, user_id))
+        conn.execute(
+            "UPDATE users SET password_hash = ?, salt = ?, must_change_password = 0 WHERE id = ?", (password_hash, salt, user_id)
+        )
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
 
 
@@ -216,7 +221,38 @@ def reset_password(token: str, new_password: str) -> User:
     check_password(new_password)
     password_hash, salt = security.hash_password(new_password)
     with get_conn() as conn:
-        conn.execute("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?", (password_hash, salt, user.id))
+        conn.execute(
+            "UPDATE users SET password_hash = ?, salt = ?, must_change_password = 0 WHERE id = ?", (password_hash, salt, user.id)
+        )
         conn.execute("DELETE FROM password_resets WHERE user_id = ?", (user.id,))
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (user.id,))
     return user
+
+
+def list_users() -> list[User]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM users ORDER BY lower(name), id").fetchall()
+    return [_user_from_row(row) for row in rows]
+
+
+def admin_reset_password(user_id: int, acting_admin_id: int) -> tuple[User, str]:
+    """Reset ``user_id``'s forgotten password to a temporary one (returned in clear, once): every
+    session of the account is closed, and the next sign-in must replace the temporary password
+    (``must_change_password``). An administrator resets other accounts, not their own - that is
+    :func:`change_password`."""
+    if user_id == acting_admin_id:
+        raise Conflict("utilisez votre profil pour changer votre propre mot de passe", code="self_reset")
+    temporary = secrets.token_urlsafe(9)
+    password_hash, salt = security.hash_password(temporary)
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row is None:
+            raise NotFound("compte introuvable")
+        conn.execute(
+            "UPDATE users SET password_hash = ?, salt = ?, must_change_password = 1 WHERE id = ?", (password_hash, salt, user_id)
+        )
+        conn.execute("DELETE FROM password_resets WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    user = get_by_id(user_id)
+    assert user is not None
+    return user, temporary

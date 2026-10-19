@@ -4,6 +4,8 @@
 # lien, seulement si SPECTRE_EMAIL_DEBUG=1 ; voir spectre/kernel/mail.py).
 services:
   spectre:
+    # image chargée depuis le .tar (docker load) ; build: . seulement si elle n'existe pas (poste de dev)
+    image: spectre:latest
     build: .
     ports:
       - "8000:8000"
@@ -12,8 +14,8 @@ services:
       - path: .env
         required: false
     environment:
-      # URL publique utilisée dans les liens des e-mails envoyés (invitation, réinitialisation).
-      SPECTRE_BASE_URL: "http://localhost:8000"
+      # URL publique (variable SPECTRE_BASE_URL du .env, sinon localhost) utilisée dans les liens des e-mails envoyés (invitation, réinitialisation).
+      SPECTRE_BASE_URL: "${SPECTRE_BASE_URL:-http://localhost:8000}"
       # Décommenter et renseigner pour envoyer réellement les e-mails :
       # SPECTRE_SMTP_HOST: "smtp.example.com"
       # SPECTRE_SMTP_PORT: "587"
