@@ -12,7 +12,7 @@ PLUGIN = Plugin(
     depends_on=("wafers", "areas", "experiments", "search"),
     router=router,
     pages=(Page("/lots", "lots.html"), Page("/lots/{code}", "lot.html")),
-    nav=(NavEntry("Lots", "/lots", order=30, match=r"^/lots", group="gestion", glyph=LOTS_GLYPH),),
+    nav=(NavEntry("Lots", "/lots", order=41, match=r"^/lots", group="data", glyph=LOTS_GLYPH),),
     migrations=MIGRATIONS,
     title="Lots",
     description="Les lots de fabrication, leurs plaques, leurs thématiques visées et le Gantt.",

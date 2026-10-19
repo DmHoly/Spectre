@@ -4,7 +4,8 @@
    bande de vignettes, et les groupes (type d'image : LightImage, LIVSweepImages...) pour n'en parcourir qu'un.
    Clavier : ← → (précédente, suivante), Début / Fin, Z (taille réelle), Échap (fermer).
 
-   WaferDataViewer.open({title, images: [{url, name, meta, g}], groups, index}) */
+   WaferDataViewer.open({title, images: [{url, name, meta, g, full?}], groups, index}) - full : l'image entière quand
+   la vignette (url) en est une réduction (images MEB du G4) */
 
 const WaferDataViewer = (() => {
   let dialog = null;
@@ -94,9 +95,9 @@ const WaferDataViewer = (() => {
     state.index = index;
     const image = state.images[index];
     const img = dialog.querySelector(".js-img");
-    img.src = image.url;
+    img.src = image.full || image.url;
     img.alt = image.name;
-    dialog.querySelector(".js-open").href = image.url;
+    dialog.querySelector(".js-open").href = image.full || image.url;
     dialog.querySelector(".js-caption").innerHTML = captionHtml(image);
     const list = visible();
     dialog.querySelector(".js-count").textContent = `${list.indexOf(index) + 1} / ${list.length}`;

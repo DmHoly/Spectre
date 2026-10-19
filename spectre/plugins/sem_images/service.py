@@ -21,7 +21,10 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-from ...kernel.errors import NotFound
+from urllib.parse import quote
+
+from ...kernel import plugin_states
+from ...kernel.errors import NotFound, Unavailable
 from ..wafers.service import wafer_key
 from . import source
 
@@ -173,6 +176,33 @@ def image_path(lasermark: str, relative: str, fdls: Callable[[], Iterable[str | 
     if not os.path.isfile(path):
         raise NotFound("Image introuvable : le fichier a été déplacé ou supprimé du partage.", code="sem_image_missing")
     return path
+
+
+def url_for(lasermark: str, path: str, *, variant: str = "thumb", frame: int = 0) -> str | None:
+    """L'adresse où un autre plugin (la fiche data, une analyse) montre une image du partage trouvée par le hook
+    ``meb_g4`` pour cette plaque - son chemin absolu rendu relatif à la racine, servi par ``.../sem-images/file``
+    comme les images de la page (seules celles de la liste de la plaque le sont). ``None`` : hors de la racine."""
+    base = source.root()
+    try:
+        relative = _relative(path, base)
+    except ValueError:  # un autre lecteur Windows
+        return None
+    if relative.startswith("..") or os.path.isabs(relative):
+        return None
+    query = f"path={quote(relative, safe='/')}&variant={variant}" + (f"&frame={frame}" if frame else "")
+    return f"/api/wafers/{quote(lasermark, safe='')}/sem-images/file?{query}"
+
+
+def image_urls(lasermark: str, path: str) -> tuple[str, str] | None:
+    """(vignette, image entière) d'une image du partage pour la fiche data et les analyses (plugin wafer_data,
+    ``register_image_server``) ; ``None`` quand ce plugin est désactivé, PRISM sans racine, ou le chemin hors racine."""
+    if not plugin_states.is_enabled("sem_images"):
+        return None
+    try:
+        thumb = url_for(lasermark, path)
+    except Unavailable:
+        return None
+    return (thumb, url_for(lasermark, path, variant="view")) if thumb else None
 
 
 def forget() -> None:

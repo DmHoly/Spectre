@@ -265,6 +265,54 @@ function renderLinks(plate, user) {
   );
 }
 
+/* Les onglets « Fiche » / « Data » de la page (wafer.html) : cachés tant qu'aucun plugin n'a rien mis dans « Data »
+   (PlateTabs.show() les montre), « Data » gardé dans l'adresse (#data). Un plugin s'abonne à l'affichage d'un
+   onglet (PlateTabs.onShow("data", fn) : appelé à chaque affichage, et tout de suite s'il est déjà montré). */
+const PlateTabs = (() => {
+  const NAMES = ["fiche", "data"];
+  const listeners = { fiche: [], data: [] };
+  let wired = false;
+  let current = "fiche";
+
+  function select(name, { focus = false } = {}) {
+    current = name;
+    document.querySelectorAll("#plate-tabs [role=tab]").forEach((tab) => {
+      const on = tab.dataset.tab === name;
+      tab.classList.toggle("active", on);
+      tab.setAttribute("aria-selected", on ? "true" : "false");
+      tab.tabIndex = on ? 0 : -1;
+      if (on && focus) tab.focus();
+    });
+    NAMES.forEach((n) => (document.getElementById(`plate-tab-${n}`).hidden = n !== name));
+    history.replaceState(null, "", name === "data" ? "#data" : location.pathname + location.search);
+    listeners[name].forEach((fn) => fn());
+  }
+
+  function show() {
+    const nav = document.getElementById("plate-tabs");
+    if (!nav) return;
+    nav.hidden = false;
+    if (wired) return;
+    wired = true;
+    nav.querySelectorAll("[role=tab]").forEach((tab) => tab.addEventListener("click", () => select(tab.dataset.tab)));
+    nav.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      const at = NAMES.indexOf(current);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? NAMES.length - 1 : (at + (event.key === "ArrowRight" ? 1 : -1) + NAMES.length) % NAMES.length;
+      select(NAMES[next], { focus: true });
+      event.preventDefault();
+    });
+    if (location.hash === "#data") select("data");
+  }
+
+  function onShow(name, fn) {
+    listeners[name].push(fn);
+    if (wired && current === name) fn();
+  }
+
+  return { show, select, onShow, shown: () => wired };
+})();
+
 async function init() {
   document.getElementById("plate-crumb").textContent = lasermark;
   document.getElementById("crumb").textContent = `/ Plaques / ${lasermark}`;
@@ -315,13 +363,15 @@ async function init() {
     }
     if (n && pluginEnabled("characterization")) renderWaferDbLinks(document.querySelectorAll(".js-db-link"), [plate.lasermark]);
     renderStructure(plate);
-    // l'onglet « Data » (plugin wafer_data) : une plaque qu'une étude suit est rattachée à un projet corporate
+    // l'onglet « Data » : la fiche data du projet corporate (plugin wafer_data : une plaque qu'une étude suit est
+    // rattachée à un projet corporate) et ses images MEB du G4 (plugin sem_images, cherchées par ses FDL : celles
+    // que la vie en ligne découvre relancent la recherche)
     if (n && typeof PlateData !== "undefined" && pluginEnabled("wafer_data")) PlateData.mount(plate);
+    const sem = typeof PlateSem !== "undefined" && pluginEnabled("sem_images") ? PlateSem.mount(document.getElementById("plate-sem"), plate.lasermark) : null;
+    if (sem) PlateTabs.show();
     // la vie en ligne : ses FDL et son lot JIRA rejoignent l'en-tête (la lecture vient peut-être de
     // créer le lot détecté, ou des liens de renommage vus dans la MES : on les relit alors)
     let linksSeen = (plate.links && plate.links.links.length) || 0;
-    // ses images MEB du G4 (plugin sem_images), cherchées par ses FDL : celles que la vie en ligne découvre relancent la recherche
-    const sem = typeof PlateSem !== "undefined" && pluginEnabled("sem_images") ? PlateSem.mount(document.getElementById("plate-sem"), plate.lasermark) : null;
     initWaferTracking(document.getElementById("plate-life"), plate.lasermark, async (data) => {
       renderFdl(plate.fdl, data.fdl_numbers || plate.line_fdl);
       if (sem) sem.fdlsChanged(data.fdl_numbers);

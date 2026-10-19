@@ -124,6 +124,16 @@ def test_the_images_are_grouped_by_acquisition_most_recent_first(client, share):
     assert data["index"]["exists"] and not data["index"]["building"]
 
 
+def test_another_plugin_gets_the_address_of_an_image_of_the_share(share, monkeypatch):
+    """La fiche data montre les images du hook meb_g4 par ce plugin : l'adresse d'un chemin absolu du partage, relatif
+    à la racine ; rien pour un chemin hors de la racine."""
+    monkeypatch.setattr(source, "root", lambda: share.root)
+    url = service.url_for("27CYH6E6MMC5", str(share.root / FOLDER / "d1r1_Class.tif"))
+    assert url == f"/api/wafers/27CYH6E6MMC5/sem-images/file?path={FOLDER}/d1r1_Class.tif&variant=thumb"
+    assert service.url_for("27CYH6E6MMC5", str(share.root / FOLDER / "d1r1_Class.tif"), variant="view", frame=2).endswith("&variant=view&frame=2")
+    assert service.url_for("27CYH6E6MMC5", str(share.root.parent / "ailleurs.tif")) is None
+
+
 def test_the_search_uses_the_typed_fdls_and_the_list_is_kept(client, share):
     signup(client, "boss@example.com")
     client.get(BASE, params={"fdl": ["2026-41155", " 2026-41155 "]})

@@ -6,7 +6,9 @@
    immobile (plus de 30 j sans mouvement : plus de relecture automatique) et laisse rafraîchir.
    Tout se clique : une étape JIRA d'une FDL (sa case dans la barre, ou sa ligne dans la liste des
    étapes), un ticket, une action MES - une fenêtre (TrackingDetail) en montre tout le détail, la
-   description de l'étape JIRA comprise. */
+   description de l'étape JIRA comprise. Les étapes JIRA annulées / écartées ne sont pas montrées (comptées à
+   part) ; dans le parcours MES, les actions de mesure (MEASUREMENT_DEV, Mesure PL, METRO...) sont marquées
+   « mesure » : on voit quand la plaque a été caractérisée entre deux étapes de fabrication. */
 
 const STEP_CATEGORY_LABELS = { done: "faite", running: "en cours", hold: "en pause", todo: "à faire", skipped: "annulée / écartée" };
 const STEP_CATEGORY_TAGS = { done: "plate-tag--done", running: "plate-tag--run", hold: "plate-tag--warn", todo: "plate-tag--mute", skipped: "plate-tag--mute" };
@@ -99,10 +101,18 @@ function freshnessHtml(meta) {
   return `<span class="plate-fresh plate-fresh--${level}" title="${escapeHtml(rule)}"><span class="plate-fresh__dot" aria-hidden="true"></span>Données du ${escapeHtml(when)} · ${escapeHtml(timeAgo(meta.fetched_at))} · ${escapeHtml(text)}</span>`;
 }
 
+// Les étapes JIRA montrées : les annulées / écartées ne le sont pas (elles s'ajoutent sinon aux vraies étapes
+// de la plaque) ; chacune garde son index dans flow.steps (data-index) pour sa fenêtre de détail.
+function shownFdlSteps(flow) {
+  return flow.steps.map((s, index) => ({ s, index })).filter(({ s }) => s.category !== "skipped");
+}
+
 function fdlBarHtml(flow) {
   if (!flow || !flow.steps.length) return "";
-  const segments = flow.steps
-    .map((s, index) => {
+  const shownSteps = shownFdlSteps(flow);
+  if (!shownSteps.length) return `<p class="help" style="margin:6px 0 0;">Les ${flow.steps.length} étapes de cette FDL sont annulées.</p>`;
+  const segments = shownSteps
+    .map(({ s, index }) => {
       const title = `${s.stage || s.key} · ${s.status || "?"}${s.assignee ? ` · ${s.assignee}` : ""}${s.closed ? ` · clos le ${trackingDate(s.closed)}` : s.estimated ? ` · prévu le ${trackingDate(s.estimated)}` : ""}`;
       return `<button type="button" class="plate-fdl-bar__step plate-fdl-bar__step--${s.category}${s.late ? " is-late" : ""}" data-detail="fdl-step" data-request="${escapeHtml(flow.request)}" data-index="${index}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)} - voir le détail"></button>`;
     })
@@ -112,8 +122,8 @@ function fdlBarHtml(flow) {
     <div class="plate-fdl-bar" role="img" aria-label="${flow.n_done} étapes faites sur ${flow.n - flow.n_skipped}">${segments}</div>
     <div class="plate-fdl-bar__meta"><strong>${flow.pct === null ? "—" : `${flow.pct} %`}</strong> · ${flow.n_done}/${flow.n - flow.n_skipped} étapes${flow.n_hold ? ` · ${flow.n_hold} en pause` : ""}${flow.n_late ? ` · <span class="plate-late">${flow.n_late} en retard</span>` : ""}${now ? ` · ${now}` : ""}</div>
     <details class="plate-fdl-steps">
-      <summary>Les ${flow.steps.length} étapes JIRA <span class="help" style="display:inline;margin:0;">- cliquez une étape pour sa description</span></summary>
-      <ol class="plate-fdl-steps__list">${flow.steps.map((s, index) => fdlStepRowHtml(flow, s, index)).join("")}</ol>
+      <summary>Les ${shownSteps.length} étapes JIRA <span class="help" style="display:inline;margin:0;">- cliquez une étape pour sa description${flow.n_skipped ? ` · ${flow.n_skipped} annulée${flow.n_skipped > 1 ? "s" : ""} non montrée${flow.n_skipped > 1 ? "s" : ""}` : ""}</span></summary>
+      <ol class="plate-fdl-steps__list">${shownSteps.map(({ s, index }) => fdlStepRowHtml(flow, s, index)).join("")}</ol>
     </details>`;
 }
 
@@ -274,9 +284,9 @@ function actionHtml(s) {
   const open = s.start && !s.end_effective;
   const duration = s.start && s.end_effective ? formatDuration(new Date(s.end_effective.replace(" ", "T")) - new Date(s.start.replace(" ", "T"))) : "";
   return `
-    <li class="plate-action${open ? " is-running" : ""}${s.cycle > 1 ? " is-rework" : ""}">
+    <li class="plate-action${open ? " is-running" : ""}${s.cycle > 1 ? " is-rework" : ""}${s.measurement ? " is-measure" : ""}">
       <span class="plate-action__dot" aria-hidden="true"></span>
-      <div class="plate-action__title"><button type="button" class="plate-action__open mono" data-detail="action" data-index="${index}" title="Détail de l'action MES">${escapeHtml(stepLabel(s.step).action)}</button>${s.cycle > 1 ? ` <span class="plate-tag plate-tag--warn">reprise ${s.cycle}</span>` : ""}${s.unclosed ? ` <span class="plate-tag plate-tag--mute" title="Jamais clôturée dans la MES, mais suivie d'une autre action">non clôturée</span>` : ""}${open ? ` <span class="plate-tag plate-tag--run">en cours</span>` : ""}</div>
+      <div class="plate-action__title"><button type="button" class="plate-action__open mono" data-detail="action" data-index="${index}" title="Détail de l'action MES">${escapeHtml(stepLabel(s.step).action)}</button>${s.measurement ? ` <span class="plate-tag plate-tag--measure" title="Une mesure : la plaque a été caractérisée à ce moment du parcours">mesure</span>` : ""}${s.cycle > 1 ? ` <span class="plate-tag plate-tag--warn">reprise ${s.cycle}</span>` : ""}${s.unclosed ? ` <span class="plate-tag plate-tag--mute" title="Jamais clôturée dans la MES, mais suivie d'une autre action">non clôturée</span>` : ""}${open ? ` <span class="plate-tag plate-tag--run">en cours</span>` : ""}</div>
       <div class="plate-action__meta">${[s.equipment, s.recipe, s.carrier ? `porteur ${s.carrier}` : ""].filter(Boolean).map(escapeHtml).join(" · ")}</div>
       <div class="plate-action__time">${trackingDate(s.start)}${s.end_effective ? ` → ${trackingDate(s.end_effective)}` : ""}${duration ? ` · ${duration}` : ""}${s.lot_out && s.lot_out !== s.lot ? ` · lot → ${escapeHtml(s.lot_out)}` : ""}</div>
     </li>`;
@@ -286,19 +296,20 @@ function stepHtml(step, open) {
   const actions = step.actions;
   const running = actions.some((a) => a.start && !a.end_effective);
   const reworks = actions.filter((a) => a.cycle > 1).length;
+  const measures = actions.filter((a) => a.measurement).length;
   const first = actions[0].start;
   const lastRow = actions[actions.length - 1];
   const last = lastRow.end_effective || lastRow.start;
   const equipments = [...new Set(actions.map((a) => a.equipment).filter(Boolean))];
   const names = [...new Set(actions.map((a) => stepLabel(a.step).action))];
   return `
-    <li class="plate-mstep${running ? " is-running" : ""}">
+    <li class="plate-mstep${running ? " is-running" : ""}${measures ? " has-measure" : ""}">
       <details class="plate-mstep__details" ${open ? "open" : ""}>
         <summary class="plate-mstep__summary">
           <span class="plate-mstep__dot" aria-hidden="true"></span>
           <span class="plate-mstep__name mono">${escapeHtml(step.name)}</span>
           <span class="plate-mstep__count">${actions.length} action${actions.length > 1 ? "s" : ""}${names.length > 1 || names[0] !== step.name ? ` · ${escapeHtml(names.slice(0, 3).join(", "))}${names.length > 3 ? "…" : ""}` : ""}</span>
-          ${running ? `<span class="plate-tag plate-tag--run">en cours</span>` : ""}${reworks ? ` <span class="plate-tag plate-tag--warn">${reworks} reprise${reworks > 1 ? "s" : ""}</span>` : ""}
+          ${running ? `<span class="plate-tag plate-tag--run">en cours</span>` : ""}${measures ? ` <span class="plate-tag plate-tag--measure">${measures} mesure${measures > 1 ? "s" : ""}</span>` : ""}${reworks ? ` <span class="plate-tag plate-tag--warn">${reworks} reprise${reworks > 1 ? "s" : ""}</span>` : ""}
           <span class="plate-mstep__when">${trackingDate(first)}${last && last !== first ? ` → ${trackingDate(last)}` : ""}${equipments.length ? ` · ${escapeHtml(equipments.slice(0, 2).join(", "))}${equipments.length > 2 ? "…" : ""}` : ""}</span>
         </summary>
         <ol class="plate-actions">${actions.map(actionHtml).join("")}</ol>
@@ -391,7 +402,7 @@ function trackingHtml(data) {
     ["Lot MES", data.lots.length ? data.lots.map((l) => `<span class="mono">${escapeHtml(l)}</span>`).join(", ") : null, true],
     ["Produit", data.product],
     ["Route", data.route],
-    ["Parcours", data.n_steps ? `${data.n_steps} étapes${data.n_rework ? `, ${data.n_rework} reprise${data.n_rework > 1 ? "s" : ""}` : ""}${data.n_unclosed ? `, ${data.n_unclosed} non clôturée${data.n_unclosed > 1 ? "s" : ""}` : ""} · ${trackingDate(data.first_start)} → ${trackingDate(data.last_seen)}${data.elapsed_h ? ` (${trackingHours(data.elapsed_h)})` : ""}` : null],
+    ["Parcours", data.n_steps ? `${data.n_steps} étapes${data.n_measurements ? `, ${data.n_measurements} mesure${data.n_measurements > 1 ? "s" : ""}` : ""}${data.n_rework ? `, ${data.n_rework} reprise${data.n_rework > 1 ? "s" : ""}` : ""}${data.n_unclosed ? `, ${data.n_unclosed} non clôturée${data.n_unclosed > 1 ? "s" : ""}` : ""} · ${trackingDate(data.first_start)} → ${trackingDate(data.last_seen)}${data.elapsed_h ? ` (${trackingHours(data.elapsed_h)})` : ""}` : null],
     ["Autres identifiants", data.aliases.length ? data.aliases.map((a) => `<span class="mono">${escapeHtml(a)}</span>`).join(", ") : null, true],
   ]);
   const lotName = data.lot_name
@@ -425,7 +436,7 @@ function trackingHtml(data) {
       </section>
     </div>
     <details class="card plate-life__details js-journey" ${data.status === "en cours" ? "open" : ""}>
-      <summary>Parcours MES <span class="help" style="display:inline;margin:0;">${groupSteps(data.steps).reduce((n, r) => n + r.steps.length, 0)} étapes · ${data.n_steps} action${data.n_steps > 1 ? "s" : ""}</span></summary>
+      <summary>Parcours MES <span class="help" style="display:inline;margin:0;">${groupSteps(data.steps).reduce((n, r) => n + r.steps.length, 0)} étapes · ${data.n_steps} action${data.n_steps > 1 ? "s" : ""}${data.n_measurements ? ` · ${data.n_measurements} mesure${data.n_measurements > 1 ? "s" : ""}` : ""}</span></summary>
       <div class="plate-life__details-body">${stepsHtml(data.steps)}</div>
     </details>
     <details class="card plate-life__details">

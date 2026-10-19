@@ -214,7 +214,7 @@ def _mes_summary(steps: pd.DataFrame, now: datetime) -> dict[str, Any]:
     out: dict[str, Any] = {
         "lot": None, "lots": [], "product": None, "route": None, "status": "introuvable",
         "current": None, "first_start": None, "last_seen": None, "elapsed_h": None, "last_update": None,
-        "n_steps": 0, "n_unclosed": 0, "n_rework": 0,
+        "n_steps": 0, "n_unclosed": 0, "n_rework": 0, "n_measurements": 0,
     }
     if steps.empty:
         return out
@@ -256,6 +256,7 @@ def _mes_summary(steps: pd.DataFrame, now: datetime) -> dict[str, Any]:
             "n_steps": int(len(steps)),
             "n_unclosed": int(steps["_orphan"].sum()),
             "n_rework": int((pd.to_numeric(steps["step_cycle_number"], errors="coerce").fillna(1) > 1).sum()),
+            "n_measurements": int(sum(is_measurement(_text(v)) for v in steps["step_detailed_name"])),
         }
     )
     return out
@@ -306,12 +307,23 @@ def _merge_epi(epi: list[dict], mes: dict | None) -> list[dict]:
     return epi
 
 
+# Une action MES de mesure (MEASUREMENT_DEV, Mesure PL, METRO_CD, INSPECTION...) : ce qu'on marque dans le parcours
+# pour voir quand la plaque a été mesurée entre deux étapes de fabrication.
+_MEASUREMENT = re.compile(r"measur|mesur|metro|inspect", re.IGNORECASE)
+
+
+def is_measurement(step: str | None) -> bool:
+    """L'action MES ``step`` (``SAG_SIN.MEASUREMENT_DEV``) est-elle une mesure ?"""
+    return bool(step and _MEASUREMENT.search(step))
+
+
 def _step_rows(steps: pd.DataFrame) -> list[dict[str, Any]]:
     rows = []
     for _, r in steps.iterrows():
         rows.append(
             {
                 "route": _text(r["route_detailed_name"]) or _text(r["route"]),
+                "measurement": is_measurement(_text(r["step_detailed_name"])),
                 "route_version": _text(r["route_detailed_version"]),
                 "step": _text(r["step_detailed_name"]),
                 "order": _int(r["step_order"]),

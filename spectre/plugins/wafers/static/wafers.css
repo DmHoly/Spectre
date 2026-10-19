@@ -754,6 +754,10 @@
   background: var(--draft-tint);
   color: var(--draft);
 }
+.plate-tag--measure {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
 .plate-late {
   color: var(--danger);
   font-weight: 600;
@@ -1019,6 +1023,10 @@
 }
 .plate-action.is-rework .plate-action__dot {
   background: var(--hold);
+}
+.plate-action.is-measure .plate-action__dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .plate-action__title {
   font-size: 12.5px;

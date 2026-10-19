@@ -127,11 +127,16 @@ def _split(declared: str) -> list[str]:
 
 def _entry(data_type: Any, chosen: dict[tuple[str, str], str], seen: list[dict[str, Any]]) -> CatalogHook:
     declared: dict[str, dict[str, Any]] = {}
+    first_row = dict(data_type.example_rows[0]) if data_type.example_rows else {}
     for column in (*data_type.raw_columns, *data_type.kpi_columns):
         description = str(column.get("description") or "")
-        for name in _split(str(column.get("name") or "")):
+        names = _split(str(column.get("name") or ""))
+        # une fiche PRISM documente parfois plusieurs colonnes d'un trait (« path / exists ») avec leurs exemples
+        # du même trait (« N:\...\d10r1_Class.tif / true ») : à chaque colonne le sien, sinon son exemple de ligne
+        examples = _split(str(column.get("example"))) if isinstance(column.get("example"), str) and len(names) > 1 else []
+        for i, name in enumerate(names):
             if name.lower() not in WAFER_COLUMNS and name not in declared:
-                example = column.get("example")
+                example = column.get("example") if len(names) == 1 else (examples[i] if len(examples) == len(names) else first_row.get(name))
                 declared[name] = {
                     "unit": str(column.get("unit") or ""),
                     "description": description,

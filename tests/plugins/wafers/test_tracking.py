@@ -58,6 +58,18 @@ def test_a_running_wafer_shows_its_current_step_and_lot_name_from_jira():
     assert flow["order"] == "chain" and flow["pct"] == 50 and flow["running"] and flow["n"] == len(flow["steps"])
 
 
+def test_measurement_actions_are_marked_in_the_mes_journey():
+    """Les actions MES de mesure (MEASUREMENT_DEV, Mesure PL, METRO_CD, INSPECTION) sont marquées et comptées : on voit
+    quand la plaque a été caractérisée entre deux étapes de fabrication."""
+    assert tracking_model.is_measurement("SAG_SIN.MEASUREMENT_DEV") and tracking_model.is_measurement("Mesure PL")
+    assert tracking_model.is_measurement("METRO_CD.CD_SEM") and tracking_model.is_measurement("Inspection")
+    assert not tracking_model.is_measurement("SAG_SIN.WET_EKC") and not tracking_model.is_measurement(None)
+    fiche = tracking_model.build(DemoSource(lambda: NOW).fetch(_lasermark("running")), NOW)
+    marked = [s for s in fiche["steps"] if s["measurement"]]
+    assert fiche["n_measurements"] == len(marked)
+    assert all(tracking_model.is_measurement(s["step"]) for s in marked)
+
+
 def test_a_waiting_wafer_has_a_rework_and_an_unclosed_step_that_does_not_make_it_running():
     fiche = tracking_model.build(DemoSource(now=lambda: NOW).fetch(_lasermark("waiting")), now=NOW)
     assert fiche["status"] == "en attente" and fiche["current"]["idle_h"] > 0

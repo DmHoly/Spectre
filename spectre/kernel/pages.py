@@ -117,8 +117,8 @@ class NavGroup(NamedTuple):
 
 
 # Les menus de la navigation principale : ce qui décrit les structures (bibliothèque de procédés,
-# références), ce qui organise le travail, plutôt pour les managers (lots, planning, équipes), et les
-# données (PRISM pour les administrateurs, l'index des plaques).
+# références), ce qui organise le travail, plutôt pour les managers (planning, équipes), et les
+# données (PRISM pour les administrateurs, les lots, l'index des plaques, les fiches et analyses).
 NAV_GROUPS = {
     "structure": NavGroup("Structure", '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12.5 9 5 9-5"/><path d="m3 17 9 5 9-5"/>'),
     "gestion": NavGroup("Gestion", '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 7v8"/><path d="M12 7v11"/><path d="M16 7v4"/>'),

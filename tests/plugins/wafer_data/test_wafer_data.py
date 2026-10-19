@@ -6,7 +6,9 @@ from __future__ import annotations
 import pytest
 
 from spectre.kernel.errors import UpstreamError
-from spectre.plugins.wafer_data import digest, store
+from types import SimpleNamespace
+
+from spectre.plugins.wafer_data import blocks, digest, store
 from support.accounts import login, signup
 from support.experiments import launch
 from support.http import assert_handler_404
@@ -267,7 +269,7 @@ def test_columns_are_typed_from_the_rows_actually_read(client):
     signup(client, "boss@example.com")
     before = _columns(client, "eqe")
     assert before["EQE"]["type"] == "vector" and not before["EQE"]["sure"]  # deviné sur la fiche PRISM
-    assert before["pitch_nm"]["type"] == "category"  # mal deviné sur l'exemple « 800 / 400 / 1 » : les lignes le corrigent
+    assert before["pitch_nm"]["type"] == "number" and not before["pitch_nm"]["sure"]  # deviné sur « 800 », sa part de l'exemple « 800 / 400 / 1 »
 
     follow(client, "W1")
     probed = client.post(f"{BASE.format(AREA)}/catalog/eqe/probe", json={}).json()
@@ -367,6 +369,59 @@ def test_images_from_a_column_of_links(client, monkeypatch, tmp_path):
     file.parent.mkdir(parents=True)
     file.write_bytes(b"\x89PNG el")
     assert client.get(first["url"]).content == b"\x89PNG el"
+
+
+def test_columns_documented_together_each_get_their_own_example_and_type():
+    """Une fiche PRISM documente parfois plusieurs colonnes d'un trait (« path / exists », exemple « …tif / true ») :
+    chacune reçoit le sien - c'est ce qui fait du chemin des images MEB du G4 (meb_g4) un lien vers une image."""
+    data_type = SimpleNamespace(
+        key="meb_g4", title="Image MEB G4", category="Structure", representative_column="die",
+        raw_columns=(
+            {"name": "wafername", "example": "27CYH6E6MMC5"},
+            {"name": "die / round", "example": "10 / 1"},
+            {"name": "path / exists", "example": "N:\\ME-MEB101\\Datas\\Others\\w27CYH6E6MMC5\\d10r1_Class.tif / true"},
+            {"name": "lot / fdl / process / step", "example": "2026-42070 / 2026-42070 / WLKGSM / ARC_POST_STRIP"},
+            {"name": "modified / size", "example": "2026-10-17T01:40:24+00:00 / 2774495"},
+            {"name": "x / y", "example": "pas découpable"},  # l'exemple ne se découpe pas : celui de la ligne d'exemple
+        ),
+        kpi_columns=(),
+        example_rows=({"wafername": "27CYH6E6MMC5", "die": 10, "path": "N:\\d10r1_Class.tif", "x": 1.5, "y": -2.0},),
+    )
+    entry = blocks._entry(data_type, {}, [])
+    types = {c["name"]: c["type"] for c in entry.columns}
+    assert types["path"] == "image" and types["exists"] == "flag" and types["die"] == "number" and types["round"] == "number"
+    assert types["fdl"] == "category" and types["modified"] == "date" and types["size"] == "number"
+    assert types["x"] == "number" and types["y"] == "number" and (entry.x, entry.y) == ("x", "y")
+    assert entry.column("path")["example"].endswith("d10r1_Class.tif") and entry.column("exists")["example"] == "true"
+    assert entry.representative == "die"
+
+
+def test_sem_images_of_a_block_are_served_by_the_sem_images_plugin(monkeypatch, tmp_path):
+    """Les images du hook meb_g4 (des TIF du partage) ne passent pas par les images externes : la vignette et l'image
+    entière viennent du plugin sem_images, par le chemin relatif à la racine du partage."""
+    import spectre.plugins.sem_images  # noqa: F401 - déclare son serveur d'images à wafer_data
+    from spectre.plugins.sem_images import service as sem_service
+    from spectre.plugins.sem_images import source as sem_source
+    from spectre.plugins.wafer_data import service
+
+    root = tmp_path / "Datas"
+    monkeypatch.setattr(sem_source, "root", lambda: root)
+    block = blocks.Block(id=7, area_id=1, kind="images", hook="meb_g4", config={"column": "path", "caption": [], "max": 60}, label="", position=0, created_at="")
+    found = {"status": "ok", "computed_at": "2026-10-19T10:00:00+00:00", "message": "", "payload": {"images": [
+        {"path": str(root / "Others" / "l2026-42070_pWLKGSM_sARC" / "w27CYH6E6MMC5" / "d10r1_Class.tif"), "name": "d10r1_Class.tif", "meta": {}, "g": 0},
+        {"path": "D:/ailleurs/autre.tif", "name": "autre.tif", "meta": {}, "g": 0},
+    ], "total": 2}}
+    shown = service.block_payload(block, found, wafer="27CYH6E6MMC5", entries={})
+    first, second = shown["data"]["images"]
+    assert first["url"] == "/api/wafers/27CYH6E6MMC5/sem-images/file?path=Others/l2026-42070_pWLKGSM_sARC/w27CYH6E6MMC5/d10r1_Class.tif&variant=thumb"
+    assert first["full"].endswith("d10r1_Class.tif&variant=view")
+    assert second["url"] == "/api/wafers/27CYH6E6MMC5/data/images/7/1" and "full" not in second  # hors de la racine : l'adresse ordinaire
+
+    status, message = service._served("ok", {"images": found["payload"]["images"]}, "meb_g4")
+    assert status == "ok" and message == ""  # pas de contrôle des dossiers autorisés pour le partage MEB
+    monkeypatch.setattr(sem_service.plugin_states, "is_enabled", lambda name: name != "sem_images")
+    shown = service.block_payload(block, found, wafer="27CYH6E6MMC5", entries={})
+    assert shown["data"]["images"][0]["url"] == "/api/wafers/27CYH6E6MMC5/data/images/7/0"  # plugin éteint : l'adresse ordinaire
 
 
 def test_curve_digest_skips_missing_points():

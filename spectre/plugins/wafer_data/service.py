@@ -10,6 +10,8 @@ Ce qu'un bloc a calculé sur une plaque se garde, résumé (:mod:`.store`) ; on 
 - calculé **sans mesure** (``empty``) il y a plus de :data:`RETRY_EMPTY` : recalculé en retapant la base -
   une plaque pas encore mesurée l'est peut-être depuis (le cache de PRISM, lui, garde un vide pour toujours) ;
 - des images d'un modèle de chemin listées il y a plus de :data:`RETRY_EMPTY` : relistées (un fichier a pu arriver) ;
+- les images d'un type de données qu'un autre plugin sert (:func:`register_image_server` : les TIF du G4, rendus en
+  vignette et en PNG par sem_images) ne passent pas par les images externes ;
 - ``refresh`` (le bouton « Rafraîchir ») : tout est recalculé en retapant la base.
 
 Chaque type de données n'est interrogé qu'une fois pour tous les blocs qui le lisent, d'un projet à l'autre ;
@@ -21,6 +23,8 @@ situer chaque valeur parmi toutes les plaques du projet.
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 import fnmatch
 import logging
@@ -45,6 +49,21 @@ from .blocks import Block, CatalogHook
 from .digest import COMPUTE, WAFER_COLUMNS, round4
 
 PROBE_WAFERS = 3
+
+# D'autres plugins servent eux-mêmes les images de certains types de données - les TIF du G4 (hook ``meb_g4``),
+# rendus en vignette et en PNG par sem_images - au lieu des images externes, qui servent les fichiers tels quels.
+# Un tel plugin déclare, par type de données, la fonction qui donne (vignette, image entière) d'un chemin
+# absolu pour une plaque, ou ``None`` quand elle ne le sert pas (hors de sa racine, plugin désactivé).
+ImageUrls = Callable[[str, str], tuple[str, str] | None]
+_IMAGE_SERVERS: dict[str, ImageUrls] = {}
+
+
+def register_image_server(hook: str, urls: ImageUrls) -> None:
+    _IMAGE_SERVERS[hook] = urls
+
+
+def image_server(hook: str) -> ImageUrls | None:
+    return _IMAGE_SERVERS.get(hook)
 
 log = logging.getLogger(__name__)
 
@@ -138,10 +157,14 @@ def _images(block: Block, lasermark: str, line: dict[str, Any] | None) -> tuple[
     return ("ok" if images else "empty"), {"images": images, "directory": directory, "total": len(matched)}, ""
 
 
-def _served(status: str, payload: dict[str, Any]) -> tuple[str, str]:
+def _served(status: str, payload: dict[str, Any], hook: str = "") -> tuple[str, str]:
     """Les images d'une colonne : celles qu'on ne servira pas (hors des dossiers autorisés) sont comptées ;
-    si aucune ne l'est, le bloc est en erreur (rien n'est gardé : la règle peut changer)."""
+    si aucune ne l'est, le bloc est en erreur (rien n'est gardé : la règle peut changer). Un type de données dont un
+    autre plugin sert les images (:func:`register_image_server`) n'est pas soumis aux dossiers autorisés."""
     if status != "ok":
+        return status, ""
+    if image_server(hook) is not None:
+        payload["blocked"] = 0
         return status, ""
     blocked = sum(1 for image in payload["images"] if not external_images.allowed(image["path"]))
     payload["blocked"] = blocked
@@ -185,7 +208,7 @@ def compute(
                 results[(key, block.sig)] = {"status": "error", "payload": None, "computed_at": None, "message": str(exc)}
                 continue
             if block.kind == "images":
-                status, message = _served(status, payload)
+                status, message = _served(status, payload, block.hook)
                 if status == "error":
                     results[(key, block.sig)] = {"status": "error", "payload": None, "computed_at": None, "message": message}
                     continue
@@ -297,12 +320,14 @@ def block_payload(
     }
     if block.kind == "images" and payload:
         url = image_url or (lambda i: f"/api/wafers/{wafer}/data/images/{block.id}/{i}")
+        sem = _served_urls(block.hook, wafer, payload.get("images", []))
         out["data"] = {
             **{k: v for k, v in payload.items() if k != "images"},
             "images": [
                 {
                     "name": image["name"],
-                    "url": url(i),
+                    "url": sem[i][0] if sem and sem[i] else url(i),
+                    **({"full": sem[i][1]} if sem and sem[i] else {}),
                     "meta": image.get("meta", {}),
                     "g": image.get("g", 0),
                 }
@@ -312,6 +337,20 @@ def block_payload(
     if block.kind == "value" and payload and status == "ok" and block.area_id != blocks_mod.FREE_AREA:
         out["population"] = store.population(block.sig, payload["value"])
     return out
+
+
+def _served_urls(hook: str, wafer: str, images: list[dict[str, Any]]) -> list[tuple[str, str] | None] | None:
+    """Les (vignette, image entière) des images d'un type de données qu'un autre plugin sert
+    (:func:`register_image_server`) ; ``None`` sans un tel plugin, ou pour une image qu'il ne sert pas (l'adresse
+    ordinaire, qui dira alors que l'image n'est pas servie)."""
+    urls = image_server(hook)
+    if urls is None:
+        return None
+    try:
+        return [urls(wafer, image["path"]) for image in images]
+    except DomainError as exc:
+        log.info("images %s de %s non servies : %s", hook, wafer, exc)
+        return None
 
 
 def sheet(user: User, lasermark: str, *, refresh: bool = False) -> dict[str, Any]:

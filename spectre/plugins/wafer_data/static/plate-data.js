@@ -1,8 +1,8 @@
 /* L'onglet « Data » de la page d'une plaque (wafers/pages/wafer.html), monté par wafer.js quand une étude la suit
    (elle est alors rattachée à un µprojet, donc à un projet corporate) - PlateData.mount(plate).
 
-   Deux onglets au-dessus des sections de la page : « Fiche » (ce qui y était déjà) et « Data » (gardé dans
-   l'adresse, #data), chargé au premier affichage seulement - le calcul peut lire PRISM :
+   Dans l'onglet « Data » de la page (PlateTabs, wafer.js - montré aussi par sem_images pour ses images MEB),
+   chargé au premier affichage seulement - le calcul peut lire PRISM :
    - les données principales de la plaque, bloc par bloc, telles que le projet corporate les a configurées
      (/fiche-data) : valeurs (situées parmi les plaques du projet déjà calculées), histogrammes, boîtes à
      moustaches, nuages de points, cartographies, courbes (charts.js), galeries d'images (vignettes, puis la
@@ -25,38 +25,17 @@ const PlateData = (() => {
   const REFRESH = '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>';
   const GEAR = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>';
 
-  // --- les onglets ---------------------------------------------------------------------------------
-
-  function select(name, { focus = false } = {}) {
-    const tabs = document.querySelectorAll("#plate-tabs [role=tab]");
-    tabs.forEach((tab) => {
-      const on = tab.dataset.tab === name;
-      tab.classList.toggle("active", on);
-      tab.setAttribute("aria-selected", on ? "true" : "false");
-      tab.tabIndex = on ? 0 : -1;
-      if (on && focus) tab.focus();
-    });
-    document.getElementById("plate-tab-fiche").hidden = name !== "fiche";
-    document.getElementById("plate-tab-data").hidden = name !== "data";
-    history.replaceState(null, "", name === "data" ? "#data" : location.pathname + location.search);
-    if (name === "data" && !loaded) load();
-  }
+  // --- l'onglet « Data » (PlateTabs, wafer.js) ----------------------------------------------------
 
   function mount(passport) {
     plate = passport;
-    const nav = document.getElementById("plate-tabs");
-    if (!nav) return;
-    nav.hidden = false;
-    nav.querySelectorAll("[role=tab]").forEach((tab) => tab.addEventListener("click", () => select(tab.dataset.tab)));
-    nav.addEventListener("keydown", (event) => {
-      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-      const names = ["fiche", "data"];
-      const current = names.indexOf(nav.querySelector("[aria-selected=true]").dataset.tab);
-      const next = event.key === "Home" ? 0 : event.key === "End" ? names.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + names.length) % names.length;
-      select(names[next], { focus: true });
-      event.preventDefault();
+    if (!document.getElementById("plate-tabs")) return;
+    document.getElementById("plate-data-main").hidden = false;
+    document.getElementById("plate-genealogy").hidden = false;
+    PlateTabs.show();
+    PlateTabs.onShow("data", () => {
+      if (!loaded) load();
     });
-    if (location.hash === "#data") select("data");
   }
 
   // --- les données ----------------------------------------------------------------------------------

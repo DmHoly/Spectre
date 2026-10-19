@@ -72,8 +72,9 @@
 
     </div>
 
-    <!-- Les onglets « Fiche » / « Data » : montrés par le plugin wafer_data (plate-data.js) quand une étude suit
-         la plaque ; sans lui, la page reste d'un seul tenant. -->
+    <!-- Les onglets « Fiche » / « Data » (wafer.js, PlateTabs) : montrés dès qu'un plugin a quelque chose à mettre
+         dans « Data » - la fiche data du projet corporate (wafer_data, quand une étude suit la plaque), les images
+         MEB du G4 (sem_images) ; sans eux, la page reste d'un seul tenant. -->
     <div class="tabs plate-tabs" id="plate-tabs" role="tablist" aria-label="Vues de la plaque" hidden>
       <button type="button" class="tab active" role="tab" id="plate-tab-fiche-btn" data-tab="fiche" aria-selected="true" aria-controls="plate-tab-fiche">Fiche</button>
       <button type="button" class="tab" role="tab" id="plate-tab-data-btn" data-tab="data" aria-selected="false" aria-controls="plate-tab-data" tabindex="-1">Data</button>
@@ -108,15 +109,13 @@
       <div class="js-life-body"></div>
     </section>
 
-    <!-- Ses images MEB du G4 : retrouvées sur le partage par PRISM (ses FDL, l'index des dossiers), affichées sans
-         copie (plate-sem.js, plugin sem_images : la section reste cachée sans lui) -->
-    <section class="plate-sem" id="plate-sem" hidden aria-labelledby="plate-sem-title"></section>
     </div>
 
-    <!-- L'onglet « Data » : ses données principales, configurées par le projet corporate (/fiche-data), et sa
-         généalogie (plate-data.js, plugin wafer_data) -->
+    <!-- L'onglet « Data » : ses données - les données principales configurées par le projet corporate (/fiche-data)
+         et sa généalogie (plate-data.js, plugin wafer_data), ses images MEB du G4 (plate-sem.js, plugin sem_images) ;
+         chaque section reste cachée sans son plugin -->
     <div id="plate-tab-data" role="tabpanel" aria-labelledby="plate-tab-data-btn" hidden>
-      <section aria-labelledby="plate-data-title">
+      <section id="plate-data-main" aria-labelledby="plate-data-title" hidden>
         <div class="plate-life__head">
           <h2 class="section-title" id="plate-data-title">Données principales</h2>
           <span class="help js-data-meta" style="margin:0;"></span>
@@ -126,7 +125,9 @@
         </div>
         <div class="js-data-body"></div>
       </section>
-      <section aria-labelledby="plate-genealogy-title">
+      <!-- Ses images MEB du G4 : retrouvées sur le partage par PRISM (ses FDL, l'index des dossiers), affichées sans copie -->
+      <section class="plate-sem" id="plate-sem" hidden aria-labelledby="plate-sem-title"></section>
+      <section id="plate-genealogy" aria-labelledby="plate-genealogy-title" hidden>
         <h2 class="section-title" id="plate-genealogy-title" style="margin:28px 0 10px;">Généalogie - d'où elle vient, ce qui la reprend</h2>
         <div class="js-genealogy"></div>
       </section>
