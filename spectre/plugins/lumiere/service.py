@@ -15,6 +15,7 @@ from typing import Any
 from ...kernel.db import data_dir, get_conn
 from ...kernel.errors import DomainError, Forbidden, InvalidInput, NotFound
 from ..accounts.service import User
+from . import context as contexts
 from . import templates
 
 log = logging.getLogger(__name__)
@@ -68,23 +69,24 @@ def _visible(user: User, row: Any) -> Any:
     return row
 
 
-def clean_context(template: templates.Template, context: dict[str, Any] | None) -> tuple[str, str, str]:
-    """(genre, clé, titre) d'un contexte pour ce modèle (422 sinon)."""
+def clean_context(user: User, template: templates.Template, context: dict[str, Any] | None) -> tuple[str, str, str]:
+    """(genre, clé, titre) d'un contexte pour ce modèle : du bon genre, existant et visible de ``user`` (422, 404,
+    403 sinon)."""
     context = context or {}
     kind = str(context.get("kind") or "")
     key = " ".join(str(context.get("key") or "").split())
     if kind != template.context:
         raise InvalidInput(f"Le modèle « {template.name} » s'applique à {templates.CONTEXTS.get(template.context, template.context)}.", code="wrong_context")
-    if not key or len(key) > 80:
-        raise InvalidInput("Indiquez la plaque du rapport (son lasermark).", code="missing_context_key")
-    title = f"{template.name} · {key}"
+    if not key or len(key) > 200:
+        raise InvalidInput("Indiquez ce que le rapport décrit (la plaque, l'analyse, l'étude...).", code="missing_context_key")
+    title = f"{template.name} · {contexts.make(user, kind, key).title}"
     return kind, key, title
 
 
 def request(user: User, template_key: str, context: dict[str, Any] | None) -> dict[str, Any]:
     """Demande un rapport : la ligne est créée ``queued`` et la génération part en tâche de fond."""
     template = templates.get(template_key)
-    kind, key, title = clean_context(template, context)
+    kind, key, title = clean_context(user, template, context)
     with get_conn() as conn:
         running = conn.execute("SELECT COUNT(*) FROM lumiere_reports WHERE user_id = ? AND status IN ('queued', 'running')", (user.id,)).fetchone()[0]
         if running >= MAX_PER_USER_RUNNING:

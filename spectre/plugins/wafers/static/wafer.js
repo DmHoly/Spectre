@@ -380,7 +380,7 @@ async function init() {
     const sem = typeof PlateSem !== "undefined" && pluginEnabled("sem_images") ? PlateSem.mount(document.getElementById("plate-sem"), plate.lasermark) : null;
     if (sem) PlateTabs.show();
     // « Rapport » : le rapport Lumière de la plaque (plugin lumiere)
-    if (typeof PlateReport !== "undefined" && pluginEnabled("lumiere")) PlateReport.mount(plate);
+    if (typeof LumiereReport !== "undefined" && pluginEnabled("lumiere")) LumiereReport.mount(document.querySelector(".plate-hero__actions .js-db-link"), { kind: "wafer", key: plate.lasermark, before: true });
     // la vie en ligne : ses FDL et son lot JIRA rejoignent l'en-tête (la lecture vient peut-être de
     // créer le lot détecté, ou des liens de renommage vus dans la MES : on les relit alors)
     let linksSeen = (plate.links && plate.links.links.length) || 0;

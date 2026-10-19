@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/static/experiments/experiments.css">
   <link rel="stylesheet" href="/static/wafers/wafers.css">
   <link rel="stylesheet" href="/static/lots/lots.css">
+  <link rel="stylesheet" href="/static/lumiere/lumiere.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -81,6 +82,8 @@
         <div class="lot-head__desc" id="lot-description"></div>
       </div>
       <div class="lot-head__actions">
+        <!-- « Rapport » : le rapport Lumière du lot (plugin lumiere, report-button.js) -->
+        <span data-lumiere-report data-kind="lot" data-route="/lots/{code}" data-key="{code}"></span>
         <button type="button" class="btn btn-primary" id="declare-end-btn" style="display:none;">Déclarer la fin</button>
         <button type="button" class="btn btn-line" id="edit-lot-btn">Modifier le lot</button>
         <button type="button" class="btn btn-danger" id="delete-lot-btn" style="display:none;">Supprimer</button>
@@ -187,6 +190,9 @@
   <script src="/static/experiments/lineage-graph.js"></script>
   <script src="/static/kernel/timeline.js"></script>
   <script src="/static/lots/lots-gantt.js"></script>
+  <script src="/static/lumiere/client.js"></script>
+  <script src="/static/lumiere/lumiere-ui.js"></script>
+  <script src="/static/lumiere/report-button.js"></script>
   <script src="/static/lots/lot.js"></script>
 </body>
 </html>

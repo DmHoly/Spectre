@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/static/wafers/wafers.css">
   <link rel="stylesheet" href="/static/microprojects/microprojects.css">
   <link rel="stylesheet" href="/static/lots/lots.css">
+  <link rel="stylesheet" href="/static/lumiere/lumiere.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="stylesheet" href="/static/references/references.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -498,6 +499,8 @@
         <div class="mp-head__meta" id="microproject-owner"></div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <!-- « Rapport » : le rapport Lumière du µprojet (plugin lumiere, report-button.js) -->
+        <span data-lumiere-report data-kind="microproject" data-route="/microprojets/{slug}" data-key="{slug}"></span>
         <a id="evolution-link" class="btn btn-line" href="#">Évolution des structures</a>
         <button id="plan-root-btn" class="btn btn-line" type="button" style="display:none;" title="Prévoir une expérience (titre, intention, nombre de plaques) sans encore définir sa structure">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 3" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>
@@ -650,6 +653,9 @@
   <script src="/static/experiments/lineage-graph.js"></script>
   <script src="/static/lots/lot-picker.js"></script>
   <script src="/static/experiments/lineage-view.js"></script>
+  <script src="/static/lumiere/client.js"></script>
+  <script src="/static/lumiere/lumiere-ui.js"></script>
+  <script src="/static/lumiere/report-button.js"></script>
   <script src="/static/microprojects/microproject.js"></script>
 </body>
 </html>

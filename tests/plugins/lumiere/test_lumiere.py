@@ -27,7 +27,7 @@ def test_the_templates_say_what_they_contain_and_for_what(client):
     assert "fiche-plaque" in keys and data["contexts"]["wafer"] == "une plaque"
     fiche = next(t for t in data["templates"] if t["key"] == "fiche-plaque")
     assert fiche["context"] == "wafer" and "Vie en ligne" in fiche["outline"] and "Images MEB - G4" in fiche["outline"] and fiche["builtin"]
-    assert client.get("/api/lumiere/templates", params={"context": "lot"}).json()["templates"] == []
+    assert client.get("/api/lumiere/templates", params={"context": "inconnu"}).json()["templates"] == []
     with pytest.raises(Exception):
         templates.get("inconnu")
 
@@ -38,7 +38,7 @@ def test_a_wafer_report_is_generated_kept_and_downloadable(client):
     assert created.status_code == 202, created.text
     report = created.json()
     assert created.headers["Location"].endswith(f"/api/lumiere/reports/{report['id']}")
-    assert report["context"] == {"kind": "wafer", "key": LASERMARK} and report["title"] == f"Fiche plaque · {LASERMARK}"
+    assert report["context"] == {"kind": "wafer", "key": LASERMARK} and report["title"] == f"Fiche plaque · Plaque {LASERMARK}"
 
     done = client.get(f"/api/lumiere/reports/{report['id']}").json()
     assert done["status"] == "done", done["message"]

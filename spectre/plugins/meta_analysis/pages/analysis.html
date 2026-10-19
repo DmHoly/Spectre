@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/static/kpi_tracking/kpi-tracking.css">
   <link rel="stylesheet" href="/static/wafer_data/wafer-data.css">
   <link rel="stylesheet" href="/static/meta_analysis/meta-analysis.css">
+  <link rel="stylesheet" href="/static/lumiere/lumiere.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'">
@@ -53,7 +54,8 @@
         </div>
       </form>
       <div class="ma-hero__actions">
-        <button type="button" class="btn btn-primary" id="report" title="Télécharger un rapport HTML autonome de l'analyse : il s'ouvre hors ligne, se transmet tel quel et s'imprime en PDF">Rapport</button>
+        <!-- « Rapport » : le rapport Lumière de l'analyse (plugin lumiere, report-button.js) -->
+        <span data-lumiere-report data-kind="analysis" data-route="/analyses/{analysis_id}" data-key="{analysis_id}" data-primary="true"></span>
         <button type="button" class="btn btn-line" id="edit">Modifier</button>
         <a class="btn btn-line" id="open-comparator" href="/comparateur" hidden>Ouvrir dans le comparateur</a>
         <button type="button" class="btn btn-line" id="copy-link">Copier le lien</button>
@@ -138,7 +140,9 @@
   <script src="/static/meta_analysis/client.js"></script>
   <script src="/static/meta_analysis/wafer-picker.js"></script>
   <script src="/static/meta_analysis/analysis-data.js"></script>
-  <script src="/static/meta_analysis/report-html.js"></script>
+  <script src="/static/lumiere/client.js"></script>
+  <script src="/static/lumiere/lumiere-ui.js"></script>
+  <script src="/static/lumiere/report-button.js"></script>
   <script src="/static/meta_analysis/analysis.js"></script>
 </body>
 </html>

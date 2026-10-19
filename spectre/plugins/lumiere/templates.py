@@ -30,7 +30,7 @@ from . import blocks as block_types
 from . import context as contexts
 from . import engine
 
-CONTEXTS = {"wafer": "une plaque"}
+CONTEXTS = contexts.CONTEXTS
 SLIDE_KINDS = ("title", "section", "summary", "grid")
 MAX_SLIDES = 40
 MAX_GRID = 3
@@ -90,6 +90,66 @@ BUILTIN: dict[str, Template] = {
             grid("EQE - cartes et distributions", [(0, 0, "data.maps", {"hook": "eqe", "max_columns": 8}), (0, 1, "data.boxes", {"hook": "eqe", "max_columns": 6})], ncols=2, col_widths=["1.4fr", "1fr"]),
             grid("PL - cartes", [(0, 0, "data.maps", {"hook": "pl", "max_columns": 8})]),
             grid("Images MEB - G4", [(0, 0, "sem.gallery", {"max": 24, "step": ""})]),
+            {"kind": "summary"},
+        ),
+    ),
+    "analyse": Template(
+        key="analyse",
+        name="Analyse de plaques",
+        description="Une analyse : la question, la référence et les plaques comparées, leurs KPI comparés, les cartes et distributions côte à côte, leurs frises, la conclusion.",
+        context="analysis",
+        builtin=True,
+        slides=(
+            {"kind": "title"},
+            grid("La question et les plaques", [(0, 0, "context.facts", {"studies": True, "notes": False})]),
+            grid("KPI comparés", [(0, 0, "analysis.kpis", {})]),
+            grid("EQE - cartes et distributions", [(0, 0, "data.maps", {"hook": "eqe", "max_columns": 8}), (0, 1, "data.boxes", {"hook": "eqe", "max_columns": 6})], ncols=2, col_widths=["1.4fr", "1fr"]),
+            grid("Frises des mesures", [(0, 0, "wafer.timeline", {})]),
+            {"kind": "summary"},
+        ),
+    ),
+    "etude": Template(
+        key="etude",
+        name="Étude",
+        description="Une étude : son intention et sa conclusion, sa structure, ses plaques suivies, leurs frises et leurs données (cartes et distributions).",
+        context="study",
+        builtin=True,
+        slides=(
+            {"kind": "title"},
+            grid("L'étude", [(0, 0, "context.facts", {"studies": True, "notes": False})]),
+            grid("Structure", [(0, 0, "study.structure", {})]),
+            grid("Frises des mesures", [(0, 0, "wafer.timeline", {})]),
+            grid("EQE - cartes et distributions", [(0, 0, "data.maps", {"hook": "eqe", "max_columns": 8}), (0, 1, "data.boxes", {"hook": "eqe", "max_columns": 6})], ncols=2, col_widths=["1.4fr", "1fr"]),
+            {"kind": "summary"},
+        ),
+    ),
+    "microprojet": Template(
+        key="microprojet",
+        name="µprojet",
+        description="Un µprojet : ses études (statut, plaques, conclusions), le suivi en ligne de ses plaques et leurs distributions.",
+        context="microproject",
+        builtin=True,
+        slides=(
+            {"kind": "title"},
+            grid("Le µprojet", [(0, 0, "context.facts", {"studies": True, "notes": False})]),
+            grid("Études", [(0, 0, "microproject.studies", {})]),
+            grid("Vie en ligne des plaques", [(0, 0, "wafer.tracking", {})]),
+            grid("EQE - distributions", [(0, 0, "data.boxes", {"hook": "eqe", "max_columns": 6})]),
+            {"kind": "summary"},
+        ),
+    ),
+    "lot": Template(
+        key="lot",
+        name="Lot",
+        description="Un lot de fabrication : ses dates et son statut, le suivi en ligne de ses plaques (MES, FDL, Gantt), leurs frises et leurs distributions.",
+        context="lot",
+        builtin=True,
+        slides=(
+            {"kind": "title"},
+            grid("Le lot", [(0, 0, "context.facts", {"studies": True, "notes": False})]),
+            grid("Vie en ligne des plaques", [(0, 0, "wafer.tracking", {})]),
+            grid("Frises des mesures", [(0, 0, "wafer.timeline", {})]),
+            grid("EQE - distributions", [(0, 0, "data.boxes", {"hook": "eqe", "max_columns": 6})]),
             {"kind": "summary"},
         ),
     ),
@@ -306,6 +366,8 @@ def build(user: User, template: Template, context_key: str, *, only: int | None 
     lumiere = engine.load()
     ctx = contexts.make(user, template.context, context_key)
     report = lumiere.ReportBuilder(title=ctx.title, subtitle=f"{template.name} - Spectre", author=user.name or user.email, mode="slide")
+    if not template.slides:
+        raise InvalidInput("Ce modèle n'a aucune slide.", code="no_slides")
     chosen = list(template.slides) if only is None else [template.slides[only]]
     report.add(lumiere.SlideView([_slide(lumiere, ctx, s) for s in chosen]))
     return report

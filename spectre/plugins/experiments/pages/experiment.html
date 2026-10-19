@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/static/attachments/attachments.css">
   <link rel="stylesheet" href="/static/notebook/notebook.css">
   <link rel="stylesheet" href="/static/lots/lots.css">
+  <link rel="stylesheet" href="/static/lumiere/lumiere.css">
   <link rel="stylesheet" href="/static/structures/structures.css">
   <link rel="stylesheet" href="/static/references/references.css">
   <link rel="stylesheet" href="/static/promotion/promotion.css">
@@ -76,6 +77,8 @@
         </div>
         <div class="fiche-head__actions" data-report-hide>
           <span id="promotion-action" data-panel="promotion-action"></span>
+          <!-- « Rapport » : le rapport Lumière de l'étude (plugin lumiere, report-button.js) -->
+          <span data-lumiere-report data-kind="study" data-route="/microprojets/{slug}/experiences/{experiment_id}" data-key="{slug}/{experiment_id}"></span>
           <button class="btn btn-line" id="export-report-btn" type="button" data-panel="report">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
             Télécharger le rapport
@@ -473,6 +476,9 @@
   <script src="/static/experiments/conclusion.js"></script>
   <script src="/static/experiments/advanced.js"></script>
   <script src="/static/experiments/report.js"></script>
+  <script src="/static/lumiere/client.js"></script>
+  <script src="/static/lumiere/lumiere-ui.js"></script>
+  <script src="/static/lumiere/report-button.js"></script>
   <script src="/static/lots/lot-picker.js"></script>
   <script src="/static/promotion/fiche.js"></script>
   <script src="/static/structures/client.js"></script>

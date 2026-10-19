@@ -33,7 +33,7 @@ def test_the_block_catalog_describes_its_options_with_their_choices(client):
     hook = next(o for o in keys["data.maps"]["options"] if o["key"] == "hook")
     assert hook["kind"] == "choice" and {c["value"] for c in hook["choices"]} >= {"eqe", "pl"}  # les types à positions de la démo
     assert data["max_grid"] == 3 and "grid" in data["slide_kinds"]
-    assert client.get("/api/lumiere/blocks", params={"context": "lot"}).json()["code"] == "unknown_context"
+    assert client.get("/api/lumiere/blocks", params={"context": "inconnu"}).json()["code"] == "unknown_context"
 
 
 def test_slides_are_checked_and_options_cleaned():
@@ -106,4 +106,4 @@ def test_a_new_template_without_source_starts_minimal_and_the_name_is_required(c
     made = client.post(BASE, json={"name": "Vide", "context": "wafer"}).json()
     assert [s["kind"] for s in made["slides"]] == ["title", "summary"]
     assert client.post(BASE, json={"name": "  ", "context": "wafer"}).json()["code"] == "missing_name"
-    assert client.post(BASE, json={"name": "x", "context": "lot"}).json()["code"] == "unknown_context"
+    assert client.post(BASE, json={"name": "x", "context": "inconnu"}).json()["code"] == "unknown_context"
