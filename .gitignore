@@ -26,3 +26,4 @@ connections.yml
 
 # Export de l'image Docker (build-docker.bat)
 dist/
+/token_gitlab.txt
