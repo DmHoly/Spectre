@@ -23,8 +23,7 @@ services:
       # SPECTRE_SMTP_PASSWORD: "changeme"
       # SPECTRE_SMTP_FROM: "spectre@example.com"
     volumes:
-      - spectre-data:/data
+      # les données (base, dépôts, pièces jointes) dans un dossier à côté de ce fichier. Sous Linux, il doit
+      # appartenir à l'UID 1000 du conteneur : sudo chown 1000:1000 data_spectre_docker
+      - ./data_spectre_docker:/data
     restart: unless-stopped
-
-volumes:
-  spectre-data:

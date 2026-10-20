@@ -47,9 +47,10 @@ docker load -i spectre-image.tar
 docker images spectre        # doit afficher spectre:latest
 ```
 
-Créer le fichier de configuration `.env` (dans le même dossier que `docker-compose.yml`) :
+Créer le dossier des données (voir §7) puis le fichier de configuration `.env` (dans le même dossier que `docker-compose.yml`) :
 
 ```bash
+mkdir -p data_spectre_docker && sudo chown 1000:1000 data_spectre_docker
 cp .env.example .env
 nano .env
 ```
@@ -111,25 +112,24 @@ docker compose exec spectre spectre admin prenom.nom@aledia.com
 3. à sa prochaine connexion avec ce mot de passe provisoire, Spectre l'oblige à en choisir un nouveau avant
    toute autre action.
 
-## 7. Où mettre le volume `data` ?
+## 7. Où sont les données (`data_spectre_docker`) ?
 
-`docker-compose.yml` déclare un **volume nommé** `spectre-data` (nom réel : `spectre_spectre-data`, Compose préfixe le nom du dossier du projet) monté sur `/data` dans le conteneur. Il contient la
-base `spectre.db` (comptes, projets, études…), les dépôts d'expériences, les pièces jointes et les caches.
+`docker-compose.yml` monte le dossier **`./data_spectre_docker`** (à côté du compose) sur `/data` dans le conteneur. Il contient
+la base `spectre.db` (comptes, projets, études…), les dépôts d'expériences, les pièces jointes et les caches.
 
-- **Rien à créer ni à choisir** : Docker le crée au premier `up`. Il vit dans `/var/lib/docker/volumes/spectre_spectre-data/_data`
-  (accessible en `sudo`), il survit à `docker compose down`, à `up`, à un nouveau `docker load` d'une version plus récente.
-  **Ne jamais** lancer `docker compose down -v` : l'option `-v` supprime le volume, donc toutes les données.
-- **Sauvegarde** : dans Spectre, *Paramètres ▸ Base de données ▸ Sauvegarde* télécharge un ZIP de tout le dossier de données.
-  À défaut, côté serveur :
+- **Sur le serveur** : `~/spectre/data_spectre_docker`. Le conteneur tourne en UID 1000 : créer le dossier avant le premier `up` :
   ```bash
-  docker run --rm -v spectre_spectre-data:/data -v "$PWD":/backup alpine tar czf /backup/spectre-data-$(date +%F).tgz -C /data .
+  mkdir -p ~/spectre/data_spectre_docker && sudo chown 1000:1000 ~/spectre/data_spectre_docker
   ```
-- **Variante : dossier choisi** (ex. un disque dédié `/srv/spectre/data`) à la place du volume nommé :
+  (déjà fait si tu suis l'étape 3 ; sinon le conteneur ne peut pas écrire et plante au démarrage).
+- **Sur ton poste (test local)** : lancer depuis `dist\` (`cd dist` puis `docker compose up -d`, avec un `.env` copié dans `dist\`) :
+  les données sont dans `dist\data_spectre_docker`. Le supprimer (conteneur arrêté : `docker compose down`) remet l'appli à zéro,
+  compte `admin` / `admin` compris.
+- Le dossier survit à `docker compose down`, à `up` et à une nouvelle image : **ne jamais le supprimer** sur le serveur.
+- **Sauvegarde** : *Paramètres ▸ Base de données ▸ Sauvegarde* télécharge un ZIP de tout le dossier ; ou, côté serveur :
   ```bash
-  sudo mkdir -p /srv/spectre/data && sudo chown 1000:1000 /srv/spectre/data   # le conteneur tourne en UID 1000
+  tar czf ~/spectre-data-$(date +%F).tgz -C ~/spectre data_spectre_docker
   ```
-  puis dans `docker-compose.yml`, remplacer `- spectre-data:/data` par `- /srv/spectre/data:/data` et supprimer le bloc
-  `volumes: spectre-data:` en bas du fichier.
 
 ## 8. Mettre à jour vers une nouvelle version
 
