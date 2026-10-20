@@ -226,7 +226,7 @@ Pourquoi pas KPIExplorer pour les boîtes ? Il **n'affiche par défaut que le de
 - **Installation.** Un extra `spectre[lumiere]`, épinglé sur un tag de Lumière. Le `Dockerfile` installe l'extra. L'adaptateur vérifie une version minimale de `lumiere_report`. `enabled()` est vrai si l'import est possible.
 - **Démarrage.** Lumière est importé en tâche de fond, pour ne pas faire payer ~12 s au premier rendu.
 - **Routes.** `GET /api/lumiere/components?hook=` sert le catalogue. Le rendu passe par la route de chaque hôte, qui applique ses propres droits.
-- **Réponse.** `{html, store, needs, etats: [{rang, label, url}]}`. C'est une exception écrite à « Pas de HTML sous /api » (`ARCHITECTURE.md:350`), avec le précédent de `structure_svg`.
+- **Réponse.** `{html, store, needs, etats: [{rang, label, url}]}`. C'est une exception écrite à « Pas de HTML sous /api » (`ARCHITECTURE-REFERENCE.md` § 4), avec le précédent de `structure_svg`.
 - **JS `LumiereMount`.** Il :
   - charge Plotly et `embed_css` une seule fois ;
   - recrée les scripts du fragment ;

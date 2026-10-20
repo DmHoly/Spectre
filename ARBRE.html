@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture de Spectre</title>
+<style>
+  :root{
+    --bg:#f7f7f5; --ink:#1f2328; --muted:#6b7280; --panel:#ffffff; --line:#d7dbe0;
+    --lib:#6b7280; --kernel:#374151; --core:#1d4ed8; --ext:#0f766e; --leaf:#65a30d;
+    --hi:#ea580c; --dep:#dc2626; --dpt:#2563eb; --edge:#c9ced6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.5 "Segoe UI",system-ui,sans-serif}
+  body{display:grid;grid-template-columns:1fr 420px;height:100vh}
+  #scene{position:relative;overflow:auto}
+  svg{width:100%;min-width:900px;display:block}
+  aside{border-left:1px solid var(--line);background:var(--panel);padding:20px 22px;overflow:auto}
+  h1{font-size:17px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-bottom:14px}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:5px}
+  .layer{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:4px;color:#fff;margin-bottom:8px}
+  .layer.core{background:var(--core)} .layer.ext{background:var(--ext)} .layer.leaf{background:var(--leaf)} .layer.kernel{background:var(--kernel)} .layer.lib{background:var(--lib)}
+  #panel h2{font-size:20px;margin:0 0 2px}
+  #panel .t{color:var(--muted);margin:0 0 10px;font-family:ui-monospace,Consolas,monospace;font-size:13px}
+  #panel p{margin:0 0 10px}
+  #panel h3{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:4px;padding:1px 8px;font-size:13px;cursor:pointer;font-family:ui-monospace,Consolas,monospace}
+  .chip.core{border-color:var(--core);color:var(--core)} .chip.ext{border-color:var(--ext);color:var(--ext)} .chip.leaf{border-color:var(--leaf);color:#4d7c0f}
+  .chip:hover{background:#f1f5f9}
+  .ecart{background:#fff7ed;border-left:3px solid var(--hi);padding:8px 10px;font-size:13px;margin:6px 0;border-radius:0 6px 6px 0}
+  .doc{white-space:pre-wrap;font-size:13px;color:#374151;background:#f9fafb;border:1px solid var(--line);border-radius:6px;padding:10px}
+  ul.small{margin:0;padding-left:18px;font-size:13px;color:#374151;columns:2;font-family:ui-monospace,Consolas,monospace}
+  .node{cursor:pointer}
+  .node rect{fill:#fff;stroke-width:1.5;rx:6}
+  .node.core rect{stroke:var(--core)} .node.ext rect{stroke:var(--ext)} .node.leaf rect{stroke:var(--leaf)} .node.kernel rect{stroke:var(--kernel);fill:#f3f4f6} .node.lib rect{stroke:var(--lib);stroke-dasharray:4 3;fill:#f9fafb}
+  .node text{font:13px ui-monospace,Consolas,monospace;fill:var(--ink);text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+  .node.lib text{font-family:"Segoe UI",system-ui,sans-serif;font-style:italic}
+  .node.sel rect{stroke:var(--hi);stroke-width:3;fill:#fff7ed}
+  .node.dep rect{stroke:var(--dep);stroke-width:3;fill:#fef2f2}
+  .node.dpt rect{stroke:var(--dpt);stroke-width:3;fill:#eff6ff}
+  .node.dim{opacity:.25}
+  .edge{fill:none;stroke:var(--edge);stroke-width:1.2}
+  .edge.dep{stroke:var(--dep);stroke-width:2.2} .edge.dpt{stroke:var(--dpt);stroke-width:2.2}
+  .edge.dim{opacity:.08}
+  .edge.bad{stroke:#c026d3;stroke-width:2;stroke-dasharray:5 3}
+  .node.kernel text{font-size:12px}
+  .band{fill:none;stroke:var(--line);stroke-dasharray:6 4}
+  .bandlbl{font:11px "Segoe UI",system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;fill:var(--muted)}
+  .bandsub{font:11px "Segoe UI",system-ui,sans-serif;fill:var(--muted)}
+  #hint{position:absolute;left:16px;bottom:10px;font-size:12px;color:var(--muted)}
+  #mode{position:absolute;left:16px;top:12px;font-size:13px;display:flex;gap:8px;align-items:center}
+  #mode button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
+  #mode button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  #mode button.tab{font-weight:600}
+  .dbox rect{fill:#fff;stroke:#94a3b8;stroke-width:1.5;rx:8}
+  .dbox.group rect{fill:#f8fafc;stroke:#cbd5e1;stroke-dasharray:6 4}
+  .dbox.host rect{fill:#f1f5f9;stroke:#64748b}
+  .dbox.container rect{fill:#eff6ff;stroke:var(--core)}
+  .dbox.file rect{fill:#fffbeb;stroke:#d97706}
+  .dbox.secret rect{fill:#fef2f2;stroke:#dc2626}
+  .dbox.data rect{fill:#ecfdf5;stroke:#059669}
+  .dbox.db rect{fill:#f5f3ff;stroke:#7c3aed}
+  .dbox.disk rect{fill:#f8fafc;stroke:#475569}
+  .dbox.ext rect{fill:#fff;stroke:#64748b}
+  .dbox.schema rect{fill:#faf5ff;stroke:#a78bfa;rx:4}
+  .dbox.schema.link rect{fill:#fff;stroke:#7c3aed;stroke-dasharray:3 2}
+  .dbox.schema text{font-size:10px;text-anchor:middle;font-family:ui-monospace,Consolas,monospace}
+  .dedge.fdw{stroke:#a78bfa;stroke-dasharray:4 3}
+  .dbox{cursor:pointer}
+  .dbox text{font:13px "Segoe UI",system-ui,sans-serif;fill:var(--ink);pointer-events:none}
+  .dbox text.ttl{font-weight:600}
+  .dbox text.sub{font-size:11px;fill:var(--muted)}
+  .dbox.sel rect{stroke:var(--hi);stroke-width:3}
+  .dedge{fill:none;stroke:#94a3b8;stroke-width:1.5}
+  .dedge.sel{stroke:var(--hi);stroke-width:2.5}
+  .dlbl{font:11px "Segoe UI",system-ui,sans-serif;fill:var(--muted)}
+  @media (max-width:900px){body{grid-template-columns:1fr;grid-template-rows:55vh 45vh}aside{border-left:0;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div id="scene">
+  <div id="mode"><button id="tabPlugins" class="on tab">Plugins</button><button id="tabDeploy" class="tab">Déploiement</button><span style="margin-left:14px" id="modeLbl">Dépendances :</span><button id="mTarget" class="on">cible</button><button id="mNow">actuelles</button><label id="kernelLinksLbl" style="margin-left:14px;cursor:pointer"><input type="checkbox" id="kernelLinks"> liens au noyau</label></div>
+  <svg id="graph" viewBox="0 0 1500 960" preserveAspectRatio="xMidYMin meet"></svg>
+  <svg id="deploy" viewBox="0 0 1900 990" preserveAspectRatio="xMidYMin meet" style="display:none"></svg>
+  <div id="hint">Cliquer une boîte. Rouge : ce dont elle dépend (ce qu'elle importe) · bleu : ce qui dépend d'elle. Violet pointillé : une Extension qui dépend d'une Extension, interdit.</div>
+</div>
+<aside>
+  <h1>Architecture de Spectre</h1>
+  <p class="sub">Chaque rangée ne dépend que de celles du dessus. Le Core est rangé par niveaux calculés depuis ses dépendances ; les liens vers le noyau sont les imports réels.</p>
+  <div class="legend">
+    <span><i style="background:var(--lib)"></i>Bibliothèque</span>
+    <span><i style="background:var(--kernel)"></i>Noyau</span>
+    <span><i style="background:var(--dep)"></i>dépend de</span>
+    <span><i style="background:var(--dpt)"></i>dépendant</span>
+    <span><i style="background:var(--core)"></i>Core</span>
+    <span><i style="background:var(--ext)"></i>Extension</span>
+    <span><i style="background:var(--leaf)"></i>Feuille</span>
+  </div>
+  <div id="panel"></div>
+</aside>
+<script>
+const PLUGINS = [{"name": "accounts", "doc": "Comptes, sessions, mot de passe, profil et rôle administrateur global.", "depends_on": [], "title": "Comptes", "description": "Comptes, connexion, mot de passe et profil ; le rôle administrateur.", "required": true, "pages": ["/connexion", "/inscription", "/mot-de-passe-oublie", "/reinitialiser", "/profil"], "nav": [], "files": ["api.py", "deps.py", "migrations.py", "security.py", "service.py"], "kernel": ["db", "errors", "mail", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "login.js", "password-forgot.js", "password-reset.js", "profile.js", "session.js", "signup.js"]}, {"name": "areas", "doc": "Projets corporate (*management areas*), leurs thématiques et leurs objectifs, et l'équipe à\nlaquelle chacun appartient : la règle d'écriture ``service.can_manage``.", "depends_on": ["accounts", "teams"], "title": "Projets corporate", "description": "Les projets corporate, leurs thématiques et objectifs ; la page d'accueil.", "required": false, "pages": ["/", "/management/{slug}", "/management/{slug}/thematiques/{thematique_slug}"], "nav": ["Projets"], "files": ["api.py", "migrations.py", "schemas.py", "service.py"], "kernel": ["db", "errors", "plugin", "static/api.js", "static/shell.js", "static/timeline.js", "static/ui.js"], "static": ["area-art.js", "area.js", "client.js", "home.js", "thematic.js", "totals.js"]}, {"name": "atlas", "doc": "Vue graphe d'un projet corporate : les µprojets dont on est membre, leurs pistes et leurs liens.", "depends_on": ["areas", "microprojects", "experiments", "links"], "title": "Atlas", "description": "La vue graphe d'un projet corporate : µprojets, études et liens.", "required": false, "pages": ["/management/{slug}/atlas"], "nav": ["Atlas"], "files": ["api.py", "service.py"], "kernel": ["plugin", "static/annotations.js", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["atlas.js", "client.js"]}, {"name": "attachments", "doc": "Fichiers téléversés d'un µprojet (blob + sidecar), types, tailles et service des octets.", "depends_on": ["microprojects"], "title": "Pièces jointes", "description": "Les fichiers téléversés dans un µprojet.", "required": false, "pages": [], "nav": [], "files": ["api.py", "store.py"], "kernel": ["errors", "fs", "plugin"], "static": ["client.js", "image-drop.js"]}, {"name": "characterization", "doc": "Types de données de caractérisation (PRISM, ou démo) : catalogue, requêtes, graphiques\ndocumentaires. La page qui les montre est celle du plugin ``prism`` (``/prism/donnees``).", "depends_on": ["accounts"], "title": "Caractérisation", "description": "Les données de caractérisation PRISM : catalogue, requêtes et graphiques.", "required": false, "pages": [], "nav": [], "files": ["api.py", "demo.py", "prism_source.py", "service.py", "source.py"], "kernel": ["db", "errors", "plugin"], "static": ["client.js", "wafer-data-links.js"]}, {"name": "comparator", "doc": "Comparateur de structures : un tableau, une ligne par plaque ou par structure, une colonne par\nparamètre, chaque différence avec la ligne de base colorée (modifié, paramètre ajouté, couche en plus,\nétape déplacée). La page ``/comparateur`` et chaque page qui compare des structures (évolution d'un\nµprojet, d'une référence) s'en servent. Les plaques et les références y déclarent leurs jetons.", "depends_on": ["experiments", "microprojects", "structures"], "title": "Comparateur de structures", "description": "Compare plaques, études et références dans un tableau : un paramètre par colonne, chaque différence avec la base en couleur.", "required": true, "pages": ["/comparateur"], "nav": ["Comparateur de structures"], "files": ["api.py", "service.py", "table.py"], "kernel": ["errors", "plugin", "plugin_states", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "comparator-table.js", "comparator.js"]}, {"name": "docs", "doc": "Pages de documentation.", "depends_on": [], "title": "Documentation", "description": "Les pages d'aide de Spectre.", "required": false, "pages": ["/docs", "/docs/guide", "/docs/exemples", "/docs/architecture"], "nav": ["Documentation"], "files": [], "kernel": ["plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["docs-nav.js"]}, {"name": "experiments", "doc": "Pistes d'étude et versions (dépôt Follow d'un µprojet) : création, évolution, statut,\nconclusion, étiquettes, entités physiques, fusion, suppression, diff, filiation, refs et\névolution des structures.", "depends_on": ["microprojects", "teams", "structures", "attachments"], "title": "Études", "description": "Les études d'un µprojet et leurs versions : évolution, statut, conclusion, filiation.", "required": true, "pages": ["/microprojets/{slug}/experiences/{experiment_id}", "/microprojets/{slug}/evolution"], "nav": [], "files": ["api.py", "attachments.py", "entities.py", "insights.py", "insights_api.py", "lineage.py", "migrations.py", "plans.py", "repository.py", "schemas.py", "service.py", "versioning.py"], "kernel": ["db", "errors", "fs", "http", "locks", "plugin", "plugin_states", "static/annotations.js", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["advanced.js", "client.js", "conclusion.js", "evolution-graph.js", "evolution.js", "header.js", "lineage-graph.js", "lineage-view.js", "objectives.js", "page.js", "plates.js", "status.js", "structure-view.js", "study-start.js", "tags-refs.js", "vocabulary.js"]}, {"name": "external_images", "doc": "Images externes référencées (TEM, scans) : la politique des chemins (racines autorisées, formats\naffichables) et le parcours des dossiers. Les images elles-mêmes sont un contenu du cahier (plugin\nnotebook, qui en dépend).", "depends_on": ["microprojects"], "title": "Images externes", "description": "Les images référencées hors de Spectre (TEM, scans) : dossiers autorisés et lecture.", "required": false, "pages": [], "nav": [], "files": ["api.py", "service.py"], "kernel": ["errors", "plugin"], "static": ["client.js"]}, {"name": "intent_forms", "doc": "Formulaires d'intention (bibliothèques partagée et par µprojet) et formulaire actif d'un µprojet.", "depends_on": ["experiments", "microprojects"], "title": "Formulaires d'intention", "description": "Les questions posées au lancement d'une étude, choisies par µprojet.", "required": false, "pages": ["/microprojets/{slug}/formulaire-intention"], "nav": [], "files": ["api.py", "migrations.py", "service.py"], "kernel": ["db", "errors", "fs", "locks", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "intent-form-section.js", "intent-forms.js"]}, {"name": "kpi_tracking", "doc": "Les KPI qu'un projet corporate suit : le choix, par projet, de colonnes de KPI des types de données PRISM\n(page ``/kpi`` du menu Data), et un onglet par KPI choisi dans le bloc « Évolution des KPI » de la page du\nprojet, qui trace une boîte à moustaches par plaque - celles de tous les µprojets du projet, calculées à la\ndemande sur les vraies données.", "depends_on": ["accounts", "areas", "microprojects", "experiments", "wafers", "characterization"], "title": "KPI suivis", "description": "Choisit les KPI PRISM que suit un projet corporate et trace, pour chacun, une boîte à moustaches par plaque de ses µprojets, dans le bloc d'évolution des KPI de sa page.", "required": false, "pages": ["/kpi"], "nav": ["KPI"], "files": ["api.py", "migrations.py", "service.py"], "kernel": ["db", "errors", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["boxplot.js", "client.js", "distribution-tab.js", "kpi-config-page.js", "kpi-config.js", "time-window.js", "wafer-modal.js"]}, {"name": "kpis", "doc": "Registre des KPI (``service.register``) et séries mensuelles d'un projet corporate.", "depends_on": ["areas", "experiments"], "title": "KPI", "description": "Les indicateurs mensuels d'un projet corporate.", "required": false, "pages": [], "nav": [], "files": ["api.py", "service.py"], "kernel": ["errors", "plugin"], "static": ["client.js", "kpi-trend.js"]}, {"name": "kpis_demo", "doc": "Séries et fiche d'étude fictives d'un KPI dont la source réelle n'est pas encore branchée.\nActif seulement si ``SPECTRE_DEMO_DATA=1``.", "depends_on": ["kpis", "structures"], "title": "KPI de démonstration", "description": "Des séries fictives pour les démonstrations ; disponible seulement avec SPECTRE_DEMO_DATA=1.", "required": false, "pages": [], "nav": [], "files": ["api.py", "service.py"], "kernel": ["errors", "plugin"], "static": ["client.js", "study.js"]}, {"name": "library", "doc": "Bibliothèque racine YAML de l'instance : registre des fichiers déclarés par leurs plugins\npropriétaires, chargeur avec cache, éditeur réservé à l'administrateur, textes d'interface.", "depends_on": ["accounts"], "title": "Bibliothèque racine", "description": "Les fichiers YAML de l'instance : matériaux, recettes, présets, briques et textes d'interface.", "required": false, "pages": [], "nav": [], "files": ["api.py", "service.py"], "kernel": ["db", "errors", "fs", "locks", "plugin"], "static": ["client.js", "library-files.js"]}, {"name": "links", "doc": "Liens entre µprojets et entre entités physiques.", "depends_on": ["microprojects", "experiments"], "title": "Liens", "description": "Les liens entre µprojets et entre entités physiques.", "required": false, "pages": [], "nav": [], "files": ["api.py", "migrations.py", "schemas.py", "service.py"], "kernel": ["db", "errors", "plugin"], "static": ["client.js"]}, {"name": "lots", "doc": "Lots de fabrication, leurs wafers et leurs thématiques visées, Gantt.", "depends_on": ["wafers", "areas", "experiments", "search"], "title": "Lots", "description": "Les lots de fabrication, leurs plaques, leurs thématiques visées et le Gantt.", "required": false, "pages": ["/lots", "/lots/{code}"], "nav": ["Lots"], "files": ["api.py", "auto_close.py", "jira.py", "migrations.py", "schemas.py", "search_provider.py", "service.py", "views.py"], "kernel": ["db", "errors", "http", "locks", "plugin", "plugin_states", "static/api.js", "static/shell.js", "static/timeline.js", "static/ui.js"], "static": ["client.js", "jira-lots.js", "lot-picker.js", "lot.js", "lots-gantt.js", "lots.js"]}, {"name": "lumiere", "doc": "Lumière, le moteur de rapports (``lumiere_report``), dans Spectre : **un seul chemin pour un rapport**. Un\nrapport est un *modèle* (:mod:`.templates` : des slides, un bloc Lumière par cellule) appliqué à un *contexte*\n(:mod:`.context` : une plaque, une analyse de plaques, une étude, un µprojet, un lot). Le bouton « Rapport » d'une page liste les\nmodèles de son contexte et lance la génération en tâche de fond (:mod:`.service`) ; le fichier HTML autonome\n(Plotly, cartes, suivi de plaque) se télécharge depuis la page ou depuis « Rapports » du menu Data, où tous\nles rapports générés se retrouvent. Le plugin n'existe que si ``lumiere_report`` est installé (:mod:`.engine`),\net PRISM est le même pour les deux (voir SOCLE-DATA.md §4.6).", "depends_on": ["accounts", "wafers", "characterization", "wafer_data", "sem_images", "meta_analysis", "experiments", "microprojects", "structures", "lots", "notebook", "attachments", "external_images"], "title": "Rapports Lumière", "description": "Des rapports HTML autonomes générés par le moteur Lumière à partir des données de Spectre : un bouton « Rapport » sur la page d'une plaque, d'une analyse, d'une étude, d'un µprojet, d'un lot ; des modèles de rapport composés slide par slide ; l'historique des rapports générés.", "required": false, "pages": ["/lumiere"], "nav": ["Rapports"], "files": ["api.py", "blocks.py", "context.py", "engine.py", "migrations.py", "notebook_block.py", "service.py", "templates.py"], "kernel": ["db", "errors", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "editor.js", "lumiere-ui.js", "lumiere.js", "report-button.js"]}, {"name": "materials", "doc": "Éditer les matériaux de l'instance depuis une page (``/materiaux``) : la liste du sélecteur du\nconstructeur - nom, catégorie, couleur, description - et les dégradés de couleur de l'InGaN et de\nl'AlGaN selon leur taux, qui s'écrivent dans ``materiaux.yml`` de la bibliothèque racine.", "depends_on": ["accounts", "library", "structures"], "title": "Matériaux", "description": "Édite les matériaux du constructeur (couleur, catégorie, description...) et les dégradés de couleur de l'InGaN et de l'AlGaN, depuis une page plutôt que dans le fichier YAML.", "required": false, "pages": ["/materiaux"], "nav": ["Matériaux"], "files": ["api.py", "service.py"], "kernel": ["errors", "locks", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "materials.js"]}, {"name": "meta_analysis", "doc": "Méta-analyse de plaques : une plaque de référence et celles qu'on lui compare, d'une étude ou d'une\nautre, sur une même fiche - leurs structures côte à côte, le tableau du comparateur, le contexte de chacune\n(ses études, ses notes, qu'on enrichit d'ici) et la conclusion de l'analyse. Pages ``/analyses`` et\n``/analyses/{id}`` ; la page d'une plaque liste les analyses où elle paraît.", "depends_on": ["accounts", "areas", "microprojects", "experiments", "comparator", "wafers", "kpi_tracking", "wafer_data"], "title": "Méta-analyse de plaques", "description": "Compare une plaque de référence à d'autres plaques, d'une étude ou d'une autre : structures côte à côte, tableau du comparateur, contexte de chacune et conclusion de l'analyse.", "required": false, "pages": ["/analyses", "/analyses/{analysis_id}"], "nav": ["Analyses"], "files": ["api.py", "data.py", "migrations.py", "picker.py", "service.py"], "kernel": ["db", "errors", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["analyses.js", "analysis-data.js", "analysis.js", "client.js", "plate-analyses.js", "wafer-picker.js"]}, {"name": "microprojects", "doc": "µprojets (numéro, rattachement à un projet ou une thématique, équipe, recherche), membres, rôles et\ninvitations. Fournit ``deps.require_role``.", "depends_on": ["accounts", "areas", "teams", "search"], "title": "µprojets", "description": "Les µprojets, leurs membres, rôles et invitations.", "required": true, "pages": ["/microprojets/{slug}"], "nav": [], "files": ["api.py", "deps.py", "invitations_api.py", "migrations.py", "search_provider.py", "service.py"], "kernel": ["db", "errors", "http", "locks", "mail", "plugin", "static/annotations.js", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "microproject.js", "roles.js"]}, {"name": "notebook", "doc": "Cahier de données d'une étude : toutes ses données mesurées - instantanés de données de\ncaractérisation et leurs vues DataViz (entrées PRISM), et ce qui se charge à la main (entrées\nmanuelles : valeurs, textes, tableaux, fichiers, liens), chacune rattachée aux plaques mesurées et\naux étapes du procédé ; une mesure manuelle référence aussi des images externes (plugin\nexternal_images), servies par identifiant.", "depends_on": ["characterization", "experiments", "attachments", "external_images"], "title": "Cahier de données", "description": "Le cahier d'une étude : mesures PRISM et manuelles, rattachées aux plaques et aux étapes.", "required": false, "pages": [], "nav": [], "files": ["api.py", "legacy.py", "schemas.py", "service.py", "snapshots.py"], "kernel": ["annotations", "errors", "http", "plugin"], "static": ["client.js", "entry-dialog.js", "notebook.js", "stepper.js"]}, {"name": "planning", "doc": "Planning d'équipe : les plaques des études d'une équipe par thématique ▸ µprojet ▸ épi, leurs\nlots en cours et prévus, sur une frise par semaine.", "depends_on": ["teams", "areas", "microprojects", "structures", "experiments", "wafers", "lots"], "title": "Planning d'équipe", "description": "Pour les managers : les plaques de l'équipe par thématique et µprojet, leurs lots en cours et les lots prévus.", "required": false, "pages": ["/planning", "/planning/{team_slug}"], "nav": ["Planning"], "files": ["api.py", "service.py"], "kernel": ["errors", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "planning.js"]}, {"name": "prism", "doc": "La gestion de PRISM, réservée aux administrateurs : une page à menu latéral (comme les Paramètres),\nune section par sujet - pour l'instant le catalogue des données de caractérisation (les hooks PRISM,\nleurs colonnes, un testeur en direct). Les données elles-mêmes viennent de\n:mod:`spectre.plugins.characterization` ; ce plugin n'en est que la vitrine d'administration. Dans la\nbarre du haut, il range son entrée dans le menu « Data », à côté des plaques.", "depends_on": ["accounts", "settings", "characterization"], "title": "PRISM", "description": "La gestion de PRISM pour les administrateurs : catalogue des données de caractérisation, colonnes et requêtes de test.", "required": false, "pages": ["/prism/donnees", "/prism/donnees/{key}"], "nav": ["PRISM"], "files": ["api.py"], "kernel": ["plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["data-types.js", "sections.js"]}, {"name": "process_library", "doc": "Structures enregistrées, présets d'étape et briques technologiques (intégrés, partagés, propres\nà un µprojet). Pages bibliothèque, présets et briques ; les briques de référence (``/briques``) et\nla fiche d'une brique (``/briques/{id}`` : ses versions, où elle sert).", "depends_on": ["structures", "microprojects", "library", "experiments", "teams"], "title": "Bibliothèque de procédés", "description": "Structures enregistrées, présets d'étape et briques technologiques à reprendre dans le constructeur.", "required": true, "pages": ["/bibliotheque", "/microprojets/{slug}/presets-etapes", "/microprojets/{slug}/briques-technologiques", "/briques", "/briques/{brick_id}"], "nav": ["Bibliothèque", "Briques de réf."], "files": ["api.py", "library_files.py", "migrations.py", "models.py", "schemas.py", "service.py", "step_presets.py", "structure_library.py", "structure_source.py", "tech_bricks.py", "usages.py"], "kernel": ["db", "errors", "json_store", "locks", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["access.js", "brick-picker.js", "brick.js", "bricks.js", "client.js", "library-hub.js", "step-presets.js", "tech-bricks.js"]}, {"name": "promotion", "doc": "Promotion de référence : choisir une structure comme nouvelle référence (ou nouvelle version\nd'une référence), par un formulaire dédié - la page ``/promotion`` - que chaque étude, variante de\nsplit, conclusion, page d'évolution et page de référence ouvre déjà rempli. Les règles vérifiées\navant de promouvoir sont un registre (:mod:`.rules`) : une règle de plus ne change ni le formulaire,\nni l'API. Chaque promotion est gardée au journal, avec son pourquoi et les verdicts des règles.\nLa même page (``/promotion?brique=``) promeut une brique technologique comme **brique de\nréférence**, avec ses propres règles (:mod:`.brick_rules`).", "depends_on": ["experiments", "microprojects", "structures", "references", "process_library"], "title": "Promotion de référence", "description": "Choisir une structure comme référence : un formulaire dédié, ouvert depuis chaque étude, split ou conclusion, avec ses règles et son journal.", "required": false, "pages": ["/promotion"], "nav": ["Promouvoir une réf."], "files": ["api.py", "brick_rules.py", "migrations.py", "rules.py", "schemas.py", "service.py"], "kernel": ["db", "errors", "http", "locks", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "fiche.js", "link.js", "promotion-brick.js", "promotion.js"]}, {"name": "references", "doc": "Références de structure : des points de départ partagés par toute l'application, versionnés\n(MAJEUR.MINEUR calculé), publiés depuis les études des µprojets, et leurs usages. Pages : la liste\ndes références et l'évolution d'une référence.", "depends_on": ["experiments", "microprojects", "structures", "comparator"], "title": "Références de structure", "description": "Les références de toute l'application : versions publiées depuis les études, leur évolution et leurs usages.", "required": false, "pages": ["/references", "/references/{slug}"], "nav": ["Références"], "files": ["api.py", "comparison_source.py", "local_refs.py", "migrations.py", "schemas.py", "service.py", "structure_source.py"], "kernel": ["db", "errors", "http", "locks", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "reference.js", "references.js", "start-picker.js"]}, {"name": "search", "doc": "Recherche de la barre du haut : ``GET /api/search``, qui agrège les fournisseurs déclarés par les\nautres plugins (``service.register_provider``) - µprojets, plaques, FDL, lots.", "depends_on": ["accounts"], "title": "Recherche", "description": "La recherche de la barre du haut : µprojets, lots, plaques par lasermark ou FDL.", "required": false, "pages": [], "nav": [], "files": ["api.py", "service.py"], "kernel": ["errors", "plugin", "plugin_states"], "static": ["client.js", "topbar-search.js"]}, {"name": "sem_images", "doc": "Les images MEB du G4 (ME-MEB101) d'une plaque, sur sa page : retrouvées sur le partage par PRISM (hook\n``meb_g4`` : par les FDL de la plaque, ou par l'index des dossiers que PRISM tient à jour - le partage n'en a pas),\nrangées par acquisition (FDL, procédé, étape) et affichées sans rien copier - les TIF sont rendus à la volée\n(vignettes, visionneuse avec échelle, trames des détecteurs, métadonnées du défaut revu). La section vit dans l'onglet\n« Data » de la page ; les blocs « images » de la fiche data (wafer_data) lus dans ``meb_g4`` passent par ce rendu.", "depends_on": ["accounts", "wafers", "wafer_data"], "title": "Images MEB du G4", "description": "Les images MEB du G4 d'une plaque, retrouvées par ses FDL sur le partage et affichées sans copie dans l'onglet Data de sa page et dans les blocs d'images de la fiche data.", "required": false, "pages": [], "nav": [], "files": ["api.py", "render.py", "service.py", "source.py", "tiff_meta.py"], "kernel": ["db", "errors", "plugin", "plugin_states"], "static": ["client.js", "plate-sem.js"]}, {"name": "settings", "doc": "Paramètres de l'application, réservés aux administrateurs : une page à menu latéral, une section\npar couche réglable - les plugins et leur activation (``spectre.kernel.plugin_states``), la base de\ndonnées : sauvegarde en ZIP et exploration de ses tables (``spectre.kernel.database``).", "depends_on": ["accounts"], "title": "Paramètres", "description": "Les réglages de l'application réservés aux administrateurs : plugins, utilisateurs, base de données.", "required": true, "pages": ["/parametres/plugins", "/parametres/utilisateurs", "/parametres/base-de-donnees"], "nav": ["Paramètres"], "files": ["api.py", "database_api.py", "schemas.py", "service.py"], "kernel": ["database", "errors", "plugin", "plugin_states", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "database.js", "icons.js", "plugins.js", "sections.js", "users.js"]}, {"name": "simulation_progress", "doc": "La barre de chargement du constructeur de structures : une simulation de plusieurs secondes se\nsuit, étape par étape. Le calcul reste à ``structures``, qui note où il en est sous l'identifiant que\nla page lui donne ; ce plugin le lit (``GET /api/simulation-runs/{run}``) et en fait la barre, montée\ndans la zone de dessin. Désactivé, le constructeur simule comme avant, sans barre.", "depends_on": ["accounts", "structures"], "title": "Barre de chargement", "description": "Montre l'avancement d'une simulation dans le constructeur - l'étape en cours et le temps écoulé - quand elle prend quelques secondes.", "required": false, "pages": [], "nav": [], "files": ["api.py", "service.py"], "kernel": ["errors", "plugin"], "static": ["client.js", "simulation-progress.js"]}, {"name": "step_report", "doc": "Les commentaires d'étape et le rapport pas à pas du constructeur de structures : chaque étape d'un\nprocédé peut porter un commentaire (rangé ici, sous l'id de l'étape, ``/api/microprojects/{slug}/step-comments``),\net le constructeur propose de télécharger un rapport - un diaporama HTML d'une seule page, une diapositive\npar étape. Le rapport se fabrique côté page, à partir de ce que le constructeur a déjà à l'écran (le dessin\nde chaque étape, ses paramètres, la légende des matériaux) ; ce plugin n'apporte que les commentaires.\nDésactivé, le constructeur est celui d'avant : pas de champ « Commentaire », pas de bouton de rapport.", "depends_on": ["accounts", "microprojects", "structures"], "title": "Commentaires et rapport d'étapes", "description": "Un commentaire sur chaque étape du procédé, et un rapport à télécharger : un diaporama étape par étape (dessin, paramètres, commentaire, légende des couleurs).", "required": false, "pages": [], "nav": [], "files": ["api.py", "migrations.py", "service.py"], "kernel": ["db", "errors", "plugin"], "static": ["client.js", "report-core.js", "report-html.js", "step-report.js", "study-report.js"]}, {"name": "structures", "doc": "Pont StructureForge : matériaux, recettes, simulation, aperçu de campagne DOE, rendu SVG et types\nde structure (``kinds``). Pages du constructeur.", "depends_on": ["accounts", "library", "attachments"], "title": "Structures", "description": "Le constructeur : matériaux, recettes, simulation StructureForge, campagnes DOE et rendu des structures.", "required": false, "pages": ["/bibliotheque/structures/{structure_id}", "/bibliotheque/briques/{brick_id}", "/bibliotheque/presets/{preset_id}", "/microprojets/{slug}/briques-technologiques/bibliotheque/nouvelle", "/microprojets/{slug}/briques-technologiques/bibliotheque/{brick_id}", "/microprojets/{slug}/presets-etapes/bibliotheque/nouvelle", "/microprojets/{slug}/presets-etapes/bibliotheque/{preset_id}", "/microprojets/{slug}/structures/bibliotheque/nouvelle", "/microprojets/{slug}/structures/bibliotheque/{structure_id}", "/microprojets/{slug}/structures/nouvelle", "/microprojets/{slug}/structures/image", "/microprojets/{slug}/experiences/{experiment_id}/evoluer", "/microprojets/{slug}/experiences/{experiment_id}/evoluer-image", "/microprojets/{slug}/structures/sans-structure", "/microprojets/{slug}/experiences/{experiment_id}/evoluer-sans-structure"], "nav": [], "files": ["api.py", "campaigns.py", "composition.py", "kinds.py", "library_files.py", "rendering.py", "schemas.py", "simulation.py", "sources.py"], "kernel": ["annotations", "database", "db", "errors", "plugin", "plugin_states", "static/annotations.js", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["campaign-carousel.js", "client.js", "declared-structure.js", "image-structure.js", "structure-images.js", "structure-zoom.js"]}, {"name": "teams", "doc": "Équipes et leurs membres (manager ou membre). Ce qu'une équipe possède - ses projets corporate,\ndonc leurs µprojets - est dit par les plugins au-dessus (``areas``).", "depends_on": ["accounts"], "title": "Équipes", "description": "Les équipes, leurs managers et leurs membres : qui gère quels projets corporate.", "required": false, "pages": ["/equipes", "/equipes/{slug}"], "nav": ["Équipes"], "files": ["api.py", "migrations.py", "schemas.py", "service.py"], "kernel": ["db", "errors", "http", "locks", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["client.js", "team-fields.js", "team.js", "teams.js"]}, {"name": "twins", "doc": "Plaques jumelles : parmi toutes les plaques suivies de vos µprojets, celles dont la structure est\nexactement celle d'une ligne de référence - ou n'en diffère que d'une ou deux variations, à la\ndemande. Le panneau se monte sur la page du comparateur, qui y ajoute les plaques trouvées.", "depends_on": ["experiments", "comparator", "wafers"], "title": "Plaques jumelles", "description": "Trouve les plaques de même structure qu'une ligne du comparateur, ou à une ou deux variations près, et les ajoute à la comparaison.", "required": false, "pages": [], "nav": [], "files": ["api.py", "service.py"], "kernel": ["errors", "plugin"], "static": ["client.js", "twins.js"]}, {"name": "usage", "doc": "Mesure de l'utilisation de Spectre, pour les administrateurs : chaque requête d'un compte connecté\nest comptée (le compte, l'heure, le module et la route - rien d'autre), et la page Paramètres >\nUtilisation en tire l'adoption, les modules utilisés, les pages et les actions, le rythme de\nchacun. Désactivé, il ne compte plus rien ; ce qu'il a compté reste.", "depends_on": ["accounts", "settings", "teams"], "title": "Utilisation", "description": "Mesure l'usage de l'application : adoption, modules et pages utilisés, par qui et à quel rythme - un tableau de bord réservé aux administrateurs.", "required": false, "pages": ["/parametres/utilisation"], "nav": [], "files": ["api.py", "migrations.py", "recorder.py", "service.py"], "kernel": ["db", "errors", "pages", "plugin", "plugin_states", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["charts.js", "client.js", "usage.js"]}, {"name": "wafer_data", "doc": "La fiche data des plaques : un onglet « Data » sur la page d'une plaque rattachée à un µprojet - le récapitulatif\nde ses données principales (valeurs situées parmi les plaques du projet, histogrammes, cartographies, courbes,\nimages) et sa généalogie (les études d'où elle vient et celles qui la reprennent, µprojet par µprojet). Ce que\nmontre la fiche se configure par projet corporate (page ``/fiche-data`` du menu Data, comme les KPI suivis) ;\nce qu'elle calcule se garde résumé, hors de la base de Spectre (:mod:`.store`).", "depends_on": ["accounts", "areas", "microprojects", "experiments", "wafers", "characterization", "external_images", "kpi_tracking"], "title": "Fiche data des plaques", "description": "Un onglet « Data » sur la page d'une plaque suivie : ses données principales (valeurs, histogrammes, boîtes, nuages, cartographies, courbes, galeries d'images), aux colonnes typées, configurées par projet corporate, et sa généalogie.", "required": false, "pages": ["/fiche-data"], "nav": ["Fiche data"], "files": ["api.py", "blocks.py", "columns.py", "digest.py", "migrations.py", "service.py", "store.py", "timeline_source.py"], "kernel": ["db", "errors", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["block-form.js", "charts.js", "client.js", "config.js", "plate-data.js", "viewer.js"]}, {"name": "wafers", "doc": "Index des plaques suivies (clé ``wafer_key``) et sa page ``/plaques`` - la liste et sa recherche -,\npasseport d'une plaque, recherche par lasermark et par FDL, politique de visibilité ; les plaques\nque contient une FDL (:mod:`.fdl_source`).", "depends_on": ["experiments", "search", "comparator"], "title": "Plaques", "description": "L'index des plaques suivies, leur passeport, leur recherche par lasermark ou FDL et les plaques de chaque FDL.", "required": true, "pages": ["/plaques", "/plaques/{lasermark}"], "nav": ["Plaques"], "files": ["api.py", "comparison_source.py", "fdl.py", "fdl_source.py", "links.py", "migrations.py", "notes.py", "records.py", "search_provider.py", "service.py", "structures.py", "timeline.py", "tracking.py", "tracking_model.py", "tracking_source.py"], "kernel": ["db", "errors", "locks", "plugin", "static/api.js", "static/shell.js", "static/ui.js"], "static": ["attach.js", "client.js", "fdl.js", "plate-context.js", "plate-links.js", "plate-structure.js", "records.js", "start-picker.js", "tracking.js", "wafer-index.js", "wafer.js"]}];
+
+// ---- la cible (ARCHITECTURE.md § 3) ----
+// Dans la cible : accounts rejoint le noyau, characterization fusionne dans prism_plugin, lumiere devient lumiere_plugin.
+const RENAME = {prism:"prism_plugin", lumiere:"lumiere_plugin", characterization:"prism_plugin"};
+const KERNEL_PLUGINS = ["accounts","attachments"];   // plugins qui entrent dans le noyau dans la cible
+const CORE_TARGET = ["settings","teams","areas","microprojects","structures","experiments","wafers","references","search","library","prism_plugin","lumiere_plugin"];
+// Le Core est rangé par niveaux calculés : niveau 0 = aucune dépendance (hors noyau), niveau n = ne dépend que de niveaux < n
+let coreLevel = {};
+const CORE_NOW = ["accounts","settings","teams","areas","microprojects","structures","experiments","wafers","references","search","library","attachments","prism","lumiere","characterization"];
+const EXT  = ["comparator","process_library","lots","links","notebook","kpis","kpi_tracking","wafer_data"];
+const layerOf = n => (KERNEL_PLUGINS.includes(n) && mode==="target") ? "kernel" : (CORE_TARGET.includes(n)||CORE_NOW.includes(n)) ? "core" : EXT.includes(n) ? "ext" : "leaf";
+const LAYER_LABEL = {core:"Core", ext:"Extension", leaf:"Feuille", kernel:"Noyau", lib:"Bibliothèque"};
+
+// dépendances cibles, en noms cibles (les écarts résorbés, ARCHITECTURE.md § 4) ; les autres gardent leurs depends_on
+const TARGET_DEPS = {
+  prism: ["settings"],
+  lumiere: ["prism_plugin"],
+  wafers: ["experiments","structures","search"],
+  references: ["experiments","microprojects","structures"],
+  comparator: ["experiments","microprojects","structures","wafers","references"],
+  kpi_tracking: ["areas","microprojects","experiments","wafers","prism_plugin","lumiere_plugin"],
+  wafer_data: ["areas","microprojects","experiments","wafers","prism_plugin","lumiere_plugin"],
+  notebook: ["prism_plugin","experiments","lumiere_plugin"],
+  kpis: ["areas","experiments","prism_plugin"],
+  meta_analysis: ["areas","microprojects","experiments","comparator","wafers","wafer_data","lumiere_plugin"],
+  sem_images: ["wafers","wafer_data","lumiere_plugin"],
+  step_report: ["microprojects","structures","lumiere_plugin"],
+  external_images: ["microprojects"],
+};
+
+const ECARTS = {
+  accounts: "Rejoint le noyau : comptes, sessions et droits sont trop centraux pour être un plugin dont tout dépend. Ses tables deviennent des tables du noyau.",
+  attachments: "Rejoint le noyau : téléverser un fichier est une fonction de base de l'application, pas du métier. Il ne dépend plus de microprojects (le dossier d'un fichier est celui de la ressource qui le porte) ; structures, experiments et notebook ne le nomment plus dans depends_on.",
+  characterization: "characterization disparaît : il fusionne dans prism_plugin.",
+  prism: "Devient prism_plugin, Core, en absorbant characterization : LE guichet de la donnée mesurée (« les lignes du hook X pour ces plaques »), avec le typage des colonnes, les filtres et les stats aujourd'hui dans kpi_tracking, et sa page d'administration. Personne d'autre n'appelle la bibliothèque PRISM. Les images hors Spectre (MEB du G4) passent aussi par lui.",
+  lumiere: "Devient lumiere_plugin, Core, inversé : aujourd'hui il dépend de 13 plugins et va chercher leurs données. Cible : guichet qui répond « tel rapport pour ces plaques », ne dépend que de prism_plugin ; ce sont les autres plugins qui le sollicitent. Personne d'autre n'appelle la bibliothèque Lumière.",
+  notebook: "Ne dépend plus d'external_images (une Extension ne dépend que du Core). Ses figures (static/dataviz/) deviennent des modules de dataviz de Lumière.",
+  external_images: "Feuille, plus une Extension : plus personne n'en dépend. À terme, les images hors Spectre sont fournies par prism_plugin (comme sem_images le fait déjà pour le G4).",
+  wafers: "Ne dépend plus de comparator : c'est comparator qui enregistre les plaques comme source. Déclare structures, qu'il importe déjà (kinds, sources) sans le nommer.",
+  references: "Passe Core. Ne dépend plus de comparator (inversion, comme wafers).",
+  comparator: "Sort de la liste required : Extension. Dépend désormais de wafers et references pour les enregistrer comme sources. Les Core qui s'en servent cachent la comparaison quand il est éteint.",
+  process_library: "Sort de la liste required : Extension. Le constructeur cache les présets quand il est éteint.",
+  kpi_tracking: "Le typage des colonnes, les filtres et box_stats descendent dans prism_plugin ; les boîtes à moustaches sont rendues par lumiere_plugin.",
+  wafer_data: "Ne dépend plus de kpi_tracking ni d'external_images (une Extension ne dépend que du Core) ; le socle est dans prism_plugin, ses graphiques passent par lumiere_plugin.",
+  kpis: "Les KPI de mesure viennent de prism_plugin ; les KPI d'activité (études, plaques) restent des données Spectre. La tendance reste tracée par Spectre : exception nommée.",
+  meta_analysis: "Ne dépend plus de kpi_tracking ; ses rapports HTML passent par lumiere_plugin.",
+  sem_images: "Sa galerie passe par lumiere_plugin.",
+  step_report: "Son diaporama HTML passe par lumiere_plugin.",
+};
+
+const KERNEL_MODULES = [
+  {name:"plugin", desc:"Plugin, Page, NavEntry, Migration, RequestTrace : le manifeste d'un plugin et la vérification de l'ordre topologique au démarrage."},
+  {name:"app", desc:"create_app : migrations, routeurs, pages, statiques, exception handlers, observateurs de requêtes. Le seul module qui lit la liste PLUGINS."},
+  {name:"db", desc:"data_dir, connect, get_conn, migrations versionnées, rebuild_table, sauvegarde avant migration."},
+  {name:"errors", desc:"DomainError et ses sous-classes (NotFound, Forbidden, Conflict, InvalidInput…) ; un handler unique les traduit en HTTP."},
+  {name:"locks", desc:"keyed_lock : un verrou par clé, le serveur tourne en un seul processus."},
+  {name:"fs", desc:"replace et write_text : écriture atomique, réessayée sous Windows."},
+  {name:"annotations", desc:"La forme des annotations d'une image, la même pour toute image que Spectre montre."},
+  {name:"json_store", desc:"Collections JSON à id, lues et écrites sous verrou (bibliothèques de process_library)."},
+  {name:"mail", desc:"send_email : SMTP si configuré, sinon journalisation sans le corps."},
+  {name:"pages", desc:"Service des pages HTML avec la barre du haut commune, retrait des statiques des plugins éteints."},
+  {name:"plugin_states", desc:"L'activation des plugins à chaud : is_enabled, blocked_by, set_enabled, la liste Core."},
+  {name:"database", desc:"La base vue par un administrateur : sauvegarde ZIP, tables, lignes, écritures journalisées."},
+  {name:"http", desc:"created, ETag / If-Match."},
+  {name:"env", desc:"Lecture du .env et des variables d'environnement."},
+  {name:"static/api.js", desc:"Client HTTP du front : JSON, upload, blob, If-Match, redirection 401."},
+  {name:"static/ui.js", desc:"escapeHtml, dates, durées, routeParams, pluginEnabled."},
+  {name:"static/shell.js", desc:"Barre du haut : navigation active."},
+  {name:"static/timeline.js", desc:"Axe des mois et hachures des frises."},
+  {name:"static/annotations.js", desc:"ImageAnnotations : les annotations d'une image dessinées et éditées."},
+];
+const KERNEL = {name:"noyau", layer:"kernel", title:"Le noyau (spectre/kernel/)",
+  description:"Immuable et sans métier : plugins, base et migrations, erreurs, pages et barre du haut, activation à chaud, statiques (api.js, ui.js, kernel.css), et dans la cible les comptes, sessions et droits (accounts) et les fichiers téléversés (attachments). Il n'importe aucun plugin ; seul create_app lit la liste PLUGINS.",
+  doc:"Toute modification du noyau est justifiée : le commit dit quel besoin ne pouvait pas être servi par un plugin, et REVIEW.md en garde la trace."};
+const LIBS = [
+  {name:"FastAPI · sqlite3", layer:"lib", description:"Le socle du noyau : HTTP, base. Ne connaît pas Spectre.", users:["kernel.app","kernel.db","kernel.pages"]},
+  {name:"Follow", layer:"lib", description:"Le dépôt versionné des études, appelé par experiments.repository.", users:["experiments"]},
+  {name:"StructureForge", layer:"lib", description:"Le moteur de simulation des structures, appelé par structures.", users:["structures"]},
+  {name:"PRISM", layer:"lib", description:"Le client PRISM et ses hooks : toute donnée mesurée. Appelé par le seul guichet prism_plugin (aujourd'hui characterization).", users:["prism_plugin","characterization"]},
+  {name:"Lumière", layer:"lib", description:"Rapports et dataviz. Appelée par le seul plugin lumiere_plugin, qui est son guichet dans Spectre.", users:["lumiere_plugin","lumiere"]},
+  {name:"numpy · pandas", layer:"lib", description:"Les bibliothèques générales de calcul.", users:["prism_plugin","lumiere_plugin","characterization","lumiere"]},
+];
+
+// ---- modèle ----
+let mode = "target";
+const uniq = a => [...new Set(a)];
+function model(){
+  if (mode === "now") return PLUGINS.map(p => ({...p, orig:p.name, now:p.depends_on}));
+  const out = [];
+  for (const p of PLUGINS){
+    if (KERNEL_PLUGINS.includes(p.name) || p.name === "characterization") continue;
+    const name = RENAME[p.name] || p.name;
+    const deps = uniq((TARGET_DEPS[p.name] || p.depends_on).map(d => RENAME[d] || d).filter(d => !KERNEL_PLUGINS.includes(d) && d !== name));
+    const q = {...p, name, orig:p.name, depends_on:deps, now:p.depends_on};
+    if (p.name === "prism"){ const c = PLUGINS.find(x => x.name === "characterization");
+      q.title = "Guichet PRISM"; q.description = "Le guichet de la donnée mesurée : « les lignes du hook X pour ces plaques ». " + c.description;
+      q.doc = c.doc + "\n\n" + p.doc; q.files = uniq([...c.files, ...p.files]); q.static = uniq([...c.static, ...p.static]); q.pages = uniq([...c.pages, ...p.pages]); }
+    if (p.name === "lumiere"){ q.title = "Guichet Lumière"; q.description = "Le guichet des rapports et de la dataviz : « tel type de rapport pour ces plaques ». " + p.description; }
+    out.push(q);
+  }
+  return out;
+}
+let MODEL = model();
+let byName = Object.fromEntries(MODEL.map(p => [p.name, p]));
+const depsOf = p => p.depends_on;
+const dependents = name => MODEL.filter(p => depsOf(p).includes(name)).map(p => p.name);
+
+// ---- dessin ----
+const svg = document.getElementById("graph");
+const NS = "http://www.w3.org/2000/svg";
+const el = (t, a={}) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+const nodes = {}; let edges = [];
+let ROWS = [];
+function buildRows(nCoreLevels){
+  const r = [
+    {key:"lib",    label:"BIBLIOTHÈQUES", sub:"ne connaissent pas Spectre"},
+    {key:"kernel", label:"NOYAU", sub:"immuable, sans métier, n'importe aucun plugin · un module par boîte, les liens sont les imports réels"},
+  ];
+  for (let i=0;i<nCoreLevels;i++) r.push({key:"core"+i, label:"CORE · NIVEAU "+i, sub: i===0 ? "non désactivable · aucune dépendance hors noyau" : "non désactivable · ne dépend que des niveaux au-dessus"});
+  r.push({key:"ext",  label:"EXTENSIONS", sub:"désactivables · ne dépendent que du Core et du noyau · les Feuilles peuvent en dépendre"});
+  r.push({key:"leaf", label:"FEUILLES", sub:"désactivables · personne n'en dépend"});
+  let y = 80;
+  r.forEach((row,i) => { row.y = y; y += (row.key==="kernel" || row.key.startsWith("core")) ? 110 : 130; });
+  svg.setAttribute("viewBox", `0 0 ${W} ${y+10}`);
+  return r;
+}
+const W = 1500, LEFT = 30, RIGHT = 30, BOX_H = 34;
+
+function orderRow(names, upper){
+  // barycentre des dépendances dans la rangée du dessus (moins de croisements)
+  const pos = {}; upper.forEach((n,i)=>pos[n]=i);
+  const key = n => { const ds = (byName[n] ? depsOf(byName[n]) : []).filter(d=>d in pos).map(d=>pos[d]);
+    return ds.length ? ds.reduce((a,b)=>a+b,0)/ds.length : upper.length/2; };
+  return names.slice().sort((a,b)=>key(a)-key(b) || a.localeCompare(b));
+}
+
+function draw(){
+  svg.innerHTML = ""; for (const k in nodes) delete nodes[k]; edges = [];
+  MODEL = model(); byName = Object.fromEntries(MODEL.map(p => [p.name, p]));
+  const gBands = el("g"), gEdges = el("g"), gNodes = el("g");
+  svg.append(gBands, gEdges, gNodes);
+  // niveaux du Core : profondeur parmi les Core
+  const coreSet = new Set(MODEL.map(p=>p.name).filter(n=>layerOf(n)==="core"));
+  coreLevel = {}; { let ch=true; coreSet.forEach(n=>coreLevel[n]=0);
+    while(ch){ ch=false; for (const n of coreSet) for (const d of depsOf(byName[n])) if (coreSet.has(d) && coreLevel[d]+1>coreLevel[n]){ coreLevel[n]=coreLevel[d]+1; ch=true; } } }
+  const nLevels = Math.max(0, ...Object.values(coreLevel)) + 1;
+  ROWS = buildRows(nLevels);
+  // bandes
+  ROWS.forEach(r => {
+    gBands.append(el("line",{x1:LEFT,y1:r.y+BOX_H+40,x2:W-RIGHT,y2:r.y+BOX_H+40,class:"band"}));
+    const t=el("text",{x:LEFT,y:r.y-14,class:"bandlbl"}); t.textContent=r.label; gBands.append(t);
+    const s=el("text",{x:LEFT+r.label.length*9+14,y:r.y-14,class:"bandsub"}); s.textContent="— "+r.sub; gBands.append(s);
+  });
+  // rangées
+  const coreNames = MODEL.map(p=>p.name).filter(n=>layerOf(n)==="core");
+  // les Core ordonnés par profondeur entre eux (dépendances à gauche)
+  const depth={}; let changed=true; MODEL.forEach(p=>depth[p.name]=0);
+  while(changed){changed=false; for(const p of MODEL) for(const d of depsOf(p)) if(byName[d]&&depth[d]+1>depth[p.name]){depth[p.name]=depth[d]+1;changed=true;}}
+  coreNames.sort((a,b)=>depth[a]-depth[b]||a.localeCompare(b));
+  const extNames = orderRow(EXT.filter(n=>byName[n]), coreNames);
+  const leafNames = orderRow(MODEL.map(p=>p.name).filter(n=>layerOf(n)==="leaf"), [...coreNames, ...extNames]);
+  place(LIBS.map(l=>l.name), ROWS[0].y, "lib", n=>LIBS.find(l=>l.name===n));
+  const ACC = PLUGINS.find(p=>p.name==="accounts");
+  const KP = Object.fromEntries(KERNEL_PLUGINS.map(n => [n, PLUGINS.find(p=>p.name===n)]));
+  const KP_TITLE = {accounts:"Comptes, sessions, droits (dans le noyau)", attachments:"Fichiers téléversés (dans le noyau)"};
+  const used = new Set(PLUGINS.flatMap(p=>p.kernel||[]));
+  const kmods = KERNEL_MODULES.filter(m => used.has(m.name) || m.name==="app" || m.name==="plugin_states").map(m=>"kernel."+m.name);
+  const kdata = n => { const m = KERNEL_MODULES.find(x=>"kernel."+x.name===n); return {name:n, layer:"kernel", title:"spectre/kernel/"+m.name, description:m.desc, kernelModule:m.name}; };
+  if (mode==="target") place([...kmods,...KERNEL_PLUGINS], ROWS[1].y, "kernel", n=>KP[n]?{...KP[n], layer:"kernel", title:KP_TITLE[n], orig:n, depends_on:[], now:KP[n].depends_on}:kdata(n));
+  else place(kmods, ROWS[1].y, "kernel", kdata);
+  for (let i=0;i<nLevels;i++){
+    const names = orderRow(coreNames.filter(n=>coreLevel[n]===i), coreNames.filter(n=>coreLevel[n]<i));
+    place(names, ROWS[2+i].y, "core", n=>byName[n]);
+  }
+  place(extNames, ROWS[2+nLevels].y, "ext", n=>byName[n]);
+  place(leafNames, ROWS[3+nLevels].y, "leaf", n=>byName[n]);
+  // liens : plugin → dépendances (hors noyau, implicite)
+  for (const p of MODEL) for (const d of depsOf(p)) if (nodes[d] && nodes[p.name]) addEdge(p.name, d);
+  if (document.getElementById("kernelLinks").checked){
+    for (const p of MODEL) for (const m of (p.kernel||[])) if (nodes["kernel."+m] && nodes[p.name]) addEdge(p.name, "kernel."+m);
+    if (mode==="target") for (const n of KERNEL_PLUGINS) for (const m of (KP[n].kernel||[])) if (nodes[n] && nodes["kernel."+m]) addEdge(n, "kernel."+m);
+  }
+  LIBS.forEach(l => l.users.forEach(u => { if (nodes[u]) addEdge(u, l.name); }));
+  edges.forEach(e => gEdges.append(e.el));
+  Object.values(nodes).forEach(n => gNodes.append(n.el));
+  applyDim(null);
+
+  function place(names, y, cls, dataOf, fixedW){
+    const n = names.length, avail = W-LEFT-RIGHT, gap = 10;
+    const w = fixedW || Math.min(150, Math.floor((avail - gap*(n-1))/n));
+    const total = n*w + gap*(n-1); let x = LEFT + (avail-total)/2;
+    names.forEach(name => {
+      const g = el("g",{class:"node "+cls}); const r = el("rect",{x,y,width:w,height:BOX_H});
+      const label = name.replace(/^kernel\./,"");
+      const fs = Math.min(13, (w-12)/(label.length*0.62));
+      const t = el("text",{x:x+w/2,y:y+BOX_H/2,style:`font-size:${fs.toFixed(1)}px`}); t.textContent = label; g.append(r,t);
+      const d = dataOf(name); g.addEventListener("click",()=>select(d));
+      nodes[name] = {x, y, w, el:g, data:d}; x += w + gap;
+    });
+  }
+  function addEdge(from, to){
+    const a = nodes[from], b = nodes[to];
+    const x1=a.x+a.w/2, y1=a.y, x2=b.x+b.w/2, y2=b.y+BOX_H;
+    let d;
+    if (Math.abs(a.y-b.y) < 1){ // même rangée : arc au-dessus
+      const h = 24 + Math.abs(x2-x1)*0.08;
+      d = `M${x1},${y1} C${x1},${y1-h} ${x2},${y2-BOX_H-h} ${x2},${y2-BOX_H}`;
+    } else {
+      const my=(y1+y2)/2; d = `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+    }
+    const bad = layerOf(from)==="ext" && layerOf(to)==="ext";
+    edges.push({from,to,bad,el:el("path",{d,class:"edge"+(bad?" bad":"")})});
+  }
+}
+
+// ---- sélection ----
+function applyDim(sel){
+  Object.values(nodes).forEach(n => n.el.classList.remove("sel","dep","dpt","dim"));
+  edges.forEach(e => e.el.classList.remove("dep","dpt","dim"));
+  if (!sel) return;
+  const name = sel.name;
+  const deps = new Set(byName[name] ? depsOf(byName[name]) : []);
+  const kernelOf = n => byName[n] ? (byName[n].kernel||[]) : KERNEL_PLUGINS.includes(n) ? (PLUGINS.find(p=>p.name===n).kernel||[]) : [];
+  if (document.getElementById("kernelLinks").checked) kernelOf(name).forEach(m => deps.add("kernel."+m));
+  LIBS.filter(l => l.users.includes(name)).forEach(l => deps.add(l.name));
+  const km = sel.kernelModule;
+  const dpts = new Set(byName[name] ? dependents(name) : km ? [...MODEL.filter(p=>(p.kernel||[]).includes(km)).map(p=>p.name), ...(mode==="target" ? KERNEL_PLUGINS.filter(n => (PLUGINS.find(p=>p.name===n).kernel||[]).includes(km)) : [])] : (LIBS.find(l=>l.name===name)||{users:[]}).users);
+  for (const k in nodes){ const n = nodes[k];
+    if (k===name) n.el.classList.add("sel"); else if (deps.has(k)) n.el.classList.add("dep"); else if (dpts.has(k)) n.el.classList.add("dpt"); else n.el.classList.add("dim"); }
+  edges.forEach(e => { if (e.from===name) e.el.classList.add("dep"); else if (e.to===name) e.el.classList.add("dpt"); else e.el.classList.add("dim"); });
+}
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const chip = n => `<span class="chip ${layerOf(n)}" data-go="${n}">${n}</span>`;
+function select(d){
+  applyDim(d);
+  const panel = document.getElementById("panel");
+  const L = d.layer || layerOf(d.name);
+  let html = `<span class="layer ${L}">${LAYER_LABEL[L]}</span><h2>${esc(d.title||d.name)}</h2><p class="t">${esc(d.name)}</p>`;
+  if (d.description) html += `<p>${esc(d.description)}</p>`;
+  if (byName[d.name]){
+    const p = byName[d.name];
+    if (ECARTS[p.orig]) html += `<div class="ecart"><b>Écart à résorber.</b> ${esc(ECARTS[p.orig])}</div>`;
+    if (p.orig === "prism" && mode==="target") html += `<div class="ecart">${esc(ECARTS.characterization)}</div>`;
+    const deps = depsOf(p), now = p.now;
+    html += `<h3>Dépend de (${mode==="target"?"cible":"aujourd'hui"})</h3><div class="chips">${deps.length?deps.map(chip).join(""):"<i>le noyau seulement</i>"}</div>`;
+    if (mode==="target" && now.join() !== deps.join()) html += `<p style="font-size:12px;color:var(--muted);margin-top:6px">Aujourd'hui : ${now.join(", ")||"—"}</p>`;
+    if ((p.kernel||[]).length) html += `<h3>Modules du noyau importés</h3><div class="chips">${p.kernel.map(m=>`<span class="chip" data-kgo="kernel.${m}">${esc(m)}</span>`).join("")}</div>`;
+    const dpts = dependents(d.name);
+    html += `<h3>Dont dépendent</h3><div class="chips">${dpts.length?dpts.map(chip).join(""):"<i>personne</i>"}</div>`;
+    if (L==="core") html += `<p style="font-size:13px;color:var(--muted);margin-top:8px">Core · niveau ${coreLevel[d.name]} : ${coreLevel[d.name]===0?"aucune dépendance hors noyau":"ne dépend que de Core de niveau inférieur"}. Ne se désactive pas. On l'enrichit de l'extérieur.</p>`;
+    if (L==="ext") html += `<p style="font-size:13px;color:var(--muted);margin-top:8px">Extension : désactivable ; éteinte, ses dépendants s'éteignent. Au plus une Extension entre elle et le Core.</p>`;
+    if (L==="leaf") html += `<p style="font-size:13px;color:var(--muted);margin-top:8px">Feuille : désactivable, personne n'en dépend. S'éteint sans changer l'usage Core.</p>`;
+    if (p.nav.length) html += `<h3>Barre du haut</h3><p>${p.nav.map(esc).join(" · ")}</p>`;
+    if (p.pages.length) html += `<h3>Pages</h3><ul class="small">${p.pages.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`;
+    if (p.doc) html += `<h3>Ce que dit son module</h3><div class="doc">${esc(p.doc)}</div>`;
+    if (p.files.length||p.static.length) html += `<h3>Fichiers</h3><ul class="small">${[...p.files,...p.static.map(s=>"static/"+s)].map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`;
+  } else if (d.kernelModule){
+    const users = MODEL.filter(p=>(p.kernel||[]).includes(d.kernelModule)).map(p=>p.name);
+    html += `<h3>Plugins qui l'importent (${users.length})</h3><div class="chips">${users.length?users.map(chip).join(""):"<i>aucun : utilisé par le noyau seul</i>"}</div>`;
+  } else if (KERNEL_PLUGINS.includes(d.orig)){
+    if (d.description) html += `<p>${esc(d.description)}</p>`;
+    html += `<div class="ecart"><b>Écart à résorber.</b> ${esc(ECARTS[d.orig])}</div><p style="font-size:12px;color:var(--muted)">Aujourd'hui : un plugin (depends_on : ${(d.now||[]).join(", ")||"aucun"}).</p>`;
+    if (d.doc) html += `<h3>Ce que dit son module</h3><div class="doc">${esc(d.doc)}</div>`;
+  } else {
+    if (d.doc) html += `<div class="ecart">${esc(d.doc)}</div>`;
+    if (d.users) html += `<h3>Utilisée par</h3><div class="chips">${d.users.map(u=>byName[u]?chip(u):`<span class="chip">${u}</span>`).join("")}</div>`;
+  }
+  panel.innerHTML = html;
+  panel.querySelectorAll("[data-go]").forEach(c => c.addEventListener("click", () => select(byName[c.dataset.go])));
+  panel.querySelectorAll("[data-kgo]").forEach(c => c.addEventListener("click", () => nodes[c.dataset.kgo] && select(nodes[c.dataset.kgo].data)));
+}
+// ---- Déploiement ----
+const DEPLOY = {
+  boxes: [
+    {id:"users", x:745, y:40, w:220, h:60, cls:"ext", title:"Utilisateurs", sub:"navigateur · http://SERVEUR:8000",
+      desc:"Les utilisateurs ouvrent Spectre dans leur navigateur à l'adresse SPECTRE_BASE_URL (du .env), qui sert aussi dans les liens des e-mails (invitation, mot de passe oublié)."},
+    {id:"host", x:300, y:130, w:810, h:845, cls:"host", title:"Serveur hôte (Linux)", sub:"un dossier ~/spectre/ à la racine : les fichiers à gauche, le conteneur à droite",
+      desc:"Le serveur qui fait tourner Spectre. Tout ce qui lui est propre vit dans un seul dossier : le compose, le .env, la config, les données. L'image est construite sur le poste de dev et envoyée en .tar (docker load), voir DEPLOIEMENT.md."},
+    {id:"compose", x:330, y:180, w:290, h:64, cls:"file", title:"docker-compose.yml", sub:"image spectre:latest · port 8000 · volume ./data → /data",
+      desc:"Le seul fichier de lancement : docker compose up -d. Il déclare l'image, le port 8000, le montage du dossier de données sur /data, le .env (optionnel) et les variables SPECTRE_* (URL publique, SMTP). Les partages réseau à lire s'y montent aussi (volumes en lecture seule)."},
+    {id:"env", x:330, y:262, w:290, h:64, cls:"secret", title:".env", sub:"secrets et comptes de service · chmod 600",
+      desc:"Les secrets, jamais dans l'image ni dans git : le compte de lecture PostgreSQL de PRISM (DB_LUMIERE_USER / DB_LUMIERE_PASSWORD, ou PRISM_USER / PRISM_PASSWORD selon la version), SMTP (hôte, compte, mot de passe, expéditeur), SPECTRE_BASE_URL. Un .env.example est livré à côté."},
+    {id:"config", x:330, y:344, w:290, h:64, cls:"file", title:"config.yml (optionnel)", sub:"SSO, chemins d'accès, tout ce qui n'est ni secret ni donnée",
+      desc:"Un fichier de configuration à côté du compose pour ce qu'on veut garder lisible : paramètres SSO, chemins des partages, options d'instance. Il n'existe que si on en a besoin ; aujourd'hui tout passe par les variables d'environnement."},
+    {id:"data", x:330, y:426, w:290, h:110, cls:"data", title:"data_spectre_docker/", sub:"monté sur /data · UID 1000",
+      desc:"Toutes les données de Spectre, dans un dossier à côté du compose : spectre.db (SQLite), les dépôts Follow des études, les pièces jointes, la bibliothèque YAML, le cache PRISM (hook_cache, digests.sqlite), les backups de migration. Sauvegarder Spectre = copier ce dossier ; mettre à jour = changer l'image, garder le dossier.",
+      lines:["spectre.db · dépôts Follow · pièces jointes","bibliothèque YAML · cache PRISM · backups/"]},
+    {id:"container", x:670, y:160, w:420, h:785, cls:"container", title:"Conteneur spectre:latest", sub:"uvicorn · spectre.kernel.app:create_app · :8000",
+      desc:"L'image construite depuis le Dockerfile : Python, Spectre et ses dépendances installées depuis GitLab (jeton passé en secret de build, jamais écrit dans l'image). Un seul processus uvicorn. Il lit /data et les partages montés, parle à PostgreSQL via PRISM et au SMTP."},
+    {id:"kernel", x:700, y:215, w:360, h:50, cls:"ext", title:"Noyau", sub:"spectre/kernel · accounts · attachments", desc:"Le noyau : app, base et migrations, erreurs, pages, activation, statiques, et dans la cible les comptes et les fichiers téléversés (voir l'onglet Plugins)."},
+    {id:"core", x:700, y:280, w:360, h:112, cls:"container", title:"Core (non désactivable)", sub:"12 plugins, par niveaux",
+      desc:"Les plugins Core, rangés par niveaux : 0 settings, teams, search, library · 1 areas, structures, prism_plugin · 2 microprojects, lumiere_plugin · 3 experiments · 4 wafers, references. prism_plugin est le seul à ouvrir PostgreSQL, lumiere_plugin le seul à appeler Lumière.",
+      lines:["0  settings · teams · search · library","1  areas · structures · prism_plugin","2  microprojects · lumiere_plugin","3  experiments  ·  4  wafers · references"]},
+    {id:"plugins", x:700, y:405, w:360, h:96, cls:"ext", title:"Plugins optionnels", sub:"8 Extensions + 14 Feuilles · activables à chaud",
+      desc:"Extensions : comparator, process_library, lots, links, notebook, kpis, kpi_tracking, wafer_data. Feuilles : promotion, twins, planning, meta_analysis, sem_images, step_report, simulation_progress, intent_forms, materials, atlas, usage, kpis_demo, docs, external_images.",
+      lines:["comparator · process_library · lots · links","notebook · kpis · kpi_tracking · wafer_data","+ 14 feuilles : promotion, planning, twins…"]},
+    {id:"libs", x:700, y:515, w:360, h:365, cls:"group", title:"Bibliothèques (pip install au build)", sub:"pyproject.toml · GitLab (internes) · PyPI (publiques)",
+      desc:"Toutes les dépendances déclarées dans pyproject.toml, installées dans l'image au build. Les trois internes viennent de GitLab (jeton en secret de build) ou GitHub ; elles tirent elles-mêmes psycopg2 (PRISM[postgres]), le rendu des graphiques (PRISM[charts]), Follow (StructureForge[follow]) et Plotly (Lumière)."},
+    {id:"prismlib", x:715, y:560, w:330, h:44, cls:"db", title:"PRISM  [postgres, charts]", sub:"GitLab · amène psycopg2", desc:"PRISM : le dictionnaire de données de caractérisation (hooks, connexions, cache, KPI). Appelé par le seul prism_plugin. L'extra postgres amène psycopg2, charts le rendu des graphiques."},
+    {id:"lumlib", x:715, y:612, w:330, h:44, cls:"db", title:"Lumière", sub:"GitLab · amène Plotly · dépend de PRISM", desc:"Lumière : le moteur de rapports HTML (blocs Plotly, wafer maps, suivi de plaques). Appelé par le seul lumiere_plugin. Déclare PRISM par la même URL : une seule installation partagée."},
+    {id:"sflib", x:715, y:664, w:330, h:44, cls:"db", title:"StructureForge + Follow", sub:"GitLab (cible ; aujourd'hui GitHub) · [follow]", desc:"StructureForge : le moteur de simulation des structures (structures). L'extra follow amène Follow, le dépôt versionné des études (experiments.repository)."},
+    {id:"pypi", x:715, y:720, w:330, h:150, cls:"ext", title:"Publiques (PyPI)", sub:"déclarées par Spectre",
+      desc:"fastapi ≥ 0.110 (HTTP), uvicorn[standard] ≥ 0.29 (serveur), pydantic ≥ 2.7 (schémas), python-multipart ≥ 0.0.9 (upload), pandas ≥ 2.0, scipy ≥ 1.11, matplotlib ≥ 3.8 (calcul et figures). Transitives notables : numpy, psycopg2 (via PRISM), plotly (via Lumière). Dev seulement, hors image : pytest, pytest-cov, httpx. sqlite3 est dans la bibliothèque standard.",
+      lines:["fastapi · uvicorn · pydantic · multipart","pandas · scipy · matplotlib","transitives : numpy · psycopg2 · plotly","stdlib : sqlite3 · dev : pytest, httpx"]},
+    {id:"mnt", x:700, y:895, w:360, h:36, cls:"disk", title:"/data · /mnt/… (montages)", sub:"", desc:"Dans le conteneur Linux, N:\\ n'existe pas : chaque partage est monté sur le serveur puis dans le compose (volumes, :ro), et déclaré à Spectre par variable (SPECTRE_EXTERNAL_IMAGE_ROOTS, PRISM_SEM_ROOT…)."},
+
+    // ---- les bases : deux serveurs PostgreSQL qui se voient l'un l'autre par schémas liés ----
+    {id:"inf49", x:1130, y:160, w:360, h:330, cls:"host", title:"INF49:5432 · PostgreSQL", sub:"le serveur que PRISM attaque (DB_HOST)",
+      desc:"Le serveur PostgreSQL de la caractérisation. C'est lui que PRISM attaque en direct (psycopg2, base testcarac, compte de lecture du .env). Les autres bases s'y lisent par schémas liés."},
+    {id:"testcarac", x:1150, y:200, w:320, h:270, cls:"db", title:"testcarac", sub:"base · schémas locaux puis schémas liés",
+      desc:"La base des mesures de caractérisation. Schémas locaux : public, staging_liv, staging_rf, monitoring. Schémas liés (foreign data wrapper) vers les autres bases : schema_gozer, schema_sherlock, schema_meswatson, schema_mycroftreng, schema_defectivity. Une requête PRISM connectée à testcarac lit schema_gozer.\"EpitaxyMeasuredValue\" sans jamais ouvrir Gozer : c'est le cas de liv_curve."},
+    {id:"tc_public", x:1165, y:250, w:68, h:30, cls:"schema", title:"public", desc:"Schéma local de testcarac : les tables de mesure."},
+    {id:"tc_liv", x:1240, y:250, w:68, h:30, cls:"schema", title:"staging_liv", desc:"Schéma local de testcarac : zone de chargement LIV."},
+    {id:"tc_rf", x:1315, y:250, w:68, h:30, cls:"schema", title:"staging_rf", desc:"Schéma local de testcarac : zone de chargement RF."},
+    {id:"tc_mon", x:1390, y:250, w:68, h:30, cls:"schema", title:"monitoring", desc:"Schéma local de testcarac : supervision."},
+    {id:"tc_links", x:1165, y:300, w:290, h:18, cls:"ext", title:"schémas liés (fdw) vers les autres bases", label:true},
+    {id:"tc_gozer", x:1165, y:325, w:56, h:30, cls:"schema link", title:"gozer", desc:"schema_gozer : les tables de GOZER vues depuis testcarac (Epitaxie, EpitaxyMeasuredValue, FDL…). C'est par là que PRISM lit Gozer."},
+    {id:"tc_sherlock", x:1226, y:325, w:56, h:30, cls:"schema link", title:"sherlock", desc:"schema_sherlock : Sherlock vu depuis testcarac."},
+    {id:"tc_mes", x:1287, y:325, w:56, h:30, cls:"schema link", title:"meswatson", desc:"schema_meswatson : le MES (Watson) vu depuis testcarac."},
+    {id:"tc_mycroft", x:1348, y:325, w:56, h:30, cls:"schema link", title:"mycroft", desc:"schema_mycroftreng : Mycroft vu depuis testcarac."},
+    {id:"tc_def", x:1409, y:325, w:56, h:30, cls:"schema link", title:"defectivity", desc:"schema_defectivity : la base de défectivité (« def ») vue depuis testcarac."},
+
+    {id:"inf10", x:1510, y:160, w:360, h:330, cls:"host", title:"INF10:5432 · PostgreSQL", sub:"le serveur GOZER",
+      desc:"Le serveur PostgreSQL de GOZER (épitaxie, FDL, runs). PRISM ne s'y connecte pas : il le lit à travers schema_gozer de testcarac. Symétriquement GOZER voit testcarac par schema_testcarac."},
+    {id:"gozer", x:1530, y:200, w:320, h:270, cls:"db", title:"GOZER", sub:"base · schémas locaux puis schémas liés",
+      desc:"La base GOZER. Schémas locaux : public, report, monitoring. Schémas liés : schema_testcarac, schema_sherlock, schema_meswatson, schema_mycroftreng, schema_defectivity."},
+    {id:"gz_public", x:1545, y:250, w:68, h:30, cls:"schema", title:"public", desc:"Schéma local de GOZER : Epitaxie, EpitaxyMeasuredValue, FDL, runs."},
+    {id:"gz_report", x:1620, y:250, w:68, h:30, cls:"schema", title:"report", desc:"Schéma local de GOZER : rapports."},
+    {id:"gz_mon", x:1695, y:250, w:68, h:30, cls:"schema", title:"monitoring", desc:"Schéma local de GOZER : supervision."},
+    {id:"gz_links", x:1545, y:300, w:290, h:18, cls:"ext", title:"schémas liés (fdw) vers les autres bases", label:true},
+    {id:"gz_tc", x:1545, y:325, w:56, h:30, cls:"schema link", title:"testcarac", desc:"schema_testcarac : testcarac vu depuis GOZER."},
+    {id:"gz_sherlock", x:1606, y:325, w:56, h:30, cls:"schema link", title:"sherlock", desc:"schema_sherlock : Sherlock vu depuis GOZER."},
+    {id:"gz_mes", x:1667, y:325, w:56, h:30, cls:"schema link", title:"meswatson", desc:"schema_meswatson : le MES vu depuis GOZER."},
+    {id:"gz_mycroft", x:1728, y:325, w:56, h:30, cls:"schema link", title:"mycroft", desc:"schema_mycroftreng : Mycroft vu depuis GOZER."},
+    {id:"gz_def", x:1789, y:325, w:56, h:30, cls:"schema link", title:"defectivity", desc:"schema_defectivity : la défectivité vue depuis GOZER."},
+
+    {id:"sherlock", x:1130, y:560, w:165, h:50, cls:"db", title:"sherlock", sub:"base source", desc:"Sherlock, lue par les deux serveurs à travers leur schema_sherlock."},
+    {id:"mes", x:1315, y:560, w:165, h:50, cls:"db", title:"MES (meswatson)", sub:"base source", desc:"Le MES Watson : suivi de fabrication, lots, plaques. Lu à travers schema_meswatson."},
+    {id:"mycroft", x:1510, y:560, w:165, h:50, cls:"db", title:"mycroft (reng)", sub:"base source", desc:"Mycroft, lu à travers schema_mycroftreng."},
+    {id:"defectivity", x:1695, y:560, w:165, h:50, cls:"db", title:"defectivity (def)", sub:"base source", desc:"La base de défectivité, lue à travers schema_defectivity."},
+
+    {id:"disks", x:1320, y:650, w:360, h:120, cls:"disk", title:"Disques réseau", sub:"O: · N: · W: · P:",
+      desc:"Les partages de l'entreprise : images MEB du G4 (N:\\ME-MEB101), dossiers d'images EL, documents. Montés sur le serveur et dans le conteneur en lecture seule ; à terme, c'est PRISM qui fournit les liens vers ces fichiers (« les images de telle plaque »).",
+      lines:["montés en lecture seule dans le conteneur"]},
+    {id:"smtp", x:1130, y:650, w:160, h:60, cls:"ext", title:"SMTP", sub:"optionnel", desc:"Le serveur de mail pour les invitations et mots de passe oubliés. Sans lui, seuls destinataire et objet sont journalisés."},
+    {id:"gitlab", x:40, y:850, w:220, h:100, cls:"ext", title:"GitLab (interne)", sub:"au build · jeton en secret", desc:"Les quatre dépendances internes sont hébergées sur le GitLab de l'entreprise et installées au build avec un jeton passé en secret (jamais écrit dans l'image) : PRISM, Lumière, StructureForge et Follow. Aujourd'hui StructureForge et Follow sont encore sur GitHub (dmholy) : à rapatrier. Le conteneur n'accède plus à GitLab ensuite.", lines:["PRISM · Lumière","StructureForge · Follow"]},
+    {id:"pypisrc", x:40, y:620, w:220, h:100, cls:"ext", title:"PyPI (public)", sub:"au build", desc:"Toutes les autres dépendances viennent des dépôts publics : fastapi, uvicorn, pydantic, python-multipart, pandas, scipy, matplotlib, et leurs transitives (numpy, psycopg2, plotly).", lines:["fastapi · uvicorn · pydantic","pandas · scipy · matplotlib…"]},
+    {id:"dev", x:40, y:740, w:220, h:80, cls:"ext", title:"Poste de dev (Windows)", sub:"build de l'image → .tar → scp", desc:"L'image est construite ici (build-docker.bat), exportée en .tar, envoyée sur le serveur avec le compose et le .env.example, puis chargée par docker load (DEPLOIEMENT.md)."},
+  ],
+  edges: [
+    // [de, vers, libellé, x1,y1, x2,y2, style] : segments droits
+    ["users","container","HTTP :8000", 855,100, 855,160],
+    ["compose","container","lance", 620,212, 670,212],
+    ["env","container","variables", 620,294, 670,294],
+    ["config","container","options", 620,376, 670,376],
+    ["container","data","/data", 670,481, 620,481],
+    ["container","testcarac","PRISM · psycopg2", 1090,225, 1150,225],
+    ["container","smtp","e-mails", 1090,680, 1130,680],
+    ["container","disks","montages :ro", 1090,740, 1320,740],
+    ["dev","host","image .tar", 260,780, 300,780],
+    ["dev","gitlab","build : internes", 150,820, 150,850],
+    ["dev","pypisrc","build : publiques", 150,740, 150,720],
+    // schémas liés : testcarac ↔ GOZER
+    ["tc_gozer","gozer","fdw", 1193,355, 1193,395, "fdw"], ["tc_gozer","gozer","", 1193,395, 1530,395, "fdw"],
+    ["gz_tc","testcarac","fdw", 1573,355, 1573,420, "fdw"], ["gz_tc","testcarac","", 1573,420, 1470,420, "fdw"],
+    // schémas liés : vers les bases sources, par un bus (chaque schéma lié expose une base source)
+    ["tc_sherlock","bus","", 1254,355, 1254,520, "fdw"],
+    ["tc_mes","bus","", 1315,355, 1315,520, "fdw"],
+    ["tc_mycroft","bus","", 1376,355, 1376,520, "fdw"],
+    ["tc_def","bus","", 1437,355, 1437,520, "fdw"],
+    ["gz_sherlock","bus","", 1634,355, 1634,520, "fdw"],
+    ["gz_mes","bus","", 1695,355, 1695,520, "fdw"],
+    ["gz_mycroft","bus","", 1756,355, 1756,520, "fdw"],
+    ["gz_def","bus","", 1817,355, 1817,520, "fdw"],
+    ["bus","bus","schémas liés → bases sources", 1212,520, 1817,520, "fdw"],
+    ["bus","sherlock","", 1212,520, 1212,560, "fdw"],
+    ["bus","mes","", 1397,520, 1397,560, "fdw"],
+    ["bus","mycroft","", 1592,520, 1592,560, "fdw"],
+    ["bus","defectivity","", 1777,520, 1777,560, "fdw"],
+  ],
+};
+const dsvg = document.getElementById("deploy");
+const dnodes = {}; let dedges = [];
+function drawDeploy(){
+  dsvg.innerHTML = ""; for (const k in dnodes) delete dnodes[k]; dedges = [];
+  const defs = el("defs"); defs.innerHTML = '<marker id="darrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>';
+  const gE = el("g"), gB = el("g"); dsvg.append(defs, gB, gE);
+  for (const b of DEPLOY.boxes){
+    const g = el("g",{class:"dbox "+b.cls+(b.w>300?" group":"")});
+    g.append(el("rect",{x:b.x,y:b.y,width:b.w,height:b.h}));
+    if (b.label){ const t = el("text",{x:b.x+b.w/2,y:b.y+15,class:"sub","text-anchor":"middle"}); t.textContent=b.title; g.append(t); g.querySelector("rect").setAttribute("fill","none"); g.querySelector("rect").setAttribute("stroke","none"); }
+    else if (b.cls.startsWith("schema")){
+      const t = el("text",{x:b.x+b.w/2,y:b.y+b.h/2+4}); t.textContent = b.title; g.append(t);
+      g.addEventListener("click", ev => { ev.stopPropagation(); selectDeploy(b); });
+    }
+    else {
+      const t = el("text",{x:b.x+12,y:b.y+20,class:"ttl"}); t.textContent = b.title; g.append(t);
+      if (b.sub){ const u = el("text",{x:b.x+12,y:b.y+37,class:"sub"}); u.textContent = b.sub; g.append(u); }
+      (b.lines||[]).forEach((l,i)=>{ const v = el("text",{x:b.x+12,y:b.y+(b.sub?56:40)+i*17,style:"font-size:11.5px"}); v.textContent = l; g.append(v); });
+      g.addEventListener("click", ev => { ev.stopPropagation(); selectDeploy(b); });
+    }
+    gB.append(g); dnodes[b.id] = {...b, el:g};
+  }
+  for (const [a,b,label,x1,y1,x2,y2,style] of DEPLOY.edges){
+    const path = el("path",{d:`M${x1},${y1} L${x2},${y2}`,class:"dedge"+(style?" "+style:"")});
+    if (!style || !label) path.setAttribute("marker-end", style ? "" : "url(#darrow)");
+    const horiz = y1===y2, mx=(x1+x2)/2, my=(y1+y2)/2;
+    const t = el("text",{x: horiz ? mx : mx+8, y: horiz ? my-7 : my+4, class:"dlbl","text-anchor": horiz ? "middle" : "start"}); t.textContent = label;
+    gE.append(path,t); dedges.push({a,b,el:path});
+  }
+}
+function selectDeploy(b){
+  Object.values(dnodes).forEach(n => n.el.classList.remove("sel"));
+  dedges.forEach(e => e.el.classList.toggle("sel", e.a===b.id || e.b===b.id));
+  dnodes[b.id].el.classList.add("sel");
+  const panel = document.getElementById("panel");
+  const links = DEPLOY.edges.filter(e => e[0]===b.id || e[1]===b.id).map(e => { const o = e[0]===b.id ? e[1] : e[0]; return `<span class="chip" data-dgo="${o}">${esc(dnodes[o].title)}</span>`; }).join("");
+  panel.innerHTML = `<span class="layer kernel">Déploiement</span><h2>${esc(b.title)}</h2><p class="t">${esc(b.sub||"")}</p><p>${esc(b.desc)}</p>` + (links ? `<h3>Relié à</h3><div class="chips">${links}</div>` : "");
+  panel.querySelectorAll("[data-dgo]").forEach(c => c.addEventListener("click", () => selectDeploy(dnodes[c.dataset.dgo])));
+}
+let tab = "plugins";
+function setTab(t){
+  tab = t;
+  document.getElementById("tabPlugins").classList.toggle("on", t==="plugins");
+  document.getElementById("tabDeploy").classList.toggle("on", t==="deploy");
+  svg.style.display = t==="plugins" ? "" : "none"; dsvg.style.display = t==="deploy" ? "" : "none";
+  ["modeLbl","mTarget","mNow","kernelLinksLbl"].forEach(id => document.getElementById(id).style.display = t==="plugins" ? "" : "none");
+  document.getElementById("hint").textContent = t==="plugins"
+    ? "Cliquer une boîte. Rouge : ce dont elle dépend (ce qu'elle importe) · bleu : ce qui dépend d'elle. Violet pointillé : une Extension qui dépend d'une Extension, interdit."
+    : "Cliquer une boîte. Flèches pleines : qui parle à qui. Violet pointillé : un schéma lié (fdw) et la base qu'il expose. PRISM n'ouvre que testcarac ; Gozer et les autres s'y lisent par leurs schémas liés.";
+  if (t==="deploy"){ drawDeploy(); selectDeploy(dnodes.host); } else { draw(); select(KERNEL); }
+}
+document.getElementById("kernelLinks").onchange = () => { const cur = document.querySelector(".node.sel"); const name = cur && Object.keys(nodes).find(k => nodes[k].el === cur); draw(); if (name && nodes[name]) select(nodes[name].data); else select(KERNEL); };
+document.getElementById("tabPlugins").onclick = () => setTab("plugins");
+document.getElementById("tabDeploy").onclick = () => setTab("deploy");
+document.getElementById("mTarget").onclick = () => { mode="target"; setMode(); };
+document.getElementById("mNow").onclick = () => { mode="now"; setMode(); };
+function setMode(){ document.getElementById("mTarget").classList.toggle("on",mode==="target"); document.getElementById("mNow").classList.toggle("on",mode==="now"); draw(); select(KERNEL); }
+draw(); select(KERNEL);
+</script>
+</body>
+</html>

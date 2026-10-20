@@ -388,7 +388,7 @@ dans [`REVIEW.md`](REVIEW.md).
 
 ## API
 
-Résumé des conventions (détail : `ARCHITECTURE.md` § 4) :
+Résumé des conventions (détail : `ARCHITECTURE-REFERENCE.md` § 4) :
 
 - Ressources en anglais, au pluriel, en kebab-case ; une action métier est une sous-ressource
   (`PUT .../conclusion`, `PUT .../status`). JSON en `snake_case` ; collections paginées en
@@ -403,7 +403,7 @@ Résumé des conventions (détail : `ARCHITECTURE.md` § 4) :
   trop gros, 422 saisie invalide (identifiants de connexion refusés compris), 502/503 pour PRISM.
   Erreurs au format `{"detail": "<message en français>", "code": "<code>"}`.
 
-La liste des routes, avec leur correspondance aux anciennes, est dans `ARCHITECTURE.md` § 5.
+La liste des routes, avec leur correspondance aux anciennes, est dans `ARCHITECTURE-REFERENCE.md` § 5.
 Swagger UI et ReDoc sont désactivés (`docs_url=None`, `redoc_url=None`) ; `/docs` est la
 documentation de l'application. Le schéma brut reste servi par FastAPI sur `/openapi.json`.
 

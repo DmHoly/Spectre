@@ -137,7 +137,7 @@ physique méritent de sortir), `core/lots.update()` (à scinder avant la synchro
 - Quatre noms pour le même concept : projet corporate = `management` = « projet » = « theme ».
   Une plaque s'appelle plaque, plate, wafer, sample_id, lasermark ou entity selon le fichier.
 
-La cible est détaillée dans [`ARCHITECTURE.md` § 4-5](ARCHITECTURE.md#4-conventions-rest).
+La cible est détaillée dans [`ARCHITECTURE-REFERENCE.md` § 4-5](ARCHITECTURE-REFERENCE.md#4-conventions-rest).
 
 ---
 
@@ -309,7 +309,7 @@ gardant la suite verte puis relue par un agent chargé de la réfuter :
 | S — `api/experiments.py`, `core/microprojects.py`, `api/structures.py`, `core/db.py`, `common.js`, `experience.js` | Réglé : répartis en plugins. `experiments` a une seule fonction d'écriture (`amend`) et la fiche est découpée en modules et panneaux |
 | O — dispatch par chaîne sur le type de structure, ordre des routeurs, recherche codée en dur | Réglé : `StructureKind` (3 types), identifiants d'un seul segment, `GET /api/search` avec registre de fournisseurs |
 | L — « Non classé », source démo | Réglé : `is_system`/`can_delete` ; `DataSource` respecté par les deux sources |
-| I — globales implicites, `_detail` fourre-tout | Réglé en grande partie : contexte explicite (`ctx`, `mount(el, ctx)`), chaque plugin lit sa sous-ressource. Il reste des fonctions globales partagées entre plugins côté front, documentées dans ARCHITECTURE.md § 6 |
+| I — globales implicites, `_detail` fourre-tout | Réglé en grande partie : contexte explicite (`ctx`, `mount(el, ctx)`), chaque plugin lit sa sous-ressource. Il reste des fonctions globales partagées entre plugins côté front, documentées dans ARCHITECTURE-REFERENCE.md § 6 |
 | D — `core/permissions` → `api`, adaptateurs PRISM doublés | Réglé : dépendances dans `accounts.deps`/`microprojects.deps`, un seul adaptateur PRISM derrière `DataSource`. Les accès privés à Follow sont isolés dans `experiments.repository.delete_line` |
 | REST | Réglé : 131 routes renommées en ressources anglaises (rupture nette). Codes, `Location` qui se lit, 204, `If-Match`/412 ; plus de HTML sous `/api` |
 | S1 lecture de fichiers arbitraires | Réglé : images servies par identifiant, racines `SPECTRE_EXTERNAL_IMAGE_ROOTS`, parcours réservé aux éditeurs |
@@ -341,7 +341,7 @@ gardant la suite verte puis relue par un agent chargé de la réfuter :
 - Les liens d'entités d'une piste supprimée restent listés. Le nom d'une piste supprimée n'est
   jamais réattribué, donc ils ne pointent jamais vers une autre étude.
 - `areas` met à jour la table `microprojects` lors d'une suppression : c'est l'exception écrite
-  dans ARCHITECTURE.md § 3.
+  dans ARCHITECTURE-REFERENCE.md § 3.
 
 **Autres points :**
 - Les pages de documentation intégrées (`/docs`) citent encore les anciennes routes ; leur
