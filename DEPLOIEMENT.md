@@ -113,16 +113,16 @@ docker compose exec spectre spectre admin prenom.nom@aledia.com
 
 ## 7. Où mettre le volume `data` ?
 
-`docker-compose.yml` déclare un **volume nommé** `spectre-data` monté sur `/data` dans le conteneur. Il contient la
+`docker-compose.yml` déclare un **volume nommé** `spectre-data` (nom réel : `spectre_spectre-data`, Compose préfixe le nom du dossier du projet) monté sur `/data` dans le conteneur. Il contient la
 base `spectre.db` (comptes, projets, études…), les dépôts d'expériences, les pièces jointes et les caches.
 
-- **Rien à créer ni à choisir** : Docker le crée au premier `up`. Il vit dans `/var/lib/docker/volumes/spectre-data/_data`
+- **Rien à créer ni à choisir** : Docker le crée au premier `up`. Il vit dans `/var/lib/docker/volumes/spectre_spectre-data/_data`
   (accessible en `sudo`), il survit à `docker compose down`, à `up`, à un nouveau `docker load` d'une version plus récente.
   **Ne jamais** lancer `docker compose down -v` : l'option `-v` supprime le volume, donc toutes les données.
 - **Sauvegarde** : dans Spectre, *Paramètres ▸ Base de données ▸ Sauvegarde* télécharge un ZIP de tout le dossier de données.
   À défaut, côté serveur :
   ```bash
-  docker run --rm -v spectre-data:/data -v "$PWD":/backup alpine tar czf /backup/spectre-data-$(date +%F).tgz -C /data .
+  docker run --rm -v spectre_spectre-data:/data -v "$PWD":/backup alpine tar czf /backup/spectre-data-$(date +%F).tgz -C /data .
   ```
 - **Variante : dossier choisi** (ex. un disque dédié `/srv/spectre/data`) à la place du volume nommé :
   ```bash
