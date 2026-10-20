@@ -9,9 +9,17 @@ Hypothèses : serveur Linux avec Docker + le plugin Compose (`docker compose ver
 ## 1. Sur ton poste Windows : construire l'image
 
 1. Lancer **Docker Desktop** (attendre qu'il soit « running »).
-2. Double-cliquer `build-docker.bat` à la racine du dépôt (réseau d'entreprise nécessaire : il télécharge
+2. **Une seule fois** — certificat de l'entreprise : le GitLab interne est signé par une autorité inconnue de l'image.
+   Exporter le certificat racine Aledia (Windows : `certmgr.msc` ▸ Autorités de certification racines de confiance ▸ le
+   certificat de l'entreprise ▸ clic droit ▸ Toutes les tâches ▸ Exporter ▸ « X.509 encodé en base 64 (.CER) »), le
+   renommer en `.crt` et le déposer dans le dossier `certs\` du dépôt. Sans lui : `server verification failed:
+   certificate signer not trusted`.
+3. **Jeton GitLab** : les dépôts PRISM et Lumière sont privés. Créer un jeton d'accès personnel sur
+   `gitlab-it.aledia.com` (Préférences ▸ Access tokens, portée `read_repository`) ; `build-docker.bat` le demande (ou lit la
+   variable d'environnement `GITLAB_TOKEN`) et le passe à Docker comme secret de build : il n'est écrit nulle part dans l'image.
+4. Double-cliquer `build-docker.bat` à la racine du dépôt (réseau d'entreprise nécessaire : il télécharge
    StructureForge sur GitHub et PRISM sur le GitLab interne).
-3. Il produit le dossier `dist\` avec trois fichiers :
+5. Il produit le dossier `dist\` avec trois fichiers :
    - `spectre-image.tar` — l'image (ne contient aucun mot de passe) ;
    - `docker-compose.yml` ;
    - `.env.example`.

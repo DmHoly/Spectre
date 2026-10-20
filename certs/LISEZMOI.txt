@@ -1,0 +1,4 @@
+Certificats racine/intermediaires de l'entreprise (format PEM, extension .crt) a faire connaitre a
+l'image PENDANT sa construction : sans eux, git ne fait pas confiance au GitLab interne
+(gitlab-it.aledia.com) et `pip install` des dependances echoue ("certificate signer not trusted").
+Ils ne servent qu'a la construction. Voir DEPLOIEMENT.md, etape 1.

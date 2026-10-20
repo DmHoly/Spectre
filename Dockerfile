@@ -24,7 +24,27 @@ COPY pyproject.toml README.md ./
 COPY spectre ./spectre
 COPY config ./config
 
-RUN pip install --no-cache-dir .
+# Certificats de l'entreprise (dossier certs/, fichiers .crt) : le GitLab interne est signé par une
+# autorité que l'image python:slim ne connaît pas. Aucun fichier = aucun ajout.
+COPY certs/ /usr/local/share/ca-certificates/
+
+# git : les dépendances (StructureForge, PRISM, Lumière) s'installent depuis des dépôts git, et
+# l'image python:slim n'en contient pas. Il n'est utile qu'à la construction : retiré juste après.
+# Le GitLab interne demande un compte : un jeton d'accès (lecture des dépôts) fourni au build par
+# `--secret id=gitlab_token` (build-docker.bat, variable GITLAB_TOKEN). Il n'existe que le temps de
+# cette commande - ni dans l'image, ni dans ses couches, ni dans les métadonnées pip.
+RUN --mount=type=secret,id=gitlab_token \
+    apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && update-ca-certificates \
+    && if [ -s /run/secrets/gitlab_token ]; then \
+         export GIT_CONFIG_COUNT=1 \
+                GIT_CONFIG_KEY_0="url.https://oauth2:$(cat /run/secrets/gitlab_token)@gitlab-it.aledia.com/.insteadOf" \
+                GIT_CONFIG_VALUE_0="https://gitlab-it.aledia.com/"; \
+       fi \
+    && pip install --no-cache-dir . \
+    && apt-get purge -y --auto-remove git \
+    && rm -rf /var/lib/apt/lists/*
 
 # Les données (comptes, projets, dépôts d'expériences Follow, recettes) sont écrites ici - monter
 # un volume sur ce chemin pour les faire survivre à un redémarrage du conteneur.
